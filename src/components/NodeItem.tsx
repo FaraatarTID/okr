@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion';
 import {
     Target,
     Zap,
@@ -53,7 +52,7 @@ export function NodeItem({ node, onAddChild, onDelete }: NodeItemProps) {
     const Icon = config.icon;
     const hasChildren = node.children.length > 0;
     const isTimerRunning = !!node.timerStartedAt;
-    const currentTime = useCurrentTime(node);
+    const currentTime = useCurrentTime(node.id);
 
     const handleTitleSave = () => {
         updateNode(node.id, { title: editTitle.trim() || 'Untitled' });
@@ -74,12 +73,7 @@ export function NodeItem({ node, onAddChild, onDelete }: NodeItemProps) {
     };
 
     return (
-        <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="group"
-        >
+        <div className="group">
             <div className={cn(
                 'node-card glass-hover relative overflow-hidden',
                 node.type === 'goal' && 'border-l-4 border-pink-500',
@@ -327,6 +321,6 @@ export function NodeItem({ node, onAddChild, onDelete }: NodeItemProps) {
                     </div>
                 </div>
             </div>
-        </motion.div>
+        </div>
     );
 }

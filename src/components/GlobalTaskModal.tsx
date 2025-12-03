@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useOKRStore } from '../store/useOKRStore';
 import { TaskSummaryModal } from './TaskSummaryModal';
 
@@ -10,12 +9,6 @@ export function GlobalTaskModal() {
     const addNode = useOKRStore(state => state.addNode);
 
     const activeNode = activeTaskModalNodeId ? nodes[activeTaskModalNodeId] : null;
-
-    useEffect(() => {
-        console.log('GlobalTaskModal: activeTaskModalNodeId changed to', activeTaskModalNodeId);
-    }, [activeTaskModalNodeId]);
-
-    console.log('GlobalTaskModal: Render', { activeTaskModalNodeId, hasNode: !!activeNode });
 
     if (!activeNode) return null;
 

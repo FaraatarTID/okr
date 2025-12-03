@@ -260,6 +260,13 @@ export const useOKRStore = create<OKRStore>()(
                 const node = Object.values(nodes).find(n => n.timerStartedAt);
                 return node || null;
             },
+
+            importData: (data) => {
+                set({
+                    nodes: data.nodes,
+                    rootIds: data.rootIds,
+                });
+            },
         }),
         {
             name: 'okr-storage',

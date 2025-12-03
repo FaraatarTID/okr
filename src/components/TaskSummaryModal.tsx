@@ -122,6 +122,7 @@ export function TaskSummaryModal({ isOpen, onClose, onSubmit, onStopWithoutLog, 
                                 placeholder="Describe the task you completed..."
                                 rows={4}
                                 className="w-full px-4 py-3 rounded-lg glass border border-slate-600 focus:border-blue-500 focus:outline-none transition-colors resize-none"
+                                style={{ color: 'white' }}
                                 autoFocus
                             />
                         </div>
@@ -132,13 +133,15 @@ export function TaskSummaryModal({ isOpen, onClose, onSubmit, onStopWithoutLog, 
                                 type="submit"
                                 disabled={!summary.trim()}
                                 className="btn-primary flex-1"
+                                style={{ color: 'white' }}
                             >
                                 Save Task
                             </button>
                             <button
                                 type="button"
                                 onClick={handleStopWithoutLog}
-                                className="px-4 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors font-medium"
+                                className="btn-secondary"
+                                style={{ color: 'white' }}
                             >
                                 Stop Timer
                             </button>
@@ -146,6 +149,7 @@ export function TaskSummaryModal({ isOpen, onClose, onSubmit, onStopWithoutLog, 
                                 type="button"
                                 onClick={handleResume}
                                 className="btn-secondary"
+                                style={{ color: 'white' }}
                             >
                                 Resume
                             </button>

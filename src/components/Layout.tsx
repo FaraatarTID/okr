@@ -1,5 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Clock, Target, Pause } from 'lucide-react';
+import { Plus, Clock, Target, Pause, Download, Upload } from 'lucide-react';
 import { useTimer } from '../hooks/useTimer';
 import { useCurrentTime } from '../hooks/useTimer';
 import { formatTime } from '../utils/formatTime';
@@ -8,12 +7,23 @@ import { useOKRStore } from '../store/useOKRStore';
 interface LayoutProps {
     children: React.ReactNode;
     onAddRoot: () => void;
+    onExport: () => void;
+    onImport: (file: File) => void;
 }
 
-export function Layout({ children, onAddRoot }: LayoutProps) {
+export function Layout({ children, onAddRoot, onExport, onImport }: LayoutProps) {
     const activeTimer = useTimer();
     const currentTime = useCurrentTime(activeTimer?.id || '');
     const setActiveTaskModalNodeId = useOKRStore(state => state.setActiveTaskModalNodeId);
+
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            onImport(file);
+        }
+        // Reset value to allow selecting same file again
+        event.target.value = '';
+    };
 
     return (
         <div className="min-h-screen">
@@ -35,26 +45,42 @@ export function Layout({ children, onAddRoot }: LayoutProps) {
                             </div>
                         </div>
 
-                        <button
-                            onClick={onAddRoot}
-                            className="btn-primary flex items-center gap-2"
-                        >
-                            <Plus className="w-5 h-5" />
-                            Add 2-Year Goal
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={onExport}
+                                className="btn-secondary flex items-center gap-2"
+                                title="Export Backup"
+                            >
+                                <Download className="w-5 h-5" />
+                                <span className="hidden sm:inline">Export</span>
+                            </button>
+                            
+                            <label className="btn-secondary flex items-center gap-2 cursor-pointer" title="Import Backup">
+                                <Upload className="w-5 h-5" />
+                                <span className="hidden sm:inline">Import</span>
+                                <input
+                                    type="file"
+                                    accept=".json"
+                                    onChange={handleFileChange}
+                                    className="hidden"
+                                />
+                            </label>
+
+                            <button
+                                onClick={onAddRoot}
+                                className="btn-primary flex items-center gap-2"
+                            >
+                                <Plus className="w-5 h-5" />
+                                <span className="hidden sm:inline">Add Goal</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
 
             {/* Active Timer Indicator */}
-            <AnimatePresence>
-                {activeTimer && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -20 }}
-                        className="fixed top-20 left-1/2 -translate-x-1/2 z-40"
-                    >
+            {activeTimer && (
+                <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40">
                         <div className="node-card bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-green-500/30 min-w-[280px]">
                             <div className="flex items-start gap-3">
                                 <div className="relative mt-1">
@@ -97,9 +123,8 @@ export function Layout({ children, onAddRoot }: LayoutProps) {
                                 </button>
                             </div>
                         </div>
-                    </motion.div>
+                    </div>
                 )}
-            </AnimatePresence>
 
             {/* Main Content */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
