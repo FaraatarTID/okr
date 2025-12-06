@@ -9,6 +9,9 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils.storage import load_data, save_data, add_node, delete_node, update_node, update_node_progress, export_data, import_data, start_timer, stop_timer, get_total_time
 
+# Import streamlit-agraph for mind map visualization
+from streamlit_agraph import agraph, Node, Edge, Config
+
 st.set_page_config(page_title="OKR Tracker", layout="wide")
 
 # Full hierarchy types
@@ -32,12 +35,123 @@ TYPE_ICONS = {
     "TASK": "✅"
 }
 
+# Colors for mind map visualization
+TYPE_COLORS = {
+    "GOAL": "#E53935",       # Red
+    "STRATEGY": "#1E88E5",   # Blue
+    "OBJECTIVE": "#43A047",  # Green
+    "KEY_RESULT": "#FB8C00", # Orange
+    "INITIATIVE": "#8E24AA", # Purple
+    "TASK": "#757575"        # Gray
+}
+
+# Size by hierarchy depth (larger for higher-level nodes)
+TYPE_SIZES = {
+    "GOAL": 35,
+    "STRATEGY": 30,
+    "OBJECTIVE": 25,
+    "KEY_RESULT": 22,
+    "INITIATIVE": 18,
+    "TASK": 15
+}
+
 def format_time(minutes):
     if not minutes: return "0m"
     h = int(minutes // 60)
     m = int(minutes % 60)
     if h > 0: return f"{h}h {m}m"
     return f"{m}m"
+
+def build_graph_from_node(node_id, data):
+    """
+    Recursively build a graph (nodes and edges) from a starting node.
+    Returns (list of Node, list of Edge) for streamlit-agraph.
+    """
+    nodes_list = []
+    edges_list = []
+    visited = set()
+    
+    def traverse(nid, parent_nid=None):
+        if nid in visited or nid not in data["nodes"]:
+            return
+        visited.add(nid)
+        
+        node = data["nodes"][nid]
+        node_type = node.get("type", "GOAL")
+        title = node.get("title", "Untitled")
+        progress = node.get("progress", 0)
+        
+        # Create label with icon and progress
+        icon = TYPE_ICONS.get(node_type, "")
+        label = f"{icon} {title}\n({progress}%)"
+        
+        # Create the Node
+        nodes_list.append(Node(
+            id=nid,
+            label=label,
+            size=TYPE_SIZES.get(node_type, 20),
+            color=TYPE_COLORS.get(node_type, "#666666"),
+            title=f"{node_type.replace('_', ' ').title()}: {title}\nProgress: {progress}%"
+        ))
+        
+        # Create edge from parent
+        if parent_nid:
+            edges_list.append(Edge(
+                source=parent_nid,
+                target=nid,
+                color="#888888"
+            ))
+        
+        # Traverse children
+        for child_id in node.get("children", []):
+            traverse(child_id, nid)
+    
+    traverse(node_id)
+    return nodes_list, edges_list
+
+@st.dialog("🗺️ OKR Mind Map", width="large")
+def render_mindmap_dialog(node_id, data):
+    """Render the mind map visualization in a dialog."""
+    node = data["nodes"].get(node_id)
+    if not node:
+        st.error("Node not found")
+        return
+    
+    st.markdown(f"### Hierarchy of: {node.get('title', 'Untitled')}")
+    st.caption("Drag to pan, scroll to zoom. Nodes are color-coded by type.")
+    
+    # Build graph
+    nodes_list, edges_list = build_graph_from_node(node_id, data)
+    
+    if not nodes_list:
+        st.warning("No nodes to display")
+        return
+    
+    # Configure the graph
+    config = Config(
+        width=800,
+        height=500,
+        directed=True,
+        physics=True,
+        hierarchical=True,
+        nodeHighlightBehavior=True,
+        highlightColor="#F7A7A6",
+        collapsible=False,
+        node={"labelProperty": "label"},
+        link={"labelProperty": "label", "renderLabel": False}
+    )
+    
+    # Render the graph
+    agraph(nodes=nodes_list, edges=edges_list, config=config)
+    
+    # Legend
+    st.markdown("---")
+    st.markdown("**Legend:**")
+    legend_cols = st.columns(6)
+    for i, (ntype, color) in enumerate(TYPE_COLORS.items()):
+        with legend_cols[i]:
+            icon = TYPE_ICONS.get(ntype, "")
+            st.markdown(f"<span style='color:{color};font-size:1.2em;'>{icon}</span> {ntype.replace('_', ' ').title()}", unsafe_allow_html=True)
 
 # --- State Management ---
 if "nav_stack" not in st.session_state:
@@ -271,6 +385,11 @@ def render_card(node_id, data, username):
              
              if st.button("🔍", key=f"inspect_{node_id}", help="Inspect & Edit"):
                  render_inspector_dialog(node_id, data, username)
+             
+             # View Map button - only show if node has children
+             if has_children:
+                 if st.button("🗺️", key=f"map_{node_id}", help="View Mind Map"):
+                     render_mindmap_dialog(node_id, data)
                  
         with c3:
             # Navigation Button ("Open")
