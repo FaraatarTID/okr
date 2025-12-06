@@ -261,7 +261,9 @@ def render_level(data, username):
         
         if ctype:
              normalized = ctype.replace('_',' ').title()
-             if normalized.endswith('s'):
+             if normalized.endswith('y'):
+                 level_name = normalized[:-1] + "ies"
+             elif normalized.endswith('s'):
                  level_name = normalized
              else:
                  level_name = f"{normalized}s"
@@ -277,10 +279,13 @@ def render_level(data, username):
         st.caption(f"Inside: {current_node.get('title')}")
         
         # Add New Button logic
-        child_type = CHILD_TYPE_MAP.get(current_node.get("type"))
+        # Robust lookup: ensure upper case
+        current_type = current_node.get("type", "").upper()
+        child_type = CHILD_TYPE_MAP.get(current_type)
+        
         if child_type:
              normalized_btn = child_type.replace('_',' ').title()
-             if st.button(f"➕ New {normalized_btn}"):
+             if st.button(f"➕ New {normalized_btn}", key=f"add_btn_{current_node['id']}"):
                  add_node(data, current_node["id"], child_type, f"New {normalized_btn}", "", username)
                  st.rerun()
     else:
