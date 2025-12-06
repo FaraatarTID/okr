@@ -24,6 +24,10 @@ export interface Node {
 
   // Rating for key results (1-5 stars)
   rating?: number; // 0-5, where 0 means not rated
+
+  // Gemini Analysis
+  geminiScore?: number; // 0-100
+  geminiAnalysis?: string;
 }
 
 export interface OKRStore {
@@ -39,6 +43,7 @@ export interface OKRStore {
   updateNode: (id: string, data: Partial<Node>) => void;
   deleteNode: (id: string) => void;
   moveNode: (dragId: string, parentId: string | null, newIndex: number) => void; // Reordering
+  updateGeminiAnalysis: (id: string, score: number, analysis: string) => void;
 
   // UI Actions
   toggleExpand: (id: string) => void;

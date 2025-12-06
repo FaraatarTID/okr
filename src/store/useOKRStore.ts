@@ -196,6 +196,33 @@ export const useOKRStore = create<OKRStore>()(
                 });
             },
 
+            updateGeminiAnalysis: (id, score, analysis) => {
+                set((state) => {
+                    const node = state.nodes[id];
+                    if (!node) return state;
+
+                    // Map score 0-100 to rating 1-5
+                    let rating = 0;
+                    if (score > 80) rating = 5;
+                    else if (score > 60) rating = 4;
+                    else if (score > 40) rating = 3;
+                    else if (score > 20) rating = 2;
+                    else if (score >= 0) rating = 1;
+
+                    return {
+                        nodes: {
+                            ...state.nodes,
+                            [id]: {
+                                ...node,
+                                geminiScore: score,
+                                geminiAnalysis: analysis,
+                                rating: rating
+                            }
+                        }
+                    };
+                });
+            },
+
             toggleExpand: (id) => {
                 set((state) => {
                     const node = state.nodes[id];

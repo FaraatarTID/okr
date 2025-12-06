@@ -12,8 +12,11 @@ import {
     Plus,
     Trash2,
     Star,
-    ListTodo
+    ListTodo,
+    Sparkles,
+    Loader2
 } from 'lucide-react';
+import { GeminiService } from '../services/GeminiService';
 import { cn } from '../utils/cn';
 import type { Node } from '../types';
 import { useOKRStore } from '../store/useOKRStore';
@@ -46,7 +49,28 @@ export function NodeItem({ node, onAddChild, onDelete }: NodeItemProps) {
     const toggleExpand = useOKRStore(state => state.toggleExpand);
     const startTimer = useOKRStore(state => state.startTimer);
     const setActiveTaskModalNodeId = useOKRStore(state => state.setActiveTaskModalNodeId);
+    const updateGeminiAnalysis = useOKRStore(state => state.updateGeminiAnalysis);
     const nodes = useOKRStore(state => state.nodes);
+
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+    const handleAnalyze = async () => {
+        if (!GeminiService.isConfigured()) {
+            alert("Please configure VITE_GEMINI_API_KEY in .env file to use AI features.\nSee .env.example for details.");
+            return;
+        }
+
+        setIsAnalyzing(true);
+        try {
+            const { score, analysis } = await GeminiService.evaluateProgress(node, nodes);
+            updateGeminiAnalysis(node.id, score, analysis);
+        } catch (error) {
+            console.error(error);
+            alert("Failed to analyze progress. Please check your API key and try again.");
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
 
     const config = nodeConfig[node.type];
     const Icon = config.icon;
@@ -187,34 +211,71 @@ export function NodeItem({ node, onAddChild, onDelete }: NodeItemProps) {
                                 </p>
                             )}
 
-                            {/* Star rating for key results only */}
                             {node.type === 'key_result' && (
-                                <div className="mt-3">
-                                    <div className="text-xs text-slate-400 mb-2">
-                                        Rating ({node.rating || 0}/5)
+                                <div className="mt-3 space-y-3">
+                                    <div className="flex flex-wrap items-end gap-16">
+                                        {/* Manual Rating */}
+                                        <div>
+                                            <div className="text-xs text-slate-400 mb-2">
+                                                Rating ({node.rating || 0}/5)
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                {[1, 2, 3, 4, 5].map((star) => {
+                                                    const isActive = (node.rating || 0) >= star;
+                                                    return (
+                                                        <button
+                                                            key={star}
+                                                            onClick={() => updateNode(node.id, { rating: star })}
+                                                            className="transition-all hover:scale-110"
+                                                            aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+                                                        >
+                                                            <Star
+                                                                className="w-6 h-6 transition-colors"
+                                                                style={{
+                                                                    fill: isActive ? '#facc15' : 'none',
+                                                                    stroke: isActive ? '#facc15' : '#475569',
+                                                                    strokeWidth: 2
+                                                                }}
+                                                            />
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* AI Analysis Button */}
+                                        <div className="pb-0.5">
+                                            <button
+                                                onClick={handleAnalyze}
+                                                disabled={isAnalyzing}
+                                                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 border border-purple-500/30 transition-all disabled:opacity-50"
+                                            >
+                                                {isAnalyzing ? (
+                                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                                ) : (
+                                                    <Sparkles className="w-4 h-4" />
+                                                )}
+                                                <span>{node.geminiScore !== undefined ? 'Re-Analyze' : 'Analyze Progress'}</span>
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                        {[1, 2, 3, 4, 5].map((star) => {
-                                            const isActive = (node.rating || 0) >= star;
-                                            return (
-                                                <button
-                                                    key={star}
-                                                    onClick={() => updateNode(node.id, { rating: star })}
-                                                    className="transition-all hover:scale-110"
-                                                    aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
-                                                >
-                                                    <Star
-                                                        className="w-6 h-6 transition-colors"
-                                                        style={{
-                                                            fill: isActive ? '#facc15' : 'none',
-                                                            stroke: isActive ? '#facc15' : '#475569',
-                                                            strokeWidth: 2
-                                                        }}
-                                                    />
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
+
+                                    {/* AI Analysis Result */}
+                                    {node.geminiAnalysis && (
+                                        <div className="p-3 rounded-lg bg-slate-900/50 border border-purple-500/20">
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">
+                                                    AI Assessment
+                                                </span>
+                                                <span className="text-sm font-bold text-white bg-purple-500/20 px-2 py-0.5 rounded">
+                                                    Score: {node.geminiScore}/100
+                                                </span>
+                                            </div>
+                                            <p className="text-sm text-slate-300 leading-relaxed">
+                                                {node.geminiAnalysis}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
