@@ -2,6 +2,7 @@ import json
 import os
 import time
 import uuid
+import streamlit as st
 
 from services.sheets import SheetsDB
 
@@ -21,6 +22,10 @@ def get_sync_status():
 
 DATA_FILE = "okr_data.json"
 
+def _get_cache_key(username):
+    """Get the session state cache key for a user's data."""
+    return f"okr_data_cache_{username}"
+
 def get_local_filename(username):
     if not username:
         return DATA_FILE
@@ -30,16 +35,36 @@ def get_local_filename(username):
         return DATA_FILE
     return f"okr_data_{safe_name}.json"
 
-def load_data(username=None):
+def load_data(username=None, force_refresh=False):
+    """
+    Load user data with session state caching.
+    
+    Args:
+        username: The user's account name
+        force_refresh: If True, bypass cache and reload from API
+    
+    Returns:
+        dict: User's OKR data structure
+    """
+    # Check session state cache first (if not forcing refresh)
+    if username and not force_refresh:
+        cache_key = _get_cache_key(username)
+        if cache_key in st.session_state:
+            return st.session_state[cache_key]
+    
     # If username provided and connected, load from Sheets
     if username:
         db = get_db()
         if db.is_connected():
             data = db.get_user_data(username)
             if data:
+                # Cache the loaded data
+                st.session_state[_get_cache_key(username)] = data
                 return data
-            # If user exists but no data, or new user, return empty structure
-            return {"nodes": {}, "rootIds": []}
+            # New user - create empty structure and cache it
+            empty_data = {"nodes": {}, "rootIds": []}
+            st.session_state[_get_cache_key(username)] = empty_data
+            return empty_data
     
     # Fallback / Local mode
     local_file = get_local_filename(username)
