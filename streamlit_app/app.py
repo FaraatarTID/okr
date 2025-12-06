@@ -1,17 +1,48 @@
 import streamlit as st
 import sys
 import os
+import time
+from datetime import datetime
 
 # Add current directory to path so we can import modules if running from outside
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from utils.storage import load_data, save_data, add_node, delete_node, update_node, update_node_progress
-from services.gemini import analyze_node
+from utils.storage import load_data, save_data, add_node, delete_node, update_node, update_node_progress, export_data, import_data, start_timer, stop_timer, get_total_time
 
 st.set_page_config(page_title="OKR Tracker", layout="wide")
 
-# Valid types
-TYPES = ["OBJECTIVE", "KEY_RESULT", "INITIATIVE"]
+# Full hierarchy types matching Vite app
+TYPES = ["GOAL", "STRATEGY", "OBJECTIVE", "KEY_RESULT", "INITIATIVE", "TASK"]
+
+# Child type mapping: parent type -> default child type
+CHILD_TYPE_MAP = {
+    "GOAL": "STRATEGY",
+    "STRATEGY": "OBJECTIVE", 
+    "OBJECTIVE": "KEY_RESULT",
+    "KEY_RESULT": "INITIATIVE",
+    "INITIATIVE": "TASK",
+    "TASK": None  # Tasks have no children
+}
+
+# Icons for each type
+TYPE_ICONS = {
+    "GOAL": "🎯",
+    "STRATEGY": "🚀",
+    "OBJECTIVE": "📍",
+    "KEY_RESULT": "📈",
+    "INITIATIVE": "💡",
+    "TASK": "✅"
+}
+
+def format_time(minutes):
+    """Format minutes into Xh Ym"""
+    if not minutes:
+         return "0m"
+    h = int(minutes // 60)
+    m = int(minutes % 60)
+    if h > 0:
+        return f"{h}h {m}m"
+    return f"{m}m"
 
 def main():
     st.title("🚀 OKR Tracker with Gemini AI")
@@ -19,21 +50,58 @@ def main():
     # Load data
     data = load_data()
     
+    # Needs autorefresh if timer is running? 
+    # Streamlit doesn't auto-refresh easily without loops, but we can rely on manual or action-based refresh.
+    # We can check if any timer is running and potentially show a warning or status.
+    
     # Sidebar
     st.sidebar.header("Actions")
-    if st.sidebar.button("Add New Objective"):
-        add_node(data, None, "OBJECTIVE", "New Objective", "")
-        st.success("Objective Added!")
+    if st.sidebar.button("➕ Add New Goal"):
+        add_node(data, None, "GOAL", "New Goal", "")
+        st.success("Goal Added!")
         st.rerun()
 
     # Stats
     total_nodes = len(data["nodes"])
     st.sidebar.markdown(f"**Total Items:** {total_nodes}")
+    
+    # --- Export/Import Section ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("📦 Data Management")
+    
+    # Export
+    export_json = export_data()
+    filename = f"okr-backup-{datetime.now().strftime('%Y-%m-%d')}.json"
+    st.sidebar.download_button(
+        label="📥 Export Data",
+        data=export_json,
+        file_name=filename,
+        mime="application/json",
+        help="Download your OKR data as a JSON backup file"
+    )
+    
+    # Import
+    uploaded_file = st.sidebar.file_uploader(
+        "📤 Import Data",
+        type=["json"],
+        help="Upload a JSON backup file to restore data"
+    )
+    
+    if uploaded_file is not None:
+        if st.sidebar.button("⚠️ Confirm Import (Overwrites Current Data)", type="primary"):
+            content = uploaded_file.read().decode("utf-8")
+            success, message = import_data(content)
+            if success:
+                st.sidebar.success(message)
+                st.rerun()
+            else:
+                st.sidebar.error(message)
 
     # Render Roots
+    st.markdown("---")
     root_ids = data.get("rootIds", [])
     if not root_ids:
-        st.info("No Objectives found. Start by adding one in the sidebar!")
+        st.info("No Goals found. Start by adding one in the sidebar!")
     else:
         for root_id in root_ids:
              render_node(root_id, data, level=0)
@@ -45,12 +113,14 @@ def render_node(node_id, data, level=0):
 
     title = node.get('title', 'Untitled')
     progress = node.get('progress', 0)
-    node_type = node.get('type', 'Item')
+    node_type = node.get('type', 'GOAL')
+    children_ids = node.get("children", [])
+    has_children = len(children_ids) > 0
     
-    # Color coding/Emoji based on Type
-    icon = "🎯" if node_type == "OBJECTIVE" else "📈" if node_type == "KEY_RESULT" else "📝"
+    # Get icon for type
+    icon = TYPE_ICONS.get(node_type, "📋")
     
-    label = f"{icon} [{node_type}] {title} - {progress}%"
+    label = f"{icon} [{node_type}] {title}"
     
     # Note: Streamlit Expanders can be nested
     with st.expander(label, expanded=node.get("isExpanded", True)):
@@ -59,13 +129,22 @@ def render_node(node_id, data, level=0):
             new_title = st.text_input("Title", value=title)
             new_desc = st.text_area("Description", value=node.get("description", ""))
             
+            # Progress Logic:
+            # If has children, progress is CALCULATED (Read-only)
+            # If leaf (no children), progress is MANUAL
+            
             col1, col2 = st.columns(2)
             with col1:
-                new_progress = st.slider("Progress", 0, 100, value=progress)
+                if has_children:
+                     st.metric("Progress (Calculated)", value=f"{progress}%")
+                     new_progress = progress # Keep same
+                else:
+                     new_progress = st.slider("Progress (Manual)", 0, 100, value=progress)
             
             with col2:
                 # Type selection
-                new_type = st.selectbox("Type", TYPES, index=TYPES.index(node_type) if node_type in TYPES else 0)
+                current_index = TYPES.index(node_type) if node_type in TYPES else 0
+                new_type = st.selectbox("Type", TYPES, index=current_index)
 
             if st.form_submit_button("Update Details"):
                 update_node(data, node_id, {
@@ -76,8 +155,36 @@ def render_node(node_id, data, level=0):
                 })
                 st.rerun()
 
-        # AI Analysis Section
+        # --- Time Tracking Section (Initiatives & Tasks) ---
+        if node_type in ["INITIATIVE", "TASK"]:
+            st.markdown("---")
+            t_col1, t_col2 = st.columns([1, 2])
+            
+            with t_col1:
+                # Timer Controls
+                is_running = node.get("timerStartedAt") is not None
+                if is_running:
+                     # Calculate elapsed for display (approximate since page load)
+                     start_ts = node.get("timerStartedAt")
+                     elapsed_current_session = int((time.time() * 1000 - start_ts) / 60000)
+                     st.warning(f"⏱️ Running: +{elapsed_current_session}m")
+                     if st.button("⏹️ Stop Timer", key=f"stop_{node_id}"):
+                         stop_timer(data, node_id)
+                         st.rerun()
+                else:
+                     if st.button("▶️ Start Timer", key=f"start_{node_id}"):
+                         start_timer(data, node_id)
+                         st.rerun()
+            
+            with t_col2:
+                # Total Time Display
+                total_time = get_total_time(node_id, data["nodes"])
+                st.info(f"**Total Time Spent:** {format_time(total_time)}")
+
+
+        # AI Analysis Section (for KEY_RESULT type)
         if node_type == "KEY_RESULT":
+            from services.gemini import analyze_node
             st.markdown("---")
             col_ai, col_score = st.columns([1, 4])
             if col_ai.button("✨ Analyze", key=f"btn_analyze_{node_id}"):
@@ -107,11 +214,16 @@ def render_node(node_id, data, level=0):
         st.markdown("---")
         col_add, col_del = st.columns([2, 1])
         
+        # Determine if this node can have children
+        child_type = CHILD_TYPE_MAP.get(node_type)
+        
         with col_add:
-            if st.button("➕ Add Child", key=f"btn_add_{node_id}"):
-                child_type = "KEY_RESULT" if node_type == "OBJECTIVE" else "INITIATIVE"
-                add_node(data, node_id, child_type, "New Child", "")
-                st.rerun()
+            if child_type:
+                if st.button(f"➕ Add {child_type}", key=f"btn_add_{node_id}"):
+                    add_node(data, node_id, child_type, f"New {child_type.replace('_', ' ').title()}", "")
+                    st.rerun()
+            else:
+                st.caption("(Tasks have no sub-items)")
                 
         with col_del:
             if st.button("🗑️ Delete", key=f"btn_del_{node_id}", type="primary"):
@@ -119,7 +231,6 @@ def render_node(node_id, data, level=0):
                 st.rerun()
 
         # Render Children
-        children_ids = node.get("children", [])
         if children_ids:
             st.markdown(f"**Sub-items ({len(children_ids)})**")
             for child_id in children_ids:

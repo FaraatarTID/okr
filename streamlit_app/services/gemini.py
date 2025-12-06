@@ -62,7 +62,7 @@ def analyze_node(node_id, all_nodes):
         
         # New SDK call structure
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-flash-latest",
             contents=prompt,
             config={
                 "response_mime_type": "application/json"

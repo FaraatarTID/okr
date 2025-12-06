@@ -147,3 +147,83 @@ def update_node(data_store, node_id, updates):
              pass
 
     save_data(data_store)
+
+def start_timer(data_store, node_id):
+    node = data_store["nodes"].get(node_id)
+    if node:
+        # Stop any other running timer first (single active timer policy)
+        for nid, n in data_store["nodes"].items():
+            if n.get("timerStartedAt"):
+                stop_timer(data_store, nid)
+        
+        node["timerStartedAt"] = int(time.time() * 1000)
+        save_data(data_store)
+
+def stop_timer(data_store, node_id):
+    node = data_store["nodes"].get(node_id)
+    if node and node.get("timerStartedAt"):
+        start_time = node["timerStartedAt"]
+        elapsed_ms = int(time.time() * 1000) - start_time
+        # Round to nearest minute, but keep at least 1 minute if it was short but "real" work? 
+        # Actually simpler: store raw milliseconds or accumulated minutes.
+        # Vite app stores `timeSpent` in minutes usually. Let's start with minutes.
+        elapsed_minutes = elapsed_ms / 60000
+        
+        current_spent = node.get("timeSpent", 0)
+        node["timeSpent"] = current_spent + elapsed_minutes
+        node["timerStartedAt"] = None
+        save_data(data_store)
+
+def get_total_time(node_id, nodes):
+    """Recursively calculate total time spent for a node and its children."""
+    node = nodes.get(node_id)
+    if not node:
+        return 0
+    
+    own_time = node.get("timeSpent", 0)
+    
+    # Add running timer time if active?
+    # For display purposes, maybe. But stored `timeSpent` is static.
+    # Let's sticking to stored time for now.
+    
+    children_time = 0
+    for child_id in node.get("children", []):
+         children_time += get_total_time(child_id, nodes)
+         
+    return own_time + children_time
+
+def export_data():
+    """Export data as JSON string with metadata."""
+    from datetime import datetime
+    data = load_data()
+    export_obj = {
+        "nodes": data.get("nodes", {}),
+        "rootIds": data.get("rootIds", []),
+        "version": 1,
+        "exportedAt": datetime.now().isoformat()
+    }
+    return json.dumps(export_obj, indent=2)
+
+def import_data(json_string):
+    """
+    Import data from JSON string.
+    Returns (success: bool, message: str)
+    """
+    try:
+        data = json.loads(json_string)
+        
+        # Validate structure
+        if "nodes" not in data or "rootIds" not in data:
+            return False, "Invalid file format: missing 'nodes' or 'rootIds'"
+        
+        # Save imported data
+        save_data({
+            "nodes": data["nodes"],
+            "rootIds": data["rootIds"]
+        })
+        
+        return True, f"Successfully imported {len(data['nodes'])} items"
+    except json.JSONDecodeError as e:
+        return False, f"Invalid JSON: {str(e)}"
+    except Exception as e:
+        return False, f"Import failed: {str(e)}"
