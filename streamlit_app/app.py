@@ -44,20 +44,38 @@ def format_time(minutes):
         return f"{h}h {m}m"
     return f"{m}m"
 
-def main():
+def render_login():
+    st.markdown("## 🔐 Login to OKR Tracker")
+    st.info("👋 Welcome! Please enter your **Account Name** to access your data.")
+    st.markdown("_(Note: If this is your first time, a new account will be created automatically.)_")
+    
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        username = st.text_input("Account Name (Unique ID)", placeholder="e.g. john_doe")
+        if st.button("Enter", type="primary"):
+            if username.strip():
+                st.session_state["username"] = username.strip()
+                st.rerun()
+            else:
+                st.error("Please enter a valid name.")
+
+def render_app(username):
+    # Sidebar User Info
+    st.sidebar.markdown(f"👤 **Logged in as:** `{username}`")
+    if st.sidebar.button("Logout"):
+        del st.session_state["username"]
+        st.rerun()
+    st.sidebar.markdown("---")
+
     st.title("🚀 OKR Tracker with Gemini AI")
     
-    # Load data
-    data = load_data()
+    # Load data for specific user
+    data = load_data(username)
     
-    # Needs autorefresh if timer is running? 
-    # Streamlit doesn't auto-refresh easily without loops, but we can rely on manual or action-based refresh.
-    # We can check if any timer is running and potentially show a warning or status.
-    
-    # Sidebar
+    # Sidebar Actions
     st.sidebar.header("Actions")
     if st.sidebar.button("➕ Add New Goal"):
-        add_node(data, None, "GOAL", "New Goal", "")
+        add_node(data, None, "GOAL", "New Goal", "", username)
         st.success("Goal Added!")
         st.rerun()
 
@@ -70,8 +88,8 @@ def main():
     st.sidebar.subheader("📦 Data Management")
     
     # Export
-    export_json = export_data()
-    filename = f"okr-backup-{datetime.now().strftime('%Y-%m-%d')}.json"
+    export_json = export_data(username)
+    filename = f"okr-backup-{username}-{datetime.now().strftime('%Y-%m-%d')}.json"
     st.sidebar.download_button(
         label="📥 Export Data",
         data=export_json,
@@ -90,7 +108,7 @@ def main():
     if uploaded_file is not None:
         if st.sidebar.button("⚠️ Confirm Import (Overwrites Current Data)", type="primary"):
             content = uploaded_file.read().decode("utf-8")
-            success, message = import_data(content)
+            success, message = import_data(content, username)
             if success:
                 st.sidebar.success(message)
                 st.rerun()
@@ -104,9 +122,9 @@ def main():
         st.info("No Goals found. Start by adding one in the sidebar!")
     else:
         for root_id in root_ids:
-             render_node(root_id, data, level=0)
+             render_node(root_id, data, username, level=0)
 
-def render_node(node_id, data, level=0):
+def render_node(node_id, data, username, level=0):
     node = data["nodes"].get(node_id)
     if not node:
         return
@@ -120,7 +138,14 @@ def render_node(node_id, data, level=0):
     # Get icon for type
     icon = TYPE_ICONS.get(node_type, "📋")
     
-    label = f"{icon} [{node_type}] {title}"
+    # Clean Title Display: "Goal #1" instead of "[GOAL] Goal #1"
+    # Actually just allow the user title to speak for itself.
+    # But user asked for: "in the title of stages in Streamlit I see the General Titles whithin brackets... nicer to be like: Goal #1"
+    # The previous code was: label = f"{icon} [{node_type}] {title}"
+    # New code: label = f"{icon} {title}"
+    # The user can name the title "Goal #1". Or if they meant auto-numbering, that's complex.
+    # Assuming they meant removal of `[GOAL]`.
+    label = f"{icon} {title}"
     
     # Note: Streamlit Expanders can be nested
     with st.expander(label, expanded=node.get("isExpanded", True)):
@@ -130,9 +155,6 @@ def render_node(node_id, data, level=0):
             new_desc = st.text_area("Description", value=node.get("description", ""))
             
             # Progress Logic:
-            # If has children, progress is CALCULATED (Read-only)
-            # If leaf (no children), progress is MANUAL
-            
             col1, col2 = st.columns(2)
             with col1:
                 if has_children:
@@ -152,7 +174,7 @@ def render_node(node_id, data, level=0):
                     "description": new_desc,
                     "progress": new_progress,
                     "type": new_type
-                })
+                }, username)
                 st.rerun()
 
         # --- Time Tracking Section (Initiatives & Tasks) ---
@@ -170,11 +192,11 @@ def render_node(node_id, data, level=0):
                          elapsed_current_session = int((time.time() * 1000 - start_ts) / 60000)
                          st.warning(f"⏱️ Running: +{elapsed_current_session}m")
                          if st.button("⏹️ Stop Timer", key=f"stop_{node_id}"):
-                             stop_timer(data, node_id)
+                             stop_timer(data, node_id, username)
                              st.rerun()
                     else:
                          if st.button("▶️ Start Timer", key=f"start_{node_id}"):
-                             start_timer(data, node_id)
+                             start_timer(data, node_id, username)
                              st.rerun()
                 else:
                     st.caption("(Timer available on Tasks)")
@@ -201,7 +223,7 @@ def render_node(node_id, data, level=0):
                         update_node(data, node_id, {
                             "geminiScore": result["score"],
                             "geminiAnalysis": result["analysis"]
-                        })
+                        }, username)
                         st.rerun()
 
             # Show existing or session analysis
@@ -223,21 +245,27 @@ def render_node(node_id, data, level=0):
         with col_add:
             if child_type:
                 if st.button(f"➕ Add {child_type}", key=f"btn_add_{node_id}"):
-                    add_node(data, node_id, child_type, f"New {child_type.replace('_', ' ').title()}", "")
+                    add_node(data, node_id, child_type, f"New {child_type.replace('_', ' ').title()}", "", username)
                     st.rerun()
             else:
                 st.caption("(Tasks have no sub-items)")
                 
         with col_del:
             if st.button("🗑️ Delete", key=f"btn_del_{node_id}", type="primary"):
-                delete_node(data, node_id)
+                delete_node(data, node_id, username)
                 st.rerun()
 
         # Render Children
         if children_ids:
             st.markdown(f"**Sub-items ({len(children_ids)})**")
             for child_id in children_ids:
-                render_node(child_id, data, level=level+1)
+                render_node(child_id, data, username, level=level+1)
+
+def main():
+    if "username" not in st.session_state:
+        render_login()
+    else:
+        render_app(st.session_state["username"])
 
 if __name__ == "__main__":
     main()

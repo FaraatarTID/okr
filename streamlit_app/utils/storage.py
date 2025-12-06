@@ -3,19 +3,60 @@ import os
 import time
 import uuid
 
+from services.sheets import SheetsDB
+
+# Global DB instance (lazy init)
+_sheets_db = None
+
+def get_db():
+    global _sheets_db
+    if _sheets_db is None:
+        _sheets_db = SheetsDB()
+    return _sheets_db
+
 DATA_FILE = "okr_data.json"
 
-def load_data():
-    if not os.path.exists(DATA_FILE):
+def get_local_filename(username):
+    if not username:
+        return DATA_FILE
+    # Simple sanitization to prevent path traversal
+    safe_name = "".join([c for c in username if c.isalpha() or c.isdigit() or c in ('-', '_')]).strip()
+    if not safe_name:
+        return DATA_FILE
+    return f"okr_data_{safe_name}.json"
+
+def load_data(username=None):
+    # If username provided and connected, load from Sheets
+    if username:
+        db = get_db()
+        if db.is_connected():
+            data = db.get_user_data(username)
+            if data:
+                return data
+            # If user exists but no data, or new user, return empty structure
+            return {"nodes": {}, "rootIds": []}
+    
+    # Fallback / Local mode
+    local_file = get_local_filename(username)
+    if not os.path.exists(local_file):
         return {"nodes": {}, "rootIds": []}
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
+        with open(local_file, "r", encoding="utf-8") as f:
             return json.load(f)
     except json.JSONDecodeError:
         return {"nodes": {}, "rootIds": []}
 
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
+def save_data(data, username=None):
+    # If username provided and connected, save to Sheets
+    if username:
+        db = get_db()
+        if db.is_connected():
+            db.save_user_data(username, data)
+            return
+
+    # Fallback / Local mode
+    local_file = get_local_filename(username)
+    with open(local_file, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=4)
 
 def generate_id():
@@ -63,7 +104,7 @@ def update_node_progress(node_id, nodes):
     
     return nodes
 
-def add_node(data_store, parent_id, node_type, title, description):
+def add_node(data_store, parent_id, node_type, title, description, username=None):
     new_id = generate_id()
     new_node = {
         "id": new_id,
@@ -88,10 +129,10 @@ def add_node(data_store, parent_id, node_type, title, description):
     else:
         data_store["rootIds"].append(new_id)
         
-    save_data(data_store)
+    save_data(data_store, username)
     return new_id
 
-def delete_node(data_store, node_id):
+def delete_node(data_store, node_id, username=None):
     nodes = data_store["nodes"]
     node = nodes.get(node_id)
     if not node:
@@ -114,16 +155,15 @@ def delete_node(data_store, node_id):
         nodes[parent_id]["children"] = [
             cid for cid in nodes[parent_id]["children"] if cid != node_id
         ]
-        # Update parent progress potentially? 
-        # Actually, if a child is removed, parent progress needs re-calc.
+        # Update parent progress
         update_node_progress(parent_id, nodes)
     elif not parent_id:
         # It was a root
         data_store["rootIds"] = [rid for rid in data_store["rootIds"] if rid != node_id]
 
-    save_data(data_store)
+    save_data(data_store, username)
 
-def update_node(data_store, node_id, updates):
+def update_node(data_store, node_id, updates, username=None):
     if node_id not in data_store["nodes"]:
         return
     
@@ -146,33 +186,31 @@ def update_node(data_store, node_id, updates):
              # For now, let's just trigger update_node_progress on itself to be safe
              pass
 
-    save_data(data_store)
+    save_data(data_store, username)
 
-def start_timer(data_store, node_id):
+def start_timer(data_store, node_id, username=None):
     node = data_store["nodes"].get(node_id)
     if node:
         # Stop any other running timer first (single active timer policy)
         for nid, n in data_store["nodes"].items():
             if n.get("timerStartedAt"):
-                stop_timer(data_store, nid)
+                stop_timer(data_store, nid, username)
         
         node["timerStartedAt"] = int(time.time() * 1000)
-        save_data(data_store)
+        save_data(data_store, username)
 
-def stop_timer(data_store, node_id):
+def stop_timer(data_store, node_id, username=None):
     node = data_store["nodes"].get(node_id)
     if node and node.get("timerStartedAt"):
         start_time = node["timerStartedAt"]
         elapsed_ms = int(time.time() * 1000) - start_time
-        # Round to nearest minute, but keep at least 1 minute if it was short but "real" work? 
-        # Actually simpler: store raw milliseconds or accumulated minutes.
-        # Vite app stores `timeSpent` in minutes usually. Let's start with minutes.
+        # Round to nearest minute
         elapsed_minutes = elapsed_ms / 60000
         
         current_spent = node.get("timeSpent", 0)
         node["timeSpent"] = current_spent + elapsed_minutes
         node["timerStartedAt"] = None
-        save_data(data_store)
+        save_data(data_store, username)
 
 def get_total_time(node_id, nodes):
     """Recursively calculate total time spent for a node and its children."""
@@ -182,20 +220,16 @@ def get_total_time(node_id, nodes):
     
     own_time = node.get("timeSpent", 0)
     
-    # Add running timer time if active?
-    # For display purposes, maybe. But stored `timeSpent` is static.
-    # Let's sticking to stored time for now.
-    
     children_time = 0
     for child_id in node.get("children", []):
          children_time += get_total_time(child_id, nodes)
          
     return own_time + children_time
 
-def export_data():
+def export_data(username=None):
     """Export data as JSON string with metadata."""
     from datetime import datetime
-    data = load_data()
+    data = load_data(username)
     export_obj = {
         "nodes": data.get("nodes", {}),
         "rootIds": data.get("rootIds", []),
@@ -204,11 +238,8 @@ def export_data():
     }
     return json.dumps(export_obj, indent=2)
 
-def import_data(json_string):
-    """
-    Import data from JSON string.
-    Returns (success: bool, message: str)
-    """
+def import_data(json_string, username=None):
+    """Import data from JSON string."""
     try:
         data = json.loads(json_string)
         
@@ -220,7 +251,7 @@ def import_data(json_string):
         save_data({
             "nodes": data["nodes"],
             "rootIds": data["rootIds"]
-        })
+        }, username)
         
         return True, f"Successfully imported {len(data['nodes'])} items"
     except json.JSONDecodeError as e:
