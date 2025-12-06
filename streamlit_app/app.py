@@ -161,20 +161,23 @@ def render_node(node_id, data, level=0):
             t_col1, t_col2 = st.columns([1, 2])
             
             with t_col1:
-                # Timer Controls
-                is_running = node.get("timerStartedAt") is not None
-                if is_running:
-                     # Calculate elapsed for display (approximate since page load)
-                     start_ts = node.get("timerStartedAt")
-                     elapsed_current_session = int((time.time() * 1000 - start_ts) / 60000)
-                     st.warning(f"⏱️ Running: +{elapsed_current_session}m")
-                     if st.button("⏹️ Stop Timer", key=f"stop_{node_id}"):
-                         stop_timer(data, node_id)
-                         st.rerun()
+                # Timer Controls - ONLY for TASKS
+                if node_type == "TASK":
+                    is_running = node.get("timerStartedAt") is not None
+                    if is_running:
+                         # Calculate elapsed for display (approximate since page load)
+                         start_ts = node.get("timerStartedAt")
+                         elapsed_current_session = int((time.time() * 1000 - start_ts) / 60000)
+                         st.warning(f"⏱️ Running: +{elapsed_current_session}m")
+                         if st.button("⏹️ Stop Timer", key=f"stop_{node_id}"):
+                             stop_timer(data, node_id)
+                             st.rerun()
+                    else:
+                         if st.button("▶️ Start Timer", key=f"start_{node_id}"):
+                             start_timer(data, node_id)
+                             st.rerun()
                 else:
-                     if st.button("▶️ Start Timer", key=f"start_{node_id}"):
-                         start_timer(data, node_id)
-                         st.rerun()
+                    st.caption("(Timer available on Tasks)")
             
             with t_col2:
                 # Total Time Display
