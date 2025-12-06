@@ -330,7 +330,7 @@ def render_level(data, username):
     
     if current_node:
         # User wants "TYPE" as top title. e.g. "Strategies"
-        st.markdown(f"## {level_name} ({len(items)})")
+        st.markdown(f"## {level_name}")
         # Removing caption as requested
         # st.caption(f"Inside: {current_node.get('title')}")
         
@@ -345,7 +345,7 @@ def render_level(data, username):
                  add_node(data, current_node["id"], child_type, f"New {normalized_btn}", "", username)
                  st.rerun()
     else:
-        st.markdown(f"## {level_name} ({len(items)})")
+        st.markdown(f"## {level_name}")
         if st.button("➕ New Goal"):
              add_node(data, None, "GOAL", "New Goal", "", username)
              st.rerun()
@@ -381,6 +381,20 @@ def render_app(username):
         if uploaded and st.button("Import"):
             import_data(uploaded.read().decode(), username)
             st.rerun()
+
+    # Sync Status
+    from utils.storage import get_sync_status
+    is_connected, error_msg = get_sync_status()
+    
+    st.sidebar.markdown("---")
+    if is_connected:
+        st.sidebar.success("✅ Cloud Sync Active")
+    else:
+        st.sidebar.warning("⚠️ Local Storage Only")
+        if error_msg:
+             with st.sidebar.expander("Sync Error Details"):
+                 st.error(error_msg)
+                 st.caption("Add 'gcp_service_account' to secrets.toml")
 
     render_level(data, username)
 

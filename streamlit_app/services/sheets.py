@@ -13,12 +13,14 @@ class SheetsDB:
     def __init__(self):
         self.client = None
         self.sheet = None
+        self.connection_error = None
         self._connect()
 
     def _connect(self):
         """Connect to Google Sheets using Streamlit secrets."""
         try:
             if "gcp_service_account" not in st.secrets:
+                self.connection_error = "Missing 'gcp_service_account' in secrets.toml"
                 return
 
             # Construct credentials from secrets
@@ -36,15 +38,20 @@ class SheetsDB:
             sheet_name = "OKR_DB"
             try:
                 self.sheet = self.client.open(sheet_name).sheet1
+                self.connection_error = None # Clear any previous error
             except gspread.SpreadsheetNotFound:
                 # Optional: Create if not exists? (Requires Drive write scope, which we added)
                 # But safer to ask user to create it.
-                st.error(f"Spreadsheet '{sheet_name}' not found. Please create it and share with service account.")
+                self.connection_error = f"Spreadsheet '{sheet_name}' not found. Please create it and share with service account."
                 self.sheet = None
                 
         except Exception as e:
-            st.error(f"Failed to connect to Google Sheets: {str(e)}")
+            self.connection_error = f"Failed to connect: {str(e)}"
             self.client = None
+
+    def get_connection_status(self):
+        """Returns (is_connected, error_message)"""
+        return (self.sheet is not None, self.connection_error)
 
     def is_connected(self):
         return self.sheet is not None

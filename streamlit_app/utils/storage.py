@@ -14,6 +14,11 @@ def get_db():
         _sheets_db = SheetsDB()
     return _sheets_db
 
+def get_sync_status():
+    """Returns (is_connected, error_message) for the Sheets DB."""
+    db = get_db()
+    return db.get_connection_status()
+
 DATA_FILE = "okr_data.json"
 
 def get_local_filename(username):
