@@ -81,7 +81,12 @@ def render_breadcrumbs(data):
         if opt == "HOME":
            return "🏠 Home"
         node = data["nodes"].get(opt)
-        return node.get("title", "Unknown") if node else "Unknown"
+        if not node: return "Unknown"
+        
+        # User wants "Type: Title"
+        title = node.get("title", "Untitled")
+        ntype = node.get("type", "").replace('_',' ').title()
+        return f"{ntype}: {title}"
         
     current_selection = stack[-1] if stack else "HOME"
     
