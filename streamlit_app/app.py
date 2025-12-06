@@ -249,22 +249,42 @@ def render_level(data, username):
         items = current_node.get("children", [])
         # Determine label
         ptype = current_node.get("type")
-        ctype = CHILD_TYPE_MAP.get(ptype, "Items")
-        level_name = f"{ctype.replace('_',' ').title()}s" if ctype else "Sub-items"
+        # Ensure ptype is valid key (handle potential fallback/legacy data)
+        ctype = CHILD_TYPE_MAP.get(ptype)
+        
+        if not ctype:
+             # Try to guess from children if any exist
+             if items:
+                 first = data["nodes"].get(items[0])
+                 if first:
+                     ctype = first.get("type")
+        
+        if ctype:
+             normalized = ctype.replace('_',' ').title()
+             if normalized.endswith('s'):
+                 level_name = normalized
+             else:
+                 level_name = f"{normalized}s"
+        else:
+             level_name = "Items"
 
     # Header
     render_breadcrumbs(data)
     
     if current_node:
-        st.markdown(f"## {current_node.get('title')} > {level_name} ({len(items)})")
+        # User wants "TYPE" as top title. e.g. "Strategies"
+        st.markdown(f"## {level_name} ({len(items)})")
+        st.caption(f"Inside: {current_node.get('title')}")
+        
         # Add New Button logic
         child_type = CHILD_TYPE_MAP.get(current_node.get("type"))
         if child_type:
-             if st.button(f"➕ New {child_type.replace('_',' ').title()}"):
-                 add_node(data, current_node["id"], child_type, f"New {child_type}", "", username)
+             normalized_btn = child_type.replace('_',' ').title()
+             if st.button(f"➕ New {normalized_btn}"):
+                 add_node(data, current_node["id"], child_type, f"New {normalized_btn}", "", username)
                  st.rerun()
     else:
-        st.markdown(f"## Your {level_name} ({len(items)})")
+        st.markdown(f"## {level_name} ({len(items)})")
         if st.button("➕ New Goal"):
              add_node(data, None, "GOAL", "New Goal", "", username)
              st.rerun()
