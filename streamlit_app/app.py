@@ -121,6 +121,7 @@ def render_app(username):
     if not root_ids:
         st.info("No Goals found. Start by adding one in the sidebar!")
     else:
+        st.markdown(f"**Goals ({len(root_ids)})**")
         for root_id in root_ids:
              render_node(root_id, data, username, level=0)
 
@@ -257,7 +258,19 @@ def render_node(node_id, data, username, level=0):
 
         # Render Children
         if children_ids:
-            st.markdown(f"**Sub-items ({len(children_ids)})**")
+            # Determine child type name for header
+            # We can guess type from the first child, or from the CHILD_TYPE_MAP of current node.
+            # CHILD_TYPE_MAP is safer.
+            ctype = CHILD_TYPE_MAP.get(node_type)
+            if not ctype:
+                 # Fallback if map missing or manual types mixed
+                 first_child = data["nodes"].get(children_ids[0])
+                 ctype = first_child.get("type", "Item") if first_child else "Item"
+            
+            # Format: "Strategies (3)"
+            header_label = f"{ctype.replace('_', ' ').title()}s ({len(children_ids)})"
+            st.markdown(f"**{header_label}**")
+            
             for child_id in children_ids:
                 render_node(child_id, data, username, level=level+1)
 

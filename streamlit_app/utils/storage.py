@@ -105,11 +105,44 @@ def update_node_progress(node_id, nodes):
     return nodes
 
 def add_node(data_store, parent_id, node_type, title, description, username=None):
+    # Auto-numbering logic
+    # Find siblings
+    siblings_count = 0
+    if parent_id:
+        parent = data_store["nodes"].get(parent_id)
+        if parent:
+            siblings_count = len(parent.get("children", []))
+    else:
+        # Root nodes
+        siblings_count = len(data_store["rootIds"])
+    
+    # If title looks like "New {Type}", replace with "{Type} #{Count}"
+    # The caller app.py currently passes f"New {child_type...}"
+    # Let's adjust it here or just override if title matches pattern?
+    # Simpler: If title starts with "New ", append #N
+    # OR: construct default title here if title is empty or generic.
+    
+    # The User wants: "Objective #3". 
+    # If I pass "New Objective", it should become "Objective #3" (if it is the 3rd one).
+    # Sibling count is currently N. New one is N+1.
+    
+    # Let's make it smarter: logic in app.py is easier to control text.
+    # But storage.py `add_node` has better access to siblings if concurrency (though simpler here).
+    # Let's do it in storage.py if we change signature? No, simpler to just query db in app.py or do it here.
+    
+    # Doing it here for consistency.
+    normalized_type = node_type.replace('_', ' ').title() # e.g. "Key Result"
+    
+    final_title = title
+    if not title or title.startswith("New "):
+        # Generate numbered title
+        final_title = f"{normalized_type} #{siblings_count + 1}"
+
     new_id = generate_id()
     new_node = {
         "id": new_id,
         "type": node_type,
-        "title": title or "Untitled",
+        "title": final_title,
         "description": description,
         "progress": 0,
         "children": [],
