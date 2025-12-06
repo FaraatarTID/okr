@@ -63,18 +63,16 @@ class SheetsDB:
         
         try:
             # Search for username in Column A
+            # Note: In newer gspread, find() returns None if not found (no exception)
             cell = self.sheet.find(username, in_column=1)
             if cell:
                 # Data is in Column B (col 2)
                 data_str = self.sheet.cell(cell.row, 2).value
                 return json.loads(data_str)
-        except gspread.CellNotFound:
             return None
         except Exception as e:
             st.error(f"Error fetching data: {str(e)}")
             return None
-        
-        return None
 
     def save_user_data(self, username, data):
         """Save or update user data."""
@@ -85,11 +83,8 @@ class SheetsDB:
             data_str = json.dumps(data)
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             
-            cell = None
-            try:
-                cell = self.sheet.find(username, in_column=1)
-            except gspread.CellNotFound:
-                pass
+            # Note: In newer gspread, find() returns None if not found (no exception)
+            cell = self.sheet.find(username, in_column=1)
 
             if cell:
                 # Update existing row
