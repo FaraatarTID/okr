@@ -72,27 +72,39 @@ def navigate_back_to(index):
     st.rerun()
 
 def render_breadcrumbs(data):
-    """Render clickable breadcrumbs."""
+    """Render clickable breadcrumbs using pills."""
     stack = st.session_state.nav_stack
     
-    cols = st.columns(len(stack) + 2)
+    options = ["HOME"] + stack
     
-    # Root Home
-    with cols[0]:
-        if st.button("🏠 Home", key="crumb_home"):
-            navigate_back_to(-1)
-            
-    # Breadcrumbs
-    for i, node_id in enumerate(stack):
-        node = data["nodes"].get(node_id)
-        title = node.get("title", "Untitled") if node else "Unknown"
-        # Truncate long titles
-        short_title = (title[:15] + '..') if len(title) > 15 else title
+    def get_label(opt):
+        if opt == "HOME":
+           return "🏠 Home"
+        node = data["nodes"].get(opt)
+        return node.get("title", "Unknown") if node else "Unknown"
         
-        with cols[i+1]:
-            st.write(" > ")
-            if st.button(short_title, key=f"crumb_{i}"):
-                navigate_back_to(i)
+    current_selection = stack[-1] if stack else "HOME"
+    
+    selected = st.pills(
+        "Navigation",
+        options=options,
+        selection_mode="single",
+        default=current_selection,
+        format_func=get_label,
+        key="nav_pills"
+    )
+    
+    if selected != current_selection:
+        if selected == "HOME":
+            st.session_state.nav_stack = []
+            st.rerun()
+        else:
+            try:
+                idx = stack.index(selected)
+                navigate_back_to(idx)
+            except ValueError:
+                pass
+
 
 @st.dialog("Inspect & Edit")
 def render_inspector_dialog(node_id, data, username):
@@ -314,7 +326,8 @@ def render_level(data, username):
     if current_node:
         # User wants "TYPE" as top title. e.g. "Strategies"
         st.markdown(f"## {level_name} ({len(items)})")
-        st.caption(f"Inside: {current_node.get('title')}")
+        # Removing caption as requested
+        # st.caption(f"Inside: {current_node.get('title')}")
         
         # Add New Button logic
         # Robust lookup: ensure upper case
