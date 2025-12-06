@@ -1,3 +1,13 @@
-node_modules
+# Python
+__pycache__/
+*.pyc
+venv/
 .env
+
+# Streamlit
+.streamlit/secrets.toml
+secrets.toml
+
+# Data
 okr_data.json
+*.json
