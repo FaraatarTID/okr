@@ -203,7 +203,6 @@ def render_card(node_id, data, username):
         c1, c2, c3 = st.columns([4, 1, 1])
         with c1:
             # Clickable Title => Navigate
-            # Streamlit buttons don't support full width easily.
             # Using a button that looks like title.
             label = f"{TYPE_ICONS.get(node_type, '')} {title}"
             
@@ -215,6 +214,26 @@ def render_card(node_id, data, username):
             
             st.markdown(f"**{label}**")
             st.caption(stats)
+            
+            # --- SELF HEALING: Check hierarchy mismatch ---
+            parent_id = node.get("parentId")
+            if parent_id:
+                parent = data["nodes"].get(parent_id)
+                if parent:
+                    # Expected type based on parent
+                    parent_type = parent.get("type", "").upper()
+                    expected_child_type = CHILD_TYPE_MAP.get(parent_type)
+                    
+                    # If expected type exists, is different from current, AND current is 'TASK' (common error)
+                    # or generally mismatch.
+                    if expected_child_type and node_type != expected_child_type:
+                        # Case: KeyResult (expects Initiative) -> Has Task
+                        # Show Fix Button
+                        expected_name = expected_child_type.replace('_', ' ').title()
+                        msg = f"⚠️ Type Mismatch (Should be {expected_name})"
+                        if st.button(f"🔧 Convert to {expected_name}", key=f"fix_{node_id}"):
+                            update_node(data, node_id, {"type": expected_child_type}, username)
+                            st.rerun()
 
         with c2:
              # Timer Controls (If Task)
