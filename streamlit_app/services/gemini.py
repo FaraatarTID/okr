@@ -1,32 +1,20 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
+import streamlit as st
 
 load_dotenv()
 
-import streamlit as st
-
-def configure_gemini():
+def get_api_key():
     # Priority: Streamlit Secrets > Environment Variables
-    api_key = None
-    
-    # Check Streamlit Secrets (for Cloud)
     if "GEMINI_API_KEY" in st.secrets:
-        api_key = st.secrets["GEMINI_API_KEY"]
-    
-    # Fallback to Environment Variables (for Local)
-    if not api_key:
-        api_key = os.getenv("VITE_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
-    
-    if not api_key:
-        return False
-    
-    genai.configure(api_key=api_key)
-    return True
+        return st.secrets["GEMINI_API_KEY"]
+    return os.getenv("VITE_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
 
 def analyze_node(node_id, all_nodes):
-    if not configure_gemini():
+    api_key = get_api_key()
+    if not api_key:
         return {"error": "API Key not configured"}
 
     node = all_nodes.get(node_id)
@@ -42,7 +30,6 @@ def analyze_node(node_id, all_nodes):
         c_title = child.get("title", "Untitled")
         c_progress = child.get("progress", 0)
         c_status = "DONE" if c_progress == 100 else "IN PROGRESS"
-        # Note: Time spent might not be tracked in this simple version yet, or defaults to 0
         c_time = child.get("timeSpent", 0)
         children_text += f"- [{c_type}] {c_title} (Time spent: {c_time}m, Status: {c_status})\n"
 
@@ -70,13 +57,21 @@ def analyze_node(node_id, all_nodes):
     """
 
     try:
-        model = genai.GenerativeModel('gemini-flash-latest')
-        response = model.generate_content(prompt)
-        text = response.text
+        # Client initialization with API key
+        client = genai.Client(api_key=api_key)
         
-        # Clean up json
-        text = text.replace("```json", "").replace("```", "").strip()
-        data = json.loads(text)
+        # New SDK call structure
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json"
+            }
+        )
+        
+        # Parse JSON
+        import json
+        data = json.loads(response.text)
         
         return {
             "score": max(0, min(100, data.get("score", 0))),
