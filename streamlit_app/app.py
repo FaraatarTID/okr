@@ -217,6 +217,18 @@ def render_card(node_id, data, username):
             st.caption(stats)
 
         with c2:
+             # Timer Controls (If Task)
+             if node_type == "TASK":
+                 is_running = node.get("timerStartedAt") is not None
+                 if is_running:
+                     if st.button("⏹️", key=f"stop_card_{node_id}", help="Stop Timer"):
+                         stop_timer(data, node_id, username)
+                         st.rerun()
+                 else:
+                     if st.button("▶️", key=f"start_card_{node_id}", help="Start Timer"):
+                         start_timer(data, node_id, username)
+                         st.rerun()
+             
              if st.button("🔍", key=f"inspect_{node_id}", help="Inspect & Edit"):
                  render_inspector_dialog(node_id, data, username)
                  
@@ -226,6 +238,9 @@ def render_card(node_id, data, username):
             if not is_leaf:
                  if st.button("➡️", key=f"nav_{node_id}", help="Drill Down"):
                      navigate_to(node_id)
+            elif node_type == "TASK":
+                 # Maybe show something else? or Empty?
+                 pass
 
 def render_level(data, username):
     stack = st.session_state.nav_stack
