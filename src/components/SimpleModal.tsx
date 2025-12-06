@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface SimpleModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -9,7 +7,7 @@ export function SimpleModal({ isOpen, onClose }: SimpleModalProps) {
     if (!isOpen) return null;
 
     return (
-        <div 
+        <div
             style={{
                 position: 'fixed',
                 top: 0,
@@ -24,7 +22,7 @@ export function SimpleModal({ isOpen, onClose }: SimpleModalProps) {
             }}
             onClick={onClose}
         >
-            <div 
+            <div
                 style={{
                     backgroundColor: 'white',
                     padding: '20px',
@@ -36,7 +34,7 @@ export function SimpleModal({ isOpen, onClose }: SimpleModalProps) {
             >
                 <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '10px' }}>Test Modal</h2>
                 <p>If you can see this, the modal logic is working.</p>
-                <button 
+                <button
                     onClick={onClose}
                     style={{
                         marginTop: '20px',
