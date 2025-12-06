@@ -228,10 +228,14 @@ def render_card(node_id, data, username):
                     # or generally mismatch.
                     if expected_child_type and node_type != expected_child_type:
                         # Case: KeyResult (expects Initiative) -> Has Task
-                        # Show Fix Button
-                        expected_name = expected_child_type.replace('_', ' ').title()
-                        msg = f"⚠️ Type Mismatch (Should be {expected_name})"
-                        if st.button(f"🔧 Convert to {expected_name}", key=f"fix_{node_id}"):
+                        # Show Fix Button - User friendly label
+                        # If expected is INITIATIVE, child of expected is TASK.
+                        if expected_child_type == "INITIATIVE":
+                            action_label = "➡️ Enable Tasks Level"
+                        else:
+                            action_label = f"🔧 Fix Type (to {expected_child_type.replace('_',' ').title()})"
+                        
+                        if st.button(action_label, key=f"fix_{node_id}", help="Click to fix the hierarchy and enable drill-down"):
                             update_node(data, node_id, {"type": expected_child_type}, username)
                             st.rerun()
 
