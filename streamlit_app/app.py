@@ -208,7 +208,7 @@ def render_card(node_id, data, username):
             label = f"{TYPE_ICONS.get(node_type, '')} {title}"
             
             # Subtitle stats
-            stats = f"📊 {progress}%"
+            stats = f"📊 {progress}% | {node_type.replace('_',' ').title()}"
             if node_type in ["INITIATIVE", "TASK"]:
                 t = get_total_time(node_id, data["nodes"])
                 stats += f" | ⏱️ {format_time(t)}"
