@@ -326,12 +326,18 @@ def render_report_content(data, username, mode="Weekly"):
         st.session_state.report_direction = "RTL"
         
     # Toggle for direction
-    c_toggle, c_rest = st.columns([1, 4])
+    # Toggle for direction
+    c_toggle, c_rest = st.columns([2, 3])
     with c_toggle:
-        is_rtl = st.session_state.report_direction == "RTL"
-        new_is_rtl = st.toggle("RTL Layout", value=is_rtl)
-        if new_is_rtl != is_rtl:
-             st.session_state.report_direction = "RTL" if new_is_rtl else "LTR"
+        new_dir = st.pills(
+            "Page Layout",
+            options=["LTR", "RTL"],
+            default=st.session_state.report_direction,
+            selection_mode="single",
+             key=f"layout_pills_{mode}" # Unique key per mode
+        )
+        if new_dir and new_dir != st.session_state.report_direction:
+             st.session_state.report_direction = new_dir
              st.rerun()
 
     # Enforce RTL Layout for this dialog Only if selected
