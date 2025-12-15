@@ -39,6 +39,34 @@ def apply_custom_fonts():
         code, pre, .stCode {
             font-family: 'Source Code Pro', monospace !important;
         }
+        
+        /* Timer UI */
+        .timer-display {
+            font-size: 5rem;
+            font-weight: 700;
+            color: #2E7D32;
+            text-align: center;
+            padding: 1rem 0;
+            font-family: 'Vazirmatn', sans-serif !important;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 2px;
+            line-height: 1;
+            text-shadow: 0 2px 10px rgba(46, 125, 50, 0.2);
+        }
+        .timer-task-title {
+            text-align: center;
+            font-size: 1.5rem;
+            color: #333;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-family: 'Vazirmatn', sans-serif !important;
+        }
+        .timer-subtext {
+            text-align: center;
+            color: #666;
+            font-size: 1rem;
+            margin-bottom: 2rem;
+        }
         </style>
         """,
         unsafe_allow_html=True

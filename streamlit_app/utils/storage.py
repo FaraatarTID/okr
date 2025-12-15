@@ -262,7 +262,7 @@ def start_timer(data_store, node_id, username=None):
         node["timerStartedAt"] = int(time.time() * 1000)
         save_data(data_store, username)
 
-def stop_timer(data_store, node_id, username=None):
+def stop_timer(data_store, node_id, username=None, summary=None):
     node = data_store["nodes"].get(node_id)
     if node and node.get("timerStartedAt"):
         start_time = node["timerStartedAt"]
@@ -281,8 +281,35 @@ def stop_timer(data_store, node_id, username=None):
         node["workLog"].append({
             "startedAt": start_time,
             "endedAt": int(time.time() * 1000),
-            "durationMinutes": elapsed_minutes
+            "durationMinutes": elapsed_minutes,
+            "summary": summary  # Store the summary
         })
+        
+        save_data(data_store, username)
+
+def delete_work_log(data_store, node_id, log_started_at, username=None):
+    node = data_store["nodes"].get(node_id)
+    if not node: return
+    
+    work_log = node.get("workLog", [])
+    
+    # Find item to delete
+    item_to_delete = None
+    new_log = []
+    for item in work_log:
+        if item.get("startedAt") == log_started_at:
+            item_to_delete = item
+        else:
+            new_log.append(item)
+            
+    if item_to_delete:
+        # Update log
+        node["workLog"] = new_log
+        
+        # Deduct time
+        duration = item_to_delete.get("durationMinutes", 0)
+        current_spent = node.get("timeSpent", 0)
+        node["timeSpent"] = max(0, current_spent - duration)
         
         save_data(data_store, username)
 
