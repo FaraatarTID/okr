@@ -393,12 +393,14 @@ def render_report_content(data, username):
         st.info("No Key Results found.")
     else:
         # Header Row
-        h1, h2, h3, h4, h5 = st.columns([3, 1.5, 1.5, 1.5, 1])
+        # Header Row
+        h1, h2, h3, h4, h5, h6 = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
         h1.markdown("**Key Result**")
-        h2.markdown("**Efficiency**", help="Completeness of work scope vs required")
-        h3.markdown("**Effectiveness**", help="Quality of strategy and methods")
-        h4.markdown("**Fulfillment**", help="Overall Score")
-        h5.markdown("**Action**")
+        h2.markdown("**Progress**", help="Calculated from child tasks")
+        h3.markdown("**Efficiency**", help="Completeness of work scope vs required")
+        h4.markdown("**Effectiveness**", help="Quality of strategy and methods")
+        h5.markdown("**Fulfillment**", help="Overall Score")
+        h6.markdown("**Action**")
         
         st.markdown("<hr style='margin: 5px 0; border: none; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
         
@@ -409,17 +411,19 @@ def render_report_content(data, username):
             title = kr.get("title", "Untitled")
             
             # Render Row Layout
-            c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1])
+            # Render Row Layout
+            c1, c2, c3, c4, c5, c6 = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
             
             c1.markdown(f"{title}")
+            c2.markdown(f"{kr.get('progress', 0)}%")
             
             # Placeholders for dynamic updates
-            p_eff = c2.empty()
-            p_qual = c3.empty()
-            p_full = c4.empty()
+            p_eff = c3.empty()
+            p_qual = c4.empty()
+            p_full = c5.empty()
             
             # Action Button
-            do_update = c5.button("🔄", key=f"upd_kr_{kr['id']}", help="Update Analysis")
+            do_update = c6.button("🔄", key=f"upd_kr_{kr['id']}", help="Update Analysis")
             
             # Row Separator
             st.markdown("<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>", unsafe_allow_html=True)
