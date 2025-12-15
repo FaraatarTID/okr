@@ -247,7 +247,28 @@ def get_ancestor_objective(node_id, nodes):
     return "Other / No Objective"
 
 @st.dialog("📊 Weekly Work Report", width="large")
-def render_report_dialog(data):
+def render_report_dialog(data, username):
+    # Enforce RTL Layout for this dialog
+    st.markdown("""
+        <style>
+        div[role="dialog"] {
+            direction: rtl;
+            text-align: right;
+        }
+        /* Ensure specific elements inherit or enforce RTL */
+        div[role="dialog"] .stMarkdown, div[role="dialog"] p, 
+        div[role="dialog"] h1, div[role="dialog"] h2, div[role="dialog"] h3,
+        div[role="dialog"] .stMetricValue, div[role="dialog"] .stMetricLabel {
+            direction: rtl;
+            text-align: right;
+            font-family: 'Vazirmatn', sans-serif !important;
+        }
+        /* Align columns content to right */
+        div[role="dialog"] [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
+            direction: rtl; 
+        }
+        </style>
+    """, unsafe_allow_html=True)
     st.caption("Tasks with work recorded in the last 7 days.")
     
     now = time.time() * 1000
@@ -342,6 +363,85 @@ def render_report_dialog(data):
             </tr>"""
     obj_table_html += "</tbody></table>"
     st.markdown(obj_table_html, unsafe_allow_html=True)
+
+    # --- SECTION: Key Result Strategic Status ---
+    st.markdown("---")
+    st.subheader("Key Result Strategic Status")
+    
+    # 1. Filter Key Results
+    krs = []
+    for nid, node in data["nodes"].items():
+        if node.get("type") == "KEY_RESULT":
+            krs.append(node)
+            
+    if not krs:
+        st.info("No Key Results found.")
+    else:
+        # Header Row
+        h1, h2, h3, h4, h5 = st.columns([3, 1.5, 1.5, 1.5, 1])
+        h1.markdown("**Key Result**")
+        h2.markdown("**Efficiency**", help="Completeness of work scope vs required")
+        h3.markdown("**Effectiveness**", help="Quality of strategy and methods")
+        h4.markdown("**Fulfillment**", help="Overall Score")
+        h5.markdown("**Action**")
+        
+        st.markdown("<hr style='margin: 5px 0; border: none; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
+        
+        from services.gemini import analyze_node
+
+        for kr in krs:
+            # Prepare Data
+            title = kr.get("title", "Untitled")
+            an = kr.get("geminiAnalysis")
+            
+            eff_score = "N/A"
+            eff_color = "grey"
+            
+            qual_score = "N/A" # Effectiveness
+            
+            fulfillment = "N/A"
+            
+            if an and isinstance(an, dict):
+                e_val = an.get('efficiency_score')
+                q_val = an.get('effectiveness_score')
+                o_val = an.get('overall_score')
+                
+                if e_val is not None: eff_score = f"{e_val}%"
+                if q_val is not None: qual_score = f"{q_val}%"
+                if o_val is not None: fulfillment = f"{o_val}%"
+            
+            # Render Row
+            c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1])
+            
+            c1.markdown(f"{title}")
+            c2.markdown(eff_score)
+            c3.markdown(qual_score)
+            c4.markdown(f"**{fulfillment}**")
+            
+            if c5.button("🔄", key=f"upd_kr_{kr['id']}", help="Update Analysis"):
+                with st.spinner("Analyzing..."):
+                    res = analyze_node(kr['id'], data["nodes"])
+                    if "error" in res:
+                        st.error(res["error"])
+                    else:
+                        update_node(data, kr['id'], {"geminiAnalysis": res}, username)
+                        st.rerun()
+            
+            st.markdown("<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>", unsafe_allow_html=True)
+            
+            # Details Expander
+            if an and isinstance(an, dict):
+                 with st.expander("📝 Analysis Details"):
+                      if an.get('summary'):
+                           st.markdown(f"**Executive Summary:** {an.get('summary')}")
+                      
+                      c_d1, c_d2 = st.columns(2)
+                      with c_d1:
+                           if an.get('gap_analysis'):
+                                st.markdown(f"**Gap Analysis:**\n{an.get('gap_analysis')}")
+                      with c_d2:
+                           if an.get('quality_assessment'):
+                                st.markdown(f"**Quality Assessment:**\n{an.get('quality_assessment')}")
 
 @st.dialog("Inspect & Edit")
 def render_inspector_dialog(node_id, data, username):
@@ -664,7 +764,7 @@ def render_app(username):
     data = load_data(username)
     
     if st.sidebar.button("📊 Weekly Report"):
-        render_report_dialog(data)
+        render_report_dialog(data, username)
     
     # Sidebar Utilities (Export)
     with st.sidebar.expander("Backup"):
