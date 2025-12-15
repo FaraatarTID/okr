@@ -317,7 +317,39 @@ def render_report_content(data, username):
         st.info("No work recorded in the last week.")
         return
 
-    # Sort by date desc
+    
+    total = sum(item["Duration (m)"] for item in report_items)
+
+    # Filter Key Results (Needed for PDF)
+    krs = []
+    for nid, node in data["nodes"].items():
+        if node.get("type") == "KEY_RESULT":
+            krs.append(node)
+
+    # PDF Export (Moved to Top)
+    try:
+        import importlib
+        import services.pdf_report
+        importlib.reload(services.pdf_report)
+        from services.pdf_report import generate_weekly_pdf_v2
+        
+        # Generate PDF
+        pdf_buffer = generate_weekly_pdf_v2(report_items, objective_stats, format_time(total), krs, st.session_state.report_direction)
+        
+        if pdf_buffer:
+             st.download_button(
+                 label="📄 Export as PDF",
+                 data=pdf_buffer,
+                 file_name=f"Weekly_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
+                 mime="application/pdf"
+             )
+    except Exception as e:
+        st.error(f"PDF Generation Error: {e}")
+
+    st.markdown("---")
+    st.subheader("Work Log")
+
+    # Sort items for display
     report_items.sort(key=lambda x: x["Date"] + x["Time"], reverse=True)
     
     # st.dataframe(report_items, use_container_width=True)
@@ -341,9 +373,7 @@ def render_report_content(data, username):
                 </tr>"""
         table_html += "</tbody></table>"
         st.markdown(table_html, unsafe_allow_html=True)
-
     
-    total = sum(item["Duration (m)"] for item in report_items)
     st.metric("Total Time (Last 7 Days)", format_time(total))
     
     st.markdown("---")
@@ -383,11 +413,7 @@ def render_report_content(data, username):
     st.markdown("---")
     st.subheader("Key Result Strategic Status")
     
-    # 1. Filter Key Results
-    krs = []
-    for nid, node in data["nodes"].items():
-        if node.get("type") == "KEY_RESULT":
-            krs.append(node)
+    # 1. Filter Key Results (Already done above)
             
     if not krs:
         st.info("No Key Results found.")
