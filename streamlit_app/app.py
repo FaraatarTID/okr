@@ -225,6 +225,44 @@ def render_breadcrumbs(data):
                 pass
 
 
+
+@st.dialog("📊 Weekly Work Report", width="large")
+def render_report_dialog(data):
+    st.caption("Tasks with work recorded in the last 7 days.")
+    
+    now = time.time() * 1000
+    one_week_ago = now - (7 * 24 * 60 * 60 * 1000)
+    
+    report_items = []
+    
+    # Iterate all nodes
+    for nid, node in data["nodes"].items():
+        logs = node.get("workLog", [])
+        if not logs: continue
+        
+        for log in logs:
+            # Check if log is within last week (based on end time)
+            if log.get("endedAt", 0) >= one_week_ago:
+                report_items.append({
+                    "Task": node.get("title", "Untitled"),
+                    "Type": node.get("type", "TASK"),
+                    "Date": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%Y-%m-%d'),
+                    "Time": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%H:%M'),
+                    "Duration (m)": round(log.get("durationMinutes", 0), 2)
+                })
+    
+    if not report_items:
+        st.info("No work recorded in the last week.")
+        return
+
+    # Sort by date desc
+    report_items.sort(key=lambda x: x["Date"] + x["Time"], reverse=True)
+    
+    st.dataframe(report_items, use_container_width=True)
+    
+    total = sum(item["Duration (m)"] for item in report_items)
+    st.metric("Total Time (Last 7 Days)", format_time(total))
+
 @st.dialog("Inspect & Edit")
 def render_inspector_dialog(node_id, data, username):
     render_inspector_content(node_id, data, username)
@@ -491,6 +529,9 @@ def render_app(username):
         st.rerun()
 
     data = load_data(username)
+    
+    if st.sidebar.button("📊 Weekly Report"):
+        render_report_dialog(data)
     
     # Sidebar Utilities (Export)
     with st.sidebar.expander("Backup"):
