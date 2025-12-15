@@ -320,7 +320,7 @@ def get_ancestor_key_result(node_id, nodes):
     return "-"
 
 @st.fragment
-def render_report_content(data, username):
+def render_report_content(data, username, mode="Weekly"):
     # Initialize direction state if not set
     if "report_direction" not in st.session_state:
         st.session_state.report_direction = "RTL"
@@ -357,10 +357,21 @@ def render_report_content(data, username):
             </style>
         """, unsafe_allow_html=True)
     
-    st.caption("Tasks with work recorded in the last 7 days.")
-    
+    # Filter logic
     now = time.time() * 1000
-    one_week_ago = now - (7 * 24 * 60 * 60 * 1000)
+    if mode == "Daily":
+        # Start of today
+        # Calculate midnight timestamp for today
+        dt_now = datetime.fromtimestamp(now / 1000)
+        dt_start = dt_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_time = dt_start.timestamp() * 1000
+        period_label = "Today"
+    else:
+        # Weekly (7 days)
+        start_time = now - (7 * 24 * 60 * 60 * 1000)
+        period_label = "Last 7 Days"
+
+    st.caption(f"Tasks with work recorded for: {mode} ({period_label})")
     
     report_items = []
     objective_stats = {} # { "Objective Title": total_minutes }
@@ -371,8 +382,8 @@ def render_report_content(data, username):
         if not logs: continue
         
         for log in logs:
-            # Check if log is within last week (based on end time)
-            if log.get("endedAt", 0) >= one_week_ago:
+            # Check if log is within range
+            if log.get("endedAt", 0) >= start_time:
                 duration = log.get("durationMinutes", 0)
                 # Aggregate by Objective
                 obj_title = get_ancestor_objective(nid, data["nodes"])
@@ -412,13 +423,16 @@ def render_report_content(data, username):
         from services.pdf_report import generate_weekly_pdf_v2
         
         # Generate PDF
-        pdf_buffer = generate_weekly_pdf_v2(report_items, objective_stats, format_time(total), krs, st.session_state.report_direction)
+        # Only include key_results filter for PDF if mode is Weekly
+        pdf_krs = krs if mode == "Weekly" else []
+        
+        pdf_buffer = generate_weekly_pdf_v2(report_items, objective_stats, format_time(total), pdf_krs, st.session_state.report_direction)
         
         if pdf_buffer:
              st.download_button(
                  label="📄 Export as PDF",
                  data=pdf_buffer,
-                 file_name=f"Weekly_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
+                 file_name=f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
                  mime="application/pdf"
              )
     except Exception as e:
@@ -460,7 +474,7 @@ def render_report_content(data, username):
         table_html += "</tbody></table>"
         st.markdown(table_html, unsafe_allow_html=True)
     
-    st.metric("Total Time (Last 7 Days)", format_time(total))
+    st.metric(f"Total Time ({period_label})", format_time(total))
     
     st.markdown("---")
     st.subheader("Time Distribution by Objective")
@@ -495,91 +509,94 @@ def render_report_content(data, username):
     obj_table_html += "</tbody></table>"
     st.markdown(obj_table_html, unsafe_allow_html=True)
 
-    # --- SECTION: Key Result Strategic Status ---
-    st.markdown("---")
-    st.subheader("Key Result Strategic Status")
+
     
-    # 1. Filter Key Results (Already done above)
-            
-    if not krs:
-        st.info("No Key Results found.")
-    else:
-        # Header Row
-        # Header Row
-        h1, h2, h3, h4, h5, h6 = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
-        h1.markdown("**Key Result**")
-        h2.markdown("**Progress**", help="Calculated from child tasks")
-        h3.markdown("**Efficiency**", help="Completeness of work scope vs required")
-        h4.markdown("**Effectiveness**", help="Quality of strategy and methods")
-        h5.markdown("**Fulfillment**", help="Overall Score")
-        h6.markdown("**Action**")
+    # --- SECTION: Key Result Strategic Status (Weekly Only) ---
+    if mode == "Weekly":
+        st.markdown("---")
+        st.subheader("Key Result Strategic Status")
         
-        st.markdown("<hr style='margin: 5px 0; border: none; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
-        
-        from services.gemini import analyze_node
+        # 1. Filter Key Results (Already done above)
+            
+        if not krs:
+            st.info("No Key Results found.")
+        else:
+            # Header Row
+            # Header Row
+            h1, h2, h3, h4, h5, h6 = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
+            h1.markdown("**Key Result**")
+            h2.markdown("**Progress**", help="Calculated from child tasks")
+            h3.markdown("**Efficiency**", help="Completeness of work scope vs required")
+            h4.markdown("**Effectiveness**", help="Quality of strategy and methods")
+            h5.markdown("**Fulfillment**", help="Overall Score")
+            h6.markdown("**Action**")
+            
+            st.markdown("<hr style='margin: 5px 0; border: none; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
+            
+            from services.gemini import analyze_node
 
-        for kr in krs:
-            # Prepare Data
-            title = kr.get("title", "Untitled")
-            
-            # Render Row Layout
-            # Render Row Layout
-            c1, c2, c3, c4, c5, c6 = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
-            
-            c1.markdown(f"{title}")
-            c2.markdown(f"{kr.get('progress', 0)}%")
-            
-            # Placeholders for dynamic updates
-            p_eff = c3.empty()
-            p_qual = c4.empty()
-            p_full = c5.empty()
-            
-            # Action Button
-            do_update = c6.button("🔄", key=f"upd_kr_{kr['id']}", help="Update Analysis")
-            
-            # Row Separator
-            st.markdown("<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>", unsafe_allow_html=True)
-            
-            # Details Placeholder
-            p_details = st.empty()
-
-            # Helper to render current state to placeholders
-            def render_kr_state(node_data):
-                an = node_data.get("geminiAnalysis")
-                eff_score = "N/A"
-                qual_score = "N/A"
-                fulfillment = "N/A"
+            for kr in krs:
+                # Prepare Data
+                title = kr.get("title", "Untitled")
                 
-                if an and isinstance(an, dict):
-                    e_val = an.get('efficiency_score')
-                    q_val = an.get('effectiveness_score')
-                    o_val = an.get('overall_score')
+                # Render Row Layout
+                # Render Row Layout
+                c1, c2, c3, c4, c5, c6 = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
+                
+                c1.markdown(f"{title}")
+                c2.markdown(f"{kr.get('progress', 0)}%")
+                
+                # Placeholders for dynamic updates
+                p_eff = c3.empty()
+                p_qual = c4.empty()
+                p_full = c5.empty()
+                
+                # Action Button
+                do_update = c6.button("🔄", key=f"upd_kr_{kr['id']}", help="Update Analysis")
+                
+                # Row Separator
+                st.markdown("<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>", unsafe_allow_html=True)
+                
+                # Details Placeholder
+                p_details = st.empty()
+
+                # Helper to render current state to placeholders
+                def render_kr_state(node_data):
+                    an = node_data.get("geminiAnalysis")
+                    eff_score = "N/A"
+                    qual_score = "N/A"
+                    fulfillment = "N/A"
                     
-                    if e_val is not None: eff_score = f"{e_val}%"
-                    if q_val is not None: qual_score = f"{q_val}%"
-                    if o_val is not None: fulfillment = f"{o_val}%"
+                    if an and isinstance(an, dict):
+                        e_val = an.get('efficiency_score')
+                        q_val = an.get('effectiveness_score')
+                        o_val = an.get('overall_score')
+                        
+                        if e_val is not None: eff_score = f"{e_val}%"
+                        if q_val is not None: qual_score = f"{q_val}%"
+                        if o_val is not None: fulfillment = f"{o_val}%"
 
-                p_eff.markdown(eff_score)
-                p_qual.markdown(qual_score)
-                p_full.markdown(f"**{fulfillment}**")
-                
-                # Render Details
-                with p_details.container():
-                     if an and isinstance(an, dict):
-                         with st.expander("📝 Analysis Details"):
-                              if an.get('summary'):
-                                   st.markdown(f"**Executive Summary:** {an.get('summary')}")
-                              
-                              c_d1, c_d2 = st.columns(2)
-                              with c_d1:
-                                   if an.get('gap_analysis'):
-                                        st.markdown(f"**Gap Analysis:**\n{an.get('gap_analysis')}")
-                              with c_d2:
-                                   if an.get('quality_assessment'):
-                                        st.markdown(f"**Quality Assessment:**\n{an.get('quality_assessment')}")
+                    p_eff.markdown(eff_score)
+                    p_qual.markdown(qual_score)
+                    p_full.markdown(f"**{fulfillment}**")
+                    
+                    # Render Details
+                    with p_details.container():
+                         if an and isinstance(an, dict):
+                             with st.expander("📝 Analysis Details"):
+                                  if an.get('summary'):
+                                       st.markdown(f"**Executive Summary:** {an.get('summary')}")
+                                  
+                                  c_d1, c_d2 = st.columns(2)
+                                  with c_d1:
+                                       if an.get('gap_analysis'):
+                                            st.markdown(f"**Gap Analysis:**\n{an.get('gap_analysis')}")
+                                  with c_d2:
+                                       if an.get('quality_assessment'):
+                                            st.markdown(f"**Quality Assessment:**\n{an.get('quality_assessment')}")
 
-            # Initial Render
-            render_kr_state(kr)
+                # Initial Render
+                render_kr_state(kr)
             
             # Handle Update
             if do_update:
@@ -594,9 +611,9 @@ def render_report_content(data, username):
                         kr["geminiAnalysis"] = res # Update local var for rendering
                         render_kr_state(kr)
 
-@st.dialog("📊 Weekly Work Report", width="large")
-def render_report_dialog(data, username):
-    render_report_content(data, username)
+@st.dialog("Work Report", width="large")
+def render_report_dialog(data, username, mode="Weekly"):
+    render_report_content(data, username, mode)
 
 @st.dialog("Inspect & Edit", width="large")
 def render_inspector_dialog(node_id, data, username):
@@ -981,7 +998,11 @@ def render_app(username):
     dialog_active = False
 
     if st.sidebar.button("📊 Weekly Report"):
-        render_report_dialog(data, username)
+        render_report_dialog(data, username, mode="Weekly")
+        dialog_active = True
+        
+    if st.sidebar.button("📅 Daily Report"):
+        render_report_dialog(data, username, mode="Daily")
         dialog_active = True
     
     # Sidebar Utilities (Export)

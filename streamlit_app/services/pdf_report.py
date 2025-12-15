@@ -174,10 +174,9 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     else:
         html += "<p>No objective data.</p>"
 
-    # Key Result Strategic Status
-    html += "<h3>Key Result Strategic Status</h3>"
-    
+    # Key Result Strategic Status (Only if data exists)
     if key_results:
+        html += "<h3>Key Result Strategic Status</h3>"
         html += """
         <table>
             <thead>
@@ -244,8 +243,7 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
             </tbody>
         </table>
         """
-    else:
-        html += "<p>No Key Results found.</p>"
+
 
     html += """
     </body>
