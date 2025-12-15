@@ -273,6 +273,17 @@ def stop_timer(data_store, node_id, username=None):
         current_spent = node.get("timeSpent", 0)
         node["timeSpent"] = current_spent + elapsed_minutes
         node["timerStartedAt"] = None
+        
+        # Log the session
+        if "workLog" not in node:
+            node["workLog"] = []
+        
+        node["workLog"].append({
+            "startedAt": start_time,
+            "endedAt": int(time.time() * 1000),
+            "durationMinutes": elapsed_minutes
+        })
+        
         save_data(data_store, username)
 
 def get_total_time(node_id, nodes):
