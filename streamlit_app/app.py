@@ -248,27 +248,42 @@ def get_ancestor_objective(node_id, nodes):
 
 @st.dialog("📊 Weekly Work Report", width="large")
 def render_report_dialog(data, username):
-    # Enforce RTL Layout for this dialog
-    st.markdown("""
-        <style>
-        div[role="dialog"] {
-            direction: rtl;
-            text-align: right;
-        }
-        /* Ensure specific elements inherit or enforce RTL */
-        div[role="dialog"] .stMarkdown, div[role="dialog"] p, 
-        div[role="dialog"] h1, div[role="dialog"] h2, div[role="dialog"] h3,
-        div[role="dialog"] .stMetricValue, div[role="dialog"] .stMetricLabel {
-            direction: rtl;
-            text-align: right;
-            font-family: 'Vazirmatn', sans-serif !important;
-        }
-        /* Align columns content to right */
-        div[role="dialog"] [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
-            direction: rtl; 
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    # Initialize direction state if not set
+    if "report_direction" not in st.session_state:
+        st.session_state.report_direction = "RTL"
+        
+    # Toggle for direction
+    c_toggle, c_rest = st.columns([1, 4])
+    with c_toggle:
+        is_rtl = st.session_state.report_direction == "RTL"
+        new_is_rtl = st.toggle("RTL Layout", value=is_rtl)
+        if new_is_rtl != is_rtl:
+             st.session_state.report_direction = "RTL" if new_is_rtl else "LTR"
+             st.rerun()
+
+    # Enforce RTL Layout for this dialog Only if selected
+    if st.session_state.report_direction == "RTL":
+        st.markdown("""
+            <style>
+            div[role="dialog"] {
+                direction: rtl;
+                text-align: right;
+            }
+            /* Ensure specific elements inherit or enforce RTL */
+            div[role="dialog"] .stMarkdown, div[role="dialog"] p, 
+            div[role="dialog"] h1, div[role="dialog"] h2, div[role="dialog"] h3,
+            div[role="dialog"] .stMetricValue, div[role="dialog"] .stMetricLabel {
+                direction: rtl;
+                text-align: right;
+                font-family: 'Vazirmatn', sans-serif !important;
+            }
+            /* Align columns content to right */
+            div[role="dialog"] [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"] {
+                direction: rtl; 
+            }
+            </style>
+        """, unsafe_allow_html=True)
+    
     st.caption("Tasks with work recorded in the last 7 days.")
     
     now = time.time() * 1000
