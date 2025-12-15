@@ -246,8 +246,8 @@ def get_ancestor_objective(node_id, nodes):
     
     return "Other / No Objective"
 
-@st.dialog("📊 Weekly Work Report", width="large")
-def render_report_dialog(data, username):
+@st.fragment
+def render_report_content(data, username):
     # Initialize direction state if not set
     if "report_direction" not in st.session_state:
         st.session_state.report_direction = "RTL"
@@ -407,61 +407,86 @@ def render_report_dialog(data, username):
         for kr in krs:
             # Prepare Data
             title = kr.get("title", "Untitled")
-            an = kr.get("geminiAnalysis")
             
-            eff_score = "N/A"
-            eff_color = "grey"
-            
-            qual_score = "N/A" # Effectiveness
-            
-            fulfillment = "N/A"
-            
-            if an and isinstance(an, dict):
-                e_val = an.get('efficiency_score')
-                q_val = an.get('effectiveness_score')
-                o_val = an.get('overall_score')
-                
-                if e_val is not None: eff_score = f"{e_val}%"
-                if q_val is not None: qual_score = f"{q_val}%"
-                if o_val is not None: fulfillment = f"{o_val}%"
-            
-            # Render Row
+            # Render Row Layout
             c1, c2, c3, c4, c5 = st.columns([3, 1.5, 1.5, 1.5, 1])
             
             c1.markdown(f"{title}")
-            c2.markdown(eff_score)
-            c3.markdown(qual_score)
-            c4.markdown(f"**{fulfillment}**")
             
-            if c5.button("🔄", key=f"upd_kr_{kr['id']}", help="Update Analysis"):
+            # Placeholders for dynamic updates
+            p_eff = c2.empty()
+            p_qual = c3.empty()
+            p_full = c4.empty()
+            
+            # Action Button
+            do_update = c5.button("🔄", key=f"upd_kr_{kr['id']}", help="Update Analysis")
+            
+            # Row Separator
+            st.markdown("<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>", unsafe_allow_html=True)
+            
+            # Details Placeholder
+            p_details = st.empty()
+
+            # Helper to render current state to placeholders
+            def render_kr_state(node_data):
+                an = node_data.get("geminiAnalysis")
+                eff_score = "N/A"
+                qual_score = "N/A"
+                fulfillment = "N/A"
+                
+                if an and isinstance(an, dict):
+                    e_val = an.get('efficiency_score')
+                    q_val = an.get('effectiveness_score')
+                    o_val = an.get('overall_score')
+                    
+                    if e_val is not None: eff_score = f"{e_val}%"
+                    if q_val is not None: qual_score = f"{q_val}%"
+                    if o_val is not None: fulfillment = f"{o_val}%"
+
+                p_eff.markdown(eff_score)
+                p_qual.markdown(qual_score)
+                p_full.markdown(f"**{fulfillment}**")
+                
+                # Render Details
+                with p_details.container():
+                     if an and isinstance(an, dict):
+                         with st.expander("📝 Analysis Details"):
+                              if an.get('summary'):
+                                   st.markdown(f"**Executive Summary:** {an.get('summary')}")
+                              
+                              c_d1, c_d2 = st.columns(2)
+                              with c_d1:
+                                   if an.get('gap_analysis'):
+                                        st.markdown(f"**Gap Analysis:**\n{an.get('gap_analysis')}")
+                              with c_d2:
+                                   if an.get('quality_assessment'):
+                                        st.markdown(f"**Quality Assessment:**\n{an.get('quality_assessment')}")
+
+            # Initial Render
+            render_kr_state(kr)
+            
+            # Handle Update
+            if do_update:
                 with st.spinner("Analyzing..."):
                     res = analyze_node(kr['id'], data["nodes"])
                     if "error" in res:
                         st.error(res["error"])
                     else:
+                        # Update Data
                         update_node(data, kr['id'], {"geminiAnalysis": res}, username)
-                        st.rerun()
-            
-            st.markdown("<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>", unsafe_allow_html=True)
-            
-            # Details Expander
-            if an and isinstance(an, dict):
-                 with st.expander("📝 Analysis Details"):
-                      if an.get('summary'):
-                           st.markdown(f"**Executive Summary:** {an.get('summary')}")
-                      
-                      c_d1, c_d2 = st.columns(2)
-                      with c_d1:
-                           if an.get('gap_analysis'):
-                                st.markdown(f"**Gap Analysis:**\n{an.get('gap_analysis')}")
-                      with c_d2:
-                           if an.get('quality_assessment'):
-                                st.markdown(f"**Quality Assessment:**\n{an.get('quality_assessment')}")
+                        # Update UI immediately via placeholders (No Rerun)
+                        kr["geminiAnalysis"] = res # Update local var for rendering
+                        render_kr_state(kr)
+
+@st.dialog("📊 Weekly Work Report", width="large")
+def render_report_dialog(data, username):
+    render_report_content(data, username)
 
 @st.dialog("Inspect & Edit")
 def render_inspector_dialog(node_id, data, username):
     render_inspector_content(node_id, data, username)
 
+@st.fragment
 def render_inspector_content(node_id, data, username):
     node = data["nodes"].get(node_id)
     if not node:
@@ -482,11 +507,12 @@ def render_inspector_content(node_id, data, username):
         
         col1, col2 = st.columns(2)
         with col1:
+            p_prog_container = st.empty()
             if has_children:
-                 st.metric("Progress (Calculated)", value=f"{progress}%")
+                 p_prog_container.metric("Progress (Calculated)", value=f"{progress}%")
                  new_progress = progress 
             else:
-                 new_progress = st.slider("Progress (Manual)", 0, 100, value=progress)
+                 new_progress = p_prog_container.slider("Progress (Manual)", 0, 100, value=progress)
         
         with col2:
             current_index = TYPES.index(node_type) if node_type in TYPES else 0
@@ -542,7 +568,9 @@ def render_inspector_content(node_id, data, username):
                      update_node(data, node_id, {
                          "geminiAnalysis": res # Store the whole dict
                      }, username)
-                     st.rerun()
+                     
+                     # Update local node object for immediate rendering
+                     node["geminiAnalysis"] = res
         
         analysis = node.get("geminiAnalysis")
         if analysis and isinstance(analysis, dict):
