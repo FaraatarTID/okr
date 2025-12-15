@@ -326,19 +326,22 @@ def render_report_content(data, username, mode="Weekly"):
         st.session_state.report_direction = "RTL"
         
     # Toggle for direction
-    # Toggle for direction
-    c_toggle, c_rest = st.columns([2, 3])
-    with c_toggle:
+    c_label, c_pills, c_rest = st.columns([1.2, 1.5, 5])
+    with c_label:
+        st.markdown("<p style='padding-top: 10px; font-weight: bold; white-space: nowrap;'>Page Layout</p>", unsafe_allow_html=True)
+    with c_pills:
         new_dir = st.pills(
             "Page Layout",
             options=["LTR", "RTL"],
             default=st.session_state.report_direction,
             selection_mode="single",
-             key=f"layout_pills_{mode}" # Unique key per mode
+            key=f"layout_pills_{mode}", # Unique key per mode
+            label_visibility="collapsed"
         )
-        if new_dir and new_dir != st.session_state.report_direction:
-             st.session_state.report_direction = new_dir
-             st.rerun()
+        
+    if new_dir and new_dir != st.session_state.report_direction:
+            st.session_state.report_direction = new_dir
+            st.rerun()
 
     # Enforce RTL Layout for this dialog Only if selected
     if st.session_state.report_direction == "RTL":
@@ -377,6 +380,7 @@ def render_report_content(data, username, mode="Weekly"):
         start_time = now - (7 * 24 * 60 * 60 * 1000)
         period_label = "Last 7 Days"
 
+    # Header with Close Button
     st.caption(f"Tasks with work recorded for: {mode} ({period_label})")
     
     report_items = []
@@ -432,7 +436,10 @@ def render_report_content(data, username, mode="Weekly"):
         # Only include key_results filter for PDF if mode is Weekly
         pdf_krs = krs if mode == "Weekly" else []
         
-        pdf_buffer = generate_weekly_pdf_v2(report_items, objective_stats, format_time(total), pdf_krs, st.session_state.report_direction)
+        # Determine Title
+        pdf_title = "Daily Work Report" if mode == "Daily" else "Weekly Work Report"
+        
+        pdf_buffer = generate_weekly_pdf_v2(report_items, objective_stats, format_time(total), pdf_krs, st.session_state.report_direction, title=pdf_title, time_label=period_label)
         
         if pdf_buffer:
              st.download_button(
@@ -1004,12 +1011,18 @@ def render_app(username):
     dialog_active = False
 
     if st.sidebar.button("📊 Weekly Report"):
-        render_report_dialog(data, username, mode="Weekly")
-        dialog_active = True
+        st.session_state.active_report_mode = "Weekly"
+        # Clear others
+        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        st.rerun()
         
     if st.sidebar.button("📅 Daily Report"):
-        render_report_dialog(data, username, mode="Daily")
-        dialog_active = True
+        st.session_state.active_report_mode = "Daily"
+        # Clear others
+        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        st.rerun()
     
     # Sidebar Utilities (Export)
     with st.sidebar.expander("Backup"):
@@ -1037,11 +1050,14 @@ def render_app(username):
     render_level(data, username)
 
     # Persistent Dialog Checks - Only if no other dialog is active
+    # (Though Sidebar buttons act as triggers, if we use them to set state, we fall through here)
     if not dialog_active:
         if "active_timer_node_id" in st.session_state:
             render_timer_dialog(st.session_state.active_timer_node_id, data, username)
         elif "active_inspector_id" in st.session_state:
             render_inspector_dialog(st.session_state.active_inspector_id, data, username)
+        elif "active_report_mode" in st.session_state:
+            render_report_dialog(data, username, mode=st.session_state.active_report_mode)
 
 def main():
     if "username" not in st.session_state:

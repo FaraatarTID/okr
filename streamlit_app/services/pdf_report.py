@@ -4,7 +4,7 @@ import datetime
 import os
 import sys
 
-def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, direction="RTL"):
+def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
     """
     Generates a PDF for the weekly work report using pdfkit (wkhtmltopdf).
     Returns: BytesIO object containing the PDF data.
@@ -79,12 +79,12 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     </head>
     <body>
         <div id="header">
-            <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">Weekly Work Report</h1>
+            <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{title}</h1>
             <p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
         </div>
 
         <div class="total-box">
-            Total Time (Last 7 Days): {total_time_str}
+            Total Time ({time_label}): {total_time_str}
         </div>
 
         <h3>Work Log</h3>
