@@ -29,12 +29,12 @@ CHILD_TYPE_MAP = {
 }
 
 TYPE_ICONS = {
-    "GOAL": "🎯",
-    "STRATEGY": "🚀",
-    "OBJECTIVE": "📍",
-    "KEY_RESULT": "📈",
-    "INITIATIVE": "💡",
-    "TASK": "✅"
+    "GOAL": "🏁",
+    "STRATEGY": "♟️",
+    "OBJECTIVE": "🎯",
+    "KEY_RESULT": "📊",
+    "INITIATIVE": "⚡",
+    "TASK": "📋"
 }
 
 # Colors for mind map visualization
@@ -197,7 +197,6 @@ def render_timer_content(node_id, data, username):
     time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
     
     st.markdown(f"<div class='timer-task-title'>{node.get('title', 'Unknown Task')}</div>", unsafe_allow_html=True)
-    st.markdown(f"<div class='timer-subtext'>Focusing on your goals...</div>", unsafe_allow_html=True)
     st.markdown(f"<div class='timer-display'>{time_str}</div>", unsafe_allow_html=True)
     
     # Summary Input
@@ -206,14 +205,14 @@ def render_timer_content(node_id, data, username):
     # Controls
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("⏹️ Stop & Save", key=f"stop_dlg_{node_id}", use_container_width=True, type="primary"):
+        if st.button("Stop & Save", icon=":material/stop_circle:", key=f"stop_dlg_{node_id}", use_container_width=True, type="primary"):
             stop_timer(data, node_id, username, summary=summary)
             if "active_timer_node_id" in st.session_state:
                 del st.session_state.active_timer_node_id
             st.rerun() 
             
     with col2:
-         if st.button("🔽 Minimize", key=f"min_dlg_{node_id}", use_container_width=True):
+         if st.button("Minimize", icon=":material/minimize:", key=f"min_dlg_{node_id}", use_container_width=True):
              if "active_timer_node_id" in st.session_state:
                  del st.session_state.active_timer_node_id
              st.rerun()
@@ -639,16 +638,16 @@ def render_inspector_content(node_id, data, username):
                      elapsed = int((time.time() * 1000 - start_ts) / 60000)
                      st.info(f"Timer Running: {elapsed}m")
                      c_act1, c_act2 = st.columns(2)
-                     if c_act1.button("Open Timer UI"):
+                     if c_act1.button("Open Timer", icon=":material/timer:"):
                          st.session_state.active_timer_node_id = node_id
                          st.rerun()
-                     if c_act2.button("⏹️ Stop"):
+                     if c_act2.button("Stop", icon=":material/stop_circle:"):
                          stop_timer(data, node_id, username)
                          if "active_timer_node_id" in st.session_state:
                              del st.session_state.active_timer_node_id
                          st.rerun()
                 else:
-                     if st.button("▶️ Start Timer"):
+                     if st.button("Start Timer", icon=":material/play_circle:"):
                          start_timer(data, node_id, username)
                          st.session_state.active_timer_node_id = node_id
                          st.rerun()
@@ -783,7 +782,7 @@ def render_card(node_id, data, username):
     
     # CSS Frame
     with st.container(border=True):
-        c1, c2, c3 = st.columns([4, 1, 1])
+        c1, c2, c3 = st.columns([3, 1.5, 1.5])
         with c1:
             # Clickable Title => Navigate
             # Using a button that looks like title.
@@ -829,28 +828,28 @@ def render_card(node_id, data, username):
                  if is_running:
                      start_ts = node.get("timerStartedAt", 0)
                      elapsed = int((time.time() * 1000 - start_ts) / 60000)
-                     if st.button(f"⏳ Running ({elapsed}m)", key=f"open_timer_{node_id}", help="Click to view timer"):
+                     if st.button(f"Running ({elapsed}m)", icon=":material/timer:", key=f"open_timer_{node_id}", help="Click to view timer"):
                          st.session_state.active_timer_node_id = node_id
                          st.rerun()
                  else:
-                     if st.button("▶️", key=f"start_card_{node_id}", help="Start Timer"):
+                     if st.button("Start Timer", icon=":material/play_arrow:", key=f"start_card_{node_id}", help="Start Timer"):
                          start_timer(data, node_id, username)
                          st.session_state.active_timer_node_id = node_id
                          st.rerun()
              
-             if st.button("🔍", key=f"inspect_{node_id}", help="Inspect & Edit"):
+             if st.button("Inspect", icon=":material/search:", key=f"inspect_{node_id}", help="Inspect & Edit"):
                  render_inspector_dialog(node_id, data, username)
              
              # View Map button - only show if node has children
              if has_children:
-                 if st.button("🗺️", key=f"map_{node_id}", help="View Mind Map"):
+                 if st.button("Map", icon=":material/account_tree:", key=f"map_{node_id}", help="View Mind Map"):
                      render_mindmap_dialog(node_id, data)
                  
         with c3:
             # Navigation Button ("Open")
             # Only if not leaf
             if not is_leaf:
-                 if st.button("➡️", key=f"nav_{node_id}", help="Drill Down"):
+                 if st.button("Open", icon=":material/arrow_forward:", key=f"nav_{node_id}", help="Drill Down"):
                      navigate_to(node_id)
             elif node_type == "TASK":
                  # Maybe show something else? or Empty?
