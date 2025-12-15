@@ -61,11 +61,13 @@ def analyze_node(node_id, all_nodes):
         "efficiency_score": <number 0-100>,
         "effectiveness_score": <number 0-100>,
         "overall_score": <number 0-100 input weighted average>,
-        "gap_analysis": "<Concise explanation of what is missing to reach 100% fulfillment (in Persian)>",
-        "quality_assessment": "<Concise critique of the current tasks' quality (in Persian)>",
+        "gap_analysis": "<Concise explanation of what is missing to reach 100% fulfillment (in the SAME language as the Key Result Title)>",
+        "quality_assessment": "<Concise critique of the current tasks' quality (in the SAME language as the Key Result Title)>",
         "proposed_tasks": ["<New Task 1>", "<New Task 2>", ...],
-        "summary_persian": "<2 sentence executive summary in Persian>"
+        "summary": "<2 sentence executive summary (in the SAME language as the Key Result Title)>"
     }}
+    
+    IMPORTANT: Detect the language of the Key Result Title and Description. All generated text (gap_analysis, quality_assessment, summary, proposed_tasks) MUST be in that SAME language.
     
     Provide strictly valid JSON.
     """
@@ -81,8 +83,21 @@ def analyze_node(node_id, all_nodes):
             }
         )
         
+        # Validate response
+        if not response.text:
+            return {"error": "Gemini returned an empty response. This might be due to safety filters or service issues."}
+        
+        # Try to clean the response if it contains markdown code blocks
+        raw_text = response.text.strip()
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        if raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+            
         import json
-        data = json.loads(response.text)
+        data = json.loads(raw_text)
         
         return {
             "efficiency_score": data.get("efficiency_score", 0),
@@ -91,7 +106,7 @@ def analyze_node(node_id, all_nodes):
             "gap_analysis": data.get("gap_analysis", ""),
             "quality_assessment": data.get("quality_assessment", ""),
             "proposed_tasks": data.get("proposed_tasks", []),
-            "summary": data.get("summary_persian", "")
+            "summary": data.get("summary", "")
         }
     except Exception as e:
         return {"error": str(e)}
@@ -105,9 +120,7 @@ def suggest_initiative_title(task_title):
     Task: "{task_title}"
     
     Goal: Create a very short (2-4 words) General Initiative Title that would contain this task.
-    Language: Persian (Farsi).
-    Example:
-    Task: "Research Azure pricing" -> Initiative: "Infrastructure Planning" (but in Persian)
+    Language: The SAME language as the Task Title.
     
     Output: ONLY the Title String. No quotes.
     """
