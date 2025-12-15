@@ -32,7 +32,17 @@ def analyze_node(node_id, all_nodes):
         c_progress = child.get("progress", 0)
         c_status = "DONE" if c_progress == 100 else "IN PROGRESS"
         c_time = child.get("timeSpent", 0)
-        children_text += f"- [{c_type}] {c_title}\n  Description: {c_desc}\n  Status: {c_status} ({c_progress}%)\n  Time: {c_time}m\n"
+        
+        # Get recent work history
+        work_summ_text = ""
+        if "workLog" in child and child["workLog"]:
+            # Last 5 summaries
+            recent_logs = sorted(child["workLog"], key=lambda x: x.get("endedAt", 0), reverse=True)[:5]
+            summaries = [l.get("summary") for l in recent_logs if l.get("summary")]
+            if summaries:
+                work_summ_text = "\n  Recent Work: " + "; ".join(summaries)
+        
+        children_text += f"- [{c_type}] {c_title}\n  Description: {c_desc}\n  Status: {c_status} ({c_progress}%)\n  Time: {c_time}m{work_summ_text}\n"
 
     prompt = f"""
     You are an expert Strategic OKR Analyst. 
