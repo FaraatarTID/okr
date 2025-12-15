@@ -8,11 +8,13 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils.storage import load_data, save_data, add_node, delete_node, update_node, update_node_progress, export_data, import_data, start_timer, stop_timer, get_total_time
+from utils.styles import apply_custom_fonts
 
 # Import streamlit-agraph for mind map visualization
 from streamlit_agraph import agraph, Node, Edge, Config
 
 st.set_page_config(page_title="OKR Tracker", layout="wide")
+apply_custom_fonts()
 
 # Full hierarchy types
 TYPES = ["GOAL", "STRATEGY", "OBJECTIVE", "KEY_RESULT", "INITIATIVE", "TASK"]
