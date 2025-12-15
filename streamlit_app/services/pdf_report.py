@@ -97,8 +97,11 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
             <thead>
                 <tr>
                     <th>Task</th>
-                    <th style="width: 120px;">Date/Time</th>
-                    <th style="width: 80px;">Duration</th>
+                    <th style="width: 15%;">Objective</th>
+                    <th style="width: 15%;">Key Result</th>
+                    <th style="width: 100px;">Date/Time</th>
+                    <th style="width: 60px;">Dur</th>
+                    <th style="width: 25%;">Summary</th>
                 </tr>
             </thead>
             <tbody>
@@ -108,12 +111,18 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
             date_str = item.get('Date', '')
             time_str = item.get('Time', '')
             duration = item.get('Duration (m)', 0)
+            summary = item.get('Summary', '')
+            obj_title = item.get('Objective', '-')
+            kr_title = item.get('KeyResult', '-')
             
             html += f"""
                 <tr>
                     <td>{task_name}</td>
+                    <td style="color: #555;">{obj_title}</td>
+                    <td style="color: #555;">{kr_title}</td>
                     <td>{date_str} {time_str}</td>
                     <td>{duration}m</td>
+                    <td style="color: #555;">{summary}</td>
                 </tr>
             """
         html += """
@@ -247,6 +256,7 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     # Generate PDF
     options = {
         'page-size': 'A4',
+        'orientation': 'Landscape',
         'encoding': "UTF-8",
         'no-outline': None,
         'enable-local-file-access': None

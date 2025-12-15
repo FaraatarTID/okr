@@ -302,6 +302,23 @@ def get_ancestor_objective(node_id, nodes):
     
     return "Other / No Objective"
 
+def get_ancestor_key_result(node_id, nodes):
+    """
+    Traverse up the hierarchy to find the Key Result for a given node.
+    Returns the title of the Key Result, or "-".
+    """
+    current_id = node_id
+    while current_id:
+        node = nodes.get(current_id)
+        if not node: break
+        
+        if node.get("type") == "KEY_RESULT":
+            return node.get("title", "Untitled KR")
+        
+        current_id = node.get("parentId")
+    
+    return "-"
+
 @st.fragment
 def render_report_content(data, username):
     # Initialize direction state if not set
@@ -357,17 +374,21 @@ def render_report_content(data, username):
             # Check if log is within last week (based on end time)
             if log.get("endedAt", 0) >= one_week_ago:
                 duration = log.get("durationMinutes", 0)
+                # Aggregate by Objective
+                obj_title = get_ancestor_objective(nid, data["nodes"])
+                kr_title = get_ancestor_key_result(nid, data["nodes"])
+                
                 report_items.append({
                     "Task": node.get("title", "Untitled"),
                     "Type": node.get("type", "TASK"),
                     "Date": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%Y-%m-%d'),
                     "Time": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%H:%M'),
                     "Duration (m)": round(duration, 2),
-                    "Summary": log.get("summary", "") # Capture summary
+                    "Summary": log.get("summary", ""), # Capture summary
+                    "Objective": obj_title,
+                    "KeyResult": kr_title
                 })
                 
-                # Aggregate by Objective
-                obj_title = get_ancestor_objective(nid, data["nodes"])
                 objective_stats[obj_title] = objective_stats.get(obj_title, 0) + duration
     
     if not report_items:
@@ -412,29 +433,26 @@ def render_report_content(data, username):
     # st.dataframe(report_items, use_container_width=True)
     # Using HTML table to ensure font consistency
     if report_items:
-        table_html = """<table style="width:100%; border-collapse: collapse; font-family: 'Vazirmatn', sans-serif; font-size: 0.9em;">
+        table_html = """<table style="width:100%; border-collapse: collapse; font-family: 'Vazirmatn', sans-serif; font-size: 0.85em;">
             <thead>
                 <tr style="border-bottom: 2px solid #ddd; background-color: #f8f9fa;">
-                    <th style="padding: 8px; text-align: left;">Task</th>
+                    <th style="padding: 8px; text-align: left; width: 20%;">Task</th>
+                    <th style="padding: 8px; text-align: left; width: 15%;">Objective</th>
+                    <th style="padding: 8px; text-align: left; width: 15%;">Key Result</th>
                     <th style="padding: 8px; text-align: left;">Date</th>
-                    <th style="padding: 8px; text-align: right;">Duration</th>
-                    <th style="padding: 8px; text-align: left; width: 40%;">Summary</th>
+                    <th style="padding: 8px; text-align: right;">Time</th>
+                    <th style="padding: 8px; text-align: left; width: 25%;">Summary</th>
                 </tr>
             </thead>
             <tbody>"""
         for item in report_items:
-            # Find the log entry to get summary (we need to pass it or look it up again? efficiently, report_items constructed above)
-            # Wait, report_items loop above (lines 296-310) needs to include summary.
-            # I need to update that loop first or fetch it.
-            # Let's update the loop in a separate chunk or safely assume it's there if I update it? 
-            # I can't update non-contiguous simply. I should update the loop in `render_report_content` as well.
-            # But wait, looking at my chunks...
-            # I will assume I can update the loop in `render_report_content` in a separate chunk in this same call. 
             summary_text = item.get("Summary", "")
             
             table_html += f"""
                 <tr style="border-bottom: 1px solid #eee;">
                     <td style="padding: 8px;">{item['Task']}</td>
+                     <td style="padding: 8px; color: #555;">{item['Objective']}</td>
+                     <td style="padding: 8px; color: #555;">{item['KeyResult']}</td>
                     <td style="padding: 8px; white-space: nowrap;">{item['Date']} {item['Time']}</td>
                     <td style="padding: 8px; text-align: right;">{item['Duration (m)']}m</td>
                     <td style="padding: 8px; color: #555;">{summary_text}</td>
