@@ -24,7 +24,14 @@ def apply_custom_fonts():
         
         /* Ensure tooltips and other floating elements get it too if possible, 
            without breaking icons. */
-        .stTooltipHoverTarget, .stMarkdown, .stText {
+        /* Ensure tooltips and other floating elements get it too if possible, 
+           without breaking icons. */
+        .stTooltipHoverTarget, .stMarkdown, .stText, div[data-testid="stDialog"] {
+            font-family: 'Vazirmatn', sans-serif !important;
+        }
+
+        /* Force font on dataframes */
+        div[data-testid="stDataFrame"] *, div[data-testid="stTable"] * {
             font-family: 'Vazirmatn', sans-serif !important;
         }
 

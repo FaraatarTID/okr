@@ -228,6 +228,24 @@ def render_breadcrumbs(data):
 
 
 
+def get_ancestor_objective(node_id, nodes):
+    """
+    Traverse up the hierarchy to find the Objective for a given node.
+    Returns the title of the Objective, or "Other / No Objective".
+    """
+    current_id = node_id
+    while current_id:
+        node = nodes.get(current_id)
+        if not node:
+            break
+        
+        if node.get("type") == "OBJECTIVE":
+            return node.get("title", "Untitled Objective")
+            
+        current_id = node.get("parentId")
+    
+    return "Other / No Objective"
+
 @st.dialog("📊 Weekly Work Report", width="large")
 def render_report_dialog(data):
     st.caption("Tasks with work recorded in the last 7 days.")
@@ -236,6 +254,7 @@ def render_report_dialog(data):
     one_week_ago = now - (7 * 24 * 60 * 60 * 1000)
     
     report_items = []
+    objective_stats = {} # { "Objective Title": total_minutes }
     
     # Iterate all nodes
     for nid, node in data["nodes"].items():
@@ -245,13 +264,18 @@ def render_report_dialog(data):
         for log in logs:
             # Check if log is within last week (based on end time)
             if log.get("endedAt", 0) >= one_week_ago:
+                duration = log.get("durationMinutes", 0)
                 report_items.append({
                     "Task": node.get("title", "Untitled"),
                     "Type": node.get("type", "TASK"),
                     "Date": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%Y-%m-%d'),
                     "Time": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%H:%M'),
-                    "Duration (m)": round(log.get("durationMinutes", 0), 2)
+                    "Duration (m)": round(duration, 2)
                 })
+                
+                # Aggregate by Objective
+                obj_title = get_ancestor_objective(nid, data["nodes"])
+                objective_stats[obj_title] = objective_stats.get(obj_title, 0) + duration
     
     if not report_items:
         st.info("No work recorded in the last week.")
@@ -260,10 +284,64 @@ def render_report_dialog(data):
     # Sort by date desc
     report_items.sort(key=lambda x: x["Date"] + x["Time"], reverse=True)
     
-    st.dataframe(report_items, use_container_width=True)
+    # st.dataframe(report_items, use_container_width=True)
+    # Using HTML table to ensure font consistency
+    if report_items:
+        table_html = """<table style="width:100%; border-collapse: collapse; font-family: 'Vazirmatn', sans-serif; font-size: 0.9em;">
+            <thead>
+                <tr style="border-bottom: 2px solid #ddd; background-color: #f8f9fa;">
+                    <th style="padding: 8px; text-align: left;">Task</th>
+                    <th style="padding: 8px; text-align: left;">Date</th>
+                    <th style="padding: 8px; text-align: right;">Duration</th>
+                </tr>
+            </thead>
+            <tbody>"""
+        for item in report_items:
+            table_html += f"""
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 8px;">{item['Task']}</td>
+                    <td style="padding: 8px;">{item['Date']} {item['Time']}</td>
+                    <td style="padding: 8px; text-align: right;">{item['Duration (m)']}m</td>
+                </tr>"""
+        table_html += "</tbody></table>"
+        st.markdown(table_html, unsafe_allow_html=True)
+
     
     total = sum(item["Duration (m)"] for item in report_items)
     st.metric("Total Time (Last 7 Days)", format_time(total))
+    
+    st.markdown("---")
+    st.subheader("Time Distribution by Objective")
+    
+    # Prepare data for chart/table
+    obj_data = []
+    # Sort stats by minutes descending first
+    sorted_stats = sorted(objective_stats.items(), key=lambda item: item[1], reverse=True)
+    
+    # Using HTML table for objectives too
+    obj_table_html = """<table style="width:100%; border-collapse: collapse; font-family: 'Vazirmatn', sans-serif; font-size: 0.95em;">
+        <thead>
+            <tr style="border-bottom: 2px solid #ddd; background-color: #f8f9fa;">
+                <th style="padding: 8px; text-align: left;">Objective</th>
+                <th style="padding: 8px; text-align: right;">Time</th>
+                <th style="padding: 8px; text-align: right;">%</th>
+            </tr>
+        </thead>
+        <tbody>"""
+    
+    for title, mins in sorted_stats:
+        percentage = (mins / total * 100) if total > 0 else 0
+        p_str = f"{percentage:.1f}%"
+        t_str = format_time(mins)
+        
+        obj_table_html += f"""
+            <tr style="border-bottom: 1px solid #eee;">
+                <td style="padding: 8px;">{title}</td>
+                <td style="padding: 8px; text-align: right;">{t_str}</td>
+                <td style="padding: 8px; text-align: right;">{p_str}</td>
+            </tr>"""
+    obj_table_html += "</tbody></table>"
+    st.markdown(obj_table_html, unsafe_allow_html=True)
 
 @st.dialog("Inspect & Edit")
 def render_inspector_dialog(node_id, data, username):
