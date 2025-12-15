@@ -338,16 +338,69 @@ def render_inspector_content(node_id, data, username):
     if node_type == "KEY_RESULT":
         from services.gemini import analyze_node
         st.markdown("---")
-        if st.button("✨ Gemini Analysis"):
-             with st.spinner("Analyzing..."):
+        st.markdown("### 🧠 AI Strategic Analysis")
+        
+        if st.button("✨ Run Analysis", type="primary"):
+             with st.spinner("Consulting Gemini Strategy Agent..."):
                  res = analyze_node(node_id, data["nodes"])
                  if "error" in res: st.error(res["error"])
                  else:
-                     update_node(data, node_id, {"geminiAnalysis": res["analysis"], "geminiScore": res["score"]}, username)
+                     # Flatten result into node for storage
+                     update_node(data, node_id, {
+                         "geminiAnalysis": res # Store the whole dict
+                     }, username)
                      st.rerun()
         
-        if node.get("geminiAnalysis"):
-            st.info(node["geminiAnalysis"])
+        analysis = node.get("geminiAnalysis")
+        if analysis and isinstance(analysis, dict):
+            # Display new format
+            st.markdown("#### Scorecard")
+            col_s1, col_s2, col_s3 = st.columns(3)
+            col_s1.metric("Efficiency", f"{analysis.get('efficiency_score', 0)}%", help="Completeness of work scope vs required")
+            col_s2.metric("Effectiveness", f"{analysis.get('effectiveness_score', 0)}%", help="Quality of strategy and methods")
+            col_s3.metric("Overall", f"{analysis.get('overall_score', 0)}%")
+            
+            st.info(f"**Executive Summary:** {analysis.get('summary', 'N/A')}")
+            
+            with st.expander("Gap Analysis & Quality assessment", expanded=True):
+                st.markdown(f"**Gap Analysis:**\n{analysis.get('gap_analysis', 'N/A')}")
+                st.markdown(f"**Quality Assessment:**\n{analysis.get('quality_assessment', 'N/A')}")
+            
+            if analysis.get("proposed_tasks"):
+                st.markdown("#### 🚀 Proposed Missing Tasks")
+                for task in analysis["proposed_tasks"]:
+                    c1, c2 = st.columns([0.8, 0.2])
+                    c1.markdown(f"- {task}")
+                    if c2.button("Add", key=f"add_prop_{task[:10]}_{node_id}"):
+                         # 1. Find or Create "AI Actions" Initiative
+                         ai_init_id = None
+                         children_ids = node.get("children", [])
+                         for cid in children_ids:
+                             child = data["nodes"].get(cid)
+                             # Robust search: title starts with the prefix or is the legacy exact name
+                             child_title = child.get("title", "")
+                             if child and (child_title == "🤖 AI Actions" or child_title.startswith("🤖 AI Actions:")):
+                                 ai_init_id = cid
+                                 break
+                         
+                         if not ai_init_id:
+                             # Generate meaningful title
+                             from services.gemini import suggest_initiative_title
+                             with st.spinner("Generating initiative name..."):
+                                 topic = suggest_initiative_title(task)
+                                 
+                             init_title = f"🤖 AI Actions: {topic}"
+                             # Create it
+                             ai_init_id = add_node(data, node_id, "INITIATIVE", init_title, "Container for AI proposed tasks", username)
+                         
+                         # 2. Add Task under it
+                         add_node(data, ai_init_id, "TASK", task, "AI Proposed Task", username)
+                         st.toast(f"Added task to '{data['nodes'][ai_init_id]['title']}': {task}")
+                         st.rerun()
+
+        elif analysis and isinstance(analysis, str):
+             # Legacy content fallback
+             st.info(analysis)
 
     st.markdown("---")
     if st.button("🗑️ Delete Entity", type="primary"):
