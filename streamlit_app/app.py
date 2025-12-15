@@ -7,7 +7,7 @@ from datetime import datetime
 # Add current directory to path so we can import modules if running from outside
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from utils.storage import load_data, save_data, add_node, delete_node, update_node, update_node_progress, export_data, import_data, start_timer, stop_timer, get_total_time
+from utils.storage import load_data, save_data, add_node, delete_node, update_node, update_node_progress, export_data, import_data, start_timer, stop_timer, get_total_time, delete_work_log
 from utils.styles import apply_custom_fonts
 
 # Import streamlit-agraph for mind map visualization
@@ -161,6 +161,63 @@ if "nav_stack" not in st.session_state:
 
 # --- Components ---
 
+@st.dialog("⏱️ Focus Timer")
+def render_timer_dialog(node_id, data, username):
+    render_timer_content(node_id, data, username)
+
+@st.fragment(run_every=1)
+def render_timer_content(node_id, data, username):
+    node = data["nodes"].get(node_id)
+    if not node:
+        st.error("Task not found!")
+        time.sleep(2)
+        if "active_timer_node_id" in st.session_state:
+            del st.session_state.active_timer_node_id
+        st.rerun()
+        return
+
+    # Check if timer is still running
+    start_ts = node.get("timerStartedAt")
+    if not start_ts:
+        st.success("Timer stopped successfully!")
+        if st.button("Close"):
+             if "active_timer_node_id" in st.session_state:
+                 del st.session_state.active_timer_node_id
+             st.rerun()
+        return
+
+    # Calculate elapsed
+    elapsed_ms = (time.time() * 1000) - start_ts
+    elapsed_sec = int(elapsed_ms / 1000)
+    
+    hours = elapsed_sec // 3600
+    minutes = (elapsed_sec % 3600) // 60
+    seconds = elapsed_sec % 60
+    
+    time_str = f"{hours:02}:{minutes:02}:{seconds:02}"
+    
+    st.markdown(f"<div class='timer-task-title'>{node.get('title', 'Unknown Task')}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='timer-subtext'>Focusing on your goals...</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='timer-display'>{time_str}</div>", unsafe_allow_html=True)
+    
+    # Summary Input
+    summary = st.text_area("What did you work on?", placeholder="Brief summary of your session...", height=80, key=f"sum_{node_id}")
+
+    # Controls
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⏹️ Stop & Save", key=f"stop_dlg_{node_id}", use_container_width=True, type="primary"):
+            stop_timer(data, node_id, username, summary=summary)
+            if "active_timer_node_id" in st.session_state:
+                del st.session_state.active_timer_node_id
+            st.rerun() 
+            
+    with col2:
+         if st.button("🔽 Minimize", key=f"min_dlg_{node_id}", use_container_width=True):
+             if "active_timer_node_id" in st.session_state:
+                 del st.session_state.active_timer_node_id
+             st.rerun()
+
 def render_login():
     st.markdown("## 🔐 Login to OKR Tracker")
     st.info("👋 Welcome! Please enter your **Account Name** to access your data.")
@@ -306,7 +363,8 @@ def render_report_content(data, username):
                     "Type": node.get("type", "TASK"),
                     "Date": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%Y-%m-%d'),
                     "Time": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%H:%M'),
-                    "Duration (m)": round(duration, 2)
+                    "Duration (m)": round(duration, 2),
+                    "Summary": log.get("summary", "") # Capture summary
                 })
                 
                 # Aggregate by Objective
@@ -361,15 +419,26 @@ def render_report_content(data, username):
                     <th style="padding: 8px; text-align: left;">Task</th>
                     <th style="padding: 8px; text-align: left;">Date</th>
                     <th style="padding: 8px; text-align: right;">Duration</th>
+                    <th style="padding: 8px; text-align: left; width: 40%;">Summary</th>
                 </tr>
             </thead>
             <tbody>"""
         for item in report_items:
+            # Find the log entry to get summary (we need to pass it or look it up again? efficiently, report_items constructed above)
+            # Wait, report_items loop above (lines 296-310) needs to include summary.
+            # I need to update that loop first or fetch it.
+            # Let's update the loop in a separate chunk or safely assume it's there if I update it? 
+            # I can't update non-contiguous simply. I should update the loop in `render_report_content` as well.
+            # But wait, looking at my chunks...
+            # I will assume I can update the loop in `render_report_content` in a separate chunk in this same call. 
+            summary_text = item.get("Summary", "")
+            
             table_html += f"""
                 <tr style="border-bottom: 1px solid #eee;">
                     <td style="padding: 8px;">{item['Task']}</td>
-                    <td style="padding: 8px;">{item['Date']} {item['Time']}</td>
+                    <td style="padding: 8px; white-space: nowrap;">{item['Date']} {item['Time']}</td>
                     <td style="padding: 8px; text-align: right;">{item['Duration (m)']}m</td>
+                    <td style="padding: 8px; color: #555;">{summary_text}</td>
                 </tr>"""
         table_html += "</tbody></table>"
         st.markdown(table_html, unsafe_allow_html=True)
@@ -512,7 +581,7 @@ def render_report_content(data, username):
 def render_report_dialog(data, username):
     render_report_content(data, username)
 
-@st.dialog("Inspect & Edit")
+@st.dialog("Inspect & Edit", width="large")
 def render_inspector_dialog(node_id, data, username):
     render_inspector_content(node_id, data, username)
 
@@ -568,13 +637,20 @@ def render_inspector_content(node_id, data, username):
                 if is_running:
                      start_ts = node.get("timerStartedAt")
                      elapsed = int((time.time() * 1000 - start_ts) / 60000)
-                     st.warning(f"Running: {elapsed}m")
-                     if st.button("⏹️ Stop Timer"):
+                     st.info(f"Timer Running: {elapsed}m")
+                     c_act1, c_act2 = st.columns(2)
+                     if c_act1.button("Open Timer UI"):
+                         st.session_state.active_timer_node_id = node_id
+                         st.rerun()
+                     if c_act2.button("⏹️ Stop"):
                          stop_timer(data, node_id, username)
+                         if "active_timer_node_id" in st.session_state:
+                             del st.session_state.active_timer_node_id
                          st.rerun()
                 else:
                      if st.button("▶️ Start Timer"):
                          start_timer(data, node_id, username)
+                         st.session_state.active_timer_node_id = node_id
                          st.rerun()
              else:
                  st.caption("(Timer available on Tasks)")
@@ -582,6 +658,38 @@ def render_inspector_content(node_id, data, username):
         with col_t2:
             total = get_total_time(node_id, data["nodes"])
             st.metric("Total Time", format_time(total))
+
+     # Work History (Tasks)
+    if node_type == "TASK":
+         st.markdown("---")
+         st.markdown("### 📜 Work History")
+         work_log = node.get("workLog", [])
+         if work_log:
+             # Sort by date desc
+             work_log_sorted = sorted(work_log, key=lambda x: x.get("endedAt", 0), reverse=True)
+             
+             # Header
+             c1, c2, c3, c4 = st.columns([2, 1, 3, 0.5])
+             c1.markdown("**Date**")
+             c2.markdown("**Duration**")
+             c3.markdown("**Summary**")
+             
+             for log in work_log_sorted:
+                 date_str = datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%Y-%m-%d %H:%M')
+                 dur = f"{round(log.get('durationMinutes', 0), 1)}m"
+                 summ = log.get("summary", "") or "-"
+                 started_at = log.get("startedAt")
+                 
+                 c1, c2, c3, c4 = st.columns([2, 1, 3, 0.5])
+                 c1.markdown(date_str)
+                 c2.markdown(dur)
+                 c3.markdown(f"<span style='color: #666'>{summ}</span>", unsafe_allow_html=True)
+                 
+                 if c4.button("🗑️", key=f"del_log_{node_id}_{started_at}", help="Delete this entry", type="tertiary"):
+                     delete_work_log(data, node_id, started_at, username)
+                     st.rerun()
+         else:
+             st.info("No work recorded yet.")
 
     # AI Analysis (Key Result)
     if node_type == "KEY_RESULT":
@@ -719,12 +827,15 @@ def render_card(node_id, data, username):
              if node_type == "TASK":
                  is_running = node.get("timerStartedAt") is not None
                  if is_running:
-                     if st.button("⏹️", key=f"stop_card_{node_id}", help="Stop Timer"):
-                         stop_timer(data, node_id, username)
+                     start_ts = node.get("timerStartedAt", 0)
+                     elapsed = int((time.time() * 1000 - start_ts) / 60000)
+                     if st.button(f"⏳ Running ({elapsed}m)", key=f"open_timer_{node_id}", help="Click to view timer"):
+                         st.session_state.active_timer_node_id = node_id
                          st.rerun()
                  else:
                      if st.button("▶️", key=f"start_card_{node_id}", help="Start Timer"):
                          start_timer(data, node_id, username)
+                         st.session_state.active_timer_node_id = node_id
                          st.rerun()
              
              if st.button("🔍", key=f"inspect_{node_id}", help="Inspect & Edit"):
@@ -863,6 +974,10 @@ def render_app(username):
                  st.caption("Add 'gcp_service_account' to secrets.toml")
 
     render_level(data, username)
+
+    # Persistent Timer Dialog Check
+    if "active_timer_node_id" in st.session_state:
+        render_timer_dialog(st.session_state.active_timer_node_id, data, username)
 
 def main():
     if "username" not in st.session_state:
