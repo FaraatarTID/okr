@@ -596,8 +596,16 @@ def render_inspector_content(node_id, data, username):
     node_type = node.get('type', 'GOAL')
     has_children = len(node.get("children", [])) > 0
     
-    # Header
-    st.markdown(f"### {TYPE_ICONS.get(node_type, '')} {title}")
+    node_type = node.get('type', 'GOAL')
+    has_children = len(node.get("children", [])) > 0
+    
+    # Header logic with Close
+    c_head, c_close = st.columns([0.9, 0.1])
+    c_head.markdown(f"### {TYPE_ICONS.get(node_type, '')} {title}")
+    if c_close.button("", icon=":material/close:", key=f"close_insp_{node_id}"):
+        if "active_inspector_id" in st.session_state:
+            del st.session_state.active_inspector_id
+        st.rerun()
     
     with st.form(key=f"edit_{node_id}"):
         new_title = st.text_input("Title", value=title)
@@ -640,6 +648,7 @@ def render_inspector_content(node_id, data, username):
                      c_act1, c_act2 = st.columns(2)
                      if c_act1.button("Open Timer", icon=":material/timer:"):
                          st.session_state.active_timer_node_id = node_id
+                         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                          st.rerun()
                      if c_act2.button("Stop", icon=":material/stop_circle:"):
                          stop_timer(data, node_id, username)
@@ -650,6 +659,7 @@ def render_inspector_content(node_id, data, username):
                      if st.button("Start Timer", icon=":material/play_circle:"):
                          start_timer(data, node_id, username)
                          st.session_state.active_timer_node_id = node_id
+                         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                          st.rerun()
              else:
                  st.caption("(Timer available on Tasks)")
@@ -830,15 +840,19 @@ def render_card(node_id, data, username):
                      elapsed = int((time.time() * 1000 - start_ts) / 60000)
                      if st.button(f"Running ({elapsed}m)", icon=":material/timer:", key=f"open_timer_{node_id}", help="Click to view timer"):
                          st.session_state.active_timer_node_id = node_id
+                         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                          st.rerun()
                  else:
                      if st.button("Start Timer", icon=":material/play_arrow:", key=f"start_card_{node_id}", help="Start Timer"):
                          start_timer(data, node_id, username)
                          st.session_state.active_timer_node_id = node_id
+                         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                          st.rerun()
              
              if st.button("Inspect", icon=":material/search:", key=f"inspect_{node_id}", help="Inspect & Edit"):
-                 render_inspector_dialog(node_id, data, username)
+                 st.session_state.active_inspector_id = node_id
+                 if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
+                 st.rerun()
              
              # View Map button - only show if node has children
              if has_children:
@@ -946,8 +960,11 @@ def render_app(username):
 
     data = load_data(username)
     
+    dialog_active = False
+
     if st.sidebar.button("📊 Weekly Report"):
         render_report_dialog(data, username)
+        dialog_active = True
     
     # Sidebar Utilities (Export)
     with st.sidebar.expander("Backup"):
@@ -974,9 +991,12 @@ def render_app(username):
 
     render_level(data, username)
 
-    # Persistent Timer Dialog Check
-    if "active_timer_node_id" in st.session_state:
-        render_timer_dialog(st.session_state.active_timer_node_id, data, username)
+    # Persistent Dialog Checks - Only if no other dialog is active
+    if not dialog_active:
+        if "active_timer_node_id" in st.session_state:
+            render_timer_dialog(st.session_state.active_timer_node_id, data, username)
+        elif "active_inspector_id" in st.session_state:
+            render_inspector_dialog(st.session_state.active_inspector_id, data, username)
 
 def main():
     if "username" not in st.session_state:
