@@ -4,3 +4,5 @@ python-dotenv
 gspread
 google-auth
 streamlit-agraph
+
+pdfkit
