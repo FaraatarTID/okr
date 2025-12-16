@@ -320,7 +320,92 @@ def get_ancestor_key_result(node_id, nodes):
     return "-"
 
 @st.fragment
-def render_report_content(data, username, mode="Weekly"):
+def render_report_content(data, username, mode="Weekly"): 
+    # 1. CSS: Hide native close button AND style our custom button as a circle
+    st.markdown("""
+        <style>
+        /* 1. Hide the Native Close Button */
+        div[role="dialog"] button[aria-label="Close"] {
+            display: none;
+        }
+
+        /* 2. Hide the Native Backdrop (the original close trigger) */
+        div[data-baseweb="modal-backdrop"] {
+            display: none;
+        }
+
+        /* 3. The Visual Background Layer 
+           - We use the modal container to paint the black screen.
+           - We set pointer-events: none so clicks pass through it (bypassing Streamlit's close listener).
+        */
+        div[data-baseweb="modal"] {
+            background-color: rgba(0, 0, 0, 0.5);
+            pointer-events: none; /* Look but don't touch */
+        }
+
+        /* 4. The "Invisible Click Shield" 
+           - We attach a massive invisible layer to the Dialog Box itself.
+           - We use huge negative margins to make it cover the whole screen.
+           - Because it is a child of "dialog", clicking it reports the target as "dialog", so Streamlit does NOT close.
+           - We set pointer-events: auto to CATCH the click so it doesn't fall through to the app.
+        */
+        div[role="dialog"]::before {
+            content: "";
+            position: absolute;
+            top: -500vh;
+            left: -500vw;
+            width: 1000vw;
+            height: 1000vh;
+            background: transparent; /* Invisible */
+            z-index: -1;             /* Behind the dialog content */
+            cursor: default;
+            pointer-events: auto;    /* Catch the click! */
+        }
+
+        /* 5. Ensure the Dialog Box is Interactive */
+        div[role="dialog"] {
+            overflow: visible !important; /* Allow the shield to extend outside */
+            pointer-events: auto;         /* Re-enable clicking inside the box */
+        }
+
+        /* 6. Style YOUR Custom "X" Button as a Circle */
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
+            border-radius: 50%;
+            border: 1px solid #e0e0e0;
+            width: 35px;
+            height: 35px;
+            padding: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            background-color: white; 
+        }
+        
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button:hover {
+            border-color: #ff4b4b;
+            color: #ff4b4b;
+            background-color: #fff5f5;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # 2. Header Layout: Caption on Left, Circle Button on Right
+    col_header, col_close = st.columns([9.2, 0.8])
+    
+    with col_header:
+        # Determine Period Label
+        now = time.time() * 1000
+        period_label = "Today" if mode == "Daily" else "Last 7 Days"
+        st.caption(f"Tasks with work recorded for: {mode} ({period_label})")
+
+    with col_close:
+        # The Circular Close Button
+        if st.button("", icon=":material/close:", key=f"close_report_circle_{mode}", type="secondary", help="Close"):
+            if "active_report_mode" in st.session_state:
+                del st.session_state.active_report_mode
+            st.rerun()
+
     # Initialize direction state if not set
     if "report_direction" not in st.session_state:
         st.session_state.report_direction = "RTL"
@@ -634,6 +719,75 @@ def render_inspector_dialog(node_id, data, username):
 
 @st.fragment
 def render_inspector_content(node_id, data, username):
+    # CSS: Hide native X and style YOUR EXISTING custom button as a circle
+    st.markdown("""
+        <style>
+        /* 1. Hide the Native Close Button */
+        div[role="dialog"] button[aria-label="Close"] {
+            display: none;
+        }
+
+        /* 2. Hide the Native Backdrop (the original close trigger) */
+        div[data-baseweb="modal-backdrop"] {
+            display: none;
+        }
+
+        /* 3. The Visual Background Layer 
+           - We use the modal container to paint the black screen.
+           - We set pointer-events: none so clicks pass through it (bypassing Streamlit's close listener on this element).
+        */
+        div[data-baseweb="modal"] {
+            background-color: rgba(0, 0, 0, 0.5);
+            pointer-events: none; /* Look but don't touch */
+        }
+
+        /* 4. The "Invisible Click Shield" 
+           - We attach a massive invisible layer to the Dialog Box itself.
+           - We use huge negative margins to make it cover the whole screen.
+           - Because it is a child of "dialog", clicking it reports the target as "dialog", so Streamlit does NOT close.
+           - We set pointer-events: auto to CATCH the click so it doesn't fall through to the app.
+        */
+        div[role="dialog"]::before {
+            content: "";
+            position: absolute;
+            top: -500vh;
+            left: -500vw;
+            width: 1000vw;
+            height: 1000vh;
+            background: transparent; /* Invisible */
+            z-index: -1;             /* Behind the dialog content */
+            cursor: default;
+            pointer-events: auto;    /* Catch the click! */
+        }
+
+        /* 5. Ensure the Dialog Box is Interactive */
+        div[role="dialog"] {
+            overflow: visible !important; /* Allow the shield to extend outside */
+            pointer-events: auto;         /* Re-enable clicking inside the box */
+        }
+
+        /* 6. Style YOUR Custom "X" Button as a Circle */
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
+            border-radius: 50%;
+            border: 1px solid #e0e0e0;
+            width: 35px;
+            height: 35px;
+            padding: 0 !important;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            background-color: white; 
+        }
+        
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button:hover {
+            border-color: #ff4b4b;
+            color: #ff4b4b;
+            background-color: #fff5f5;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     node = data["nodes"].get(node_id)
     if not node:
         st.error("Node not found")
@@ -648,7 +802,7 @@ def render_inspector_content(node_id, data, username):
     has_children = len(node.get("children", [])) > 0
     
     # Header logic with Close
-    c_head, c_close = st.columns([0.9, 0.1])
+    c_head, c_close = st.columns([0.92, 0.08])
     c_head.markdown(f"### {TYPE_ICONS.get(node_type, '')} {title}")
     if c_close.button("", icon=":material/close:", key=f"close_insp_{node_id}"):
         if "active_inspector_id" in st.session_state:
