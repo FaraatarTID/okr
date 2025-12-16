@@ -1,35 +1,46 @@
-import pdfkit
-import platform
+from weasyprint import HTML, CSS
 from io import BytesIO
 import datetime
 import os
-import sys
 
-def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
+
+def generate_weekly_pdf_v2(
+    report_items,
+    objective_stats,
+    total_time_str,
+    key_results,
+    direction="RTL",
+    title="Weekly Work Report",
+    time_label="Last 7 Days",
+):
     """
-    Generates a PDF for the weekly work report using pdfkit (wkhtmltopdf).
+    Generates a PDF for the weekly work report using WeasyPrint.
     Returns: BytesIO object containing the PDF data.
     """
-    
-    align = 'right' if direction == 'RTL' else 'left'
+
+    align = "right" if direction.upper() == "RTL" else "left"
     dir_attr = direction.lower()
-    
-    # Font path for @font-face
-    # wkhtmltopdf usually works best with absolute file paths for local assets
-    font_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Vazirmatn-Regular.ttf")
-    # Ensure forward slashes for CSS url
-    font_url = font_path.replace('\\', '/')
-    
+
+    # Absolute path to font (required for WeasyPrint)
+    base_dir = os.path.dirname(os.path.dirname(__file__))
+    font_path = os.path.join(
+        base_dir, "assets", "fonts", "Vazirmatn-Regular.ttf"
+    )
+
+    if not os.path.exists(font_path):
+        raise FileNotFoundError(f"Font not found: {font_path}")
+
     html = f"""
     <!DOCTYPE html>
     <html dir="{dir_attr}">
     <head>
-        <meta charset="UTF-8">
+        <meta charset="utf-8">
         <style>
-             @font-face {{
+            @font-face {{
                 font-family: 'Vazirmatn';
-                src: url('file:///{font_url}') format('truetype');
+                src: url('{font_path}');
             }}
+
             body {{
                 font-family: 'Vazirmatn', sans-serif;
                 font-size: 12px;
@@ -37,28 +48,31 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
                 text-align: {align};
                 padding: 2cm;
             }}
+
             h1, h2, h3 {{
                 color: #2c3e50;
                 margin-top: 20px;
                 margin-bottom: 10px;
             }}
+
             table {{
                 width: 100%;
                 border-collapse: collapse;
                 margin-bottom: 15px;
             }}
+
+            th, td {{
+                border: 1px solid #dee2e6;
+                padding: 8px;
+                text-align: {align};
+                vertical-align: top;
+            }}
+
             th {{
                 background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                padding: 8px;
                 font-weight: bold;
-                text-align: {align};
             }}
-            td {{
-                border: 1px solid #dee2e6;
-                padding: 8px;
-                text-align: {align};
-            }}
+
             .total-box {{
                 background-color: #e9ecef;
                 padding: 15px;
@@ -66,23 +80,25 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
                 margin: 20px 0;
                 font-size: 14px;
                 font-weight: bold;
-                text-align: {align};
             }}
+
             .footer {{
-                text-align: center;
-                color: #6c757d;
-                font-size: 10px;
                 position: fixed;
-                bottom: 20px;
-                width: 100%;
+                bottom: 1cm;
+                left: 0;
+                right: 0;
+                text-align: center;
+                font-size: 10px;
+                color: #6c757d;
             }}
         </style>
     </head>
     <body>
-        <div id="header">
-            <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{title}</h1>
-            <p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
-        </div>
+
+        <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">
+            {title}
+        </h1>
+        <p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
 
         <div class="total-box">
             Total Time ({time_label}): {total_time_str}
@@ -90,8 +106,10 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
 
         <h3>Work Log</h3>
     """
-    
-    # Table of Tasks
+
+    # ------------------------
+    # Work Log Table
+    # ------------------------
     if report_items:
         html += """
         <table>
@@ -100,51 +118,45 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
                     <th>Task</th>
                     <th style="width: 15%;">Objective</th>
                     <th style="width: 15%;">Key Result</th>
-                    <th style="width: 100px;">Date/Time</th>
+                    <th style="width: 120px;">Date/Time</th>
                     <th style="width: 60px;">Dur</th>
                     <th style="width: 25%;">Summary</th>
                 </tr>
             </thead>
             <tbody>
         """
+
         for item in report_items:
-            task_name = item.get('Task', 'Untitled')
-            date_str = item.get('Date', '')
-            time_str = item.get('Time', '')
-            duration = item.get('Duration (m)', 0)
-            summary = item.get('Summary', '')
-            obj_title = item.get('Objective', '-')
-            kr_title = item.get('KeyResult', '-')
-            
             html += f"""
-                <tr>
-                    <td>{task_name}</td>
-                    <td style="color: #555;">{obj_title}</td>
-                    <td style="color: #555;">{kr_title}</td>
-                    <td>{date_str} {time_str}</td>
-                    <td>{duration}m</td>
-                    <td style="color: #555;">{summary}</td>
-                </tr>
+            <tr>
+                <td>{item.get('Task', 'Untitled')}</td>
+                <td>{item.get('Objective', '-')}</td>
+                <td>{item.get('KeyResult', '-')}</td>
+                <td>{item.get('Date', '')} {item.get('Time', '')}</td>
+                <td>{item.get('Duration (m)', 0)}m</td>
+                <td>{item.get('Summary', '')}</td>
+            </tr>
             """
+
         html += """
             </tbody>
         </table>
         """
     else:
-        html += "<p>No work recorded in the last 7 days.</p>"
+        html += "<p>No work recorded in the selected period.</p>"
 
+    # ------------------------
     # Objective Stats
+    # ------------------------
     html += "<h3>Time Distribution by Objective</h3>"
-    
+
     if objective_stats:
-        sorted_stats = sorted(objective_stats.items(), key=lambda item: item[1], reverse=True)
-        total_mins = sum(v for k, v in objective_stats.items())
-        
+        total_mins = sum(objective_stats.values())
+
         def fmt(m):
             h = int(m // 60)
             mn = int(m % 60)
-            if h > 0: return f"{h}h {mn}m"
-            return f"{mn}m"
+            return f"{h}h {mn}m" if h else f"{mn}m"
 
         html += """
         <table>
@@ -157,17 +169,19 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
             </thead>
             <tbody>
         """
-        
-        for title, mins in sorted_stats:
-            pct = (mins / total_mins * 100) if total_mins > 0 else 0
-            # No reshaping needed for WebKit
+
+        for obj, mins in sorted(
+            objective_stats.items(), key=lambda x: x[1], reverse=True
+        ):
+            pct = (mins / total_mins * 100) if total_mins else 0
             html += f"""
-                <tr>
-                    <td>{title}</td>
-                    <td>{fmt(mins)}</td>
-                    <td>{pct:.1f}%</td>
-                </tr>
+            <tr>
+                <td>{obj}</td>
+                <td>{fmt(mins)}</td>
+                <td>{pct:.1f}%</td>
+            </tr>
             """
+
         html += """
             </tbody>
         </table>
@@ -175,7 +189,9 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     else:
         html += "<p>No objective data.</p>"
 
-    # Key Result Strategic Status (Only if data exists)
+    # ------------------------
+    # Key Results
+    # ------------------------
     if key_results:
         html += "<h3>Key Result Strategic Status</h3>"
         html += """
@@ -183,106 +199,63 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
             <thead>
                 <tr>
                     <th>Key Result</th>
-                    <th style="width: 50px;">Prog</th>
-                    <th style="width: 50px;">Eff</th>
-                    <th style="width: 50px;">Qual</th>
-                    <th style="width: 50px;">Full</th>
+                    <th>Prog</th>
+                    <th>Eff</th>
+                    <th>Qual</th>
+                    <th>Full</th>
                 </tr>
             </thead>
             <tbody>
         """
 
         for kr in key_results:
-            title = kr.get("title", "Untitled")
-            progress = kr.get("progress", 0)
-            
-            an = kr.get("geminiAnalysis")
-            eff_score = "N/A"
-            qual_score = "N/A"
-            fulfillment = "N/A"
-            
-            analysis_html = ""
-            
-            if an and isinstance(an, dict):
-                e_val = an.get('efficiency_score')
-                q_val = an.get('effectiveness_score')
-                o_val = an.get('overall_score')
-                
-                if e_val is not None: eff_score = f"{e_val}%"
-                if q_val is not None: qual_score = f"{q_val}%"
-                if o_val is not None: fulfillment = f"{o_val}%"
-                
-                # Extract text fields
-                summary = an.get('summary', '')
-                gap = an.get('gap_analysis', '')
-                quality = an.get('quality_assessment', '')
-                
-                if summary or gap or quality:
-                    analysis_html = f"""
-                    <tr>
-                        <td colspan="5" style="background-color: #fcfcfc; padding: 10px 15px; border-top: none;">
-                            <div style="font-size: 11px; color: #555;">
-                                {f'<p><strong>Summary:</strong> {summary}</p>' if summary else ''}
-                                {f'<p><strong>Gap Analysis:</strong> {gap}</p>' if gap else ''}
-                                {f'<p><strong>Quality Assessment:</strong> {quality}</p>' if quality else ''}
-                            </div>
-                        </td>
-                    </tr>
-                    """
+            an = kr.get("geminiAnalysis") or {}
 
             html += f"""
-                <tr style="border-bottom: {'none' if analysis_html else '1px solid #dee2e6'};">
-                    <td>{title}</td>
-                    <td>{progress}%</td>
-                    <td>{eff_score}</td>
-                    <td>{qual_score}</td>
-                    <td>{fulfillment}</td>
-                </tr>
-                {analysis_html}
+            <tr>
+                <td>{kr.get("title", "Untitled")}</td>
+                <td>{kr.get("progress", 0)}%</td>
+                <td>{an.get("efficiency_score", "N/A")}%</td>
+                <td>{an.get("effectiveness_score", "N/A")}%</td>
+                <td>{an.get("overall_score", "N/A")}%</td>
+            </tr>
             """
+
+            details = []
+            if an.get("summary"):
+                details.append(f"<p><strong>Summary:</strong> {an['summary']}</p>")
+            if an.get("gap_analysis"):
+                details.append(f"<p><strong>Gap:</strong> {an['gap_analysis']}</p>")
+            if an.get("quality_assessment"):
+                details.append(
+                    f"<p><strong>Quality:</strong> {an['quality_assessment']}</p>"
+                )
+
+            if details:
+                html += f"""
+                <tr>
+                    <td colspan="5" style="background:#fcfcfc;">
+                        {''.join(details)}
+                    </td>
+                </tr>
+                """
+
         html += """
             </tbody>
         </table>
         """
 
-
     html += """
+        <div class="footer">
+            Generated by Weekly Report System
+        </div>
     </body>
     </html>
     """
-    
-    
-    # Generate PDF
-    options = {
-        'page-size': 'A4',
-        'orientation': 'Landscape',
-        'encoding': "UTF-8",
-        'no-outline': None,
-        'enable-local-file-access': None
-    }
-    
-    # Configure wkhtmltopdf path
-    if platform.system() == "Windows":
-        path_wkhtmltopdf = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
-    else:
-        # Linux path used on Streamlit Cloud after packages.txt install
-        path_wkhtmltopdf = "/usr/bin/wkhtmltopdf"
 
-    if os.path.exists(path_wkhtmltopdf):
-        config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-    else:
-        config = None  # or raise a clear error
-    # path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
-    # config = None
-    # if os.path.exists(path_wkhtmltopdf):
-        # config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-    # else:
-        # pass
-        
-    try:
-        # Return BytesIO
-        pdf_data = pdfkit.from_string(html, False, options=options, configuration=config)
-        return BytesIO(pdf_data)
-    except Exception as e:
-        print(f"Error generating PDF: {e}")
-        return None
+    # ------------------------
+    # PDF Generation
+    # ------------------------
+    pdf_bytes = HTML(string=html).write_pdf()
+
+    return BytesIO(pdf_bytes)
