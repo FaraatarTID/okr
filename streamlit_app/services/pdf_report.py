@@ -1,6 +1,8 @@
-from weasyprint import HTML, CSS
 from io import BytesIO
 import datetime
+import subprocess
+import tempfile
+import os
 
 
 def generate_weekly_pdf_v2(
@@ -13,7 +15,8 @@ def generate_weekly_pdf_v2(
     time_label="Last 7 Days",
 ):
     """
-    Generates a PDF for the weekly work report using WeasyPrint.
+    Generates a PDF for the weekly work report.
+    Tries Playwright first, falls back to wkhtmltopdf if available.
     Returns: BytesIO object containing the PDF data.
     """
     
@@ -31,10 +34,7 @@ def generate_weekly_pdf_v2(
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-            @page {{
-                size: A4;
-                margin: 15mm;
-            }}
+            @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700&display=swap');
             
             * {{
                 margin: 0;
@@ -43,11 +43,12 @@ def generate_weekly_pdf_v2(
             }}
             
             body {{
-                font-family: Arial, Helvetica, sans-serif;
+                font-family: 'Noto Sans Arabic', Arial, sans-serif;
                 font-size: 12px;
                 color: #333;
                 direction: {dir_attr};
                 text-align: {text_align};
+                padding: 20px;
                 line-height: 1.6;
             }}
             
@@ -57,7 +58,7 @@ def generate_weekly_pdf_v2(
                 border-bottom: 2px solid #2c3e50;
                 padding-bottom: 10px;
                 margin-bottom: 10px;
-                margin-top: 0;
+                font-weight: 700;
             }}
             
             h3 {{
@@ -65,6 +66,7 @@ def generate_weekly_pdf_v2(
                 font-size: 14px;
                 margin-top: 20px;
                 margin-bottom: 10px;
+                font-weight: 700;
             }}
             
             .date {{
@@ -78,7 +80,7 @@ def generate_weekly_pdf_v2(
                 padding: 15px;
                 border-radius: 5px;
                 margin: 15px 0;
-                font-weight: bold;
+                font-weight: 700;
                 font-size: 13px;
                 color: #2c3e50;
             }}
@@ -87,13 +89,13 @@ def generate_weekly_pdf_v2(
                 width: 100%;
                 border-collapse: collapse;
                 margin: 15px 0;
-                font-size: 10px;
+                font-size: 11px;
             }}
             
             th {{
                 background-color: #f8f9fa;
                 color: #2c3e50;
-                font-weight: bold;
+                font-weight: 700;
                 padding: 10px;
                 border: 1px solid #dee2e6;
                 text-align: {text_align};
@@ -116,10 +118,10 @@ def generate_weekly_pdf_v2(
             }}
             
             .details {{
-                font-size: 9px;
+                font-size: 10px;
                 color: #444;
-                margin: 8px 0;
-                padding: 8px;
+                margin: 10px 0;
+                padding: 10px;
                 background-color: #fcfcfc;
                 border-{("right" if is_rtl else "left")}: 3px solid #dee2e6;
             }}
@@ -137,6 +139,11 @@ def generate_weekly_pdf_v2(
                 color: #6c757d;
                 font-size: 11px;
                 margin: 15px 0;
+            }}
+            
+            @page {{
+                size: A4;
+                margin: 15mm;
             }}
         </style>
     </head>
@@ -159,12 +166,12 @@ def generate_weekly_pdf_v2(
         <table>
             <thead>
                 <tr>
-                    <th style="width: 18%;">Task</th>
-                    <th style="width: 15%;">Objective</th>
-                    <th style="width: 15%;">Key Result</th>
-                    <th style="width: 18%;">Date/Time</th>
-                    <th style="width: 10%;">Duration</th>
-                    <th style="width: 24%;">Summary</th>
+                    <th>Task</th>
+                    <th>Objective</th>
+                    <th>Key Result</th>
+                    <th>Date/Time</th>
+                    <th>Duration</th>
+                    <th>Summary</th>
                 </tr>
             </thead>
             <tbody>
@@ -215,9 +222,9 @@ def generate_weekly_pdf_v2(
         <table>
             <thead>
                 <tr>
-                    <th style="width: 60%;">Objective</th>
-                    <th style="width: 20%;">Time</th>
-                    <th style="width: 20%;">Percentage</th>
+                    <th>Objective</th>
+                    <th>Time</th>
+                    <th>Percentage</th>
                 </tr>
             </thead>
             <tbody>
@@ -251,11 +258,11 @@ def generate_weekly_pdf_v2(
         <table>
             <thead>
                 <tr>
-                    <th style="width: 35%;">Key Result</th>
-                    <th style="width: 13%;">Progress</th>
-                    <th style="width: 13%;">Efficiency</th>
-                    <th style="width: 13%;">Effectiveness</th>
-                    <th style="width: 13%;">Overall</th>
+                    <th>Key Result</th>
+                    <th>Progress</th>
+                    <th>Efficiency</th>
+                    <th>Effectiveness</th>
+                    <th>Overall</th>
                 </tr>
             </thead>
             <tbody>
@@ -278,13 +285,13 @@ def generate_weekly_pdf_v2(
             # Add analysis details
             details_html = ""
             if analysis.get("summary"):
-                summary_text = str(analysis['summary'])[:120].replace('<', '&lt;').replace('>', '&gt;')
-                details_html += f"<strong>Summary:</strong> {summary_text}<br/>"
+                summary_text = str(analysis['summary'])[:150].replace('<', '&lt;').replace('>', '&gt;')
+                details_html += f"<strong>Summary:</strong> {summary_text}<br>"
             if analysis.get("gap_analysis"):
-                gap_text = str(analysis['gap_analysis'])[:120].replace('<', '&lt;').replace('>', '&gt;')
-                details_html += f"<strong>Gap Analysis:</strong> {gap_text}<br/>"
+                gap_text = str(analysis['gap_analysis'])[:150].replace('<', '&lt;').replace('>', '&gt;')
+                details_html += f"<strong>Gap Analysis:</strong> {gap_text}<br>"
             if analysis.get("quality_assessment"):
-                quality_text = str(analysis['quality_assessment'])[:120].replace('<', '&lt;').replace('>', '&gt;')
+                quality_text = str(analysis['quality_assessment'])[:150].replace('<', '&lt;').replace('>', '&gt;')
                 details_html += f"<strong>Quality Assessment:</strong> {quality_text}"
             
             if details_html:
@@ -307,12 +314,53 @@ def generate_weekly_pdf_v2(
     """
     
     # ========================
-    # CONVERT TO PDF USING WEASYPRINT
+    # TRY MULTIPLE PDF GENERATORS
     # ========================
+    
+    # Try 1: Playwright
     try:
-        pdf_buffer = BytesIO()
-        HTML(string=html_content).write_pdf(pdf_buffer)
-        pdf_buffer.seek(0)
-        return pdf_buffer
-    except Exception as e:
-        raise Exception(f"PDF generation failed: {str(e)}")
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
+            page = browser.new_page()
+            page.set_content(html_content, wait_until="networkidle")
+            pdf_bytes = page.pdf(format="A4", margin={"top": "15mm", "bottom": "15mm", "left": "15mm", "right": "15mm"})
+            browser.close()
+            return BytesIO(pdf_bytes)
+    except Exception as e1:
+        print(f"Playwright failed: {e1}")
+    
+    # Try 2: wkhtmltopdf via pdfkit
+    try:
+        import pdfkit
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
+            f.write(html_content)
+            html_file = f.name
+        
+        with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as f:
+            pdf_file = f.name
+        
+        try:
+            pdfkit.from_file(html_file, pdf_file, options={'quiet': ''})
+            with open(pdf_file, 'rb') as f:
+                return BytesIO(f.read())
+        finally:
+            if os.path.exists(html_file):
+                os.unlink(html_file)
+            if os.path.exists(pdf_file):
+                os.unlink(pdf_file)
+    except Exception as e2:
+        print(f"pdfkit failed: {e2}")
+    
+    # Try 3: WeasyPrint
+    try:
+        from weasyprint import HTML
+        return BytesIO(HTML(string=html_content).write_pdf())
+    except Exception as e3:
+        print(f"WeasyPrint failed: {e3}")
+    
+    # If all fail, raise error with details
+    raise Exception(
+        "PDF generation failed with all methods. "
+        "Please ensure one of these is installed: playwright, pdfkit (wkhtmltopdf), or weasyprint"
+    )
