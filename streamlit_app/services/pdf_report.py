@@ -2,6 +2,7 @@ import pdfkit
 from io import BytesIO
 import datetime
 import os
+import platform
 import sys
 
 def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
@@ -261,7 +262,6 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     }
     
     # Configure wkhtmltopdf path
-    # Configure wkhtmltopdf path
     if platform.system() == "Windows":
         path_wkhtmltopdf = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
     else:
@@ -272,12 +272,6 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
         config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
     else:
         config = None  # or raise a clear error
-    # path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
-    # config = None
-    # if os.path.exists(path_wkhtmltopdf):
-        # config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-    # else:
-        # pass
         
     try:
         # Return BytesIO
