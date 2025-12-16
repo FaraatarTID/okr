@@ -264,7 +264,7 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
     config = None
     if os.path.exists(path_wkhtmltopdf):
-        config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+        config = pdfkit.configuration(wkhtmltopdf="/usr/bin/wkhtmltopdf")
     else:
         # Fallback to PATH or other locations if needed, or let pdfkit search check PATH
         # Attempt to find it if not at default location (optional specific logic could go here)
