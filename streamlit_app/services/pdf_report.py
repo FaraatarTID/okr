@@ -261,14 +261,23 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     }
     
     # Configure wkhtmltopdf path
-    path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
-    config = None
+    # Configure wkhtmltopdf path
+    if platform.system() == "Windows":
+        path_wkhtmltopdf = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+    else:
+        # Linux path used on Streamlit Cloud after packages.txt install
+        path_wkhtmltopdf = "/usr/bin/wkhtmltopdf"
+
     if os.path.exists(path_wkhtmltopdf):
         config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
     else:
-        # Fallback to PATH or other locations if needed, or let pdfkit search check PATH
-        # Attempt to find it if not at default location (optional specific logic could go here)
-        pass
+        config = None  # or raise a clear error
+    # path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
+    # config = None
+    # if os.path.exists(path_wkhtmltopdf):
+        # config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+    # else:
+        # pass
         
     try:
         # Return BytesIO
