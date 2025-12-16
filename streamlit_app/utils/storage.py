@@ -6,14 +6,14 @@ import streamlit as st
 
 from services.sheets import SheetsDB
 
-# Global DB instance (lazy init)
-_sheets_db = None
-
+@st.cache_resource
 def get_db():
-    global _sheets_db
-    if _sheets_db is None:
-        _sheets_db = SheetsDB()
-    return _sheets_db
+    try:
+        db = SheetsDB()
+        return db  # <--- CRITICAL: YOU MUST RETURN THE OBJECT
+    except Exception as e:
+        print(f"Failed to initialize DB: {e}")
+        return None
 
 def get_sync_status():
     """Returns (is_connected, error_message) for the Sheets DB."""
@@ -35,60 +35,93 @@ def get_local_filename(username):
         return DATA_FILE
     return f"okr_data_{safe_name}.json"
 
+# --- NEW: Helper function to handle the heavy I/O ---
+@st.cache_data(ttl=600, show_spinner=False)
+def _fetch_from_source(username):
+    """
+    Actual I/O operation.
+    This result is cached for 10 minutes or until save_data is called.
+    """
+    # 1. Try Loading from Google Sheets (if username exists)
+    if username:
+        db = get_db()
+        # Note: Ensure get_db() is robust enough to be called here.
+        # Ideally get_db() uses @st.cache_resource internally.
+        if db.is_connected():
+            data = db.get_user_data(username)
+            if data:
+                return data
+            # If connected but user not found, return new user structure
+            return {"nodes": {}, "rootIds": []}
+
+    # 2. Fallback: Try Local File
+    local_file = get_local_filename(username)
+    if os.path.exists(local_file):
+        try:
+            with open(local_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            pass
+            
+    # 3. If nothing found, return empty structure
+    return {"nodes": {}, "rootIds": []}
+
+# --- MODIFIED: Main Load Function ---
 def load_data(username=None, force_refresh=False):
     """
-    Load user data with session state caching.
-    
-    Args:
-        username: The user's account name
-        force_refresh: If True, bypass cache and reload from API
-    
-    Returns:
-        dict: User's OKR data structure
+    Load user data with 2-layer caching:
+    1. Session State (Instant, per browser tab)
+    2. st.cache_data (Fast, across users/reloads)
     """
-    # Check session state cache first (if not forcing refresh)
+    
+    # Layer 1: Check Session State (Ram)
+    # We keep this for super-fast access during user interaction
     if username and not force_refresh:
         cache_key = _get_cache_key(username)
         if cache_key in st.session_state:
             return st.session_state[cache_key]
-    
-    # If username provided and connected, load from Sheets
-    if username:
-        db = get_db()
-        if db.is_connected():
-            data = db.get_user_data(username)
-            if data:
-                # Cache the loaded data
-                st.session_state[_get_cache_key(username)] = data
-                return data
-            # New user - create empty structure and cache it
-            empty_data = {"nodes": {}, "rootIds": []}
-            st.session_state[_get_cache_key(username)] = empty_data
-            return empty_data
-    
-    # Fallback / Local mode
-    local_file = get_local_filename(username)
-    if not os.path.exists(local_file):
-        return {"nodes": {}, "rootIds": []}
-    try:
-        with open(local_file, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except json.JSONDecodeError:
-        return {"nodes": {}, "rootIds": []}
 
+    # Layer 2: Load from Source (Cached via _fetch_from_source)
+    # If force_refresh is True, we clear the cache first
+    if force_refresh:
+        _fetch_from_source.clear()
+        
+    data = _fetch_from_source(username)
+
+    # Update Session State with what we found
+    if username:
+        st.session_state[_get_cache_key(username)] = data
+        
+    return data
+
+# --- MODIFIED: Main Save Function ---
 def save_data(data, username=None):
-    # If username provided and connected, save to Sheets
+    success = False
+    
+    # 1. Save to Google Sheets
     if username:
         db = get_db()
         if db.is_connected():
             db.save_user_data(username, data)
-            return
+            success = True
 
-    # Fallback / Local mode
-    local_file = get_local_filename(username)
-    with open(local_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
+    # 2. Save to Local File (Backup)
+    # Always save locally as well, or just as fallback if cloud failed?
+    # Your original code suggests fallback, but mirroring is safer.
+    if not success or not username:
+        local_file = get_local_filename(username)
+        with open(local_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
 
+    # --- CRITICAL STEP ---
+    # We must clear the cache because the data on the "disk/cloud" has changed.
+    # If we don't do this, load_data() will keep returning the old cached version.
+    _fetch_from_source.clear()
+    
+    # Also update current session state immediately so UI reflects changes
+    if username:
+        st.session_state[_get_cache_key(username)] = data
+        
 def generate_id():
     return f"{int(time.time() * 1000)}-{str(uuid.uuid4())[:8]}"
 
