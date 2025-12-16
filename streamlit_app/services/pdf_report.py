@@ -1,284 +1,279 @@
-import datetime
-from weasyprint import HTML, CSS
-from weasyprint.text.fonts import FontConfiguration
+import pdfkit
 from io import BytesIO
+import datetime
 import os
-
-# --- Constants for Paths ---
-BASE_DIR = os.path.dirname(os.path.dirname(__file__)) # Assumes utils/pdf_report.py location
-ASSETS_DIR = os.path.join(BASE_DIR, "assets")
-FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
-REGULAR_FONT_PATH = os.path.join(FONTS_DIR, "Vazirmatn-Regular.ttf")
-BOLD_FONT_PATH = os.path.join(FONTS_DIR, "Vazirmatn-Bold.ttf")
-ITALIC_FONT_PATH = os.path.join(FONTS_DIR, "Vazirmatn-Medium.ttf")
-
-# --- Helper function for clean absolute file URI (Crucial for WeasyPrint) ---
-def get_file_uri(path):
-    # Get absolute path and force forward slashes for CSS/WeasyPrint
-    return os.path.abspath(path).replace('\\', '/')
-# --------------------------------------------------------------------------
-
-# --- NEW: Helper function to normalize text (for unseen character issues) ---
-def normalize_text(text):
-    if not isinstance(text, str):
-        text = str(text)
-    # Replace non-breaking spaces (U+200C) or other zero-width characters with a regular space
-    text = text.replace('\u200c', ' ').replace('\u200d', ' ') 
-    return text
-# --------------------------------------------------------------------------
-
+import sys
 
 def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
-    
-    # 1. CSS Styling
-    # Load all font variants and apply robust table/RTL styling
-    css_string = f"""
-    @font-face {{
-        font-family: 'Vazirmatn';
-        src: url('file:///{get_file_uri(REGULAR_FONT_PATH)}');
-        font-weight: normal;
-        font-style: normal;
-    }}
-    @font-face {{
-        font-family: 'Vazirmatn';
-        src: url('file:///{get_file_uri(BOLD_FONT_PATH)}');
-        font-weight: bold;
-    }}
-    @font-face {{
-        font-family: 'Vazirmatn';
-        src: url('file:///{get_file_uri(ITALIC_FONT_PATH)}');
-        font-style: italic;
-    }}
-    
-    @page {{
-        size: A4 landscape;
-        margin: 1cm;
-        @bottom-center {{
-            content: "Page " counter(page);
-            font-family: 'Vazirmatn', sans-serif;
-            font-size: 9pt;
-        }}
-    }}
-    body {{
-        font-family: 'Vazirmatn', sans-serif;
-        font-size: 10pt;
-        direction: rtl; /* Global RTL */
-        text-align: right;
-    }}
-    h1 {{
-        text-align: center;
-        color: #2c3e50;
-        font-size: 16pt;
-        border-bottom: 2px solid #2c3e50;
-        padding-bottom: 5px;
-    }}
-    .meta {{
-        font-size: 9pt;
-        color: #666;
-        direction: ltr; /* Dates look better LTR */
-        text-align: left;
-    }}
-    .total-box {{
-        background-color: #e9ecef;
-        padding: 10px;
-        font-weight: bold;
-        text-align: right;
-        margin: 10px 0;
-        border-radius: 4px;
-    }}
-    table {{
-        width: 100%; /* Default width */
-        border-collapse: collapse;
-        margin-top: 10px;
-        margin-bottom: 20px;
-        table-layout: fixed; 
-    }}
-    th, td {{
-        border: 1px solid #dee2e6;
-        padding: 6px;
-        vertical-align: top;
-        font-size: 9pt; /* Shrink content font slightly */
-        /* --- FIX: Aggressive word breaking to stop overflow --- */
-        overflow-wrap: break-word; 
-        word-break: break-word;    
-        /* ---------------------------------------------------- */
-    }}
-    th {{
-        background-color: #f8f9fa;
-        font-weight: bold;
-        text-align: center;
-    }}
-    /* Column specific alignments */
-    .ltr-cell {{
-        direction: ltr;
-        text-align: left;
-    }}
-    .center-cell {{
-        text-align: center;
-    }}
-    /* Analysis Text Block */
-    .analysis-block {{
-        margin-top: 8px; 
-        font-size: 9pt; 
-        color: #444; 
-        border-top: 1px dashed #ccc; 
-        padding-top: 4px;
-        font-style: italic;
-    }}
     """
-
-    # 2. Build HTML Content 
+    Generates a PDF for the weekly work report using pdfkit (wkhtmltopdf).
+    Returns: BytesIO object containing the PDF data.
+    """
     
-    html_content = f"""
+    align = 'right' if direction == 'RTL' else 'left'
+    dir_attr = direction.lower()
+    
+    # Font path for @font-face
+    # wkhtmltopdf usually works best with absolute file paths for local assets
+    font_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Vazirmatn-Regular.ttf")
+    # Ensure forward slashes for CSS url
+    font_url = font_path.replace('\\', '/')
+    
+    html = f"""
     <!DOCTYPE html>
-    <html lang="fa" dir="rtl">
-    <head><meta charset="UTF-8"></head>
+    <html dir="{dir_attr}">
+    <head>
+        <meta charset="UTF-8">
+        <style>
+             @font-face {{
+                font-family: 'Vazirmatn';
+                src: url('file:///{font_url}') format('truetype');
+            }}
+            body {{
+                font-family: 'Vazirmatn', sans-serif;
+                font-size: 12px;
+                direction: {dir_attr};
+                text-align: {align};
+                padding: 2cm;
+            }}
+            h1, h2, h3 {{
+                color: #2c3e50;
+                margin-top: 20px;
+                margin-bottom: 10px;
+            }}
+            table {{
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 15px;
+            }}
+            th {{
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                padding: 8px;
+                font-weight: bold;
+                text-align: {align};
+            }}
+            td {{
+                border: 1px solid #dee2e6;
+                padding: 8px;
+                text-align: {align};
+            }}
+            .total-box {{
+                background-color: #e9ecef;
+                padding: 15px;
+                border-radius: 5px;
+                margin: 20px 0;
+                font-size: 14px;
+                font-weight: bold;
+                text-align: {align};
+            }}
+            .footer {{
+                text-align: center;
+                color: #6c757d;
+                font-size: 10px;
+                position: fixed;
+                bottom: 20px;
+                width: 100%;
+            }}
+        </style>
+    </head>
     <body>
-        <div class="meta">Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
-        <h1>{title}</h1>
-        
+        <div id="header">
+            <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{title}</h1>
+            <p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+        </div>
+
         <div class="total-box">
             Total Time ({time_label}): {total_time_str}
         </div>
 
-        <h3>Work Log (گزارش کار)</h3>
-        <table style="width: 98%;"> <!-- FINAL FIX: SHRINK TABLE TO ENSURE FIT -->
-            <thead>
-                <tr>
-                    <th style="width: 15%">وظیفه (Task)</th>      
-                    <th style="width: 15%">هدف (Objective)</th>
-                    <th style="width: 15%">نتیجه کلیدی (KR)</th>
-                    <th style="width: 10%">Date/Time</th>
-                    <th style="width: 7%">Duration</th>                
-                    <th style="width: 32%">خلاصه (Summary)</th>    
-                </tr>
-            </thead>
-            <tbody>
+        <h3>Work Log</h3>
     """
     
+    # Table of Tasks
     if report_items:
-        for item in report_items:
-            # Normalize content before passing to HTML
-            task_name = normalize_text(item.get('Task', ''))
-            obj_title = normalize_text(item.get('Objective', '-'))
-            kr_title = normalize_text(item.get('KeyResult', '-'))
-            summary = normalize_text(item.get('Summary', ''))
-            
-            html_content += f"""
-            <tr>
-                <td>{task_name}</td>
-                <td>{obj_title}</td>
-                <td>{kr_title}</td>
-                <td class="ltr-cell center-cell">{item.get('Date', '')} {item.get('Time', '')}</td>
-                <td class="center-cell ltr-cell">{item.get('Duration (m)', 0)}m</td>
-                <td>{summary}</td>
-            </tr>
-            """
-    else:
-        html_content += "<tr><td colspan='6'>No work recorded.</td></tr>"
-
-    html_content += """
-            </tbody>
-        </table>
-        
-        <h3>Time Distribution by Objective</h3>
+        html += """
         <table>
-             <thead>
+            <thead>
                 <tr>
-                    <th>هدف (Objective)</th>
-                    <th style="width: 15%">زمان (Time)</th>
-                    <th style="width: 10%">%</th>
+                    <th>Task</th>
+                    <th style="width: 15%;">Objective</th>
+                    <th style="width: 15%;">Key Result</th>
+                    <th style="width: 100px;">Date/Time</th>
+                    <th style="width: 60px;">Dur</th>
+                    <th style="width: 25%;">Summary</th>
                 </tr>
             </thead>
             <tbody>
-    """
+        """
+        for item in report_items:
+            task_name = item.get('Task', 'Untitled')
+            date_str = item.get('Date', '')
+            time_str = item.get('Time', '')
+            duration = item.get('Duration (m)', 0)
+            summary = item.get('Summary', '')
+            obj_title = item.get('Objective', '-')
+            kr_title = item.get('KeyResult', '-')
+            
+            html += f"""
+                <tr>
+                    <td>{task_name}</td>
+                    <td style="color: #555;">{obj_title}</td>
+                    <td style="color: #555;">{kr_title}</td>
+                    <td>{date_str} {time_str}</td>
+                    <td>{duration}m</td>
+                    <td style="color: #555;">{summary}</td>
+                </tr>
+            """
+        html += """
+            </tbody>
+        </table>
+        """
+    else:
+        html += "<p>No work recorded in the last 7 days.</p>"
+
+    # Objective Stats
+    html += "<h3>Time Distribution by Objective</h3>"
     
     if objective_stats:
         sorted_stats = sorted(objective_stats.items(), key=lambda item: item[1], reverse=True)
         total_mins = sum(v for k, v in objective_stats.items())
         
-        for title, mins in sorted_stats:
-            pct = (mins / total_mins * 100) if total_mins > 0 else 0
-            
-            h = int(mins // 60)
-            mn = int(mins % 60)
-            time_str = f"{h}h {mn}m" if h > 0 else f"{mn}m"
-            
-            html_content += f"""
-            <tr>
-                <td>{normalize_text(title)}</td>
-                <td class="ltr-cell center-cell">{time_str}</td>
-                <td class="ltr-cell center-cell">{pct:.1f}%</td>
-            </tr>
-            """
-            
-    html_content += """
-            </tbody>
-        </table>
+        def fmt(m):
+            h = int(m // 60)
+            mn = int(m % 60)
+            if h > 0: return f"{h}h {mn}m"
+            return f"{mn}m"
 
-        <h3>Key Result Strategic Status</h3>
+        html += """
         <table>
-             <thead>
+            <thead>
                 <tr>
-                    <th>نتیجه کلیدی (Key Result)</th>
-                    <th style="width: 8%">Prog</th>
-                    <th style="width: 8%">Eff</th>
-                    <th style="width: 8%">Qual</th>
-                    <th style="width: 8%">Full</th>
+                    <th>Objective</th>
+                    <th style="width: 100px;">Time</th>
+                    <th style="width: 80px;">%</th>
                 </tr>
             </thead>
             <tbody>
-    """
-    
-    if key_results:
-        for kr in key_results:
-            progress = kr.get("progress", 0)
-            an = kr.get("geminiAnalysis", {}) or {}
-            
-            eff = f"{an.get('efficiency_score')}%" if an.get('efficiency_score') is not None else "N/A"
-            qual = f"{an.get('effectiveness_score')}%" if an.get('effectiveness_score') is not None else "N/A"
-            full = f"{an.get('overall_score')}%" if an.get('overall_score') is not None else "N/A"
-            
-            summary = normalize_text(an.get('summary', ''))
-            gap = normalize_text(an.get('gap_analysis', ''))
-            quality = normalize_text(an.get('quality_assessment', ''))
-            
-            html_content += f"""
-            <tr>
-                <td>
-                    <strong>{normalize_text(kr.get("title", "Untitled"))}</strong>
-    """
-            if summary or gap or quality:
-                html_content += "<div class='analysis-block'>"
-                if summary: html_content += f"<p><strong>خلاصه:</strong> {summary}</p>"
-                if gap: html_content += f"<p><strong>تحلیل شکاف:</strong> {gap}</p>"
-                if quality: html_content += f"<p><strong>کیفیت:</strong> {quality}</p>"
-                html_content += "</div>"
-            
-            html_content += f"""
-                </td>
-                <td class="ltr-cell center-cell">{progress}%</td>
-                <td class="ltr-cell center-cell">{eff}</td>
-                <td class="ltr-cell center-cell">{qual}</td>
-                <td class="ltr-cell center-cell">{full}</td>
-            </tr>
+        """
+        
+        for title, mins in sorted_stats:
+            pct = (mins / total_mins * 100) if total_mins > 0 else 0
+            # No reshaping needed for WebKit
+            html += f"""
+                <tr>
+                    <td>{title}</td>
+                    <td>{fmt(mins)}</td>
+                    <td>{pct:.1f}%</td>
+                </tr>
             """
-
-    html_content += """
+        html += """
             </tbody>
         </table>
+        """
+    else:
+        html += "<p>No objective data.</p>"
+
+    # Key Result Strategic Status (Only if data exists)
+    if key_results:
+        html += "<h3>Key Result Strategic Status</h3>"
+        html += """
+        <table>
+            <thead>
+                <tr>
+                    <th>Key Result</th>
+                    <th style="width: 50px;">Prog</th>
+                    <th style="width: 50px;">Eff</th>
+                    <th style="width: 50px;">Qual</th>
+                    <th style="width: 50px;">Full</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
+
+        for kr in key_results:
+            title = kr.get("title", "Untitled")
+            progress = kr.get("progress", 0)
+            
+            an = kr.get("geminiAnalysis")
+            eff_score = "N/A"
+            qual_score = "N/A"
+            fulfillment = "N/A"
+            
+            analysis_html = ""
+            
+            if an and isinstance(an, dict):
+                e_val = an.get('efficiency_score')
+                q_val = an.get('effectiveness_score')
+                o_val = an.get('overall_score')
+                
+                if e_val is not None: eff_score = f"{e_val}%"
+                if q_val is not None: qual_score = f"{q_val}%"
+                if o_val is not None: fulfillment = f"{o_val}%"
+                
+                # Extract text fields
+                summary = an.get('summary', '')
+                gap = an.get('gap_analysis', '')
+                quality = an.get('quality_assessment', '')
+                
+                if summary or gap or quality:
+                    analysis_html = f"""
+                    <tr>
+                        <td colspan="5" style="background-color: #fcfcfc; padding: 10px 15px; border-top: none;">
+                            <div style="font-size: 11px; color: #555;">
+                                {f'<p><strong>Summary:</strong> {summary}</p>' if summary else ''}
+                                {f'<p><strong>Gap Analysis:</strong> {gap}</p>' if gap else ''}
+                                {f'<p><strong>Quality Assessment:</strong> {quality}</p>' if quality else ''}
+                            </div>
+                        </td>
+                    </tr>
+                    """
+
+            html += f"""
+                <tr style="border-bottom: {'none' if analysis_html else '1px solid #dee2e6'};">
+                    <td>{title}</td>
+                    <td>{progress}%</td>
+                    <td>{eff_score}</td>
+                    <td>{qual_score}</td>
+                    <td>{fulfillment}</td>
+                </tr>
+                {analysis_html}
+            """
+        html += """
+            </tbody>
+        </table>
+        """
+
+
+    html += """
     </body>
     </html>
     """
-
-    # 3. Generate PDF
-    font_config = FontConfiguration()
-    pdf_bytes = BytesIO()
     
-    HTML(string=html_content, base_url=BASE_DIR).write_pdf(
-        pdf_bytes, 
-        stylesheets=[CSS(string=css_string, font_config=font_config)],
-        font_config=font_config
-    )
     
-    return pdf_bytes.getvalue()
+    # Generate PDF
+    options = {
+        'page-size': 'A4',
+        'orientation': 'Landscape',
+        'encoding': "UTF-8",
+        'no-outline': None,
+        'enable-local-file-access': None
+    }
+    
+    # Configure wkhtmltopdf path
+    path_wkhtmltopdf = r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe'
+    config = None
+    if os.path.exists(path_wkhtmltopdf):
+        config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+    else:
+        # Fallback to PATH or other locations if needed, or let pdfkit search check PATH
+        # Attempt to find it if not at default location (optional specific logic could go here)
+        pass
+        
+    try:
+        # Return BytesIO
+        pdf_data = pdfkit.from_string(html, False, options=options, configuration=config)
+        return BytesIO(pdf_data)
+    except Exception as e:
+        print(f"Error generating PDF: {e}")
+        return None
