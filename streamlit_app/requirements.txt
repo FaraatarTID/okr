@@ -2,11 +2,10 @@ streamlit>=1.40.0
 sqlmodel>=0.0.14
 pydantic>=2.0
 google-generativeai
-fpdf2
 plotly
 python-dotenv
 gspread
 google-auth
 streamlit-agraph
 google-genai
-pdfkit
+weasyprint
