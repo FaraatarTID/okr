@@ -1,6 +1,0 @@
-libglib2.0-0
-libfreetype6
-libcairo2-dev
-libpango-1.0-0
-libpangoft2-1.0-0
-wkhtmltopdf

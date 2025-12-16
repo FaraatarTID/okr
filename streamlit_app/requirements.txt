@@ -8,5 +8,4 @@ gspread
 google-auth
 streamlit-agraph
 google-genai
-playwright
-
+weasyprint
