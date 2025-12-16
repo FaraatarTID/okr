@@ -9,3 +9,4 @@ gspread
 google-auth
 streamlit-agraph
 google-genai
+pdfkit
