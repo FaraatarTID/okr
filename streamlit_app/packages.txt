@@ -1,7 +1,8 @@
-libcairo2
+libcairo2-dev
 libpango-1.0-0
 libpangocairo-1.0-0
 libgdk-pixbuf2.0-0
 libffi-dev
 shared-mime-info
 fonts-dejavu-core
+libpango1.0-dev
