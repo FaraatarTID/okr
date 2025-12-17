@@ -1,13 +1,22 @@
-import pdfkit
+import requests
 from io import BytesIO
+import base64
+import streamlit as st
 import datetime
 import os
-import platform
-import sys
+
+def get_base64_font(font_path):
+    """Helper function to convert font file to base64 for embedding"""
+    try:
+        with open(font_path, "rb") as font_file:
+            return base64.b64encode(font_file.read()).decode('utf-8')
+    except Exception as e:
+        print(f"Font error: {e}")
+        return ""
 
 def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
     """
-    Generates a PDF for the weekly work report using pdfkit (wkhtmltopdf).
+    Generates a PDF for the weekly work report using PDFShift API.
     Returns: BytesIO object containing the PDF data.
     """
     
@@ -15,98 +24,87 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     dir_attr = direction.lower()
     
     # Font path for @font-face
-    # wkhtmltopdf usually works best with absolute file paths for local assets
     font_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Vazirmatn-Regular.ttf")
-    # Ensure forward slashes for CSS url
-    font_url = font_path.replace('\\', '/')
     
     html = f"""
-    <!DOCTYPE html>
-    <html dir="{dir_attr}">
-    <head>
-        <meta charset="UTF-8">
-        <style>
-             @font-face {{
-                font-family: 'Vazirmatn';
-                src: url('file:///{font_url}') format('truetype');
-            }}
-            body {{
-                font-family: 'Vazirmatn', sans-serif;
-                font-size: 12px;
-                direction: {dir_attr};
-                text-align: {align};
-                padding: 2cm;
-            }}
-            h1, h2, h3 {{
-                color: #2c3e50;
-                margin-top: 20px;
-                margin-bottom: 10px;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-bottom: 15px;
-            }}
-            th {{
-                background-color: #f8f9fa;
-                border: 1px solid #dee2e6;
-                padding: 8px;
-                font-weight: bold;
-                text-align: {align};
-            }}
-            td {{
-                border: 1px solid #dee2e6;
-                padding: 8px;
-                text-align: {align};
-            }}
-            .total-box {{
-                background-color: #e9ecef;
-                padding: 15px;
-                border-radius: 5px;
-                margin: 20px 0;
-                font-size: 14px;
-                font-weight: bold;
-                text-align: {align};
-            }}
-            .footer {{
-                text-align: center;
-                color: #6c757d;
-                font-size: 10px;
-                position: fixed;
-                bottom: 20px;
-                width: 100%;
-            }}
-        </style>
-    </head>
-    <body>
-        <div id="header">
-            <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{title}</h1>
-            <p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
-        </div>
+<!DOCTYPE html>
+<html dir="{dir_attr}">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @font-face {{
+            font-family: 'Vazirmatn';
+            src: url('data:font/ttf;base64,{get_base64_font(font_path)}') format('truetype');
+        }}
+        body {{
+            font-family: 'Vazirmatn', sans-serif;
+            font-size: 12px;
+            direction: {dir_attr};
+            text-align: {align};
+            padding: 2cm;
+        }}
+        h1, h2, h3 {{
+            color: #2c3e50;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }}
+        th {{
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 8px;
+            font-weight: bold;
+            text-align: {align};
+        }}
+        td {{
+            border: 1px solid #dee2e6;
+            padding: 8px;
+            text-align: {align};
+        }}
+        .total-box {{
+            background-color: #e9ecef;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: {align};
+        }}
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{title}</h1>
+        <p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+    </div>
 
-        <div class="total-box">
-            Total Time ({time_label}): {total_time_str}
-        </div>
+    <div class="total-box">
+        Total Time ({time_label}): {total_time_str}
+    </div>
 
-        <h3>Work Log</h3>
-    """
-    
+    <h3>Work Log</h3>
+"""
+
     # Table of Tasks
     if report_items:
         html += """
-        <table>
-            <thead>
-                <tr>
-                    <th>Task</th>
-                    <th style="width: 15%;">Objective</th>
-                    <th style="width: 15%;">Key Result</th>
-                    <th style="width: 100px;">Date/Time</th>
-                    <th style="width: 60px;">Dur</th>
-                    <th style="width: 25%;">Summary</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
+    <table>
+        <thead>
+            <tr>
+                <th>Task</th>
+                <th style="width: 15%;">Objective</th>
+                <th style="width: 15%;">Key Result</th>
+                <th style="width: 100px;">Date/Time</th>
+                <th style="width: 60px;">Dur</th>
+                <th style="width: 25%;">Summary</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
         for item in report_items:
             task_name = item.get('Task', 'Untitled')
             date_str = item.get('Date', '')
@@ -117,24 +115,28 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
             kr_title = item.get('KeyResult', '-')
             
             html += f"""
-                <tr>
-                    <td>{task_name}</td>
-                    <td style="color: #555;">{obj_title}</td>
-                    <td style="color: #555;">{kr_title}</td>
-                    <td>{date_str} {time_str}</td>
-                    <td>{duration}m</td>
-                    <td style="color: #555;">{summary}</td>
-                </tr>
-            """
+            <tr>
+                <td>{task_name}</td>
+                <td style="color: #555;">{obj_title}</td>
+                <td style="color: #555;">{kr_title}</td>
+                <td>{date_str} {time_str}</td>
+                <td>{duration}m</td>
+                <td style="color: #555;">{summary}</td>
+            </tr>
+"""
         html += """
-            </tbody>
-        </table>
-        """
+        </tbody>
+    </table>
+"""
     else:
-        html += "<p>No work recorded in the last 7 days.</p>"
+        html += """
+    <p>No work recorded in the last 7 days.</p>
+"""
 
     # Objective Stats
-    html += "<h3>Time Distribution by Objective</h3>"
+    html += """
+    <h3>Time Distribution by Objective</h3>
+"""
     
     if objective_stats:
         sorted_stats = sorted(objective_stats.items(), key=lambda item: item[1], reverse=True)
@@ -147,50 +149,52 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
             return f"{mn}m"
 
         html += """
-        <table>
-            <thead>
-                <tr>
-                    <th>Objective</th>
-                    <th style="width: 100px;">Time</th>
-                    <th style="width: 80px;">%</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
+    <table>
+        <thead>
+            <tr>
+                <th>Objective</th>
+                <th style="width: 100px;">Time</th>
+                <th style="width: 80px;">%</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
         
         for title, mins in sorted_stats:
             pct = (mins / total_mins * 100) if total_mins > 0 else 0
-            # No reshaping needed for WebKit
+            
             html += f"""
-                <tr>
-                    <td>{title}</td>
-                    <td>{fmt(mins)}</td>
-                    <td>{pct:.1f}%</td>
-                </tr>
-            """
+            <tr>
+                <td>{title}</td>
+                <td>{fmt(mins)}</td>
+                <td>{pct:.1f}%</td>
+            </tr>
+"""
         html += """
-            </tbody>
-        </table>
-        """
+        </tbody>
+    </table>
+"""
     else:
-        html += "<p>No objective data.</p>"
+        html += """
+    <p>No objective data.</p>
+"""
 
     # Key Result Strategic Status (Only if data exists)
     if key_results:
-        html += "<h3>Key Result Strategic Status</h3>"
         html += """
-        <table>
-            <thead>
-                <tr>
-                    <th>Key Result</th>
-                    <th style="width: 50px;">Prog</th>
-                    <th style="width: 50px;">Eff</th>
-                    <th style="width: 50px;">Qual</th>
-                    <th style="width: 50px;">Full</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
+    <h3>Key Result Strategic Status</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Key Result</th>
+                <th style="width: 50px;">Prog</th>
+                <th style="width: 50px;">Eff</th>
+                <th style="width: 50px;">Qual</th>
+                <th style="width: 50px;">Full</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
 
         for kr in key_results:
             title = kr.get("title", "Untitled")
@@ -228,55 +232,49 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
                             </div>
                         </td>
                     </tr>
-                    """
+"""
 
             html += f"""
-                <tr style="border-bottom: {'none' if analysis_html else '1px solid #dee2e6'};">
-                    <td>{title}</td>
-                    <td>{progress}%</td>
-                    <td>{eff_score}</td>
-                    <td>{qual_score}</td>
-                    <td>{fulfillment}</td>
-                </tr>
-                {analysis_html}
-            """
+            <tr style="border-bottom: {'none' if analysis_html else '1px solid #dee2e6'};">
+                <td>{title}</td>
+                <td>{progress}%</td>
+                <td>{eff_score}</td>
+                <td>{qual_score}</td>
+                <td>{fulfillment}</td>
+            </tr>
+            {analysis_html}
+"""
         html += """
-            </tbody>
-        </table>
-        """
-
+        </tbody>
+    </table>
+"""
 
     html += """
-    </body>
-    </html>
-    """
+</body>
+</html>
+"""
     
-    
-    # Generate PDF
-    options = {
-        'page-size': 'A4',
-        'orientation': 'Landscape',
-        'encoding': "UTF-8",
-        'no-outline': None,
-        'enable-local-file-access': None
-    }
-    
-    # Configure wkhtmltopdf path
-    if platform.system() == "Windows":
-        path_wkhtmltopdf = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
-    else:
-        # Linux path used on Streamlit Cloud after packages.txt install
-        path_wkhtmltopdf = "/usr/bin/wkhtmltopdf"
-
-    if os.path.exists(path_wkhtmltopdf):
-        config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-    else:
-        config = None  # or raise a clear error
-        
     try:
-        # Return BytesIO
-        pdf_data = pdfkit.from_string(html, False, options=options, configuration=config)
-        return BytesIO(pdf_data)
+        pdfshift_api_key = st.secrets["pdfshift_api_key"]
+        
+        response = requests.post(
+            "https://api.pdfshift.io/v3/convert/pdf",
+            headers={'X-API-Key': pdfshift_api_key},
+            json={
+                "source": html,
+                "sandbox": True,
+                "landscape": True,
+                "format": "A4",
+                "use_print": False
+            }
+        )
+        
+        if response.status_code == 200:
+            return BytesIO(response.content)
+        else:
+            print(f"PDFShift API Error: {response.status_code} - {response.text}")
+            return None
+            
     except Exception as e:
-        print(f"Error generating PDF: {e}")
+        print(f"PDFShift Exception: {e}")
         return None
