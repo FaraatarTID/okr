@@ -1,30 +1,105 @@
-import requests
-from io import BytesIO
-import base64
-import streamlit as st
-import datetime
+"""
+Unified PDF Generator with Automatic Environment Detection
+Supports both PDFShift (cloud/deployed) and pdfkit (local Windows)
+"""
+
 import os
+import sys
+import platform
+import datetime
+import base64
+from io import BytesIO
+import streamlit as st
+
+# Try importing both libraries
+PDFSHIFT_AVAILABLE = False
+PDFKIT_AVAILABLE = False
+
+try:
+    import requests
+    PDFSHIFT_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    import pdfkit
+    PDFKIT_AVAILABLE = True
+except ImportError:
+    pass
+
+
+def is_deployed_environment():
+    """
+    Detect if running in a deployed/cloud environment (Streamlit Cloud)
+    Returns True if deployed, False if local
+    """
+    # PRIORITY 0: Check for manual override in secrets
+    try:
+       import streamlit as st
+       if 'PDF_METHOD' in st.secrets:
+           method = str(st.secrets['PDF_METHOD']).lower()
+           if method == 'pdfkit':
+               print("🔧 SECRETS: Forcing pdfkit (Local)")
+               return False
+           elif method == 'pdfshift':
+               print("🔧 SECRETS: Forcing PDFShift (Cloud)")
+               return True
+    except Exception as e:
+       pass  # If secrets not available, continue to other detection methods
+       
+    # Check for Streamlit Cloud specific environment variables
+    if os.getenv('STREAMLIT_SHARING_MODE') or os.getenv('IS_STREAMLIT_CLOUD'):
+        return True
+    
+    # Check if pdfshift API key is configured (indicates deployed environment)
+    try:
+        if 'pdfshift_api_key' in st.secrets:
+            return True
+    except:
+        pass
+    
+    # Check if running on Windows (likely local development)
+    if platform.system() == 'Windows':
+        return False
+    
+    # Default to deployed if uncertain and pdfshift is available
+    return PDFSHIFT_AVAILABLE and not PDFKIT_AVAILABLE
+
 
 def get_base64_font(font_path):
     """Helper function to convert font file to base64 for embedding"""
     try:
-        with open(font_path, "rb") as font_file:
-            return base64.b64encode(font_file.read()).decode('utf-8')
+        if os.path.exists(font_path):
+            with open(font_path, "rb") as font_file:
+                return base64.b64encode(font_file.read()).decode('utf-8')
     except Exception as e:
         print(f"Font error: {e}")
-        return ""
+    return ""
 
-def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
+
+def generate_pdf_html(report_items, objective_stats, total_time_str, key_results, 
+                      direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
     """
-    Generates a PDF for the weekly work report using PDFShift API.
-    Returns: BytesIO object containing the PDF data.
+    Generate HTML content for PDF (common for both methods)
     """
-    
     align = 'right' if direction == 'RTL' else 'left'
     dir_attr = direction.lower()
     
-    # Font path for @font-face
-    font_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Vazirmatn-Regular.ttf")
+    # Find font path
+    font_path = None
+    possible_paths = [
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Vazirmatn-Regular.ttf"),
+        os.path.join(os.path.dirname(__file__), "assets", "fonts", "Vazirmatn-Regular.ttf"),
+        "assets/fonts/Vazirmatn-Regular.ttf",
+        "./Vazirmatn-Regular.ttf"
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            font_path = path
+            break
+    
+    font_base64 = get_base64_font(font_path) if font_path else ""
     
     html = f"""
 <!DOCTYPE html>
@@ -34,10 +109,10 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     <style>
         @font-face {{
             font-family: 'Vazirmatn';
-            src: url('data:font/ttf;base64,{get_base64_font(font_path)}') format('truetype');
+            src: url('data:font/ttf;base64,{font_base64}') format('truetype');
         }}
         body {{
-            font-family: 'Vazirmatn', sans-serif;
+            font-family: 'Vazirmatn', 'Tahoma', sans-serif;
             font-size: 12px;
             direction: {dir_attr};
             text-align: {align};
@@ -73,6 +148,9 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
             font-size: 14px;
             font-weight: bold;
             text-align: {align};
+        }}
+        .page-break {{
+            page-break-after: always;
         }}
     </style>
 </head>
@@ -160,12 +238,12 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
         <tbody>
 """
         
-        for title, mins in sorted_stats:
+        for obj_title, mins in sorted_stats:
             pct = (mins / total_mins * 100) if total_mins > 0 else 0
             
             html += f"""
             <tr>
-                <td>{title}</td>
+                <td>{obj_title}</td>
                 <td>{fmt(mins)}</td>
                 <td>{pct:.1f}%</td>
             </tr>
@@ -179,7 +257,7 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     <p>No objective data.</p>
 """
 
-    # Key Result Strategic Status (Only if data exists)
+    # Key Result Strategic Status
     if key_results:
         html += """
     <h3>Key Result Strategic Status</h3>
@@ -197,7 +275,7 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
 """
 
         for kr in key_results:
-            title = kr.get("title", "Untitled")
+            kr_title = kr.get("title", "Untitled")
             progress = kr.get("progress", 0)
             
             an = kr.get("geminiAnalysis")
@@ -216,7 +294,6 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
                 if q_val is not None: qual_score = f"{q_val}%"
                 if o_val is not None: fulfillment = f"{o_val}%"
                 
-                # Extract text fields
                 summary = an.get('summary', '')
                 gap = an.get('gap_analysis', '')
                 quality = an.get('quality_assessment', '')
@@ -236,7 +313,7 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
 
             html += f"""
             <tr style="border-bottom: {'none' if analysis_html else '1px solid #dee2e6'};">
-                <td>{title}</td>
+                <td>{kr_title}</td>
                 <td>{progress}%</td>
                 <td>{eff_score}</td>
                 <td>{qual_score}</td>
@@ -253,7 +330,13 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
 </body>
 </html>
 """
-    
+    return html
+
+
+def generate_pdf_with_pdfshift(html):
+    """
+    Generate PDF using PDFShift API (for cloud/deployed environments)
+    """
     try:
         pdfshift_api_key = st.secrets["pdfshift_api_key"]
         
@@ -273,8 +356,104 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
             return BytesIO(response.content)
         else:
             print(f"PDFShift API Error: {response.status_code} - {response.text}")
+            st.error(f"PDFShift Error: {response.status_code}")
             return None
             
     except Exception as e:
         print(f"PDFShift Exception: {e}")
+        st.error(f"PDFShift failed: {str(e)}")
         return None
+
+
+def generate_pdf_with_pdfkit(html):
+    """
+    Generate PDF using pdfkit (for local Windows environments)
+    """
+    try:
+        # Configure pdfkit for Windows
+        if platform.system() == 'Windows':
+            # Common wkhtmltopdf installation paths on Windows
+            possible_paths = [
+                r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe',
+                r'C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe',
+                r'wkhtmltopdf'  # If in PATH
+            ]
+            
+            config = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    config = pdfkit.configuration(wkhtmltopdf=path)
+                    break
+            
+            if not config:
+                st.error("⚠️ wkhtmltopdf not found. Please install it from: https://wkhtmltopdf.org/downloads.html")
+                return None
+        else:
+            config = None  # Linux/Mac should have it in PATH
+        
+        # Generate PDF
+        options = {
+            'page-size': 'A4',
+            'orientation': 'Landscape',
+            'encoding': 'UTF-8',
+            'no-outline': None,
+            'enable-local-file-access': None
+        }
+        
+        pdf_bytes = pdfkit.from_string(html, False, options=options, configuration=config)
+        return BytesIO(pdf_bytes)
+        
+    except Exception as e:
+        print(f"pdfkit Exception: {e}")
+        st.error(f"pdfkit failed: {str(e)}")
+        return None
+
+
+def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, 
+                          direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
+    """
+    Main PDF generation function with automatic environment detection
+    
+    Returns: BytesIO object containing the PDF data, or None if generation fails
+    """
+    
+    # Detect environment
+    is_deployed = is_deployed_environment()
+    
+    # Generate HTML (common for both methods)
+    html = generate_pdf_html(
+        report_items, objective_stats, total_time_str, key_results,
+        direction, title, time_label
+    )
+    
+    # Choose appropriate PDF generation method
+    if is_deployed:
+        print("🌐 Using PDFShift (Cloud Environment)")
+        if not PDFSHIFT_AVAILABLE:
+            st.error("PDFShift not available. Please install: pip install requests")
+            return None
+        return generate_pdf_with_pdfshift(html)
+    else:
+        print("💻 Using pdfkit (Local Environment)")
+        if not PDFKIT_AVAILABLE:
+            st.error("pdfkit not available. Please install: pip install pdfkit")
+            st.info("Also install wkhtmltopdf from: https://wkhtmltopdf.org/downloads.html")
+            return None
+        return generate_pdf_with_pdfkit(html)
+
+
+def get_pdf_generator_info():
+    """
+    Return information about the current PDF generation setup
+    """
+    is_deployed = is_deployed_environment()
+    
+    info = {
+        'environment': 'Deployed/Cloud' if is_deployed else 'Local',
+        'method': 'PDFShift API' if is_deployed else 'pdfkit (wkhtmltopdf)',
+        'pdfshift_available': PDFSHIFT_AVAILABLE,
+        'pdfkit_available': PDFKIT_AVAILABLE,
+        'platform': platform.system()
+    }
+    
+    return info
