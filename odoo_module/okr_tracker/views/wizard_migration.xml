@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_okr_migration_wizard_form" model="ir.ui.view">
+    <field name="name">okr.migration.wizard.form</field>
+    <field name="model">okr.migration.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Import OKR Data">
+        <group>
+          <field name="create_missing_okrs"/>
+          <field name="create_tasks"/>
+          <field name="default_project_id"/>
+          <field name="dry_run"/>
+          <field name="rollback_last"/>
+        </group>
+        <footer>
+          <button string="Run Migration" type="object" name="action_run" class="btn-primary"/>
+          <button string="Cancel" class="btn-secondary" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <record id="action_okr_migration_wizard" model="ir.actions.act_window">
+    <field name="name">Import OKR Data</field>
+    <field name="res_model">okr.migration.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="target">new</field>
+    <field name="view_id" ref="view_okr_migration_wizard_form"/>
+  </record>
+</odoo>

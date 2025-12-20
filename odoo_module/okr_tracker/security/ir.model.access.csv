@@ -1,2 +1,5 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_okr_node_user,okr.node.user,model_okr_node,base.group_user,1,1,1,1
+access_okr_migration_manager,okr.migration.wizard,model_okr_migration_wizard,okr_tracker.group_okr_manager,1,1,1,1
+access_okr_migration_log,okr.migration.log,model_okr_migration_log,okr_tracker.group_okr_manager,1,1,1,1
+access_okr_log_user,okr.migration.log,model_okr_migration_log,base.group_user,1,0,0,0
