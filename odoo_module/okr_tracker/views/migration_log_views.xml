@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <data>
+    <record id="view_okr_migration_log_tree" model="ir.ui.view">
+      <field name="name">okr.migration.log.tree</field>
+      <field name="model">okr.migration.log</field>
+      <field name="arch" type="xml">
+        <list>
+          <field name="date"/>
+          <field name="user_id"/>
+          <field name="migration_ref"/>
+          <field name="okrs_created"/>
+          <field name="tasks_created"/>
+        </list>
+      </field>
+    </record>
+
+    <record id="view_okr_migration_log_form" model="ir.ui.view">
+      <field name="name">okr.migration.log.form</field>
+      <field name="model">okr.migration.log</field>
+      <field name="arch" type="xml">
+        <form string="Migration Log">
+          <sheet>
+            <group>
+              <field name="date"/>
+              <field name="user_id"/>
+              <field name="migration_ref"/>
+              <field name="okrs_created"/>
+              <field name="tasks_created"/>
+            </group>
+            <group>
+              <field name="notes"/>
+            </group>
+            <footer>
+              <button string="Rollback This Migration" type="action" name="%(action_okr_rollback_confirm)d" class="btn-danger"/>
+              <button string="One-Click Rollback" type="object" name="action_rollback" class="btn-danger" groups="okr_tracker.group_okr_manager"/>
+              <button string="Close" class="btn-secondary" special="cancel"/>
+            </footer>
+          </sheet>
+        </form>
+      </field>
+    </record>
+
+    <record id="action_okr_migration_log" model="ir.actions.act_window">
+      <field name="name">OKR Migration Logs</field>
+      <field name="res_model">okr.migration.log</field>
+      <field name="view_mode">list,form</field>
+    </record>
+  </data>
+</odoo>

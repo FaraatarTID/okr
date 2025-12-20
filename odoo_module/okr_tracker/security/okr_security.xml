@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <data>
+    <!-- OKR Manager group -->
+    <record id="group_okr_manager" model="res.groups">
+      <field name="name">OKR Manager</field>
+    </record>
+  </data>
+</odoo>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <data>
+    <record id="action_okr_rollback_confirm" model="ir.actions.act_window">
+      <field name="name">Confirm Rollback</field>
+      <field name="res_model">okr.rollback.confirm</field>
+      <field name="view_mode">form</field>
+      <field name="target">new</field>
+      <field name="context">{"default_migration_log_id": active_id}</field>
+    </record>
+  </data>
+</odoo>

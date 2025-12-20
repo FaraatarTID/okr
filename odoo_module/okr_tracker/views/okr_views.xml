@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <data>
-        <!-- Tree View -->
+        <!-- List view for Objectives and Key Results -->
         <record id="view_okr_node_tree" model="ir.ui.view">
-            <field name="name">okr.node.tree</field>
+            <field name="name">okr.node.list</field>
             <field name="model">okr.node</field>
             <field name="arch" type="xml">
                 <list>
                     <field name="name"/>
                     <field name="node_type"/>
                     <field name="progress"/>
-                    <field name="user_id"/>
+                    <field name="project_id"/>
                 </list>
             </field>
         </record>
@@ -26,17 +26,71 @@
                             <field name="name"/>
                             <field name="node_type"/>
                             <field name="description"/>
+                        </group>
+                        <group>
                             <field name="progress"/>
-                            <field name="parent_id"/>
                             <field name="user_id"/>
+                            <field name="project_id" modifiers="{'invisible': [('node_type', '=', 'objective')] }"/>
+                            <field name="parent_id" modifiers="{'invisible': [('node_type', '=', 'objective')]}"/>
                         </group>
                         <notebook>
-                            <page string="Children">
-                                <field name="child_ids">
+                            <page string="Key Results">
+                                <field name="child_ids" context="{'default_node_type': 'key_result', 'form_view_ref': 'okr_tracker.view_okr_node_form_key_result'}" modifiers="{'invisible': [('node_type','!=','objective')]}">
                                     <list>
                                         <field name="name"/>
-                                        <field name="node_type"/>
                                         <field name="progress"/>
+                                        <field name="user_id"/>
+                                    </list>
+                                </field>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Dedicated form for Key Results (used when creating from parent one2many) -->
+        <record id="view_okr_node_form_key_result" model="ir.ui.view">
+            <field name="name">okr.node.form.key_result</field>
+            <field name="model">okr.node</field>
+            <field name="priority" eval="20"/>
+            <field name="arch" type="xml">
+                <form string="Key Result">
+                    <sheet>
+                        <group>
+                            <field name="name"/>
+                            <field name="description"/>
+                            <field name="parent_id"/>
+                        </group>
+                        <group>
+                            <field name="progress"/>
+                            <field name="user_id"/>
+                            <field name="project_id"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Dedicated form for Objectives (no project, no parent) -->
+        <record id="view_okr_node_form_objective" model="ir.ui.view">
+            <field name="name">okr.node.form.objective</field>
+            <field name="model">okr.node</field>
+            <field name="priority" eval="10"/>
+            <field name="arch" type="xml">
+                <form string="Objective">
+                    <sheet>
+                        <group>
+                            <field name="name"/>
+                            <field name="description"/>
+                        </group>
+                        <notebook>
+                            <page string="Key Results">
+                                <field name="child_ids" context="{'default_node_type': 'key_result', 'form_view_ref': 'okr_tracker.view_okr_node_form_key_result'}">
+                                    <list>
+                                        <field name="name"/>
+                                        <field name="progress"/>
+                                        <field name="user_id"/>
                                     </list>
                                 </field>
                             </page>
@@ -51,6 +105,7 @@
             <field name="name">OKR Nodes</field>
             <field name="res_model">okr.node</field>
             <field name="view_mode">list,form</field>
+            <field name="views" eval="[(ref('view_okr_node_tree'), 'list'), (ref('view_okr_node_form_objective'), 'form')]"/>
         </record>
     </data>
 </odoo>

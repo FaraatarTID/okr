@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_okr_migration_preview_form" model="ir.ui.view">
+    <field name="name">okr.migration.preview.form</field>
+    <field name="model">okr.migration.preview</field>
+    <field name="arch" type="xml">
+      <form string="Migration Preview">
+        <group>
+          <field name="okrs_count"/>
+          <field name="tasks_count"/>
+        </group>
+        <group>
+          <field name="okrs_sample" readonly="1"/>
+          <field name="tasks_sample" readonly="1"/>
+        </group>
+        <footer>
+          <button string="Download CSV" type="object" name="action_export_csv" class="btn-primary"/>
+          <button string="Close" class="btn-secondary" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+</odoo>
