@@ -3,7 +3,7 @@
     <data>
         <!-- Menu -->
         <menuitem id="menu_okr_root" name="OKR Tracker" sequence="10"/>
-        <menuitem id="menu_okr_nodes" name="Nodes" parent="menu_okr_root" action="action_okr_node" sequence="10"/>
+        <menuitem id="menu_okr_nodes" name="Objectives" parent="menu_okr_root" action="action_okr_node" sequence="10"/>
         <menuitem id="menu_okr_import" name="Import OKR Data" parent="menu_okr_root" action="action_okr_migration_wizard" sequence="20"/>
         <menuitem id="menu_okr_migration_logs" name="Migration Logs" parent="menu_okr_root" action="action_okr_migration_log" sequence="30"/>
     </data>

@@ -21,6 +21,18 @@ def apply_custom_fonts():
         h1, h2, h3, h4, h5, h6, p, label, input, textarea, select, button {
             font-family: 'Vazirmatn', sans-serif !important;
         }
+
+        /* 
+           FORCE FULL WIDTH & REMOVE PADDING 
+           This targets the main content container in Streamlit.
+        */
+        .block-container {
+            max-width: 100% !important;
+            padding-top: 2rem !important;
+            padding-bottom: 2rem !important;
+            padding-left: 3rem !important;
+            padding-right: 3rem !important;
+        }
         
         /* Ensure tooltips and other floating elements get it too if possible, 
            without breaking icons. */
