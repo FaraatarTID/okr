@@ -1144,12 +1144,9 @@ def render_level(data, username):
     if not items:
         st.info("No items here yet.")
     
-    # Grid View for Cards? Or List? Cards usually look better in grid.
-    # Let's do 2 cards per row.
-    cols = st.columns(2)
-    for i, item_id in enumerate(items):
-        with cols[i % 2]:
-            render_card(item_id, data, username)
+    # List View: Expanded cards for better readability and space usage
+    for item_id in items:
+        render_card(item_id, data, username)
 
 
 def render_app(username):
