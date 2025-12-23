@@ -791,6 +791,10 @@ def render_inspector_content(node_id, data, username):
     node = data["nodes"].get(node_id)
     if not node:
         st.error("Node not found")
+        if st.button("Close", key=f"close_error_{node_id}"):
+            if "active_inspector_id" in st.session_state:
+                del st.session_state.active_inspector_id
+            st.rerun()
         return
 
     title = node.get('title', 'Untitled')
