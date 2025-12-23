@@ -28,7 +28,7 @@ def apply_custom_fonts():
         */
         .block-container {
             max-width: 100% !important;
-            padding-top: 2rem !important;
+            padding-top: 6rem !important;
             padding-bottom: 2rem !important;
             padding-left: 3rem !important;
             padding-right: 3rem !important;
