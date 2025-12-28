@@ -23,6 +23,28 @@ class TaskStatus(str, Enum):
     BLOCKED = "blocked"
 
 
+class UserRole(str, Enum):
+    """Role options for users."""
+    ADMIN = "admin"      # Can manage users and see all data
+    MANAGER = "manager"  # Can see team data and manage their assigned OKRs
+    MEMBER = "member"    # Can only see/edit their own OKRs
+
+
+class User(SQLModel, table=True):
+    """User account for authentication and authorization."""
+    __tablename__ = "user"
+    __table_args__ = {"extend_existing": True}
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    username: str = Field(unique=True, index=True)
+    password_hash: str
+    display_name: Optional[str] = None
+    role: UserRole = Field(default=UserRole.MEMBER)
+    manager_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_active: bool = Field(default=True)
+
+
 # ============================================================================
 # BASE MODELS (shared fields)
 # ============================================================================
@@ -63,7 +85,8 @@ class Goal(NodeBase, table=True):
     __table_args__ = {"extend_existing": True}
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: str = Field(index=True)  # For multi-user support
+    user_id: str = Field(index=True)  # Legacy username string
+    owner_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)  # FK to User table
     cycle_id: Optional[int] = Field(default=None, foreign_key="cycle.id", index=True)
     
     # Relationships

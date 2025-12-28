@@ -10,3 +10,4 @@ streamlit-agraph
 google-genai
 pdfkit
 requests
+bcrypt
