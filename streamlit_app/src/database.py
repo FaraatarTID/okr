@@ -21,21 +21,34 @@ engine = create_engine(
 def create_db_and_tables():
     """Create all database tables if they don't exist."""
     from src.models import (
-        Goal, Strategy, Objective, KeyResult, 
-        Initiative, Task, WorkLog
+        Cycle, Goal, Strategy, Objective, KeyResult, 
+        Initiative, Task, WorkLog, CheckIn
     )
     SQLModel.metadata.create_all(engine)
+    
+    # SQLite ALTER TABLE support to add column if it doesn't exist (Migration helper)
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        tables = ["goal", "strategy", "objective", "key_result", "initiative", "task"]
+        for table in tables:
+            try:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN external_id TEXT"))
+                conn.commit()
+            except Exception:
+                # Column likely already exists
+                pass
 
 
 def get_session() -> Session:
     """Get a new database session."""
-    return Session(engine)
+    return Session(engine, expire_on_commit=False)
 
 
 @contextmanager
 def get_session_context():
     """Context manager for database sessions with automatic commit/rollback."""
-    session = Session(engine)
+    # expire_on_commit=False allows using objects after session is closed (DetachedInstanceError fix)
+    session = Session(engine, expire_on_commit=False)
     try:
         yield session
         session.commit()

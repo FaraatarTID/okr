@@ -3,6 +3,7 @@ import os
 import time
 import uuid
 import streamlit as st
+from utils.sync import sync_data_to_db
 
 from services.sheets import SheetsDB
 
@@ -121,6 +122,12 @@ def save_data(data, username=None):
     # Also update current session state immediately so UI reflects changes
     if username:
         st.session_state[_get_cache_key(username)] = data
+        # Sync to SQL Database for Dashboard visibility
+        try:
+            sync_data_to_db(username, data)
+        except Exception as e:
+            # Don't let sync errors crash the main save
+            print(f"Sync error: {e}")
         
 def generate_id():
     return f"{int(time.time() * 1000)}-{str(uuid.uuid4())[:8]}"
@@ -167,7 +174,7 @@ def update_node_progress(node_id, nodes):
     
     return nodes
 
-def add_node(data_store, parent_id, node_type, title, description, username=None):
+def add_node(data_store, parent_id, node_type, title, description, username=None, cycle_id=None):
     # Auto-numbering logic
     # Find siblings
     siblings_count = 0
@@ -211,7 +218,8 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
         "children": [],
         "parentId": parent_id,
         "createdAt": int(time.time() * 1000),
-        "isExpanded": True
+        "isExpanded": True,
+        "cycle_id": cycle_id
     }
     
     data_store["nodes"][new_id] = new_node

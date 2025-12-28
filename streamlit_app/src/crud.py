@@ -2,36 +2,285 @@
 CRUD operations for OKR Application.
 Provides efficient data access with JOINs for dashboard and tree loading.
 """
-from sqlmodel import Session, select, col
+from sqlmodel import Session, select, col, delete
 from sqlalchemy.orm import selectinload
+import json
 from typing import Optional, List
 from datetime import datetime, timedelta
 
 from src.models import (
     Goal, Strategy, Objective, KeyResult, Initiative, Task, WorkLog,
-    TaskStatus, DashboardGoal, TaskWithTimer
+    TaskStatus, DashboardGoal, TaskWithTimer, Cycle, CheckIn
 )
 from src.database import get_session_context
+
+
+# ============================================================================
+# CHECK-IN OPERATIONS
+# ============================================================================
+
+def create_check_in(kr_id: int, value: float, confidence: int, comment: str) -> CheckIn:
+    """Create a new check-in and update the KR's current value."""
+    with get_session_context() as session:
+        # Create CheckIn
+        check_in = CheckIn(
+            key_result_id=kr_id,
+            value=value,
+            confidence_score=confidence,
+            comment=comment
+        )
+        session.add(check_in)
+        
+        # Update KeyResult
+        kr = session.get(KeyResult, kr_id)
+        if kr:
+            kr.current_value = value
+            if kr.target_value > 0:
+                kr.progress = int((value / kr.target_value) * 100)
+            session.add(kr)
+            
+        session.commit()
+        session.refresh(check_in)
+        return check_in
+
+def get_check_ins(kr_id: int) -> List[CheckIn]:
+    """Get all check-ins for a KR, ordered by date desc."""
+    with get_session_context() as session:
+        statement = select(CheckIn).where(CheckIn.key_result_id == kr_id).order_by(col(CheckIn.created_at).desc())
+        return list(session.exec(statement).all())
+
+def get_krs_needing_checkin(user_id: str, cycle_id: int, days_threshold: int = 7) -> List[KeyResult]:
+    """
+    Get KRs that haven't had a check-in within the threshold days.
+    """
+    with get_session_context() as session:
+        # 1. Get all KRs for this user in this cycle
+        # This is a bit complex due to hierarchy. 
+        # Goal -> Strategy -> Objective -> KR
+        
+        statement = (
+            select(KeyResult)
+            .join(Objective)
+            .join(Strategy)
+            .join(Goal)
+            # .where(Goal.user_id == user_id) # Simplify for now, focus on Cycle
+            .where(Goal.cycle_id == cycle_id)
+        )
+        krs = session.exec(statement).all()
+        
+        needing_update = []
+        now = datetime.utcnow()
+        threshold = now - timedelta(days=days_threshold)
+        
+        for kr in krs:
+            # Get latest check-in
+            latest_checkin = session.exec(
+                select(CheckIn)
+                .where(CheckIn.key_result_id == kr.id)
+                .order_by(col(CheckIn.created_at).desc())
+                .limit(1)
+            ).first()
+            
+            if not latest_checkin or latest_checkin.created_at < threshold:
+                needing_update.append(kr)
+                
+        return needing_update
+
+
+# ============================================================================
+# CYCLE OPERATIONS
+# ============================================================================
+
+def create_cycle(title: str, start_date: datetime, end_date: datetime, is_active: bool = True) -> Cycle:
+    """Create a new OKR cycle."""
+    with get_session_context() as session:
+        cycle = Cycle(
+            title=title,
+            start_date=start_date,
+            end_date=end_date,
+            is_active=is_active
+        )
+        session.add(cycle)
+        session.commit()
+        session.refresh(cycle)
+        return cycle
+
+
+def get_active_cycles() -> List[Cycle]:
+    """Get all active cycles."""
+    with get_session_context() as session:
+        statement = select(Cycle).where(Cycle.is_active == True)
+        return list(session.exec(statement).all())
+
+
+def get_all_cycles() -> List[Cycle]:
+    """Get all cycles."""
+    with get_session_context() as session:
+        statement = select(Cycle).order_by(col(Cycle.start_date).desc())
+        return list(session.exec(statement).all())
+
+
+
+def update_cycle(cycle_id: int, title: str, start_date: datetime, end_date: datetime, is_active: bool) -> Optional[Cycle]:
+    """Update an existing cycle."""
+    with get_session_context() as session:
+        cycle = session.get(Cycle, cycle_id)
+        if not cycle:
+            return None
+            
+        cycle.title = title
+        cycle.start_date = start_date
+        cycle.end_date = end_date
+        cycle.is_active = is_active
+        
+        session.add(cycle)
+        session.commit()
+        session.refresh(cycle)
+        return cycle
+
+def delete_cycle(cycle_id: int) -> bool:
+    """Delete a cycle. Returns False if cycle has goals."""
+    with get_session_context() as session:
+        cycle = session.get(Cycle, cycle_id)
+        if not cycle:
+            return False
+        
+        # Check for goals - simplistic check, relationship loading might differ
+        # Use a query to be safe
+        goals = session.exec(select(Goal).where(Goal.cycle_id == cycle_id)).all()
+        if goals:
+            return False
+            
+        session.delete(cycle)
+        session.commit()
+        return True
+
+# ============================================================================
+# LEADERSHIP ANALYTICS (Phase 3)
+# ============================================================================
+
+def get_leadership_metrics(user_id: str, cycle_id: int):
+    """
+    Aggregate metrics for the Strategic Health Dashboard.
+    Returns hygiene %, confidence trends, and heatmap data.
+    """
+    with get_session_context() as session:
+        # 1. Get all KRs in this cycle
+        statement = (
+            select(KeyResult)
+            .join(Objective)
+            .join(Strategy)
+            .join(Goal)
+            .where(Goal.cycle_id == cycle_id)
+        )
+        krs = session.exec(statement).all()
+        
+        if not krs:
+            return None
+            
+        total_krs = len(krs)
+        now = datetime.utcnow()
+        week_ago = now - timedelta(days=7)
+        ten_days_ago = now - timedelta(days=10)
+        
+        updated_count = 0
+        total_confidence = 0
+        confidence_count = 0
+        heatmap_data = []
+        at_risk = []
+        
+        for kr in krs:
+            # Check hygiene
+            latest_checkin = session.exec(
+                select(CheckIn)
+                .where(CheckIn.key_result_id == kr.id)
+                .order_by(col(CheckIn.created_at).desc())
+                .limit(1)
+            ).first()
+            
+            if latest_checkin:
+                if latest_checkin.created_at >= week_ago:
+                    updated_count += 1
+                
+                total_confidence += latest_checkin.confidence_score
+                confidence_count += 1
+                
+            # Parse AI analysis for heatmap
+            efficiency = 0
+            effectiveness = 0
+            has_ai = False
+            if kr.gemini_analysis:
+                try:
+                    analysis = json.loads(kr.gemini_analysis)
+                    efficiency = analysis.get("efficiency_score") or 0
+                    effectiveness = analysis.get("effectiveness_score") or 0
+                    has_ai = True
+                except:
+                    pass
+            
+            if has_ai:
+                heatmap_data.append({
+                    "title": kr.title,
+                    "efficiency": efficiency,
+                    "effectiveness": effectiveness,
+                    "confidence": latest_checkin.confidence_score if latest_checkin else 5
+                })
+            
+            # Risk Detection
+            is_at_risk = False
+            risk_reason = []
+            
+            if latest_checkin and latest_checkin.confidence_score < 4:
+                is_at_risk = True
+                risk_reason.append("Low Confidence")
+            
+            if not latest_checkin or latest_checkin.created_at < ten_days_ago:
+                is_at_risk = True
+                risk_reason.append("Stale Data (>10d)")
+                
+            if kr.gemini_analysis:
+                 try:
+                    analysis = json.loads(kr.gemini_analysis)
+                    if analysis.get("effectiveness_score", 100) < 50:
+                        is_at_risk = True
+                        risk_reason.append("Low Strategy Fit")
+                 except: pass
+            
+            if is_at_risk:
+                at_risk.append({
+                    "id": kr.id,
+                    "title": kr.title,
+                    "reason": ", ".join(risk_reason),
+                    "confidence": latest_checkin.confidence_score if latest_checkin else "N/A"
+                })
+
+        return {
+            "hygiene_pct": (updated_count / total_krs * 100) if total_krs > 0 else 0,
+            "avg_confidence": (total_confidence / confidence_count) if confidence_count > 0 else 0,
+            "heatmap_data": heatmap_data,
+            "at_risk": at_risk,
+            "total_krs": total_krs
+        }
 
 
 # ============================================================================
 # DASHBOARD QUERIES (Efficient JOINs)
 # ============================================================================
 
-def get_dashboard_data(user_id: str) -> List[DashboardGoal]:
+def get_dashboard_data(user_id: str, cycle_id: Optional[int] = None) -> List[DashboardGoal]:
     """
     Get lightweight goal data for dashboard display.
     Uses JOINs to count strategies and objectives without loading full tree.
     """
     with get_session_context() as session:
-        statement = (
-            select(Goal)
-            .where(Goal.user_id == user_id)
-            .options(
+        statement = select(Goal).where(Goal.user_id == user_id)
+        if cycle_id:
+            statement = statement.where(Goal.cycle_id == cycle_id)
+            
+        statement = statement.options(
                 selectinload(Goal.strategies)
                 .selectinload(Strategy.objectives)
             )
-        )
         goals = session.exec(statement).all()
         
         dashboard_goals = []
@@ -71,10 +320,12 @@ def get_goal_tree(goal_id: int) -> Optional[Goal]:
         return goal
 
 
-def get_user_goals(user_id: str) -> List[Goal]:
+def get_user_goals(user_id: str, cycle_id: Optional[int] = None) -> List[Goal]:
     """Get all goals for a user (without full tree)."""
     with get_session_context() as session:
         statement = select(Goal).where(Goal.user_id == user_id)
+        if cycle_id:
+            statement = statement.where(Goal.cycle_id == cycle_id)
         goals = session.exec(statement).all()
         return list(goals)
 
@@ -83,13 +334,15 @@ def get_user_goals(user_id: str) -> List[Goal]:
 # CREATE OPERATIONS
 # ============================================================================
 
-def create_goal(user_id: str, title: str, description: str = "") -> Goal:
+def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optional[int] = None, external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Goal:
     """Create a new goal."""
     with get_session_context() as session:
         # Get sibling count for auto-numbering
-        existing = session.exec(
-            select(Goal).where(Goal.user_id == user_id)
-        ).all()
+        statement = select(Goal).where(Goal.user_id == user_id)
+        if cycle_id:
+            statement = statement.where(Goal.cycle_id == cycle_id)
+        
+        existing = session.exec(statement).all()
         
         if not title or title.startswith("New "):
             title = f"Goal #{len(existing) + 1}"
@@ -97,7 +350,10 @@ def create_goal(user_id: str, title: str, description: str = "") -> Goal:
         goal = Goal(
             user_id=user_id,
             title=title,
-            description=description
+            description=description,
+            cycle_id=cycle_id,
+            external_id=external_id,
+            created_at=created_at or datetime.utcnow()
         )
         session.add(goal)
         session.commit()
@@ -105,7 +361,7 @@ def create_goal(user_id: str, title: str, description: str = "") -> Goal:
         return goal
 
 
-def create_strategy(goal_id: int, title: str, description: str = "") -> Strategy:
+def create_strategy(goal_id: int, title: str, description: str = "", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Strategy:
     """Create a new strategy under a goal."""
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
@@ -123,7 +379,9 @@ def create_strategy(goal_id: int, title: str, description: str = "") -> Strategy
         strategy = Strategy(
             goal_id=goal_id,
             title=title,
-            description=description
+            description=description,
+            external_id=external_id,
+            created_at=created_at or datetime.utcnow()
         )
         session.add(strategy)
         session.commit()
@@ -131,7 +389,7 @@ def create_strategy(goal_id: int, title: str, description: str = "") -> Strategy
         return strategy
 
 
-def create_objective(strategy_id: int, title: str, description: str = "") -> Objective:
+def create_objective(strategy_id: int, title: str, description: str = "", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Objective:
     """Create a new objective under a strategy."""
     with get_session_context() as session:
         strategy = session.get(Strategy, strategy_id)
@@ -148,7 +406,9 @@ def create_objective(strategy_id: int, title: str, description: str = "") -> Obj
         objective = Objective(
             strategy_id=strategy_id,
             title=title,
-            description=description
+            description=description,
+            external_id=external_id,
+            created_at=created_at or datetime.utcnow()
         )
         session.add(objective)
         session.commit()
@@ -157,7 +417,7 @@ def create_objective(strategy_id: int, title: str, description: str = "") -> Obj
 
 
 def create_key_result(objective_id: int, title: str, description: str = "",
-                      target_value: float = 100.0, unit: str = "%") -> KeyResult:
+                      target_value: float = 100.0, unit: str = "%", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> KeyResult:
     """Create a new key result under an objective."""
     with get_session_context() as session:
         objective = session.get(Objective, objective_id)
@@ -176,7 +436,9 @@ def create_key_result(objective_id: int, title: str, description: str = "",
             title=title,
             description=description,
             target_value=target_value,
-            unit=unit
+            unit=unit,
+            external_id=external_id,
+            created_at=created_at or datetime.utcnow()
         )
         session.add(key_result)
         session.commit()
@@ -184,7 +446,7 @@ def create_key_result(objective_id: int, title: str, description: str = "",
         return key_result
 
 
-def create_initiative(key_result_id: int, title: str, description: str = "") -> Initiative:
+def create_initiative(key_result_id: int, title: str, description: str = "", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Initiative:
     """Create a new initiative under a key result."""
     with get_session_context() as session:
         key_result = session.get(KeyResult, key_result_id)
@@ -201,7 +463,9 @@ def create_initiative(key_result_id: int, title: str, description: str = "") -> 
         initiative = Initiative(
             key_result_id=key_result_id,
             title=title,
-            description=description
+            description=description,
+            external_id=external_id,
+            created_at=created_at or datetime.utcnow()
         )
         session.add(initiative)
         session.commit()
@@ -210,7 +474,7 @@ def create_initiative(key_result_id: int, title: str, description: str = "") -> 
 
 
 def create_task(initiative_id: int, title: str, description: str = "",
-                estimated_minutes: int = 0) -> Task:
+                estimated_minutes: int = 0, external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Task:
     """Create a new task under an initiative."""
     with get_session_context() as session:
         initiative = session.get(Initiative, initiative_id)
@@ -228,7 +492,9 @@ def create_task(initiative_id: int, title: str, description: str = "",
             initiative_id=initiative_id,
             title=title,
             description=description,
-            estimated_minutes=estimated_minutes
+            estimated_minutes=estimated_minutes,
+            external_id=external_id,
+            created_at=created_at or datetime.utcnow()
         )
         session.add(task)
         session.commit()

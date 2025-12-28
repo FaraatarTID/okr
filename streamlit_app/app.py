@@ -9,6 +9,14 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils.storage import load_data, save_data, add_node, delete_node, update_node, update_node_progress, export_data, import_data, start_timer, stop_timer, get_total_time, delete_work_log
 from utils.styles import apply_custom_fonts
+from src.database import init_database
+from src.crud import (
+    get_all_cycles, create_cycle, get_active_cycles,
+    create_check_in, get_krs_needing_checkin, get_check_ins,
+    get_leadership_metrics, update_cycle, delete_cycle
+)
+import plotly.graph_objects as go
+import pandas as pd
 
 # Import streamlit-agraph for mind map visualization
 from streamlit_agraph import agraph, Node, Edge, Config
@@ -111,7 +119,68 @@ def build_graph_from_node(node_id, data):
     traverse(node_id)
     return nodes_list, edges_list
 
-@st.dialog("🗺️ OKR Mind Map", width="large")
+@st.dialog("Manage OKR Cycles", width="medium")
+def render_manage_cycles_dialog():
+    st.write("Add or activate/deactivate your OKR cycles.")
+    
+    with st.form("new_cycle_form"):
+        st.subheader("Add New Cycle")
+        new_title = st.text_input("Cycle Title", placeholder="e.g. Q2 2026")
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            new_start = st.date_input("Start Date")
+        with col_d2:
+            new_end = st.date_input("End Date")
+        
+        if st.form_submit_button("➕ Create Cycle"):
+            if new_title:
+                create_cycle(
+                    title=new_title,
+                    start_date=datetime.combine(new_start, datetime.min.time()),
+                    end_date=datetime.combine(new_end, datetime.min.time()),
+                    is_active=True
+                )
+                st.success(f"Cycle '{new_title}' created!")
+                st.rerun()
+            else:
+                st.error("Title is required.")
+
+    st.markdown("---")
+    st.subheader("Existing Cycles")
+    all_cycles = get_all_cycles()
+    for c in all_cycles:
+        with st.expander(f"{'✅ ' if c.is_active else '⚪ '}{c.title}"):
+            with st.form(key=f"edit_cycle_{c.id}"):
+                edit_title = st.text_input("Title", value=c.title)
+                col1, col2 = st.columns(2)
+                with col1:
+                    edit_start = st.date_input("Start Date", value=c.start_date.date(), key=f"start_{c.id}")
+                with col2:
+                    edit_end = st.date_input("End Date", value=c.end_date.date(), key=f"end_{c.id}")
+                
+                edit_active = st.checkbox("Active Cycle", value=c.is_active)
+                
+                btn_col1, btn_col2 = st.columns(2)
+                if btn_col1.form_submit_button("💾 Save Changes", type="primary"):
+                    update_cycle(
+                        cycle_id=c.id,
+                        title=edit_title,
+                        start_date=datetime.combine(edit_start, datetime.min.time()),
+                        end_date=datetime.combine(edit_end, datetime.min.time()),
+                        is_active=edit_active
+                    )
+                    st.success("Cycle updated!")
+                    st.rerun()
+                
+                if btn_col2.form_submit_button("🗑️ Delete", type="secondary"):
+                    if delete_cycle(c.id):
+                        st.success("Cycle deleted!")
+                        st.rerun()
+                    else:
+                        st.error("Cannot delete cycle. Please remove its Goals first to avoid data loss.")
+
+# Render the mind map visualization in a dialog.
+@st.dialog("Hierarchy Map", width="large")
 def render_mindmap_dialog(node_id, data):
     """Render the mind map visualization in a dialog."""
     node = data["nodes"].get(node_id)
@@ -450,7 +519,207 @@ def render_report_content(data, username, mode="Weekly"):
             }
             </style>
         """, unsafe_allow_html=True)
+
+@st.dialog("🧭 Strategic Health Dashboard", width="large")
+def render_leadership_dashboard_dialog(username):
+    # CSS: Hide native X and make dialog strictly modal
+    st.markdown("""
+        <style>
+        div[role="dialog"] button[aria-label="Close"] {
+            display: none;
+        }
+        div[data-baseweb="modal-backdrop"] {
+            display: none;
+        }
+        div[data-baseweb="modal"] {
+            background-color: rgba(0, 0, 0, 0.5);
+            pointer-events: none;
+        }
+        div[role="dialog"]::before {
+            content: "";
+            position: absolute;
+            top: -500vh; left: -500vw; width: 1000vw; height: 1000vh;
+            background: transparent;
+            z-index: -1;
+            pointer-events: auto;
+        }
+        div[role="dialog"] {
+            overflow: visible !important;
+            pointer-events: auto;
+        }
+        /* Style the custom button in the header */
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
+            border-radius: 50%;
+            border: 1px solid #e0e0e0;
+            width: 35px; height: 35px;
+            padding: 0 !important;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            background-color: white;
+        }
+        </style>
+    """, unsafe_allow_html=True)
     
+    # Header with Close button
+    c_head, c_close = st.columns([0.92, 0.08])
+    c_head.markdown("### Efficiency vs. Effectiveness Analysis")
+    if c_close.button("", icon=":material/close:", key="close_dash_dialog"):
+        if "active_report_mode" in st.session_state:
+            del st.session_state.active_report_mode
+        st.rerun()
+    
+    render_leadership_dashboard_content(username)
+
+def render_leadership_dashboard_content(username):
+    # (Title is now in the dialog header)
+    
+    
+    cycle_id = st.session_state.get("active_cycle_id")
+    if not cycle_id:
+        st.warning("Please select a cycle to view insights.")
+        return
+        
+    metrics = get_leadership_metrics(username, cycle_id)
+    if not metrics or not metrics["total_krs"]:
+        st.info("No Key Results found in this cycle. Start adding goals to see insights.")
+        return
+        
+    # --- Scorecard ---
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric(
+            "Data Hygiene", 
+            f"{metrics['hygiene_pct']:.0f}%", 
+            help="% of KRs updated in the last 7 days"
+        )
+    with col2:
+        st.metric(
+            "Avg Confidence", 
+            f"{metrics['avg_confidence']:.1f}/10",
+            delta_color="normal"
+        )
+    with col3:
+        st.metric(
+            "At-Risk KRs", 
+            len(metrics["at_risk"]),
+            delta="-bad" if metrics["at_risk"] else "off"
+        )
+        
+    st.markdown("---")
+    
+    # --- Plotly Heatmap ---
+    st.subheader("📊 Strategic Alignment Matrix")
+    
+    data = metrics["heatmap_data"]
+    if data:
+        df = pd.DataFrame(data)
+        
+        # Color mapping based on confidence
+        colors = df["confidence"]
+        
+        fig = go.Figure(data=go.Scatter(
+            x=df["efficiency"],
+            y=df["effectiveness"],
+            mode='markers+text',
+            text=df["title"],
+            textposition="top center",
+            marker=dict(
+                size=14,
+                color=colors,
+                colorscale='RdYlGn', # Red to Green
+                cmin=0,
+                cmax=10,
+                showscale=True,
+                colorbar=dict(title="Confidence"),
+                line=dict(color='black', width=1)
+            ),
+            hovertext=df.apply(lambda row: f"<b>{row['title']}</b><br>Eff: {row['efficiency']}%<br>Str fit: {row['effectiveness']}%", axis=1),
+            hoverinfo="text"
+        ))
+        
+        # Quadrant Lines
+        fig.add_hline(y=50, line_dash="dash", line_color="gray", opacity=0.5)
+        fig.add_vline(x=50, line_dash="dash", line_color="gray", opacity=0.5)
+        
+        # Quadrant Labels
+        fig.add_annotation(x=90, y=90, text="🌟 High Performers", showarrow=False, font=dict(color="green"))
+        fig.add_annotation(x=90, y=10, text="⚠️ Busy Work", showarrow=False, font=dict(color="orange")) # High eff, low effect
+        fig.add_annotation(x=10, y=90, text="🤔 Strategy Gap", showarrow=False, font=dict(color="blue")) # Low eff, high effect
+        fig.add_annotation(x=10, y=10, text="❌ Disconnected", showarrow=False, font=dict(color="red"))
+
+        fig.update_layout(
+            xaxis_title="Efficiency (Execution Quality)",
+            yaxis_title="Effectiveness (Strategy Fit)",
+            xaxis=dict(range=[0, 105]),
+            yaxis=dict(range=[0, 105]),
+            height=600,
+            template="simple_white"
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Not enough AI analysis data yet. Updates trigger automatic auditing.")
+
+    # --- At Risk List ---
+    if metrics["at_risk"]:
+        st.markdown("### 🚨 At-Risk Key Results")
+        for item in metrics["at_risk"]:
+            st.error(f"**{item['title']}** — Reason: {item['reason']} (Conf: {item['confidence']})")
+
+
+@st.dialog("🔄 Weekly Ritual", width="large")
+def render_weekly_ritual_dialog(data, username):
+    st.markdown("### Weekly Check-in")
+    st.write("Review your Key Results and update their progress.")
+    
+    cycle_id = st.session_state.get("active_cycle_id")
+    if not cycle_id:
+        st.warning("Please select a cycle first.")
+        return
+
+    needing_update = get_krs_needing_checkin(user_id=username, cycle_id=cycle_id, days_threshold=7)
+    
+    if not needing_update:
+        st.success("🎉 You are all caught up! No Key Results need a check-in right now.")
+        if st.button("Close"):
+             del st.session_state.active_report_mode
+             st.rerun()
+        return
+        
+    st.progress(0, f"Pending updates: {len(needing_update)}")
+    
+    for i, kr in enumerate(needing_update):
+        with st.expander(f"📊 {kr.title}", expanded=(i==0)):
+            st.caption(f"Current Value: {kr.current_value} {kr.unit or ''} | Target: {kr.target_value}")
+            
+            with st.form(f"checkin_form_{kr.id}"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    new_val = st.number_input("New Value", value=float(kr.current_value), key=f"val_{kr.id}")
+                with c2:
+                    conf = st.slider("Confidence Score (0-10)", 0, 10, 5, key=f"conf_{kr.id}")
+                
+                comment = st.text_area("What changed this week?", placeholder="Progress update...", key=f"comm_{kr.id}")
+                
+                if st.form_submit_button("✅ Submit Update"):
+                    create_check_in(kr.id, new_val, conf, comment)
+                    
+                    # Sync back to JSON for UI consistency
+                    if kr.external_id and kr.external_id in data["nodes"]:
+                        json_node = data["nodes"][kr.external_id]
+                        json_node["current_value"] = new_val
+                        if kr.target_value > 0:
+                            json_node["progress"] = int((new_val / kr.target_value) * 100)
+                        save_data(data, username)
+                        
+                    st.toast(f"Updated {kr.title}!")
+                    time.sleep(1)
+                    st.rerun()
+
+# ============================================================================
+# Main App Logic
+# ============================================================================
     # Filter logic
     now = time.time() * 1000
     if mode == "Daily":
@@ -829,13 +1098,56 @@ def render_inspector_content(node_id, data, username):
         with col2:
             current_index = TYPES.index(node_type) if node_type in TYPES else 0
             new_type = st.selectbox("Type", TYPES, index=current_index)
+            
+        # GOAL Specific Cycle Assignment
+        new_cycle_id = node.get("cycle_id")
+        if node_type == "GOAL":
+            st.markdown("---")
+            st.caption("📅 Cycle Assignment")
+            from src.crud import get_all_cycles
+            all_cycles = get_all_cycles()
+            cycle_titles = [c.title for c in all_cycles]
+            cycle_ids = [c.id for c in all_cycles]
+            
+            try:
+                current_cyc_idx = cycle_ids.index(new_cycle_id)
+            except:
+                current_cyc_idx = 0
+                
+            selected_cyc_title = st.selectbox("Assign to Cycle", options=cycle_titles, index=current_cyc_idx, key=f"cyc_assign_{node_id}")
+            new_cycle_id = all_cycles[cycle_titles.index(selected_cyc_title)].id
+
+        # KEY_RESULT Specific Metrics
+        new_target = node.get("target_value", 100.0)
+        new_current = node.get("current_value", 0.0)
+        new_unit = node.get("unit", "%")
+        
+        if node_type == "KEY_RESULT":
+            st.markdown("---")
+            st.caption("📈 Progress Metrics")
+            mc1, mc2, mc3 = st.columns(3)
+            new_target = mc1.number_input("Target Value", value=float(new_target), key=f"target_{node_id}")
+            new_current = mc2.number_input("Current Value", value=float(new_current), key=f"curr_{node_id}")
+            new_unit = mc3.text_input("Unit", value=new_unit, key=f"unit_{node_id}")
+            
+            # Recalculate progress if using metrics
+            if new_target > 0:
+                calc_prog = int((new_current / new_target) * 100)
+                calc_prog = max(0, min(100, calc_prog))
+                if not has_children:
+                    new_progress = calc_prog
+                    st.info(f"Calculated Progress: {new_progress}%")
 
         if st.form_submit_button("💾 Save Changes"):
             update_node(data, node_id, {
                 "title": new_title,
                 "description": new_desc,
                 "progress": new_progress,
-                "type": new_type
+                "type": new_type,
+                "target_value": new_target,
+                "current_value": new_current,
+                "unit": new_unit,
+                "cycle_id": new_cycle_id
             }, username)
             st.rerun()
 
@@ -919,11 +1231,13 @@ def render_inspector_content(node_id, data, username):
                  else:
                      # Flatten result into node for storage
                      update_node(data, node_id, {
-                         "geminiAnalysis": res # Store the whole dict
+                         "geminiAnalysis": res["analysis"], # Store the result
+                         "geminiLastSnapshot": res["snapshot"] # Store the snapshot
                      }, username)
                      
                      # Update local node object for immediate rendering
-                     node["geminiAnalysis"] = res
+                     node["geminiAnalysis"] = res["analysis"]
+                     node["geminiLastSnapshot"] = res["snapshot"]
         
         analysis = node.get("geminiAnalysis")
         if analysis and isinstance(analysis, dict):
@@ -1063,25 +1377,40 @@ def render_card(node_id, data, username):
              # View Map button - only show if node has children
              if has_children:
                  if st.button("Map", icon=":material/account_tree:", key=f"map_{node_id}", help="View Mind Map"):
-                     render_mindmap_dialog(node_id, data)
+                      render_mindmap_dialog(node_id, data)
                  
         with c3:
             # Navigation Button ("Open")
-            # Only if not leaf
             if not is_leaf:
-                 if st.button("Open", icon=":material/arrow_forward:", key=f"nav_{node_id}", help="Drill Down"):
-                     navigate_to(node_id)
+                if st.button("Open", icon=":material/arrow_forward:", key=f"nav_{node_id}", help="Drill Down"):
+                    navigate_to(node_id)
+            
+            # AI Analysis Quick Button
+            if node_type == "KEY_RESULT":
+                if st.button("AI", icon=":material/psychology:", key=f"ai_card_{node_id}", help="Run Quick AI Strategic Analysis"):
+                    from services.gemini import analyze_node
+                    with st.spinner("🧠 Gemini is auditing..."):
+                        res = analyze_node(node_id, data["nodes"])
+                        if "error" in res:
+                            st.error(res["error"])
+                        else:
+                            update_node(data, node_id, {
+                                "geminiAnalysis": res["analysis"],
+                                "geminiLastSnapshot": res["snapshot"]
+                            }, username)
+                            st.toast(f"✅ AI Analysis complete for: {title}")
+                            st.rerun()
             elif node_type == "TASK":
                  # Maybe show something else? or Empty?
                  pass
 
-def render_level(data, username):
+def render_level(data, username, root_ids=None):
     stack = st.session_state.nav_stack
     
     # Determine what to show
     if not stack:
         # Root Level
-        items = data.get("rootIds", [])
+        items = root_ids if root_ids is not None else data.get("rootIds", [])
         level_name = "Goals"
         current_node = None
     else:
@@ -1135,12 +1464,12 @@ def render_level(data, username):
         if child_type:
              normalized_btn = child_type.replace('_',' ').title()
              if st.button(f"➕ New {normalized_btn}", key=f"add_btn_{current_node['id']}"):
-                 add_node(data, current_node["id"], child_type, f"New {normalized_btn}", "", username)
+                 add_node(data, current_node["id"], child_type, f"New {normalized_btn}", "", username, cycle_id=st.session_state.active_cycle_id)
                  st.rerun()
     else:
         st.markdown(f"## {level_name}")
         if st.button("➕ New Goal"):
-             add_node(data, None, "GOAL", "New Goal", "", username)
+             add_node(data, None, "GOAL", "New Goal", "", username, cycle_id=st.session_state.active_cycle_id)
              st.rerun()
 
     st.markdown("---")
@@ -1154,37 +1483,166 @@ def render_level(data, username):
 
 
 def render_app(username):
-    # Sidebar
+    # Sidebar Header
     st.sidebar.markdown(f"👤 **{username}**")
     if st.sidebar.button("Logout"):
         del st.session_state["username"]
         del st.session_state["nav_stack"]
         st.rerun()
+    
+    st.sidebar.markdown("---")
+    
+    init_database()
+    cycles = get_all_cycles()
+    
+    # If no cycles exist, create a default one
+    if not cycles:
+        from datetime import datetime, timedelta
+        now = datetime.utcnow()
+        default_cycle = create_cycle(
+            title="Q1 2026",
+            start_date=now,
+            end_date=now + timedelta(days=90),
+            is_active=True
+        )
+        cycles = [default_cycle]
+    
+    # Cycle Selection in Sidebar
+    st.sidebar.markdown("### 📅 OKR Cycle")
+    cycle_titles = [c.title for c in cycles]
+    
+    # Store selected cycle in session state
+    if "active_cycle_id" not in st.session_state:
+        # Default to first active cycle or just the first one
+        st.session_state.active_cycle_id = cycles[0].id
+        
+    current_cycle_index = 0
+    for i, c in enumerate(cycles):
+        if c.id == st.session_state.active_cycle_id:
+            current_cycle_index = i
+            break
+            
+    selected_cycle_title = st.sidebar.selectbox(
+        "Select Cycle", 
+        options=cycle_titles, 
+        index=current_cycle_index,
+        label_visibility="collapsed"
+    )
+    
+    if st.sidebar.button("⚙️ Manage Cycles", key="manage_cycles_sidebar"):
+        render_manage_cycles_dialog()
+    
+    # Update active_cycle_id if changed
+    selected_cycle = next(c for c in cycles if c.title == selected_cycle_title)
+    if selected_cycle.id != st.session_state.active_cycle_id:
+        st.session_state.active_cycle_id = selected_cycle.id
+        st.rerun()
+
+    st.sidebar.markdown("---")
+    
+    # Navigation & Views
+    st.sidebar.markdown("### 🧭 Navigation")
+    if st.sidebar.button("🏠 Home / OKRs", use_container_width=True):
+        if "active_report_mode" in st.session_state:
+            del st.session_state.active_report_mode
+        st.session_state.nav_stack = []
+        st.rerun()
+        
+    st.sidebar.markdown("### 📈 Insights & Reports")
 
     data = load_data(username)
     
+    # Filter nodes by cycle_id
+    # Note: Only Goals have cycle_id. The rest are children.
+    # We should filter rootIds to only show Goals belonging to this cycle.
+    # However, currently load_data returns a 'data' dict with 'nodes' and 'rootIds'.
+    # We need to filter 'rootIds'.
+    
+    # But wait, does 'data' contain the cycle_id? The JSON might not.
+    # If we are using the JSON file, it doesn't have cycle_id yet.
+    # This is the "Migration Gap". 
+    
+    # For Phase 1 implementation, I will treat rootIds that have NO cycle_id as "Unassigned" 
+    # or just show them in the first cycle.
+    # Better: Update storage.py to handle cycle_id or just proceed with UI.
+    
+    # --- Recovery & Cleanup Logic ---
+    # Ensure all GOAL nodes are in rootIds (fixes a bug where they might have been dropped during filtering)
+    existing_root_ids = set(data.get("rootIds", []))
+    repaired = False
+    for node_id, node in data.get("nodes", {}).items():
+        if node.get("type") == "GOAL" and node_id not in existing_root_ids:
+            data.setdefault("rootIds", []).append(node_id)
+            existing_root_ids.add(node_id)
+            repaired = True
+            
+    # Legacy handling: Assign nodes with no cycle_id to the oldest cycle (ordered by date desc)
+    oldest_cycle_id = cycles[-1].id if cycles else None
+    legacy_found = False
+    
+    for rid in data.get("rootIds", []):
+        node = data["nodes"].get(rid)
+        if node:
+            node_cycle_id = node.get("cycle_id")
+            if node_cycle_id is None and oldest_cycle_id:
+                node["cycle_id"] = oldest_cycle_id
+                legacy_found = True
+
+    # Persist if we fixed structure or legacy nodes
+    if legacy_found or repaired:
+        save_data(data, username)
+        
+    # Apply rendering filter (NON-DESTRUCTIVE - used for UI only)
+    display_root_ids = []
+    for rid in data.get("rootIds", []):
+        node = data["nodes"].get(rid)
+        if node and node.get("cycle_id") == st.session_state.active_cycle_id:
+            display_root_ids.append(rid)
+            
+    # Use display_root_ids for the rest of the app, do NOT overwrite data["rootIds"]
+    
     dialog_active = False
 
-    if st.sidebar.button("📊 Weekly Report"):
+    if st.sidebar.button("📊 Weekly Report", use_container_width=True):
         st.session_state.active_report_mode = "Weekly"
         # Clear others
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
         
-    if st.sidebar.button("📅 Daily Report"):
+    if st.sidebar.button("📅 Daily Report", use_container_width=True):
         st.session_state.active_report_mode = "Daily"
         # Clear others
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
+
+    if st.sidebar.button("🔄 Weekly Ritual", help="Guided check-in for your metrics", use_container_width=True):
+        st.session_state.active_report_mode = "Ritual"
+        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        st.rerun()
+
+    if st.sidebar.button("🧭 Strategic \nDashboard", help="Executive visibility", use_container_width=True):
+         st.session_state.active_report_mode = "Dashboard"
+         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
+         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+         st.rerun()
     
     # Sidebar Utilities (Export)
-    with st.sidebar.expander("Backup"):
+    with st.sidebar.expander("Storage & Sync"):
+        c1, c2 = st.columns(2)
         export_json = export_data(username)
-        st.download_button("Export JSON", export_json, "backup.json")
+        c1.download_button("Export JSON", export_json, "backup.json")
+        
+        if c2.button("🔄 Sync SQL", help="Force sync JSON data to Strategic Dashboard"):
+            with st.spinner("Syncing..."):
+                save_data(data, username)
+                st.success("Successfully synchronized JSON to SQL Database!")
+                st.rerun()
+
         uploaded = st.file_uploader("Import", type=["json"])
-        if uploaded and st.button("Import"):
+        if uploaded and st.button("Import Data"):
             import_data(uploaded.read().decode(), username)
             st.rerun()
 
@@ -1202,7 +1660,7 @@ def render_app(username):
                  st.error(error_msg)
                  st.caption("Add 'gcp_service_account' to secrets.toml")
 
-    render_level(data, username)
+    render_level(data, username, root_ids=display_root_ids)
 
     # Persistent Dialog Checks - Only if no other dialog is active
     # (Though Sidebar buttons act as triggers, if we use them to set state, we fall through here)
@@ -1212,9 +1670,15 @@ def render_app(username):
         elif "active_inspector_id" in st.session_state:
             render_inspector_dialog(st.session_state.active_inspector_id, data, username)
         elif "active_report_mode" in st.session_state:
-            render_report_dialog(data, username, mode=st.session_state.active_report_mode)
+            if st.session_state.active_report_mode == "Ritual":
+                render_weekly_ritual_dialog(data, username)
+            elif st.session_state.active_report_mode == "Dashboard":
+                render_leadership_dashboard_dialog(username)
+            else:
+                render_report_dialog(data, username, mode=st.session_state.active_report_mode)
 
 def main():
+    init_database() # Ensure tables exist
     if "username" not in st.session_state:
         render_login()
     else:
