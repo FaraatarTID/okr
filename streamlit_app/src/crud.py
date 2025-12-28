@@ -10,9 +10,127 @@ from datetime import datetime, timedelta
 
 from src.models import (
     Goal, Strategy, Objective, KeyResult, Initiative, Task, WorkLog,
-    TaskStatus, DashboardGoal, TaskWithTimer, Cycle, CheckIn
+    TaskStatus, DashboardGoal, TaskWithTimer, Cycle, CheckIn, User, UserRole
 )
 from src.database import get_session_context
+import bcrypt
+
+
+# ============================================================================
+# USER OPERATIONS (Authentication & Authorization)
+# ============================================================================
+
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt."""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    """Verify a password against its hash."""
+    return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
+
+
+def create_user(username: str, password: str, role: UserRole = UserRole.MEMBER, 
+                display_name: str = None, manager_id: int = None) -> User:
+    """Create a new user with hashed password."""
+    with get_session_context() as session:
+        user = User(
+            username=username,
+            password_hash=hash_password(password),
+            display_name=display_name or username,
+            role=role,
+            manager_id=manager_id
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return user
+
+
+def get_user_by_username(username: str) -> Optional[User]:
+    """Get a user by username."""
+    with get_session_context() as session:
+        statement = select(User).where(User.username == username)
+        return session.exec(statement).first()
+
+
+def get_user_by_id(user_id: int) -> Optional[User]:
+    """Get a user by ID."""
+    with get_session_context() as session:
+        return session.get(User, user_id)
+
+
+def authenticate_user(username: str, password: str) -> Optional[User]:
+    """Authenticate a user and return the User object if successful."""
+    user = get_user_by_username(username)
+    if user and user.is_active and verify_password(password, user.password_hash):
+        return user
+    return None
+
+
+def get_all_users() -> List[User]:
+    """Get all users."""
+    with get_session_context() as session:
+        statement = select(User).order_by(User.username)
+        return list(session.exec(statement).all())
+
+
+def get_team_members(manager_id: int) -> List[User]:
+    """Get all users managed by a specific manager."""
+    with get_session_context() as session:
+        statement = select(User).where(User.manager_id == manager_id)
+        return list(session.exec(statement).all())
+
+
+def update_user(user_id: int, display_name: str = None, role: UserRole = None, 
+                manager_id: int = None, is_active: bool = None) -> Optional[User]:
+    """Update user details (not password)."""
+    with get_session_context() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return None
+        if display_name is not None:
+            user.display_name = display_name
+        if role is not None:
+            user.role = role
+        if manager_id is not None:
+            user.manager_id = manager_id
+        if is_active is not None:
+            user.is_active = is_active
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+        return user
+
+
+def reset_user_password(user_id: int, new_password: str) -> bool:
+    """Reset a user's password."""
+    with get_session_context() as session:
+        user = session.get(User, user_id)
+        if not user:
+            return False
+        user.password_hash = hash_password(new_password)
+        session.add(user)
+        session.commit()
+        return True
+
+
+def ensure_admin_exists():
+    """Create a default admin user if no users exist."""
+    with get_session_context() as session:
+        statement = select(User)
+        existing = session.exec(statement).first()
+        if not existing:
+            admin = User(
+                username="admin",
+                password_hash=hash_password("admin"),
+                display_name="Administrator",
+                role=UserRole.ADMIN
+            )
+            session.add(admin)
+            session.commit()
+            return True
+    return False
 
 
 # ============================================================================

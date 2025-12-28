@@ -129,6 +129,73 @@ def save_data(data, username=None):
             # Don't let sync errors crash the main save
             print(f"Sync error: {e}")
         
+# --- NEW: Aggregate All Data for Admin ---
+def load_all_data(force_refresh=False):
+    """
+    Loads and merges all user JSON data files.
+    Used by Admins to see the entire team's OKRs.
+    """
+    import glob
+    all_data = {"nodes": {}, "rootIds": []}
+    
+    # 1. Find all local JSON files
+    pattern = "okr_data_*.json"
+    files = glob.glob(pattern)
+    
+    # 2. Extract usernames from filenames
+    for file_path in files:
+        # Extract name: okr_data_username.json -> username
+        filename = os.path.basename(file_path)
+        username = filename.replace("okr_data_", "").replace(".json", "")
+        
+        if username == "admin": continue # Skip admin's own file if it exists but is usually empty
+        
+        user_data = load_data(username, force_refresh=force_refresh)
+        
+        # Merge nodes
+        for node_id, node in user_data.get("nodes", {}).items():
+            # Inject owner display name if not present (for identification)
+            if "owner_display_name" not in node:
+                node["user_id"] = username # Legacy fallback
+            
+            all_data["nodes"][node_id] = node
+            
+        # Merge root IDs
+        all_data["rootIds"].extend(user_data.get("rootIds", []))
+        
+    return all_data
+
+def load_team_data(manager_id, force_refresh=False):
+    """
+    Loads and merges data for a manager and their direct team members.
+    """
+    from src.crud import get_team_members, get_user_by_id
+    
+    manager = get_user_by_id(manager_id)
+    if not manager:
+        return {"nodes": {}, "rootIds": []}
+        
+    # Start with manager's own data
+    all_data = load_data(manager.username, force_refresh=force_refresh)
+    
+    # Merge reports' data
+    team_members = get_team_members(manager_id)
+    for member in team_members:
+        if member.username == manager.username: continue
+        
+        member_data = load_data(member.username, force_refresh=force_refresh)
+        
+        # Merge nodes
+        for node_id, node in member_data.get("nodes", {}).items():
+            if "owner_display_name" not in node:
+                node["user_id"] = member.username
+            all_data["nodes"][node_id] = node
+            
+        # Merge root IDs
+        all_data["rootIds"].extend(member_data.get("rootIds", []))
+        
+    return all_data
+
 def generate_id():
     return f"{int(time.time() * 1000)}-{str(uuid.uuid4())[:8]}"
 
@@ -218,6 +285,8 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
         "children": [],
         "parentId": parent_id,
         "createdAt": int(time.time() * 1000),
+        "created_by_username": username,
+        "created_by_display_name": st.session_state.get("display_name"),
         "isExpanded": True,
         "cycle_id": cycle_id
     }
