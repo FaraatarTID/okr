@@ -23,7 +23,17 @@ def analyze_node(node_id, all_nodes):
 
     children = [all_nodes[cid] for cid in node.get("children", []) if cid in all_nodes]
     
-    # Prepare details
+    # Prepare current snapshot for storage
+    current_snapshot = {
+        "title": node.get("title"),
+        "metrics": {
+            "target": node.get("target_value", 100.0),
+            "current": node.get("current_value", 0.0),
+            "progress": node.get("progress", 0)
+        },
+        "scope": []
+    }
+    
     children_text = ""
     for child in children:
         c_type = child.get("type", "ITEM").upper()
@@ -32,6 +42,13 @@ def analyze_node(node_id, all_nodes):
         c_progress = child.get("progress", 0)
         c_status = "DONE" if c_progress == 100 else "IN PROGRESS"
         c_time = child.get("timeSpent", 0)
+        
+        # Add to snapshot
+        current_snapshot["scope"].append({
+            "type": c_type,
+            "title": c_title,
+            "progress": c_progress
+        })
         
         # Get recent work history
         work_summ_text = ""
@@ -50,19 +67,36 @@ def analyze_node(node_id, all_nodes):
     Target Key Result: "{node.get('title')}"
     Description: "{node.get('description', 'N/A')}"
     
-    Current Defined Scope (Tasks/Initiatives):
+    CURRENT STATE:
+    - Target: {current_snapshot['metrics']['target']} {node.get('unit', '%')}
+    - Current: {current_snapshot['metrics']['current']} {node.get('unit', '%')}
+    - Progress: {current_snapshot['metrics']['progress']}%
+    - Defined Scope:
     {children_text}
     
     ---
-    YOUR OBJECTIVE:
-    Conduct a rigorous audit of this Key Result. You must evaluate two dimensions:
+    PREVIOUS STATE SNAPSHOT (Captured during last audit):
+    {json.dumps(node.get('geminiLastSnapshot', {}), indent=2, ensure_ascii=False) if node.get('geminiLastSnapshot') else "N/A (First Run)"}
     
-    1. EFFICIENCY (Completeness of Scope): 
+    PREVIOUS ANALYSIS RESULTS:
+    {json.dumps(node.get('geminiAnalysis', {}), indent=2, ensure_ascii=False) if node.get('geminiAnalysis') else "N/A (First Run)"}
+    
+    ---
+    YOUR OBJECTIVE:
+    Conduct a rigorous audit of this Key Result. You must evaluate three dimensions:
+    
+    1. PROGRESSION & DELTA CHECK (The "Memory" Step):
+       - Compare the "CURRENT STATE" with the "PREVIOUS STATE SNAPSHOT".
+       - Identify what has changed: Have new tasks been added? Has the metric value increased?
+       - If the user addressed a gap you identified in the "PREVIOUS ANALYSIS", you MUST start your summary by acknowledging it.
+       - Increment scores if previously identified gaps have been filled.
+    
+    2. EFFICIENCY (Completeness of Scope): 
        - Look at the "Current Defined Scope". Is this work actually sufficient to achieve the Key Result 100%?
        - If tasks are missing, the Efficiency score must be lowered.
        - Efficiency Score = (Work Done) / (Total Work Required including missing tasks).
     
-    2. EFFECTIVENESS (Quality of Strategy):
+    3. EFFECTIVENESS (Quality of Strategy):
        - Are the defined tasks the *right* things to do? Are the descriptions and methods sound?
        - A high effectiveness score means the strategy is smart and likely to succeed.
     
@@ -78,6 +112,7 @@ def analyze_node(node_id, all_nodes):
     }}
     
     IMPORTANT: Detect the language of the Key Result Title and Description. All generated text (gap_analysis, quality_assessment, summary, proposed_tasks) MUST be in that SAME language.
+    In your summary and gap analysis, make specific reference to the "Current Metric Progress" numbers (e.g., "At 20% progress", "800 units remaining to target") to show the analysis is data-driven.
     
     Provide strictly valid JSON.
     """
@@ -106,17 +141,19 @@ def analyze_node(node_id, all_nodes):
         if raw_text.endswith("```"):
             raw_text = raw_text[:-3]
             
-        import json
         data = json.loads(raw_text)
         
         return {
-            "efficiency_score": data.get("efficiency_score", 0),
-            "effectiveness_score": data.get("effectiveness_score", 0),
-            "overall_score": data.get("overall_score", 0),
-            "gap_analysis": data.get("gap_analysis", ""),
-            "quality_assessment": data.get("quality_assessment", ""),
-            "proposed_tasks": data.get("proposed_tasks", []),
-            "summary": data.get("summary", "")
+            "analysis": {
+                "efficiency_score": data.get("efficiency_score", 0),
+                "effectiveness_score": data.get("effectiveness_score", 0),
+                "overall_score": data.get("overall_score", 0),
+                "gap_analysis": data.get("gap_analysis", ""),
+                "quality_assessment": data.get("quality_assessment", ""),
+                "proposed_tasks": data.get("proposed_tasks", []),
+                "summary": data.get("summary", "")
+            },
+            "snapshot": current_snapshot
         }
     except Exception as e:
         return {"error": str(e)}
