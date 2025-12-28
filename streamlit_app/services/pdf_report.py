@@ -78,7 +78,8 @@ def get_base64_font(font_path):
 
 
 def generate_pdf_html(report_items, objective_stats, total_time_str, key_results, 
-                      direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
+                      direction="RTL", title="Weekly Work Report", time_label="Last 7 Days",
+                      report_summary=None, achievements=None):
     """
     Generate HTML content for PDF (common for both methods)
     """
@@ -112,46 +113,86 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
             src: url('data:font/ttf;base64,{font_base64}') format('truetype');
         }}
         body {{
-            font-family: 'Vazirmatn', 'Tahoma', sans-serif;
-            font-size: 12px;
+            font-family: 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif;
+            font-size: 13px;
+            color: #333;
             direction: {dir_attr};
             text-align: {align};
-            padding: 2cm;
+            padding: 1.5cm;
+            line-height: 1.4;
         }}
-        h1, h2, h3 {{
-            color: #2c3e50;
-            margin-top: 20px;
-            margin-bottom: 10px;
-        }}
+        h1 {{ color: #2c3e50; font-size: 24px; margin-bottom: 5px; border-bottom: 3px solid #3498db; padding-bottom: 10px; display: inline-block; }}
+        h2 {{ color: #34495e; font-size: 18px; margin-top: 25px; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; }}
+        h3 {{ color: #7f8c8d; font-size: 16px; margin-top: 20px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }}
+        
+        /* Modern Table Styling */
         table {{
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }}
         th {{
             background-color: #f8f9fa;
-            border: 1px solid #dee2e6;
-            padding: 8px;
-            font-weight: bold;
+            color: #2c3e50;
+            border-bottom: 2px solid #dde2e6;
+            padding: 12px 10px;
+            font-weight: 600;
+            font-size: 12px;
             text-align: {align};
+            white-space: nowrap;
         }}
         td {{
-            border: 1px solid #dee2e6;
-            padding: 8px;
+            border-bottom: 1px solid #eee;
+            padding: 10px 10px;
+            vertical-align: top;
             text-align: {align};
         }}
+        tr:nth-child(even) {{ background-color: #fafafa; }}
+        tr:hover {{ background-color: #f1f1f1; }}
+        tr {{ page-break-inside: avoid; }}
+
+        /* KPI Cards */
         .total-box {{
-            background-color: #e9ecef;
-            padding: 15px;
-            border-radius: 5px;
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
             margin: 20px 0;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: bold;
-            text-align: {align};
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: inline-block;
         }}
-        .page-break {{
-            page-break-after: always;
+
+        /* Status Badges */
+        .badge {{
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
         }}
+        .badge-green {{ background-color: #e8f5e9; color: #2e7d32; }} /* On Track */
+        .badge-amber {{ background-color: #fff8e1; color: #f57f17; }} /* At Risk */
+        .badge-red {{ background-color: #ffebee; color: #c62828; }}   /* Overdue */
+        .badge-gray {{ background-color: #f5f5f5; color: #616161; }}  /* None */
+
+        .text-muted {{ color: #7f8c8d; font-size: 11px; }}
+        
+        /* Executive Summary Card */
+        .exec-summary {{
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-left: 5px solid #2ecc71;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }}
+
+        .page-break {{ page-break-after: always; }}
     </style>
 </head>
 <body>
@@ -164,6 +205,50 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
         Total Time ({time_label}): {total_time_str}
     </div>
 
+"""
+    # Executive Summary Section
+    if report_summary:
+        import markdown
+        summary_html = markdown.markdown(report_summary.get("summary_markdown", ""))
+        highlights = report_summary.get("highlights", [])
+        
+        html += f"""
+    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2ecc71;">
+        <h2 style="margin-top: 0;">📋 Executive Summary</h2>
+        <div style="font-size: 14px; line-height: 1.6;">{summary_html}</div>
+"""
+        if highlights:
+            html += """
+        <ul style="margin-top: 15px;">
+"""
+            for h in highlights:
+                html += f"""            <li style="margin-bottom: 5px; font-weight: 500;">{h}</li>"""
+            html += """
+        </ul>
+"""
+        html += """
+    </div>
+"""
+
+    # Achievements Section
+    if achievements:
+        html += """
+    <div style="margin-bottom: 20px;">
+        <h3>🏆 Key Achievements</h3>
+        <ul style="list-style-type: none; padding: 0;">
+"""
+        for a in achievements:
+             html += f"""
+            <li style="padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center;">
+                <span style="color: #2ecc71; margin-right: 10px; font-size: 1.2em;">✅</span>
+                <span style="font-weight: 500;">{a}</span>
+            </li>"""
+        html += """
+        </ul>
+    </div>
+"""
+
+    html += """
     <h3>Work Log</h3>
 """
 
@@ -178,6 +263,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
                 <th style="width: 15%;">Key Result</th>
                 <th style="width: 100px;">Date/Time</th>
                 <th style="width: 60px;">Dur</th>
+                <th style="width: 80px;">Deadline</th>
                 <th style="width: 25%;">Summary</th>
             </tr>
         </thead>
@@ -191,24 +277,44 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
             summary = item.get('Summary', '')
             obj_title = item.get('Objective', '-')
             kr_title = item.get('KeyResult', '-')
+            deadline = item.get('Deadline', '—')
             
+            # Format Date/Time
+            date_time_html = f"""
+                <div style="font-weight:bold;">{date_str}</div>
+                <div class="text-muted">{time_str}</div>
+            """
+            
+            # Format Deadline Badge
+            badge_class = "badge-gray"
+            if "On Track" in deadline: 
+                badge_class = "badge-green"
+            elif "At Risk" in deadline:
+                badge_class = "badge-amber" 
+            elif "Overdue" in deadline:
+                badge_class = "badge-red"
+            
+            deadline_html = f'<span class="badge {badge_class}">{deadline}</span>' if deadline != "—" else "—"
+
             html += f"""
             <tr>
-                <td>{task_name}</td>
-                <td style="color: #555;">{obj_title}</td>
-                <td style="color: #555;">{kr_title}</td>
-                <td>{date_str} {time_str}</td>
+                <td><strong>{task_name}</strong></td>
+                <td>{obj_title}</td>
+                <td>{kr_title}</td>
+                <td>{date_time_html}</td>
                 <td>{duration}m</td>
+                <td>{deadline_html}</td>
                 <td style="color: #555;">{summary}</td>
             </tr>
 """
+
         html += """
         </tbody>
     </table>
 """
     else:
         html += """
-    <p>No work recorded in the last 7 days.</p>
+    <p>No work recorded in the this period.</p>
 """
 
     # Objective Stats
@@ -410,7 +516,8 @@ def generate_pdf_with_pdfkit(html):
 
 
 def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, 
-                          direction="RTL", title="Weekly Work Report", time_label="Last 7 Days"):
+                          direction="RTL", title="Weekly Work Report", time_label="Last 7 Days",
+                          report_summary=None, achievements=None):
     """
     Main PDF generation function with automatic environment detection
     
@@ -423,7 +530,8 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     # Generate HTML (common for both methods)
     html = generate_pdf_html(
         report_items, objective_stats, total_time_str, key_results,
-        direction, title, time_label
+        direction, title, time_label,
+        report_summary, achievements
     )
     
     # Choose appropriate PDF generation method

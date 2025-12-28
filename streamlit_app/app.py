@@ -589,19 +589,119 @@ def render_leadership_dashboard_dialog(username):
 def render_leadership_dashboard_content(username):
     # (Title is now in the dialog header)
     
-    
     cycle_id = st.session_state.get("active_cycle_id")
     if not cycle_id:
         st.warning("Please select a cycle to view insights.")
         return
+    
+    user_role = st.session_state.get("user_role", "member")
+    
+    # === TEAM MEMBER FILTER (Admin/Manager only) ===
+    selected_members = [username]  # Default to current user
+    member_display_map = {username: st.session_state.get("display_name", username)}
+    
+    if user_role in ["admin", "manager"]:
+        st.markdown("#### 👥 Team Filter")
         
-    metrics = get_leadership_metrics(username, cycle_id)
-    if not metrics or not metrics["total_krs"]:
-        st.info("No Key Results found in this cycle. Start adding goals to see insights.")
-        return
+        # Get team members based on role
+        if user_role == "admin":
+            from src.crud import get_all_users
+            all_users = get_all_users()
+        else:
+            from src.crud import get_team_members, get_user_by_id
+            manager_id = st.session_state.get("user_id")
+            all_users = get_team_members(manager_id)
+            # Include self (manager) in the list
+            manager_user = get_user_by_id(manager_id)
+            if manager_user and manager_user not in all_users:
+                all_users.insert(0, manager_user)
         
-    # --- Scorecard ---
-    col1, col2, col3 = st.columns(3)
+        # Filter active users and create options
+        active_users = [u for u in all_users if u.is_active]
+        member_options = {u.display_name or u.username: u.username for u in active_users}
+        member_display_map = {u.username: u.display_name or u.username for u in active_users}
+        
+        if member_options:
+            # Multi-select with all selected by default
+            selected_names = st.multiselect(
+                "Select members to include in dashboard",
+                options=list(member_options.keys()),
+                default=list(member_options.keys()),
+                help="Filter dashboard metrics to show data for selected members only"
+            )
+            
+            selected_members = [member_options[name] for name in selected_names]
+            
+            if not selected_members:
+                st.warning("Please select at least one team member.")
+                return
+        
+        st.markdown("---")
+    
+    # === AGGREGATE METRICS FROM SELECTED MEMBERS ===
+    from utils.deadline_utils import get_deadline_summary, get_deadline_status
+    
+    # Aggregate data from all selected members
+    all_nodes = {}
+    member_progress_data = []
+    member_deadline_data = []
+    
+    for member_username in selected_members:
+        member_data = load_data(member_username)
+        member_nodes = member_data.get("nodes", {})
+        
+        # Merge nodes (with member tagging)
+        for nid, node in member_nodes.items():
+            node["_owner"] = member_username
+            node["_owner_display"] = member_display_map.get(member_username, member_username)
+            all_nodes[nid] = node
+        
+        # Calculate member-level stats
+        total_progress = 0
+        task_count = 0
+        completed_count = 0
+        
+        deadline_stats = get_deadline_summary(member_nodes)
+        
+        for nid, node in member_nodes.items():
+            if node.get("type") == "TASK":
+                task_count += 1
+                progress = node.get("progress", 0)
+                total_progress += progress
+                if progress >= 100:
+                    completed_count += 1
+        
+        avg_progress = int(total_progress / task_count) if task_count > 0 else 0
+        display_name = member_display_map.get(member_username, member_username)
+        
+        member_progress_data.append({
+            "member": display_name,
+            "username": member_username,
+            "progress": avg_progress,
+            "tasks": task_count,
+            "completed": completed_count
+        })
+        
+        member_deadline_data.append({
+            "member": display_name,
+            "username": member_username,
+            "overdue": deadline_stats.get("overdue", 0),
+            "at_risk": deadline_stats.get("at_risk", 0),
+            "on_track": deadline_stats.get("on_track", 0),
+            "completed": deadline_stats.get("completed", 0)
+        })
+    
+    # Get aggregate deadline stats
+    aggregate_deadline = get_deadline_summary(all_nodes)
+    
+    # Get leadership metrics (uses SQL - for single user or first selected)
+    metrics = get_leadership_metrics(selected_members[0], cycle_id)
+    if not metrics:
+        metrics = {"hygiene_pct": 0, "avg_confidence": 0, "at_risk": [], "heatmap_data": [], "total_krs": 0}
+    
+    # === SCORECARD ===
+    st.markdown("#### 📈 Key Metrics")
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
         st.metric(
@@ -621,17 +721,104 @@ def render_leadership_dashboard_content(username):
             len(metrics["at_risk"]),
             delta="-bad" if metrics["at_risk"] else "off"
         )
-        
+    with col4:
+        st.metric(
+            "🔴 Overdue Tasks",
+            aggregate_deadline.get("overdue", 0),
+            delta="-bad" if aggregate_deadline.get("overdue", 0) > 0 else "off",
+            help="Tasks past deadline with < 100% progress"
+        )
+    with col5:
+        st.metric(
+            "🟡 At Risk Tasks",
+            aggregate_deadline.get("at_risk", 0),
+            delta="-normal" if aggregate_deadline.get("at_risk", 0) > 0 else "off",
+            help="Tasks behind expected progress pace"
+        )
+    
     st.markdown("---")
     
-    # --- Plotly Heatmap ---
-    st.subheader("📊 Strategic Alignment Matrix")
+    # === PROGRESS BY MEMBER (Only show if multiple members) ===
+    if len(selected_members) > 1 and member_progress_data:
+        st.markdown("#### 📊 Progress by Team Member")
+        
+        # Sort by progress descending
+        sorted_progress = sorted(member_progress_data, key=lambda x: x["progress"], reverse=True)
+        
+        fig_progress = go.Figure()
+        
+        # Add progress bars
+        fig_progress.add_trace(go.Bar(
+            y=[m["member"] for m in sorted_progress],
+            x=[m["progress"] for m in sorted_progress],
+            orientation='h',
+            marker=dict(
+                color=[m["progress"] for m in sorted_progress],
+                colorscale='RdYlGn',
+                cmin=0,
+                cmax=100
+            ),
+            text=[f"{m['progress']}% ({m['completed']}/{m['tasks']} tasks)" for m in sorted_progress],
+            textposition='inside',
+            hovertemplate="<b>%{y}</b><br>Progress: %{x}%<extra></extra>"
+        ))
+        
+        fig_progress.update_layout(
+            xaxis_title="Average Task Progress %",
+            xaxis=dict(range=[0, 105]),
+            height=max(200, len(sorted_progress) * 40),
+            showlegend=False,
+            template="simple_white"
+        )
+        
+        st.plotly_chart(fig_progress, use_container_width=True)
+        st.markdown("---")
+    
+    # === DEADLINE HEALTH BY MEMBER ===
+    if len(selected_members) > 1 and any(m["overdue"] + m["at_risk"] > 0 for m in member_deadline_data):
+        st.markdown("#### 📅 Deadline Health by Member")
+        
+        # Filter to members with deadline issues
+        members_with_issues = [m for m in member_deadline_data if m["overdue"] + m["at_risk"] > 0]
+        
+        if members_with_issues:
+            fig_deadline = go.Figure()
+            
+            member_names = [m["member"] for m in members_with_issues]
+            
+            fig_deadline.add_trace(go.Bar(
+                name="🔴 Overdue",
+                y=member_names,
+                x=[m["overdue"] for m in members_with_issues],
+                orientation='h',
+                marker_color='#E53935'
+            ))
+            fig_deadline.add_trace(go.Bar(
+                name="🟡 At Risk",
+                y=member_names,
+                x=[m["at_risk"] for m in members_with_issues],
+                orientation='h',
+                marker_color='#FFA726'
+            ))
+            
+            fig_deadline.update_layout(
+                barmode='stack',
+                xaxis_title="Number of Tasks",
+                height=max(200, len(members_with_issues) * 50),
+                template="simple_white",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02)
+            )
+            
+            st.plotly_chart(fig_deadline, use_container_width=True)
+        st.markdown("---")
+    
+    # === STRATEGIC ALIGNMENT MATRIX ===
+    st.markdown("#### 📊 Strategic Alignment Matrix")
     
     data = metrics["heatmap_data"]
     if data:
         df = pd.DataFrame(data)
         
-        # Color mapping based on confidence
         colors = df["confidence"]
         
         fig = go.Figure(data=go.Scatter(
@@ -643,7 +830,7 @@ def render_leadership_dashboard_content(username):
             marker=dict(
                 size=14,
                 color=colors,
-                colorscale='RdYlGn', # Red to Green
+                colorscale='RdYlGn',
                 cmin=0,
                 cmax=10,
                 showscale=True,
@@ -660,8 +847,8 @@ def render_leadership_dashboard_content(username):
         
         # Quadrant Labels
         fig.add_annotation(x=90, y=90, text="🌟 High Performers", showarrow=False, font=dict(color="green"))
-        fig.add_annotation(x=90, y=10, text="⚠️ Busy Work", showarrow=False, font=dict(color="orange")) # High eff, low effect
-        fig.add_annotation(x=10, y=90, text="🤔 Strategy Gap", showarrow=False, font=dict(color="blue")) # Low eff, high effect
+        fig.add_annotation(x=90, y=10, text="⚠️ Busy Work", showarrow=False, font=dict(color="orange"))
+        fig.add_annotation(x=10, y=90, text="🤔 Strategy Gap", showarrow=False, font=dict(color="blue"))
         fig.add_annotation(x=10, y=10, text="❌ Disconnected", showarrow=False, font=dict(color="red"))
 
         fig.update_layout(
@@ -669,19 +856,168 @@ def render_leadership_dashboard_content(username):
             yaxis_title="Effectiveness (Strategy Fit)",
             xaxis=dict(range=[0, 105]),
             yaxis=dict(range=[0, 105]),
-            height=600,
+            height=500,
             template="simple_white"
         )
         
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Not enough AI analysis data yet. Updates trigger automatic auditing.")
+        st.info("Not enough AI analysis data yet. Run AI analysis on Key Results to populate this chart.")
 
-    # --- At Risk List ---
+    # === AT-RISK KEY RESULTS (Grouped by Member if multi-select) ===
     if metrics["at_risk"]:
-        st.markdown("### 🚨 At-Risk Key Results")
+        st.markdown("#### 🚨 At-Risk Key Results")
         for item in metrics["at_risk"]:
             st.error(f"**{item['title']}** — Reason: {item['reason']} (Conf: {item['confidence']})")
+    
+    # === OVERDUE TASKS LIST ===
+    overdue_tasks = []
+    for nid, node in all_nodes.items():
+        if node.get("type") == "TASK" and node.get("deadline"):
+            status_code, _, _ = get_deadline_status(node)
+            if status_code == "overdue":
+                overdue_tasks.append({
+                    "title": node.get("title", "Untitled"),
+                    "owner": node.get("_owner_display", "Unknown"),
+                    "progress": node.get("progress", 0)
+                })
+    
+    if overdue_tasks:
+        st.markdown("#### 🔴 Overdue Tasks")
+        for task in overdue_tasks[:10]:  # Limit to 10
+            st.error(f"**{task['title']}** — Owner: {task['owner']} ({task['progress']}% complete)")
+        if len(overdue_tasks) > 10:
+            st.caption(f"...and {len(overdue_tasks) - 10} more overdue tasks")
+
+    # === AI TEAM COACH (Admin/Manager only) ===
+    if user_role in ["admin", "manager"]:
+        st.markdown("---")
+        st.markdown("#### 🧠 AI Team Coach")
+        st.caption("Get strategic coaching tips based on your team's performance data")
+        
+        # Prepare team data for AI
+        team_coaching_data = {
+            "members": member_progress_data,
+            "total_with_deadline": aggregate_deadline.get("total_with_deadline", 0),
+            "completed": aggregate_deadline.get("completed", 0),
+            "on_track": aggregate_deadline.get("on_track", 0),
+            "at_risk": aggregate_deadline.get("at_risk", 0),
+            "overdue": aggregate_deadline.get("overdue", 0),
+            "total_krs": metrics.get("total_krs", 0),
+            "at_risk_krs": len(metrics.get("at_risk", [])),
+            "avg_confidence": metrics.get("avg_confidence", 0),
+            "hygiene_pct": metrics.get("hygiene_pct", 0),
+            "progress_distribution": member_progress_data
+        }
+        
+        col_coach_btn, col_coach_spacer = st.columns([1, 3])
+        with col_coach_btn:
+            run_coach = st.button("✨ Get Coaching Tips", type="primary", use_container_width=True)
+        
+        if run_coach:
+            from services.gemini import analyze_team_health
+            
+            with st.spinner("🧠 AI Coach is analyzing your team..."):
+                result = analyze_team_health(team_coaching_data)
+            
+            if "error" in result:
+                st.error(f"Coaching failed: {result['error']}")
+            else:
+                coaching = result.get("coaching", {})
+                
+                # Store in session for persistence
+                st.session_state["last_coaching"] = coaching
+        
+        # Display coaching results (if available)
+        coaching = st.session_state.get("last_coaching")
+        if coaching:
+            # Health Score Header
+            health_score = coaching.get("overall_health_score", 0)
+            grade = coaching.get("health_grade", "?")
+            headline = coaching.get("headline", "")
+            
+            # Color based on grade
+            grade_colors = {"A": "#4CAF50", "B": "#8BC34A", "C": "#FFC107", "D": "#FF9800", "F": "#F44336"}
+            grade_color = grade_colors.get(grade, "#9E9E9E")
+            
+            # Score Card
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, {grade_color}22, {grade_color}11); 
+                        border-left: 4px solid {grade_color}; 
+                        padding: 20px; 
+                        border-radius: 8px; 
+                        margin: 10px 0;">
+                <div style="display: flex; align-items: center; gap: 20px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 48px; font-weight: bold; color: {grade_color};">{grade}</div>
+                        <div style="font-size: 14px; color: #666;">Grade</div>
+                    </div>
+                    <div style="flex: 1;">
+                        <div style="font-size: 24px; font-weight: 500; margin-bottom: 8px;">Team Health: {health_score}%</div>
+                        <div style="font-size: 16px; color: #555;">{headline}</div>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Dimension Scores
+            dimensions = coaching.get("dimensions", {})
+            if dimensions:
+                st.markdown("##### 📊 Performance Dimensions")
+                
+                dim_labels = {
+                    "productivity": "🚀 Productivity",
+                    "deadline_discipline": "⏰ Deadline Discipline",
+                    "strategic_alignment": "🎯 Strategic Alignment",
+                    "workload_balance": "⚖️ Workload Balance",
+                    "momentum": "📈 Momentum"
+                }
+                
+                # Display as columns with progress bars
+                cols = st.columns(5)
+                for i, (key, label) in enumerate(dim_labels.items()):
+                    dim = dimensions.get(key, {})
+                    score = dim.get("score", 0)
+                    status = dim.get("status", "")
+                    
+                    with cols[i]:
+                        st.metric(label.split(" ")[0], f"{score}%")
+                        if "🟢" in status:
+                            st.success(status, icon="✅")
+                        elif "🔴" in status:
+                            st.error(status, icon="🚨")
+                        else:
+                            st.warning(status, icon="⚠️")
+                
+                # Expandable insights per dimension
+                with st.expander("💡 Detailed Insights & Actions", expanded=False):
+                    for key, label in dim_labels.items():
+                        dim = dimensions.get(key, {})
+                        st.markdown(f"**{label}**")
+                        st.info(f"📌 {dim.get('insight', 'N/A')}")
+                        st.success(f"✅ Action: {dim.get('action', 'N/A')}")
+                        st.markdown("---")
+            
+            # Top Priorities
+            priorities = coaching.get("top_priorities", [])
+            if priorities:
+                st.markdown("##### 🎯 Top Priorities This Week")
+                for i, p in enumerate(priorities, 1):
+                    st.markdown(f"**{i}.** {p}")
+            
+            # Quick Wins
+            quick_wins = coaching.get("quick_wins", [])
+            if quick_wins:
+                st.markdown("##### ⚡ Quick Wins")
+                for win in quick_wins:
+                    st.success(f"💡 {win}")
+            
+            # Watch Out
+            watch_out = coaching.get("watch_out")
+            if watch_out:
+                st.markdown("##### ⚠️ Risk Alert")
+                st.warning(f"🔔 {watch_out}")
+
 
 
 # ============================================================================
@@ -789,52 +1125,175 @@ def render_admin_panel_dialog():
 
 @st.dialog("🔄 Weekly Ritual", width="large")
 def render_weekly_ritual_dialog(data, username):
-    st.markdown("### Weekly Check-in")
-    st.write("Review your Key Results and update their progress.")
+    st.markdown("### Weekly Check-in Ritual")
     
     cycle_id = st.session_state.get("active_cycle_id")
     if not cycle_id:
         st.warning("Please select a cycle first.")
         return
 
-    needing_update = get_krs_needing_checkin(user_id=username, cycle_id=cycle_id, days_threshold=7)
+    # Initialize ritual state
+    if "ritual_step" not in st.session_state:
+        st.session_state.ritual_step = 1
     
-    if not needing_update:
-        st.success("🎉 You are all caught up! No Key Results need a check-in right now.")
-        if st.button("Close"):
-             del st.session_state.active_report_mode
-             st.rerun()
-        return
+    step = st.session_state.ritual_step
+    
+    # Progress Stepper
+    c1, c2, c3 = st.columns(3)
+    c1.markdown(f"**1. Review Week** {'✅' if step > 1 else '🔵' if step==1 else '⚪'}")
+    c2.markdown(f"**2. Update KRs** {'✅' if step > 2 else '🔵' if step==2 else '⚪'}")
+    c3.markdown(f"**3. Plan Next** {'✅' if step > 3 else '🔵' if step==3 else '⚪'}")
+    st.markdown("---")
+
+    # === STEP 1: REVIEW WEEK ===
+    if step == 1:
+        st.markdown("#### 📅 Week in Review")
         
-    st.progress(0, f"Pending updates: {len(needing_update)}")
-    
-    for i, kr in enumerate(needing_update):
-        with st.expander(f"📊 {kr.title}", expanded=(i==0)):
-            st.caption(f"Current Value: {kr.current_value} {kr.unit or ''} | Target: {kr.target_value}")
+        # Calculate stats for the last 7 days
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=7)
+        start_ts = int(start_date.timestamp() * 1000)
+        
+        # Collect work logs
+        total_minutes = 0
+        completed_tasks = []
+        work_logs_text = []
+        
+        for nid, node in data.get("nodes", {}).items():
+            # Check completed tasks
+            if node.get("type") == "TASK" and node.get("progress") == 100:
+                # Check if completed recently (hack: use last work log or modify time)
+                # For now, just listing all 100% tasks as "Achievements" if meaningful
+                pass 
+                
+            for log in node.get("workLog", []):
+                if log["startedAt"] >= start_ts:
+                    mins = log.get("duration", 0) / 60
+                    total_minutes += mins
+                    work_logs_text.append(f"- {node.get('title')}: {log.get('summary', 'Work')} ({int(mins)}m)")
+        
+        # AI Summary Generation
+        if "ritual_summary" not in st.session_state:
+            if st.button("✨ Generate AI Summary", type="primary"):
+                with st.spinner("Analyzing your week..."):
+                     from services.gemini import generate_weekly_summary
+                     stats = {
+                         "total_minutes": total_minutes,
+                         "tasks_completed": 0, # Placeholder
+                         "krs_updated": 0,    # Placeholder
+                         "work_logs_text": "\n".join(work_logs_text[:50]) # Limit context
+                     }
+                     res = generate_weekly_summary(username, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"), stats)
+                     if "error" not in res:
+                         st.session_state.ritual_summary = res
+                         st.rerun()
+                     else:
+                         st.error(res["error"])
+        
+        # Display Summary
+        summary = st.session_state.get("ritual_summary")
+        if summary:
+            st.markdown(summary.get("summary_markdown"))
             
-            with st.form(f"checkin_form_{kr.id}"):
-                c1, c2 = st.columns(2)
-                with c1:
-                    new_val = st.number_input("New Value", value=float(kr.current_value), key=f"val_{kr.id}")
-                with c2:
-                    conf = st.slider("Confidence Score (0-10)", 0, 10, 5, key=f"conf_{kr.id}")
+            st.markdown("**🏆 Highlights**")
+            for h in summary.get("highlights", []):
+                st.success(h)
                 
-                comment = st.text_area("What changed this week?", placeholder="Progress update...", key=f"comm_{kr.id}")
-                
-                if st.form_submit_button("✅ Submit Update"):
-                    create_check_in(kr.id, new_val, conf, comment)
+            st.info(f"💡 **Focus Analysis:** {summary.get('focus_analysis')}")
+        
+        st.markdown(f"**Total Focus Time:** {format_time(total_minutes)} this week.")
+        
+        col_nav = st.columns([1, 1])
+        if col_nav[1].button("Next: Update KRs ➡️", type="primary"):
+            st.session_state.ritual_step = 2
+            st.rerun()
+
+    # === STEP 2: UPDATE KRs ===
+    elif step == 2:
+        st.markdown("#### 📊 Key Result Updates")
+        needing_update = get_krs_needing_checkin(user_id=username, cycle_id=cycle_id, days_threshold=7)
+        
+        if not needing_update:
+            st.success("🎉 All Key Results are up to date!")
+        else:
+            st.write(f"You have {len(needing_update)} Key Results pending update.")
+            
+            for i, kr in enumerate(needing_update):
+                with st.expander(f"📊 {kr.title}", expanded=(i==0)):
+                    st.caption(f"Current: {kr.current_value} {kr.unit or ''} | Target: {kr.target_value}")
                     
-                    # Sync back to JSON for UI consistency
-                    if kr.external_id and kr.external_id in data["nodes"]:
-                        json_node = data["nodes"][kr.external_id]
-                        json_node["current_value"] = new_val
-                        if kr.target_value > 0:
-                            json_node["progress"] = int((new_val / kr.target_value) * 100)
-                        save_data(data, username)
+                    with st.form(f"checkin_form_{kr.id}"):
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            new_val = st.number_input("New Value", value=float(kr.current_value), key=f"val_{kr.id}")
+                        with c2:
+                            conf = st.slider("Confidence (0-10)", 0, 10, 5, key=f"conf_{kr.id}")
                         
-                    st.toast(f"Updated {kr.title}!")
-                    time.sleep(1)
-                    st.rerun()
+                        comment = st.text_area("What changed?", placeholder="Progress update...", key=f"comm_{kr.id}")
+                        
+                        if st.form_submit_button("✅ Update"):
+                            create_check_in(kr.id, new_val, conf, comment)
+                            # Sync JSON
+                            if kr.external_id and kr.external_id in data["nodes"]:
+                                n = data["nodes"][kr.external_id]
+                                n["current_value"] = new_val
+                                if kr.target_value > 0:
+                                    n["progress"] = int((new_val / kr.target_value) * 100)
+                                save_data(data, username)
+                            st.toast(f"Updated {kr.title}!")
+                            time.sleep(0.5)
+                            st.rerun()
+                            
+        col_nav = st.columns([1, 1])
+        if col_nav[0].button("⬅️ Back"):
+            st.session_state.ritual_step = 1
+            st.rerun()
+        if col_nav[1].button("Next: Plan Week ➡️", type="primary"):
+            st.session_state.ritual_step = 3
+            st.rerun()
+
+    # === STEP 3: PLAN NEXT WEEK ===
+    elif step == 3:
+        st.markdown("#### 🎯 Planning Next Week")
+        
+        st.write("What are your top 3 priorities for the upcoming week?")
+        
+        with st.form("planning_form"):
+            p1 = st.text_input("Priority #1", placeholder="Top focus...")
+            p2 = st.text_input("Priority #2", placeholder="Secondary focus...")
+            p3 = st.text_input("Priority #3", placeholder="Tertiary focus...")
+            has_deadlines = st.checkbox("Check upcoming deadlines", value=True)
+            
+            if st.form_submit_button("🚀 Finish Ritual"):
+                st.toast("Weekly Ritual Complete! Have a great week.")
+                # Could save this plan to storage if needed
+                del st.session_state.ritual_step
+                if "ritual_summary" in st.session_state:
+                    del st.session_state.ritual_summary
+                if "active_report_mode" in st.session_state:
+                    del st.session_state.active_report_mode
+                st.rerun()
+        
+        if has_deadlines:
+            # Show tasks due in next 7 days
+            week_from_now = (datetime.now() + timedelta(days=7)).timestamp() * 1000
+            now_ts = datetime.now().timestamp() * 1000
+            
+            upcoming = []
+            for nid, node in data.get("nodes", {}).items():
+                if node.get("type") == "TASK" and node.get("deadline"):
+                    d = node.get("deadline")
+                    if now_ts <= d <= week_from_now and node.get("progress") < 100:
+                        upcoming.append(node)
+            
+            if upcoming:
+                st.warning(f"You have {len(upcoming)} tasks due this week:")
+                for t in upcoming:
+                    st.write(f"- {t.get('title')}")
+        
+        if st.button("⬅️ Back"):
+            st.session_state.ritual_step = 2
+            st.rerun()
 
 # ============================================================================
 # Main App Logic
@@ -858,39 +1317,159 @@ def render_weekly_ritual_dialog(data, username):
     
     report_items = []
     objective_stats = {} # { "Objective Title": total_minutes }
+    daily_minutes = {}   # { "YYYY-MM-DD": total_minutes }
+    achievements = []    # Completed tasks
     
     # Iterate all nodes
     for nid, node in data["nodes"].items():
+        # Check accomplishments
+        if node.get("type") == "TASK" and node.get("progress") == 100:
+            # We don't track completion date strictly, so we just list them if they have logs this week 
+            # OR if we assume they were done recently. 
+            # For this MVP, we only count them if they had work logged this period.
+            pass
+
         logs = node.get("workLog", [])
         if not logs: continue
         
+        has_log_this_period = False
         for log in logs:
             # Check if log is within range
             if log.get("endedAt", 0) >= start_time:
+                has_log_this_period = True
                 duration = log.get("durationMinutes", 0)
                 # Aggregate by Objective
                 obj_title = get_ancestor_objective(nid, data["nodes"])
                 kr_title = get_ancestor_key_result(nid, data["nodes"])
                 
+                # Get deadline status if available
+                deadline_status = "—"
+                if node.get("deadline"):
+                    from utils.deadline_utils import get_deadline_status
+                    _, status_label, _ = get_deadline_status(node)
+                    deadline_status = status_label
+                
+                log_date = datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%Y-%m-%d')
+                
                 report_items.append({
                     "Task": node.get("title", "Untitled"),
                     "Type": node.get("type", "TASK"),
-                    "Date": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%Y-%m-%d'),
+                    "Date": log_date,
                     "Time": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%H:%M'),
                     "Duration (m)": round(duration, 2),
+                    "Deadline": deadline_status,
                     "Summary": log.get("summary", ""), # Capture summary
                     "Objective": obj_title,
                     "KeyResult": kr_title
                 })
                 
                 objective_stats[obj_title] = objective_stats.get(obj_title, 0) + duration
-    
+                daily_minutes[log_date] = daily_minutes.get(log_date, 0) + duration
+
+        if has_log_this_period and node.get("progress") == 100:
+            achievements.append(node.get("title"))
+
     if not report_items:
-        st.info("No work recorded in the last week.")
+        st.info("No work recorded in the this period.")
         return
 
-    
     total = sum(item["Duration (m)"] for item in report_items)
+
+    # === EXECUTIVE SUMMARY CARD ===
+    if mode != "Daily":
+        with st.container():
+            st.markdown("### 📋 Executive Summary")
+            
+            # AI Summary
+            if "report_summary" not in st.session_state:
+                if st.button("✨ Generate AI Weekly Brief", type="primary"):
+                     with st.spinner("Drafting executive summary..."):
+                         from services.gemini import generate_weekly_summary
+                         # Prepare context
+                         krs_updated = len(set(i["KeyResult"] for i in report_items))
+                         obj_summary = [f"{k}: {int(v)}m" for k, v in objective_stats.items()]
+                         
+                         stats = {
+                             "total_minutes": total,
+                             "tasks_completed": len(achievements),
+                             "krs_updated": krs_updated,
+                             "objectives_text": obj_summary,
+                             "key_achievements": achievements,
+                             "work_logs_text": "\n".join([f"{i['Task']}: {i['Summary']}" for i in report_items[:30]])
+                         }
+                         
+                         res = generate_weekly_summary(username, 
+                                                     datetime.fromtimestamp(start_time/1000).strftime("%Y-%m-%d"),
+                                                     datetime.now().strftime("%Y-%m-%d"),
+                                                     stats)
+                                                     
+                         if "error" not in res:
+                             st.session_state.report_summary = res
+                             st.rerun()
+                         else:
+                             st.error(res["error"])
+                             
+            summary = st.session_state.get("report_summary")
+            if summary:
+                st.markdown(summary.get("summary_markdown"))
+                
+                # Metrics Row
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total Focus", format_time(total))
+                m2.metric("Tasks Completed", len(achievements))
+                m3.metric("Key Highlights", len(summary.get("highlights", [])))
+                
+                with st.expander("📌 Highlights"):
+                    for h in summary.get("highlights", []):
+                        st.markdown(f"- {h}")
+            else:
+                st.info("Click above to generate an executive brief of your week.")
+
+    st.markdown("---")
+
+    # === TRENDS & ANALYSIS ===
+    c_trend, c_achieve = st.columns([1.5, 1])
+    
+    with c_trend:
+        st.subheader("📈 Weekly Trends")
+        if daily_minutes:
+            # Sort dates
+            sorted_dates = sorted(daily_minutes.keys())
+            chart_data = {
+                "Date": sorted_dates,
+                "Hours": [daily_minutes[d]/60 for d in sorted_dates]
+            }
+            st.bar_chart(chart_data, x="Date", y="Hours", color="#4CAF50")
+        else:
+            st.caption("No trend data available.")
+
+    with c_achieve:
+        st.subheader("🏆 Achievements")
+        if achievements:
+            for a in achievements:
+                st.success(f"✅ {a}")
+        else:
+            st.caption("No completed tasks this period.")
+            
+    # Deadline Health
+    st.subheader("⚠️ Deadline Health")
+    # Quick scan for overdue/at risk
+    warnings = []
+    for nid, node in data["nodes"].items():
+        if node.get("type") == "TASK" and node.get("deadline") and node.get("progress") < 100:
+             from utils.deadline_utils import get_deadline_status
+             _, label, _ = get_deadline_status(node)
+             if "Overdue" in label or "At Risk" in label:
+                 warnings.append(f"{label} - {node.get('title')}")
+    
+    if warnings:
+        for w in warnings[:5]:
+            st.error(w)
+        if len(warnings) > 5:
+            st.caption(f"...and {len(warnings)-5} more.")
+    else:
+        st.success("All tasks on track!", icon="🟢")
+
 
     # Filter Key Results (Needed for PDF)
     krs = []
@@ -912,7 +1491,17 @@ def render_weekly_ritual_dialog(data, username):
         # Determine Title
         pdf_title = "Daily Work Report" if mode == "Daily" else "Weekly Work Report"
         
-        pdf_buffer = generate_weekly_pdf_v2(report_items, objective_stats, format_time(total), pdf_krs, st.session_state.report_direction, title=pdf_title, time_label=period_label)
+        pdf_buffer = generate_weekly_pdf_v2(
+            report_items, 
+            objective_stats, 
+            format_time(total), 
+            pdf_krs, 
+            st.session_state.report_direction, 
+            title=pdf_title, 
+            time_label=period_label,
+            report_summary=st.session_state.get("report_summary"), # Pass AI summary
+            achievements=achievements # Pass achievements list
+        )
         
         if pdf_buffer:
              st.download_button(
@@ -925,12 +1514,11 @@ def render_weekly_ritual_dialog(data, username):
         st.error(f"PDF Generation Error: {e}")
 
     st.markdown("---")
-    st.subheader("Work Log")
+    st.subheader("📝 Detailed Work Log")
 
     # Sort items for display
     report_items.sort(key=lambda x: x["Date"] + x["Time"], reverse=True)
     
-    # st.dataframe(report_items, use_container_width=True)
     # Using HTML table to ensure font consistency
     if report_items:
         table_html = """<table style="width:100%; border-collapse: collapse; font-family: 'Vazirmatn', sans-serif; font-size: 0.85em;">
@@ -1087,7 +1675,10 @@ def render_weekly_ritual_dialog(data, username):
             # Handle Update
             if do_update:
                 with st.spinner("Analyzing..."):
-                    res = analyze_node(kr['id'], data["nodes"])
+                    from utils.storage import filter_nodes_by_cycle
+                    cycle_id = st.session_state.get("active_cycle_id")
+                    filtered_nodes = filter_nodes_by_cycle(data["nodes"], cycle_id)
+                    res = analyze_node(kr['id'], filtered_nodes)
                     if "error" in res:
                         st.error(res["error"])
                     else:
@@ -1329,7 +1920,57 @@ def render_inspector_content(node_id, data, username):
             total = get_total_time(node_id, data["nodes"])
             st.metric("Total Time", format_time(total))
 
+    # Deadline (Tasks only)
+    if node_type == "TASK":
+        st.markdown("---")
+        st.write("### 📅 Deadline")
+        
+        from utils.deadline_utils import get_deadline_status, get_days_remaining, format_deadline_display
+        
+        current_deadline = node.get("deadline")
+        current_date = datetime.fromtimestamp(current_deadline / 1000).date() if current_deadline else None
+        
+        col_d1, col_d2 = st.columns([2, 1])
+        with col_d1:
+            new_deadline_date = st.date_input(
+                "Due Date",
+                value=current_date,
+                key=f"deadline_{node_id}"
+            )
+            
+            # Convert date to timestamp if changed
+            if new_deadline_date:
+                new_deadline_ts = int(datetime.combine(new_deadline_date, datetime.max.time()).timestamp() * 1000)
+            else:
+                new_deadline_ts = None
+            
+            # Save button for deadline
+            btn_col1, btn_col2 = st.columns(2)
+            if btn_col1.button("💾 Save Deadline", key=f"save_deadline_{node_id}"):
+                update_node(data, node_id, {"deadline": new_deadline_ts}, username)
+                st.toast("Deadline saved!")
+                st.rerun()
+            if current_deadline and btn_col2.button("🗑️ Clear", key=f"clear_deadline_{node_id}"):
+                update_node(data, node_id, {"deadline": None}, username)
+                st.toast("Deadline cleared!")
+                st.rerun()
+                
+        with col_d2:
+            if current_deadline:
+                status_code, status_label, health = get_deadline_status(node)
+                days = get_days_remaining(current_deadline)
+                
+                st.metric("Status", status_label)
+                if days >= 0:
+                    st.caption(f"📆 {days} days remaining")
+                else:
+                    st.caption(f"⚠️ {abs(days)} days overdue")
+                st.progress(health / 100, text=f"Health: {health}%")
+            else:
+                st.info("No deadline set")
+
      # Work History (Tasks)
+
     if node_type == "TASK":
          st.markdown("---")
          st.markdown("### 📜 Work History")
@@ -1369,7 +2010,10 @@ def render_inspector_content(node_id, data, username):
         
         if st.button("✨ Run Analysis", type="primary"):
              with st.spinner("Consulting Gemini Strategy Agent..."):
-                 res = analyze_node(node_id, data["nodes"])
+                 from utils.storage import filter_nodes_by_cycle
+                 cycle_id = st.session_state.get("active_cycle_id")
+                 filtered_nodes = filter_nodes_by_cycle(data["nodes"], cycle_id)
+                 res = analyze_node(node_id, filtered_nodes)
                  if "error" in res: st.error(res["error"])
                  else:
                      # Flatten result into node for storage
@@ -1397,36 +2041,23 @@ def render_inspector_content(node_id, data, username):
                 st.markdown(f"**Gap Analysis:**\n{analysis.get('gap_analysis', 'N/A')}")
                 st.markdown(f"**Quality Assessment:**\n{analysis.get('quality_assessment', 'N/A')}")
             
+            # Display deadline warnings if any
+            deadline_warnings = analysis.get("deadline_warnings", [])
+            if deadline_warnings:
+                st.markdown("#### ⚠️ Deadline Warnings")
+                for warning in deadline_warnings:
+                    st.warning(warning)
+            
             if analysis.get("proposed_tasks"):
+
                 st.markdown("#### 🚀 Proposed Missing Tasks")
                 for task in analysis["proposed_tasks"]:
                     c1, c2 = st.columns([0.8, 0.2])
                     c1.markdown(f"- {task}")
                     if c2.button("Add", key=f"add_prop_{task[:10]}_{node_id}"):
-                         # 1. Find or Create "AI Actions" Initiative
-                         ai_init_id = None
-                         children_ids = node.get("children", [])
-                         for cid in children_ids:
-                             child = data["nodes"].get(cid)
-                             # Robust search: title starts with the prefix or is the legacy exact name
-                             child_title = child.get("title", "")
-                             if child and (child_title == "🤖 AI Actions" or child_title.startswith("🤖 AI Actions:")):
-                                 ai_init_id = cid
-                                 break
-                         
-                         if not ai_init_id:
-                             # Generate meaningful title
-                             from services.gemini import suggest_initiative_title
-                             with st.spinner("Generating initiative name..."):
-                                 topic = suggest_initiative_title(task)
-                                 
-                             init_title = f"🤖 AI Actions: {topic}"
-                             # Create it
-                             ai_init_id = add_node(data, node_id, "INITIATIVE", init_title, "Container for AI proposed tasks", username)
-                         
-                         # 2. Add Task under it
-                         add_node(data, ai_init_id, "TASK", task, "AI Proposed Task", username)
-                         st.toast(f"Added task to '{data['nodes'][ai_init_id]['title']}': {task}")
+                         # Add Task directly under Key Result
+                         add_node(data, node_id, "TASK", task, "AI Proposed Task", username)
+                         st.toast(f"Added task: {task}")
                          st.rerun()
 
         elif analysis and isinstance(analysis, str):
@@ -1470,9 +2101,15 @@ def render_card(node_id, data, username):
             if node_type == "TASK":
                 t = get_total_time(node_id, data["nodes"])
                 stats += f" | ⏱️ {format_time(t)}"
+                # Add deadline indicator
+                if node.get("deadline"):
+                    from utils.deadline_utils import get_deadline_status, format_deadline_display
+                    _, status_label, _ = get_deadline_status(node)
+                    stats += f" | {status_label}"
             
             st.markdown(f"**{label}**")
             st.caption(stats)
+
             
             # Show Strategy Tags for Goals
             if node_type == "GOAL":
@@ -1566,8 +2203,11 @@ def render_card(node_id, data, username):
             if node_type == "KEY_RESULT":
                 if st.button("AI", icon=":material/psychology:", key=f"ai_card_{node_id}", help="Run Quick AI Strategic Analysis"):
                     from services.gemini import analyze_node
+                    from utils.storage import filter_nodes_by_cycle
+                    cycle_id = st.session_state.get("active_cycle_id")
+                    filtered_nodes = filter_nodes_by_cycle(data["nodes"], cycle_id)
                     with st.spinner("🧠 Gemini is auditing..."):
-                        res = analyze_node(node_id, data["nodes"])
+                        res = analyze_node(node_id, filtered_nodes)
                         if "error" in res:
                             st.error(res["error"])
                         else:
