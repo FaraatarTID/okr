@@ -431,6 +431,7 @@ def get_goal_tree(goal_id: int) -> Optional[Goal]:
                 .selectinload(Strategy.objectives)
                 .selectinload(Objective.key_results)
                 .selectinload(KeyResult.initiatives)
+                .selectinload(KeyResult.tasks)
                 .selectinload(Initiative.tasks)
             )
         )
@@ -591,23 +592,31 @@ def create_initiative(key_result_id: int, title: str, description: str = "", ext
         return initiative
 
 
-def create_task(initiative_id: int, title: str, description: str = "",
+def create_task(initiative_id: Optional[int] = None, key_result_id: Optional[int] = None, title: str = "", description: str = "",
                 estimated_minutes: int = 0, external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Task:
-    """Create a new task under an initiative."""
+    """Create a new task under an initiative or directly under a key result."""
     with get_session_context() as session:
-        initiative = session.get(Initiative, initiative_id)
-        if not initiative:
-            raise ValueError(f"Initiative {initiative_id} not found")
+        if initiative_id:
+            parent_check = session.get(Initiative, initiative_id)
+            if not parent_check:
+                raise ValueError(f"Initiative {initiative_id} not found")
+            filter_stmt = select(Task).where(Task.initiative_id == initiative_id)
+        elif key_result_id:
+            parent_check = session.get(KeyResult, key_result_id)
+            if not parent_check:
+                raise ValueError(f"KeyResult {key_result_id} not found")
+            filter_stmt = select(Task).where(Task.key_result_id == key_result_id)
+        else:
+            raise ValueError("Either initiative_id or key_result_id must be provided")
         
-        existing = session.exec(
-            select(Task).where(Task.initiative_id == initiative_id)
-        ).all()
+        existing = session.exec(filter_stmt).all()
         
         if not title or title.startswith("New "):
             title = f"Task #{len(existing) + 1}"
         
         task = Task(
             initiative_id=initiative_id,
+            key_result_id=key_result_id,
             title=title,
             description=description,
             estimated_minutes=estimated_minutes,

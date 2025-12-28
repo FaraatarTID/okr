@@ -80,7 +80,17 @@ def _sync_node(session, model_class, json_node, username, parent_id=None):
             elif model_class == Objective: sql_node.strategy_id = parent_id
             elif model_class == KeyResult: sql_node.objective_id = parent_id
             elif model_class == Initiative: sql_node.key_result_id = parent_id
-            elif model_class == Task: sql_node.initiative_id = parent_id
+            elif model_class == Task:
+                # Task can be under Initiative OR Objective (if skipping Initiative level)
+                # But in our JSON structure, Task parent is always the direct level up.
+                if json_node.get("parentId"):
+                    p_node = nodes.get(json_node.get("parentId"))
+                    if p_node and p_node.get("type", "").upper() == "KEY_RESULT":
+                        sql_node.key_result_id = parent_id
+                        sql_node.initiative_id = None
+                    else:
+                        sql_node.initiative_id = parent_id
+                        sql_node.key_result_id = None
             
         session.add(sql_node)
         session.commit()
@@ -114,7 +124,12 @@ def _sync_node(session, model_class, json_node, username, parent_id=None):
         elif model_class == Initiative:
             return create_initiative(parent_id, fields["title"], fields["description"], external_id=node_id, created_at=fields.get("created_at"))
         elif model_class == Task:
-            return create_task(parent_id, fields["title"], fields["description"], external_id=node_id, created_at=fields.get("created_at"))
+            # Check parent type to decide which FK to use
+            p_node = nodes.get(json_node.get("parentId"))
+            if p_node and p_node.get("type", "").upper() == "KEY_RESULT":
+                return create_task(key_result_id=parent_id, title=fields["title"], description=fields["description"], external_id=node_id, created_at=fields.get("created_at"))
+            else:
+                return create_task(initiative_id=parent_id, title=fields["title"], description=fields["description"], external_id=node_id, created_at=fields.get("created_at"))
             
     return None
 
@@ -125,7 +140,7 @@ def _sync_children(session, all_nodes, parent_json_node, parent_sql_id, child_ty
     model_map = {
         "STRATEGY": (Strategy, "OBJECTIVE"),
         "OBJECTIVE": (Objective, "KEY_RESULT"),
-        "KEY_RESULT": (KeyResult, "INITIATIVE"),
+        "KEY_RESULT": (KeyResult, "TASK"), # Changed from INITIATIVE to TASK as primary child
         "INITIATIVE": (Initiative, "TASK"),
         "TASK": (Task, None)
     }

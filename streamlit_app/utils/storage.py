@@ -21,7 +21,47 @@ def get_sync_status():
     db = get_db()
     return db.get_connection_status()
 
+
+def filter_nodes_by_cycle(nodes: dict, cycle_id: int) -> dict:
+    """
+    Filter nodes dictionary to only include nodes from the specified cycle.
+    Also includes all descendants of cycle nodes regardless of their cycle_id.
+    
+    Args:
+        nodes: Dictionary of all nodes {node_id: node_data}
+        cycle_id: The cycle ID to filter by
+    
+    Returns:
+        Dictionary containing only nodes belonging to the specified cycle
+    """
+    if not cycle_id:
+        return nodes  # No filtering if no cycle specified
+    
+    # First, find all root-level nodes that belong to this cycle
+    cycle_root_ids = set()
+    for nid, node in nodes.items():
+        if node.get("cycle_id") == cycle_id:
+            cycle_root_ids.add(nid)
+    
+    # Then recursively collect all children of those roots
+    def collect_descendants(node_id, collected):
+        collected.add(node_id)
+        node = nodes.get(node_id)
+        if node:
+            for child_id in node.get("children", []):
+                if child_id in nodes and child_id not in collected:
+                    collect_descendants(child_id, collected)
+    
+    all_cycle_node_ids = set()
+    for root_id in cycle_root_ids:
+        collect_descendants(root_id, all_cycle_node_ids)
+    
+    # Return filtered dictionary
+    return {nid: nodes[nid] for nid in all_cycle_node_ids if nid in nodes}
+
+
 DATA_FILE = "okr_data.json"
+
 
 def _get_cache_key(username):
     """Get the session state cache key for a user's data."""
@@ -288,8 +328,10 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
         "created_by_username": username,
         "created_by_display_name": st.session_state.get("display_name"),
         "isExpanded": True,
-        "cycle_id": cycle_id
+        "cycle_id": cycle_id,
+        "deadline": None  # Deadline timestamp in milliseconds
     }
+
     
     data_store["nodes"][new_id] = new_node
     

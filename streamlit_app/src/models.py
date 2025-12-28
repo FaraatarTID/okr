@@ -140,6 +140,7 @@ class KeyResult(NodeBase, table=True):
     # Relationships
     objective: Optional[Objective] = Relationship(back_populates="key_results")
     initiatives: List["src.models.Initiative"] = Relationship(back_populates="key_result")
+    tasks: List["src.models.Task"] = Relationship(back_populates="key_result")
     check_ins: List["src.models.CheckIn"] = Relationship(back_populates="key_result")
 
 
@@ -162,7 +163,8 @@ class Task(NodeBase, table=True):
     __table_args__ = {"extend_existing": True}
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    initiative_id: int = Field(foreign_key="initiative.id", index=True)
+    initiative_id: Optional[int] = Field(default=None, foreign_key="initiative.id", index=True)
+    key_result_id: Optional[int] = Field(default=None, foreign_key="key_result.id", index=True)
     
     # Task-specific fields
     status: TaskStatus = Field(default=TaskStatus.TODO)
@@ -174,6 +176,7 @@ class Task(NodeBase, table=True):
     
     # Relationships
     initiative: Optional[Initiative] = Relationship(back_populates="tasks")
+    key_result: Optional[KeyResult] = Relationship(back_populates="tasks")
     work_logs: List["src.models.WorkLog"] = Relationship(back_populates="task")
 
 

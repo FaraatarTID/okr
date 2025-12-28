@@ -136,6 +136,7 @@ def analyze_efficiency_effectiveness(
 
     2. EFFECTIVENESS (Goal Achievement):
        - Compare Task Completion Progress vs KR Progress
+       - Note: "Tasks" are now the direct actionable level under a Key Result. "Initiatives" are tags for the Key Result.
        - Are completed tasks moving the KR metric?
        - Score 100 = Perfect alignment between work and results
 
@@ -297,30 +298,3 @@ def analyze_objective(objective: Objective,
         return {"error": str(e)}
 
 
-def suggest_initiative_title(task_title: str) -> str:
-    """Generate a short initiative title for a task (for Quick Add)."""
-    if not GENAI_AVAILABLE:
-        return "General Work"
-    
-    api_key = get_api_key()
-    if not api_key:
-        return "General Work"
-    
-    prompt = f"""
-    Task: "{task_title}"
-    
-    Generate a very short (2-4 words) Initiative Title that would contain this task.
-    Match the language of the task title.
-    
-    Output: ONLY the title string, no quotes, no explanation.
-    """
-    
-    try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=prompt
-        )
-        return response.text.strip() if response.text else "General Work"
-    except:
-        return "General Work"
