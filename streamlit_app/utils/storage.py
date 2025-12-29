@@ -147,48 +147,51 @@ def load_data(username=None, force_refresh=False):
                      assigned_tasks.append(node)
         
         if assigned_tasks:
-            # Create a Virtual Inbox Goal
-            inbox_id = "inbox_assigned"
-            inbox_node = {
-                "id": inbox_id,
-                "title": "📥 Assigned by Manager",
-                "type": "GOAL",
-                "children": [t["id"] for t in assigned_tasks],
-                "progress": 0,
-                "parentId": None,
-                "isExpanded": True,
-                # Place it in current cycle or handle gracefully
-                "cycle_id": st.session_state.get("active_cycle_id") 
-            }
-            
-            # Use `dict()` to copy data to avoid mutating cached object permanently if shared? 
-            # Note: `_fetch_from_source` returns cached dict. Modifying it modifies the cache!
-            # We must COPY data before modifying if we don't want to save Inbox back to file.
-            # But `save_data` dumps `data`. If we add Inbox, `save_data` will save it to JSON!
-            # Then next load has duplicate Inbox.
-            # FIX: Deep copy first? Or ensure we don't save "inbox_assigned".
-            pass # See logic below
-            
-            # To avoid saving "inbox" to file, `save_data` should strip it?
-            # Or we accept it lives in session state only?
-            # If we modifying `data` here, `st.session_state` gets it.
-            # When user clicks "Save" (e.g. modify task), `save_data` is called with `data`.
-            # We should probably filter out "inbox_assigned" in `save_data` or `db.save_user_data`.
-            
-            # For now, let's inject it into `data` (copying first to be safe from cache mutations)
             import copy
             data = copy.deepcopy(data) 
             
-            data["nodes"][inbox_id] = inbox_node
-            # Prepend to rootIds
-            if inbox_id not in data["rootIds"]:
-                 data["rootIds"].insert(0, inbox_id)
+            # Helper to find root goal
+            def _get_root_goal(nodes, tid):
+                curr = nodes.get(tid)
+                while curr and curr.get("parentId") and curr.get("parentId") in nodes:
+                    curr = nodes.get(curr.get("parentId"))
+                return curr
+
+            # Grouping
+            groups = {}
+            for t in assigned_tasks:
+                root = _get_root_goal(mgr_data.get("nodes", {}), t["id"])
+                rid = root["id"] if root else "unknown"
+                rtitle = root["title"] if root else "Assigned Tasks"
+                if rid not in groups:
+                    groups[rid] = {"title": rtitle, "tasks": []}
+                groups[rid]["tasks"].append(t)
             
-            # Add the task nodes themselves to `data['nodes']`
-            for task in assigned_tasks:
-                # We need to ensure we don't overwrite if by some chance ID conflict? 
-                # (IDs are UUIDs so safe)
-                data["nodes"][task["id"]] = task
+            # Inject groups as virtual goals
+            for rid, group in groups.items():
+                inbox_id = f"virtual_inbox_{rid}"
+                inbox_node = {
+                    "id": inbox_id,
+                    "title": group["title"],
+                    "type": "GOAL",
+                    "children": [t["id"] for t in group["tasks"]],
+                    "progress": 0,
+                    "parentId": None,
+                    "isExpanded": True,
+                    "is_virtual": True,
+                    "cycle_id": st.session_state.get("active_cycle_id") 
+                }
+                
+                data["nodes"][inbox_id] = inbox_node
+                if inbox_id not in data["rootIds"]:
+                    data["rootIds"].insert(0, inbox_id)
+                
+                # Add task nodes
+                for t in group["tasks"]:
+                    t_copy = dict(t)
+                    t_copy["parentId"] = inbox_id
+                    t_copy["is_virtual"] = True
+                    data["nodes"][t["id"]] = t_copy
 
     # Update Session State with what we found
     if username:
@@ -198,6 +201,23 @@ def load_data(username=None, force_refresh=False):
 
 # --- MODIFIED: Main Save Function ---
 def save_data(data, username=None):
+    # --- STRIP VIRTUAL NODES BEFORE SAVING ---
+    # We don't want to persist "Assigned by Manager" virtual containers
+    import copy
+    data = copy.deepcopy(data)
+    
+    virtual_ids = [nid for nid, node in data.get("nodes", {}).items() if node.get("is_virtual")]
+    for vid in virtual_ids:
+        if vid in data["nodes"]:
+            del data["nodes"][vid]
+        if vid in data.get("rootIds", []):
+            data["rootIds"].remove(vid)
+    
+    # Remove virtual children links from remaining nodes
+    for nid, node in data.get("nodes", {}).items():
+        if "children" in node:
+            node["children"] = [c for c in node["children"] if c not in virtual_ids]
+
     success = False
     
     # 1. Save to Google Sheets

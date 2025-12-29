@@ -2407,7 +2407,10 @@ def render_card(node_id, data, username):
             tags_row_html = ""
             
             # ✍️ Creator Tag (All items)
-            creator_name = node.get("created_by_display_name") or node.get("user_id") or "Unknown"
+            creator_name = node.get("created_by_display_name") or node.get("user_id") or node.get("created_by_username") or "Unknown"
+            if creator_name == "admin":
+                creator_name = "Administrator"
+            
             tags_row_html += f"<span style='background-color:#F5F5F5;color:#616161;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-right:4px;border:1px solid #e0e0e0;'>✍️ {creator_name}</span>"
             
             # 👤 Owner Tag (Goals only, for Admin/Manager viewing team)
@@ -2415,6 +2418,10 @@ def render_card(node_id, data, username):
                 owner_name = node.get("owner_display_name") or node.get("user_id", "Unknown")
                 tags_row_html += f"<span style='background-color:#E3F2FD;color:#1565C0;padding:2px 8px;border-radius:10px;font-size:0.75em;'>👤 {owner_name}</span>"
             
+            # 📥 Assigned Tag (Virtual nodes)
+            if node.get("is_virtual"):
+                tags_row_html += f"<span style='background-color:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-left:4px;border:1px solid #c8e6c9;'>📥 Assigned by Manager</span>"
+
             if tags_row_html:
                 st.markdown(f"<div style='margin-top:4px;'>{tags_row_html}</div>", unsafe_allow_html=True)
             
