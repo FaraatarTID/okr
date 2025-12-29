@@ -99,6 +99,10 @@ class Goal(NodeBase, table=True):
     owner_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)  # FK to User table
     cycle_id: Optional[int] = Field(default=None, foreign_key="cycle.id", index=True)
     
+    # Tags (Stored as JSON string or comma-separated)
+    strategy_tags: Optional[str] = Field(default="[]")
+    initiative_tags: Optional[str] = Field(default="[]") # For KR? No, UI says "Initiative Tags" on KR.
+    
     # Relationships
     cycle: Optional[Cycle] = Relationship(back_populates="goals")
     strategies: List["src.models.Strategy"] = Relationship(

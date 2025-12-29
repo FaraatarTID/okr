@@ -55,6 +55,17 @@ def create_db_and_tables():
             conn.commit()
         except Exception: pass
 
+        # Add tags to goal
+        try:
+            conn.execute(text("ALTER TABLE goal ADD COLUMN strategy_tags TEXT"))
+            conn.commit()
+        except Exception: pass
+
+        try:
+            conn.execute(text("ALTER TABLE goal ADD COLUMN initiative_tags TEXT"))
+            conn.commit()
+        except Exception: pass
+
 
 def get_session() -> Session:
     """Get a new database session."""
