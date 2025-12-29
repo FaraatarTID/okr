@@ -115,11 +115,18 @@ def analyze_node(node_id, all_nodes):
        - Are the defined tasks the *right* things to do? Are the descriptions and methods sound?
        - A high effectiveness score means the strategy is smart and likely to succeed.
     
+    4. PROGRESS ESTIMATION (The "New Value" Step):
+       - Calculate a "suggested_current_value" for this Key Result.
+       - Base this on the progress of defined tasks AND the target metric.
+       - If tasks represent 100% of the work required (High Efficiency) and are 50% done, the suggested value should be roughly 50% of the target.
+       - If Efficiency is low, the suggestion should be conservative.
+    
     REQUIRED OUTPUT (JSON):
     {
         "efficiency_score": <number 0-100>,
         "effectiveness_score": <number 0-100>,
         "overall_score": <number 0-100 input weighted average>,
+        "suggested_current_value": <number, AI estimation of current progress in the unit of the KR>,
         "deadline_warnings": ["<Task X is overdue by N days>", "<Task Y is at risk>", ...],
         "gap_analysis": "<Concise explanation of what is missing to reach 100% fulfillment (in the SAME language as the Key Result Title)>",
         "quality_assessment": "<Concise critique of the current tasks' quality (in the SAME language as the Key Result Title)>",
@@ -164,6 +171,7 @@ def analyze_node(node_id, all_nodes):
                 "efficiency_score": data.get("efficiency_score", 0),
                 "effectiveness_score": data.get("effectiveness_score", 0),
                 "overall_score": data.get("overall_score", 0),
+                "suggested_current_value": data.get("suggested_current_value", node.get("current_value", 0.0)),
                 "deadline_warnings": data.get("deadline_warnings", []),
                 "gap_analysis": data.get("gap_analysis", ""),
                 "quality_assessment": data.get("quality_assessment", ""),

@@ -2,7 +2,7 @@ import streamlit as st
 import sys
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Add current directory to path so we can import modules if running from outside
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -1368,10 +1368,41 @@ def render_weekly_ritual_dialog(data, username):
                 with st.expander(f"📊 {kr.title}", expanded=(i==0)):
                     st.caption(f"Current: {kr.current_value} {kr.unit or ''} | Target: {kr.target_value}")
                     
+                    # AI Suggestion Feature
+                    from services.gemini import analyze_node
+                    from utils.storage import filter_nodes_by_cycle
+                    
+                    ai_key = f"ai_sugg_{kr.id}"
+                    if st.button("✨ Get AI Estimate", key=f"btn_ai_{kr.id}", help="Gemini will analyze child tasks to suggest a progress value"):
+                        with st.spinner("Analyzing scope..."):
+                            filtered_nodes = filter_nodes_by_cycle(data["nodes"], cycle_id)
+                            # We use exterior_id for the JSON-based analysis service
+                            res = analyze_node(kr.external_id, filtered_nodes)
+                            if "error" in res:
+                                st.error(res["error"])
+                            else:
+                                st.session_state[ai_key] = res["analysis"]
+                    
+                    sugg = st.session_state.get(ai_key)
+                    if sugg:
+                        st.info(f"**AI Recommendation:** {sugg['suggested_current_value']} {kr.unit or ''}")
+                        with st.expander("📝 Strategic Reasoning", expanded=True):
+                            st.write(sugg['summary'])
+                            if sugg['gap_analysis']:
+                                st.warning(f"**Gap:** {sugg['gap_analysis']}")
+                        
+                        if st.button("Apply Suggestion", key=f"apply_{kr.id}"):
+                            # Update the number input via session state or just force it here
+                            # Since number_input has a key, we can try to set it, but usually standard is better
+                            st.session_state[f"val_{kr.id}"] = float(sugg['suggested_current_value'])
+                            st.rerun()
+
                     with st.form(f"checkin_form_{kr.id}"):
                         c1, c2 = st.columns(2)
                         with c1:
-                            new_val = st.number_input("New Value", value=float(kr.current_value), key=f"val_{kr.id}")
+                            # Use session state as default if it exists from Apply button
+                            default_val = st.session_state.get(f"val_{kr.id}", float(kr.current_value))
+                            new_val = st.number_input("New Value", value=default_val, key=f"inp_val_{kr.id}")
                         with c2:
                             conf = st.slider("Confidence (0-10)", 0, 10, 5, key=f"conf_{kr.id}")
                         
@@ -1386,6 +1417,11 @@ def render_weekly_ritual_dialog(data, username):
                                 if kr.target_value > 0:
                                     n["progress"] = int((new_val / kr.target_value) * 100)
                                 save_data(data, username)
+                            
+                            # Clean up AI suggestion
+                            if ai_key in st.session_state: del st.session_state[ai_key]
+                            if f"val_{kr.id}" in st.session_state: del st.session_state[f"val_{kr.id}"]
+                            
                             st.toast(f"Updated {kr.title}!")
                             time.sleep(0.5)
                             st.rerun()
@@ -1411,8 +1447,16 @@ def render_weekly_ritual_dialog(data, username):
             has_deadlines = st.checkbox("Check upcoming deadlines", value=True)
             
             if st.form_submit_button("🚀 Finish Ritual"):
+                # Save Weekly Plan
+                from src.crud import create_weekly_plan, get_user_by_username
+                
+                user = get_user_by_username(username)
+                if user:
+                    start_date = datetime.utcnow()
+                    end_date = start_date + timedelta(days=7)
+                    create_weekly_plan(user.id, start_date, end_date, p1, p2, p3)
+                
                 st.toast("Weekly Ritual Complete! Have a great week.")
-                # Could save this plan to storage if needed
                 del st.session_state.ritual_step
                 if "ritual_summary" in st.session_state:
                     del st.session_state.ritual_summary
@@ -1444,6 +1488,8 @@ def render_weekly_ritual_dialog(data, username):
 # ============================================================================
 # Main App Logic
 # ============================================================================
+@st.fragment
+def render_report_content(data, username, mode):
     # Filter logic
     now = time.time() * 1000
     if mode == "Daily":
@@ -2774,22 +2820,32 @@ def render_app(username):
          if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
          st.rerun()
     
-    # Sidebar Utilities (Export)
-    with st.sidebar.expander("Storage & Sync"):
-        c1, c2 = st.columns(2)
-        export_json = export_data(username)
-        c1.download_button("Export JSON", export_json, "backup.json")
-        
-        if c2.button("🔄 Sync SQL", help="Force sync JSON data to Strategic Dashboard"):
-            with st.spinner("Syncing..."):
-                save_data(data, username)
-                st.success("Successfully synchronized JSON to SQL Database!")
-                st.rerun()
+    # Sidebar Utilities (Export) - Admin Only
+    if user_role == "admin":
+        with st.sidebar.expander("Storage & Sync"):
+            c1, c2 = st.columns(2)
+            from utils.storage import export_db
+            db_binary = export_db()
+            c1.download_button("📥 Export Database", db_binary, "okr_database.db", help="Download the live SQLite database file")
+            
+            if c2.button("☁️ Cloud Backup", help="Force save current data to Google Sheets (Backup)"):
+                with st.spinner("Backing up to Cloud..."):
+                    save_data(data, username)
+                    st.success("Successfully backed up data to Google Sheets!")
+                    st.rerun()
 
-        uploaded = st.file_uploader("Import", type=["json"])
-        if uploaded and st.button("Import Data"):
-            import_data(uploaded.read().decode(), username)
-            st.rerun()
+            st.markdown("---")
+            st.markdown("#### Restore Database")
+            uploaded_db = st.file_uploader("Upload .db file", type=["db"], help="Restore from a previously exported okr_database.db file")
+            if uploaded_db and st.button("🚀 Restore Database", type="primary"):
+                from utils.storage import import_db
+                success, msg = import_db(uploaded_db.read())
+                if success:
+                    st.success(msg)
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(msg)
 
     # Sync Status
     from utils.storage import get_sync_status
@@ -2805,6 +2861,32 @@ def render_app(username):
                  st.error(error_msg)
                  st.caption("Add 'gcp_service_account' to secrets.toml")
 
+    # === WEEKLY FOCUS CARD ===
+    from src.crud import get_active_weekly_plan, get_user_by_username
+    from datetime import datetime
+    
+    current_user_obj = get_user_by_username(username)
+    if current_user_obj:
+        active_plan = get_active_weekly_plan(current_user_obj.id)
+        if active_plan:
+             with st.container(border=True):
+                 c_wc1, c_wc2 = st.columns([0.15, 0.85])
+                 with c_wc1:
+                     st.markdown("### 🎯")
+                     st.caption("Weekly Focus")
+                 with c_wc2:
+                     # Display priorities as pills or structured list
+                     priorities = [p for p in [active_plan.priority_1, active_plan.priority_2, active_plan.priority_3] if p]
+                     
+                     if not priorities:
+                         st.info("No priorities set for this week.")
+                     else:
+                         # CSS for custom pills/cards
+                         cols = st.columns(len(priorities))
+                         for idx, p in enumerate(priorities):
+                             with cols[idx]:
+                                 st.markdown(f"**{idx+1}.** {p}")
+    
     render_level(data, username, root_ids=display_root_ids)
 
     # Persistent Dialog Checks - Only if no other dialog is active

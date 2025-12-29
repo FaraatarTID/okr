@@ -243,12 +243,6 @@ def save_data(data, username=None):
     # so that virtual nodes remain visible in the UI without a full reload.
     if username:
         st.session_state[_get_cache_key(username)] = data
-        # Sync to SQL Database for Dashboard visibility
-        try:
-            sync_data_to_db(username, data)
-        except Exception as e:
-            # Don't let sync errors crash the main save
-            print(f"Sync error: {e}")
         
 # --- NEW: Aggregate All Data for Admin ---
 @st.cache_data(ttl=300, show_spinner=False)
@@ -431,6 +425,38 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
         final_title = f"{normalized_type} #{siblings_count + 1}"
 
     new_id = generate_id()
+    
+    # --- 1. SQL CREATE (SQL-PRIMARY) ---
+    from src.crud import (
+        get_node_by_external_id, create_goal, create_strategy, 
+        create_objective, create_key_result, create_initiative, create_task
+    )
+    from src.models import Goal, Strategy, Objective, KeyResult, Initiative, Task
+    
+    parent_sql_id = None
+    if parent_id:
+        p_sql, _ = get_node_by_external_id(parent_id)
+        if p_sql: parent_sql_id = p_sql.id
+
+    if node_type == "GOAL":
+        create_goal(user_id=username, title=final_title, description=description, cycle_id=cycle_id, external_id=new_id)
+    elif node_type == "STRATEGY":
+        create_strategy(parent_sql_id, final_title, description, external_id=new_id)
+    elif node_type == "OBJECTIVE":
+        create_objective(parent_sql_id, final_title, description, external_id=new_id)
+    elif node_type == "KEY_RESULT":
+        create_key_result(parent_sql_id, final_title, description, external_id=new_id)
+    elif node_type == "INITIATIVE":
+        create_initiative(parent_sql_id, final_title, description, external_id=new_id)
+    elif node_type == "TASK":
+        # Check parent type from data_store to decide which FK to use
+        p_json = data_store["nodes"].get(parent_id)
+        if p_json and p_json.get("type", "").upper() == "KEY_RESULT":
+            create_task(key_result_id=parent_sql_id, title=final_title, description=description, external_id=new_id)
+        else:
+            create_task(initiative_id=parent_sql_id, title=final_title, description=description, external_id=new_id)
+
+    # --- 2. JSON/MEMORY UPDATE (BACKUP) ---
     new_node = {
         "id": new_id,
         "type": node_type,
@@ -444,18 +470,16 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
         "created_by_display_name": st.session_state.get("display_name"),
         "isExpanded": True,
         "cycle_id": cycle_id,
-        "deadline": None,  # Deadline timestamp in milliseconds
-        "assignees": assignees if assignees else [] # List of usernames
+        "deadline": None,
+        "assignees": assignees if assignees else []
     }
-
     
     data_store["nodes"][new_id] = new_node
     
     if parent_id:
         parent = data_store["nodes"].get(parent_id)
         if parent:
-            if "children" not in parent:
-                parent["children"] = []
+            if "children" not in parent: parent["children"] = []
             parent["children"].append(new_id)
     else:
         data_store["rootIds"].append(new_id)
@@ -463,31 +487,55 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
     save_data(data_store, username)
     return new_id
 
+def delete_node_sql_only(node_id):
+    """Helper for recursive SQL deletion without touching JSON memory structure."""
+    from src.crud import get_node_by_external_id, delete_goal, delete_strategy, delete_objective, delete_key_result, delete_initiative, delete_task
+    from src.models import Goal, Strategy, Objective, KeyResult, Initiative, Task
+    sql_node, model_class = get_node_by_external_id(node_id)
+    if sql_node:
+        if model_class == Goal: delete_goal(sql_node.id)
+        elif model_class == Strategy: delete_strategy(sql_node.id)
+        elif model_class == Objective: delete_objective(sql_node.id)
+        elif model_class == KeyResult: delete_key_result(sql_node.id)
+        elif model_class == Initiative: delete_initiative(sql_node.id)
+        elif model_class == Task: delete_task(sql_node.id)
+
 def delete_node(data_store, node_id, username=None):
-    nodes = data_store["nodes"]
-    node = nodes.get(node_id)
-    if not node:
+    node_to_delete = data_store["nodes"].get(node_id)
+    if not node_to_delete:
         return
 
-    # Recursive delete
-    def delete_recursive(nid):
-        if nid not in nodes:
+    # --- 1. SQL DELETE (SQL-PRIMARY) ---
+    # Recursively delete from SQL for the node and its children
+    def delete_recursive_sql(nid):
+        node = data_store["nodes"].get(nid)
+        if node:
+            for child_id in node.get("children", []):
+                delete_recursive_sql(child_id) # Recurse for children first
+            delete_node_sql_only(nid) # Then delete the current node
+
+    delete_recursive_sql(node_id)
+
+    # --- 2. JSON/MEMORY DELETE (BACKUP) ---
+    # Recursively delete from JSON/memory
+    def delete_recursive_json(nid):
+        if nid not in data_store["nodes"]:
             return
-        n = nodes[nid]
+        n = data_store["nodes"][nid]
         for child_id in n.get("children", []):
-            delete_recursive(child_id)
-        del nodes[nid]
+            delete_recursive_json(child_id)
+        del data_store["nodes"][nid]
 
-    delete_recursive(node_id)
+    delete_recursive_json(node_id)
 
-    # Remove from parent
-    parent_id = node.get("parentId")
-    if parent_id and parent_id in nodes:
-        nodes[parent_id]["children"] = [
-            cid for cid in nodes[parent_id]["children"] if cid != node_id
+    # Remove from parent's children list or from rootIds
+    parent_id = node_to_delete.get("parentId")
+    if parent_id and parent_id in data_store["nodes"]:
+        data_store["nodes"][parent_id]["children"] = [
+            cid for cid in data_store["nodes"][parent_id]["children"] if cid != node_id
         ]
         # Update parent progress
-        update_node_progress(parent_id, nodes)
+        update_node_progress(parent_id, data_store["nodes"])
     elif not parent_id:
         # It was a root
         data_store["rootIds"] = [rid for rid in data_store["rootIds"] if rid != node_id]
@@ -498,31 +546,65 @@ def update_node(data_store, node_id, updates, username=None):
     if node_id not in data_store["nodes"]:
         return
     
+    # --- 1. SQL UPDATE (SQL-PRIMARY) ---
+    from src.crud import get_node_by_external_id, update_goal, update_strategy, update_objective, update_key_result, update_initiative, update_task
+    from src.models import Goal, Strategy, Objective, KeyResult, Initiative, Task
+    
+    sql_node, model_class = get_node_by_external_id(node_id)
+    if sql_node:
+        # Map JSON keys to SQL fields
+        sql_updates = {}
+        mapping = {
+            "title": "title",
+            "description": "description",
+            "progress": "progress",
+            "isExpanded": "is_expanded",
+            "deadline": "deadline",
+            "status": "status",
+            "target_value": "target_value",
+            "current_value": "current_value",
+            "unit": "unit"
+        }
+        for k, v in updates.items():
+            if k in mapping:
+                sql_updates[mapping[k]] = v
+        
+        # Add updated_at
+        from datetime import datetime
+        sql_updates["updated_at"] = datetime.utcnow()
+
+        # Call specific update based on model
+        if model_class == Goal: update_goal(sql_node.id, **sql_updates)
+        elif model_class == Strategy: update_strategy(sql_node.id, **sql_updates)
+        elif model_class == Objective: update_objective(sql_node.id, **sql_updates)
+        elif model_class == KeyResult: update_key_result(sql_node.id, **sql_updates)
+        elif model_class == Initiative: update_initiative(sql_node.id, **sql_updates)
+        elif model_class == Task: update_task(sql_node.id, **sql_updates)
+
+    # --- 2. JSON/MEMORY UPDATE (BACKUP) ---
     node = data_store["nodes"][node_id]
     node.update(updates)
     
     # If progress changed manually (e.g. for leaf node), propagation up
     if "progress" in updates:
-        # Check if it has children. If it has children, manual progress update is ignored/overwritten by children avg
-        # unless we explicitly want to force it.
-        # But per logic, if children exist, progress is calculated from them.
         children = node.get("children", [])
         if not children:
-            # It's a leaf, allow update.
-            # Propagate up
             new_nodes = update_node_progress(node.get("parentId"), data_store["nodes"])
             data_store["nodes"] = new_nodes
-        else:
-             # Has children, ignore manual progress update or trigger recalc?
-             # For now, let's just trigger update_node_progress on itself to be safe
-             pass
 
     save_data(data_store, username)
 
 def start_timer(data_store, node_id, username=None):
     node = data_store["nodes"].get(node_id)
     if node:
-        # Stop any other running timer first (single active timer policy)
+        # --- 1. SQL START (SQL-PRIMARY) ---
+        from src.crud import get_node_by_external_id, start_timer as sql_start_timer
+        sql_task, _ = get_node_by_external_id(node_id)
+        if sql_task:
+            sql_start_timer(sql_task.id, username)
+
+        # --- 2. JSON/MEMORY START ---
+        # Stop any other running timer in memory
         for nid, n in data_store["nodes"].items():
             if n.get("timerStartedAt"):
                 stop_timer(data_store, nid, username)
@@ -533,16 +615,21 @@ def start_timer(data_store, node_id, username=None):
 def stop_timer(data_store, node_id, username=None, summary=None):
     node = data_store["nodes"].get(node_id)
     if node and node.get("timerStartedAt"):
+        # --- 1. SQL STOP (SQL-PRIMARY) ---
+        from src.crud import get_node_by_external_id, stop_timer as sql_stop_timer
+        sql_task, _ = get_node_by_external_id(node_id)
+        if sql_task:
+            sql_stop_timer(sql_task.id, note=summary)
+
+        # --- 2. JSON/MEMORY STOP ---
         start_time = node["timerStartedAt"]
         elapsed_ms = int(time.time() * 1000) - start_time
-        # Round to nearest minute
         elapsed_minutes = elapsed_ms / 60000
         
         current_spent = node.get("timeSpent", 0)
         node["timeSpent"] = current_spent + elapsed_minutes
         node["timerStartedAt"] = None
         
-        # Log the session
         if "workLog" not in node:
             node["workLog"] = []
         
@@ -550,7 +637,7 @@ def stop_timer(data_store, node_id, username=None, summary=None):
             "startedAt": start_time,
             "endedAt": int(time.time() * 1000),
             "durationMinutes": elapsed_minutes,
-            "summary": summary  # Store the summary
+            "summary": summary
         })
         
         save_data(data_store, username)
@@ -559,9 +646,19 @@ def delete_work_log(data_store, node_id, log_started_at, username=None):
     node = data_store["nodes"].get(node_id)
     if not node: return
     
+    # --- 1. SQL DELETE LOG (SQL-PRIMARY) ---
+    from src.crud import get_node_by_external_id, get_work_log_by_start_time, delete_work_log as sql_delete_work_log
+    sql_task, _ = get_node_by_external_id(node_id)
+    if sql_task:
+        from datetime import datetime
+        # Convert JSON ms timestamp to datetime
+        dt_start = datetime.fromtimestamp(log_started_at / 1000)
+        log = get_work_log_by_start_time(sql_task.id, dt_start)
+        if log:
+            sql_delete_work_log(log.id)
+
+    # --- 2. JSON/MEMORY DELETE LOG ---
     work_log = node.get("workLog", [])
-    
-    # Find item to delete
     item_to_delete = None
     new_log = []
     for item in work_log:
@@ -569,16 +666,12 @@ def delete_work_log(data_store, node_id, log_started_at, username=None):
             item_to_delete = item
         else:
             new_log.append(item)
-            
+    
     if item_to_delete:
-        # Update log
         node["workLog"] = new_log
-        
-        # Deduct time
-        duration = item_to_delete.get("durationMinutes", 0)
-        current_spent = node.get("timeSpent", 0)
-        node["timeSpent"] = max(0, current_spent - duration)
-        
+        # Update total time
+        old_total = node.get("timeSpent", 0)
+        node["timeSpent"] = max(0, old_total - item_to_delete.get("durationMinutes", 0))
         save_data(data_store, username)
 
 def get_total_time(node_id, nodes):
@@ -627,3 +720,27 @@ def import_data(json_string, username=None):
         return False, f"Invalid JSON: {str(e)}"
     except Exception as e:
         return False, f"Import failed: {str(e)}"
+
+def export_db():
+    """Read the binary SQLite database file for export."""
+    try:
+        from src.database import DATABASE_PATH
+        if os.path.exists(DATABASE_PATH):
+            with open(DATABASE_PATH, "rb") as f:
+                return f.read()
+    except Exception as e:
+        print(f"Export DB failed: {e}")
+    return None
+
+def import_db(binary_content):
+    """Overwrite the local SQLite database with new binary content."""
+    try:
+        from src.database import DATABASE_PATH
+        # Important: We might want to close database connections before overwriting, 
+        # but in Streamlit/SQLite single-user mode, overwriting the file often works 
+        # if no transaction is active. A safer way would be a backup/swap.
+        with open(DATABASE_PATH, "wb") as f:
+            f.write(binary_content)
+        return True, "Database restored successfully."
+    except Exception as e:
+        return False, f"Restore failed: {str(e)}"

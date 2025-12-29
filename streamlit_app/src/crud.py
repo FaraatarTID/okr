@@ -11,7 +11,8 @@ from src.services.sheet_sync import sync_service
 
 from src.models import (
     Goal, Strategy, Objective, KeyResult, Initiative, Task, WorkLog,
-    TaskStatus, DashboardGoal, TaskWithTimer, Cycle, CheckIn, User, UserRole
+    TaskStatus, DashboardGoal, TaskWithTimer, Cycle, CheckIn, User, UserRole,
+    WeeklyPlan
 )
 from src.database import get_session_context
 import bcrypt
@@ -689,6 +690,54 @@ def update_key_result_analysis(key_result_id: int, analysis_json: str) -> Option
             session.refresh(kr)
         return kr
 
+def update_strategy(strategy_id: int, **updates) -> Optional[Strategy]:
+    with get_session_context() as session:
+        item = session.get(Strategy, strategy_id)
+        if item:
+            for key, value in updates.items():
+                if hasattr(item, key): setattr(item, key, value)
+            item.updated_at = datetime.utcnow()
+            session.add(item)
+            session.commit()
+            session.refresh(item)
+        return item
+
+def update_objective(objective_id: int, **updates) -> Optional[Objective]:
+    with get_session_context() as session:
+        item = session.get(Objective, objective_id)
+        if item:
+            for key, value in updates.items():
+                if hasattr(item, key): setattr(item, key, value)
+            item.updated_at = datetime.utcnow()
+            session.add(item)
+            session.commit()
+            session.refresh(item)
+        return item
+
+def update_key_result(key_result_id: int, **updates) -> Optional[KeyResult]:
+    with get_session_context() as session:
+        item = session.get(KeyResult, key_result_id)
+        if item:
+            for key, value in updates.items():
+                if hasattr(item, key): setattr(item, key, value)
+            item.updated_at = datetime.utcnow()
+            session.add(item)
+            session.commit()
+            session.refresh(item)
+        return item
+
+def update_initiative(initiative_id: int, **updates) -> Optional[Initiative]:
+    with get_session_context() as session:
+        item = session.get(Initiative, initiative_id)
+        if item:
+            for key, value in updates.items():
+                if hasattr(item, key): setattr(item, key, value)
+            item.updated_at = datetime.utcnow()
+            session.add(item)
+            session.commit()
+            session.refresh(item)
+        return item
+
 
 # ============================================================================
 # DELETE OPERATIONS
@@ -716,6 +765,53 @@ def delete_task(task_id: int) -> bool:
             session.commit()
             return True
         return False
+
+def delete_strategy(strategy_id: int) -> bool:
+    with get_session_context() as session:
+        item = session.get(Strategy, strategy_id)
+        if item:
+            session.delete(item)
+            session.commit()
+            return True
+        return False
+
+def delete_objective(objective_id: int) -> bool:
+    with get_session_context() as session:
+        item = session.get(Objective, objective_id)
+        if item:
+            session.delete(item)
+            session.commit()
+            return True
+        return False
+
+def delete_key_result(kr_id: int) -> bool:
+    with get_session_context() as session:
+        item = session.get(KeyResult, kr_id)
+        if item:
+            session.delete(item)
+            session.commit()
+            return True
+        return False
+
+def delete_initiative(init_id: int) -> bool:
+    with get_session_context() as session:
+        item = session.get(Initiative, init_id)
+        if item:
+            session.delete(item)
+            session.commit()
+            return True
+        return False
+
+def get_node_by_external_id(external_id: str):
+    """Search all OKR tables for a node with the given external_id (UUID)."""
+    models = [Goal, Strategy, Objective, KeyResult, Initiative, Task]
+    with get_session_context() as session:
+        for model_class in models:
+            statement = select(model_class).where(model_class.external_id == external_id)
+            node = session.exec(statement).first()
+            if node:
+                return node, model_class
+    return None, None
 
 
 # ============================================================================
@@ -912,6 +1008,18 @@ def add_manual_log(task_id: int, duration_minutes: int, note: str = None,
         return work_log
 
 
+def get_work_log_by_start_time(task_id: int, start_time: datetime) -> Optional[WorkLog]:
+    """Find a work log by task_id and start_time (to match JSON data)."""
+    with get_session_context() as session:
+        # Use a small tolerance for timestamp comparison if needed, 
+        # but normally JSON stores exact ms.
+        statement = (
+            select(WorkLog)
+            .where(WorkLog.task_id == task_id)
+            .where(WorkLog.start_time == start_time)
+        )
+        return session.exec(statement).first()
+
 def delete_work_log(log_id: int) -> bool:
     """Delete a work log and update the task's total_time_spent."""
     with get_session_context() as session:
@@ -1065,3 +1173,56 @@ def update_progress_chain(task_id: int):
                     session.add(objective)
         
         session.commit()
+
+
+# ============================================================================
+# WEEKLY FOCUS OPERATIONS
+# ============================================================================
+
+def create_weekly_plan(user_id: int, start_date: datetime, end_date: datetime, 
+                       p1: str, p2: str = None, p3: str = None) -> WeeklyPlan:
+    """Create a new weekly plan."""
+    with get_session_context() as session:
+        # Check if plan exists for this week start date
+        statement = select(WeeklyPlan).where(WeeklyPlan.user_id == user_id).where(WeeklyPlan.week_start_date == start_date)
+        existing = session.exec(statement).first()
+        
+        if existing:
+            # Update existing
+            existing.priority_1 = p1
+            existing.priority_2 = p2
+            existing.priority_3 = p3
+            existing.week_end_date = end_date # Ensure end date match
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
+            return existing
+        else:
+            plan = WeeklyPlan(
+                user_id=user_id,
+                week_start_date=start_date,
+                week_end_date=end_date,
+                priority_1=p1,
+                priority_2=p2,
+                priority_3=p3
+            )
+            session.add(plan)
+            session.commit()
+            session.refresh(plan)
+            return plan
+
+def get_active_weekly_plan(user_id: int, date: datetime = None) -> Optional[WeeklyPlan]:
+    """Get the weekly plan active for the given date (default: now)."""
+    if date is None:
+        date = datetime.utcnow()
+        
+    with get_session_context() as session:
+        # Find plan where date is between start and end
+        statement = (
+            select(WeeklyPlan)
+            .where(WeeklyPlan.user_id == user_id)
+            .where(WeeklyPlan.week_start_date <= date)
+            .where(WeeklyPlan.week_end_date >= date)
+            .order_by(col(WeeklyPlan.created_at).desc())
+        )
+        return session.exec(statement).first()

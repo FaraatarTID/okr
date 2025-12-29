@@ -1,14 +1,16 @@
 import json
 import streamlit as st
 from typing import Dict, Any, List
+from datetime import datetime
 from src.database import get_session_context
-from src.models import Goal, Strategy, Objective, KeyResult, Initiative, Task, Cycle
+from src.models import Goal, Strategy, Objective, KeyResult, Initiative, Task, WorkLog, Cycle
 from src.crud import (
     create_goal, create_strategy, create_objective, 
     create_key_result, create_initiative, create_task,
     update_goal, update_task
 )
 from sqlmodel import select
+from datetime import datetime
 
 def sync_data_to_db(username: str, data: Dict[Any, Any]):
     """
@@ -21,6 +23,9 @@ def sync_data_to_db(username: str, data: Dict[Any, Any]):
     nodes = data.get("nodes", {})
     root_ids = data.get("rootIds", [])
     
+    # Normalizing hierarchy before sync to ensure 6-level structure
+    _normalize_hierarchy(data)
+    
     with get_session_context() as session:
         # We process level by level to ensure parents exist before children
         
@@ -30,9 +35,13 @@ def sync_data_to_db(username: str, data: Dict[Any, Any]):
             if not node or node.get("type", "").upper() != "GOAL":
                 continue
             
-            sql_goal = _sync_node(session, Goal, node, username)
+            sql_goal = _sync_node(session, Goal, node, username, all_nodes=nodes)
             if sql_goal:
-                _sync_children(session, nodes, node, sql_goal.id, "STRATEGY", username)
+                # Recursively sync children starting from the NEXT level (STRATEGY)
+                _sync_children(session, nodes, node, sql_goal.id, "GOAL", username)
+        
+        # 3. COMMIT EVERYTHING
+        session.commit()
         
         # 2. CLEANUP PHASE
         # Delete SQL nodes that are no longer in JSON
@@ -101,11 +110,12 @@ def _cleanup_stale_nodes(session, username, current_ids: set):
             session.delete(t)
     session.commit()
 
-def _sync_node(session, model_class, json_node, username, parent_id=None):
-    """Sync an individual node, creating or updating as needed."""
+def _sync_node(session, model_class, json_node, username, parent_id=None, all_nodes=None):
     node_id = json_node.get("id")
     node_type = json_node.get("type", "").upper()
     
+    # Clear session to avoid pollution
+    session.expire_all()
     # Check if exists by external_id
     statement = select(model_class).where(model_class.external_id == node_id)
     sql_node = session.exec(statement).first()
@@ -122,7 +132,6 @@ def _sync_node(session, model_class, json_node, username, parent_id=None):
     # Timestamps from JSON (camelCase in JSON normally)
     created_at_val = json_node.get("createdAt")
     if created_at_val:
-        from datetime import datetime
         if isinstance(created_at_val, (int, float)):
             fields["created_at"] = datetime.fromtimestamp(created_at_val / 1000)
     
@@ -135,24 +144,22 @@ def _sync_node(session, model_class, json_node, username, parent_id=None):
     # Goal specific
     if model_class == Goal:
         fields["cycle_id"] = json_node.get("cycle_id")
-
+    
     if sql_node:
         # Update existing
         for key, value in fields.items():
             setattr(sql_node, key, value)
         
         # Update parent link if applicable
-        if parent_id:
+        if parent_id is not None:
             if model_class == Strategy: sql_node.goal_id = parent_id
             elif model_class == Objective: sql_node.strategy_id = parent_id
             elif model_class == KeyResult: sql_node.objective_id = parent_id
             elif model_class == Initiative: sql_node.key_result_id = parent_id
             elif model_class == Task:
-                # Task can be under Initiative OR Objective (if skipping Initiative level)
-                # But in our JSON structure, Task parent is always the direct level up.
-                if json_node.get("parentId"):
-                    p_node = nodes.get(json_node.get("parentId"))
-                    if p_node and p_node.get("type", "").upper() == "KEY_RESULT":
+                if json_node.get("parentId") and all_nodes:
+                    p_json = all_nodes.get(json_node.get("parentId"))
+                    if p_json and p_json.get("type", "").upper() == "KEY_RESULT":
                         sql_node.key_result_id = parent_id
                         sql_node.initiative_id = None
                     else:
@@ -160,68 +167,191 @@ def _sync_node(session, model_class, json_node, username, parent_id=None):
                         sql_node.key_result_id = None
             
         session.add(sql_node)
-        session.commit()
-        session.refresh(sql_node)
+        session.flush() # Ensure ID exists for children recursion
         return sql_node
     else:
-        # Create new
+        # Create new (directly in shared session)
         if model_class == Goal:
-            return create_goal(
+            new_node = Goal(
                 user_id=username,
                 title=fields["title"],
                 description=fields["description"],
                 cycle_id=json_node.get("cycle_id"),
                 external_id=node_id,
-                created_at=fields.get("created_at")
+                created_at=fields.get("created_at") or datetime.utcnow()
             )
         elif model_class == Strategy:
-            return create_strategy(parent_id, fields["title"], fields["description"], external_id=node_id, created_at=fields.get("created_at"))
+            new_node = Strategy(
+                goal_id=parent_id,
+                title=fields["title"],
+                description=fields["description"],
+                external_id=node_id,
+                created_at=fields.get("created_at") or datetime.utcnow()
+            )
         elif model_class == Objective:
-            return create_objective(parent_id, fields["title"], fields["description"], external_id=node_id, created_at=fields.get("created_at"))
+            new_node = Objective(
+                strategy_id=parent_id,
+                title=fields["title"],
+                description=fields["description"],
+                external_id=node_id,
+                created_at=fields.get("created_at") or datetime.utcnow()
+            )
         elif model_class == KeyResult:
-            return create_key_result(
-                parent_id, 
-                fields["title"], 
-                fields["description"], 
+            new_node = KeyResult(
+                objective_id=parent_id,
+                title=fields["title"],
+                description=fields["description"],
                 target_value=fields["target_value"],
                 unit=fields["unit"],
                 external_id=node_id,
-                created_at=fields.get("created_at")
+                created_at=fields.get("created_at") or datetime.utcnow()
             )
         elif model_class == Initiative:
-            return create_initiative(parent_id, fields["title"], fields["description"], external_id=node_id, created_at=fields.get("created_at"))
+            new_node = Initiative(
+                key_result_id=parent_id,
+                title=fields["title"],
+                description=fields["description"],
+                external_id=node_id,
+                created_at=fields.get("created_at") or datetime.utcnow()
+            )
         elif model_class == Task:
-            # Check parent type to decide which FK to use
-            p_node = nodes.get(json_node.get("parentId"))
-            if p_node and p_node.get("type", "").upper() == "KEY_RESULT":
-                return create_task(key_result_id=parent_id, title=fields["title"], description=fields["description"], external_id=node_id, created_at=fields.get("created_at"))
+            # Check parent type
+            task_kwargs = {
+                "title": fields["title"],
+                "description": fields["description"],
+                "external_id": node_id,
+                "created_at": fields.get("created_at") or datetime.utcnow()
+            }
+            if json_node.get("parentId") and all_nodes:
+                p_json = all_nodes.get(json_node.get("parentId"))
+                if p_json and p_json.get("type", "").upper() == "KEY_RESULT":
+                    task_kwargs["key_result_id"] = parent_id
+                else:
+                    task_kwargs["initiative_id"] = parent_id
             else:
-                return create_task(initiative_id=parent_id, title=fields["title"], description=fields["description"], external_id=node_id, created_at=fields.get("created_at"))
-            
-    return None
+                task_kwargs["initiative_id"] = parent_id # Default
+            new_node = Task(**task_kwargs)
+        else:
+            return None
+
+        session.add(new_node)
+        session.flush() # Ensure ID exists for children recursion
+        return new_node
 
 def _sync_children(session, all_nodes, parent_json_node, parent_sql_id, child_type, username):
     """Recursively sync children of a node."""
     child_ids = parent_json_node.get("children", [])
     
-    model_map = {
-        "STRATEGY": (Strategy, "OBJECTIVE"),
-        "OBJECTIVE": (Objective, "KEY_RESULT"),
-        "KEY_RESULT": (KeyResult, "TASK"), # Changed from INITIATIVE to TASK as primary child
-        "INITIATIVE": (Initiative, "TASK"),
-        "TASK": (Task, None)
+    HIERARCHY_MAP = {
+        "GOAL": (Strategy, "STRATEGY"),
+        "STRATEGY": (Objective, "OBJECTIVE"),
+        "OBJECTIVE": (KeyResult, "KEY_RESULT"),
+        "KEY_RESULT": (Task, "TASK"),
+        "INITIATIVE": (Task, "TASK"),
+        "TASK": (None, None)
     }
     
-    if child_type not in model_map:
+    if child_type not in HIERARCHY_MAP:
         return
         
-    model_class, next_child_type = model_map[child_type]
-    
+    model_class, next_type = HIERARCHY_MAP[child_type]
+    if model_class is None:
+        return
+
     for cid in child_ids:
         c_node = all_nodes.get(cid)
-        if not c_node:
-            continue
+        if not c_node: continue
+        
+        sql_child = _sync_node(session, model_class, c_node, username, parent_id=parent_sql_id, all_nodes=all_nodes)
+        if sql_child:
+            if next_type:
+                _sync_children(session, all_nodes, c_node, sql_child.id, next_type, username)
+            if c_node.get("type", "").upper() == "TASK":
+                _sync_work_logs(session, c_node, sql_child.id)
+
+def _normalize_hierarchy(data):
+    """Inject missing levels in JSON data to satisfy 6-level SQL hierarchy."""
+    nodes = data.get("nodes", {})
+    if not nodes: return
+    
+    # Priority 1: Goal -> Objective (Add Strategy)
+    # Priority 2: Objective -> Task (Add KeyResult)
+    # Priority 3: KeyResult -> Task (Add Initiative - Optional but good)
+    
+    to_add = {}
+    
+    for nid, node in nodes.items():
+        children = node.get("children", [])
+        ntype = node.get("type", "").upper()
+        
+        new_children = []
+        for cid in children:
+            c_node = nodes.get(cid)
+            if not c_node: continue
+            ctype = c_node.get("type", "").upper()
             
-        sql_child = _sync_node(session, model_class, c_node, username, parent_id=parent_sql_id)
-        if sql_child and next_child_type:
-            _sync_children(session, all_nodes, c_node, sql_child.id, next_child_type, username)
+            # Goal -> Objective
+            if ntype == "GOAL" and ctype == "OBJECTIVE":
+                shim_id = f"shim-strategy-{nid}"
+                if shim_id not in nodes and shim_id not in to_add:
+                    to_add[shim_id] = {
+                        "id": shim_id, "type": "STRATEGY", "title": "[Auto] Strategy",
+                        "children": [cid], "parentId": nid, "createdAt": node.get("createdAt")
+                    }
+                else:
+                    target = to_add.get(shim_id) or nodes.get(shim_id)
+                    if cid not in target["children"]: target["children"].append(cid)
+                
+                c_node["parentId"] = shim_id
+                if shim_id not in new_children: new_children.append(shim_id)
+            
+            # Objective -> KeyResult (Direct is fine)
+            # Objective -> Task
+            elif ntype == "OBJECTIVE" and ctype == "TASK":
+                shim_id = f"shim-kr-{nid}"
+                if shim_id not in nodes and shim_id not in to_add:
+                    to_add[shim_id] = {
+                        "id": shim_id, "type": "KEY_RESULT", "title": "[Auto] Key Result",
+                        "children": [cid], "parentId": nid, "createdAt": node.get("createdAt"),
+                        "target_value": 100.0, "current_value": 0.0, "unit": "%"
+                    }
+                else:
+                    target = to_add.get(shim_id) or nodes.get(shim_id)
+                    if cid not in target["children"]: target["children"].append(cid)
+                
+                c_node["parentId"] = shim_id
+                if shim_id not in new_children: new_children.append(shim_id)
+            
+            else:
+                new_children.append(cid)
+        
+        node["children"] = new_children
+    
+    nodes.update(to_add)
+
+def _sync_work_logs(session, task_json_node, task_sql_id):
+    """Sync work logs for a task."""
+    work_logs = task_json_node.get("workLog", [])
+    if not work_logs:
+        return
+        
+    for log in work_logs:
+        start_ms = log.get("startedAt")
+        if not start_ms: continue
+        
+        # Check if exists (exact start time)
+        start_dt = datetime.fromtimestamp(start_ms / 1000)
+        statement = select(WorkLog).where(WorkLog.task_id == task_sql_id).where(WorkLog.start_time == start_dt)
+        sql_log = session.exec(statement).first()
+        
+        if not sql_log:
+            end_ms = log.get("endedAt")
+            sql_log = WorkLog(
+                task_id=task_sql_id,
+                start_time=start_dt,
+                end_time=datetime.fromtimestamp(end_ms / 1000) if end_ms else None,
+                duration_minutes=int(log.get("durationMinutes", 0)),
+                note=log.get("summary")
+            )
+            session.add(sql_log)
+        session.flush()

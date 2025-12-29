@@ -5,3 +5,27 @@
   Network URL: http://172.18.0.1:8501
   External URL: http://37.252.10.104:8501
 
+C:\Faraatar-TID_Apps\okr\streamlit_app\app.py:2640: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  cycles = [default_cycle]
+2025-12-29 14:38:49.959 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\fragment.py", line 233, in wrapped_fragment
+    result = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\elements\dialog_decorator.py", line 90, in dialog_content
+    _ = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 1300, in render_weekly_ritual_dialog
+    start_date = end_date - timedelta(days=7)
+                            ^^^^^^^^^
+NameError: name 'timedelta' is not defined
+2025-12-29 14:40:23.716 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\fragment.py", line 233, in wrapped_fragment
+    result = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\elements\dialog_decorator.py", line 90, in dialog_content
+    _ = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 1449, in render_weekly_ritual_dialog
+    if mode == "Daily":
+       ^^^^
+NameError: name 'mode' is not defined. Did you mean: 'Node'?
+C:\Faraatar-TID_Apps\okr\streamlit_app\app.py:1455: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
+  period_label = "Today"

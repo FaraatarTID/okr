@@ -194,20 +194,40 @@ class Task(NodeBase, table=True):
 
 
 class WorkLog(SQLModel, table=True):
-    """Time tracking log entry for a task."""
+    """Time log entry for a specific task."""
     __tablename__ = "work_log"
     __table_args__ = {"extend_existing": True}
     
     id: Optional[int] = Field(default=None, primary_key=True)
     task_id: int = Field(foreign_key="task.id", index=True)
-    
     start_time: datetime
     end_time: Optional[datetime] = None
     duration_minutes: int = Field(default=0)
     note: Optional[str] = None
     
     # Relationships
-    task: Optional[Task] = Relationship(back_populates="work_logs")
+    task: Optional["Task"] = Relationship(back_populates="work_logs")
+
+
+class WeeklyPlan(SQLModel, table=True):
+    """Stores the user's top 3 priorities for a specific week."""
+    __tablename__ = "weekly_plan"
+    __table_args__ = (
+        Index("ix_weekly_plan_user_date", "user_id", "week_start_date"),
+        {"extend_existing": True}
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    week_start_date: datetime # Monday (or Saturday) of the week
+    week_end_date: datetime   # End of the week
+    
+    priority_1: str
+    priority_2: Optional[str] = None
+    priority_3: Optional[str] = None
+    
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_active: bool = Field(default=True)
 
 
 class CheckIn(SQLModel, table=True):
