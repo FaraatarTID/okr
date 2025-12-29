@@ -498,6 +498,8 @@ def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optio
         session.add(goal)
         session.commit()
         session.refresh(goal)
+        # S Y N C
+        sync_service.push_update(goal)
         return goal
 
 
@@ -526,6 +528,8 @@ def create_strategy(goal_id: int, title: str, description: str = "", external_id
         session.add(strategy)
         session.commit()
         session.refresh(strategy)
+        # S Y N C
+        sync_service.push_update(strategy)
         return strategy
 
 
@@ -576,6 +580,8 @@ def create_objective(strategy_id: int, title: str, description: str = "", extern
         session.add(objective)
         session.commit()
         session.refresh(objective)
+        # S Y N C
+        sync_service.push_update(objective)
         return objective
 
 
@@ -606,6 +612,8 @@ def create_key_result(objective_id: int, title: str, description: str = "",
         session.add(key_result)
         session.commit()
         session.refresh(key_result)
+        # S Y N C
+        sync_service.push_update(key_result)
         return key_result
 
 
@@ -633,6 +641,8 @@ def create_initiative(key_result_id: int, title: str, description: str = "", ext
         session.add(initiative)
         session.commit()
         session.refresh(initiative)
+        # S Y N C
+        sync_service.push_update(initiative)
         return initiative
 
 
@@ -692,6 +702,8 @@ def create_task(initiative_id: Optional[int] = None, key_result_id: Optional[int
         session.add(task)
         session.commit()
         session.refresh(task)
+        # S Y N C
+        sync_service.push_update(task)
         return task
 
 
@@ -711,6 +723,8 @@ def update_goal(goal_id: int, **updates) -> Optional[Goal]:
             session.add(goal)
             session.commit()
             session.refresh(goal)
+            # S Y N C
+            sync_service.push_update(goal)
         return goal
 
 
@@ -726,6 +740,8 @@ def update_task(task_id: int, **updates) -> Optional[Task]:
             session.add(task)
             session.commit()
             session.refresh(task)
+            # S Y N C
+            sync_service.push_update(task)
         return task
 
 
@@ -739,6 +755,8 @@ def update_key_result_analysis(key_result_id: int, analysis_json: str) -> Option
             session.add(kr)
             session.commit()
             session.refresh(kr)
+            # S Y N C
+            sync_service.push_update(kr)
         return kr
 
 def update_strategy(strategy_id: int, **updates) -> Optional[Strategy]:
@@ -803,6 +821,8 @@ def delete_goal(goal_id: int) -> bool:
             # Otherwise, manually delete children
             session.delete(goal)
             session.commit()
+            # S Y N C
+            sync_service.push_update(goal, delete=True)
             return True
         return False
 
@@ -814,6 +834,8 @@ def delete_task(task_id: int) -> bool:
         if task:
             session.delete(task)
             session.commit()
+            # S Y N C
+            sync_service.push_update(task, delete=True)
             return True
         return False
 
@@ -823,6 +845,8 @@ def delete_strategy(strategy_id: int) -> bool:
         if item:
             session.delete(item)
             session.commit()
+            # S Y N C
+            sync_service.push_update(item, delete=True)
             return True
         return False
 
@@ -832,6 +856,8 @@ def delete_objective(objective_id: int) -> bool:
         if item:
             session.delete(item)
             session.commit()
+            # S Y N C
+            sync_service.push_update(item, delete=True)
             return True
         return False
 
@@ -841,6 +867,8 @@ def delete_key_result(kr_id: int) -> bool:
         if item:
             session.delete(item)
             session.commit()
+            # S Y N C
+            sync_service.push_update(item, delete=True)
             return True
         return False
 
@@ -850,6 +878,8 @@ def delete_initiative(init_id: int) -> bool:
         if item:
             session.delete(item)
             session.commit()
+            # S Y N C
+            sync_service.push_update(item, delete=True)
             return True
         return False
 

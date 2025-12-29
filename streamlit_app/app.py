@@ -82,6 +82,10 @@ def render_login():
                 st.error("Please enter both username and password.")
 
 def render_app(username):
+    # Ensure session state is initialized
+    if "nav_stack" not in st.session_state:
+        st.session_state.nav_stack = []
+
     # Sidebar Header
     display_name = st.session_state.get("display_name", username)
     user_role = st.session_state.get("user_role", "member")
