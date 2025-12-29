@@ -6,6 +6,13 @@ import streamlit as st
 from datetime import datetime, timezone
 
 from src.services.sheets_db import SheetsDB
+from src.services.sheet_sync import sync_service
+
+def get_sync_status():
+    """Returns (is_connected, error_message) for the Sheets DB."""
+    if sync_service.is_ready():
+        return True, None
+    return False, "Sync Service not connected (Check secrets.toml or logs)"
 
 # def get_db_v2() -> Removed legacy SheetsDB
 # def get_sync_status() -> Removed legacy status check logic
