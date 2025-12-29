@@ -7,19 +7,8 @@ from datetime import datetime, timezone
 
 from src.services.sheets_db import SheetsDB
 
-@st.cache_resource
-def get_db_v2():
-    try:
-        db = SheetsDB()
-        return db  # <--- CRITICAL: YOU MUST RETURN THE OBJECT
-    except Exception as e:
-        print(f"Failed to initialize DB: {e}")
-        return None
-
-def get_sync_status():
-    """Returns (is_connected, error_message) for the Sheets DB."""
-    db = get_db_v2()
-    return db.get_connection_status()
+# def get_db_v2() -> Removed legacy SheetsDB
+# def get_sync_status() -> Removed legacy status check logic
 
 
 def filter_nodes_by_cycle(nodes: dict, cycle_id: int) -> dict:
@@ -59,22 +48,11 @@ def filter_nodes_by_cycle(nodes: dict, cycle_id: int) -> dict:
     # Return filtered dictionary
     return {nid: nodes[nid] for nid in all_cycle_node_ids if nid in nodes}
 
-
-DATA_FILE = "okr_data.json"
-
-
 def _get_cache_key(username):
     """Get the session state cache key for a user's data."""
     return f"okr_data_cache_{username}"
 
-def get_local_filename(username):
-    if not username:
-        return DATA_FILE
-    # Simple sanitization to prevent path traversal
-    safe_name = "".join([c for c in username if c.isalpha() or c.isdigit() or c in ('-', '_')]).strip()
-    if not safe_name:
-        return DATA_FILE
-    return f"okr_data_{safe_name}.json"
+# Legacy file path constants removed
 
 # --- NEW: SQL-Primary Loading Logic ---
 def load_data_from_db(username, cycle_id=None):
@@ -288,35 +266,11 @@ def load_data(username=None, force_refresh=False):
 # --- MODIFIED: Main Save Function ---
 def save_data(data, username=None):
     """
-    Syncs the current state to External Storage (Sheets/JSON).
-    In the SQL-Primary world, this is a BACKUP operation.
+    Syncs the current state to External Storage.
+    NOW: Just invalidates cache since we write to SQL directly.
     """
-    import copy
-    persistent_data = copy.deepcopy(data)
-    
-    # Strip virtual nodes
-    virtual_ids = [nid for nid, node in persistent_data.get("nodes", {}).items() if node.get("is_virtual")]
-    for vid in virtual_ids:
-        if vid in persistent_data["nodes"]: del persistent_data["nodes"][vid]
-        if vid in persistent_data.get("rootIds", []): persistent_data["rootIds"].remove(vid)
-    
-    for nid, node in persistent_data.get("nodes", {}).items():
-        if "children" in node:
-            node["children"] = [c for c in node["children"] if c not in virtual_ids]
-
-    # 1. Sync to Google Sheets (Cloud Backup)
-    if username and username != "admin": 
-        db = get_db_v2()
-        if db.is_connected():
-            clean_user_data = load_data_from_db(username)
-            db.save_user_data(username, clean_user_data)
-
-    # 2. Save to Local File (Offline Backup)
-    if username:
-        local_file = get_local_filename(username)
-        clean_user_data = load_data_from_db(username)
-        with open(local_file, "w", encoding="utf-8") as f:
-            json.dump(clean_user_data, f, indent=4)
+    # In SQL-Primary architecture, saving is instantaneous via CRUD.
+    # This function now acts as a signal to refresh UI caches.
 
     # Note: No need to clear load_data_from_db cache because we don't cache SQL reads yet.
     # But we should clear the session state cache so the UI reloads from DB.
