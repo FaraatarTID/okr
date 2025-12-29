@@ -2822,9 +2822,13 @@ def main():
     init_database() # Ensure tables exist
     
     # NEW: Restore SQL Database from Google Sheets (Cloud Backup)
-    from src.services.sheet_sync import sync_service
-    if sync_service.is_ready():
-        sync_service.restore_to_local_db()
+    # Throttled: Only run once per session to avoid hitting API limits
+    if "db_restored" not in st.session_state:
+        from src.services.sheet_sync import sync_service
+        if sync_service.is_ready():
+            with st.spinner("Restoring data from Cloud..."):
+                sync_service.restore_to_local_db()
+            st.session_state.db_restored = True
         
     ensure_admin_exists() # Create default admin if no users
     
