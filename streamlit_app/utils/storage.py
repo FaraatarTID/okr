@@ -201,20 +201,20 @@ def load_data(username=None, force_refresh=False):
 
 # --- MODIFIED: Main Save Function ---
 def save_data(data, username=None):
-    # --- STRIP VIRTUAL NODES BEFORE SAVING ---
+    # --- PREPARE PERSISTENT DATA (STRIPPED) ---
     # We don't want to persist "Assigned by Manager" virtual containers
     import copy
-    data = copy.deepcopy(data)
+    persistent_data = copy.deepcopy(data)
     
-    virtual_ids = [nid for nid, node in data.get("nodes", {}).items() if node.get("is_virtual")]
+    virtual_ids = [nid for nid, node in persistent_data.get("nodes", {}).items() if node.get("is_virtual")]
     for vid in virtual_ids:
-        if vid in data["nodes"]:
-            del data["nodes"][vid]
-        if vid in data.get("rootIds", []):
-            data["rootIds"].remove(vid)
+        if vid in persistent_data["nodes"]:
+            del persistent_data["nodes"][vid]
+        if vid in persistent_data.get("rootIds", []):
+            persistent_data["rootIds"].remove(vid)
     
     # Remove virtual children links from remaining nodes
-    for nid, node in data.get("nodes", {}).items():
+    for nid, node in persistent_data.get("nodes", {}).items():
         if "children" in node:
             node["children"] = [c for c in node["children"] if c not in virtual_ids]
 
@@ -224,25 +224,23 @@ def save_data(data, username=None):
     if username:
         db = get_db_v2()
         if db.is_connected():
-            db.save_user_data(username, data)
+            db.save_user_data(username, persistent_data) # SAVE STRIPPED
             success = True
 
     # 2. Save to Local File (Backup)
-    # Always save locally as well, or just as fallback if cloud failed?
-    # Your original code suggests fallback, but mirroring is safer.
-    # CHANGED: Always save locally to ensure load_all_data (Admin View) works, as it reads local files.
-    if True: # Always save locally
+    if True: 
         local_file = get_local_filename(username)
         with open(local_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
+            json.dump(persistent_data, f, indent=4) # SAVE STRIPPED
 
     # --- CRITICAL STEP ---
     # We must clear the cache because the data on the "disk/cloud" has changed.
-    # If we don't do this, load_data() will keep returning the old cached version.
     _fetch_from_source.clear()
     load_all_data.clear()
     
     # Also update current session state immediately so UI reflects changes
+    # IMPORTANT: We use the ORIGINAL data here (not persistent_data) 
+    # so that virtual nodes remain visible in the UI without a full reload.
     if username:
         st.session_state[_get_cache_key(username)] = data
         # Sync to SQL Database for Dashboard visibility
