@@ -281,6 +281,25 @@ streamlit run streamlit_app/app.py
 
 ---
 
+## 🏗️ Project Structure
+
+The codebase is organized modularly to separate concerns across the UI, business logic, and data layers:
+
+- **`app.py`**: The application entry point. Handles routing, session state initialization, and high-level page layout.
+- **`src/`**:
+  - **`ui/`**: Modularized frontend components.
+    - **`styles.py`**: Centralized CSS injections, font applications, and UI color/icon constants.
+    - **`components.py`**: Functional UI components like cards, navigation levels, and breadcrumbs.
+    - **`dialogs.py`**: Streamlit `@st.dialog` modal definitions for reports, timers, and management panels.
+  - **`services/`**: Core business services including AI analysis (Gemini), PDF generation, and Google Sheets synchronization.
+  - **`models.py`**: Data models defined using SQLModel and Pydantic.
+  - **`crud.py`**: Specialized Create, Read, Update, and Delete operations for the OKR hierarchy.
+  - **`database.py`**: SQLite database configuration and session handling.
+- **`utils/`**: Utility modules for state management, deadline logic, and data storage.
+- **`assets/`**: Static assets and media.
+
+---
+
 ## 🆕 Recent Updates
 
 ### 🤝 Unified Collaboration

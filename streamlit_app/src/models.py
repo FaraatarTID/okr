@@ -101,7 +101,10 @@ class Goal(NodeBase, table=True):
     
     # Relationships
     cycle: Optional[Cycle] = Relationship(back_populates="goals")
-    strategies: List["src.models.Strategy"] = Relationship(back_populates="goal")
+    strategies: List["src.models.Strategy"] = Relationship(
+        back_populates="goal",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 
 class Strategy(NodeBase, table=True):
@@ -114,7 +117,10 @@ class Strategy(NodeBase, table=True):
     
     # Relationships
     goal: Optional[Goal] = Relationship(back_populates="strategies")
-    objectives: List["src.models.Objective"] = Relationship(back_populates="strategy")
+    objectives: List["src.models.Objective"] = Relationship(
+        back_populates="strategy",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 
 class Objective(NodeBase, table=True):
@@ -127,7 +133,10 @@ class Objective(NodeBase, table=True):
     
     # Relationships
     strategy: Optional[Strategy] = Relationship(back_populates="objectives")
-    key_results: List["src.models.KeyResult"] = Relationship(back_populates="objective")
+    key_results: List["src.models.KeyResult"] = Relationship(
+        back_populates="objective",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 
 class KeyResult(NodeBase, table=True):
@@ -149,9 +158,18 @@ class KeyResult(NodeBase, table=True):
     
     # Relationships
     objective: Optional[Objective] = Relationship(back_populates="key_results")
-    initiatives: List["src.models.Initiative"] = Relationship(back_populates="key_result")
-    tasks: List["src.models.Task"] = Relationship(back_populates="key_result")
-    check_ins: List["src.models.CheckIn"] = Relationship(back_populates="key_result")
+    initiatives: List["src.models.Initiative"] = Relationship(
+        back_populates="key_result",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    tasks: List["src.models.Task"] = Relationship(
+        back_populates="key_result",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
+    check_ins: List["src.models.CheckIn"] = Relationship(
+        back_populates="key_result",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 
 class Initiative(NodeBase, table=True):
@@ -164,7 +182,10 @@ class Initiative(NodeBase, table=True):
     
     # Relationships
     key_result: Optional[KeyResult] = Relationship(back_populates="initiatives")
-    tasks: List["src.models.Task"] = Relationship(back_populates="initiative")
+    tasks: List["src.models.Task"] = Relationship(
+        back_populates="initiative",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 
 class Task(NodeBase, table=True):
@@ -190,7 +211,10 @@ class Task(NodeBase, table=True):
     # Relationships
     initiative: Optional[Initiative] = Relationship(back_populates="tasks")
     key_result: Optional[KeyResult] = Relationship(back_populates="tasks")
-    work_logs: List["src.models.WorkLog"] = Relationship(back_populates="task")
+    work_logs: List["src.models.WorkLog"] = Relationship(
+        back_populates="task",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    )
 
 
 class WorkLog(SQLModel, table=True):

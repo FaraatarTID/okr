@@ -6,7 +6,7 @@ from sqlmodel import Session, select, col, delete
 from sqlalchemy.orm import selectinload
 import json
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from src.services.sheet_sync import sync_service
 
 from src.models import (
@@ -446,12 +446,14 @@ def get_goal_tree(goal_id: int) -> Optional[Goal]:
                 .selectinload(Strategy.objectives)
                 .selectinload(Objective.key_results)
                 .selectinload(KeyResult.initiatives)
-                .selectinload(Initiative.tasks),
+                .selectinload(Initiative.tasks)
+                .selectinload(Task.work_logs),
 
                 selectinload(Goal.strategies)
                 .selectinload(Strategy.objectives)
                 .selectinload(Objective.key_results)
                 .selectinload(KeyResult.tasks)
+                .selectinload(Task.work_logs)
             )
         )
         goal = session.exec(statement).first()
@@ -525,6 +527,29 @@ def create_strategy(goal_id: int, title: str, description: str = "", external_id
         session.commit()
         session.refresh(strategy)
         return strategy
+
+
+def get_or_create_default_strategy(goal_id: int) -> int:
+    """
+    Find or create the first strategy for a goal to act as an Objective container.
+    Used when the UI skips the Strategy level.
+    """
+    with get_session_context() as session:
+        statement = select(Strategy).where(Strategy.goal_id == goal_id).order_by(Strategy.id)
+        existing = session.exec(statement).first()
+        if existing:
+            return existing.id
+            
+        # Create a default strategy (since it's just a 'tag' now)
+        strategy = Strategy(
+            goal_id=goal_id,
+            title="Main Strategy",
+            external_id=f"strat_def_{goal_id}_{int(datetime.now(timezone.utc).timestamp())}"
+        )
+        session.add(strategy)
+        session.commit()
+        session.refresh(strategy)
+        return strategy.id
 
 
 def create_objective(strategy_id: int, title: str, description: str = "", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Objective:
@@ -609,6 +634,28 @@ def create_initiative(key_result_id: int, title: str, description: str = "", ext
         session.commit()
         session.refresh(initiative)
         return initiative
+
+
+def get_or_create_default_initiative(key_result_id: int) -> int:
+    """
+    Find or create the first initiative for a KR to act as a Task container.
+    Used when the UI skips the Initiative level.
+    """
+    with get_session_context() as session:
+        statement = select(Initiative).where(Initiative.key_result_id == key_result_id).order_by(Initiative.id)
+        existing = session.exec(statement).first()
+        if existing:
+            return existing.id
+            
+        initiative = Initiative(
+            key_result_id=key_result_id,
+            title="Main Initiative",
+            external_id=f"init_def_{key_result_id}_{int(datetime.now(timezone.utc).timestamp())}"
+        )
+        session.add(initiative)
+        session.commit()
+        session.refresh(initiative)
+        return initiative.id
 
 
 def create_task(initiative_id: Optional[int] = None, key_result_id: Optional[int] = None, title: str = "", description: str = "",
@@ -914,9 +961,9 @@ def stop_timer(task_id: int, note: str = None) -> Optional[WorkLog]:
             now = datetime.utcnow()
             work_log.end_time = now
             
-            # Calculate duration in minutes
+            # Calculate duration in minutes (min 1 minute)
             elapsed = now - work_log.start_time
-            duration_minutes = int(elapsed.total_seconds() / 60)
+            duration_minutes = max(1, int(elapsed.total_seconds() / 60))
             work_log.duration_minutes = duration_minutes
             work_log.note = note
             
