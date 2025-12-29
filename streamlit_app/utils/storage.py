@@ -220,6 +220,7 @@ def save_data(data, username=None):
     # We must clear the cache because the data on the "disk/cloud" has changed.
     # If we don't do this, load_data() will keep returning the old cached version.
     _fetch_from_source.clear()
+    load_all_data.clear()
     
     # Also update current session state immediately so UI reflects changes
     if username:
@@ -232,6 +233,7 @@ def save_data(data, username=None):
             print(f"Sync error: {e}")
         
 # --- NEW: Aggregate All Data for Admin ---
+@st.cache_data(ttl=300, show_spinner=False)
 def load_all_data(force_refresh=False):
     """
     Loads and merges all user JSON data files.
