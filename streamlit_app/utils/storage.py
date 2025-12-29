@@ -137,6 +137,19 @@ def load_data_from_db(username, cycle_id=None):
             }
             
             # Additional type-specific fields
+            if node_type == "GOAL":
+                try:
+                    s_tags = getattr(node, "strategy_tags", "[]") or "[]"
+                    n_dict["strategy_tags"] = json.loads(s_tags)
+                except:
+                    n_dict["strategy_tags"] = []
+
+                try:
+                    i_tags = getattr(node, "initiative_tags", "[]") or "[]"
+                    n_dict["initiative_tags"] = json.loads(i_tags)
+                except:
+                    n_dict["initiative_tags"] = []
+
             if node_type == "KEY_RESULT":
                 n_dict.update({
                     "target_value": node.target_value,
@@ -593,11 +606,17 @@ def update_node(data_store, node_id, updates, username=None):
             "status": "status",
             "target_value": "target_value",
             "current_value": "current_value",
-            "unit": "unit"
+            "strategy_tags": "strategy_tags",
+            "initiative_tags": "initiative_tags"
         }
         for k, v in updates.items():
             if k in mapping:
-                sql_updates[mapping[k]] = v
+                val = v
+                # Serialize lists to JSON strings for tags
+                if k in ["strategy_tags", "initiative_tags"] and isinstance(v, list):
+                    val = json.dumps(v)
+                
+                sql_updates[mapping[k]] = val
         
         # Add updated_at
         from datetime import datetime
