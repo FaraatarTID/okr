@@ -3,9 +3,8 @@ import os
 import time
 import uuid
 import streamlit as st
-from utils.sync import sync_data_to_db
 
-from services.sheets import SheetsDB
+from src.services.sheets_db import SheetsDB
 
 @st.cache_resource
 def get_db_v2():
@@ -76,88 +75,121 @@ def get_local_filename(username):
         return DATA_FILE
     return f"okr_data_{safe_name}.json"
 
-# --- NEW: Helper function to handle the heavy I/O ---
-@st.cache_data(ttl=600, show_spinner=False)
-def _fetch_from_source(username):
+# --- NEW: SQL-Primary Loading Logic ---
+def load_data_from_db(username, cycle_id=None):
     """
-    Actual I/O operation.
-    This result is cached for 10 minutes or until save_data is called.
+    Constructs the UI 'data' dictionary directly from SQLite.
+    Replaces the need for JSON master files.
     """
-    # 1. Try Loading from Google Sheets (if username exists)
-    if username:
-        db = get_db_v2()
-        # Note: Ensure get_db() is robust enough to be called here.
-        # Ideally get_db() uses @st.cache_resource internally.
-        if db.is_connected():
-            data = db.get_user_data(username)
-            if data:
-                return data
-            # If connected but user not found, return new user structure
-            return {"nodes": {}, "rootIds": []}
-
-    # 2. Fallback: Try Local File
-    local_file = get_local_filename(username)
-    if os.path.exists(local_file):
-        try:
-            with open(local_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            pass
+    from src.crud import get_user_goals, get_goal_tree
+    
+    # 1. Get all goals for this user (and cycle if specified)
+    # Note: cycle_id is often handled in the UI filtering layer, 
+    # but loading only what's needed is better.
+    goals = get_user_goals(username, cycle_id)
+    
+    nodes = {}
+    root_ids = []
+    
+    for goal in goals:
+        # 2. Fetch full tree for each goal recursively
+        # (This uses SQLAlchemy's selectinload for efficiency)
+        full_goal = get_goal_tree(goal.id)
+        if not full_goal: continue
+        
+        root_ids.append(full_goal.external_id)
+        
+        # 3. Flatten hierarchy into nodes dictionary
+        def flatten_node(node, p_id=None):
+            # Model fields to node dict
+            n_dict = {
+                "id": node.external_id,
+                "title": node.title,
+                "description": node.description,
+                "progress": node.progress,
+                "type": node.__class__.__name__.upper(),
+                "parentId": p_id,
+                "children": [],
+                "isExpanded": getattr(node, "is_expanded", True),
+                "cycle_id": getattr(node, "cycle_id", None),
+                "deadline": getattr(node, "deadline", None).isoformat() if getattr(node, "deadline", None) else None,
+                "createdAt": int(node.created_at.timestamp() * 1000) if node.created_at else None,
+            }
             
-    # 3. If nothing found, return empty structure
-    return {"nodes": {}, "rootIds": []}
+            # Additional type-specific fields
+            if n_dict["type"] == "KEY_RESULT":
+                n_dict.update({
+                    "target_value": node.target_value,
+                    "current_value": node.current_value,
+                    "unit": node.unit
+                })
+            elif n_dict["type"] == "TASK":
+                n_dict.update({
+                    "status": node.status.value if hasattr(node.status, 'value') else node.status,
+                    "timeSpent": node.total_time_spent,
+                    "timerStartedAt": int(node.timer_started_at.timestamp() * 1000) if node.timer_started_at else None
+                })
+            
+            nodes[node.external_id] = n_dict
+            
+            # Recurse children based on model relationships
+            children = []
+            if hasattr(node, 'strategies'): children = node.strategies
+            elif hasattr(node, 'objectives'): children = node.objectives
+            elif hasattr(node, 'key_results'): children = node.key_results
+            elif hasattr(node, 'initiatives'): children = node.initiatives
+            elif hasattr(node, 'tasks'): children = node.tasks
+            
+            for child in children:
+                n_dict["children"].append(child.external_id)
+                flatten_node(child, node.external_id)
+
+        flatten_node(full_goal)
+
+    return {"nodes": nodes, "rootIds": root_ids}
 
 # --- MODIFIED: Main Load Function ---
 def load_data(username=None, force_refresh=False):
     """
-    Load user data with 2-layer caching:
-    1. Session State (Instant, per browser tab)
-    2. st.cache_data (Fast, across users/reloads)
+    Load user data with SQL as Master and Session State as Cache.
     """
-    
-    # Layer 1: Check Session State (Ram)
-    # We keep this for super-fast access during user interaction
-    if username and not force_refresh:
-        cache_key = _get_cache_key(username)
-        if cache_key in st.session_state:
-            return st.session_state[cache_key]
-
-    # Layer 2: Load from Source (Cached via _fetch_from_source)
-    # If force_refresh is True, we clear the cache first
-    if force_refresh:
-        _fetch_from_source.clear()
+    if not username:
+        return {"nodes": {}, "rootIds": []}
         
-    data = _fetch_from_source(username)
+    # Layer 1: Check Session State (Ram)
+    cache_key = _get_cache_key(username)
+    if not force_refresh and cache_key in st.session_state:
+        return st.session_state[cache_key]
+
+    # Layer 2: Load from SQLite Master
+    data = load_data_from_db(username)
 
     # --- INJECT ASSIGNED TASKS (Inbox) ---
-    # Only if user is "member" and has a manager
+    # (Keeping this logic for virtual nodes, though it should eventually be SQL-based too)
     user_role = st.session_state.get("user_role")
     manager_username = st.session_state.get("manager_username")
     
     if user_role == "member" and manager_username:
-        # Load Manager's data (without caching or modifying session for manager)
-        # We access the raw fetch to avoid polluting user's session cache with mananager data
-        mgr_data = _fetch_from_source(manager_username)
+        # Fetch manager's data from DB as well
+        mgr_data = load_data_from_db(manager_username)
         
         assigned_tasks = []
         for nid, node in mgr_data.get("nodes", {}).items():
             if node.get("type") == "TASK":
                  assignees = node.get("assignees", [])
                  if username in assignees:
-                     assigned_tasks.append(node)
+                      assigned_tasks.append(node)
         
         if assigned_tasks:
             import copy
             data = copy.deepcopy(data) 
             
-            # Helper to find root goal
             def _get_root_goal(nodes, tid):
                 curr = nodes.get(tid)
                 while curr and curr.get("parentId") and curr.get("parentId") in nodes:
                     curr = nodes.get(curr.get("parentId"))
                 return curr
 
-            # Grouping
             groups = {}
             for t in assigned_tasks:
                 root = _get_root_goal(mgr_data.get("nodes", {}), t["id"])
@@ -167,7 +199,6 @@ def load_data(username=None, force_refresh=False):
                     groups[rid] = {"title": rtitle, "tasks": []}
                 groups[rid]["tasks"].append(t)
             
-            # Inject groups as virtual goals
             for rid, group in groups.items():
                 inbox_id = f"virtual_inbox_{rid}"
                 inbox_node = {
@@ -186,137 +217,79 @@ def load_data(username=None, force_refresh=False):
                 if inbox_id not in data["rootIds"]:
                     data["rootIds"].insert(0, inbox_id)
                 
-                # Add task nodes
                 for t in group["tasks"]:
                     t_copy = dict(t)
                     t_copy["parentId"] = inbox_id
                     t_copy["is_virtual"] = True
                     data["nodes"][t["id"]] = t_copy
 
-    # Update Session State with what we found
-    if username:
-        st.session_state[_get_cache_key(username)] = data
-        
+    # Update Session State
+    st.session_state[cache_key] = data
     return data
 
 # --- MODIFIED: Main Save Function ---
 def save_data(data, username=None):
-    # --- PREPARE PERSISTENT DATA (STRIPPED) ---
-    # We don't want to persist "Assigned by Manager" virtual containers
+    """
+    Syncs the current state to External Storage (Sheets/JSON).
+    In the SQL-Primary world, this is a BACKUP operation.
+    """
     import copy
     persistent_data = copy.deepcopy(data)
     
+    # Strip virtual nodes
     virtual_ids = [nid for nid, node in persistent_data.get("nodes", {}).items() if node.get("is_virtual")]
     for vid in virtual_ids:
-        if vid in persistent_data["nodes"]:
-            del persistent_data["nodes"][vid]
-        if vid in persistent_data.get("rootIds", []):
-            persistent_data["rootIds"].remove(vid)
+        if vid in persistent_data["nodes"]: del persistent_data["nodes"][vid]
+        if vid in persistent_data.get("rootIds", []): persistent_data["rootIds"].remove(vid)
     
-    # Remove virtual children links from remaining nodes
     for nid, node in persistent_data.get("nodes", {}).items():
         if "children" in node:
             node["children"] = [c for c in node["children"] if c not in virtual_ids]
 
-    success = False
-    
-    # 1. Save to Google Sheets
+    # 1. Sync to Google Sheets (Cloud Backup)
     if username:
         db = get_db_v2()
         if db.is_connected():
-            db.save_user_data(username, persistent_data) # SAVE STRIPPED
-            success = True
+            db.save_user_data(username, persistent_data)
 
-    # 2. Save to Local File (Backup)
-    if True: 
-        local_file = get_local_filename(username)
-        with open(local_file, "w", encoding="utf-8") as f:
-            json.dump(persistent_data, f, indent=4) # SAVE STRIPPED
+    # 2. Save to Local File (Offline Backup)
+    local_file = get_local_filename(username)
+    with open(local_file, "w", encoding="utf-8") as f:
+        json.dump(persistent_data, f, indent=4)
 
-    # --- CRITICAL STEP ---
-    # We must clear the cache because the data on the "disk/cloud" has changed.
-    _fetch_from_source.clear()
-    load_all_data.clear()
-    
-    # Also update current session state immediately so UI reflects changes
-    # IMPORTANT: We use the ORIGINAL data here (not persistent_data) 
-    # so that virtual nodes remain visible in the UI without a full reload.
+    # Note: No need to clear load_data_from_db cache because we don't cache SQL reads yet.
+    # But we should clear the session state cache so the UI reloads from DB.
     if username:
-        st.session_state[_get_cache_key(username)] = data
+        cache_key = _get_cache_key(username)
+        if cache_key in st.session_state:
+            del st.session_state[cache_key]
         
-# --- NEW: Aggregate All Data for Admin ---
+# --- MODIFIED: Aggregate All Data for Admin ---
 @st.cache_data(ttl=300, show_spinner=False)
 def load_all_data(force_refresh=False):
     """
-    Loads and merges all user JSON data files.
-    Used by Admins to see the entire team's OKRs.
+    Loads and merges all user data directly from SQLite.
     """
-    import glob
+    from src.crud import get_all_users
+    users = get_all_users()
+    
     all_data = {"nodes": {}, "rootIds": []}
     
-    import glob
-    all_data = {"nodes": {}, "rootIds": []}
-    
-    # 1. Try pulling all data from Google Sheets first
-    db = get_db_v2()
-    if db and db.is_connected():
-        rows = db.get_all_rows() # returns list of dicts: {"username":..., "data":...}
-        if rows:
-            for row in rows:
-                username = row.get("username")
-                json_data = row.get("data") # Row key in get_all_records()
-                
-                # Careful: depend on header names. In SheetsDB.save_user_data we use:
-                # [username, data_str, timestamp]
-                # If sheet has no headers, get_all_records() might use Col names or skip first row.
-                # Let's check gspread behavior. Usually first row is headers.
-                
-                # If username is empty or data is empty, handle it
-                if not username or not json_data:
-                    continue
-                
-                try:
-                    user_data = json.loads(json_data)
-                    # Merge nodes
-                    for node_id, node in user_data.get("nodes", {}).items():
-                        if "user_id" not in node:
-                            node["user_id"] = username
-                        all_data["nodes"][node_id] = node
-                    
-                    # Merge root IDs
-                    all_data["rootIds"].extend(user_data.get("rootIds", []))
-                except:
-                    continue
-            
-            return all_data
-
-    # 2. Fallback: Find all local JSON files
-    pattern = "okr_data_*.json"
-    files = glob.glob(pattern)
-    
-    # 3. Extract usernames from filenames
-    for file_path in files:
-        # Extract name: okr_data_username.json -> username
-        filename = os.path.basename(file_path)
-        username = filename.replace("okr_data_", "").replace(".json", "")
+    for user in users:
+        user_data = load_data_from_db(user.username)
         
-        user_data = load_data(username, force_refresh=force_refresh)
-        
-        # Merge nodes
+        # Tag nodes with username for Admin attribution
         for node_id, node in user_data.get("nodes", {}).items():
-            if "user_id" not in node:
-                node["user_id"] = username
-            
+            node["user_id"] = user.username
             all_data["nodes"][node_id] = node
             
-        # Merge root IDs
         all_data["rootIds"].extend(user_data.get("rootIds", []))
         
     return all_data
 
 def load_team_data(manager_id, force_refresh=False):
     """
-    Loads and merges data for a manager and their direct team members.
+    Loads and merges data for a manager and their direct team members from SQLite.
     """
     from src.crud import get_team_members, get_user_by_id
     
@@ -325,22 +298,21 @@ def load_team_data(manager_id, force_refresh=False):
         return {"nodes": {}, "rootIds": []}
         
     # Start with manager's own data
-    all_data = load_data(manager.username, force_refresh=force_refresh)
+    all_data = load_data_from_db(manager.username)
+    for node_id, node in all_data.get("nodes", {}).items():
+        node["user_id"] = manager.username
     
     # Merge reports' data
     team_members = get_team_members(manager_id)
     for member in team_members:
         if member.username == manager.username: continue
         
-        member_data = load_data(member.username, force_refresh=force_refresh)
+        member_data = load_data_from_db(member.username)
         
-        # Merge nodes
         for node_id, node in member_data.get("nodes", {}).items():
-            if "owner_display_name" not in node:
-                node["user_id"] = member.username
+            node["user_id"] = member.username
             all_data["nodes"][node_id] = node
             
-        # Merge root IDs
         all_data["rootIds"].extend(member_data.get("rootIds", []))
         
     return all_data
