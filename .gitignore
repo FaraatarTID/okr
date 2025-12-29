@@ -11,4 +11,6 @@ secrets.toml
 # Data
 okr_data.json
 *.json
+okr_database.db
+*.db
 node_modules
