@@ -9,7 +9,11 @@ import json
 import time
 
 # Models to sync
-from src.models import User, Cycle, CheckIn, WorkLog
+# Models to sync
+from src.models import (
+    User, Cycle, Goal, Strategy, Objective, KeyResult, Initiative, Task, 
+    WorkLog, CheckIn
+)
 from src.database import engine, get_session_context
 
 SCOPES = [
@@ -54,17 +58,24 @@ class SheetSyncService:
         """Ensure all required worksheets exist."""
         if not self.is_ready(): return
 
-        required_sheets = ["Users", "Cycles", "CheckIns", "WorkLogs"]
+        required_sheets = [
+            "Users", "Cycles", 
+            "Goals", "Strategies", "Objectives", "KeyResults", "Initiatives", "Tasks",
+            "CheckIns", "WorkLogs"
+        ]
         
-        existing_titles = [ws.title for ws in self.spreadsheet.worksheets()]
-        
-        for name in required_sheets:
-            if name not in existing_titles:
-                try:
-                    self.spreadsheet.add_worksheet(title=name, rows=100, cols=20)
-                    print(f"Created missing worksheet: {name}")
-                except Exception as e:
-                    print(f"Failed to create worksheet {name}: {e}")
+        try:
+            existing_titles = [ws.title for ws in self.spreadsheet.worksheets()]
+            
+            for name in required_sheets:
+                if name not in existing_titles:
+                    try:
+                        self.spreadsheet.add_worksheet(title=name, rows=100, cols=20)
+                        print(f"Created missing worksheet: {name}")
+                    except Exception as e:
+                        print(f"Failed to create worksheet {name}: {e}")
+        except Exception as e:
+            print(f"Schema check failed: {e}")
 
     def restore_to_local_db(self):
         """
@@ -77,20 +88,24 @@ class SheetSyncService:
         self.ensure_schema()
         
         try:
-            # 1. Restore Users
+            # 1. Base Tables (Order matters)
             self._restore_table(User, "Users")
-            
-            # 2. Restore Cycles
             self._restore_table(Cycle, "Cycles")
             
-            # 3. Restore CheckIns
-            self._restore_table(CheckIn, "CheckIns")
+            # 2. Hierarchy (Top-Down to satisfy FKs)
+            self._restore_table(Goal, "Goals")
+            self._restore_table(Strategy, "Strategies")
+            self._restore_table(Objective, "Objectives")
+            self._restore_table(KeyResult, "KeyResults")
+            self._restore_table(Initiative, "Initiatives")
+            self._restore_table(Task, "Tasks")
             
-            # 4. Restore WorkLogs
+            # 3. Linked Tables
+            self._restore_table(CheckIn, "CheckIns")
             self._restore_table(WorkLog, "WorkLogs")
             
-            # 5. Restore OKR Trees (from the JSON sheet) to populate SQL mirroring
-            self._restore_okr_trees()
+            # 4. Legacy JSON Restore (Deprecated/Fallback)
+            # self._restore_okr_trees()
             
             print("Database restoration complete.")
             
@@ -153,8 +168,15 @@ class SheetSyncService:
         if not self.is_ready(): return
         
         # Determine Sheet and Schema based on type
+        # Determine Sheet and Schema based on type
         if isinstance(model_obj, User): sheet_name = "Users"
         elif isinstance(model_obj, Cycle): sheet_name = "Cycles"
+        elif isinstance(model_obj, Goal): sheet_name = "Goals"
+        elif isinstance(model_obj, Strategy): sheet_name = "Strategies"
+        elif isinstance(model_obj, Objective): sheet_name = "Objectives"
+        elif isinstance(model_obj, KeyResult): sheet_name = "KeyResults"
+        elif isinstance(model_obj, Initiative): sheet_name = "Initiatives"
+        elif isinstance(model_obj, Task): sheet_name = "Tasks"
         elif isinstance(model_obj, CheckIn): sheet_name = "CheckIns"
         elif isinstance(model_obj, WorkLog): sheet_name = "WorkLogs"
         else: return # Not a synced type
