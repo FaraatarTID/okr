@@ -210,7 +210,7 @@ class SheetSyncService:
         """
         try:
             # Main sheet is the first one usually, or use a name if we had one
-            from services.sheets import SheetsDB
+            from src.services.sheets_db import SheetsDB
             s_db = SheetsDB()
             if not s_db.is_connected(): return
             

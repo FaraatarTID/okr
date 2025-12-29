@@ -446,8 +446,12 @@ def get_goal_tree(goal_id: int) -> Optional[Goal]:
                 .selectinload(Strategy.objectives)
                 .selectinload(Objective.key_results)
                 .selectinload(KeyResult.initiatives)
+                .selectinload(Initiative.tasks),
+
+                selectinload(Goal.strategies)
+                .selectinload(Strategy.objectives)
+                .selectinload(Objective.key_results)
                 .selectinload(KeyResult.tasks)
-                .selectinload(Initiative.tasks)
             )
         )
         goal = session.exec(statement).first()

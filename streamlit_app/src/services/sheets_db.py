@@ -1,3 +1,9 @@
+"""
+Google Sheets Database Service.
+Provides direct user data storage to Google Sheets.
+
+Consolidated from services/sheets.py
+"""
 import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
@@ -8,6 +14,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
+
 
 class SheetsDB:
     def __init__(self):

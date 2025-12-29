@@ -5,27 +5,75 @@
   Network URL: http://172.18.0.1:8501
   External URL: http://37.252.10.104:8501
 
-C:\Faraatar-TID_Apps\okr\streamlit_app\app.py:2640: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
-  cycles = [default_cycle]
-2025-12-29 14:38:49.959 Uncaught app execution
+2025-12-29 16:13:05.913 Uncaught app execution
 Traceback (most recent call last):
-  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\fragment.py", line 233, in wrapped_fragment
-    result = non_optional_func(*args, **kwargs)
-  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\elements\dialog_decorator.py", line 90, in dialog_content
-    _ = non_optional_func(*args, **kwargs)
-  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 1300, in render_weekly_ritual_dialog
-    start_date = end_date - timedelta(days=7)
-                            ^^^^^^^^^
-NameError: name 'timedelta' is not defined
-2025-12-29 14:40:23.716 Uncaught app execution
-Traceback (most recent call last):
-  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\fragment.py", line 233, in wrapped_fragment
-    result = non_optional_func(*args, **kwargs)
-  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\elements\dialog_decorator.py", line 90, in dialog_content
-    _ = non_optional_func(*args, **kwargs)
-  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 1449, in render_weekly_ritual_dialog
-    if mode == "Daily":
-       ^^^^
-NameError: name 'mode' is not defined. Did you mean: 'Node'?
-C:\Faraatar-TID_Apps\okr\streamlit_app\app.py:1455: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
-  period_label = "Today"
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 671, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 2644, in <module>
+    main()
+    ~~~~^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 2641, in main
+    render_app(st.session_state["username"])
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 2499, in render_app
+    data = load_all_data()
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\caching\cache_utils.py", line 228, in __call__
+    return self._get_or_create_cached_value(args, kwargs, spinner_message)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\caching\cache_utils.py", line 270, in _get_or_create_cached_value
+    return self._handle_cache_miss(cache, value_key, func_args, func_kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\caching\cache_utils.py", line 329, in _handle_cache_miss
+    computed_value = self._info.func(*func_args, **func_kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 279, in load_all_data
+    user_data = load_data_from_db(user.username)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 97, in load_data_from_db
+    full_goal = get_goal_tree(goal.id)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\crud.py", line 449, in get_goal_tree
+    .selectinload(KeyResult.tasks)
+     ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategy_options.py", line 408, in selectinload
+    return self._set_relationship_strategy(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        attr,
+        ^^^^^
+        {"lazy": "selectin"},
+        ^^^^^^^^^^^^^^^^^^^^^
+        opts={"recursion_depth": recursion_depth},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "<string>", line 2, in _set_relationship_strategy
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\base.py", line 284, in _generative
+    x = fn(self, *args, **kw)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategy_options.py", line 807, in _set_relationship_strategy
+    self._clone_for_bind_strategy(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        (attr,),
+        ^^^^^^^^
+    ...<4 lines>...
+        reconcile_to_other=_reconcile_to_other,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategy_options.py", line 1299, in _clone_for_bind_strategy
+    load_element = _AttributeStrategyLoad.create(
+        self.path,
+    ...<7 lines>...
+        extra_criteria=extra_criteria,
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategy_options.py", line 1764, in create
+    path = opt._init_path(
+        path, attr, wildcard_key, attr_group, raiseerr, extra_criteria
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategy_options.py", line 1944, in _init_path
+    _raise_for_does_not_link(path, str(attr), attr.parent)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategy_options.py", line 2544, in _raise_for_does_not_link
+    raise sa_exc.ArgumentError(
+    ...<18 lines>...
+    )
+sqlalchemy.exc.ArgumentError: ORM mapped entity or attribute "KeyResult.tasks" does not link from relationship "KeyResult.initiatives".

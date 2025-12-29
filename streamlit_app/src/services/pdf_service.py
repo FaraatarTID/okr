@@ -1,298 +1,569 @@
 """
-PDF Service for OKR Application.
-Uses fpdf2 for PDF generation (no external binary dependencies).
+Unified PDF Generator with Automatic Environment Detection
+Supports both PDFShift (cloud/deployed) and pdfkit (local Windows)
+
+Consolidated from services/pdf_report.py
 """
-from fpdf import FPDF
-from io import BytesIO
-from datetime import datetime
-from typing import List, Dict, Any, Optional
+
 import os
+import sys
+import platform
+import datetime
+import base64
+from io import BytesIO
+import streamlit as st
+
+# Try importing both libraries
+PDFSHIFT_AVAILABLE = False
+PDFKIT_AVAILABLE = False
+
+try:
+    import requests
+    PDFSHIFT_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    import pdfkit
+    PDFKIT_AVAILABLE = True
+except ImportError:
+    pass
 
 
-class OKRReport(FPDF):
-    """Custom PDF class for OKR reports with consistent styling."""
+def is_deployed_environment():
+    """
+    Detect if running in a deployed/cloud environment (Streamlit Cloud)
+    Returns True if deployed, False if local
+    """
+    # PRIORITY 0: Check for manual override in secrets
+    try:
+       import streamlit as st
+       if 'PDF_METHOD' in st.secrets:
+           method = str(st.secrets['PDF_METHOD']).lower()
+           if method == 'pdfkit':
+               print("SECRETS: Forcing pdfkit (Local)")
+               return False
+           elif method == 'pdfshift':
+               print("SECRETS: Forcing PDFShift (Cloud)")
+               return True
+    except Exception as e:
+       pass  # If secrets not available, continue to other detection methods
+       
+    # Check for Streamlit Cloud specific environment variables
+    if os.getenv('STREAMLIT_SHARING_MODE') or os.getenv('IS_STREAMLIT_CLOUD'):
+        return True
     
-    def __init__(self, title: str = "OKR Report", direction: str = "LTR"):
-        super().__init__()
-        self.report_title = title
-        self.direction = direction
-        self._setup_fonts()
+    # Check if pdfshift API key is configured (indicates deployed environment)
+    try:
+        if 'pdfshift_api_key' in st.secrets:
+            return True
+    except:
+        pass
+    
+    # Check if running on Windows (likely local development)
+    if platform.system() == 'Windows':
+        return False
+    
+    # Default to deployed if uncertain and pdfshift is available
+    return PDFSHIFT_AVAILABLE and not PDFKIT_AVAILABLE
+
+
+def get_base64_font(font_path):
+    """Helper function to convert font file to base64 for embedding"""
+    try:
+        if os.path.exists(font_path):
+            with open(font_path, "rb") as font_file:
+                return base64.b64encode(font_file.read()).decode('utf-8')
+    except Exception as e:
+        print(f"Font error: {e}")
+    return ""
+
+
+def generate_pdf_html(report_items, objective_stats, total_time_str, key_results, 
+                      direction="RTL", title="Weekly Work Report", time_label="Last 7 Days",
+                      report_summary=None, achievements=None):
+    """
+    Generate HTML content for PDF (common for both methods)
+    """
+    align = 'right' if direction == 'RTL' else 'left'
+    dir_attr = direction.lower()
+    
+    # Find font path
+    font_path = None
+    possible_paths = [
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Vazirmatn-Regular.ttf"),
+        os.path.join(os.path.dirname(__file__), "assets", "fonts", "Vazirmatn-Regular.ttf"),
+        "assets/fonts/Vazirmatn-Regular.ttf",
+        "./Vazirmatn-Regular.ttf"
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            font_path = path
+            break
+    
+    font_base64 = get_base64_font(font_path) if font_path else ""
+    
+    html = f"""
+<!DOCTYPE html>
+<html dir="{dir_attr}">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @font-face {{
+            font-family: 'Vazirmatn';
+            src: url('data:font/ttf;base64,{font_base64}') format('truetype');
+        }}
+        body {{
+            font-family: 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif;
+            font-size: 13px;
+            color: #333;
+            direction: {dir_attr};
+            text-align: {align};
+            padding: 1.5cm;
+            line-height: 1.4;
+        }}
+        h1 {{ color: #2c3e50; font-size: 24px; margin-bottom: 5px; border-bottom: 3px solid #3498db; padding-bottom: 10px; display: inline-block; }}
+        h2 {{ color: #34495e; font-size: 18px; margin-top: 25px; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; }}
+        h3 {{ color: #7f8c8d; font-size: 16px; margin-top: 20px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }}
         
-    def _setup_fonts(self):
-        """Setup fonts including support for Persian/Arabic text."""
-        # Try to load Vazirmatn font for RTL support
-        font_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            "assets", "fonts", "Vazirmatn-Regular.ttf"
+        /* Modern Table Styling */
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }}
+        th {{
+            background-color: #f8f9fa;
+            color: #2c3e50;
+            border-bottom: 2px solid #dde2e6;
+            padding: 12px 10px;
+            font-weight: 600;
+            font-size: 12px;
+            text-align: {align};
+            white-space: nowrap;
+        }}
+        td {{
+            border-bottom: 1px solid #eee;
+            padding: 10px 10px;
+            vertical-align: top;
+            text-align: {align};
+        }}
+        tr:nth-child(even) {{ background-color: #fafafa; }}
+        tr:hover {{ background-color: #f1f1f1; }}
+        tr {{ page-break-inside: avoid; }}
+
+        /* KPI Cards */
+        .total-box {{
+            background: linear-gradient(135deg, #3498db, #2980b9);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: inline-block;
+        }}
+
+        /* Status Badges */
+        .badge {{
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }}
+        .badge-green {{ background-color: #e8f5e9; color: #2e7d32; }} /* On Track */
+        .badge-amber {{ background-color: #fff8e1; color: #f57f17; }} /* At Risk */
+        .badge-red {{ background-color: #ffebee; color: #c62828; }}   /* Overdue */
+        .badge-gray {{ background-color: #f5f5f5; color: #616161; }}  /* None */
+
+        .text-muted {{ color: #7f8c8d; font-size: 11px; }}
+        
+        /* Executive Summary Card */
+        .exec-summary {{
+            background-color: #fff;
+            border: 1px solid #e0e0e0;
+            border-left: 5px solid #2ecc71;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }}
+
+        .page-break {{ page-break-after: always; }}
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{title}</h1>
+        <p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+    </div>
+
+    <div class="total-box">
+        Total Time ({time_label}): {total_time_str}
+    </div>
+
+"""
+    # Executive Summary Section
+    if report_summary:
+        import markdown
+        summary_html = markdown.markdown(report_summary.get("summary_markdown", ""))
+        highlights = report_summary.get("highlights", [])
+        
+        html += f"""
+    <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2ecc71;">
+        <h2 style="margin-top: 0;">📋 Executive Summary</h2>
+        <div style="font-size: 14px; line-height: 1.6;">{summary_html}</div>
+"""
+        if highlights:
+            html += """
+        <ul style="margin-top: 15px;">
+"""
+            for h in highlights:
+                html += f"""            <li style="margin-bottom: 5px; font-weight: 500;">{h}</li>"""
+            html += """
+        </ul>
+"""
+        html += """
+    </div>
+"""
+
+    # Achievements Section
+    if achievements:
+        html += """
+    <div style="margin-bottom: 20px;">
+        <h3>Key Achievements</h3>
+        <ul style="list-style-type: none; padding: 0;">
+"""
+        for a in achievements:
+             html += f"""
+            <li style="padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center;">
+                <span style="color: #2ecc71; margin-right: 10px; font-size: 1.2em;">[OK]</span>
+                <span style="font-weight: 500;">{a}</span>
+            </li>"""
+        html += """
+        </ul>
+    </div>
+"""
+
+    html += """
+    <h3>Work Log</h3>
+"""
+
+    # Table of Tasks
+    if report_items:
+        html += """
+    <table>
+        <thead>
+            <tr>
+                <th>Task</th>
+                <th style="width: 15%;">Objective</th>
+                <th style="width: 15%;">Key Result</th>
+                <th style="width: 100px;">Date/Time</th>
+                <th style="width: 60px;">Dur</th>
+                <th style="width: 80px;">Deadline</th>
+                <th style="width: 25%;">Summary</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
+        for item in report_items:
+            task_name = item.get('Task', 'Untitled')
+            date_str = item.get('Date', '')
+            time_str = item.get('Time', '')
+            duration = item.get('Duration (m)', 0)
+            summary = item.get('Summary', '')
+            obj_title = item.get('Objective', '-')
+            kr_title = item.get('KeyResult', '-')
+            deadline = item.get('Deadline', '—')
+            
+            # Format Date/Time
+            date_time_html = f"""
+                <div style="font-weight:bold;">{date_str}</div>
+                <div class="text-muted">{time_str}</div>
+            """
+            
+            # Format Deadline Badge
+            badge_class = "badge-gray"
+            if "On Track" in deadline: 
+                badge_class = "badge-green"
+            elif "At Risk" in deadline:
+                badge_class = "badge-amber" 
+            elif "Overdue" in deadline:
+                badge_class = "badge-red"
+            
+            deadline_html = f'<span class="badge {badge_class}">{deadline}</span>' if deadline != "—" else "—"
+
+            html += f"""
+            <tr>
+                <td><strong>{task_name}</strong></td>
+                <td>{obj_title}</td>
+                <td>{kr_title}</td>
+                <td>{date_time_html}</td>
+                <td>{duration}m</td>
+                <td>{deadline_html}</td>
+                <td style="color: #555;">{summary}</td>
+            </tr>
+"""
+
+        html += """
+        </tbody>
+    </table>
+"""
+    else:
+        html += """
+    <p>No work recorded in the this period.</p>
+"""
+
+    # Objective Stats
+    html += """
+    <h3>Time Distribution by Objective</h3>
+"""
+    
+    if objective_stats:
+        sorted_stats = sorted(objective_stats.items(), key=lambda item: item[1], reverse=True)
+        total_mins = sum(v for k, v in objective_stats.items())
+        
+        def fmt(m):
+            h = int(m // 60)
+            mn = int(m % 60)
+            if h > 0: return f"{h}h {mn}m"
+            return f"{mn}m"
+
+        html += """
+    <table>
+        <thead>
+            <tr>
+                <th>Objective</th>
+                <th style="width: 100px;">Time</th>
+                <th style="width: 80px;">%</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
+        
+        for obj_title, mins in sorted_stats:
+            pct = (mins / total_mins * 100) if total_mins > 0 else 0
+            
+            html += f"""
+            <tr>
+                <td>{obj_title}</td>
+                <td>{fmt(mins)}</td>
+                <td>{pct:.1f}%</td>
+            </tr>
+"""
+        html += """
+        </tbody>
+    </table>
+"""
+    else:
+        html += """
+    <p>No objective data.</p>
+"""
+
+    # Key Result Strategic Status
+    if key_results:
+        html += """
+    <h3>Key Result Strategic Status</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Key Result</th>
+                <th style="width: 50px;">Prog</th>
+                <th style="width: 50px;">Eff</th>
+                <th style="width: 50px;">Qual</th>
+                <th style="width: 50px;">Full</th>
+            </tr>
+        </thead>
+        <tbody>
+"""
+
+        for kr in key_results:
+            kr_title = kr.get("title", "Untitled")
+            progress = kr.get("progress", 0)
+            
+            an = kr.get("geminiAnalysis")
+            eff_score = "N/A"
+            qual_score = "N/A"
+            fulfillment = "N/A"
+            
+            analysis_html = ""
+            
+            if an and isinstance(an, dict):
+                e_val = an.get('efficiency_score')
+                q_val = an.get('effectiveness_score')
+                o_val = an.get('overall_score')
+                
+                if e_val is not None: eff_score = f"{e_val}%"
+                if q_val is not None: qual_score = f"{q_val}%"
+                if o_val is not None: fulfillment = f"{o_val}%"
+                
+                summary = an.get('summary', '')
+                gap = an.get('gap_analysis', '')
+                quality = an.get('quality_assessment', '')
+                
+                if summary or gap or quality:
+                    analysis_html = f"""
+                    <tr>
+                        <td colspan="5" style="background-color: #fcfcfc; padding: 10px 15px; border-top: none;">
+                            <div style="font-size: 11px; color: #555;">
+                                {f'<p><strong>Summary:</strong> {summary}</p>' if summary else ''}
+                                {f'<p><strong>Gap Analysis:</strong> {gap}</p>' if gap else ''}
+                                {f'<p><strong>Quality Assessment:</strong> {quality}</p>' if quality else ''}
+                            </div>
+                        </td>
+                    </tr>
+"""
+
+            html += f"""
+            <tr style="border-bottom: {'none' if analysis_html else '1px solid #dee2e6'};">
+                <td>{kr_title}</td>
+                <td>{progress}%</td>
+                <td>{eff_score}</td>
+                <td>{qual_score}</td>
+                <td>{fulfillment}</td>
+            </tr>
+            {analysis_html}
+"""
+        html += """
+        </tbody>
+    </table>
+"""
+
+    html += """
+</body>
+</html>
+"""
+    return html
+
+
+def generate_pdf_with_pdfshift(html):
+    """
+    Generate PDF using PDFShift API (for cloud/deployed environments)
+    """
+    try:
+        pdfshift_api_key = st.secrets["pdfshift_api_key"]
+        
+        response = requests.post(
+            "https://api.pdfshift.io/v3/convert/pdf",
+            headers={'X-API-Key': pdfshift_api_key},
+            json={
+                "source": html,
+                "sandbox": True,
+                "landscape": True,
+                "format": "A4",
+                "use_print": False
+            }
         )
         
-        if os.path.exists(font_path):
-            self.add_font("Vazirmatn", "", font_path, uni=True)
-            self.default_font = "Vazirmatn"
+        if response.status_code == 200:
+            return BytesIO(response.content)
         else:
-            # Fallback to built-in font
-            self.default_font = "Helvetica"
-    
-    def header(self):
-        """Page header."""
-        self.set_font(self.default_font, "B", 16)
-        self.cell(0, 10, self.report_title, ln=True, align="C")
-        self.set_font(self.default_font, "", 10)
-        self.cell(0, 8, f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}", ln=True, align="C")
-        self.ln(5)
-        self.line(10, self.get_y(), 200, self.get_y())
-        self.ln(5)
-    
-    def footer(self):
-        """Page footer."""
-        self.set_y(-15)
-        self.set_font(self.default_font, "I", 8)
-        self.set_text_color(128)
-        self.cell(0, 10, f"Page {self.page_no()}/{{nb}}", align="C")
-    
-    def section_title(self, title: str):
-        """Add a section title."""
-        self.ln(5)
-        self.set_font(self.default_font, "B", 12)
-        self.set_fill_color(240, 240, 240)
-        self.cell(0, 8, title, ln=True, fill=True)
-        self.ln(2)
-    
-    def add_key_value(self, key: str, value: str):
-        """Add a key-value pair row."""
-        self.set_font(self.default_font, "B", 10)
-        self.cell(50, 6, key + ":", align="L")
-        self.set_font(self.default_font, "", 10)
-        self.cell(0, 6, str(value), ln=True)
-    
-    def add_table_header(self, headers: List[str], widths: List[int]):
-        """Add a table header row."""
-        self.set_font(self.default_font, "B", 9)
-        self.set_fill_color(230, 230, 230)
-        
-        for header, width in zip(headers, widths):
-            self.cell(width, 7, header, border=1, fill=True, align="C")
-        self.ln()
-    
-    def add_table_row(self, cells: List[str], widths: List[int]):
-        """Add a table data row."""
-        self.set_font(self.default_font, "", 9)
-        
-        for cell, width in zip(cells, widths):
-            # Truncate long text
-            display_text = str(cell)[:30] + "..." if len(str(cell)) > 30 else str(cell)
-            self.cell(width, 6, display_text, border=1, align="L")
-        self.ln()
-
-
-def generate_weekly_report(
-    report_items: List[Dict[str, Any]],
-    objective_stats: Dict[str, int],
-    total_time_str: str,
-    key_results: List[Dict[str, Any]],
-    direction: str = "LTR",
-    title: str = "Weekly Work Report",
-    time_label: str = "Last 7 Days"
-) -> Optional[BytesIO]:
-    """
-    Generate a PDF weekly work report.
-    
-    Args:
-        report_items: List of work log entries
-        objective_stats: Dict of objective -> minutes spent
-        total_time_str: Formatted total time string
-        key_results: List of key result data with analysis
-        direction: "RTL" or "LTR"
-        title: Report title
-        time_label: Time period label
-    
-    Returns:
-        BytesIO containing PDF data, or None on error
-    """
-    try:
-        pdf = OKRReport(title=title, direction=direction)
-        pdf.alias_nb_pages()
-        pdf.add_page()
-        
-        # Total Time Box
-        pdf.set_fill_color(200, 230, 200)
-        pdf.set_font(pdf.default_font, "B", 12)
-        pdf.cell(0, 10, f"Total Time ({time_label}): {total_time_str}", ln=True, fill=True, align="C")
-        pdf.ln(5)
-        
-        # Work Log Section
-        pdf.section_title("Work Log")
-        
-        if report_items:
-            headers = ["Task", "Objective", "Date", "Duration", "Summary"]
-            widths = [50, 40, 25, 20, 55]
-            pdf.add_table_header(headers, widths)
+            print(f"PDFShift API Error: {response.status_code} - {response.text}")
+            st.error(f"PDFShift Error: {response.status_code}")
+            return None
             
-            for item in report_items:
-                row = [
-                    item.get("Task", "Untitled"),
-                    item.get("Objective", "-"),
-                    item.get("Date", ""),
-                    f"{item.get('Duration (m)', 0)}m",
-                    item.get("Summary", "")
-                ]
-                pdf.add_table_row(row, widths)
-        else:
-            pdf.set_font(pdf.default_font, "I", 10)
-            pdf.cell(0, 10, "No work recorded in this period.", ln=True)
-        
-        pdf.ln(5)
-        
-        # Time Distribution Section
-        pdf.section_title("Time Distribution by Objective")
-        
-        if objective_stats:
-            headers = ["Objective", "Time", "Percentage"]
-            widths = [100, 40, 50]
-            pdf.add_table_header(headers, widths)
-            
-            total_mins = sum(objective_stats.values())
-            sorted_stats = sorted(objective_stats.items(), key=lambda x: x[1], reverse=True)
-            
-            for obj_title, mins in sorted_stats:
-                pct = (mins / total_mins * 100) if total_mins > 0 else 0
-                hours = int(mins // 60)
-                remaining_mins = int(mins % 60)
-                time_str = f"{hours}h {remaining_mins}m" if hours > 0 else f"{remaining_mins}m"
-                
-                pdf.add_table_row([obj_title, time_str, f"{pct:.1f}%"], widths)
-        else:
-            pdf.set_font(pdf.default_font, "I", 10)
-            pdf.cell(0, 10, "No objective data available.", ln=True)
-        
-        pdf.ln(5)
-        
-        # Key Result Strategic Status
-        if key_results:
-            pdf.section_title("Key Result Strategic Status")
-            
-            headers = ["Key Result", "Progress", "Efficiency", "Effectiveness"]
-            widths = [80, 35, 35, 40]
-            pdf.add_table_header(headers, widths)
-            
-            for kr in key_results:
-                progress = f"{kr.get('progress', 0)}%"
-                
-                analysis = kr.get("geminiAnalysis", {})
-                if isinstance(analysis, str):
-                    try:
-                        import json
-                        analysis = json.loads(analysis)
-                    except:
-                        analysis = {}
-                
-                eff = f"{analysis.get('efficiency_score', 'N/A')}%" if analysis.get('efficiency_score') else "N/A"
-                effect = f"{analysis.get('effectiveness_score', 'N/A')}%" if analysis.get('effectiveness_score') else "N/A"
-                
-                pdf.add_table_row([
-                    kr.get("title", "Untitled"),
-                    progress,
-                    eff,
-                    effect
-                ], widths)
-                
-                # Add analysis summary if available
-                summary = analysis.get("summary", "")
-                if summary:
-                    pdf.set_font(pdf.default_font, "I", 8)
-                    pdf.set_text_color(100)
-                    pdf.multi_cell(0, 4, f"  Summary: {summary}")
-                    pdf.set_text_color(0)
-        
-        # Time Analytics Section
-        pdf.ln(5)
-        pdf.section_title("Time Analytics Summary")
-        
-        if objective_stats:
-            total_mins = sum(objective_stats.values())
-            total_hours = total_mins / 60
-            avg_per_objective = total_mins / len(objective_stats) if objective_stats else 0
-            
-            pdf.add_key_value("Total Hours Logged", f"{total_hours:.1f} hours")
-            pdf.add_key_value("Objectives Worked On", str(len(objective_stats)))
-            pdf.add_key_value("Avg Time per Objective", f"{avg_per_objective:.0f} minutes")
-            
-            # Find most worked objective
-            if objective_stats:
-                top_obj = max(objective_stats.items(), key=lambda x: x[1])
-                pdf.add_key_value("Most Time Spent On", f"{top_obj[0]} ({top_obj[1]:.0f}m)")
-        
-        # Generate PDF bytes
-        pdf_bytes = pdf.output()
-        return BytesIO(pdf_bytes)
-        
     except Exception as e:
-        print(f"Error generating PDF: {e}")
+        print(f"PDFShift Exception: {e}")
+        st.error(f"PDFShift failed: {str(e)}")
         return None
 
 
-def generate_goal_report(
-    goal_title: str,
-    strategies: List[Dict[str, Any]],
-    total_progress: int
-) -> Optional[BytesIO]:
+def generate_pdf_with_pdfkit(html):
     """
-    Generate a PDF report for a specific Goal.
-    
-    Args:
-        goal_title: Goal title
-        strategies: List of strategy data with nested objectives/KRs
-        total_progress: Overall goal progress percentage
-    
-    Returns:
-        BytesIO containing PDF data, or None on error
+    Generate PDF using pdfkit (for local Windows environments)
     """
     try:
-        pdf = OKRReport(title=f"Goal Report: {goal_title}")
-        pdf.alias_nb_pages()
-        pdf.add_page()
-        
-        # Goal Overview
-        pdf.section_title("Goal Overview")
-        pdf.add_key_value("Goal", goal_title)
-        pdf.add_key_value("Overall Progress", f"{total_progress}%")
-        pdf.add_key_value("Strategies", str(len(strategies)))
-        
-        # Progress bar visualization
-        pdf.ln(3)
-        pdf.set_fill_color(200, 200, 200)
-        pdf.cell(150, 8, "", border=1, fill=True)
-        pdf.set_xy(pdf.get_x() - 150, pdf.get_y())
-        pdf.set_fill_color(76, 175, 80)  # Green
-        pdf.cell(int(150 * total_progress / 100), 8, "", fill=True)
-        pdf.ln(10)
-        
-        # Strategies breakdown
-        for i, strategy in enumerate(strategies, 1):
-            pdf.section_title(f"Strategy {i}: {strategy.get('title', 'Untitled')}")
+        # Configure pdfkit for Windows
+        if platform.system() == 'Windows':
+            # Common wkhtmltopdf installation paths on Windows
+            possible_paths = [
+                r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe',
+                r'C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe',
+                r'wkhtmltopdf'  # If in PATH
+            ]
             
-            objectives = strategy.get("objectives", [])
-            if objectives:
-                headers = ["Objective", "Progress", "Key Results"]
-                widths = [80, 30, 80]
-                pdf.add_table_header(headers, widths)
-                
-                for obj in objectives:
-                    krs = obj.get("key_results", [])
-                    kr_summary = f"{len(krs)} KRs" if krs else "No KRs"
-                    
-                    pdf.add_table_row([
-                        obj.get("title", "Untitled"),
-                        f"{obj.get('progress', 0)}%",
-                        kr_summary
-                    ], widths)
-            else:
-                pdf.set_font(pdf.default_font, "I", 10)
-                pdf.cell(0, 8, "No objectives defined.", ln=True)
+            config = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    config = pdfkit.configuration(wkhtmltopdf=path)
+                    break
+            
+            if not config:
+                st.error("wkhtmltopdf not found. Please install it from: https://wkhtmltopdf.org/downloads.html")
+                return None
+        else:
+            config = None  # Linux/Mac should have it in PATH
         
-        pdf_bytes = pdf.output()
+        # Generate PDF
+        options = {
+            'page-size': 'A4',
+            'orientation': 'Landscape',
+            'encoding': 'UTF-8',
+            'no-outline': None,
+            'enable-local-file-access': None
+        }
+        
+        pdf_bytes = pdfkit.from_string(html, False, options=options, configuration=config)
         return BytesIO(pdf_bytes)
         
     except Exception as e:
-        print(f"Error generating goal report: {e}")
+        print(f"pdfkit Exception: {e}")
+        st.error(f"pdfkit failed: {str(e)}")
         return None
+
+
+def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, 
+                          direction="RTL", title="Weekly Work Report", time_label="Last 7 Days",
+                          report_summary=None, achievements=None):
+    """
+    Main PDF generation function with automatic environment detection
+    
+    Returns: BytesIO object containing the PDF data, or None if generation fails
+    """
+    
+    # Detect environment
+    is_deployed = is_deployed_environment()
+    
+    # Generate HTML (common for both methods)
+    html = generate_pdf_html(
+        report_items, objective_stats, total_time_str, key_results,
+        direction, title, time_label,
+        report_summary, achievements
+    )
+    
+    # Choose appropriate PDF generation method
+    if is_deployed:
+        print("Using PDFShift (Cloud Environment)")
+        if not PDFSHIFT_AVAILABLE:
+            st.error("PDFShift not available. Please install: pip install requests")
+            return None
+        return generate_pdf_with_pdfshift(html)
+    else:
+        print("Using pdfkit (Local Environment)")
+        if not PDFKIT_AVAILABLE:
+            st.error("pdfkit not available. Please install: pip install pdfkit")
+            st.info("Also install wkhtmltopdf from: https://wkhtmltopdf.org/downloads.html")
+            return None
+        return generate_pdf_with_pdfkit(html)
+
+
+def get_pdf_generator_info():
+    """
+    Return information about the current PDF generation setup
+    """
+    is_deployed = is_deployed_environment()
+    
+    info = {
+        'environment': 'Deployed/Cloud' if is_deployed else 'Local',
+        'method': 'PDFShift API' if is_deployed else 'pdfkit (wkhtmltopdf)',
+        'pdfshift_available': PDFSHIFT_AVAILABLE,
+        'pdfkit_available': PDFKIT_AVAILABLE,
+        'platform': platform.system()
+    }
+    
+    return info
