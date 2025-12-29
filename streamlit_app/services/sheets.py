@@ -74,16 +74,33 @@ class SheetsDB:
             st.error(f"Error fetching data: {str(e)}")
             return None
 
+    def get_all_rows(self):
+        """Fetch all rows from the sheet (for admin view). Returns list of dicts."""
+        if not self.sheet:
+            return []
+        try:
+            # Returns list of lists
+            records = self.sheet.get_all_records()
+            return records
+        except Exception as e:
+            st.error(f"Error fetching all data: {str(e)}")
+            return []
+
     def save_user_data(self, username, data):
         """Save or update user data."""
         if not self.sheet:
             return False
 
         try:
+            # Ensure headers exist
+            headers = self.sheet.row_values(1)
+            if not headers:
+                self.sheet.insert_row(["username", "data", "timestamp"], 1)
+            
             data_str = json.dumps(data)
             timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
             
-            # Note: In newer gspread, find() returns None if not found (no exception)
+            # Search for username in Column A
             cell = self.sheet.find(username, in_column=1)
 
             if cell:
