@@ -89,6 +89,9 @@ class SheetSyncService:
             # 4. Restore WorkLogs
             self._restore_table(WorkLog, "WorkLogs")
             
+            # 5. Restore OKR Trees (from the JSON sheet) to populate SQL mirroring
+            self._restore_okr_trees()
+            
             print("Database restoration complete.")
             
         except Exception as e:
@@ -200,6 +203,34 @@ class SheetSyncService:
                     
         except Exception as e:
             print(f"Sync Push Error ({sheet_name}): {e}")
+
+    def _restore_okr_trees(self):
+        """
+        Specialized restore for the main JSON sheet to populate SQL mirroring tables.
+        """
+        try:
+            # Main sheet is the first one usually, or use a name if we had one
+            from services.sheets import SheetsDB
+            s_db = SheetsDB()
+            if not s_db.is_connected(): return
+            
+            rows = s_db.get_all_rows()
+            if not rows: return
+            
+            from utils.sync import sync_data_to_db
+            
+            for row in rows:
+                username = row.get("username")
+                json_data = row.get("data")
+                if username and json_data:
+                    try:
+                        data = json.loads(json_data)
+                        print(f"Syncing OKR Tree for {username} to SQL...")
+                        sync_data_to_db(username, data)
+                    except:
+                        continue
+        except Exception as e:
+            print(f"Error restoring OKR trees: {e}")
 
 # Singleton Instance
 sync_service = SheetSyncService()

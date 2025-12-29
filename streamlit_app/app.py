@@ -2820,6 +2820,12 @@ def render_app(username):
 
 def main():
     init_database() # Ensure tables exist
+    
+    # NEW: Restore SQL Database from Google Sheets (Cloud Backup)
+    from src.services.sheet_sync import sync_service
+    if sync_service.is_ready():
+        sync_service.restore_to_local_db()
+        
     ensure_admin_exists() # Create default admin if no users
     
     if "user_id" not in st.session_state:

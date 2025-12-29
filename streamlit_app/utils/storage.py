@@ -8,7 +8,7 @@ from utils.sync import sync_data_to_db
 from services.sheets import SheetsDB
 
 @st.cache_resource
-def get_db():
+def get_db_v2():
     try:
         db = SheetsDB()
         return db  # <--- CRITICAL: YOU MUST RETURN THE OBJECT
@@ -18,7 +18,7 @@ def get_db():
 
 def get_sync_status():
     """Returns (is_connected, error_message) for the Sheets DB."""
-    db = get_db()
+    db = get_db_v2()
     return db.get_connection_status()
 
 
@@ -85,7 +85,7 @@ def _fetch_from_source(username):
     """
     # 1. Try Loading from Google Sheets (if username exists)
     if username:
-        db = get_db()
+        db = get_db_v2()
         # Note: Ensure get_db() is robust enough to be called here.
         # Ideally get_db() uses @st.cache_resource internally.
         if db.is_connected():
@@ -202,7 +202,7 @@ def save_data(data, username=None):
     
     # 1. Save to Google Sheets
     if username:
-        db = get_db()
+        db = get_db_v2()
         if db.is_connected():
             db.save_user_data(username, data)
             success = True
@@ -240,26 +240,58 @@ def load_all_data(force_refresh=False):
     import glob
     all_data = {"nodes": {}, "rootIds": []}
     
-    # 1. Find all local JSON files
+    import glob
+    all_data = {"nodes": {}, "rootIds": []}
+    
+    # 1. Try pulling all data from Google Sheets first
+    db = get_db_v2()
+    if db and db.is_connected():
+        rows = db.get_all_rows() # returns list of dicts: {"username":..., "data":...}
+        if rows:
+            for row in rows:
+                username = row.get("username")
+                json_data = row.get("data") # Row key in get_all_records()
+                
+                # Careful: depend on header names. In SheetsDB.save_user_data we use:
+                # [username, data_str, timestamp]
+                # If sheet has no headers, get_all_records() might use Col names or skip first row.
+                # Let's check gspread behavior. Usually first row is headers.
+                
+                # If username is empty or data is empty, handle it
+                if not username or not json_data:
+                    continue
+                
+                try:
+                    user_data = json.loads(json_data)
+                    # Merge nodes
+                    for node_id, node in user_data.get("nodes", {}).items():
+                        if "user_id" not in node:
+                            node["user_id"] = username
+                        all_data["nodes"][node_id] = node
+                    
+                    # Merge root IDs
+                    all_data["rootIds"].extend(user_data.get("rootIds", []))
+                except:
+                    continue
+            
+            return all_data
+
+    # 2. Fallback: Find all local JSON files
     pattern = "okr_data_*.json"
     files = glob.glob(pattern)
     
-    # 2. Extract usernames from filenames
+    # 3. Extract usernames from filenames
     for file_path in files:
         # Extract name: okr_data_username.json -> username
         filename = os.path.basename(file_path)
         username = filename.replace("okr_data_", "").replace(".json", "")
         
-        
-        # if username == "admin": continue # REMOVED: Admin should see their own data if they created it
-        
         user_data = load_data(username, force_refresh=force_refresh)
         
         # Merge nodes
         for node_id, node in user_data.get("nodes", {}).items():
-            # Inject owner display name if not present (for identification)
-            if "owner_display_name" not in node:
-                node["user_id"] = username # Legacy fallback
+            if "user_id" not in node:
+                node["user_id"] = username
             
             all_data["nodes"][node_id] = node
             
