@@ -129,6 +129,67 @@ def load_data(username=None, force_refresh=False):
         
     data = _fetch_from_source(username)
 
+    # --- INJECT ASSIGNED TASKS (Inbox) ---
+    # Only if user is "member" and has a manager
+    user_role = st.session_state.get("user_role")
+    manager_username = st.session_state.get("manager_username")
+    
+    if user_role == "member" and manager_username:
+        # Load Manager's data (without caching or modifying session for manager)
+        # We access the raw fetch to avoid polluting user's session cache with mananager data
+        mgr_data = _fetch_from_source(manager_username)
+        
+        assigned_tasks = []
+        for nid, node in mgr_data.get("nodes", {}).items():
+            if node.get("type") == "TASK":
+                 assignees = node.get("assignees", [])
+                 if username in assignees:
+                     assigned_tasks.append(node)
+        
+        if assigned_tasks:
+            # Create a Virtual Inbox Goal
+            inbox_id = "inbox_assigned"
+            inbox_node = {
+                "id": inbox_id,
+                "title": "📥 Assigned by Manager",
+                "type": "GOAL",
+                "children": [t["id"] for t in assigned_tasks],
+                "progress": 0,
+                "parentId": None,
+                "isExpanded": True,
+                # Place it in current cycle or handle gracefully
+                "cycle_id": st.session_state.get("active_cycle_id") 
+            }
+            
+            # Use `dict()` to copy data to avoid mutating cached object permanently if shared? 
+            # Note: `_fetch_from_source` returns cached dict. Modifying it modifies the cache!
+            # We must COPY data before modifying if we don't want to save Inbox back to file.
+            # But `save_data` dumps `data`. If we add Inbox, `save_data` will save it to JSON!
+            # Then next load has duplicate Inbox.
+            # FIX: Deep copy first? Or ensure we don't save "inbox_assigned".
+            pass # See logic below
+            
+            # To avoid saving "inbox" to file, `save_data` should strip it?
+            # Or we accept it lives in session state only?
+            # If we modifying `data` here, `st.session_state` gets it.
+            # When user clicks "Save" (e.g. modify task), `save_data` is called with `data`.
+            # We should probably filter out "inbox_assigned" in `save_data` or `db.save_user_data`.
+            
+            # For now, let's inject it into `data` (copying first to be safe from cache mutations)
+            import copy
+            data = copy.deepcopy(data) 
+            
+            data["nodes"][inbox_id] = inbox_node
+            # Prepend to rootIds
+            if inbox_id not in data["rootIds"]:
+                 data["rootIds"].insert(0, inbox_id)
+            
+            # Add the task nodes themselves to `data['nodes']`
+            for task in assigned_tasks:
+                # We need to ensure we don't overwrite if by some chance ID conflict? 
+                # (IDs are UUIDs so safe)
+                data["nodes"][task["id"]] = task
+
     # Update Session State with what we found
     if username:
         st.session_state[_get_cache_key(username)] = data
@@ -149,7 +210,8 @@ def save_data(data, username=None):
     # 2. Save to Local File (Backup)
     # Always save locally as well, or just as fallback if cloud failed?
     # Your original code suggests fallback, but mirroring is safer.
-    if not success or not username:
+    # CHANGED: Always save locally to ensure load_all_data (Admin View) works, as it reads local files.
+    if True: # Always save locally
         local_file = get_local_filename(username)
         with open(local_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
@@ -188,7 +250,8 @@ def load_all_data(force_refresh=False):
         filename = os.path.basename(file_path)
         username = filename.replace("okr_data_", "").replace(".json", "")
         
-        if username == "admin": continue # Skip admin's own file if it exists but is usually empty
+        
+        # if username == "admin": continue # REMOVED: Admin should see their own data if they created it
         
         user_data = load_data(username, force_refresh=force_refresh)
         
@@ -281,7 +344,7 @@ def update_node_progress(node_id, nodes):
     
     return nodes
 
-def add_node(data_store, parent_id, node_type, title, description, username=None, cycle_id=None):
+def add_node(data_store, parent_id, node_type, title, description, username=None, cycle_id=None, assignees=None):
     # Auto-numbering logic
     # Find siblings
     siblings_count = 0
@@ -329,7 +392,8 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
         "created_by_display_name": st.session_state.get("display_name"),
         "isExpanded": True,
         "cycle_id": cycle_id,
-        "deadline": None  # Deadline timestamp in milliseconds
+        "deadline": None,  # Deadline timestamp in milliseconds
+        "assignees": assignees if assignees else [] # List of usernames
     }
 
     

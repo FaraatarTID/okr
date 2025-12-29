@@ -29,14 +29,31 @@ def create_db_and_tables():
     # SQLite ALTER TABLE support to add column if it doesn't exist (Migration helper)
     from sqlalchemy import text
     with engine.connect() as conn:
-        tables = ["goal", "strategy", "objective", "key_result", "initiative", "task"]
-        for table in tables:
+        # Tables to add external_id
+        tables_ext = ["goal", "strategy", "objective", "key_result", "initiative", "task"]
+        for table in tables_ext:
             try:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN external_id TEXT"))
                 conn.commit()
-            except Exception:
-                # Column likely already exists
-                pass
+            except Exception: pass
+
+        # Add owner_id to goal if missing
+        try:
+            conn.execute(text("ALTER TABLE goal ADD COLUMN owner_id INTEGER"))
+            conn.commit()
+        except Exception: pass
+
+        # Add cycle_id to goal if missing (should be there but for safety)
+        try:
+            conn.execute(text("ALTER TABLE goal ADD COLUMN cycle_id INTEGER"))
+            conn.commit()
+        except Exception: pass
+
+        # Add key_result_id to task if missing
+        try:
+            conn.execute(text("ALTER TABLE task ADD COLUMN key_result_id INTEGER"))
+            conn.commit()
+        except Exception: pass
 
 
 def get_session() -> Session:
