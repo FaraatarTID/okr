@@ -3,6 +3,7 @@ import os
 import time
 import uuid
 import streamlit as st
+from datetime import datetime, timezone
 
 from src.services.sheets_db import SheetsDB
 
@@ -101,36 +102,64 @@ def load_data_from_db(username, cycle_id=None):
         
         # 3. Flatten hierarchy into nodes dictionary
         def flatten_node(node, p_id=None):
+            if not node: return
+            cls_name = node.__class__.__name__
+            node_type = {
+                "KeyResult": "KEY_RESULT"
+            }.get(cls_name, cls_name.upper())
+            
+            # --- BRIDGING LOGIC: Skip Strategy and Initiative nodes in the UI Tree ---
+            if node_type in ["STRATEGY", "INITIATIVE"]:
+                # Recurse children but keep current p_id as their parent
+                children_to_recurse = []
+                if hasattr(node, 'objectives'): children_to_recurse = node.objectives
+                elif hasattr(node, 'tasks'): children_to_recurse = node.tasks
+                
+                for child in (children_to_recurse or []):
+                    flatten_node(child, p_id)
+                return
+
             # Model fields to node dict
+            ext_id = getattr(node, "external_id", None) or f"{node_type}_{node.id}"
+            
             n_dict = {
-                "id": node.external_id,
+                "id": ext_id,
                 "title": node.title,
                 "description": node.description,
                 "progress": node.progress,
-                "type": node.__class__.__name__.upper(),
+                "type": node_type,
                 "parentId": p_id,
                 "children": [],
                 "isExpanded": getattr(node, "is_expanded", True),
                 "cycle_id": getattr(node, "cycle_id", None),
                 "deadline": getattr(node, "deadline", None).isoformat() if getattr(node, "deadline", None) else None,
-                "createdAt": int(node.created_at.timestamp() * 1000) if node.created_at else None,
+                "createdAt": int(node.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if node.created_at else None,
             }
             
             # Additional type-specific fields
-            if n_dict["type"] == "KEY_RESULT":
+            if node_type == "KEY_RESULT":
                 n_dict.update({
                     "target_value": node.target_value,
                     "current_value": node.current_value,
                     "unit": node.unit
                 })
-            elif n_dict["type"] == "TASK":
+            elif node_type == "TASK":
                 n_dict.update({
                     "status": node.status.value if hasattr(node.status, 'value') else node.status,
                     "timeSpent": node.total_time_spent,
-                    "timerStartedAt": int(node.timer_started_at.timestamp() * 1000) if node.timer_started_at else None
+                    "timerStartedAt": int(node.timer_started_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if node.timer_started_at else None,
+                    "workLog": [
+                        {
+                            "id": wl.id,
+                            "startedAt": int(wl.start_time.replace(tzinfo=timezone.utc).timestamp() * 1000),
+                            "endedAt": int(wl.end_time.replace(tzinfo=timezone.utc).timestamp() * 1000) if wl.end_time else None,
+                            "durationMinutes": wl.duration_minutes,
+                            "summary": wl.note
+                        } for wl in getattr(node, "work_logs", [])
+                    ]
                 })
             
-            nodes[node.external_id] = n_dict
+            nodes[ext_id] = n_dict
             
             # Recurse children based on model relationships
             children = []
@@ -140,9 +169,25 @@ def load_data_from_db(username, cycle_id=None):
             elif hasattr(node, 'initiatives'): children = node.initiatives
             elif hasattr(node, 'tasks'): children = node.tasks
             
-            for child in children:
-                n_dict["children"].append(child.external_id)
-                flatten_node(child, node.external_id)
+            for child in (children or []):
+                # If child is a Strategy or Initiative, their children will be added directly to this node
+                c_type = child.__class__.__name__.upper()
+                if c_type in ["STRATEGY", "INITIATIVE"]:
+                    # Recurse but the child's children will point to THIS node as parent
+                    flatten_node(child, ext_id)
+                    # Collect the actual UI children (Objectives or Tasks)
+                    grand_children = []
+                    if hasattr(child, 'objectives'): grand_children = child.objectives
+                    elif hasattr(child, 'tasks'): grand_children = child.tasks
+                    for gc in (grand_children or []):
+                        gc_ext_id = getattr(gc, "external_id", None) or f"{gc.__class__.__name__.upper()}_{gc.id}"
+                        if gc_ext_id not in n_dict["children"]:
+                            n_dict["children"].append(gc_ext_id)
+                else:
+                    c_ext_id = getattr(child, "external_id", None) or f"{c_type}_{child.id}"
+                    if c_ext_id not in n_dict["children"]:
+                        n_dict["children"].append(c_ext_id)
+                    flatten_node(child, ext_id)
 
         flatten_node(full_goal)
 
@@ -247,25 +292,31 @@ def save_data(data, username=None):
             node["children"] = [c for c in node["children"] if c not in virtual_ids]
 
     # 1. Sync to Google Sheets (Cloud Backup)
-    if username:
+    if username and username != "admin": 
         db = get_db_v2()
         if db.is_connected():
-            db.save_user_data(username, persistent_data)
+            clean_user_data = load_data_from_db(username)
+            db.save_user_data(username, clean_user_data)
 
     # 2. Save to Local File (Offline Backup)
-    local_file = get_local_filename(username)
-    with open(local_file, "w", encoding="utf-8") as f:
-        json.dump(persistent_data, f, indent=4)
+    if username:
+        local_file = get_local_filename(username)
+        clean_user_data = load_data_from_db(username)
+        with open(local_file, "w", encoding="utf-8") as f:
+            json.dump(clean_user_data, f, indent=4)
 
     # Note: No need to clear load_data_from_db cache because we don't cache SQL reads yet.
     # But we should clear the session state cache so the UI reloads from DB.
+    # Clear all caches to be sure
+    st.cache_data.clear()
+    
     if username:
         cache_key = _get_cache_key(username)
         if cache_key in st.session_state:
             del st.session_state[cache_key]
         
 # --- MODIFIED: Aggregate All Data for Admin ---
-@st.cache_data(ttl=300, show_spinner=False)
+# REMOVED CACHE temporarily to fix "not updating" issue
 def load_all_data(force_refresh=False):
     """
     Loads and merges all user data directly from SQLite.
@@ -287,6 +338,7 @@ def load_all_data(force_refresh=False):
         
     return all_data
 
+# REMOVED CACHE temporarily
 def load_team_data(manager_id, force_refresh=False):
     """
     Loads and merges data for a manager and their direct team members from SQLite.
@@ -398,10 +450,13 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
 
     new_id = generate_id()
     
+    print(f"DEBUG: add_node type={node_type} parent={parent_id} user={username}")
+    
     # --- 1. SQL CREATE (SQL-PRIMARY) ---
     from src.crud import (
         get_node_by_external_id, create_goal, create_strategy, 
-        create_objective, create_key_result, create_initiative, create_task
+        create_objective, create_key_result, create_initiative, create_task,
+        get_or_create_default_strategy, get_or_create_default_initiative
     )
     from src.models import Goal, Strategy, Objective, KeyResult, Initiative, Task
     
@@ -415,17 +470,24 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
     elif node_type == "STRATEGY":
         create_strategy(parent_sql_id, final_title, description, external_id=new_id)
     elif node_type == "OBJECTIVE":
-        create_objective(parent_sql_id, final_title, description, external_id=new_id)
+        # UI: Goal -> Objective. SQL: Goal -> Strategy -> Objective.
+        # Ensure we have a Strategy container.
+        actual_parent_id = get_or_create_default_strategy(parent_sql_id)
+        create_objective(actual_parent_id, final_title, description, external_id=new_id)
     elif node_type == "KEY_RESULT":
         create_key_result(parent_sql_id, final_title, description, external_id=new_id)
     elif node_type == "INITIATIVE":
         create_initiative(parent_sql_id, final_title, description, external_id=new_id)
     elif node_type == "TASK":
         # Check parent type from data_store to decide which FK to use
+        # UI: KR -> Task. SQL: KR -> Initiative -> Task.
         p_json = data_store["nodes"].get(parent_id)
         if p_json and p_json.get("type", "").upper() == "KEY_RESULT":
-            create_task(key_result_id=parent_sql_id, title=final_title, description=description, external_id=new_id)
+            # Ensure we have an Initiative container.
+            actual_parent_id = get_or_create_default_initiative(parent_sql_id)
+            create_task(initiative_id=actual_parent_id, title=final_title, description=description, external_id=new_id)
         else:
+            # Already an initiative or fallback
             create_task(initiative_id=parent_sql_id, title=final_title, description=description, external_id=new_id)
 
     # --- 2. JSON/MEMORY UPDATE (BACKUP) ---
@@ -478,15 +540,11 @@ def delete_node(data_store, node_id, username=None):
         return
 
     # --- 1. SQL DELETE (SQL-PRIMARY) ---
-    # Recursively delete from SQL for the node and its children
-    def delete_recursive_sql(nid):
-        node = data_store["nodes"].get(nid)
-        if node:
-            for child_id in node.get("children", []):
-                delete_recursive_sql(child_id) # Recurse for children first
-            delete_node_sql_only(nid) # Then delete the current node
-
-    delete_recursive_sql(node_id)
+    print(f"DEBUG: delete_node id={node_id} type={node_to_delete.get('type')} user={username}")
+    # With cascade enabled in models, we only need to delete the root node in SQL.
+    # However, for intermediate Strategy/Initiative nodes that might be bridged,
+    # we call our SQL helper which handles the DB-level deletion.
+    delete_node_sql_only(node_id)
 
     # --- 2. JSON/MEMORY DELETE (BACKUP) ---
     # Recursively delete from JSON/memory
@@ -596,7 +654,7 @@ def stop_timer(data_store, node_id, username=None, summary=None):
         # --- 2. JSON/MEMORY STOP ---
         start_time = node["timerStartedAt"]
         elapsed_ms = int(time.time() * 1000) - start_time
-        elapsed_minutes = elapsed_ms / 60000
+        elapsed_minutes = max(1.0, elapsed_ms / 60000)
         
         current_spent = node.get("timeSpent", 0)
         node["timeSpent"] = current_spent + elapsed_minutes
