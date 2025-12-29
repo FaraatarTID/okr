@@ -10,6 +10,17 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from utils.storage import load_data, load_all_data, load_team_data, save_data, add_node, delete_node, update_node, update_node_progress, export_data, import_data, start_timer, stop_timer, get_total_time, delete_work_log
 from utils.styles import apply_custom_fonts
 from src.database import init_database
+from src.services.sheet_sync import sync_service
+
+# Initialize DB and Restore from Sheets (Write-Through Architecture)
+init_database()
+if "db_restored" not in st.session_state:
+    try:
+        sync_service.restore_to_local_db()
+        st.session_state.db_restored = True
+    except Exception as e:
+        print(f"Restore failed: {e}")
+
 from src.crud import (
     get_all_cycles, create_cycle, get_active_cycles,
     create_check_in, get_krs_needing_checkin, get_check_ins,
@@ -307,6 +318,14 @@ def render_login():
                     st.session_state["username"] = user.username
                     st.session_state["display_name"] = user.display_name
                     st.session_state["user_role"] = user.role.value
+                    st.session_state["manager_id"] = user.manager_id
+                    
+                    # Fetch manager username if applicable
+                    if user.manager_id:
+                         from src.crud import get_user_by_id
+                         mgr = get_user_by_id(user.manager_id)
+                         st.session_state["manager_username"] = mgr.username if mgr else None
+                    
                     st.success(f"Welcome, {user.display_name}!")
                     st.rerun()
                 else:
@@ -536,6 +555,133 @@ def render_report_content(data, username, mode="Weekly"):
             </style>
         """, unsafe_allow_html=True)
 
+    # --- RESTORED LOGIC ---
+    
+    # 1. Filter Logs based on Mode
+    now_ts = time.time() * 1000
+    if mode == "Daily":
+        # Start of today (midnight)
+        dt = datetime.fromtimestamp(now_ts / 1000)
+        start_of_day = dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_ts = start_of_day.timestamp() * 1000
+    else: # Weekly
+        # Last 7 days
+        start_ts = now_ts - (7 * 24 * 60 * 60 * 1000)
+        
+    # 2. Aggregation
+    report_items = []
+    total_minutes = 0
+    objective_time_map = {}
+    
+    # Pre-fetch ancestor mapping for efficiency
+    # But for simplicity we'll just traverse since volume isn't huge yet
+    
+    
+    for node_id, node in data.get("nodes", {}).items():
+        if node.get("type") != "TASK": continue
+        
+        # Check logs
+        # Key in storage.py is "workLog" (camelCase)
+        logs = node.get("workLog", [])
+        
+        # DEBUG: Log discovery
+        # if logs:
+        #    st.write(f"Found logs for {node.get('title')}: {len(logs)}")
+            
+        for log in logs:
+            log_start = log.get("startedAt", 0)
+            
+            # DEBUG: Timestamp check
+            # st.write(f"Log: {log_start} vs Start: {start_ts}")
+            
+            if log_start >= start_ts:
+                dur = log.get("durationMinutes", 0)
+                summary = log.get("summary", "")
+                
+                total_minutes += dur
+                
+                # Find Ancestor Objective
+                obj_name = get_ancestor_objective(node_id, data["nodes"])
+                
+                report_items.append({
+                    "Task": node.get("title"),
+                    "Objective": obj_name,
+                    "Duration (m)": dur,
+                    "Summary": summary,
+                    "Date": datetime.fromtimestamp(log_start/1000).strftime('%Y-%m-%d %H:%M')
+                })
+                
+                # Agg for Chart
+                objective_time_map[obj_name] = objective_time_map.get(obj_name, 0) + dur
+
+    # 3. Render
+    st.markdown("---")
+    
+    if not report_items:
+        st.info("No work recorded for this period.")
+        return
+
+    # Metrics
+    hours = total_minutes // 60
+    mins = total_minutes % 60
+    st.metric("Total Focus Time", f"{int(hours)}h {int(mins)}m")
+    
+    # Charts & Tables
+    df = pd.DataFrame(report_items)
+    
+    col_chart, col_table = st.columns([1, 1])
+    
+    with col_chart:
+        st.markdown("#### Time Distribution")
+        if objective_time_map:
+            labels = list(objective_time_map.keys())
+            values = list(objective_time_map.values())
+            fig = go.Figure(data=[go.Pie(labels=labels, values=values, hole=.4)])
+            fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), height=250)
+            st.plotly_chart(fig, use_container_width=True)
+            
+    with col_table:
+        st.markdown("#### Work Log")
+        st.dataframe(
+            df[["Task", "Duration (m)", "Summary"]], 
+            use_container_width=True,
+            hide_index=True
+        )
+        
+    # PDF Export
+    st.markdown("### 📄 Export")
+    if st.button("Download PDF Report", icon=":material/download:"):
+        from services.pdf_report import generate_weekly_pdf_v2
+        
+        # Gather all Key Results for the status section
+        krs = [node for nid, node in data.get("nodes", {}).items() if node.get("type") == "KEY_RESULT"]
+        
+        total_time_str = f"{int(hours)}h {int(mins)}m"
+        
+        try:
+            pdf_data = generate_weekly_pdf_v2(
+                report_items=report_items,
+                objective_stats=objective_time_map,
+                total_time_str=total_time_str,
+                key_results=krs,
+                direction=st.session_state.report_direction,
+                title=f"{mode} Work Report",
+                time_label="Today" if mode == "Daily" else "Last 7 Days"
+            )
+            
+            if pdf_data:
+                st.download_button(
+                    "Click to Download PDF",
+                    data=pdf_data,
+                    file_name=f"okr_report_{mode}_{int(time.time())}.pdf",
+                    mime="application/pdf"
+                )
+                st.success("PDF Generated! Click the button above to download.")
+            else:
+                st.error("Failed to generate PDF. Check logs for details.")
+        except Exception as e:
+            st.error(f"PDF Generation failed: {e}")
+
 @st.dialog("🧭 Strategic Health Dashboard", width="large")
 def render_leadership_dashboard_dialog(username):
     # CSS: Hide native X and make dialog strictly modal
@@ -694,8 +840,8 @@ def render_leadership_dashboard_content(username):
     # Get aggregate deadline stats
     aggregate_deadline = get_deadline_summary(all_nodes)
     
-    # Get leadership metrics (uses SQL - for single user or first selected)
-    metrics = get_leadership_metrics(selected_members[0], cycle_id)
+    # Get leadership metrics for selective members
+    metrics = get_leadership_metrics(selected_members, cycle_id)
     if not metrics:
         metrics = {"hygiene_pct": 0, "avg_confidence": 0, "at_risk": [], "heatmap_data": [], "total_krs": 0}
     
@@ -1688,6 +1834,50 @@ def render_weekly_ritual_dialog(data, username):
                         kr["geminiAnalysis"] = res # Update local var for rendering
                         render_kr_state(kr)
 
+@st.dialog("Create New Task", width="medium")
+def render_create_task_dialog(data, parent_id, username):
+    st.caption("Define your task and assign it to team members.")
+    
+    with st.form("create_task_form"):
+        title = st.text_input("Task Title", placeholder="e.g. Draft Initial Report")
+        desc = st.text_area("Description", height=100)
+        
+        # Assignees Logic
+        assignees = []
+        user_role = st.session_state.get("user_role")
+        if user_role == "manager":
+            # Fetch team members
+            from src.crud import get_team_members, get_user_by_username
+            user_obj = get_user_by_username(username)
+            if user_obj:
+                team = get_team_members(user_obj.id)
+                member_map = {f"{m.display_name} ({m.username})": m.username for m in team}
+                
+                selected_labels = st.multiselect(
+                    "Assign To", 
+                    options=list(member_map.keys()),
+                    placeholder="Select team members..."
+                )
+                assignees = [member_map[l] for l in selected_labels]
+        
+        submitted = st.form_submit_button("Create Task", type="primary")
+        if submitted:
+            if not title:
+                st.error("Task title is required.")
+            else:
+                add_node(
+                    data, 
+                    parent_id, 
+                    "TASK", 
+                    title, 
+                    desc, 
+                    username, 
+                    cycle_id=st.session_state.get("active_cycle_id"),
+                    assignees=assignees
+                )
+                st.success("Task created successfully!")
+                st.rerun()
+
 @st.dialog("Work Report", width="large")
 def render_report_dialog(data, username, mode="Weekly"):
     render_report_content(data, username, mode)
@@ -1796,6 +1986,43 @@ def render_inspector_content(node_id, data, username):
         new_title = st.text_input("Title", value=title)
         new_desc = st.text_area("Description", value=node.get("description", ""))
         
+        
+        # Show Assignees (Editable for Admin/Manager)
+        new_assignees = node.get("assignees", [])
+        if node_type == "TASK":
+             user_role = st.session_state.get("user_role")
+             if user_role in ["admin", "manager"]:
+                 from src.crud import get_all_users, get_team_members, get_user_by_username
+                 potential_assignees = []
+                 if user_role == "admin":
+                     all_users = get_all_users()
+                     potential_assignees = all_users
+                 elif user_role == "manager":
+                     # Manager can assign to team members AND themselves
+                     # (Assuming simple logic: manager's team)
+                     user_obj = get_user_by_username(username)
+                     if user_obj:
+                         potential_assignees = get_team_members(user_obj.id)
+                         potential_assignees.append(user_obj) # Add self
+                 
+                 # Map display names to usernames
+                 member_map = {f"{u.display_name} ({u.username})": u.username for u in potential_assignees}
+                 
+                 # Current selection
+                 current_options = [label for label, uname in member_map.items() if uname in new_assignees]
+                 
+                 selected_labels = st.multiselect(
+                     "Assign To", 
+                     options=list(member_map.keys()),
+                     default=current_options,
+                     key=f"assign_multi_{node_id}"
+                 )
+                 new_assignees = [member_map[l] for l in selected_labels]
+             else:
+                 # Read-only for Members
+                 if new_assignees:
+                     st.info(f"👥 **Assigned To:** {', '.join(new_assignees)}")
+
         col1, col2 = st.columns(2)
         with col1:
             p_prog_container = st.empty()
@@ -1807,7 +2034,7 @@ def render_inspector_content(node_id, data, username):
         
         with col2:
             current_index = TYPES.index(node_type) if node_type in TYPES else 0
-            new_type = st.selectbox("Type", TYPES, index=current_index)
+            new_type = st.selectbox("Type", TYPES, index=current_index, key=f"type_sel_{node_id}")
             
         # GOAL Specific Cycle Assignment
         new_cycle_id = node.get("cycle_id")
@@ -1860,7 +2087,17 @@ def render_inspector_content(node_id, data, username):
 
         # Permission Check for Save
         node_owner = node.get("user_id")
-        can_save = (username == node_owner)
+        user_role = st.session_state.get("user_role")
+        
+        can_save = False
+        if user_role == "admin": 
+            can_save = True
+        elif user_role == "manager":
+            # Manager can edit own + potentially team's?
+            # For simplicity, Manager can edit any node loaded in their view (which includes team)
+            can_save = True 
+        elif username == node_owner:
+            can_save = True
         
         if st.form_submit_button("💾 Save Changes", disabled=not can_save):
             # Parse tags
@@ -1877,12 +2114,18 @@ def render_inspector_content(node_id, data, username):
                 "unit": new_unit,
                 "cycle_id": new_cycle_id,
                 "strategy_tags": new_strat_tags,
-                "initiative_tags": new_init_tags
+                "initiative_tags": new_init_tags,
+                "assignees": new_assignees
             }, username)
             st.rerun()
 
     # Time Tracking (Tasks only - Initiative is now a tag)
     if node_type == "TASK":
+        # Show Assignees
+        assignees = node.get("assignees", [])
+        if assignees:
+            st.caption(f"👥 **Assignees:** {', '.join(assignees)}")
+            
         st.markdown("---")
         st.write("### ⏱️ Time Tracking")
         col_t1, col_t2 = st.columns(2)
@@ -1895,20 +2138,41 @@ def render_inspector_content(node_id, data, username):
                   elapsed = int((time.time() * 1000 - start_ts) / 60000)
                   st.info(f"Timer Running: {elapsed}m")
                   
+             # Permission Check for Timer
+             can_track_time = False
+             creator = node.get("created_by_username")
+             
+             # Case 1: Member working on own task or Manager's assigned task
              if user_role == "member":
+                 my_manager_username = st.session_state.get("manager_username")
+                 # Allow if I created it OR my manager created it
+                 # (Note: In legacy data, creator might be None, assume self)
+                 if not creator or creator == username or creator == my_manager_username:
+                     can_track_time = True
+                     
+             # Case 2: Manager working on own task
+             elif user_role == "manager":
+                 if not creator or creator == username:
+                     can_track_time = True
+                     
+             # Admin can always track for testing/override
+             elif user_role == "admin":
+                 can_track_time = True
+
+             if can_track_time:
                  if is_running:
                       c_act1, c_act2 = st.columns(2)
-                      if c_act1.button("Open Timer", icon=":material/timer:"):
+                      if c_act1.button("Open Timer", icon=":material/timer:", key=f"open_timer_{node_id}"): # key added for uniqueness
                           st.session_state.active_timer_node_id = node_id
                           if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                           st.rerun()
-                      if c_act2.button("Stop", icon=":material/stop_circle:"):
+                      if c_act2.button("Stop", icon=":material/stop_circle:", key=f"stop_timer_{node_id}"):
                           stop_timer(data, node_id, username)
                           if "active_timer_node_id" in st.session_state:
                               del st.session_state.active_timer_node_id
                           st.rerun()
                  else:
-                      if st.button("Start Timer", icon=":material/play_circle:"):
+                      if st.button("Start Timer", icon=":material/play_circle:", key=f"start_timer_{node_id}"):
                           start_timer(data, node_id, username)
                           st.session_state.active_timer_node_id = node_id
                           if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
@@ -1996,9 +2260,22 @@ def render_inspector_content(node_id, data, username):
                  c2.markdown(dur)
                  c3.markdown(f"<span style='color: #666'>{summ}</span>", unsafe_allow_html=True)
                  
-                 if c4.button("🗑️", key=f"del_log_{node_id}_{started_at}", help="Delete this entry", type="tertiary"):
-                     delete_work_log(data, node_id, started_at, username)
-                     st.rerun()
+                 
+                 # Permission Check for Deletion (Reuse logic if possible, or re-calc)
+                 # Re-calculating for safety in this scope
+                 can_delete_log = False
+                 creator_u = node.get("created_by_username") 
+                 if user_role == "admin": can_delete_log = True
+                 elif user_role == "manager" and (not creator_u or creator_u == username): can_delete_log = True
+                 elif user_role == "member":
+                      mgr_u = st.session_state.get("manager_username")
+                      if not creator_u or creator_u == username or creator_u == mgr_u:
+                          can_delete_log = True
+                 
+                 if can_delete_log:
+                     if c4.button("🗑️", key=f"del_log_{node_id}_{started_at}", help="Delete this entry", type="tertiary"):
+                         delete_work_log(data, node_id, started_at, username)
+                         st.rerun()
          else:
              st.info("No work recorded yet.")
 
@@ -2296,16 +2573,24 @@ def render_level(data, username, root_ids=None):
              if can_add:
                  normalized_btn = child_type.replace('_',' ').title()
                  if st.button(f"➕ New {normalized_btn}", key=f"add_btn_{current_node['id']}"):
-                     add_node(data, current_node["id"], child_type, f"New {normalized_btn}", "", username, cycle_id=st.session_state.active_cycle_id)
-                     st.rerun()
+                     if child_type == "TASK":
+                         render_create_task_dialog(data, current_node["id"], username)
+                     else:
+                         add_node(data, current_node["id"], child_type, f"New {normalized_btn}", "", username, cycle_id=st.session_state.active_cycle_id)
+                         st.rerun()
     else:
         st.markdown(f"## {level_name}")
         # Only Admins/Managers can create top-level Goals
         user_role = st.session_state.get("user_role", "member")
         if user_role in ["admin", "manager"]:
             if st.button("➕ New Goal"):
-                 add_node(data, None, "GOAL", "New Goal", "", username, cycle_id=st.session_state.active_cycle_id)
-                 st.rerun()
+                 cid = st.session_state.get("active_cycle_id")
+                 if not cid:
+                     st.error("No active cycle selected!")
+                 else:
+                     add_node(data, None, "GOAL", "New Goal", "", username, cycle_id=cid)
+                     st.toast("Goal Created!")
+                     st.rerun()
 
     st.markdown("---")
     

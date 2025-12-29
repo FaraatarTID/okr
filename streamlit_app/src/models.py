@@ -4,6 +4,7 @@ Hierarchy: Cycle -> Goal -> Strategy -> Objective -> KeyResult -> Initiative -> 
 Plus WorkLog for time tracking.
 """
 from sqlmodel import SQLModel, Field, Relationship
+from sqlalchemy import event, Index
 from sqlalchemy.orm import clear_mappers
 # Fix for Streamlit reloading: Clear existing mappers to prevent "Multiple classes found" error
 clear_mappers()
@@ -33,7 +34,10 @@ class UserRole(str, Enum):
 class User(SQLModel, table=True):
     """User account for authentication and authorization."""
     __tablename__ = "user"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        Index("ix_user_manager_active", "manager_id", "is_active"),
+        {"extend_existing": True}
+    )
     
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
@@ -67,7 +71,10 @@ class NodeBase(SQLModel):
 class Cycle(SQLModel, table=True):
     """Time-bound period for OKRs (e.g., Q1 2026)."""
     __tablename__ = "cycle"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        Index("ix_cycle_is_active", "is_active"),
+        {"extend_existing": True}
+    )
     
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(index=True)
@@ -82,7 +89,10 @@ class Cycle(SQLModel, table=True):
 class Goal(NodeBase, table=True):
     """Top-level strategic goal."""
     __tablename__ = "goal"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        Index("ix_goal_owner_cycle", "owner_id", "cycle_id"),
+        {"extend_existing": True}
+    )
     
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: str = Field(index=True)  # Legacy username string
@@ -160,7 +170,10 @@ class Initiative(NodeBase, table=True):
 class Task(NodeBase, table=True):
     """Actionable task within an initiative."""
     __tablename__ = "task"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        Index("ix_task_status_initiative", "status", "initiative_id"),
+        {"extend_existing": True}
+    )
     
     id: Optional[int] = Field(default=None, primary_key=True)
     initiative_id: Optional[int] = Field(default=None, foreign_key="initiative.id", index=True)
@@ -252,3 +265,13 @@ class AnalysisContext(SQLModel):
     completed_tasks: int
     total_minutes_spent: int
     kr_progress: List[float]
+
+
+# ============================================================================
+# EVENT LISTENERS
+# ============================================================================
+
+@event.listens_for(NodeBase, 'before_update', propagate=True)
+def timestamp_before_update(mapper, connection, target):
+    """Automatically update updated_at timestamp before update."""
+    target.updated_at = datetime.utcnow()

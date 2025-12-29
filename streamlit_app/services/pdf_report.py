@@ -39,10 +39,10 @@ def is_deployed_environment():
        if 'PDF_METHOD' in st.secrets:
            method = str(st.secrets['PDF_METHOD']).lower()
            if method == 'pdfkit':
-               print("🔧 SECRETS: Forcing pdfkit (Local)")
+               print("SECRETS: Forcing pdfkit (Local)")
                return False
            elif method == 'pdfshift':
-               print("🔧 SECRETS: Forcing PDFShift (Cloud)")
+               print("SECRETS: Forcing PDFShift (Cloud)")
                return True
     except Exception as e:
        pass  # If secrets not available, continue to other detection methods
@@ -234,13 +234,13 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
     if achievements:
         html += """
     <div style="margin-bottom: 20px;">
-        <h3>🏆 Key Achievements</h3>
+        <h3>Key Achievements</h3>
         <ul style="list-style-type: none; padding: 0;">
 """
         for a in achievements:
              html += f"""
             <li style="padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center;">
-                <span style="color: #2ecc71; margin-right: 10px; font-size: 1.2em;">✅</span>
+                <span style="color: #2ecc71; margin-right: 10px; font-size: 1.2em;">[OK]</span>
                 <span style="font-weight: 500;">{a}</span>
             </li>"""
         html += """
@@ -492,7 +492,7 @@ def generate_pdf_with_pdfkit(html):
                     break
             
             if not config:
-                st.error("⚠️ wkhtmltopdf not found. Please install it from: https://wkhtmltopdf.org/downloads.html")
+                st.error("wkhtmltopdf not found. Please install it from: https://wkhtmltopdf.org/downloads.html")
                 return None
         else:
             config = None  # Linux/Mac should have it in PATH
@@ -536,13 +536,13 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
     
     # Choose appropriate PDF generation method
     if is_deployed:
-        print("🌐 Using PDFShift (Cloud Environment)")
+        print("Using PDFShift (Cloud Environment)")
         if not PDFSHIFT_AVAILABLE:
             st.error("PDFShift not available. Please install: pip install requests")
             return None
         return generate_pdf_with_pdfshift(html)
     else:
-        print("💻 Using pdfkit (Local Environment)")
+        print("Using pdfkit (Local Environment)")
         if not PDFKIT_AVAILABLE:
             st.error("pdfkit not available. Please install: pip install pdfkit")
             st.info("Also install wkhtmltopdf from: https://wkhtmltopdf.org/downloads.html")

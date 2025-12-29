@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 import json
 from typing import Optional, List
 from datetime import datetime, timedelta
+from src.services.sheet_sync import sync_service
 
 from src.models import (
     Goal, Strategy, Objective, KeyResult, Initiative, Task, WorkLog,
@@ -44,6 +45,8 @@ def create_user(username: str, password: str, role: UserRole = UserRole.MEMBER,
         session.add(user)
         session.commit()
         session.refresh(user)
+        # S Y N C
+        sync_service.push_update(user)
         return user
 
 
@@ -100,6 +103,8 @@ def update_user(user_id: int, display_name: str = None, role: UserRole = None,
         session.add(user)
         session.commit()
         session.refresh(user)
+        # S Y N C
+        sync_service.push_update(user)
         return user
 
 
@@ -159,6 +164,8 @@ def create_check_in(kr_id: int, value: float, confidence: int, comment: str) -> 
             
         session.commit()
         session.refresh(check_in)
+        # S Y N C
+        sync_service.push_update(check_in)
         return check_in
 
 def get_check_ins(kr_id: int) -> List[CheckIn]:
@@ -221,6 +228,8 @@ def create_cycle(title: str, start_date: datetime, end_date: datetime, is_active
         session.add(cycle)
         session.commit()
         session.refresh(cycle)
+        # S Y N C
+        sync_service.push_update(cycle)
         return cycle
 
 
@@ -254,6 +263,8 @@ def update_cycle(cycle_id: int, title: str, start_date: datetime, end_date: date
         session.add(cycle)
         session.commit()
         session.refresh(cycle)
+        # S Y N C
+        sync_service.push_update(cycle)
         return cycle
 
 def delete_cycle(cycle_id: int) -> bool:
@@ -271,25 +282,28 @@ def delete_cycle(cycle_id: int) -> bool:
             
         session.delete(cycle)
         session.commit()
+        # S Y N C (Delete)
+        sync_service.push_update(cycle, delete=True)
         return True
 
 # ============================================================================
 # LEADERSHIP ANALYTICS (Phase 3)
 # ============================================================================
 
-def get_leadership_metrics(user_id: str, cycle_id: int):
+def get_leadership_metrics(user_ids: List[str], cycle_id: int):
     """
     Aggregate metrics for the Strategic Health Dashboard.
     Returns hygiene %, confidence trends, and heatmap data.
     """
     with get_session_context() as session:
-        # 1. Get all KRs in this cycle
+        # 1. Get all KRs in this cycle for selected users
         statement = (
             select(KeyResult)
             .join(Objective)
             .join(Strategy)
             .join(Goal)
             .where(Goal.cycle_id == cycle_id)
+            .where(Goal.user_id.in_(user_ids))
         )
         krs = session.exec(statement).all()
         
@@ -770,6 +784,9 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
         session.commit()
         session.refresh(work_log)
         
+        # S Y N C
+        sync_service.push_update(work_log)
+        
         return work_log
 
 
@@ -811,6 +828,9 @@ def stop_timer(task_id: int, note: str = None) -> Optional[WorkLog]:
             session.add(task)
             session.commit()
             session.refresh(work_log)
+            
+            # S Y N C
+            sync_service.push_update(work_log)
             
             return work_log
         
