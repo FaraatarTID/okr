@@ -117,7 +117,7 @@ def load_data_from_db(username, cycle_id=None):
                 "children": [],
                 "isExpanded": getattr(node, "is_expanded", True),
                 "cycle_id": getattr(node, "cycle_id", None),
-                "deadline": getattr(node, "deadline", None).isoformat() if getattr(node, "deadline", None) else None,
+                "deadline": getattr(node, "deadline", None),
                 "createdAt": int(node.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if node.created_at else None,
             }
             
@@ -145,6 +145,7 @@ def load_data_from_db(username, cycle_id=None):
                 n_dict.update({
                     "status": node.status.value if hasattr(node.status, 'value') else node.status,
                     "timeSpent": node.total_time_spent,
+                    "start_date": getattr(node, "start_date", None).isoformat() if getattr(node, "start_date", None) else None,
                     "timerStartedAt": int(node.timer_started_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if node.timer_started_at else None,
                     "workLog": [
                         {
@@ -388,7 +389,7 @@ def update_node_progress(node_id, nodes):
     
     return nodes
 
-def add_node(data_store, parent_id, node_type, title, description, username=None, cycle_id=None, assignees=None):
+def add_node(data_store, parent_id, node_type, title, description, username=None, cycle_id=None, assignees=None, start_date=None, deadline=None):
     # Auto-numbering logic
     # Find siblings
     siblings_count = 0
@@ -459,10 +460,10 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
         if p_json and p_json.get("type", "").upper() == "KEY_RESULT":
             # Ensure we have an Initiative container.
             actual_parent_id = get_or_create_default_initiative(parent_sql_id)
-            create_task(initiative_id=actual_parent_id, title=final_title, description=description, external_id=new_id)
+            create_task(initiative_id=actual_parent_id, title=final_title, description=description, external_id=new_id, start_date=start_date, deadline=deadline)
         else:
             # Already an initiative or fallback
-            create_task(initiative_id=parent_sql_id, title=final_title, description=description, external_id=new_id)
+            create_task(initiative_id=parent_sql_id, title=final_title, description=description, external_id=new_id, start_date=start_date, deadline=deadline)
 
     # --- 2. JSON/MEMORY UPDATE (BACKUP) ---
     new_node = {
@@ -568,7 +569,8 @@ def update_node(data_store, node_id, updates, username=None):
             "target_value": "target_value",
             "current_value": "current_value",
             "strategy_tags": "strategy_tags",
-            "initiative_tags": "initiative_tags"
+            "initiative_tags": "initiative_tags",
+            "start_date": "start_date"
         }
         for k, v in updates.items():
             if k in mapping:

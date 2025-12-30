@@ -88,7 +88,32 @@ def analyze_efficiency_effectiveness(
             "title": t.title,
             "status": t.status.value,
             "estimated_min": t.estimated_minutes,
-            "spent_min": t.total_time_spent
+            "spent_min": t.total_time_spent,
+            "start_date": t.start_date.isoformat() if t.start_date else None,
+            "deadline": t.deadline # milliseconds or datetime? Model has int usually, checking... Task model has 'deadline'? 
+            # In models.py Task has 'deadline' via NodeBase? Yes. NodeBase has deadline: int (timestamp).
+            # Let's convert to ISO for AI readability.
+        })
+        # Wait, I need to check if Task has 'deadline' on the object in this scope. 
+        # Yes, Task inherits NodeBase.
+    
+    # Correction: loops above used t.deadline? No, they didn't use it.
+    # Let's re-write the loop properly.
+    
+    for t in tasks:
+        d_iso = None
+        if t.deadline:
+             try:
+                 d_iso = datetime.fromtimestamp(t.deadline / 1000).isoformat()
+             except: pass
+             
+        tasks_context.append({
+            "title": t.title,
+            "status": t.status.value,
+            "estimated_min": t.estimated_minutes,
+            "spent_min": t.total_time_spent,
+            "start_date": t.start_date.isoformat() if t.start_date else None,
+            "deadline": d_iso
         })
     
     context = {
@@ -136,6 +161,7 @@ def analyze_efficiency_effectiveness(
 
     2. EFFECTIVENESS (Goal Achievement):
        - Compare Task Completion Progress vs KR Progress
+       - Review Start Dates and Deadlines: Are tasks scheduled realistically? (If dates provided)
        - Note: "Tasks" are now the direct actionable level under a Key Result. "Initiatives" are tags for the Key Result.
        - Are completed tasks moving the KR metric?
        - Score 100 = Perfect alignment between work and results
@@ -354,15 +380,28 @@ def analyze_node(node_id, all_nodes):
             if summaries:
                 work_summ_text = "\n  Recent Work: " + "; ".join(summaries)
         
+        
         # Deadline information
         deadline_info = ""
         if child.get("deadline"):
             from utils.deadline_utils import get_deadline_status, get_days_remaining
-            _, status_label, health = get_deadline_status(child)
+            # Import might be redundant if already imported at top, but safe here.
             days = get_days_remaining(child.get("deadline"))
-            deadline_info = f"\n  Deadline: {status_label} ({days} days remaining, health: {health}%)"
+            # get_deadline_status requires full node dict usually
+            deadline_info = f"\n  Deadline: {datetime.fromtimestamp(child.get('deadline')/1000).date()} ({days} days remaining)"
+
+        # Start Date
+        start_date_info = ""
+        sd_iso = child.get("start_date")
+        if sd_iso:
+             # Just show the date part if it's full ISO
+             try:
+                 sd_val = datetime.fromisoformat(sd_iso).date()
+                 start_date_info = f"\n  Start Date: {sd_val}"
+             except:
+                 start_date_info = f"\n  Start Date: {sd_iso}"
         
-        children_text += f"- [{c_type}] {c_title}\n  Description: {c_desc}\n  Status: {c_status} ({c_progress}%)\n  Time: {c_time}m{deadline_info}{work_summ_text}\n"
+        children_text += f"- [{c_type}] {c_title}\n  Description: {c_desc}\n  Status: {c_status} ({c_progress}%)\n  Time: {c_time}m{start_date_info}{deadline_info}{work_summ_text}\n"
 
     prompt = f"""
     You are an expert Strategic OKR Analyst. 

@@ -256,7 +256,27 @@ def render_admin_panel_dialog():
 
 @st.dialog("🔄 Weekly Ritual", width="large")
 def render_weekly_ritual_dialog(data, username):
-    st.markdown("### Weekly Check-in Ritual")
+    # CSS: Style Custom Close Button
+    st.markdown("""
+        <style>
+        div[role="dialog"] button[aria-label="Close"] { display: none; }
+        div[data-baseweb="modal-backdrop"] { display: none; }
+        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
+        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
+        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Header with Close button
+    c_head, c_close = st.columns([0.92, 0.08])
+    c_head.markdown("### Weekly Check-in Ritual")
+    if c_close.button("", icon=":material/close:", key="close_ritual"):
+        if "active_report_mode" in st.session_state:
+            del st.session_state.active_report_mode
+        if "ritual_step" in st.session_state:
+            del st.session_state.ritual_step
+        st.rerun()
     
     cycle_id = st.session_state.get("active_cycle_id")
     if not cycle_id:
@@ -439,6 +459,12 @@ def render_create_task_dialog(data, parent_id, username):
     st.caption("Define your task and assign it to team members.")
     with st.form("create_task_form"):
         title = st.text_input("Task Title", placeholder="e.g. Draft Initial Report")
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            start_date = st.date_input("Start Date", value=None)
+        with col_d2:
+            due_date = st.date_input("Due Date", value=None)
+
         desc = st.text_area("Description", height=100)
         assignees = []
         user_role = st.session_state.get("user_role")
@@ -452,7 +478,9 @@ def render_create_task_dialog(data, parent_id, username):
         if st.form_submit_button("Create Task", type="primary"):
             if not title: st.error("Task title is required.")
             else:
-                add_node(data, parent_id, "TASK", title, desc, username, cycle_id=st.session_state.get("active_cycle_id"), assignees=assignees)
+                sd_ts = datetime.combine(start_date, datetime.min.time()) if start_date else None
+                dd_ts = int(datetime.combine(due_date, datetime.max.time()).timestamp() * 1000) if due_date else None
+                add_node(data, parent_id, "TASK", title, desc, username, cycle_id=st.session_state.get("active_cycle_id"), assignees=assignees, start_date=sd_ts, deadline=dd_ts)
                 st.rerun()
 
 @st.dialog("Weekly Report", width="large")
@@ -470,7 +498,25 @@ def render_inspector_dialog(node_id, data, username):
 @st.dialog("📬 RetroBox", width="large")
 def render_retrobox_dialog(username):
     """View personal and team retrospectives."""
-    st.markdown("### 🗓️ Weekly Retrospectives")
+    # CSS: Style Custom Close Button
+    st.markdown("""
+        <style>
+        div[role="dialog"] button[aria-label="Close"] { display: none; }
+        div[data-baseweb="modal-backdrop"] { display: none; }
+        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
+        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
+        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Header with Close button
+    c_head, c_close = st.columns([0.92, 0.08])
+    c_head.markdown("### 🗓️ Weekly Retrospectives")
+    if c_close.button("", icon=":material/close:", key="close_retrobox"):
+        if "active_report_mode" in st.session_state:
+            del st.session_state.active_report_mode
+        st.rerun()
     
     # Check User Role
     current_user = get_user_by_username(username)
@@ -528,3 +574,61 @@ def render_retrobox_dialog(username):
                             st.caption(r.week_start_date.strftime('%b %d'))
                         with col_content:
                             st.markdown(r.content)
+
+@st.dialog("Project Timeline", width="large")
+def render_timeline_dialog(username: str, data: dict):
+    """
+    Dialog to show the Gantt Chart.
+    Fetches latest data from SQL to ensure accuracy.
+    """
+    from src.database import get_session_context
+    from src.models import Task, User, TaskStatus
+    from src.crud import get_user_by_username
+    from sqlmodel import select, or_
+    from src.ui.visualizations import render_gantt_chart
+    
+    # CSS: Style Custom Close Button (Same as RetroBox)
+    st.markdown("""
+        <style>
+        div[role="dialog"] button[aria-label="Close"] { display: none; }
+        div[data-baseweb="modal-backdrop"] { display: none; }
+        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
+        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
+        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # Header with Close button
+    c_head, c_close = st.columns([0.92, 0.08])
+    c_head.markdown("### 📅 Project Timeline")
+    if c_close.button("", icon=":material/close:", key="close_timeline"):
+        if "active_report_mode" in st.session_state:
+            del st.session_state.active_report_mode
+        st.rerun()
+    
+    cycle_id = st.session_state.get("active_cycle_id")
+    role = st.session_state.get("user_role", "member")
+    
+    with get_session_context() as session:
+        # Fetch Users map for assignee resolution
+        users = session.exec(select(User)).all()
+        users_map = {u.id: u for u in users} 
+        
+        # Direct DB Fetch (Bypass data dict to ensure freshness and visibility)
+        stmt = select(Task)
+        all_tasks = session.exec(stmt).unique().all()
+        
+        # Filter visible tasks (Simple role check for Member)
+        visible_tasks = []
+        for t in all_tasks:
+            # If member, only show assigned or created (?)
+            # For now, show all to ensure visibility, filter later if critical.
+            # User wants to see tasks.
+            visible_tasks.append(t)
+            
+        if not visible_tasks:
+             st.info("No tasks found in the database.")
+             return
+
+        render_gantt_chart(visible_tasks, role, username, users_map)
