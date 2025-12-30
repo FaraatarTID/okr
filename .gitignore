@@ -14,7 +14,3 @@ okr_data.json
 okr_database.db
 *.db
 node_modules
-
-#logs
-run_app.log
-run_app.log)
