@@ -12,7 +12,7 @@ from src.services.sheet_sync import sync_service
 from src.models import (
     Goal, Strategy, Objective, KeyResult, Initiative, Task, WorkLog,
     TaskStatus, DashboardGoal, TaskWithTimer, Cycle, CheckIn, User, UserRole,
-    WeeklyPlan
+    WeeklyPlan, Retrospective
 )
 from src.database import get_session_context
 import bcrypt
@@ -1307,3 +1307,68 @@ def get_active_weekly_plan(user_id: int, date: datetime = None) -> Optional[Week
             .order_by(col(WeeklyPlan.created_at).desc())
         )
         return session.exec(statement).first()
+# ============================================================================
+# RETROSPECTIVE OPERATIONS
+# ============================================================================
+
+def create_retrospective(user_id: int, cycle_id: int, week_start_date: datetime,
+                         content: str, sentiment: str = None) -> Retrospective:
+    """Create a new retrospective entry."""
+    with get_session_context() as session:
+        # Check if exists for this week? Optional: Enforce one per week per user
+        statement = (
+            select(Retrospective)
+            .where(Retrospective.user_id == user_id)
+            .where(Retrospective.week_start_date == week_start_date)
+        )
+        existing = session.exec(statement).first()
+        
+        if existing:
+            existing.content = content
+            existing.sentiment = sentiment
+            existing.created_at = datetime.utcnow()
+            session.add(existing)
+            session.commit()
+            session.refresh(existing)
+            # S Y N C
+            sync_service.push_update(existing)
+            return existing
+        else:
+            retro = Retrospective(
+                user_id=user_id,
+                cycle_id=cycle_id,
+                week_start_date=week_start_date,
+                content=content,
+                sentiment=sentiment
+            )
+            session.add(retro)
+            session.commit()
+            session.refresh(retro)
+            # S Y N C
+            sync_service.push_update(retro)
+            return retro
+
+
+def get_user_retrospectives(user_id: int, cycle_id: int = None) -> List[Retrospective]:
+    """Get all retrospectives for a user."""
+    with get_session_context() as session:
+        stmt = select(Retrospective).where(Retrospective.user_id == user_id)
+        if cycle_id:
+            stmt = stmt.where(Retrospective.cycle_id == cycle_id)
+        stmt = stmt.order_by(col(Retrospective.week_start_date).desc())
+        return list(session.exec(stmt).all())
+
+
+def get_team_retrospectives(manager_id: int, cycle_id: int = None) -> List[Retrospective]:
+    """Get retrospectives for all members of a manager's team."""
+    with get_session_context() as session:
+        # Join User to filter by manager_id
+        stmt = (
+            select(Retrospective)
+            .join(User)
+            .where(User.manager_id == manager_id)
+        )
+        if cycle_id:
+            stmt = stmt.where(Retrospective.cycle_id == cycle_id)
+        stmt = stmt.order_by(col(Retrospective.week_start_date).desc())
+        return list(session.exec(stmt).all())

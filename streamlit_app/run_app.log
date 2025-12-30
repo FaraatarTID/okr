@@ -5,16 +5,146 @@
   Network URL: http://172.18.0.1:8501
   External URL: http://37.252.10.104:8501
 
-2025-12-29 18:54:08.697 Uncaught app execution
+2025-12-30 10:30:49.363 Uncaught app execution
 Traceback (most recent call last):
   File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
     result = func()
   File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 671, in code_to_exec
     exec(code, module.__dict__)  # noqa: S102
     ~~~~^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 12, in <module>
-    from src.services.sheet_sync import sync_service
-  File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1331, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 946, in _load_unlocked
-KeyError: 'src.services.sheet_sync'
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 325, in <module>
+    main()
+    ~~~~^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 317, in main
+    ensure_admin_exists() # Create default admin if no users
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\crud.py", line 128, in ensure_admin_exists
+    existing = session.exec(statement).first()
+               ~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlmodel\orm\session.py", line 83, in exec
+    results = super().execute(
+        statement,
+    ...<4 lines>...
+        _add_event=_add_event,
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1633, in _execute_clauseelement
+    compiled_sql, extracted_params, cache_hit = elem._compile_w_cache(
+                                                ~~~~~~~~~~~~~~~~~~~~~^
+        dialect=dialect,
+        ^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+        linting=self.dialect.compiler_linting | compiler.WARN_LINTING,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 716, in _compile_w_cache
+    compiled_sql = self._compiler(
+        dialect,
+    ...<4 lines>...
+        **kw,
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 324, in _compiler
+    return dialect.statement_compiler(dialect, self, **kw)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\compiler.py", line 1447, in __init__
+    Compiled.__init__(self, dialect, statement, **kwargs)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\compiler.py", line 887, in __init__
+    self.string = self.process(self.statement, **compile_kwargs)
+                  ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\compiler.py", line 933, in process
+    return obj._compiler_dispatch(self, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\visitors.py", line 138, in _compiler_dispatch
+    return meth(self, **kw)  # type: ignore  # noqa: E501
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\compiler.py", line 4782, in visit_select
+    compile_state = select_stmt._compile_state_factory(
+        select_stmt, self, **kwargs
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\base.py", line 701, in create_for_statement
+    return klass.create_for_statement(statement, compiler, **kw)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\context.py", line 447, in create_for_statement
+    return cls._create_orm_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~^
+        cast("Union[Select, FromStatement]", statement),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        **kw,
+        ^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\context.py", line 1175, in _create_orm_context
+    _QueryEntity.to_compile_state(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<2 lines>...
+        is_current_entities=True,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\context.py", line 2628, in to_compile_state
+    _MapperEntity(
+    ~~~~~~~~~~~~~^
+        compile_state,
+        ^^^^^^^^^^^^^^
+    ...<2 lines>...
+        is_current_entities,
+        ^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\context.py", line 2708, in __init__
+    entity._post_inspect
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 1338, in __get__
+    obj.__dict__[self.__name__] = result = self.fget(obj)
+                                           ~~~~~~~~~^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\mapper.py", line 2733, in _post_inspect
+    self._check_configure()
+    ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\mapper.py", line 2410, in _check_configure
+    _configure_registries({self.registry}, cascade=True)
+    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\mapper.py", line 4227, in _configure_registries
+    _do_configure_registries(registries, cascade)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\mapper.py", line 4264, in _do_configure_registries
+    raise e
+sqlalchemy.exc.InvalidRequestError: One or more mappers failed to initialize - can't proceed with initialization of other mappers. Triggering mapper: 'Mapper[Retrospective(retrospective)]'. Original exception was: reverse_property 'goals' on relationship Retrospective.cycle references relationship Cycle.goals, which does not reference mapper Mapper[Retrospective(retrospective)]

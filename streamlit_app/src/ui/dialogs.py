@@ -16,7 +16,8 @@ from src.crud import (
     get_all_cycles, create_cycle, update_cycle, delete_cycle,
     get_all_users, update_user, create_user, reset_user_password,
     get_team_members, get_user_by_id, get_user_by_username,
-    get_krs_needing_checkin, create_check_in, create_weekly_plan
+    get_krs_needing_checkin, create_check_in, create_weekly_plan,
+    create_retrospective, get_user_retrospectives, get_team_retrospectives
 )
 from src.models import UserRole
 from utils.storage import add_node, save_data
@@ -322,7 +323,45 @@ def render_weekly_ritual_dialog(data, username):
         
         st.markdown(f"**Total Focus Time:** {format_time(total_minutes)} this week.")
         
-        if st.button("Next: Update KRs ➡️", type="primary"):
+        # --- RETROSPECTIVE INPUT ---
+        st.markdown("---")
+        st.markdown("#### 📝 Your Retrospective")
+        st.caption("Reflect on your week. What went well? What blocked you? This is visible to your manager.")
+        
+        # Check for existing retro for this week
+        # We define "this week" as the start_date calculated above
+        current_user_obj = get_user_by_username(username)
+        existing_retro = None
+        if current_user_obj:
+            # We need to find if there's a retro for roughly this week.
+            # Using exact match on start_date might be tricky if calc differs slightly.
+            # Let's fetch all and find one close? Or just use the exact start_date we just calculated.
+            # For simplicity, we use the calculated start_date (7 days ago) as the anchor.
+            # Better: Fetch latest and see if it's recent? 
+            # Let's use get_user_retrospectives and check date.
+            past_retros = get_user_retrospectives(current_user_obj.id, cycle_id)
+            for r in past_retros:
+                # If created within last 7 days? Or week_start_date matches?
+                # Let's match week_start_date.
+                if r.week_start_date.date() == start_date.date():
+                    existing_retro = r
+                    break
+        
+        default_retro = existing_retro.content if existing_retro else ""
+        retro_input = st.text_area("Your Thoughts", value=default_retro, height=150, key="retro_input_area")
+        
+        col_r1, col_r2 = st.columns([1, 4])
+        if col_r1.button("Next: Update KRs ➡️", type="primary"):
+            # Save Retrospective
+            if retro_input and current_user_obj:
+                create_retrospective(
+                    user_id=current_user_obj.id,
+                    cycle_id=cycle_id,
+                    week_start_date=start_date,
+                    content=retro_input
+                )
+                st.toast("Retrospective Saved!")
+            
             st.session_state.ritual_step = 2
             st.rerun()
 
@@ -427,3 +466,65 @@ def render_daily_report_dialog(data, username):
 @st.dialog("Inspect & Edit", width="large")
 def render_inspector_dialog(node_id, data, username):
     render_inspector_content(node_id, data, username)
+
+@st.dialog("📬 RetroBox", width="large")
+def render_retrobox_dialog(username):
+    """View personal and team retrospectives."""
+    st.markdown("### 🗓️ Weekly Retrospectives")
+    
+    # Check User Role
+    current_user = get_user_by_username(username)
+    if not current_user:
+        st.error("User context lost.")
+        return
+        
+    cycle_id = st.session_state.get("active_cycle_id")
+    
+    # Tabs: My Retros | Team Retros (if Manager)
+    tabs_labels = ["👤 My Retros"]
+    if current_user.role in ["manager", "admin"]:
+        tabs_labels.append("👥 Team Retros")
+    
+    tabs = st.tabs(tabs_labels)
+    
+    # --- MY RETROS ---
+    with tabs[0]:
+        my_retros = get_user_retrospectives(current_user.id, cycle_id)
+        if not my_retros:
+            st.info("No retrospectives found for this cycle.")
+        else:
+            for r in my_retros:
+                with st.expander(f"Week of {r.week_start_date.strftime('%b %d, %Y')}", expanded=True):
+                    st.markdown(r.content)
+                    st.caption(f"Submitted on: {r.created_at.strftime('%Y-%m-%d %H:%M')}")
+    
+    # --- TEAM RETROS ---
+    if len(tabs) > 1:
+        with tabs[1]:
+            team_retros = get_team_retrospectives(current_user.id, cycle_id)
+            if not team_retros:
+                st.info("No team retrospectives found.")
+            else:
+                # Group by User or Week? Group by Week is usually better for managers to see pulse.
+                # Or Group by User. Let's do a selectbox filter.
+                
+                # Fetch team members for filter
+                team_members = get_team_members(current_user.id)
+                member_options = {"All": None}
+                for m in team_members: member_options[m.display_name] = m.id
+                
+                selected_member_name = st.selectbox("Filter by Member", options=list(member_options.keys()))
+                selected_member_id = member_options[selected_member_name]
+                
+                for r in team_retros:
+                    # Filter logic
+                    if selected_member_id and r.user.id != selected_member_id:
+                        continue
+                        
+                    with st.container(border=True):
+                        col_av, col_content = st.columns([1, 5])
+                        with col_av:
+                            st.markdown(f"**{r.user.display_name}**")
+                            st.caption(r.week_start_date.strftime('%b %d'))
+                        with col_content:
+                            st.markdown(r.content)
