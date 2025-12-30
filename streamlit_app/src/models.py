@@ -62,6 +62,7 @@ class NodeBase(SQLModel):
     updated_at: Optional[datetime] = None
     is_expanded: bool = Field(default=True)
     external_id: Optional[str] = Field(default=None, index=True)
+    deadline: Optional[int] = Field(default=None, description="Unix timestamp in milliseconds")
 
 
 # ============================================================================
@@ -223,6 +224,7 @@ class Task(NodeBase, table=True):
     
     # Task-specific fields
     status: TaskStatus = Field(default=TaskStatus.TODO)
+    start_date: Optional[datetime] = None
     estimated_minutes: int = Field(default=0)
     total_time_spent: int = Field(default=0)  # Cached sum of work logs (minutes)
     

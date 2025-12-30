@@ -669,7 +669,7 @@ def get_or_create_default_initiative(key_result_id: int) -> int:
 
 
 def create_task(initiative_id: Optional[int] = None, key_result_id: Optional[int] = None, title: str = "", description: str = "",
-                estimated_minutes: int = 0, external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Task:
+                estimated_minutes: int = 0, external_id: Optional[str] = None, created_at: Optional[datetime] = None, start_date: Optional[datetime] = None, deadline: Optional[int] = None) -> Task:
     """Create a new task under an initiative or directly under a key result."""
     with get_session_context() as session:
         if initiative_id:
@@ -697,7 +697,9 @@ def create_task(initiative_id: Optional[int] = None, key_result_id: Optional[int
             description=description,
             estimated_minutes=estimated_minutes,
             external_id=external_id,
-            created_at=created_at or datetime.utcnow()
+            created_at=created_at or datetime.utcnow(),
+            start_date=start_date,
+            deadline=deadline
         )
         session.add(task)
         session.commit()
@@ -806,6 +808,36 @@ def update_initiative(initiative_id: int, **updates) -> Optional[Initiative]:
             session.commit()
             session.refresh(item)
         return item
+
+
+def update_task(task_id: int, title: str = None, 
+                status: TaskStatus = None, 
+                estimated_minutes: int = None,
+                start_date: Optional[datetime] = None,
+                **kwargs) -> Optional[Task]:
+    """Update task details."""
+    with get_session_context() as session:
+        task = session.get(Task, task_id)
+        if not task:
+            return None
+            
+        if title is not None: task.title = title
+        if status is not None: task.status = status
+        if estimated_minutes is not None: task.estimated_minutes = estimated_minutes
+        if start_date is not None: task.start_date = start_date
+        
+        # Handle generic kwargs (e.g. deadline)
+        for key, value in kwargs.items():
+            if hasattr(task, key):
+                setattr(task, key, value)
+
+        task.updated_at = datetime.utcnow()
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+        # S Y N C
+        sync_service.push_update(task)
+        return task
 
 
 # ============================================================================

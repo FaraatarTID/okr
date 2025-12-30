@@ -1356,27 +1356,58 @@ def render_inspector_content(node_id, data, username):
 
     if node_type_insp == "TASK":
         st.markdown("---")
-        st.write("### 📅 Deadline")
-        from utils.deadline_utils import get_deadline_status, get_days_remaining
+        st.write("### 📅 Schedule")
+        from utils.deadline_utils import get_deadline_status
+        # Start Date
+        curr_sd_iso = node.get("start_date")
+        curr_sd = datetime.fromisoformat(curr_sd_iso).date() if curr_sd_iso else None
+        
+        # Deadline
         curr_dl = node.get("deadline")
         curr_d = datetime.fromtimestamp(curr_dl / 1000).date() if curr_dl else None
         
-        cd1, cd2 = st.columns([2, 1])
-        with cd1:
+        col_sch1, col_sch2 = st.columns(2)
+        with col_sch1:
+            new_sd = st.date_input("Start Date", value=curr_sd, key=f"sd_inp_{node_id}")
+            new_sd_ts = int(datetime.combine(new_sd, datetime.min.time()).timestamp() * 1000) if new_sd else None # Not used directly if we store ISO string or datetime
+            # Storage update_node expects simple dict, map to 'start_date' expects datetime object or string? 
+            # In update_node -> crud.update_task -> start_date: datetime.
+            # So passing datetime object is best for crud, but storage.py update_node maps JSON updates.
+            # Wait, storage.py update_node maps to sql_updates. 
+            # If I pass a datetime object to update_node, storage.py needs to handle it?
+            # Storage update_node (line 550) logic:
+            # if model_class == Task: update_task(sql_node.id, **sql_updates)
+            # And it maps keys. My update to storage.py added "start_date": "start_date" to mapping.
+            # And `update_task` expects `datetime`.
+            # If I pass `new_sd` (date), I should combine it to datetime.
+            
+            new_sd_dt = datetime.combine(new_sd, datetime.min.time()) if new_sd else None
+            
+            if st.button("💾 Save Start Date", key=f"save_sd_{node_id}"):
+                update_node(data, node_id, {"start_date": new_sd_dt}, username)
+                st.rerun()
+
+        with col_sch2:
             new_d = st.date_input("Due Date", value=curr_d, key=f"dl_inp_{node_id}")
             new_dl_ts = int(datetime.combine(new_d, datetime.max.time()).timestamp() * 1000) if new_d else None
-            b1, b2 = st.columns(2)
-            if b1.button("💾 Save Deadline", key=f"save_dl_{node_id}"):
+            
+            if st.button("💾 Save Due Date", key=f"save_dl_{node_id}"):
                 update_node(data, node_id, {"deadline": new_dl_ts}, username)
                 st.rerun()
-            if curr_dl and b2.button("🗑️ Clear", key=f"clear_dl_{node_id}"):
-                update_node(data, node_id, {"deadline": None}, username)
-                st.rerun()
-        with cd2:
-            if curr_dl:
-                st_code, st_lbl, hlth = get_deadline_status(node)
-                st.metric("Status", st_lbl)
-                st.progress(hlth / 100)
+
+        # Clear Buttons Row
+        clr1, clr2 = st.columns(2)
+        if curr_sd and clr1.button("🗑️ Clear Start", key=f"clear_sd_{node_id}"):
+             update_node(data, node_id, {"start_date": None}, username)
+             st.rerun()
+        if curr_dl and clr2.button("🗑️ Clear Due", key=f"clear_dl_{node_id}"):
+             update_node(data, node_id, {"deadline": None}, username)
+             st.rerun()
+
+        if curr_dl:
+             st_code, st_lbl, hlth = get_deadline_status(node)
+             st.metric("Deadline Status", st_lbl)
+             st.progress(hlth / 100)
 
     if node_type_insp == "TASK":
          st.markdown("---")
