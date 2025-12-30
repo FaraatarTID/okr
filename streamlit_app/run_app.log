@@ -148,3 +148,379 @@ Traceback (most recent call last):
   File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\mapper.py", line 4264, in _do_configure_registries
     raise e
 sqlalchemy.exc.InvalidRequestError: One or more mappers failed to initialize - can't proceed with initialization of other mappers. Triggering mapper: 'Mapper[Retrospective(retrospective)]'. Original exception was: reverse_property 'goals' on relationship Retrospective.cycle references relationship Cycle.goals, which does not reference mapper Mapper[Retrospective(retrospective)]
+2025-12-30 10:45:49.242 The fragment with id ea0936d2e6d98b3360568d84f6bd8ed8 does not exist anymore - it might have been removed during a preceding full-app rerun.
+2025-12-30 10:46:02.332 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: no such column: task.start_date
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 671, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 325, in <module>
+    main()
+    ~~~~^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 322, in main
+    render_app(st.session_state["username"])
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 170, in render_app
+    data = load_all_data()
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 304, in load_all_data
+    user_data = load_data_from_db(user.username)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 83, in load_data_from_db
+    full_goal = get_goal_tree(goal.id)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\crud.py", line 459, in get_goal_tree
+    goal = session.exec(statement).first()
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\result.py", line 1791, in first
+    return self._only_one_row(
+           ~~~~~~~~~~~~~~~~~~^
+        raise_for_second_row=False, raise_for_none=False, scalar=False
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\result.py", line 757, in _only_one_row
+    row: Optional[_InterimRowType[Any]] = onerow(hard_close=True)
+                                          ~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\result.py", line 1678, in _fetchone_impl
+    return self._real_result._fetchone_impl(hard_close=hard_close)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\result.py", line 2264, in _fetchone_impl
+    row = next(self.iterator, _NO_ROW)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 247, in chunks
+    post_load.invoke(context, path)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 1564, in invoke
+    loader(
+    ~~~~~~^
+        effective_context, path, states, self.load_keys, *arg, **kw
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategies.py", line 3338, in _load_for_path
+    self._load_via_parent(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        our_states, query_info, q, context, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategies.py", line 3414, in _load_via_parent
+    context.session.execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        q,
+        ^^
+        params={"primary_keys": primary_keys},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        execution_options=execution_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ).unique(),
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlmodel\orm\session.py", line 144, in execute
+    return super().execute(
+           ~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: task.start_date
+[SQL: SELECT task.key_result_id AS task_key_result_id, task.title AS task_title, task.description AS task_description, task.progress AS task_progress, task.created_at AS task_created_at, task.updated_at AS task_updated_at, task.is_expanded AS task_is_expanded, task.external_id AS task_external_id, task.id AS task_id, task.initiative_id AS task_initiative_id, task.status AS task_status, task.estimated_minutes AS task_estimated_minutes, task.total_time_spent AS task_total_time_spent, task.timer_started_at AS task_timer_started_at, task.start_date AS task_start_date 
+FROM task 
+WHERE task.key_result_id IN (?)]
+[parameters: (11,)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+2025-12-30 11:06:21.998 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\fragment.py", line 233, in wrapped_fragment
+    result = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\ui\components.py", line 1387, in render_inspector_content
+    update_node(data, node_id, {"start_date": new_sd_dt}, username)
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 593, in update_node
+    elif model_class == Task: update_task(sql_node.id, **sql_updates)
+                              ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: update_task() got an unexpected keyword argument 'updated_at'
+2025-12-30 11:12:31.306 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 671, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 334, in <module>
+    main()
+    ~~~~^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 331, in main
+    render_app(st.session_state["username"])
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\app.py", line 170, in render_app
+    data = load_all_data()
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 305, in load_all_data
+    user_data = load_data_from_db(user.username)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 191, in load_data_from_db
+    flatten_node(full_goal)
+    ~~~~~~~~~~~~^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 176, in flatten_node
+    flatten_node(child, ext_id)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 104, in flatten_node
+    flatten_node(child, p_id)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 189, in flatten_node
+    flatten_node(child, ext_id)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 176, in flatten_node
+    flatten_node(child, ext_id)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 104, in flatten_node
+    flatten_node(child, p_id)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 120, in flatten_node
+    "deadline": getattr(node, "deadline", None).isoformat() if getattr(node, "deadline", None) else None,
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'int' object has no attribute 'isoformat'
+2025-12-30 11:17:55.086 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\fragment.py", line 233, in wrapped_fragment
+    result = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\elements\dialog_decorator.py", line 90, in dialog_content
+    _ = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\ui\dialogs.py", line 654, in render_timeline_dialog
+    render_gantt_chart(visible_tasks, role, username, users_map)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\ui\visualizations.py", line 58, in render_gantt_chart
+    if t.assignees:
+       ^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\pydantic\main.py", line 1026, in __getattr__
+    raise AttributeError(f'{type(self).__name__!r} object has no attribute {item!r}')
+AttributeError: 'Task' object has no attribute 'assignees'
+2025-12-30 11:19:01.337 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\fragment.py", line 233, in wrapped_fragment
+    result = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\elements\dialog_decorator.py", line 90, in dialog_content
+    _ = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\ui\dialogs.py", line 654, in render_timeline_dialog
+    render_gantt_chart(visible_tasks, role, username, users_map)
+    ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\ui\visualizations.py", line 145, in render_gantt_chart
+    fig.add_vline(x=now, line_width=1, line_dash="dash", line_color="red", annotation_text="Today")
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\plotly\graph_objs\_figure.py", line 473, in add_vline
+    return super().add_vline(
+           ~~~~~~~~~~~~~~~~~^
+        x, row, col, exclude_empty_subplots, annotation, **kwargs
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\plotly\basedatatypes.py", line 4152, in add_vline
+    self._process_multiple_axis_spanning_shapes(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dict(type="line", x0=x, x1=x, y0=0, y1=1),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+        **kwargs,
+        ^^^^^^^^^
+    )
+    ^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\plotly\basedatatypes.py", line 4093, in _process_multiple_axis_spanning_shapes
+    augmented_annotation = shapeannotation.axis_spanning_shape_annotation(
+        annotation, shape_type, shape_args, annotation_kwargs
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\plotly\shapeannotation.py", line 216, in axis_spanning_shape_annotation
+    shape_dict = annotation_params_for_line(
+        shape_type, shape_args, annotation_position
+    )
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\plotly\shapeannotation.py", line 63, in annotation_params_for_line
+    eX = _mean(X)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\plotly\shapeannotation.py", line 7, in _mean
+    return float(sum(x)) / len(x)
+                 ~~~^^^
+TypeError: unsupported operand type(s) for +: 'int' and 'datetime.datetime'
+2025-12-30 11:23:12.105 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2025-12-30 11:27:36.861 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\fragment.py", line 233, in wrapped_fragment
+    result = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\elements\dialog_decorator.py", line 90, in dialog_content
+    _ = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\ui\dialogs.py", line 483, in render_create_task_dialog
+    add_node(data, parent_id, "TASK", title, desc, username, cycle_id=st.session_state.get("active_cycle_id"), assignees=assignees, start_date=sd_ts, deadline=dd_ts)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 459, in add_node
+    if p_json and p_json.get("type", "").upper() == "KEY_RESULT":
+       ^^^^^^
+NameError: name 'p_json' is not defined. Did you mean: 'json'?
+2025-12-30 11:29:54.453 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\fragment.py", line 233, in wrapped_fragment
+    result = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\venv\Lib\site-packages\streamlit\elements\dialog_decorator.py", line 90, in dialog_content
+    _ = non_optional_func(*args, **kwargs)
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\src\ui\dialogs.py", line 483, in render_create_task_dialog
+    add_node(data, parent_id, "TASK", title, desc, username, cycle_id=st.session_state.get("active_cycle_id"), assignees=assignees, start_date=sd_ts, deadline=dd_ts)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Faraatar-TID_Apps\okr\streamlit_app\utils\storage.py", line 459, in add_node
+    p_json = data_store["nodes"].get(parent_id)
+       ^^^^^^
+NameError: name 'p_json' is not defined. Did you mean: 'json'?
+2025-12-30 11:38:30.788 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2025-12-30 11:39:58.238 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+2025-12-30 11:41:36.582 Please replace `use_container_width` with `width`.
+
+`use_container_width` will be removed after 2025-12-31.
+
+For `use_container_width=True`, use `width='stretch'`. For `use_container_width=False`, use `width='content'`.
+Restoring local database from Google Sheets...
+Created missing worksheet: Retrospectives
+Error restoring Users: reverse_property 'goals' on relationship Retrospective.cycle references relationship Cycle.goals, which does not reference mapper Mapper[Retrospective(retrospective)]
+Error restoring Cycles: One or more mappers failed to initialize - can't proceed with initialization of other mappers. Triggering mapper: 'Mapper[Retrospective(retrospective)]'. Original exception was: reverse_property 'goals' on relationship Retrospective.cycle references relationship Cycle.goals, which does not reference mapper Mapper[Retrospective(retrospective)]
+Error restoring Goals: One or more mappers failed to initialize - can't proceed with initialization of other mappers. Triggering mapper: 'Mapper[Retrospective(retrospective)]'. Original exception was: reverse_property 'goals' on relationship Retrospective.cycle references relationship Cycle.goals, which does not reference mapper Mapper[Retrospective(retrospective)]
+No data found in Strategies, skipping.
+Error restoring Objectives: One or more mappers failed to initialize - can't proceed with initialization of other mappers. Triggering mapper: 'Mapper[Retrospective(retrospective)]'. Original exception was: reverse_property 'goals' on relationship Retrospective.cycle references relationship Cycle.goals, which does not reference mapper Mapper[Retrospective(retrospective)]
+Error restoring KeyResults: One or more mappers failed to initialize - can't proceed with initialization of other mappers. Triggering mapper: 'Mapper[Retrospective(retrospective)]'. Original exception was: reverse_property 'goals' on relationship Retrospective.cycle references relationship Cycle.goals, which does not reference mapper Mapper[Retrospective(retrospective)]
+No data found in Initiatives, skipping.
+Error restoring Tasks: One or more mappers failed to initialize - can't proceed with initialization of other mappers. Triggering mapper: 'Mapper[Retrospective(retrospective)]'. Original exception was: reverse_property 'goals' on relationship Retrospective.cycle references relationship Cycle.goals, which does not reference mapper Mapper[Retrospective(retrospective)]
+No data found in CheckIns, skipping.
+Error restoring WorkLogs: One or more mappers failed to initialize - can't proceed with initialization of other mappers. Triggering mapper: 'Mapper[Retrospective(retrospective)]'. Original exception was: reverse_property 'goals' on relationship Retrospective.cycle references relationship Cycle.goals, which does not reference mapper Mapper[Retrospective(retrospective)]
+No data found in Retrospectives, skipping.
+Database restoration complete.
+Restoring local database from Google Sheets...
+Error restoring Users: (sqlite3.IntegrityError) UNIQUE constraint failed: user.id
+[SQL: INSERT INTO user (id, username, password_hash, display_name, role, manager_id, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: [(2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 1), (2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 0), (2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 1), (2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 0), (2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 1)]]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+Restored 0 records to cycle.
+Restored 0 records to goal.
+No data found in Strategies, skipping.
+Restored 0 records to objective.
+Restored 0 records to key_result.
+No data found in Initiatives, skipping.
+Restored 0 records to task.
+No data found in CheckIns, skipping.
+Restored 0 records to work_log.
+No data found in Retrospectives, skipping.
+Database restoration complete.
+SECRETS: Forcing pdfkit (Local)
+Using pdfkit (Local Environment)
+DEBUG: delete_node id=TASK_12 type=TASK user=admin
+DEBUG: delete_node id=TASK_13 type=TASK user=admin
+DEBUG: add_node type=TASK parent=1767022042368-4bd78098 user=admin
+DEBUG: add_node type=TASK parent=1767022042368-4bd78098 user=admin
+DEBUG: add_node type=TASK parent=1767022042368-4bd78098 user=admin
+Sync Push Error (Tasks): ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+DEBUG: delete_node id=1767022055461-109493ae type=TASK user=admin
+DEBUG: delete_node id=TASK_12 type=TASK user=admin
+DEBUG: add_node type=TASK parent=1767022042368-4bd78098 user=admin
+Restoring local database from Google Sheets...
+Error restoring Users: (sqlite3.IntegrityError) UNIQUE constraint failed: user.id
+[SQL: INSERT INTO user (id, username, password_hash, display_name, role, manager_id, created_at, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: [(2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 1), (2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 0), (2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 1), (2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 0), (2, 'test_user_fix_2', '$2b$12$z1F7Ol0KlZqmzxOjgpBjuOCLUDuyB.IpxcnrRsOjJt3njiGzOXxAS', 'test_user_fix_2', 'ADMIN', None, '2025-12-29 13:10:15.287245', 1)]]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+Restored 0 records to cycle.
+Restored 0 records to goal.
+No data found in Strategies, skipping.
+Restored 0 records to objective.
+Restored 0 records to key_result.
+No data found in Initiatives, skipping.
+Error restoring Tasks: (sqlite3.IntegrityError) UNIQUE constraint failed: task.id
+[SQL: INSERT INTO task (title, description, progress, created_at, updated_at, is_expanded, external_id, id, initiative_id, key_result_id, status, estimated_minutes, total_time_spent, timer_started_at, start_date, deadline) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: [('test task', None, 0, '2025-12-29 15:27:35.493326', None, 1, '1767022055461-109493ae', 11, 1, None, 'TODO', 0, 0, None, None, None), ('Test Start Date Task', None, 0, '2025-12-30 07:21:29.844913', None, 1, None, 12, 1, None, 'TODO', 0, 0, None, None, None), ('Test Start Date Task', None, 0, '2025-12-30 07:21:57.924460', None, 1, None, 13, 1, None, 'TODO', 0, 0, None, None, None), ('test task', None, 0, '2025-12-29 15:27:35.493326', '2025-12-30 07:38:30.274904', 1, '1767022055461-109493ae', 11, 1, None, 'TODO', 0, 1, None, None, None), ('test task', None, 0, '2025-12-29 15:27:35.493326', '2025-12-30 07:38:35.584913', 1, '1767022055461-109493ae', 11, 1, None, 'TODO', 0, 1, None, None, None), ('test task', None, 0, '2025-12-29 15:27:35.493326', '2025-12-30 07:39:03.587336', 1, '1767022055461-109493ae', 11, 1, None, 'TODO', 0, 1, None, None, None), ('test task', None, 0, '2025-12-29 15:27:35.493326', '2025-12-30 07:40:12.301079', 1, '1767022055461-109493ae', 11, 1, None, 'TODO', 0, 1, None, None, None), ('test task', None, 0, '2025-12-29 15:27:35.493326', '2025-12-30 07:40:26.843684', 1, '1767022055461-109493ae', 11, 1, None, 'TODO', 0, 1, None, None, None), ('test task', None, 0, '2025-12-29 15:27:35.493326', '2025-12-30 07:42:27.448900', 1, '1767022055461-109493ae', 11, 1, None, 'TODO', 0, 1, None, None, None), ('test task', None, 0, '2025-12-29 15:27:35.493326', '2025-12-30 07:43:29.207843', 1, '1767022055461-109493ae', 11, 1, None, 'TODO', 0, 1, None, None, None)]]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+No data found in CheckIns, skipping.

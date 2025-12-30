@@ -118,6 +118,8 @@ def reset_user_password(user_id: int, new_password: str) -> bool:
         user.password_hash = hash_password(new_password)
         session.add(user)
         session.commit()
+        session.refresh(user)
+        sync_service.push_update(user)
         return True
 
 
