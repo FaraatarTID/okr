@@ -106,9 +106,26 @@ class Goal(NodeBase, table=True):
     # Relationships
     cycle: Optional[Cycle] = Relationship(back_populates="goals")
     strategies: List["src.models.Strategy"] = Relationship(
-        back_populates="goal",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+        back_populates="goal", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
+
+
+class Retrospective(SQLModel, table=True):
+    """Weekly retrospective entry."""
+    __tablename__ = "retrospective"
+    __table_args__ = {"extend_existing": True}
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    cycle_id: Optional[int] = Field(default=None, foreign_key="cycle.id", index=True)
+    week_start_date: datetime = Field(index=True) # To identify the week
+    content: str
+    sentiment: Optional[str] = None # For future AI analysis
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Relationships
+    user: "src.models.User" = Relationship()
+    cycle: Optional[Cycle] = Relationship() # No back_populates needed for now
 
 
 class Strategy(NodeBase, table=True):

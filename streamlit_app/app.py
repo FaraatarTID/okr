@@ -41,7 +41,7 @@ from src.ui.dialogs import (
     render_leadership_dashboard_dialog, render_admin_panel_dialog,
     render_weekly_ritual_dialog, render_create_task_dialog,
     render_weekly_report_dialog, render_daily_report_dialog, 
-    render_inspector_dialog
+    render_inspector_dialog, render_retrobox_dialog
 )
 
 st.set_page_config(page_title="OKR Tracker", layout="wide")
@@ -204,6 +204,12 @@ def render_app(username):
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
 
+    if st.sidebar.button("📬 RetroBox", help="Weekly retrospectives", use_container_width=True):
+        st.session_state.active_report_mode = "RetroBox"
+        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        st.rerun()
+
     if st.sidebar.button("🧭 Strategic \nDashboard", help="Executive visibility", use_container_width=True):
         st.session_state.active_report_mode = "Dashboard"
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
@@ -298,6 +304,8 @@ def render_app(username):
                 render_weekly_report_dialog(data, username)
             elif mode == "Daily":
                 render_daily_report_dialog(data, username)
+            elif mode == "RetroBox":
+                render_retrobox_dialog(username)
 
 def main():
     init_database() # Ensure tables exist

@@ -12,7 +12,7 @@ import time
 # Models to sync
 from src.models import (
     User, Cycle, Goal, Strategy, Objective, KeyResult, Initiative, Task, 
-    WorkLog, CheckIn
+    WorkLog, CheckIn, Retrospective
 )
 from src.database import engine, get_session_context
 
@@ -61,7 +61,7 @@ class SheetSyncService:
         required_sheets = [
             "Users", "Cycles", 
             "Goals", "Strategies", "Objectives", "KeyResults", "Initiatives", "Tasks",
-            "CheckIns", "WorkLogs"
+            "CheckIns", "WorkLogs", "Retrospectives"
         ]
         
         try:
@@ -103,6 +103,7 @@ class SheetSyncService:
             # 3. Linked Tables
             self._restore_table(CheckIn, "CheckIns")
             self._restore_table(WorkLog, "WorkLogs")
+            self._restore_table(Retrospective, "Retrospectives")
             
             # 4. Legacy JSON Restore (Deprecated/Fallback)
             # self._restore_okr_trees()
@@ -178,6 +179,8 @@ class SheetSyncService:
         elif isinstance(model_obj, Initiative): sheet_name = "Initiatives"
         elif isinstance(model_obj, Task): sheet_name = "Tasks"
         elif isinstance(model_obj, CheckIn): sheet_name = "CheckIns"
+        elif isinstance(model_obj, WorkLog): sheet_name = "WorkLogs"
+        elif isinstance(model_obj, Retrospective): sheet_name = "Retrospectives"
         elif isinstance(model_obj, WorkLog): sheet_name = "WorkLogs"
         else: return # Not a synced type
 

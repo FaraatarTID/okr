@@ -22,7 +22,7 @@ def create_db_and_tables():
     """Create all database tables if they don't exist."""
     from src.models import (
         Cycle, Goal, Strategy, Objective, KeyResult, 
-        Initiative, Task, WorkLog, CheckIn
+        Initiative, Task, WorkLog, CheckIn, Retrospective
     )
     SQLModel.metadata.create_all(engine)
     
