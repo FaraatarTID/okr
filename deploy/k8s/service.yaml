@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: okr-streamlit
+  namespace: okr
+spec:
+  selector:
+    app: okr-streamlit
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8501
+  type: ClusterIP

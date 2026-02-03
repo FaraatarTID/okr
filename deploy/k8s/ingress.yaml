@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: okr-streamlit
+  namespace: okr
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "okr-streamlit"
+    # If hosting under a subpath, you can use rewrite-target annotations as needed
+spec:
+  tls:
+    - hosts:
+        - okr.example.com
+      secretName: okr-tls
+  rules:
+    - host: okr.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: okr-streamlit
+                port:
+                  number: 80

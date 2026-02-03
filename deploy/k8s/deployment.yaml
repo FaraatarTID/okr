@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: okr-streamlit
+  namespace: okr
+  labels:
+    app: okr-streamlit
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: okr-streamlit
+  template:
+    metadata:
+      labels:
+        app: okr-streamlit
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: app
+          image: ghcr.io/your-org/okr-streamlit:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8501
+          env:
+            - name: PORT
+              value: "8501"
+            - name: STREAMLIT_SERVER_HEADLESS
+              value: "true"
+            - name: BASE_URL_PATH
+              value: "" # set to "okr" if serving under a subpath
+            - name: OKR_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: okr-db
+                  key: OKR_DATABASE_URL
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8501
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8501
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: okr-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: okr-data
+  namespace: okr
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi

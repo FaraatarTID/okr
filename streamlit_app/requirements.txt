@@ -12,3 +12,4 @@ pdfkit
 requests
 bcrypt
 alembic
+psycopg2-binary

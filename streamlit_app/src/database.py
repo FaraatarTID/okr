@@ -1,35 +1,88 @@
 """
 Database connection and session management for OKR Application.
-Uses SQLModel with SQLite backend.
+Default: SQLite, but can be switched to a managed DB (e.g., PostgreSQL)
+without code changes using environment variables or Streamlit secrets.
 """
 from sqlmodel import create_engine, Session, SQLModel
 from contextlib import contextmanager
 import os
 
-# Database file path - stored in the streamlit_app directory
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "okr_database.db")
-DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
-# Create engine with connection settings optimized for SQLite
-engine = create_engine(
-    DATABASE_URL,
-    echo=False,  # Set to True for SQL debugging
-    connect_args={"check_same_thread": False}  # Required for SQLite with Streamlit
-)
+def _get_database_url() -> str:
+    """Resolve the database URL with the following precedence:
+    1. Environment variable OKR_DATABASE_URL
+    2. Environment variable DATABASE_URL
+    3. Streamlit secrets [database][url] or components to build one
+    4. Fallback to local SQLite in project folder
+    """
+    # 1/2: Environment
+    env_url = os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL")
+    if env_url:
+        return env_url
+
+    # 3: Streamlit secrets (optional)
+    try:
+        import streamlit as st
+        db_secrets = st.secrets.get("database")
+        if isinstance(db_secrets, dict):
+            if db_secrets.get("url"):
+                return str(db_secrets["url"])
+            # Build URL from parts if provided
+            driver = db_secrets.get("driver", "postgresql+psycopg2")
+            user = db_secrets.get("user")
+            password = db_secrets.get("password")
+            host = db_secrets.get("host", "localhost")
+            port = db_secrets.get("port")
+            name = db_secrets.get("name")
+            if user and password and host and name:
+                port_part = f":{port}" if port else ""
+                return f"{driver}://{user}:{password}@{host}{port_part}/{name}"
+    except Exception:
+        # secrets not available
+        pass
+
+    # 4: Fallback to SQLite file in streamlit_app folder
+    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "okr_database.db")
+    return f"sqlite:///{db_path}"
+
+
+DATABASE_URL = _get_database_url()
+
+
+def _create_engine(url: str):
+    """Create SQLModel engine with dialect-aware options."""
+    is_sqlite = url.startswith("sqlite:")
+    kwargs = {"echo": False}
+    if is_sqlite:
+        # Required for SQLite with Streamlit multi-threaded server
+        kwargs["connect_args"] = {"check_same_thread": False}
+    else:
+        # Make long-lived connections safer for managed DBs
+        kwargs["pool_pre_ping"] = True
+    return create_engine(url, **kwargs)
+
+
+# Engine
+engine = _create_engine(DATABASE_URL)
 
 
 
 def run_migrations():
-    """Run Alembic migrations programmatically."""
+    """Run Alembic migrations programmatically with the active DATABASE_URL."""
     from alembic.config import Config
     from alembic import command
-    
-    import os
-    current_dir = os.path.dirname(__file__) # streamlit_app/src
-    parent_dir = os.path.dirname(current_dir) # streamlit_app
+
+    current_dir = os.path.dirname(__file__)  # streamlit_app/src
+    parent_dir = os.path.dirname(current_dir)  # streamlit_app
     ini_path = os.path.join(parent_dir, "alembic.ini")
-    
+
     alembic_cfg = Config(ini_path)
+    # Ensure Alembic uses the same database as the app
+    alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
+    # Also ensure script_location resolves correctly when running from this CWD
+    script_location = os.path.join(parent_dir, "alembic")
+    alembic_cfg.set_main_option("script_location", script_location)
+
     command.upgrade(alembic_cfg, "head")
 
 
