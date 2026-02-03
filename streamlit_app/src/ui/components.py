@@ -1246,8 +1246,9 @@ def render_inspector_content(node_id, data, username):
                  new_progress_insp = p_prog_cont.slider("Progress (Manual)", 0, 100, value=progress_insp)
         
         with col2_insp:
-            idx_insp = TYPES.index(node_type_insp) if node_type_insp in TYPES else 0
-            new_type_insp = st.selectbox("Type", TYPES, index=idx_insp, key=f"type_sel_{node_id}")
+            # Type is now READ-ONLY in Inspector to maintain hierarchy integrity
+            st.text_input("Type", value=node_type_insp.replace('_', ' ').title(), disabled=True, key=f"type_disp_{node_id}")
+            new_type_insp = node_type_insp
             
         # GOAL Specific Cycle Assignment
         new_cycle_id_insp = node.get("cycle_id")
@@ -1529,7 +1530,7 @@ def render_card(node_id, data, username):
                     ptype = parent_node.get("type", "").upper()
                     expected_type = CHILD_TYPE_MAP.get(ptype)
                     if expected_type and node_type != expected_type:
-                        action_lbl = "➡️ Enable Tasks Level" if expected_type == "INITIATIVE" else f"🔧 Fix Type (to {expected_type.replace('_',' ').title()})"
+                        action_lbl = f"🔧 Fix Type (to {expected_type.replace('_',' ').title()})"
                         if st.button(action_lbl, key=f"fix_{node_id}"):
                             update_node(data, node_id, {"type": expected_type}, username)
                             st.rerun()

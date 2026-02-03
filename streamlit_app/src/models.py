@@ -1,6 +1,6 @@
 """
 SQLModel classes for the OKR hierarchical structure.
-Hierarchy: Cycle -> Goal -> Strategy -> Objective -> KeyResult -> Initiative -> Task
+Hierarchy: Cycle -> Goal -> Objective -> KeyResult -> Task
 Plus WorkLog for time tracking.
 """
 from sqlmodel import SQLModel, Field, Relationship
@@ -102,11 +102,10 @@ class Goal(NodeBase, table=True):
     
     # Tags (Stored as JSON string or comma-separated)
     strategy_tags: Optional[str] = Field(default="[]")
-    initiative_tags: Optional[str] = Field(default="[]") # For KR? No, UI says "Initiative Tags" on KR.
     
     # Relationships
     cycle: Optional[Cycle] = Relationship(back_populates="goals")
-    strategies: List["src.models.Strategy"] = Relationship(
+    objectives: List["src.models.Objective"] = Relationship(
         back_populates="goal", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
 
@@ -129,32 +128,16 @@ class Retrospective(SQLModel, table=True):
     cycle: Optional[Cycle] = Relationship() # No back_populates needed for now
 
 
-class Strategy(NodeBase, table=True):
-    """Strategic approach to achieve a goal."""
-    __tablename__ = "strategy"
+class Objective(NodeBase, table=True):
+    """Measurable objective within a goal."""
+    __tablename__ = "objective"
     __table_args__ = {"extend_existing": True}
     
     id: Optional[int] = Field(default=None, primary_key=True)
     goal_id: int = Field(foreign_key="goal.id", index=True)
     
     # Relationships
-    goal: Optional[Goal] = Relationship(back_populates="strategies")
-    objectives: List["src.models.Objective"] = Relationship(
-        back_populates="strategy",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
-    )
-
-
-class Objective(NodeBase, table=True):
-    """Measurable objective within a strategy."""
-    __tablename__ = "objective"
-    __table_args__ = {"extend_existing": True}
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    strategy_id: int = Field(foreign_key="strategy.id", index=True)
-    
-    # Relationships
-    strategy: Optional[Strategy] = Relationship(back_populates="objectives")
+    goal: Optional[Goal] = Relationship(back_populates="objectives")
     key_results: List["src.models.KeyResult"] = Relationship(
         back_populates="objective",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
@@ -173,6 +156,7 @@ class KeyResult(NodeBase, table=True):
     target_value: float = Field(default=100.0)
     current_value: float = Field(default=0.0)
     unit: Optional[str] = None  # e.g., "%", "count", "hours"
+    initiative_tags: Optional[str] = Field(default="[]")
     
     # AI Analysis cache
     gemini_analysis: Optional[str] = None  # JSON string of analysis results
@@ -180,10 +164,6 @@ class KeyResult(NodeBase, table=True):
     
     # Relationships
     objective: Optional[Objective] = Relationship(back_populates="key_results")
-    initiatives: List["src.models.Initiative"] = Relationship(
-        back_populates="key_result",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
-    )
     tasks: List["src.models.Task"] = Relationship(
         back_populates="key_result",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
@@ -194,33 +174,16 @@ class KeyResult(NodeBase, table=True):
     )
 
 
-class Initiative(NodeBase, table=True):
-    """Initiative or project to achieve a key result."""
-    __tablename__ = "initiative"
-    __table_args__ = {"extend_existing": True}
-    
-    id: Optional[int] = Field(default=None, primary_key=True)
-    key_result_id: int = Field(foreign_key="key_result.id", index=True)
-    
-    # Relationships
-    key_result: Optional[KeyResult] = Relationship(back_populates="initiatives")
-    tasks: List["src.models.Task"] = Relationship(
-        back_populates="initiative",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
-    )
-
-
 class Task(NodeBase, table=True):
-    """Actionable task within an initiative."""
+    """Actionable task within a key result."""
     __tablename__ = "task"
     __table_args__ = (
-        Index("ix_task_status_initiative", "status", "initiative_id"),
+        Index("ix_task_status_kr", "status", "key_result_id"),
         {"extend_existing": True}
     )
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    initiative_id: Optional[int] = Field(default=None, foreign_key="initiative.id", index=True)
-    key_result_id: Optional[int] = Field(default=None, foreign_key="key_result.id", index=True)
+    key_result_id: int = Field(foreign_key="key_result.id", index=True)
     
     # Task-specific fields
     status: TaskStatus = Field(default=TaskStatus.TODO)
@@ -232,7 +195,6 @@ class Task(NodeBase, table=True):
     timer_started_at: Optional[datetime] = None
     
     # Relationships
-    initiative: Optional[Initiative] = Relationship(back_populates="tasks")
     key_result: Optional[KeyResult] = Relationship(back_populates="tasks")
     work_logs: List["src.models.WorkLog"] = Relationship(
         back_populates="task",
@@ -299,7 +261,7 @@ class CheckIn(SQLModel, table=True):
 # ============================================================================
 
 class GoalRead(NodeBase):
-    """Goal with its strategies for reading."""
+    """Goal with its objectives for reading."""
     id: int
     user_id: str
 
@@ -309,7 +271,6 @@ class DashboardGoal(SQLModel):
     id: int
     title: str
     progress: int
-    strategies_count: int = 0
     objectives_count: int = 0
 
 
@@ -320,7 +281,6 @@ class TaskWithTimer(SQLModel):
     status: TaskStatus
     timer_started_at: Optional[datetime]
     total_time_spent: int
-    initiative_title: Optional[str] = None
     key_result_title: Optional[str] = None
     objective_title: Optional[str] = None
 

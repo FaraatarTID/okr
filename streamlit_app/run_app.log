@@ -1,7 +1,174 @@
 
+Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false.
+
+
   You can now view your Streamlit app in your browser.
 
   Local URL: http://localhost:8501
-  Network URL: http://172.18.0.1:8501
-  External URL: http://37.252.10.104:8501
+  Network URL: http://10.20.0.1:8501
+  External URL: http://104.28.155.141:8501
 
+2026-02-03 10:11:04.775 Uncaught app execution
+Traceback (most recent call last):
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlite3.OperationalError: no such column: objective.goal_id
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\exec_code.py", line 129, in exec_func_with_error_handling
+    result = func()
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\streamlit\runtime\scriptrunner\script_runner.py", line 671, in code_to_exec
+    exec(code, module.__dict__)  # noqa: S102
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\app.py", line 334, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\app.py", line 331, in main
+    render_app(st.session_state["username"])
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\app.py", line 172, in render_app
+    data = load_team_data(st.session_state.user_id)
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\utils\storage.py", line 302, in load_team_data
+    all_data = load_data_from_db(manager.username)
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\utils\storage.py", line 83, in load_data_from_db
+    full_goal = get_goal_tree(goal.id)
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\src\crud.py", line 444, in get_goal_tree
+    goal = session.exec(statement).first()
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\result.py", line 1791, in first
+    return self._only_one_row(
+           ~~~~~~~~~~~~~~~~~~^
+        raise_for_second_row=False, raise_for_none=False, scalar=False
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\result.py", line 757, in _only_one_row
+    row: Optional[_InterimRowType[Any]] = onerow(hard_close=True)
+                                          ~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\result.py", line 1678, in _fetchone_impl
+    return self._real_result._fetchone_impl(hard_close=hard_close)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\result.py", line 2264, in _fetchone_impl
+    row = next(self.iterator, _NO_ROW)
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 247, in chunks
+    post_load.invoke(context, path)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\loading.py", line 1564, in invoke
+    loader(
+    ~~~~~~^
+        effective_context, path, states, self.load_keys, *arg, **kw
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategies.py", line 3338, in _load_for_path
+    self._load_via_parent(
+    ~~~~~~~~~~~~~~~~~~~~~^
+        our_states, query_info, q, context, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\strategies.py", line 3414, in _load_via_parent
+    context.session.execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        q,
+        ^^
+        params={"primary_keys": primary_keys},
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        execution_options=execution_options,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ).unique(),
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlmodel\orm\session.py", line 142, in execute
+    return super().execute(
+           ~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
+    return self._execute_internal(
+           ~~~~~~~~~~~~~~~~~~~~~~^
+        statement,
+        ^^^^^^^^^^
+    ...<4 lines>...
+        _add_event=_add_event,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self,
+        ^^^^^
+    ...<4 lines>...
+        conn,
+        ^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\orm\context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+        statement, params or {}, execution_options=execution_options
+    )
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1419, in execute
+    return meth(
+        self,
+        distilled_parameters,
+        execution_options or NO_OPTIONS,
+    )
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\sql\elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        self, distilled_params, execution_options
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+        dialect,
+    ...<8 lines>...
+        cache_hit=cache_hit,
+    )
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        dialect, context, statement, parameters
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        e, str_statement, effective_parameters, cursor, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        cursor, str_statement, effective_parameters, context
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Surface Book 2\Documents\GitHub\okr\streamlit_app\venv\Lib\site-packages\sqlalchemy\engine\default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such column: objective.goal_id
+[SQL: SELECT objective.goal_id AS objective_goal_id, objective.title AS objective_title, objective.description AS objective_description, objective.progress AS objective_progress, objective.created_at AS objective_created_at, objective.updated_at AS objective_updated_at, objective.is_expanded AS objective_is_expanded, objective.external_id AS objective_external_id, objective.deadline AS objective_deadline, objective.id AS objective_id 
+FROM objective 
+WHERE objective.goal_id IN (?)]
+[parameters: (15,)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)

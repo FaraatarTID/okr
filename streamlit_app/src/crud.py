@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from src.services.sheet_sync import sync_service
 
 from src.models import (
-    Goal, Strategy, Objective, KeyResult, Initiative, Task, WorkLog,
+    Goal, Objective, KeyResult, Task, WorkLog,
     TaskStatus, DashboardGoal, TaskWithTimer, Cycle, CheckIn, User, UserRole,
     WeeklyPlan, Retrospective
 )
@@ -182,16 +182,10 @@ def get_krs_needing_checkin(user_id: str, cycle_id: int, days_threshold: int = 7
     Get KRs that haven't had a check-in within the threshold days.
     """
     with get_session_context() as session:
-        # 1. Get all KRs for this user in this cycle
-        # This is a bit complex due to hierarchy. 
-        # Goal -> Strategy -> Objective -> KR
-        
         statement = (
             select(KeyResult)
             .join(Objective)
-            .join(Strategy)
             .join(Goal)
-            # .where(Goal.user_id == user_id) # Simplify for now, focus on Cycle
             .where(Goal.cycle_id == cycle_id)
         )
         krs = session.exec(statement).all()
@@ -303,7 +297,6 @@ def get_leadership_metrics(user_ids: List[str], cycle_id: int):
         statement = (
             select(KeyResult)
             .join(Objective)
-            .join(Strategy)
             .join(Goal)
             .where(Goal.cycle_id == cycle_id)
             .where(Goal.user_id.in_(user_ids))
@@ -413,21 +406,18 @@ def get_dashboard_data(user_id: str, cycle_id: Optional[int] = None) -> List[Das
             statement = statement.where(Goal.cycle_id == cycle_id)
             
         statement = statement.options(
-                selectinload(Goal.strategies)
-                .selectinload(Strategy.objectives)
+                selectinload(Goal.objectives)
             )
         goals = session.exec(statement).all()
         
         dashboard_goals = []
         for goal in goals:
-            strategies_count = len(goal.strategies)
-            objectives_count = sum(len(s.objectives) for s in goal.strategies)
+            objectives_count = len(goal.objectives)
             
             dashboard_goals.append(DashboardGoal(
                 id=goal.id,
                 title=goal.title,
                 progress=goal.progress,
-                strategies_count=strategies_count,
                 objectives_count=objectives_count
             ))
         
@@ -444,15 +434,7 @@ def get_goal_tree(goal_id: int) -> Optional[Goal]:
             select(Goal)
             .where(Goal.id == goal_id)
             .options(
-                selectinload(Goal.strategies)
-                .selectinload(Strategy.objectives)
-                .selectinload(Objective.key_results)
-                .selectinload(KeyResult.initiatives)
-                .selectinload(Initiative.tasks)
-                .selectinload(Task.work_logs),
-
-                selectinload(Goal.strategies)
-                .selectinload(Strategy.objectives)
+                selectinload(Goal.objectives)
                 .selectinload(Objective.key_results)
                 .selectinload(KeyResult.tasks)
                 .selectinload(Task.work_logs)
@@ -505,75 +487,22 @@ def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optio
         return goal
 
 
-def create_strategy(goal_id: int, title: str, description: str = "", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Strategy:
-    """Create a new strategy under a goal."""
+def create_objective(goal_id: int, title: str, description: str = "", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Objective:
+    """Create a new objective under a goal."""
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
         if not goal:
             raise ValueError(f"Goal {goal_id} not found")
         
-        # Auto-numbering
         existing = session.exec(
-            select(Strategy).where(Strategy.goal_id == goal_id)
-        ).all()
-        
-        if not title or title.startswith("New "):
-            title = f"Strategy #{len(existing) + 1}"
-        
-        strategy = Strategy(
-            goal_id=goal_id,
-            title=title,
-            description=description,
-            external_id=external_id,
-            created_at=created_at or datetime.utcnow()
-        )
-        session.add(strategy)
-        session.commit()
-        session.refresh(strategy)
-        # S Y N C
-        sync_service.push_update(strategy)
-        return strategy
-
-
-def get_or_create_default_strategy(goal_id: int) -> int:
-    """
-    Find or create the first strategy for a goal to act as an Objective container.
-    Used when the UI skips the Strategy level.
-    """
-    with get_session_context() as session:
-        statement = select(Strategy).where(Strategy.goal_id == goal_id).order_by(Strategy.id)
-        existing = session.exec(statement).first()
-        if existing:
-            return existing.id
-            
-        # Create a default strategy (since it's just a 'tag' now)
-        strategy = Strategy(
-            goal_id=goal_id,
-            title="Main Strategy",
-            external_id=f"strat_def_{goal_id}_{int(datetime.now(timezone.utc).timestamp())}"
-        )
-        session.add(strategy)
-        session.commit()
-        session.refresh(strategy)
-        return strategy.id
-
-
-def create_objective(strategy_id: int, title: str, description: str = "", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Objective:
-    """Create a new objective under a strategy."""
-    with get_session_context() as session:
-        strategy = session.get(Strategy, strategy_id)
-        if not strategy:
-            raise ValueError(f"Strategy {strategy_id} not found")
-        
-        existing = session.exec(
-            select(Objective).where(Objective.strategy_id == strategy_id)
+            select(Objective).where(Objective.goal_id == goal_id)
         ).all()
         
         if not title or title.startswith("New "):
             title = f"Objective #{len(existing) + 1}"
         
         objective = Objective(
-            strategy_id=strategy_id,
+            goal_id=goal_id,
             title=title,
             description=description,
             external_id=external_id,
@@ -619,81 +548,21 @@ def create_key_result(objective_id: int, title: str, description: str = "",
         return key_result
 
 
-def create_initiative(key_result_id: int, title: str, description: str = "", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Initiative:
-    """Create a new initiative under a key result."""
+def create_task(key_result_id: int, title: str = "", description: str = "",
+                estimated_minutes: int = 0, external_id: Optional[str] = None, created_at: Optional[datetime] = None, start_date: Optional[datetime] = None, deadline: Optional[int] = None) -> Task:
+    """Create a new task under a key result."""
     with get_session_context() as session:
-        key_result = session.get(KeyResult, key_result_id)
-        if not key_result:
+        parent_check = session.get(KeyResult, key_result_id)
+        if not parent_check:
             raise ValueError(f"KeyResult {key_result_id} not found")
         
-        existing = session.exec(
-            select(Initiative).where(Initiative.key_result_id == key_result_id)
-        ).all()
-        
-        if not title or title.startswith("New "):
-            title = f"Initiative #{len(existing) + 1}"
-        
-        initiative = Initiative(
-            key_result_id=key_result_id,
-            title=title,
-            description=description,
-            external_id=external_id,
-            created_at=created_at or datetime.utcnow()
-        )
-        session.add(initiative)
-        session.commit()
-        session.refresh(initiative)
-        # S Y N C
-        sync_service.push_update(initiative)
-        return initiative
-
-
-def get_or_create_default_initiative(key_result_id: int) -> int:
-    """
-    Find or create the first initiative for a KR to act as a Task container.
-    Used when the UI skips the Initiative level.
-    """
-    with get_session_context() as session:
-        statement = select(Initiative).where(Initiative.key_result_id == key_result_id).order_by(Initiative.id)
-        existing = session.exec(statement).first()
-        if existing:
-            return existing.id
-            
-        initiative = Initiative(
-            key_result_id=key_result_id,
-            title="Main Initiative",
-            external_id=f"init_def_{key_result_id}_{int(datetime.now(timezone.utc).timestamp())}"
-        )
-        session.add(initiative)
-        session.commit()
-        session.refresh(initiative)
-        return initiative.id
-
-
-def create_task(initiative_id: Optional[int] = None, key_result_id: Optional[int] = None, title: str = "", description: str = "",
-                estimated_minutes: int = 0, external_id: Optional[str] = None, created_at: Optional[datetime] = None, start_date: Optional[datetime] = None, deadline: Optional[int] = None) -> Task:
-    """Create a new task under an initiative or directly under a key result."""
-    with get_session_context() as session:
-        if initiative_id:
-            parent_check = session.get(Initiative, initiative_id)
-            if not parent_check:
-                raise ValueError(f"Initiative {initiative_id} not found")
-            filter_stmt = select(Task).where(Task.initiative_id == initiative_id)
-        elif key_result_id:
-            parent_check = session.get(KeyResult, key_result_id)
-            if not parent_check:
-                raise ValueError(f"KeyResult {key_result_id} not found")
-            filter_stmt = select(Task).where(Task.key_result_id == key_result_id)
-        else:
-            raise ValueError("Either initiative_id or key_result_id must be provided")
-        
+        filter_stmt = select(Task).where(Task.key_result_id == key_result_id)
         existing = session.exec(filter_stmt).all()
         
         if not title or title.startswith("New "):
             title = f"Task #{len(existing) + 1}"
         
         task = Task(
-            initiative_id=initiative_id,
             key_result_id=key_result_id,
             title=title,
             description=description,
@@ -763,17 +632,6 @@ def update_key_result_analysis(key_result_id: int, analysis_json: str) -> Option
             sync_service.push_update(kr)
         return kr
 
-def update_strategy(strategy_id: int, **updates) -> Optional[Strategy]:
-    with get_session_context() as session:
-        item = session.get(Strategy, strategy_id)
-        if item:
-            for key, value in updates.items():
-                if hasattr(item, key): setattr(item, key, value)
-            item.updated_at = datetime.utcnow()
-            session.add(item)
-            session.commit()
-            session.refresh(item)
-        return item
 
 def update_objective(objective_id: int, **updates) -> Optional[Objective]:
     with get_session_context() as session:
@@ -799,17 +657,6 @@ def update_key_result(key_result_id: int, **updates) -> Optional[KeyResult]:
             session.refresh(item)
         return item
 
-def update_initiative(initiative_id: int, **updates) -> Optional[Initiative]:
-    with get_session_context() as session:
-        item = session.get(Initiative, initiative_id)
-        if item:
-            for key, value in updates.items():
-                if hasattr(item, key): setattr(item, key, value)
-            item.updated_at = datetime.utcnow()
-            session.add(item)
-            session.commit()
-            session.refresh(item)
-        return item
 
 
 def update_task(task_id: int, title: str = None, 
@@ -873,16 +720,6 @@ def delete_task(task_id: int) -> bool:
             return True
         return False
 
-def delete_strategy(strategy_id: int) -> bool:
-    with get_session_context() as session:
-        item = session.get(Strategy, strategy_id)
-        if item:
-            session.delete(item)
-            session.commit()
-            # S Y N C
-            sync_service.push_update(item, delete=True)
-            return True
-        return False
 
 def delete_objective(objective_id: int) -> bool:
     with get_session_context() as session:
@@ -906,20 +743,10 @@ def delete_key_result(kr_id: int) -> bool:
             return True
         return False
 
-def delete_initiative(init_id: int) -> bool:
-    with get_session_context() as session:
-        item = session.get(Initiative, init_id)
-        if item:
-            session.delete(item)
-            session.commit()
-            # S Y N C
-            sync_service.push_update(item, delete=True)
-            return True
-        return False
 
 def get_node_by_external_id(external_id: str):
     """Search all OKR tables for a node with the given external_id (UUID)."""
-    models = [Goal, Strategy, Objective, KeyResult, Initiative, Task]
+    models = [Goal, Objective, KeyResult, Task]
     with get_session_context() as session:
         for model_class in models:
             statement = select(model_class).where(model_class.external_id == external_id)
@@ -939,10 +766,8 @@ def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
         # Join through hierarchy to find active timer
         statement = (
             select(Task)
-            .join(Initiative)
             .join(KeyResult)
             .join(Objective)
-            .join(Strategy)
             .join(Goal)
             .where(Goal.user_id == user_id)
             .where(Task.timer_started_at.isnot(None))
@@ -951,8 +776,7 @@ def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
         
         if task:
             # Get ancestor titles for context
-            initiative = session.get(Initiative, task.initiative_id)
-            kr = session.get(KeyResult, initiative.key_result_id) if initiative else None
+            kr = session.get(KeyResult, task.key_result_id)
             objective = session.get(Objective, kr.objective_id) if kr else None
             
             return TaskWithTimer(
@@ -961,7 +785,6 @@ def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
                 status=task.status,
                 timer_started_at=task.timer_started_at,
                 total_time_spent=task.total_time_spent,
-                initiative_title=initiative.title if initiative else None,
                 key_result_title=kr.title if kr else None,
                 objective_title=objective.title if objective else None
             )
@@ -1053,10 +876,8 @@ def _stop_all_active_timers(session: Session, user_id: str) -> int:
     # Find all tasks with active timers for this user
     statement = (
         select(Task)
-        .join(Initiative)
         .join(KeyResult)
         .join(Objective)
-        .join(Strategy)
         .join(Goal)
         .where(Goal.user_id == user_id)
         .where(Task.timer_started_at.isnot(None))
@@ -1162,10 +983,8 @@ def get_work_logs_by_date_range(user_id: str, start_date: datetime,
         statement = (
             select(WorkLog)
             .join(Task)
-            .join(Initiative)
             .join(KeyResult)
             .join(Objective)
-            .join(Strategy)
             .join(Goal)
             .where(Goal.user_id == user_id)
             .where(WorkLog.start_time >= start_date)
@@ -1191,16 +1010,14 @@ def get_hours_by_goal(user_id: str, days: int = 7) -> dict:
         for goal in goals:
             total_minutes = 0
             
-            # Traverse the hierarchy
-            for strategy in goal.strategies:
-                for objective in strategy.objectives:
-                    for kr in objective.key_results:
-                        for initiative in kr.initiatives:
-                            for task in initiative.tasks:
-                                # Sum work logs in date range
-                                for log in task.work_logs:
-                                    if start_date <= log.start_time <= end_date:
-                                        total_minutes += log.duration_minutes
+            # Traverse the hierarchy (4 levels)
+            for objective in goal.objectives:
+                for kr in objective.key_results:
+                    for task in kr.tasks:
+                        # Sum work logs in date range
+                        for log in task.work_logs:
+                            if start_date <= log.start_time <= end_date:
+                                total_minutes += log.duration_minutes
             
             hours_by_goal[goal.title] = total_minutes / 60
         
@@ -1239,13 +1056,6 @@ def calculate_progress(session: Session, node_type: str, node_id: int) -> int:
         task = session.get(Task, node_id)
         return 100 if task and task.status == TaskStatus.DONE else 0
     
-    elif node_type == "initiative":
-        initiative = session.get(Initiative, node_id)
-        if not initiative or not initiative.tasks:
-            return 0
-        total = sum(100 if t.status == TaskStatus.DONE else 0 for t in initiative.tasks)
-        return int(total / len(initiative.tasks))
-    
     elif node_type == "key_result":
         kr = session.get(KeyResult, node_id)
         if kr:
@@ -1263,29 +1073,28 @@ def update_progress_chain(task_id: int):
         if not task:
             return
         
-        # Update initiative progress
-        initiative = session.get(Initiative, task.initiative_id)
-        if initiative:
-            done_tasks = sum(1 for t in initiative.tasks if t.status == TaskStatus.DONE)
-            initiative.progress = int((done_tasks / len(initiative.tasks)) * 100) if initiative.tasks else 0
-            session.add(initiative)
+        # Update ancestor progress
+        kr = session.get(KeyResult, task.key_result_id)
+        if kr:
+            # KR progress is based on current_value/target_value primarily, 
+            # but if it uses manual/child tracking we might want to update it.
+            # In our 4-level model, KR progress often reflects Task completion if automated.
+            done_tasks = sum(1 for t in kr.tasks if t.status == TaskStatus.DONE)
+            pk = int((done_tasks / len(kr.tasks)) * 100) if kr.tasks else 0
+            # For simplicity, if dynamic: kr.progress = pk (or weighted update)
+            # But let's stick to the 4-level Chain: Objective -> KR -> Task
             
-            # Update key result (based on current_value, not children)
-            kr = session.get(KeyResult, initiative.key_result_id)
-            if kr:
-                # KR progress is based on current_value/target_value
-                # But we can update average of initiatives
-                total_init_progress = sum(i.progress for i in kr.initiatives)
-                avg_init = total_init_progress / len(kr.initiatives) if kr.initiatives else 0
-                # Could update kr.current_value or just track avg
-                session.add(kr)
+            objective = session.get(Objective, kr.objective_id)
+            if objective:
+                total_kr = sum(k.progress for k in objective.key_results)
+                objective.progress = int(total_kr / len(objective.key_results)) if objective.key_results else 0
+                session.add(objective)
                 
-                # Continue up the chain as needed
-                objective = session.get(Objective, kr.objective_id)
-                if objective:
-                    total_kr = sum(k.progress for k in objective.key_results)
-                    objective.progress = int(total_kr / len(objective.key_results)) if objective.key_results else 0
-                    session.add(objective)
+                goal = session.get(Goal, objective.goal_id)
+                if goal:
+                    total_obj = sum(o.progress for o in goal.objectives)
+                    goal.progress = int(total_obj / len(goal.objectives)) if goal.objectives else 0
+                    session.add(goal)
         
         session.commit()
 
