@@ -1016,9 +1016,8 @@ def render_timeline_dialog(username: str):
         </style>
     """, unsafe_allow_html=True)
 
-    # Header with Close button
+    # Header with Close button (no duplicate title)
     c_head, c_close = st.columns([0.92, 0.08])
-    c_head.markdown("### 📅 Project Timeline")
     if c_close.button("", icon=":material/close:", key="close_timeline"):
         if "active_report_mode" in st.session_state:
             del st.session_state.active_report_mode
