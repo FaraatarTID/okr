@@ -3,3 +3,14 @@ primaryColor = "#4CAF50"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F5F5F5"
 textColor = "#262730"
+
+[server]
+# Keep headless in containers/servers
+headless = true
+# baseUrlPath left empty by default; pass via CLI when serving under subpath
+# baseUrlPath = ""
+enableCORS = true
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false

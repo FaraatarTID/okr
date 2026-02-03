@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  okr:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: okr-streamlit
+    image: ${IMAGE:-okr-streamlit:local}
+    environment:
+      - PORT=${PORT:-8501}
+      - BASE_URL_PATH=${BASE_URL_PATH:-}
+      - STREAMLIT_SERVER_HEADLESS=true
+    volumes:
+      - okr_data:/data
+      # Mount secrets.toml if you use Streamlit secrets (uncomment and provide a file)
+      # - ../secrets/secrets.toml:/app/streamlit_app/.streamlit/secrets.toml:ro
+    ports:
+      - "${HOST_PORT:-8501}:${PORT:-8501}"
+    restart: unless-stopped
+
+volumes:
+  okr_data:
