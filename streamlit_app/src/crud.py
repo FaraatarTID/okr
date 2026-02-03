@@ -57,6 +57,28 @@ def get_user_by_username(username: str) -> Optional[User]:
         statement = select(User).where(User.username == username)
         return session.exec(statement).first()
 
+def get_user_goals(username: str, cycle_id: int):
+    """Fetch top-level Goals for a user in a specific cycle with eager loaded children."""
+    with get_session_context() as session:
+        # Get user
+        user = session.exec(select(User).where(User.username == username)).first()
+        if not user: return []
+        
+        # Query Goals with eager loading of Objectives
+        # We also load Key Results for those objectives so UI cards can show child counts
+        statement = select(Goal).where(
+            Goal.owner_id == user.id,
+            Goal.cycle_id == cycle_id
+        ).options(
+            selectinload(Goal.objectives).selectinload(Objective.key_results)
+        )
+        results = session.exec(statement).all()
+        return results
+
+def get_goal_tree(username: str):
+    """Fetch full tree (Legacy support helper if needed)."""
+    # Not needed if we traverse proactively
+    pass
 
 def get_user_by_id(user_id: int) -> Optional[User]:
     """Get a user by ID."""
@@ -187,6 +209,8 @@ def get_krs_needing_checkin(user_id: str, cycle_id: int, days_threshold: int = 7
             .join(Objective)
             .join(Goal)
             .where(Goal.cycle_id == cycle_id)
+            .where(Goal.owner_id == user.id)
+            .options(selectinload(KeyResult.tasks))
         )
         krs = session.exec(statement).all()
         
@@ -233,14 +257,16 @@ def create_cycle(title: str, start_date: datetime, end_date: datetime, is_active
 def get_active_cycles() -> List[Cycle]:
     """Get all active cycles."""
     with get_session_context() as session:
-        statement = select(Cycle).where(Cycle.is_active == True)
+        from src.models import Cycle as TableCycle
+        statement = select(TableCycle).where(TableCycle.is_active == True)
         return list(session.exec(statement).all())
 
 
 def get_all_cycles() -> List[Cycle]:
     """Get all cycles."""
     with get_session_context() as session:
-        statement = select(Cycle).order_by(col(Cycle.start_date).desc())
+        from src.models import Cycle as TableCycle
+        statement = select(TableCycle).order_by(TableCycle.start_date.desc())
         return list(session.exec(statement).all())
 
 
@@ -299,7 +325,7 @@ def get_leadership_metrics(user_ids: List[str], cycle_id: int):
             .join(Objective)
             .join(Goal)
             .where(Goal.cycle_id == cycle_id)
-            .where(Goal.user_id.in_(user_ids))
+            .where(Goal.owner_id.in_(user_ids))
         )
         krs = session.exec(statement).all()
         
@@ -458,9 +484,13 @@ def get_user_goals(user_id: str, cycle_id: Optional[int] = None) -> List[Goal]:
 # CREATE OPERATIONS
 # ============================================================================
 
-def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optional[int] = None, external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Goal:
+def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optional[int] = None, external_id: Optional[str] = None, created_at: Optional[datetime] = None, strategy_tags: Optional[str] = None) -> Goal:
     """Create a new goal."""
     with get_session_context() as session:
+        # Get owner_id from username
+        user_obj = session.exec(select(User).where(User.username == user_id)).first()
+        owner_id = user_obj.id if user_obj else None
+        
         # Get sibling count for auto-numbering
         statement = select(Goal).where(Goal.user_id == user_id)
         if cycle_id:
@@ -473,11 +503,13 @@ def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optio
         
         goal = Goal(
             user_id=user_id,
+            owner_id=owner_id,
             title=title,
             description=description,
             cycle_id=cycle_id,
             external_id=external_id,
-            created_at=created_at or datetime.utcnow()
+            created_at=created_at or datetime.utcnow(),
+            strategy_tags=strategy_tags
         )
         session.add(goal)
         session.commit()
@@ -517,7 +549,7 @@ def create_objective(goal_id: int, title: str, description: str = "", external_i
 
 
 def create_key_result(objective_id: int, title: str, description: str = "",
-                      target_value: float = 100.0, unit: str = "%", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> KeyResult:
+                      target_value: float = 100.0, unit: str = "%", external_id: Optional[str] = None, created_at: Optional[datetime] = None, initiative_tags: Optional[str] = None) -> KeyResult:
     """Create a new key result under an objective."""
     with get_session_context() as session:
         objective = session.get(Objective, objective_id)
@@ -538,7 +570,8 @@ def create_key_result(objective_id: int, title: str, description: str = "",
             target_value=target_value,
             unit=unit,
             external_id=external_id,
-            created_at=created_at or datetime.utcnow()
+            created_at=created_at or datetime.utcnow(),
+            initiative_tags=initiative_tags
         )
         session.add(key_result)
         session.commit()
@@ -549,15 +582,16 @@ def create_key_result(objective_id: int, title: str, description: str = "",
 
 
 def create_task(key_result_id: int, title: str = "", description: str = "",
-                estimated_minutes: int = 0, external_id: Optional[str] = None, created_at: Optional[datetime] = None, start_date: Optional[datetime] = None, deadline: Optional[int] = None) -> Task:
+                estimated_minutes: int = 0, external_id: Optional[str] = None, created_at: Optional[datetime] = None, start_date: Optional[datetime] = None, deadline: Optional[int] = None, assignee_id: Optional[int] = None) -> Task:
     """Create a new task under a key result."""
     with get_session_context() as session:
         parent_check = session.get(KeyResult, key_result_id)
         if not parent_check:
             raise ValueError(f"KeyResult {key_result_id} not found")
         
-        filter_stmt = select(Task).where(Task.key_result_id == key_result_id)
-        existing = session.exec(filter_stmt).all()
+        existing = session.exec(
+            select(Task).where(Task.key_result_id == key_result_id)
+        ).all()
         
         if not title or title.startswith("New "):
             title = f"Task #{len(existing) + 1}"
@@ -570,7 +604,8 @@ def create_task(key_result_id: int, title: str = "", description: str = "",
             external_id=external_id,
             created_at=created_at or datetime.utcnow(),
             start_date=start_date,
-            deadline=deadline
+            deadline=deadline,
+            assignee_id=assignee_id
         )
         session.add(task)
         session.commit()
@@ -579,11 +614,85 @@ def create_task(key_result_id: int, title: str = "", description: str = "",
         sync_service.push_update(task)
         return task
 
+# ============================================================================
+# TIMER OPERATIONS
+# ============================================================================
+
+def start_timer(task_id: int, username: str):
+    """Start the timer for a task."""
+    with get_session_context() as session:
+        task = session.get(Task, task_id)
+        if task:
+            task.timer_started_at = datetime.utcnow()
+            session.add(task)
+            session.commit()
+            sync_service.push_update(task)
+
+def stop_timer(task_id: int, username: str):
+    """Stop the timer and create a WorkLog."""
+    with get_session_context() as session:
+        task = session.get(Task, task_id)
+        if task and task.timer_started_at:
+            start_time = task.timer_started_at
+            end_time = datetime.utcnow()
+            duration_minutes = (end_time - start_time).total_seconds() / 60
+            
+            # Create WorkLog
+            log = WorkLog(
+                task_id=task_id,
+                start_time=start_time,
+                end_time=end_time,
+                duration_minutes=duration_minutes,
+                summary="Session"
+            )
+            session.add(log)
+            
+            # Update Task
+            task.timer_started_at = None
+            task.total_time_spent += int(duration_minutes)
+            session.add(task)
+            
+            session.commit()
+            # Push updates for both Task and WorkLog so UI/sync layers pick up changes immediately
+            sync_service.push_update(task)
+            try:
+                sync_service.push_update(log)
+            except Exception:
+                # Some sync backends might not handle WorkLog; ignore if unsupported
+                pass
+            # Sync log? WorkLogs might not need sync if aggregated, or yes.
+            # Assuming WorkLog isn't in Sheet Sync top level yet? 
+            # SyncService typically handles Task Updates. WorkLogs maybe not yet?
+            # Let's skip explicit WorkLog sync unless SyncService supports it.
+
+def get_total_time(task_id: int):
+    """Get total time spent on a task (minutes)."""
+    with get_session_context() as session:
+        task = session.get(Task, task_id)
+        return task.total_time_spent if task else 0
+
+def delete_work_log(log_id: int):
+    """Delete a work log entry."""
+    with get_session_context() as session:
+        log = session.get(WorkLog, log_id)
+        if log:
+            task_id = log.task_id
+            duration = int(log.duration_minutes)
+            session.delete(log)
+            
+            # Update Task total
+            task = session.get(Task, task_id)
+            if task:
+                task.total_time_spent = max(0, task.total_time_spent - duration)
+                session.add(task)
+                
+            session.commit()
+            # Push update for task total
+            if task: sync_service.push_update(task)
+
+
 
 # ============================================================================
-# UPDATE OPERATIONS
-# ============================================================================
-
 def update_goal(goal_id: int, **updates) -> Optional[Goal]:
     """Update a goal's fields."""
     with get_session_context() as session:
@@ -599,6 +708,43 @@ def update_goal(goal_id: int, **updates) -> Optional[Goal]:
             # S Y N C
             sync_service.push_update(goal)
         return goal
+
+
+def update_objective(obj_id: int, **updates) -> Optional[Objective]:
+    """Update an objective's fields."""
+    with get_session_context() as session:
+        obj = session.get(Objective, obj_id)
+        if obj:
+            for key, value in updates.items():
+                if hasattr(obj, key):
+                    setattr(obj, key, value)
+            obj.updated_at = datetime.utcnow()
+            session.add(obj)
+            session.commit()
+            session.refresh(obj)
+        return obj
+
+
+def update_key_result(kr_id: int, **updates) -> Optional[KeyResult]:
+    """Update a key result's fields."""
+    with get_session_context() as session:
+        kr = session.get(KeyResult, kr_id)
+        if kr:
+            import json
+            for key, value in updates.items():
+                # Store dict/list analysis as JSON string
+                if key == "gemini_analysis" and value is not None and not isinstance(value, str):
+                    try:
+                        value = json.dumps(value, ensure_ascii=False)
+                    except Exception:
+                        value = str(value)
+                if hasattr(kr, key):
+                    setattr(kr, key, value)
+            kr.updated_at = datetime.utcnow()
+            session.add(kr)
+            session.commit()
+            session.refresh(kr)
+        return kr
 
 
 def update_task(task_id: int, **updates) -> Optional[Task]:
@@ -649,7 +795,13 @@ def update_key_result(key_result_id: int, **updates) -> Optional[KeyResult]:
     with get_session_context() as session:
         item = session.get(KeyResult, key_result_id)
         if item:
+            import json
             for key, value in updates.items():
+                if key == "gemini_analysis" and value is not None and not isinstance(value, str):
+                    try:
+                        value = json.dumps(value, ensure_ascii=False)
+                    except Exception:
+                        value = str(value)
                 if hasattr(item, key): setattr(item, key, value)
             item.updated_at = datetime.utcnow()
             session.add(item)
@@ -744,6 +896,33 @@ def delete_key_result(kr_id: int) -> bool:
         return False
 
 
+def get_node(node_id: int, node_type: str):
+    """Fetch a node by ID and Type string (GOAL, OBJECTIVE, KEY_RESULT, TASK)."""
+    with get_session_context() as session:
+        nt = node_type.upper()
+        if nt == "GOAL": 
+            statement = select(Goal).where(Goal.id == node_id).options(
+                selectinload(Goal.objectives).selectinload(Objective.key_results)
+            )
+            return session.exec(statement).first()
+        if nt == "OBJECTIVE": 
+            statement = select(Objective).where(Objective.id == node_id).options(
+                selectinload(Objective.key_results).selectinload(KeyResult.tasks)
+            )
+            return session.exec(statement).first()
+        if nt == "KEY_RESULT" or nt == "KEYRESULT": 
+            statement = select(KeyResult).where(KeyResult.id == node_id).options(
+                selectinload(KeyResult.tasks), 
+                selectinload(KeyResult.check_ins)
+            )
+            return session.exec(statement).first()
+        if nt == "TASK": 
+            statement = select(Task).where(Task.id == node_id).options(
+                selectinload(Task.work_logs)
+            )
+            return session.exec(statement).first()
+    return None
+
 def get_node_by_external_id(external_id: str):
     """Search all OKR tables for a node with the given external_id (UUID)."""
     models = [Goal, Objective, KeyResult, Task]
@@ -824,7 +1003,7 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
         return work_log
 
 
-def stop_timer(task_id: int, note: str = None) -> Optional[WorkLog]:
+def stop_timer(task_id: int, summary: str = None) -> Optional[WorkLog]:
     """
     Stop the timer for a task.
     Updates the WorkLog end_time, calculates duration,
@@ -850,12 +1029,12 @@ def stop_timer(task_id: int, note: str = None) -> Optional[WorkLog]:
             
             # Calculate duration in minutes (min 1 minute)
             elapsed = now - work_log.start_time
-            duration_minutes = max(1, int(elapsed.total_seconds() / 60))
+            duration_minutes = elapsed.total_seconds() / 60
             work_log.duration_minutes = duration_minutes
-            work_log.note = note
+            work_log.summary = summary
             
             # Update task's cached total time
-            task.total_time_spent += duration_minutes
+            task.total_time_spent += int(duration_minutes)
             task.timer_started_at = None
             
             session.add(work_log)
@@ -909,6 +1088,36 @@ def _stop_all_active_timers(session: Session, user_id: str) -> int:
         count += 1
     
     return count
+
+
+def force_stop_active_timers(user_id: str) -> int:
+    """
+    EMERGENCY CLEANUP: Stops ALL active timers for a user regardless of hierarchy.
+    Use this when a timer is 'stuck' but doesn't appear in the normal tree joins.
+    """
+    with get_session_context() as session:
+        from src.models import Task as TableTask, WorkLog as TableWorkLog
+        from datetime import timezone
+        # Stop ALL active tasks (emergency cleanup)
+        all_active_tasks = session.exec(select(TableTask).where(TableTask.timer_started_at != None)).all()
+        
+        count = 0
+        for task in all_active_tasks:
+            task.timer_started_at = None
+            session.add(task)
+            
+            # Close any dangling work logs
+            active_logs = session.exec(select(TableWorkLog).where(TableWorkLog.task_id == task.id).where(TableWorkLog.end_time == None)).all()
+            for log in active_logs:
+                now = datetime.utcnow()
+                log.end_time = now
+                delta = now - log.start_time.replace(tzinfo=None) # Ensure naive comparison if needed
+                log.duration_minutes = int(delta.total_seconds() / 60)
+                session.add(log)
+            count += 1
+            
+        session.commit()
+        return count
 
 
 def add_manual_log(task_id: int, duration_minutes: int, note: str = None,
@@ -972,13 +1181,157 @@ def delete_work_log(log_id: int) -> bool:
         return False
 
 
-# ============================================================================
-# ANALYTICS QUERIES
-# ============================================================================
+def get_leadership_metrics(usernames: List[str], cycle_id: int):
+    """
+    Calculate hygiene, health, and per-member performance metrics.
+    Used by Leadership Dashboard to show aggregated team status.
+    """
+    from src.models import Goal, Objective, KeyResult, CheckIn, Task, User
+    from sqlalchemy.orm import selectinload
+    
+    with get_session_context() as session:
+        # Resolve usernames to IDs
+        user_objs = session.exec(select(User).where(User.username.in_(usernames))).all()
+        user_id_map = {u.id: (u.display_name or u.username) for u in user_objs}
+        user_ids = list(user_id_map.keys())
+        
+        if not user_ids:
+            return {"hygiene_pct": 0, "avg_confidence": 0, "at_risk_count": 0, "total_krs": 0, "at_risk_list": [], "member_progress": [], "member_deadlines": []}
 
-def get_work_logs_by_date_range(user_id: str, start_date: datetime, 
+        # 1. Fetch all Goals -> Objectives -> KRs -> Tasks for these users in this cycle
+        statement = (
+            select(Goal)
+            .where(Goal.user_id.in_(usernames)) # Note: Goal table uses username in user_id field in some parts of this legacy app logic? 
+            # Actually, looking at Goal model in models.py (I'll check later, but usually it's foreign key)
+            .where(Goal.cycle_id == cycle_id)
+            .options(
+                selectinload(Goal.objectives)
+                .selectinload(Objective.key_results)
+                .selectinload(KeyResult.tasks)
+            )
+        )
+        # Assuming goal.user_id matches the User.username or User.id? 
+        # In current models.py, Goal.user_id is often a String (username) for legacy reasons.
+        
+        goals = session.exec(statement).all()
+        
+        # Aggregate Metrics
+        all_krs = []
+        member_stats = {uid: {"progress": [], "overdue": 0, "at_risk": 0, "on_track": 0, "completed": 0, "tasks": 0} for uid in usernames}
+        
+        for goal in goals:
+            owner = goal.user_id # username
+            if owner not in member_stats: continue
+            
+            for obj in goal.objectives:
+                for kr in obj.key_results:
+                    all_krs.append(kr)
+                    for task in kr.tasks:
+                        member_stats[owner]["tasks"] += 1
+                        member_stats[owner]["progress"].append(task.progress)
+                        
+                        # Deadline Health
+                        if task.deadline:
+                            from utils.deadline_utils import get_deadline_status
+                            try:
+                                status_code, _, _ = get_deadline_status(task)
+                                if status_code == "overdue": member_stats[owner]["overdue"] += 1
+                                elif status_code == "at_risk": member_stats[owner]["at_risk"] += 1
+                                else: member_stats[owner]["on_track"] += 1
+                                if task.progress >= 100: member_stats[owner]["completed"] += 1
+                            except: pass
+
+        # Finalize per-member data
+        member_progress = []
+        member_deadlines = []
+        for uname, stats in member_stats.items():
+            avg_p = int(sum(stats["progress"]) / len(stats["progress"])) if stats["progress"] else 0
+            disp = member_display_map.get(uname, uname) if 'member_display_map' in locals() else uname
+            
+            member_progress.append({
+                "member": disp,
+                "username": uname,
+                "progress": avg_p,
+                "tasks": stats["tasks"],
+                "completed": stats["completed"]
+            })
+            member_deadlines.append({
+                "member": disp,
+                "username": uname,
+                "overdue": stats["overdue"],
+                "at_risk": stats["at_risk"],
+                "on_track": stats["on_track"],
+                "completed": stats["completed"]
+            })
+
+        # Hygiene & Risks
+        updated_count = 0
+        total_confidence = 0
+        conf_count = 0
+        at_risk_list = []
+        seven_days_ago = datetime.utcnow() - timedelta(days=7)
+        ten_days_ago = datetime.utcnow() - timedelta(days=10)
+
+        for kr in all_krs:
+            latest = session.exec(select(CheckIn).where(CheckIn.key_result_id == kr.id).order_by(CheckIn.created_at.desc()).limit(1)).first()
+            if latest:
+                if latest.created_at >= seven_days_ago: updated_count += 1
+                total_confidence += latest.confidence_score
+                conf_count += 1
+                
+                risk_reasons = []
+                if latest.confidence_score < 4: risk_reasons.append("Low Confidence")
+                if latest.created_at < ten_days_ago: risk_reasons.append("Stale Data")
+                if kr.gemini_analysis:
+                    try:
+                        an = json.loads(kr.gemini_analysis)
+                        if an.get("effectiveness_score", 100) < 50: risk_reasons.append("Low Strategy Fit")
+                    except: pass
+                
+                if risk_reasons:
+                    at_risk_list.append({"title": kr.title, "owner": kr.objective.goal.user_id, "reason": ", ".join(risk_reasons), "confidence": latest.confidence_score})
+            else:
+                at_risk_list.append({"title": kr.title, "owner": kr.objective.goal.user_id, "reason": "Missing Check-in", "confidence": "N/A"})
+
+        # Prepare heatmap / strategic alignment data from KR analysis if available
+        heatmap_data = []
+        for kr in all_krs:
+            try:
+                if kr.gemini_analysis:
+                    import json
+                    an = json.loads(kr.gemini_analysis)
+                    eff = an.get("efficiency_score") or an.get("efficiency") or an.get("efficiency_pct")
+                    eff = int(eff) if eff is not None else None
+                    eff_score = eff if eff is not None else 0
+                    strat = an.get("effectiveness_score") or an.get("strategy_fit") or an.get("effectiveness_pct")
+                    strat = int(strat) if strat is not None else None
+                    strat_score = strat if strat is not None else 0
+                    # Confidence from latest check-in if available
+                    latest = session.exec(select(CheckIn).where(CheckIn.key_result_id == kr.id).order_by(CheckIn.created_at.desc()).limit(1)).first()
+                    conf = latest.confidence_score if latest else 0
+                    heatmap_data.append({
+                        "title": kr.title,
+                        "efficiency": eff_score,
+                        "effectiveness": strat_score,
+                        "confidence": conf
+                    })
+            except Exception:
+                continue
+
+        return {
+            "hygiene_pct": (updated_count / len(all_krs) * 100) if all_krs else 0,
+            "avg_confidence": (total_confidence / conf_count) if conf_count > 0 else 0,
+            "at_risk_count": len(at_risk_list),
+            "total_krs": len(all_krs),
+            "at_risk": at_risk_list,
+            "member_progress": member_progress,
+            "member_deadlines": member_deadlines,
+            "heatmap_data": heatmap_data
+        }
+
+def get_work_logs_by_date_range(user_id: int, start_date: datetime, 
                                  end_date: datetime) -> List[WorkLog]:
-    """Get all work logs for a user within a date range."""
+    """Get all work logs for a user within a date range with eager loaded hierarchy."""
     with get_session_context() as session:
         statement = (
             select(WorkLog)
@@ -986,23 +1339,54 @@ def get_work_logs_by_date_range(user_id: str, start_date: datetime,
             .join(KeyResult)
             .join(Objective)
             .join(Goal)
-            .where(Goal.user_id == user_id)
+            .options(
+                selectinload(WorkLog.task)
+                .selectinload(Task.key_result)
+                .selectinload(KeyResult.objective)
+                .selectinload(Objective.goal)
+            )
+            .where(Goal.owner_id == user_id)
             .where(WorkLog.start_time >= start_date)
             .where(WorkLog.start_time <= end_date)
             .order_by(col(WorkLog.start_time).desc())
         )
-        logs = session.exec(statement).all()
-        return list(logs)
+        return list(session.exec(statement).all())
+
+def get_all_krs_by_cycle(cycle_id: int) -> List[KeyResult]:
+    """Fetch all Key Results for a specific cycle with their objectives and goals loaded."""
+    with get_session_context() as session:
+        statement = (
+            select(KeyResult)
+            .join(Objective)
+            .join(Goal)
+            .where(Goal.cycle_id == cycle_id)
+            .options(
+                selectinload(KeyResult.objective).selectinload(Objective.goal)
+            )
+        )
+        return list(session.exec(statement).all())
+
+def get_all_tasks_by_cycle(cycle_id: int) -> List[Task]:
+    """Fetch all Tasks for a specific cycle."""
+    with get_session_context() as session:
+        statement = (
+            select(Task)
+            .join(KeyResult)
+            .join(Objective)
+            .join(Goal)
+            .where(Goal.cycle_id == cycle_id)
+        )
+        return list(session.exec(statement).all())
 
 
-def get_hours_by_goal(user_id: str, days: int = 7) -> dict:
+def get_hours_by_goal(user_id: int, days: int = 7) -> dict:
     """Get total hours worked per goal in the last N days."""
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=days)
     
     with get_session_context() as session:
         goals = session.exec(
-            select(Goal).where(Goal.user_id == user_id)
+            select(Goal).where(Goal.owner_id == user_id)
         ).all()
         
         hours_by_goal = {}
@@ -1090,6 +1474,7 @@ def update_progress_chain(task_id: int):
                 objective.progress = int(total_kr / len(objective.key_results)) if objective.key_results else 0
                 session.add(objective)
                 
+                # Update Goal progress (average of Objectives)
                 goal = session.get(Goal, objective.goal_id)
                 if goal:
                     total_obj = sum(o.progress for o in goal.objectives)
@@ -1215,3 +1600,134 @@ def get_team_retrospectives(manager_id: int, cycle_id: int = None) -> List[Retro
             stmt = stmt.where(Retrospective.cycle_id == cycle_id)
         stmt = stmt.order_by(col(Retrospective.week_start_date).desc())
         return list(session.exec(stmt).all())
+
+def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dict:
+    """
+    Reconstructs the hierarchical JSON-like dictionary structure from the SQL database.
+    This allows the UI to continue using its existing logic while powered by SQL.
+    (Updated to remove Initiative residues)
+    """
+    with get_session_context() as session:
+        user = session.exec(select(User).where(User.username == username)).first()
+        if not user: return {"nodes": {}, "rootIds": []}
+        
+        statement = select(Goal).where(Goal.user_id == user.id)
+        if cycle_id:
+            statement = statement.where(Goal.cycle_id == cycle_id)
+            
+        statement = statement.options(
+                selectinload(Goal.objectives)
+                .selectinload(Objective.key_results)
+                .selectinload(KeyResult.tasks)
+                .selectinload(Task.work_logs)
+            )
+        goals = session.exec(statement).all()
+        
+        nodes = {}
+        root_ids = []
+        
+        for goal in goals:
+            g_id = goal.external_id or f"goal_{goal.id}"
+            root_ids.append(g_id)
+            
+            import json
+            nodes[g_id] = {
+                "id": g_id,
+                "type": "GOAL",
+                "title": goal.title,
+                "description": goal.description,
+                "progress": goal.progress,
+                "children": [],
+                "createdAt": int(goal.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if goal.created_at else None,
+                "isExpanded": goal.is_expanded,
+                "cycle_id": goal.cycle_id,
+                "strategy_tags": json.loads(goal.strategy_tags) if goal.strategy_tags else [],
+                "user_id": user.username
+            }
+            
+            for obj in goal.objectives:
+                o_id = obj.external_id or f"objective_{obj.id}"
+                nodes[g_id]["children"].append(o_id)
+                nodes[o_id] = {
+                    "id": o_id,
+                    "type": "OBJECTIVE",
+                    "title": obj.title,
+                    "description": obj.description,
+                    "progress": obj.progress,
+                    "children": [],
+                    "parentId": g_id,
+                    "createdAt": int(obj.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if obj.created_at else None,
+                    "isExpanded": obj.is_expanded
+                }
+                
+                for kr in obj.key_results:
+                    k_id = kr.external_id or f"key_result_{kr.id}"
+                    nodes[o_id]["children"].append(k_id)
+                    
+                    init_tags = []
+                    if kr.initiative_tags:
+                        try: init_tags = json.loads(kr.initiative_tags)
+                        except: pass
+                    
+                    gemini_analysis = None
+                    if kr.gemini_analysis:
+                        try: gemini_analysis = json.loads(kr.gemini_analysis)
+                        except: pass
+
+                    nodes[k_id] = {
+                        "id": k_id,
+                        "type": "KEY_RESULT",
+                        "title": kr.title,
+                        "description": kr.description,
+                        "progress": kr.progress,
+                        "children": [],
+                        "parentId": o_id,
+                        "createdAt": int(kr.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if kr.created_at else None,
+                        "target_value": kr.target_value,
+                        "current_value": kr.current_value,
+                        "unit": kr.unit,
+                        "initiative_tags": init_tags,
+                        "geminiAnalysis": gemini_analysis
+                    }
+                    
+                    for task in kr.tasks:
+                        t_id = task.external_id or f"task_{task.id}"
+                        nodes[k_id]["children"].append(t_id)
+                        
+                        # Reconstruct WorkLog
+                        work_log = []
+                        for log in task.work_logs:
+                            work_log.append({
+                                "startedAt": int(log.start_time.replace(tzinfo=timezone.utc).timestamp() * 1000),
+                                "endedAt": int(log.end_time.replace(tzinfo=timezone.utc).timestamp() * 1000) if log.end_time else None,
+                                "durationMinutes": log.duration_minutes,
+                                "summary": log.summary
+                            })
+                        
+                        nodes[t_id] = {
+                            "id": t_id,
+                            "type": "TASK",
+                            "title": task.title,
+                            "description": task.description,
+                            "progress": task.progress,
+                            "children": [],
+                            "parentId": k_id,
+                            "createdAt": int(task.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if task.created_at else None,
+                            "isExpanded": task.is_expanded,
+                            "status": task.status.value,
+                            "timeSpent": task.total_time_spent,
+                            "timerStartedAt": int(task.timer_started_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if task.timer_started_at else None,
+                            "deadline": int(task.deadline.replace(tzinfo=timezone.utc).timestamp() * 1000) if task.deadline else None,
+                            "workLog": work_log
+                        }
+        
+        return {"nodes": nodes, "rootIds": root_ids}
+
+
+def get_sql_id_by_external(external_id: str, model_class) -> Optional[int]:
+    """Helper to get SQL internal ID from JSON external UUID/ID."""
+    with get_session_context() as session:
+        # Select the whole model to avoid Pydantic metaclass issues with .id access on the class
+        statement = select(model_class).where(model_class.external_id == external_id)
+        result = session.exec(statement).first()
+        return result.id if result else None

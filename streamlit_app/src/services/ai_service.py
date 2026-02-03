@@ -329,40 +329,60 @@ def analyze_objective(objective: Objective,
 # These work with JSON node dictionaries used in app.py
 # =============================================================================
 
-def analyze_node(node_id, all_nodes):
+def analyze_node(node_id: int, node_type: str = "KEY_RESULT"):
     """
-    Analyze a Key Result node using its JSON dictionary representation.
-    Used by app.py for OKR analysis with dict-based data.
+    Analyze a node (typically a Key Result) by fetching its data directly from SQL.
+    Replaced legacy dictionary-based version for better performance and consistency.
     """
+    from src.crud import get_node
+    from src.models import Task, KeyResult, Objective, Goal
+    
     api_key = get_api_key()
     if not api_key:
         return {"error": "API Key not configured"}
 
-    node = all_nodes.get(node_id)
-    if not node:
-        return {"error": "Node not found"}
+    if not GENAI_AVAILABLE:
+        return {"error": "google-generativeai not installed"}
 
-    children = [all_nodes[cid] for cid in node.get("children", []) if cid in all_nodes]
+    # Fetch node with all relationships for context
+    node = get_node(node_id, node_type)
+    if not node:
+        return {"error": f"Node {node_id} ({node_type}) not found"}
+
+    # Identify children and context
+    # Usually we analyze Key Results (children = Tasks) or Objectives (children = KRs)
+    children = []
+    node_type_upper = node_type.upper()
+    
+    if node_type_upper == "GOAL":
+        children = node.objectives
+    elif node_type_upper == "OBJECTIVE":
+        children = node.key_results
+    elif node_type_upper in ["KEY_RESULT", "KEYRESULT"]:
+        children = node.tasks
     
     # Prepare current snapshot for storage
     current_snapshot = {
-        "title": node.get("title"),
+        "title": node.title,
         "metrics": {
-            "target": node.get("target_value", 100.0),
-            "current": node.get("current_value", 0.0),
-            "progress": node.get("progress", 0)
+            "target": getattr(node, "target_value", 100.0),
+            "current": getattr(node, "current_value", 0.0),
+            "progress": getattr(node, "progress", 0)
         },
         "scope": []
     }
     
     children_text = ""
+    from datetime import datetime
     for child in children:
-        c_type = child.get("type", "ITEM").upper()
-        c_title = child.get("title", "Untitled")
-        c_desc = child.get("description", "")
-        c_progress = child.get("progress", 0)
+        c_type = child.__tablename__.upper()
+        c_title = child.title
+        c_desc = child.description or ""
+        c_progress = child.progress or 0
         c_status = "DONE" if c_progress == 100 else "IN PROGRESS"
-        c_time = child.get("timeSpent", 0)
+        
+        # Total time spent on this child
+        c_time = getattr(child, "total_time_spent", 0)
         
         # Add to snapshot
         current_snapshot["scope"].append({
@@ -371,142 +391,150 @@ def analyze_node(node_id, all_nodes):
             "progress": c_progress
         })
         
-        # Get recent work history
+        # Get recent work history if it's a Task
         work_summ_text = ""
-        if "workLog" in child and child["workLog"]:
-            # Last 5 summaries
-            recent_logs = sorted(child["workLog"], key=lambda x: x.get("endedAt", 0), reverse=True)[:5]
-            summaries = [l.get("summary") for l in recent_logs if l.get("summary")]
-            if summaries:
-                work_summ_text = "\n  Recent Work: " + "; ".join(summaries)
+        if c_type == "TASK":
+            # Fetch recent logs in a live session to avoid detached lazy loads
+            try:
+                from src.database import get_session_context
+                from sqlmodel import select
+                from src.models import WorkLog
+                with get_session_context() as s:
+                    recent_logs = s.exec(
+                        select(WorkLog)
+                        .where(WorkLog.task_id == child.id)
+                        .order_by(WorkLog.start_time.desc())
+                    ).all()[:5]
+                summaries = [l.summary for l in recent_logs if getattr(l, 'summary', None)]
+                if summaries:
+                    work_summ_text = "\n  Recent Work: " + "; ".join(summaries)
+            except Exception:
+                pass
         
-        
-        # Deadline information
+        # Deadline information (robust parsing)
         deadline_info = ""
-        if child.get("deadline"):
-            from utils.deadline_utils import get_deadline_status, get_days_remaining
-            # Import might be redundant if already imported at top, but safe here.
-            days = get_days_remaining(child.get("deadline"))
-            # get_deadline_status requires full node dict usually
-            deadline_info = f"\n  Deadline: {datetime.fromtimestamp(child.get('deadline')/1000).date()} ({days} days remaining)"
+        dl_val = getattr(child, "deadline", None)
+        if dl_val:
+            from utils.deadline_utils import get_days_remaining
+            try:
+                dl_ms = None
+                d_date = None
+                if isinstance(dl_val, datetime):
+                    dl_ms = int(dl_val.timestamp() * 1000)
+                    d_date = dl_val.date()
+                elif isinstance(dl_val, (int, float)):
+                    ts = float(dl_val)
+                    if ts > 1e10:  # milliseconds
+                        dl_ms = int(ts)
+                        d_date = datetime.fromtimestamp(ts / 1000.0).date()
+                    else:  # seconds
+                        dl_ms = int(ts * 1000)
+                        d_date = datetime.fromtimestamp(ts).date()
+                elif isinstance(dl_val, str):
+                    try:
+                        ts = float(dl_val)
+                        if ts > 1e10:
+                            dl_ms = int(ts)
+                            d_date = datetime.fromtimestamp(ts / 1000.0).date()
+                        else:
+                            dl_ms = int(ts * 1000)
+                            d_date = datetime.fromtimestamp(ts).date()
+                    except Exception:
+                        try:
+                            dtp = datetime.fromisoformat(dl_val)
+                            dl_ms = int(dtp.timestamp() * 1000)
+                            d_date = dtp.date()
+                        except Exception:
+                            dl_ms = None
+                if dl_ms and d_date:
+                    days = get_days_remaining(dl_ms)
+                    deadline_info = f"\n  Deadline: {d_date} ({days} days remaining)"
+            except Exception:
+                pass
 
         # Start Date
         start_date_info = ""
-        sd_iso = child.get("start_date")
-        if sd_iso:
-             # Just show the date part if it's full ISO
-             try:
-                 sd_val = datetime.fromisoformat(sd_iso).date()
-                 start_date_info = f"\n  Start Date: {sd_val}"
-             except:
-                 start_date_info = f"\n  Start Date: {sd_iso}"
+        if hasattr(child, "start_date") and child.start_date:
+             start_date_info = f"\n  Start Date: {child.start_date.date()}"
         
         children_text += f"- [{c_type}] {c_title}\n  Description: {c_desc}\n  Status: {c_status} ({c_progress}%)\n  Time: {c_time}m{start_date_info}{deadline_info}{work_summ_text}\n"
 
     prompt = f"""
     You are an expert Strategic OKR Analyst. 
     
-    Target Key Result: "{node.get('title')}"
-    Description: "{node.get('description', 'N/A')}"
+    Target Node ({node_type_upper}): "{node.title}"
+    Description: "{node.description or 'N/A'}"
     
     CURRENT STATE:
-    - Target: {current_snapshot['metrics']['target']} {node.get('unit', '%')}
-    - Current: {current_snapshot['metrics']['current']} {node.get('unit', '%')}
+    - Target: {current_snapshot['metrics']['target']}
+    - Current: {current_snapshot['metrics']['current']}
     - Progress: {current_snapshot['metrics']['progress']}%
-    - Defined Scope:
+    - Defined Scope (Children):
     {children_text}
     
     ---
-    PREVIOUS STATE SNAPSHOT (Captured during last audit):
-    {json.dumps(node.get('geminiLastSnapshot', {}), indent=2, ensure_ascii=False) if node.get('geminiLastSnapshot') else "N/A (First Run)"}
-    
     PREVIOUS ANALYSIS RESULTS:
-    {json.dumps(node.get('geminiAnalysis', {}), indent=2, ensure_ascii=False) if node.get('geminiAnalysis') else "N/A (First Run)"}
+    {json.dumps(node.gemini_analysis, indent=2, ensure_ascii=False) if node.gemini_analysis else "N/A (First Run)"}
     
     ---
     YOUR OBJECTIVE:
-    Conduct a rigorous audit of this Key Result. Evaluate FOUR dimensions:
-    
-    0. DEADLINE HEALTH (Urgency Analysis):
-       - Review all tasks with deadlines. Flag any that are "At Risk" or "Overdue".
-       - Tasks that are overdue without 100% completion are critical failures.
+    Conduct a rigorous audit. Evaluate dimensions:
     
     1. PROGRESSION & DELTA CHECK:
-       - Compare the "CURRENT STATE" with the "PREVIOUS STATE SNAPSHOT".
-       - Identify what has changed: Have new tasks been added? Has the metric value increased?
-       - If the user addressed a gap you identified in the "PREVIOUS ANALYSIS", acknowledge it.
+       - Identify what has changed. If the user addressed previous gaps, acknowledge them.
     
     2. EFFICIENCY (Completeness of Scope): 
-       - Is this work actually sufficient to achieve the Key Result 100%?
-       - Efficiency Score = (Work Done) / (Total Work Required including missing tasks).
+       - Is this work actually sufficient to achieve the parent goal?
     
     3. EFFECTIVENESS (Quality of Strategy):
-       - Are the defined tasks the *right* things to do?
-       - A high effectiveness score means the strategy is smart and likely to succeed.
+       - Are the defined children the *right* things to do?
     
-    4. PROGRESS ESTIMATION:
-       - Calculate a "suggested_current_value" for this Key Result.
-       - Base this on the progress of defined tasks AND the target metric.
-    
-    REQUIRED OUTPUT (JSON):
+    REQUIRED OUTPUT (JSON only):
     {{
         "efficiency_score": <number 0-100>,
         "effectiveness_score": <number 0-100>,
-        "overall_score": <number 0-100 weighted average>,
-        "suggested_current_value": <number, AI estimation>,
-        "deadline_warnings": ["<Task X is overdue by N days>", ...],
+        "overall_score": <number 0-100>,
+        "deadline_warnings": ["<Something is overdue>", ...],
         "gap_analysis": "<What is missing to reach 100% fulfillment>",
-        "quality_assessment": "<Critique of the current tasks' quality>",
+        "quality_assessment": "<Critique of children quality>",
         "proposed_tasks": ["<New Task 1>", "<New Task 2>", ...],
         "summary": "<2 sentence executive summary>"
     }}
     
-    IMPORTANT: Detect the language of the Key Result Title. All generated text MUST be in that SAME language.
-    Provide strictly valid JSON.
+    Match the language of the title. Return ONLY valid JSON.
     """
 
     try:
-        if not GENAI_AVAILABLE:
-            return {"error": "google-generativeai not installed"}
-            
         client = genai.Client(api_key=api_key)
-        
         response = client.models.generate_content(
             model="gemini-flash-latest",
             contents=prompt,
-            config={
-                "response_mime_type": "application/json"
-            }
+            config={"response_mime_type": "application/json"}
         )
         
-        # Validate response
         if not response.text:
             return {"error": "Gemini returned an empty response."}
         
-        # Clean the response
         raw_text = response.text.strip()
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
+        # Basic cleanup of markdown markers if any
         if raw_text.startswith("```"):
-            raw_text = raw_text[3:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
+            lines = raw_text.splitlines()
+            if lines[0].startswith("```"): lines = lines[1:]
+            if lines[-1].startswith("```"): lines = lines[:-1]
+            raw_text = "\n".join(lines).strip()
             
         data = json.loads(raw_text)
         
         return {
-            "analysis": {
-                "efficiency_score": data.get("efficiency_score", 0),
-                "effectiveness_score": data.get("effectiveness_score", 0),
-                "overall_score": data.get("overall_score", 0),
-                "suggested_current_value": data.get("suggested_current_value", node.get("current_value", 0.0)),
-                "deadline_warnings": data.get("deadline_warnings", []),
-                "gap_analysis": data.get("gap_analysis", ""),
-                "quality_assessment": data.get("quality_assessment", ""),
-                "proposed_tasks": data.get("proposed_tasks", []),
-                "summary": data.get("summary", "")
-            },
-            "snapshot": current_snapshot
+            "efficiency_score": data.get("efficiency_score", 0),
+            "effectiveness_score": data.get("effectiveness_score", 0),
+            "overall_score": data.get("overall_score", 0),
+            "deadline_warnings": data.get("deadline_warnings", []),
+            "gap_analysis": data.get("gap_analysis", ""),
+            "quality_assessment": data.get("quality_assessment", ""),
+            "proposed_tasks": data.get("proposed_tasks", []),
+            "summary": data.get("summary", ""),
+            "analyzed_at": datetime.utcnow().isoformat()
         }
     except Exception as e:
         return {"error": str(e)}

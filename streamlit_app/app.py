@@ -7,14 +7,18 @@ from datetime import datetime, timedelta
 # Add current directory to path so we can import modules if running from outside
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from utils.storage import load_data, load_all_data, load_team_data, save_data, add_node, delete_node, update_node, update_node_progress, export_data, import_data, start_timer, stop_timer, get_total_time, delete_work_log
-from src.database import init_database
+# Database utilities
+from src.database import init_database, export_db, import_db
 from src.services.sheet_sync import sync_service
 
 # Initialize DB and Restore from Sheets (Write-Through Architecture)
 init_database()
 if "db_restored" not in st.session_state:
     try:
+        # sync_service.restore_to_local_db() # Disable auto-restore on boot for speed, let user trigger or smart trigger
+        # Actually enabling it for now to ensure data consistency until fully decoupled, 
+        # BUT we just said we want to avoid overwriting. 
+        # With conflict resolution, it's safer.
         sync_service.restore_to_local_db()
         st.session_state.db_restored = True
     except Exception as e:
@@ -37,11 +41,11 @@ import pandas as pd
 from src.ui.styles import apply_custom_fonts, inject_dialog_styles
 from src.ui.components import render_level, navigate_to, navigate_back_to
 from src.ui.dialogs import (
-    render_manage_cycles_dialog, render_mindmap_dialog, render_timer_dialog,
-    render_leadership_dashboard_dialog, render_admin_panel_dialog,
-    render_weekly_ritual_dialog, render_create_task_dialog,
-    render_weekly_report_dialog, render_daily_report_dialog, 
-    render_inspector_dialog, render_retrobox_dialog, render_timeline_dialog
+    render_weekly_report_dialog, render_daily_report_dialog,
+    render_inspector_dialog, render_retrobox_dialog, render_timeline_dialog,
+    render_create_goal_dialog, render_create_objective_dialog, render_create_kr_dialog,
+    render_weekly_ritual_dialog, render_timer_dialog, render_leadership_dashboard_dialog,
+    render_admin_panel_dialog, render_create_task_dialog, render_manage_cycles_dialog
 )
 
 st.set_page_config(page_title="OKR Tracker", layout="wide")
@@ -70,7 +74,6 @@ def render_login():
                     
                     # Fetch manager username if applicable
                     if user.manager_id:
-                        from src.crud import get_user_by_id
                         mgr = get_user_by_id(user.manager_id)
                         st.session_state["manager_username"] = mgr.username if mgr else None
                     
@@ -80,6 +83,17 @@ def render_login():
                     st.error("Invalid username or password.")
             else:
                 st.error("Please enter both username and password.")
+
+
+
+
+
+
+
+
+
+
+
 
 def render_app(username):
     # Ensure session state is initialized
@@ -164,23 +178,6 @@ def render_app(username):
         st.rerun()
         
     st.sidebar.markdown("### 📈 Insights & Reports")
-
-    # Load data based on role
-    if user_role == "admin":
-        data = load_all_data()
-    elif user_role == "manager":
-        data = load_team_data(st.session_state.user_id)
-    else:
-        data = load_data(username)
-    
-    # Apply rendering filter (NON-DESTRUCTIVE - used for UI only)
-    display_root_ids = []
-    for rid in data.get("rootIds", []):
-        node = data["nodes"].get(rid)
-        if node and node.get("cycle_id") == st.session_state.active_cycle_id:
-            display_root_ids.append(rid)
-            
-    # Use display_root_ids for the rest of the app, do NOT overwrite data["rootIds"]
     
     dialog_active = False
 
@@ -215,7 +212,6 @@ def render_app(username):
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
-        st.rerun()
 
     if st.sidebar.button("🧭 Strategic \nDashboard", help="Executive visibility", use_container_width=True):
         st.session_state.active_report_mode = "Dashboard"
@@ -227,13 +223,13 @@ def render_app(username):
     if user_role == "admin":
         with st.sidebar.expander("Storage & Sync"):
             c1, c2 = st.columns(2)
-            from utils.storage import export_db
             db_binary = export_db()
             c1.download_button("📥 Export Database", db_binary, "okr_database.db", help="Download the live SQLite database file")
             
             if c2.button("☁️ Cloud Backup", help="Force save current data to Google Sheets (Backup)"):
                 with st.spinner("Backing up to Cloud..."):
-                    save_data(data, username)
+                    # Trigger manual sync push
+                    sync_service.sync_all_to_sheets()
                     st.success("Successfully backed up data to Google Sheets!")
                     st.rerun()
 
@@ -241,7 +237,6 @@ def render_app(username):
             st.markdown("#### Restore Database")
             uploaded_db = st.file_uploader("Upload .db file", type=["db"], help="Restore from a previously exported okr_database.db file")
             if uploaded_db and st.button("🚀 Restore Database", type="primary"):
-                from utils.storage import import_db
                 success, msg = import_db(uploaded_db.read())
                 if success:
                     st.success(msg)
@@ -250,19 +245,23 @@ def render_app(username):
                 else:
                     st.error(msg)
 
-    # Sync Status
-    from utils.storage import get_sync_status
-    is_connected, error_msg = get_sync_status()
-    
-    st.sidebar.markdown("---")
-    if is_connected:
+    st.sidebar.markdown("--- ")
+    if sync_service.is_ready():
         st.sidebar.success("✅ Cloud Sync Active")
     else:
         st.sidebar.warning("⚠️ Local Storage Only")
-        if error_msg:
-            with st.sidebar.expander("Sync Error Details"):
-                st.error(error_msg)
-                st.caption("Add 'gcp_service_account' to secrets.toml")
+        last_err = sync_service.get_last_error()
+        if last_err:
+            with st.sidebar.expander("🔍 Sync Diagnostics", expanded=True):
+                st.error(last_err)
+                if st.button("🔄 Attempt Reconnect", key="sync_retry_btn"):
+                    if sync_service.reconnect():
+                        st.success("Connected successfully!")
+                        st.rerun()
+                    else:
+                        st.error("Reconnection failed. Check network.")
+        elif "gcp_service_account" not in st.secrets:
+            st.sidebar.info("Tip: Add 'gcp_service_account' to secrets.toml for cloud sync.")
 
     # === WEEKLY FOCUS CARD ===
     from src.crud import get_active_weekly_plan, get_user_by_username
@@ -290,31 +289,44 @@ def render_app(username):
                             with cols[idx]:
                                 st.markdown(f"**{idx+1}.** {p}")
     
-    render_level(data, username, root_ids=display_root_ids)
+    render_level(username)
 
     # Persistent Dialog Checks - Only if no other dialog is active
     # (Though Sidebar buttons act as triggers, if we use them to set state, we fall through here)
     if not dialog_active:
         if "active_timer_node_id" in st.session_state:
-            render_timer_dialog(st.session_state.active_timer_node_id, data, username)
+            render_timer_dialog(st.session_state.active_timer_node_id, username)
         elif "active_inspector_id" in st.session_state:
-            render_inspector_dialog(st.session_state.active_inspector_id, data, username)
+            render_inspector_dialog(st.session_state.active_inspector_id, username)
         elif "active_report_mode" in st.session_state:
             mode = st.session_state.active_report_mode
             if mode == "Ritual":
-                render_weekly_ritual_dialog(data, username)
+                render_weekly_ritual_dialog(username)
             elif mode == "Dashboard":
                 render_leadership_dashboard_dialog(username)
             elif mode == "Admin":
                 render_admin_panel_dialog()
             elif mode == "Weekly":
-                render_weekly_report_dialog(data, username)
+                render_weekly_report_dialog(username)
             elif mode == "Daily":
-                render_daily_report_dialog(data, username)
+                render_daily_report_dialog(username)
             elif mode == "RetroBox":
                 render_retrobox_dialog(username)
             elif mode == "Timeline":
-                render_timeline_dialog(username, data)
+                render_timeline_dialog(username)
+        # Handle Node Creation Dialogs
+        if "add_mode_type" in st.session_state:
+            ntype = st.session_state.add_mode_type
+            parent_id = st.session_state.get("add_mode_parent")
+            
+            if ntype == "GOAL":
+                render_create_goal_dialog(username)
+            elif ntype == "OBJECTIVE":
+                render_create_objective_dialog(parent_id)
+            elif ntype == "KEY_RESULT":
+                render_create_kr_dialog(parent_id)
+            elif ntype == "TASK":
+                render_create_task_dialog(parent_id, username)
 
 def main():
     init_database() # Ensure tables exist

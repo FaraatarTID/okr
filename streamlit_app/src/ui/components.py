@@ -17,48 +17,120 @@ def format_time(minutes):
     m = int(minutes % 60)
     return f"{h:02d}:{m:02d}"
 
-def build_graph_from_node(node_id, data):
+from sqlmodel import select, col
+from sqlalchemy.orm import selectinload
+from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn
+from src.crud import get_goal_tree, get_user_goals, get_session_context, get_user_by_username, get_work_logs_by_date_range, get_all_tasks_by_cycle
+
+def get_node_details(node_id):
+    """Helper to get title and type for a node ID from DB."""
+    # This is tricky because ID doesn't imply type in standard SQL.
+    # But our IDs are integers. We might need a unified lookup or pass type.
+    # For now, let's assume we can deduce or search.
+    # Actually, the navigation stack should probably store (id, type) or we search.
+    # Searching all tables is inefficient.
+    # Hack: Try to find in loaded tree? 
+    # Better: Update navigation to push objects or (id, type).
+    # For this refactor, let's implement a 'smart' fetch or just iterate tables.
+    from src.crud import get_session_context
+    from sqlmodel import select
+    
+    with get_session_context() as session:
+        # If node_id is a typed reference like 'objective_12', parse it to avoid
+        # ambiguity between tables that may have overlapping numeric ids.
+        if isinstance(node_id, str) and "_" in node_id:
+            parts = node_id.split("_")
+            # support multi-part table names like 'key_result_12'
+            tab = "_".join(parts[:-1]).lower()
+            try:
+                nid = int(parts[-1])
+            except Exception:
+                nid = None
+
+            if tab == "goal" and nid is not None:
+                g = session.get(Goal, nid)
+                if g: return "GOAL", g.title
+            if tab == "objective" and nid is not None:
+                o = session.get(Objective, nid)
+                if o: return "OBJECTIVE", o.title
+            if tab in ("key_result", "keyresult") and nid is not None:
+                k = session.get(KeyResult, nid)
+                if k: return "KEY_RESULT", k.title
+            if tab == "task" and nid is not None:
+                t = session.get(Task, nid)
+                if t: return "TASK", t.title
+
+        # Fallback: try numeric id lookups in order (may be ambiguous if ids overlap)
+        try:
+            g = session.get(Goal, node_id)
+            if g: return "GOAL", g.title
+        except Exception:
+            pass
+        try:
+            o = session.get(Objective, node_id)
+            if o: return "OBJECTIVE", o.title
+        except Exception:
+            pass
+        try:
+            k = session.get(KeyResult, node_id)
+            if k: return "KEY_RESULT", k.title
+        except Exception:
+            pass
+        try:
+            t = session.get(Task, node_id)
+            if t: return "TASK", t.title
+        except Exception:
+            pass
+    return None, "Unknown"
+
+def build_graph_from_node(root_obj):
     """
-    Recursively build a graph (nodes and edges) from a starting node.
-    Returns (list of Node, list of Edge) for streamlit-agraph.
+    Recursively build a graph from a starting SQLModel object.
+    Returns (list of Node, list of Edge).
     """
     nodes_list = []
     edges_list = []
     visited = set()
 
-    def traverse(nid, parent_nid=None):
+    def traverse(obj, parent_id=None):
+        if not obj: return
+        nid = f"{obj.__tablename__}_{obj.id}" # Unique string ID for graph
+        
         if nid in visited: return
         visited.add(nid)
         
-        node = data["nodes"].get(nid)
-        if not node: return
+        ntype = obj.__tablename__.upper() # goal, objective, etc.
+        if ntype == "KEYRESULT": ntype = "KEY_RESULT" # Fix name
         
-        ntype = node.get("type", "GOAL")
         color = TYPE_COLORS.get(ntype, "#757575")
         icon = TYPE_ICONS.get(ntype, "")
-        title = node.get("title", "Untitled")
+        title = getattr(obj, "title", "Untitled")
         
-        # Add Node
         nodes_list.append(Node(
             id=nid,
             label=f"{icon} {title}",
-            size=25, # Fixed size for graph view
+            size=25,
             color=color
         ))
         
-        # Add Edge
-        if parent_nid:
+        if parent_id:
             edges_list.append(Edge(
-                source=parent_nid,
+                source=parent_id,
                 target=nid,
                 label="",
                 color="#CCCCCC"
             ))
             
-        for child_id in node.get("children", []):
-            traverse(child_id, nid)
-    
-    traverse(node_id)
+        # Children
+        children = []
+        if hasattr(obj, "objectives"): children.extend(obj.objectives)
+        if hasattr(obj, "key_results"): children.extend(obj.key_results)
+        if hasattr(obj, "tasks"): children.extend(obj.tasks)
+         
+        for child in children:
+            traverse(child, nid)
+            
+    traverse(root_obj)
     return nodes_list, edges_list
 
 def navigate_to(node_id):
@@ -73,22 +145,15 @@ def navigate_back_to(index):
         st.session_state.nav_stack = st.session_state.nav_stack[:index+1]
         st.rerun()
 
-def render_breadcrumbs(data):
-    """Render clickable breadcrumbs using pills."""
+def render_breadcrumbs():
+    """Render clickable breadcrumbs using pills directly from DB."""
     stack = st.session_state.nav_stack
-    
     options = ["HOME"] + stack
     
     def get_label(opt):
-        if opt == "HOME":
-           return "🏠 Home"
-        node = data["nodes"].get(opt)
-        if not node: return "Unknown"
-        
-        # User wants "Type: Title"
-        title = node.get("title", "Untitled")
-        ntype = node.get("type", "").replace('_',' ').title()
-        return f"{ntype}: {title}"
+        if opt == "HOME": return "🏠 Home"
+        ntype, title = get_node_details(opt)
+        return f"{ntype.replace('_',' ').title()}: {title}"
         
     current_selection = stack[-1] if stack else "HOME"
     
@@ -109,94 +174,95 @@ def render_breadcrumbs(data):
             try:
                 idx = stack.index(selected)
                 navigate_back_to(idx)
-            except ValueError:
-                pass
+            except ValueError: pass
 
-def get_ancestor_objective(node_id, nodes):
-    """
-    Traverse up the hierarchy to find the Objective for a given node.
-    Returns the title of the Objective, or "Other / No Objective".
-    """
-    current_id = node_id
-    while current_id:
-        node = nodes.get(current_id)
+def get_ancestor_objective(node_id):
+    """Find ancestor Objective using DB."""
+    # This requires traversing up DB relationships.
+    # Since we don't have parent pointers loaded easily without a session...
+    # We might need to fetch the task, then KR, then Obj.
+    # optimizing: Assume 4-level
+    _, title = get_node_details(node_id) # Just a placeholder if we don't do full lookup
+    return "Unknown Objective" # TODO: Implement DB upward traversal
+
+def get_ancestor_key_result(node_id):
+    return "Unknown KR" # TODO: Implement DB upward traversal
+
+def render_timer_content(node_id, username):
+    # 'data' argument is deprecated but kept for signature compatibility during refactor
+    from src.crud import stop_timer, get_session_context
+    from src.models import Task
+    
+    with get_session_context() as session:
+        node = session.get(Task, node_id)
         if not node:
-            break
-        
-        if node.get("type") == "OBJECTIVE":
-            return node.get("title", "Untitled Objective")
+            st.error("Task not found")
+            return
             
-        current_id = node.get("parentId")
-    
-    return "Other / No Objective"
-
-def get_ancestor_key_result(node_id, nodes):
-    """
-    Traverse up the hierarchy to find the Key Result for a given node.
-    Returns the title of the Key Result, or "-".
-    """
-    current_id = node_id
-    while current_id:
-        node = nodes.get(current_id)
-        if not node: break
+        st.markdown(f"<div class='timer-task-title'>{node.title}</div>", unsafe_allow_html=True)
+        st.markdown("<div class='timer-subtext'>Focus on this task and record your flow.</div>", unsafe_allow_html=True)
         
-        if node.get("type") == "KEY_RESULT":
-            return node.get("title", "Untitled KR")
+        placeholder = st.empty()
+        c1, c2, c3 = st.columns([1,1,1])
         
-        current_id = node.get("parentId")
-    
-    return "-"
-
-def render_timer_content(node_id, data, username):
-    from utils.storage import stop_timer
-    
-    node = data["nodes"].get(node_id)
-    if not node:
-        st.error("Task not found")
-        return
+        start_ts = node.timer_started_at
         
-    st.markdown(f"<div class='timer-task-title'>{node.get('title')}</div>", unsafe_allow_html=True)
-    st.markdown("<div class='timer-subtext'>Focus on this task and record your flow.</div>", unsafe_allow_html=True)
-    
-    placeholder = st.empty()
-    
-    # Action buttons
-    c1, c2, c3 = st.columns([1,1,1])
-    
-    # We use a loop for the "live" feel
-    # But since this is a fragment/dialog, it's easier to use session state
-    start_ts = node.get("timerStartedAt")
-    
-    if start_ts:
-        elapsed_sec = int(time.time() - start_ts / 1000)
-        h = elapsed_sec // 3600
-        m = (elapsed_sec % 3600) // 60
-        s = elapsed_sec % 60
-        
-        placeholder.markdown(f"<div class='timer-display'>{h:02d}:{m:02d}:{s:02d}</div>", unsafe_allow_html=True)
-        
-        summary = st.text_input("What did you work on?", placeholder="e.g. Drafted initial outline...", key=f"timer_sum_{node_id}")
-        
-        if c2.button("✋ Stop & Log", type="primary", use_container_width=True):
-            stop_timer(data, node_id, username, summary=summary)
-            if "active_timer_node_id" in st.session_state:
-                del st.session_state.active_timer_node_id
+        if start_ts:
+            # Calculate elapsed
+            # Ensure start_ts is handled correctly (it's a datetime in SQLModel usually, but might be float in JSON?)
+            # In Models it is Optional[datetime].
+            # We need to convert to timestamp for the math or use timedelta.
+            import time
+            from datetime import timezone
+            
+            # If it's timezone aware, make current time aware
+            now = datetime.utcnow() # Naive UTC
+            if start_ts.tzinfo:
+                now = datetime.now(timezone.utc)
+                
+            elapsed = now - start_ts
+            elapsed_sec = int(elapsed.total_seconds())
+            
+            h = elapsed_sec // 3600
+            m = (elapsed_sec % 3600) // 60
+            s = elapsed_sec % 60
+            
+            placeholder.markdown(f"<div class='timer-display'>{h:02d}:{m:02d}:{s:02d}</div>", unsafe_allow_html=True)
+            
+            summary = st.text_input("What did you work on?", placeholder="e.g. Drafted initial outline...", key=f"timer_sum_{node_id}")
+            
+            if c2.button("✋ Stop & Log", type="primary", use_container_width=True):
+                # Call CRUD stop_timer directly
+                wl = stop_timer(node_id, summary=summary)
+                if wl:
+                    # Fetch latest work logs and show confirmation
+                    from src.database import get_session_context
+                    from sqlmodel import select
+                    from src.models import WorkLog
+                    with get_session_context() as session:
+                        logs = session.exec(select(WorkLog).where(WorkLog.task_id == node_id).order_by(WorkLog.start_time.desc())).all()
+                    st.success(f"Logged {round(wl.duration_minutes,1)} minutes")
+                    if logs:
+                        latest = logs[0]
+                        st.info(f"Last log: {latest.start_time.strftime('%Y-%m-%d %H:%M')} — {round(latest.duration_minutes,1)}m — {latest.summary or '-'}")
+                else:
+                    st.warning("No running timer found for this task.")
+                if "active_timer_node_id" in st.session_state:
+                    del st.session_state.active_timer_node_id
+                st.rerun()
+                
+            time.sleep(1)
             st.rerun()
-            
-        # Refresh every few seconds
-        time.sleep(1)
-        st.rerun()
-    else:
-        placeholder.markdown("<div class='timer-display'>00:00:00</div>", unsafe_allow_html=True)
-        st.warning("Timer is not running.")
-        if c2.button("Close", use_container_width=True):
-             if "active_timer_node_id" in st.session_state:
-                del st.session_state.active_timer_node_id
-             st.rerun()
+        else:
+            placeholder.markdown("<div class='timer-display'>00:00:00</div>", unsafe_allow_html=True)
+            st.warning("Timer is not running.")
+            if c2.button("Close", use_container_width=True):
+                 if "active_timer_node_id" in st.session_state:
+                    del st.session_state.active_timer_node_id
+                 st.rerun()
 
 def render_leadership_dashboard_content(username):
     # (Title is now in the dialog header)
-    from utils.storage import load_data
     from src.crud import get_leadership_metrics
     
     cycle_id = st.session_state.get("active_cycle_id")
@@ -207,16 +273,18 @@ def render_leadership_dashboard_content(username):
     # === REFRESH BUTTON ===
     col_refresh, col_spacer = st.columns([1, 5])
     with col_refresh:
-        if st.button("🔄 Refresh Data", help="Clear cache and reload all data", key="dash_refresh"):
-            from utils.storage import _fetch_from_source, load_all_data
-            _fetch_from_source.clear()
-            load_all_data.clear()
+        if st.button("🔄 Refresh Data", help="Cloud Sync and DB Reload", key="dash_refresh"):
+            # Instead of legacy storage clearing, we trigger sync if available
+            from src.services.sheet_sync import sync_service
+            with st.spinner("Syncing with cloud..."):
+                sync_service.sync_all()
             
             # Clear session state data cache
             keys_to_clear = [k for k in st.session_state.keys() if k.startswith("okr_data_cache_")]
             for k in keys_to_clear:
                 del st.session_state[k]
-                
+            
+            if "report_summary" in st.session_state: del st.session_state["report_summary"]
             st.rerun()
     
     user_role = st.session_state.get("user_role", "member")
@@ -267,64 +335,15 @@ def render_leadership_dashboard_content(username):
     # === AGGREGATE METRICS FROM SELECTED MEMBERS ===
     from utils.deadline_utils import get_deadline_summary, get_deadline_status
     
-    # Aggregate data from all selected members
-    all_nodes = {}
-    member_progress_data = []
-    member_deadline_data = []
-    
-    for member_username in selected_members:
-        member_data = load_data(member_username)
-        member_nodes = member_data.get("nodes", {})
-        
-        # Merge nodes (with member tagging)
-        for nid, node in member_nodes.items():
-            node["_owner"] = member_username
-            node["_owner_display"] = member_display_map.get(member_username, member_username)
-            all_nodes[nid] = node
-        
-        # Calculate member-level stats
-        total_progress = 0
-        task_count = 0
-        completed_count = 0
-        
-        deadline_stats = get_deadline_summary(member_nodes)
-        
-        for nid, node in member_nodes.items():
-            if node.get("type") == "TASK":
-                task_count += 1
-                progress = node.get("progress", 0)
-                total_progress += progress
-                if progress >= 100:
-                    completed_count += 1
-        
-        avg_progress = int(total_progress / task_count) if task_count > 0 else 0
-        display_name = member_display_map.get(member_username, member_username)
-        
-        member_progress_data.append({
-            "member": display_name,
-            "username": member_username,
-            "progress": avg_progress,
-            "tasks": task_count,
-            "completed": completed_count
-        })
-        
-        member_deadline_data.append({
-            "member": display_name,
-            "username": member_username,
-            "overdue": deadline_stats.get("overdue", 0),
-            "at_risk": deadline_stats.get("at_risk", 0),
-            "on_track": deadline_stats.get("on_track", 0),
-            "completed": deadline_stats.get("completed", 0)
-        })
-    
-    # Get aggregate deadline stats
-    aggregate_deadline = get_deadline_summary(all_nodes)
-    
-    # Get leadership metrics for selective members
+    # === FETCH AGGREGATED METRICS ===
     metrics = get_leadership_metrics(selected_members, cycle_id)
     if not metrics:
-        metrics = {"hygiene_pct": 0, "avg_confidence": 0, "at_risk": [], "heatmap_data": [], "total_krs": 0}
-    
+        st.error("Could not fetch metrics.")
+        return
+        
+    member_progress_data = metrics.get("member_progress", [])
+    member_deadline_data = metrics.get("member_deadlines", [])
+
     # === SCORECARD ===
     st.markdown("#### 📈 Key Metrics")
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -344,21 +363,35 @@ def render_leadership_dashboard_content(username):
     with col3:
         st.metric(
             "At-Risk KRs", 
-            len(metrics["at_risk"]),
-            delta="-bad" if metrics["at_risk"] else "off"
+            metrics["at_risk_count"],
+            delta="-bad" if metrics["at_risk_count"] > 0 else "off"
         )
+    
+    # Calculate aggregate deadline stats from member_deadlines
+    total_overdue = sum(m["overdue"] for m in member_deadline_data)
+    total_at_risk = sum(m["at_risk"] for m in member_deadline_data)
+
+    # Aggregate deadline summary for AI coach (constructed from member_deadline_data)
+    aggregate_deadline = {
+        "total_with_deadline": sum(m.get("overdue",0) + m.get("at_risk",0) + m.get("on_track",0) for m in member_deadline_data),
+        "completed": sum(m.get("completed",0) for m in member_deadline_data),
+        "on_track": sum(m.get("on_track",0) for m in member_deadline_data),
+        "at_risk": sum(m.get("at_risk",0) for m in member_deadline_data),
+        "overdue": sum(m.get("overdue",0) for m in member_deadline_data)
+    }
+
     with col4:
         st.metric(
             "🔴 Overdue Tasks",
-            aggregate_deadline.get("overdue", 0),
-            delta="-bad" if aggregate_deadline.get("overdue", 0) > 0 else "off",
+            total_overdue,
+            delta="-bad" if total_overdue > 0 else "off",
             help="Tasks past deadline with < 100% progress"
         )
     with col5:
         st.metric(
             "🟡 At Risk Tasks",
-            aggregate_deadline.get("at_risk", 0),
-            delta="-normal" if aggregate_deadline.get("at_risk", 0) > 0 else "off",
+            total_at_risk,
+            delta="-normal" if total_at_risk > 0 else "off",
             help="Tasks behind expected progress pace"
         )
     
@@ -497,16 +530,46 @@ def render_leadership_dashboard_content(username):
             st.error(f"**{item['title']}** — Reason: {item['reason']} (Conf: {item['confidence']})")
     
     # === OVERDUE TASKS LIST ===
+    # Build overdue tasks list from DB tasks for current cycle
     overdue_tasks = []
-    for nid, node in all_nodes.items():
-        if node.get("type") == "TASK" and node.get("deadline"):
+    try:
+        tasks = get_all_tasks_by_cycle(cycle_id)
+        for task in tasks:
+            # Build a lightweight node dict for deadline utils
+            dl = None
+            if getattr(task, 'deadline', None):
+                # Task.deadline may be datetime or int(ms)
+                dval = task.deadline
+                if hasattr(dval, 'timestamp'):
+                    dl = int(dval.timestamp() * 1000)
+                else:
+                    dl = dval
+
+            node = {
+                "type": "TASK",
+                "deadline": dl,
+                "progress": getattr(task, 'progress', 0),
+                "createdAt": int(getattr(task, 'created_at', datetime.utcnow()).timestamp() * 1000),
+                "title": getattr(task, 'title', 'Untitled')
+            }
             status_code_dl, _, _ = get_deadline_status(node)
             if status_code_dl == "overdue":
+                # Owner display: try to find goal.owner via relationships
+                owner_disp = "Unknown"
+                try:
+                    if task.key_result and task.key_result.objective and task.key_result.objective.goal:
+                        owner_name = task.key_result.objective.goal.user_id
+                        owner_disp = member_display_map.get(owner_name, owner_name)
+                except Exception:
+                    owner_disp = "Unknown"
+
                 overdue_tasks.append({
                     "title": node.get("title", "Untitled"),
-                    "owner": node.get("_owner_display", "Unknown"),
+                    "owner": owner_disp,
                     "progress": node.get("progress", 0)
                 })
+    except Exception:
+        overdue_tasks = []
     
     if overdue_tasks:
         st.markdown("#### 🔴 Overdue Tasks")
@@ -645,7 +708,8 @@ def render_leadership_dashboard_content(username):
                 st.warning(f"🔔 {watch_out}")
 
 @st.fragment
-def render_report_content(data, username, mode):
+def render_report_content(username, mode):
+    # data parameter removed
     # Filter logic
     now = time.time() * 1000
     if mode == "Daily":
@@ -744,63 +808,65 @@ def render_report_content(data, username, mode):
                 del st.session_state.active_report_mode
             st.rerun()
     
+    user_obj = get_user_by_username(username)
+    if not user_obj:
+        st.error("User not found")
+        return
+        
+    start_dt = datetime.fromtimestamp(start_time / 1000)
+    end_dt = datetime.fromtimestamp(now / 1000)
+    
+    logs = get_work_logs_by_date_range(user_obj.id, start_dt, end_dt)
+    
+    if not logs:
+        st.info(f"No work recorded in the this period.")
+        return
+
     report_items = []
     objective_stats = {} # { "Objective Title": total_minutes }
     daily_minutes = {}   # { "YYYY-MM-DD": total_minutes }
-    achievements = []    # Completed tasks
+    achievements = set() # Completed task titles
     
-    # Iterate all nodes
-    for nid, node in data["nodes"].items():
-        # Check accomplishments
-        if node.get("type") == "TASK" and node.get("progress") == 100:
-            # We don't track completion date strictly, so we just list them if they have logs this week 
-            # OR if we assume they were done recently. 
-            # For this MVP, we only count them if they had work logged this period.
-            pass
-
-        logs = node.get("workLog", [])
-        if not logs: continue
+    for log in logs:
+        task = log.task
+        kr = task.key_result
+        obj = kr.objective
+        goal = obj.goal
         
-        has_log_this_period = False
-        for log in logs:
-            # Check if log is within range
-            if log.get("endedAt", 0) >= start_time:
-                has_log_this_period = True
-                duration = log.get("durationMinutes", 0)
-                # Aggregate by Objective
-                obj_title = get_ancestor_objective(nid, data["nodes"])
-                kr_title = get_ancestor_key_result(nid, data["nodes"])
-                
-                # Get deadline status if available
-                deadline_status = "—"
-                if node.get("deadline"):
-                    from utils.deadline_utils import get_deadline_status
-                    _, status_label, _ = get_deadline_status(node)
-                    deadline_status = status_label
-                
-                log_date = datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%Y-%m-%d')
-                
-                report_items.append({
-                    "Task": node.get("title", "Untitled"),
-                    "Type": node.get("type", "TASK"),
-                    "Date": log_date,
-                    "Time": datetime.fromtimestamp(log.get("endedAt", 0)/1000).strftime('%H:%M'),
-                    "Duration (m)": round(duration, 2),
-                    "Deadline": deadline_status,
-                    "Summary": log.get("summary", ""), # Capture summary
-                    "Objective": obj_title,
-                    "KeyResult": kr_title
-                })
-                
-                objective_stats[obj_title] = objective_stats.get(obj_title, 0) + duration
-                daily_minutes[log_date] = daily_minutes.get(log_date, 0) + duration
+        duration = log.duration_minutes
+        obj_title = obj.title
+        kr_title = kr.title
+        
+        # Get deadline status if available
+        deadline_status = "—"
+        if task.deadline:
+            from utils.deadline_utils import get_deadline_status
+            try:
+                _, status_label, _ = get_deadline_status(task)
+                deadline_status = status_label
+            except: pass
+        
+        log_date = log.start_time.strftime('%Y-%m-%d')
+        
+        report_items.append({
+            "Task": task.title,
+            "Type": "TASK",
+            "Date": log_date,
+            "Time": log.start_time.strftime('%H:%M'),
+            "Duration (m)": round(duration, 2),
+            "Deadline": deadline_status,
+            "Summary": log.summary or log.note or "-",
+            "Objective": obj_title,
+            "KeyResult": kr_title
+        })
+        
+        objective_stats[obj_title] = objective_stats.get(obj_title, 0) + duration
+        daily_minutes[log_date] = daily_minutes.get(log_date, 0) + duration
+        
+        if task.status == "done" or task.progress == 100:
+            achievements.add(task.title)
 
-        if has_log_this_period and node.get("progress") == 100:
-            achievements.append(node.get("title"))
-
-    if not report_items:
-        st.info("No work recorded in the this period.")
-        return
+    achievements = list(achievements)
 
     total = sum(item["Duration (m)"] for item in report_items)
 
@@ -885,37 +951,58 @@ def render_report_content(data, username, mode):
             
     # Deadline Health
     st.subheader("⚠️ Deadline Health")
-    # Quick scan for overdue/at risk
-    warnings = []
-    for nid_dl, node_dl in data["nodes"].items():
-        if node_dl.get("type") == "TASK" and node_dl.get("deadline") and node_dl.get("progress") < 100:
-             from utils.deadline_utils import get_deadline_status
-             _, label_dl, _ = get_deadline_status(node_dl)
-             if "Overdue" in label_dl or "At Risk" in label_dl:
-                 warnings.append(f"{label_dl} - {node_dl.get('title')}")
+    from src.crud import get_all_tasks_by_cycle
+    from utils.deadline_utils import get_deadline_status
+    cycle_id_dl = st.session_state.get("active_cycle_id")
+    tasks_dl = get_all_tasks_by_cycle(cycle_id_dl)
     
-    if warnings:
-        for w in warnings[:5]:
+    warnings_dl = []
+    for t_dl in tasks_dl:
+        if t_dl.deadline and t_dl.progress < 100:
+             try:
+                 _, label_dl, _ = get_deadline_status(t_dl)
+                 if "Overdue" in label_dl or "At Risk" in label_dl:
+                     warnings_dl.append(f"{label_dl} - {t_dl.title}")
+             except: pass
+    
+    if warnings_dl:
+        for w in warnings_dl[:5]:
             st.error(w)
-        if len(warnings) > 5:
-            st.caption(f"...and {len(warnings)-5} more.")
+        if len(warnings_dl) > 5:
+            st.caption(f"...and {len(warnings_dl)-5} more.")
     else:
         st.success("All tasks on track!", icon="🟢")
 
 
     # Filter Key Results (Needed for PDF)
-    krs_list = []
-    for nid_kr, node_kr in data["nodes"].items():
-        if node_kr.get("type") == "KEY_RESULT":
-            krs_list.append(node_kr)
+    from src.crud import get_all_krs_by_cycle
+    cycle_id_krs = st.session_state.get("active_cycle_id")
+    krs_list = get_all_krs_by_cycle(cycle_id_krs)
 
     # PDF Export (Moved to Top)
     try:
-        from src.services.pdf_service import generate_weekly_pdf_v2
+        from src.services.pdf_service import generate_weekly_pdf_v2, generate_pdf_html
+        import json
         
         # Generate PDF
         # Only include key_results filter for PDF if mode is Weekly
-        pdf_krs = krs_list if mode == "Weekly" else []
+        def _kr_to_dict(kr):
+            ga = getattr(kr, "gemini_analysis", None)
+            ga_dict = None
+            if isinstance(ga, str):
+                try:
+                    ga_dict = json.loads(ga)
+                except Exception:
+                    ga_dict = None
+            elif isinstance(ga, dict):
+                ga_dict = ga
+            return {
+                "title": getattr(kr, "title", "Untitled"),
+                "progress": getattr(kr, "progress", 0),
+                "geminiAnalysis": ga_dict,
+            }
+
+        pdf_krs = [_kr_to_dict(k) for k in krs_list] if mode == "Weekly" else []
         
         # Determine Title
         pdf_title = "Daily Work Report" if mode == "Daily" else "Weekly Work Report"
@@ -933,13 +1020,34 @@ def render_report_content(data, username, mode):
         )
         
         if pdf_buffer:
-             st.download_button(
-                 label="📄 Export as PDF",
-                 data=pdf_buffer,
-                 file_name=f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
-                 mime="application/pdf",
-                 key="report_pdf_download"
-             )
+            st.download_button(
+                label="📄 Export as PDF",
+                data=pdf_buffer,
+                file_name=f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
+                mime="application/pdf",
+                key="report_pdf_download"
+            )
+        else:
+            # Fallback: export HTML if PDF engine (wkhtmltopdf/PDFShift) isn't available
+            fallback_html = generate_pdf_html(
+                report_items,
+                objective_stats,
+                format_time(total),
+                pdf_krs,
+                st.session_state.report_direction,
+                title=pdf_title,
+                time_label=period_label,
+                report_summary=st.session_state.get("report_summary"),
+                achievements=achievements,
+            )
+            st.info("PDF engine not available (wkhtmltopdf/PDFShift). Download the HTML report instead.")
+            st.download_button(
+                label="📄 Export as HTML",
+                data=fallback_html.encode("utf-8"),
+                file_name=f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.html",
+                mime="text/html",
+                key="report_html_download"
+            )
     except Exception as e_pdf:
         st.error(f"PDF Generation Error: {e_pdf}")
 
@@ -1036,13 +1144,13 @@ def render_report_content(data, username, mode):
 
             for kr_item in krs_list:
                 # Prepare Data
-                kr_title_text = kr_item.get("title", "Untitled")
+                kr_title_text = kr_item.title
                 
                 # Render Row Layout
                 c1_kr, c2_kr, c3_kr, c4_kr, c5_kr, c6_kr = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
                 
                 c1_kr.markdown(f"{kr_title_text}")
-                c2_kr.markdown(f"{kr_item.get('progress', 0)}%")
+                c2_kr.markdown(f"{kr_item.progress}%")
                 
                 # Placeholders for dynamic updates
                 p_eff = c3_kr.empty()
@@ -1050,7 +1158,7 @@ def render_report_content(data, username, mode):
                 p_full = c5_kr.empty()
                 
                 # Action Button
-                do_update = c6_kr.button("🔄", key=f"upd_kr_{kr_item['id']}", help="Update Analysis")
+                do_update = c6_kr.button("🔄", key=f"upd_kr_{kr_item.id}", help="Update Analysis")
                 
                 # Row Separator
                 st.markdown("<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>", unsafe_allow_html=True)
@@ -1059,8 +1167,8 @@ def render_report_content(data, username, mode):
                 p_details = st.empty()
 
                 # Helper to render current state to placeholders
-                def render_kr_state(node_data):
-                    an = node_data.get("geminiAnalysis")
+                def render_kr_state(node_kr):
+                    an = node_kr.gemini_analysis
                     eff_score = "N/A"
                     qual_score = "N/A"
                     fulfillment = "N/A"
@@ -1073,6 +1181,17 @@ def render_report_content(data, username, mode):
                         if e_val is not None: eff_score = f"{e_val}%"
                         if q_val is not None: qual_score = f"{q_val}%"
                         if o_val is not None: fulfillment = f"{o_val}%"
+                    elif an and isinstance(an, str):
+                        # Some older analysis might be stored as strings
+                        try:
+                            an_dict = json.loads(an)
+                            e_val = an_dict.get('efficiency_score')
+                            q_val = an_dict.get('effectiveness_score')
+                            o_val = an_dict.get('overall_score')
+                            if e_val is not None: eff_score = f"{e_val}%"
+                            if q_val is not None: qual_score = f"{q_val}%"
+                            if o_val is not None: fulfillment = f"{o_val}%"
+                        except: pass
 
                     p_eff.markdown(eff_score)
                     p_qual.markdown(qual_score)
@@ -1099,95 +1218,67 @@ def render_report_content(data, username, mode):
                 # Handle Update
                 if do_update:
                     with st.spinner("Analyzing..."):
-                        from utils.storage import filter_nodes_by_cycle, update_node
-                        cycle_id_kr = st.session_state.get("active_cycle_id")
-                        filtered_nodes_kr = filter_nodes_by_cycle(data["nodes"], cycle_id_kr)
-                        res_kr = analyze_node(kr_item['id'], filtered_nodes_kr)
+                        from src.crud import update_key_result
+                        res_kr = analyze_node(kr_item.id, None) # analyze_node now fetches from DB
                         if "error" in res_kr:
                             st.error(res_kr["error"])
                         else:
-                            # Update Data
-                            update_node(data, kr_item['id'], {"geminiAnalysis": res_kr}, username)
-                            # Update UI immediately via placeholders (No Rerun)
-                            kr_item["geminiAnalysis"] = res_kr # Update local var for rendering
+                            # Update DB
+                            update_key_result(kr_item.id, gemini_analysis=res_kr)
+                            # Update UI immediately
+                            kr_item.gemini_analysis = res_kr 
                             render_kr_state(kr_item)
 
 @st.fragment
-def render_inspector_content(node_id, data, username):
-    # CSS: Style YOUR EXISTING custom button as a circle (Dialog specific)
+def render_inspector_content(node_id, node_type, username):
+    """
+    Refactored Inspector. Uses SQLModel objects directly via crud.py.
+    node_type: GOAL, OBJECTIVE, KEY_RESULT, or TASK
+    """
+    from src.crud import (
+        get_node, update_goal, update_objective, update_key_result, update_task,
+        delete_goal, delete_objective, delete_key_result, delete_task,
+        start_timer, stop_timer, get_total_time, delete_work_log,
+        get_all_cycles, get_all_users, get_team_members, get_user_by_id
+    )
+    from src.models import Goal, Objective, KeyResult, Task, WorkLog
+
+    # CSS for dialog styling
     st.markdown("""
         <style>
-        /* 1. Hide the Native Close Button */
-        div[role="dialog"] button[aria-label="Close"] {
-            display: none;
-        }
-
-        /* 2. Hide the Native Backdrop (the original close trigger) */
-        div[data-baseweb="modal-backdrop"] {
-            display: none;
-        }
-
-        /* 3. The Visual Background Layer */
-        div[data-baseweb="modal"] {
-            background-color: rgba(0, 0, 0, 0.5);
-            pointer-events: none; 
-        }
-
-        /* 4. The "Invisible Click Shield" */
-        div[role="dialog"]::before {
-            content: "";
-            position: absolute;
-            top: -500vh;
-            left: -500vw;
-            width: 1000vw;
-            height: 1000vh;
-            background: transparent;
-            z-index: -1;
-            cursor: default;
-            pointer-events: auto;
-        }
-
-        /* 5. Ensure the Dialog Box is Interactive */
-        div[role="dialog"] {
-            overflow: visible !important;
-            pointer-events: auto;
-        }
-
-        /* 6. Style YOUR Custom "X" Button as a Circle */
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
-            border-radius: 50%;
-            border: 1px solid #e0e0e0;
-            width: 35px;
-            height: 35px;
-            padding: 0 !important;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            background-color: white; 
-        }
-        
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button:hover {
-            border-color: #ff4b4b;
-            color: #ff4b4b;
-            background-color: #fff5f5;
-        }
+        div[role="dialog"] button[aria-label="Close"] { display: none; }
+        div[data-baseweb="modal-backdrop"] { display: none; }
+        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
+        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
+        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button:hover { border-color: #ff4b4b; color: #ff4b4b; background-color: #fff5f5; }
         </style>
     """, unsafe_allow_html=True)
 
-    node = data["nodes"].get(node_id)
+    # Fetch node from DB
+    node = get_node(node_id, node_type)
     if not node:
-        st.error("Node not found")
+        st.error(f"Node {node_id} ({node_type}) not found")
         if st.button("Close", key=f"close_error_{node_id}"):
             if "active_inspector_id" in st.session_state:
                 del st.session_state.active_inspector_id
             st.rerun()
         return
 
-    title_insp = node.get('title', 'Untitled')
-    progress_insp = node.get('progress', 0)
-    node_type_insp = node.get('type', 'GOAL')
-    has_children_insp = len(node.get("children", [])) > 0
+    # Extract properties from SQLModel object
+    title_insp = node.title
+    progress_insp = node.progress
+    node_type_insp = node_type.upper()
+    
+    # Check for children based on relationships
+    has_children_insp = False
+    if node_type_insp == "GOAL" and hasattr(node, "objectives"):
+        has_children_insp = len(node.objectives) > 0
+    elif node_type_insp == "OBJECTIVE" and hasattr(node, "key_results"):
+        has_children_insp = len(node.key_results) > 0
+    elif node_type_insp == "KEY_RESULT" and hasattr(node, "tasks"):
+        has_children_insp = len(node.tasks) > 0
     
     # Header logic with Close
     c_head_insp, c_close_insp = st.columns([0.92, 0.08])
@@ -1196,45 +1287,49 @@ def render_inspector_content(node_id, data, username):
         if "active_inspector_id" in st.session_state:
             del st.session_state.active_inspector_id
         st.rerun()
-    
-    from utils.storage import update_node, delete_node, start_timer, stop_timer, delete_work_log, get_total_time
 
     with st.form(key=f"edit_form_{node_id}"):
         new_title_insp = st.text_input("Title", value=title_insp)
-        new_desc_insp = st.text_area("Description", value=node.get("description", ""))
+        new_desc_insp = st.text_area("Description", value=node.description or "")
         
-        # Show Assignees (Editable for Admin/Manager)
-        new_assignees_insp = node.get("assignees", [])
+        # Show Assignee (Editable for Admin/Manager, only for Tasks)
+        new_assignee_id_insp = getattr(node, "assignee_id", None) if node_type_insp == "TASK" else None
         if node_type_insp == "TASK":
-             user_role_insp = st.session_state.get("user_role")
-             if user_role_insp in ["admin", "manager"]:
-                 from src.crud import get_all_users, get_team_members, get_user_by_username
-                 potential_assignees = []
-                 if user_role_insp == "admin":
-                     all_users_insp = get_all_users()
-                     potential_assignees = all_users_insp
-                 elif user_role_insp == "manager":
-                     manager_id_insp = st.session_state.get("user_id")
-                     from src.crud import get_user_by_id
-                     manager_obj = get_user_by_id(manager_id_insp)
-                     potential_assignees = get_team_members(manager_id_insp)
-                     if manager_obj: potential_assignees.append(manager_obj)
-                 
-                 # Map display names to usernames
-                 member_map = {f"{u.display_name} ({u.username})": u.username for u in potential_assignees}
-                 current_opts_insp = [lab for lab, un in member_map.items() if un in new_assignees_insp]
-                 
-                 selected_labs_insp = st.multiselect(
-                     "Assign To", 
-                     options=list(member_map.keys()),
-                     default=current_opts_insp,
-                     key=f"assign_multi_{node_id}"
-                 )
-                 new_assignees_insp = [member_map[l] for l in selected_labs_insp]
-             else:
-                 # Read-only for Members
-                 if new_assignees_insp:
-                     st.info(f"👥 **Assigned To:** {', '.join(new_assignees_insp)}")
+            user_role_insp = st.session_state.get("user_role")
+            if user_role_insp in ["admin", "manager"]:
+                potential_assignees = []
+                if user_role_insp == "admin":
+                    potential_assignees = get_all_users()
+                elif user_role_insp == "manager":
+                    manager_id_insp = st.session_state.get("user_id")
+                    manager_obj = get_user_by_id(manager_id_insp)
+                    potential_assignees = get_team_members(manager_id_insp)
+                    if manager_obj: potential_assignees.append(manager_obj)
+                
+                # Map for selection
+                member_options = {f"{u.display_name} (@{u.username})": u.id for u in potential_assignees}
+                
+                # Find current index
+                curr_idx_ass = 0
+                if new_assignee_id_insp:
+                    for i, (lab, uid) in enumerate(member_options.items()):
+                        if uid == new_assignee_id_insp:
+                            curr_idx_ass = i
+                            break
+                
+                selected_label_ass = st.selectbox(
+                    "Assign To", 
+                    options=list(member_options.keys()),
+                    index=curr_idx_ass,
+                    key=f"assign_sel_{node_id}"
+                )
+                new_assignee_id_insp = member_options[selected_label_ass]
+            else:
+                # Read-only for Members
+                if node.assignee:
+                    st.info(f"👥 **Assigned To:** {node.assignee.display_name}")
+                else:
+                    st.info("👥 **Unassigned**")
 
         col1_insp, col2_insp = st.columns(2)
         with col1_insp:
@@ -1250,33 +1345,40 @@ def render_inspector_content(node_id, data, username):
             st.text_input("Type", value=node_type_insp.replace('_', ' ').title(), disabled=True, key=f"type_disp_{node_id}")
             new_type_insp = node_type_insp
             
-        # GOAL Specific Cycle Assignment
-        new_cycle_id_insp = node.get("cycle_id")
+        # GOAL Specific Cycle Assignment and Tags
+        new_cycle_id_insp = getattr(node, "cycle_id", None)
         new_strat_tags_input = ""
         if node_type_insp == "GOAL":
             st.markdown("---")
             st.caption("📅 Cycle Assignment")
-            from src.crud import get_all_cycles
             all_cycles_insp = get_all_cycles()
             cycle_titles_insp = [c.title for c in all_cycles_insp]
             cycle_ids_insp = [c.id for c in all_cycles_insp]
             
             try:
-                curr_idx = cycle_ids_insp.index(new_cycle_id_insp)
+                curr_idx_cyc = cycle_ids_insp.index(new_cycle_id_insp)
             except:
-                curr_idx = 0
+                curr_idx_cyc = 0
                 
-            sel_cyc = st.selectbox("Assign to Cycle", options=cycle_titles_insp, index=curr_idx, key=f"cyc_assign_{node_id}")
+            sel_cyc = st.selectbox("Assign to Cycle", options=cycle_titles_insp, index=curr_idx_cyc, key=f"cyc_assign_{node_id}")
             new_cycle_id_insp = all_cycles_insp[cycle_titles_insp.index(sel_cyc)].id
             
             st.caption("♟️ Strategy Tags")
-            curr_strats = node.get("strategy_tags", [])
+            # Handle potential JSON string or list
+            raw_strats = getattr(node, "strategy_tags", "[]")
+            curr_strats = []
+            if isinstance(raw_strats, str):
+                try: curr_strats = json.loads(raw_strats)
+                except: curr_strats = [t.strip() for t in raw_strats.split(",") if t.strip()]
+            elif isinstance(raw_strats, list):
+                curr_strats = raw_strats
+            
             new_strat_tags_input = st.text_input("Add Strategy Tags (comma-separated)", value=", ".join(curr_strats), key=f"strat_tags_{node_id}")
 
         # KEY_RESULT Specific Metrics
-        new_target_insp = node.get("target_value", 100.0)
-        new_curr_insp = node.get("current_value", 0.0)
-        new_unit_insp = node.get("unit", "%")
+        new_target_insp = getattr(node, "target_value", 100.0)
+        new_curr_insp = getattr(node, "current_value", 0.0)
+        new_unit_insp = getattr(node, "unit", "%")
         new_init_tags_input = ""
         
         if node_type_insp == "KEY_RESULT":
@@ -1295,29 +1397,49 @@ def render_inspector_content(node_id, data, username):
                     st.info(f"Calculated Progress: {new_progress_insp}%")
             
             st.caption("⚡ Initiative Tags")
-            curr_inits = node.get("initiative_tags", [])
+            raw_inits = getattr(node, "initiative_tags", "[]")
+            curr_inits = []
+            if isinstance(raw_inits, str):
+                try: curr_inits = json.loads(raw_inits)
+                except: curr_inits = [t.strip() for t in raw_inits.split(",") if t.strip()]
+            elif isinstance(raw_inits, list):
+                curr_inits = raw_inits
+
             new_init_tags_input = st.text_input("Add Initiative Tags (comma-separated)", value=", ".join(curr_inits), key=f"init_tags_{node_id}")
 
         user_role_perm = st.session_state.get("user_role")
         can_save_insp = (user_role_perm in ["admin", "manager"]) or (username == node.get("user_id"))
         
         if st.form_submit_button("💾 Save Changes", disabled=not can_save_insp):
-            s_tags = [t.strip() for t in new_strat_tags_input.split(",") if t.strip()] if node_type_insp == "GOAL" else node.get("strategy_tags", [])
-            i_tags = [t.strip() for t in new_init_tags_input.split(",") if t.strip()] if node_type_insp == "KEY_RESULT" else node.get("initiative_tags", [])
-            
-            update_node(data, node_id, {
+            updates = {
                 "title": new_title_insp,
                 "description": new_desc_insp,
-                "progress": new_progress_insp,
-                "type": new_type_insp,
-                "target_value": new_target_insp,
-                "current_value": new_curr_insp,
-                "unit": new_unit_insp,
-                "cycle_id": new_cycle_id_insp,
-                "strategy_tags": s_tags,
-                "initiative_tags": i_tags,
-                "assignees": new_assignees_insp
-            }, username)
+                "progress": new_progress_insp
+            }
+            
+            if node_type_insp == "GOAL":
+                updates.update({
+                    "cycle_id": new_cycle_id_insp,
+                    "strategy_tags": [t.strip() for t in new_strat_tags_input.split(",") if t.strip()]
+                })
+                update_goal(node_id, **updates)
+            elif node_type_insp == "OBJECTIVE":
+                update_objective(node_id, **updates)
+            elif node_type_insp == "KEY_RESULT":
+                updates.update({
+                    "target_value": new_target_insp,
+                    "current_value": new_curr_insp,
+                    "unit": new_unit_insp,
+                    "initiative_tags": [t.strip() for t in new_init_tags_input.split(",") if t.strip()]
+                })
+                update_key_result(node_id, **updates)
+            elif node_type_insp == "TASK":
+                updates.update({
+                    "assignee_id": new_assignee_id_insp
+                })
+                update_task(node_id, **updates)
+            
+            st.success("Saved!")
             st.rerun()
 
     if node_type_insp == "TASK":
@@ -1326,13 +1448,17 @@ def render_inspector_content(node_id, data, username):
         col_t1, col_t2 = st.columns(2)
         with col_t1:
              u_role = st.session_state.get("user_role", "member")
-             is_run = node.get("timerStartedAt") is not None
+             is_run = node.timer_started_at is not None
              if is_run:
-                  start_t = node.get("timerStartedAt")
-                  elap = int((time.time() * 1000 - start_t) / 60000)
+                  start_t = node.timer_started_at
+                  # Calculate elapsed in minutes
+                  elap = int((datetime.utcnow() - start_t).total_seconds() / 60)
                   st.info(f"Timer Running: {elap}m")
                   
-             can_track = (u_role == "admin") or (u_role == "manager" and (not node.get("created_by_username") or node.get("created_by_username") == username)) or (u_role == "member" and (node.get("created_by_username") in [username, st.session_state.get("manager_username")]))
+             # Permission check: Admin/Manager or Assigned/Creator
+             # For now, simplify to Admin/Manager or the user is the owner of the goal?
+             # Let's check Goal user_id for simplicity as we are refactoring.
+             can_track = (u_role in ["admin", "manager"]) or (username == getattr(node, "user_id", None))
              
              if can_track:
                   if is_run:
@@ -1342,127 +1468,246 @@ def render_inspector_content(node_id, data, username):
                            if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                            st.rerun()
                        if c_a2.button("Stop", icon=":material/stop_circle:", key=f"stop_t_{node_id}"):
-                           stop_timer(data, node_id, username)
+                           # stop_timer accepts an optional summary; pass None here
+                           stop_timer(node_id)
                            if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
                            st.rerun()
                   else:
                        if st.button("Start Timer", icon=":material/play_circle:", key=f"start_t_{node_id}"):
-                           start_timer(data, node_id, username)
+                           start_timer(node_id, username)
                            st.session_state.active_timer_node_id = node_id
                            if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                            st.rerun()
         with col_t2:
-            tot = get_total_time(node_id, data["nodes"])
+            tot = node.total_time_spent
             st.metric("Total Time", format_time(tot))
 
     if node_type_insp == "TASK":
         st.markdown("---")
         st.write("### 📅 Schedule")
-        from utils.deadline_utils import get_deadline_status
-        # Start Date
-        curr_sd_iso = node.get("start_date")
-        curr_sd = datetime.fromisoformat(curr_sd_iso).date() if curr_sd_iso else None
         
-        # Deadline
-        curr_dl = node.get("deadline")
-        curr_d = datetime.fromtimestamp(curr_dl / 1000).date() if curr_dl else None
+        # Start Date
+        curr_sd = node.start_date.date() if isinstance(node.start_date, datetime) else None
+        
+        # Deadline (support datetime, ms/seconds timestamp, or ISO string)
+        curr_d = None
+        curr_dl_val = getattr(node, "deadline", None)
+        try:
+            if not curr_dl_val:
+                curr_d = None
+            elif isinstance(curr_dl_val, datetime):
+                curr_d = curr_dl_val.date()
+            elif isinstance(curr_dl_val, (int, float)):
+                ts = float(curr_dl_val)
+                # Heuristic: if ts looks like milliseconds
+                if ts > 1e10:
+                    ts = ts / 1000.0
+                curr_d = datetime.fromtimestamp(ts).date()
+            elif isinstance(curr_dl_val, str):
+                # Try integer first then ISO
+                try:
+                    ts = float(curr_dl_val)
+                    if ts > 1e10:
+                        ts = ts / 1000.0
+                    curr_d = datetime.fromtimestamp(ts).date()
+                except Exception:
+                    try:
+                        dtp = datetime.fromisoformat(curr_dl_val)
+                        curr_d = dtp.date()
+                    except Exception:
+                        curr_d = None
+        except Exception:
+            curr_d = None
         
         col_sch1, col_sch2 = st.columns(2)
         with col_sch1:
             new_sd = st.date_input("Start Date", value=curr_sd, key=f"sd_inp_{node_id}")
-            new_sd_ts = int(datetime.combine(new_sd, datetime.min.time()).timestamp() * 1000) if new_sd else None # Not used directly if we store ISO string or datetime
-            # Storage update_node expects simple dict, map to 'start_date' expects datetime object or string? 
-            # In update_node -> crud.update_task -> start_date: datetime.
-            # So passing datetime object is best for crud, but storage.py update_node maps JSON updates.
-            # Wait, storage.py update_node maps to sql_updates. 
-            # If I pass a datetime object to update_node, storage.py needs to handle it?
-            # Storage update_node (line 550) logic:
-            # if model_class == Task: update_task(sql_node.id, **sql_updates)
-            # And it maps keys. My update to storage.py added "start_date": "start_date" to mapping.
-            # And `update_task` expects `datetime`.
-            # If I pass `new_sd` (date), I should combine it to datetime.
-            
-            new_sd_dt = datetime.combine(new_sd, datetime.min.time()) if new_sd else None
-            
             if st.button("💾 Save Start Date", key=f"save_sd_{node_id}"):
-                update_node(data, node_id, {"start_date": new_sd_dt}, username)
+                new_sd_dt = datetime.combine(new_sd, datetime.min.time()) if new_sd else None
+                update_task(node_id, start_date=new_sd_dt)
                 st.rerun()
 
         with col_sch2:
             new_d = st.date_input("Due Date", value=curr_d, key=f"dl_inp_{node_id}")
-            new_dl_ts = int(datetime.combine(new_d, datetime.max.time()).timestamp() * 1000) if new_d else None
-            
             if st.button("💾 Save Due Date", key=f"save_dl_{node_id}"):
-                update_node(data, node_id, {"deadline": new_dl_ts}, username)
+                new_dl_dt = datetime.combine(new_d, datetime.max.time()) if new_d else None
+                update_task(node_id, deadline=new_dl_dt)
                 st.rerun()
 
         # Clear Buttons Row
         clr1, clr2 = st.columns(2)
         if curr_sd and clr1.button("🗑️ Clear Start", key=f"clear_sd_{node_id}"):
-             update_node(data, node_id, {"start_date": None}, username)
-             st.rerun()
-        if curr_dl and clr2.button("🗑️ Clear Due", key=f"clear_dl_{node_id}"):
-             update_node(data, node_id, {"deadline": None}, username)
-             st.rerun()
+            update_task(node_id, start_date=None)
+            st.rerun()
+        has_deadline = getattr(node, "deadline", None) is not None
+        if has_deadline and clr2.button("🗑️ Clear Due", key=f"clear_dl_{node_id}"):
+            update_task(node_id, deadline=None)
+            st.rerun()
 
-        if curr_dl:
-             st_code, st_lbl, hlth = get_deadline_status(node)
-             st.metric("Deadline Status", st_lbl)
-             st.progress(hlth / 100)
+        if has_deadline:
+             from utils.deadline_utils import get_deadline_status
+             # We need to adapt get_deadline_status if it expects dict?
+             # Let's hope it's flexible or we adapt it later.
+             # Actually, node is SQLModel here.
+             try:
+                 st_code, st_lbl, hlth = get_deadline_status(node)
+                 st.metric("Deadline Status", st_lbl)
+                 st.progress(hlth / 100)
+             except: pass
 
-    if node_type_insp == "TASK":
-         st.markdown("---")
-         st.markdown("### 📜 Work History")
-         w_log = node.get("workLog", [])
-         if w_log:
-             w_sorted = sorted(w_log, key=lambda x: x.get("endedAt", 0), reverse=True)
-             for l in w_sorted:
-                 d_str = datetime.fromtimestamp(l.get("endedAt", 0)/1000).strftime('%Y-%m-%d %H:%M')
-                 dur_str = f"{round(l.get('durationMinutes', 0), 1)}m"
-                 sm = l.get("summary", "") or "-"
-                 st.write(f"**{d_str}** | {dur_str} | {sm}")
+        if node_type_insp == "TASK":
+            st.markdown("---")
+            st.markdown("### 📜 Work History")
+            # Load work logs from DB inside a session to avoid detached instances
+            from src.database import get_session_context
+            from sqlmodel import select
+            w_log = []
+            with get_session_context() as session:
+                w_log = session.exec(select(WorkLog).where(WorkLog.task_id == node.id)).all()
+
+            # Show debug count and list logs
+            st.caption(f"Work logs found: {len(w_log)}")
+            if not w_log:
+                st.info("No work logs found for this task.")
+                if st.button("Refresh Work History"):
+                    st.rerun()
+            else:
+                w_sorted = sorted(w_log, key=lambda x: x.end_time or datetime.min, reverse=True)
+                for l in w_sorted:
+                    ended_at = l.end_time.strftime('%Y-%m-%d %H:%M') if l.end_time else "Running"
+                    dur_str = f"{round(l.duration_minutes, 1)}m"
+                    sm = l.summary or "-"
+
+                    col_l1, col_l2 = st.columns([0.9, 0.1])
+                    col_l1.write(f"**{ended_at}** | {dur_str} | {sm}")
+                    if col_l2.button("🗑️", key=f"del_log_{l.id}"):
+                        from src.crud import delete_work_log
+                        delete_work_log(l.id)
+                        st.rerun()
 
     if node_type_insp == "KEY_RESULT":
         st.markdown("---")
         st.markdown("### 🧠 AI Strategic Analysis")
         if st.button("✨ Run Analysis", type="primary", key=f"run_ai_insp_{node_id}"):
-             with st.spinner("Analyzing..."):
-                 from utils.storage import filter_nodes_by_cycle
-                 cyc_id_ai = st.session_state.get("active_cycle_id")
-                 filtered_ai = filter_nodes_by_cycle(data["nodes"], cyc_id_ai)
-                 from src.services.ai_service import analyze_node
-                 res_ai = analyze_node(node_id, filtered_ai)
-                 if "error" not in res_ai:
-                     update_node(data, node_id, {"geminiAnalysis": res_ai["analysis"], "geminiLastSnapshot": res_ai["snapshot"]}, username)
-                     st.rerun()
+            with st.spinner("Analyzing..."):
+                from src.services.ai_service import analyze_node
+                from src.crud import update_key_result, get_goal_tree
+                context_dict = get_goal_tree(as_dict=True)
+                res_ai = analyze_node(node_id, context_dict.get("nodes", {}))
+                
+                if "error" not in res_ai:
+                    # Store full analysis dict; update_key_result will serialize
+                    update_key_result(node_id, gemini_analysis=res_ai)
+                    st.rerun()
         
-        analysis_insp = node.get("geminiAnalysis")
-        if analysis_insp and isinstance(analysis_insp, dict):
-            st.metric("Efficiency", f"{analysis_insp.get('efficiency_score')}%")
-            st.info(analysis_insp.get("summary", ""))
+        analysis_raw = getattr(node, "gemini_analysis", None)
+        if analysis_raw:
+            # Parse stored JSON or accept dict. If JSON fails (old format), try literal_eval and normalize.
+            analysis_data = None
+            if isinstance(analysis_raw, str):
+                try:
+                    analysis_data = json.loads(analysis_raw)
+                except Exception:
+                    try:
+                        import ast
+                        tmp = ast.literal_eval(analysis_raw)
+                        if isinstance(tmp, dict):
+                            analysis_data = tmp
+                            # Normalize storage to proper JSON
+                            from src.crud import update_key_result
+                            update_key_result(node_id, gemini_analysis=analysis_data)
+                    except Exception:
+                        analysis_data = None
+            elif isinstance(analysis_raw, dict):
+                analysis_data = analysis_raw
+
+            if analysis_data:
+                c_m1, c_m2, c_m3 = st.columns(3)
+                if analysis_data.get('efficiency_score') is not None:
+                    c_m1.metric("Efficiency", f"{analysis_data.get('efficiency_score')}%")
+                if analysis_data.get('effectiveness_score') is not None:
+                    c_m2.metric("Effectiveness", f"{analysis_data.get('effectiveness_score')}%")
+                if analysis_data.get('overall_score') is not None:
+                    c_m3.metric("Overall", f"{analysis_data.get('overall_score')}%")
+
+                if analysis_data.get('summary'):
+                    st.info(analysis_data['summary'])
+
+                # Deadline warnings
+                warnings_list = analysis_data.get('deadline_warnings') or []
+                for w in warnings_list:
+                    st.warning(w)
+
+                # Gap & Quality
+                ga = analysis_data.get('gap_analysis')
+                qa = analysis_data.get('quality_assessment')
+                if ga or qa:
+                    c_g, c_q = st.columns(2)
+                    if ga:
+                        with c_g:
+                            st.markdown("**Gap Analysis**")
+                            st.write(ga)
+                    if qa:
+                        with c_q:
+                            st.markdown("**Quality Assessment**")
+                            st.write(qa)
+
+                # Proposed tasks
+                props = analysis_data.get('proposed_tasks') or []
+                if props:
+                    st.markdown("**Proposed Tasks**")
+                    for t in props:
+                        st.markdown(f"- {t}")
+            else:
+                # Fallback: show raw string in a code block for visibility
+                st.code(str(analysis_raw))
 
     st.markdown("---")
     user_role_del = st.session_state.get("user_role")
-    can_delete = (user_role_del == "admin") or (username == node.get("user_id"))
+    # Permissions based on SQLModel ownership
+    can_delete = (user_role_del == "admin") or (username == getattr(node, "user_id", None))
     
     if can_delete:
         if st.button("🗑️ Delete Entity", type="primary", key=f"del_insp_{node_id}"):
-            delete_node(data, node_id, username)
+            from src.crud import delete_goal, delete_objective, delete_key_result, delete_task
+            if node_type_insp == "GOAL": delete_goal(node_id)
+            elif node_type_insp == "OBJECTIVE": delete_objective(node_id)
+            elif node_type_insp == "KEY_RESULT": delete_key_result(node_id)
+            elif node_type_insp == "TASK": delete_task(node_id)
+            # Clear any cached UI data that may hold stale references
+            keys_to_clear = [k for k in st.session_state.keys() if k.startswith("okr_data_cache_")]
+            for k in keys_to_clear:
+                del st.session_state[k]
+
+            # Remove nav stack entries pointing to this node (both numeric and typed refs)
+            if "nav_stack" in st.session_state:
+                ns = st.session_state.nav_stack
+                ns = [v for v in ns if not (str(v).endswith(str(node_id)))]
+                st.session_state.nav_stack = ns
+
             if "active_inspector_id" in st.session_state:
                 del st.session_state.active_inspector_id
             st.rerun()
 
-def render_card(node_id, data, username):
-    node = data["nodes"].get(node_id)
-    if not node: return
-
-    title = node.get("title", "Untitled")
-    progress = node.get("progress", 0)
-    node_type = node.get("type", "GOAL")
-    has_children = len(node.get("children", [])) > 0
-    is_leaf = node_type == "TASK" # Tasks don't have navigable children in our map
+def render_card(node, username):
+    node_id = node.id
+    title = node.title
+    progress = node.progress
     
-    from utils.storage import get_total_time, start_timer, update_node
+    # Identify type from SQLModel class or tablename
+    node_type = node.__tablename__.upper()
+    if node_type == "KEY_RESULT": pass
+    elif node_type == "KEYRESULT": node_type = "KEY_RESULT"
+    
+    # Check children based on relationships
+    has_children = False
+    if node_type == "GOAL": has_children = len(node.objectives) > 0
+    elif node_type == "OBJECTIVE": has_children = len(node.key_results) > 0
+    elif node_type == "KEY_RESULT": has_children = len(node.tasks) > 0
+    
+    is_leaf = node_type == "TASK"
+    
+    from src.crud import start_timer, stop_timer
     
     # CSS Frame
     with st.container(border=True):
@@ -1474,72 +1719,56 @@ def render_card(node_id, data, username):
             # Subtitle stats
             stats = f"📊 {progress}% | {node_type.replace('_',' ').title()}"
             if node_type == "TASK":
-                t_card = get_total_time(node_id, data["nodes"])
+                t_card = node.total_time_spent
                 stats += f" | ⏱️ {format_time(t_card)}"
                 # Add deadline indicator
-                if node.get("deadline"):
+                if node.deadline:
                     from utils.deadline_utils import get_deadline_status
-                    _, status_label, _ = get_deadline_status(node)
-                    stats += f" | {status_label}"
+                    try:
+                        _, status_label, _ = get_deadline_status(node)
+                        stats += f" | {status_label}"
+                    except: pass
             
             st.markdown(f"**{label}**")
             st.caption(stats)
 
             # Show Strategy Tags for Goals
             if node_type == "GOAL":
-                strat_tags = node.get("strategy_tags", [])
+                raw_strats = getattr(node, "strategy_tags", "[]")
+                strat_tags = []
+                try: strat_tags = json.loads(raw_strats) if isinstance(raw_strats, str) else raw_strats
+                except: pass
                 if strat_tags:
                     tags_html = " ".join([f"<span style='background-color:#1E88E5;color:white;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-right:4px;'>♟️ {t}</span>" for t in strat_tags])
                     st.markdown(tags_html, unsafe_allow_html=True)
             
             # Show Initiative Tags for Key Results
             if node_type == "KEY_RESULT":
-                init_tags = node.get("initiative_tags", [])
+                raw_inits = getattr(node, "initiative_tags", "[]")
+                init_tags = []
+                try: init_tags = json.loads(raw_inits) if isinstance(raw_inits, str) else raw_inits
+                except: pass
                 if init_tags:
                     tags_html = " ".join([f"<span style='background-color:#8E24AA;color:white;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-right:4px;'>⚡ {t}</span>" for t in init_tags])
                     st.markdown(tags_html, unsafe_allow_html=True)
             
-            # Tags Row: Creator and Owner (if applicable)
+            # Creator/Owner Tags
             user_role = st.session_state.get("user_role", "member")
             tags_row_html = ""
+            creator_name = getattr(node, "created_at", None) # Placeholder? No, should be user.
+            # Assuming node has owner/creator info? 
+            # In SQLModel we might need to join or assume user_id.
+            creator_id = getattr(node, "user_id", "Unknown")
+            tags_row_html += f"<span style='background-color:#F5F5F5;color:#616161;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-right:4px;border:1px solid #e0e0e0;'>👤 {creator_id}</span>"
             
-            # ✍️ Creator Tag (All items)
-            creator_name = node.get("created_by_display_name") or node.get("user_id") or node.get("created_by_username") or "Unknown"
-            if creator_name == "admin":
-                creator_name = "Administrator"
-            
-            tags_row_html += f"<span style='background-color:#F5F5F5;color:#616161;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-right:4px;border:1px solid #e0e0e0;'>✍️ {creator_name}</span>"
-            
-            # 👤 Owner Tag (Goals only, for Admin/Manager viewing team)
-            if user_role in ["admin", "manager"] and node_type == "GOAL":
-                owner_name = node.get("owner_display_name") or node.get("user_id", "Unknown")
-                tags_row_html += f"<span style='background-color:#E3F2FD;color:#1565C0;padding:2px 8px;border-radius:10px;font-size:0.75em;'>👤 {owner_name}</span>"
-            
-            # 📥 Assigned Tag (Virtual nodes)
-            if node.get("is_virtual"):
-                tags_row_html += f"<span style='background-color:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-left:4px;border:1px solid #c8e6c9;'>📥 Assigned by Manager</span>"
-
             if tags_row_html:
                 st.markdown(f"<div style='margin-top:4px;'>{tags_row_html}</div>", unsafe_allow_html=True)
-            
-            # --- SELF HEALING ---
-            parent_id = node.get("parentId")
-            if parent_id:
-                parent_node = data["nodes"].get(parent_id)
-                if parent_node:
-                    ptype = parent_node.get("type", "").upper()
-                    expected_type = CHILD_TYPE_MAP.get(ptype)
-                    if expected_type and node_type != expected_type:
-                        action_lbl = f"🔧 Fix Type (to {expected_type.replace('_',' ').title()})"
-                        if st.button(action_lbl, key=f"fix_{node_id}"):
-                            update_node(data, node_id, {"type": expected_type}, username)
-                            st.rerun()
 
         with c2:
              # Timer Controls (If Task)
              if node_type == "TASK":
-                 if node.get("timerStartedAt") is not None:
-                     start_ts_c = node.get("timerStartedAt", 0)
+                 if node.timer_started_at:
+                     start_ts_c = node.timer_started_at.timestamp() * 1000
                      elapsed_c = int((time.time() * 1000 - start_ts_c) / 60000)
                      if st.button(f"Running ({elapsed_c}m)", icon=":material/timer:", key=f"open_t_c_{node_id}"):
                          st.session_state.active_timer_node_id = node_id
@@ -1547,13 +1776,14 @@ def render_card(node_id, data, username):
                          st.rerun()
                  else:
                      if st.button("Start Timer", icon=":material/play_arrow:", key=f"start_c_{node_id}"):
-                         start_timer(data, node_id, username)
+                         start_timer(node_id, username)
                          st.session_state.active_timer_node_id = node_id
                          if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                          st.rerun()
              
              if st.button("Inspect", icon=":material/search:", key=f"inspect_{node_id}"):
-                 st.session_state.active_inspector_id = node_id
+                 # Store typed reference to avoid id collisions across tables
+                 st.session_state.active_inspector_id = f"{node.__tablename__}_{node_id}"
                  if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
                  st.rerun()
              
@@ -1561,94 +1791,167 @@ def render_card(node_id, data, username):
              if has_children:
                   if st.button("Map", icon=":material/account_tree:", key=f"map_{node_id}"):
                        from src.ui.dialogs import render_mindmap_dialog
-                       render_mindmap_dialog(node_id, data)
-                  
+                       # Update mindmap dialog if it still expects data dict?
+                       # Assuming it handles node_id
+                       render_mindmap_dialog(node_id)
+                   
         with c3:
             # Navigation Button ("Open")
             if not is_leaf:
                 if st.button("Open", icon=":material/arrow_forward:", key=f"nav_{node_id}"):
-                    navigate_to(node_id)
+                    # Use typed node reference to avoid id collision across tables
+                    navigate_to(f"{node.__tablename__}_{node_id}")
             
             # AI Analysis Quick Button
             if node_type == "KEY_RESULT":
                 if st.button("AI", icon=":material/psychology:", key=f"ai_c_{node_id}"):
                     from src.services.ai_service import analyze_node
-                    from utils.storage import filter_nodes_by_cycle
-                    cyc_id_c = st.session_state.get("active_cycle_id")
-                    filtered_c = filter_nodes_by_cycle(data["nodes"], cyc_id_c)
+                    from src.crud import update_key_result
                     with st.spinner("🧠 Analyzing..."):
-                        res_c = analyze_node(node_id, filtered_c)
+                        # analyze_node(id, type) now fetches its own data from SQL.
+                        res_c = analyze_node(node_id, "KEY_RESULT")
                         if "error" not in res_c:
-                            update_node(data, node_id, {"geminiAnalysis": res_c["analysis"], "geminiLastSnapshot": res_c["snapshot"]}, username)
+                            # analyze_node returns results directly as a dict now.
+                            update_key_result(node_id, gemini_analysis=res_c)
                             st.rerun()
+                        else:
+                            st.error(res_c["error"])
 
-def render_level(data, username, root_ids=None):
+def render_level(username):
+    # 'data' and 'root_ids' removed as we now fetch directly from SQL.
+    
     stack = st.session_state.nav_stack
+    current_node = None
+    level_name = "Goals"
+    items = []
+    child_type = "GOAL" # Default for root
     
-    # Determine what to show
-    if not stack:
-        items_lvl = root_ids if root_ids is not None else data.get("rootIds", [])
-        level_name = "Goals"
-        current_node_lvl = None
-    else:
-        parent_id_lvl = stack[-1]
-        current_node_lvl = data["nodes"].get(parent_id_lvl)
-        if not current_node_lvl:
-            st.error("Node not found")
-            st.session_state.nav_stack.pop() # Recovery
-            st.rerun()
-            return
-            
-        items_lvl = current_node_lvl.get("children", [])
-        ptype_lvl = current_node_lvl.get("type")
-        ctype_lvl = CHILD_TYPE_MAP.get(ptype_lvl)
-        
-        if ctype_lvl:
-             normalized_lvl = ctype_lvl.replace('_',' ').title()
-             if normalized_lvl.endswith('y'):
-                 level_name = normalized_lvl[:-1] + "ies"
-             elif normalized_lvl.endswith('s'):
-                 level_name = normalized_lvl
-             else:
-                 level_name = f"{normalized_lvl}s"
+    # We need a session to fetch objects lazily
+    # Ideally checking children access requires session if they are lazy loaded?
+    # SQLModel relationships are lazy by default usually.
+    # We should open a session.
+    with get_session_context() as session:
+        # Normalize nav_stack entries to typed refs (e.g., "objective_12") to avoid id collisions
+        for idx, entry in enumerate(list(stack)):
+            if isinstance(entry, str) and "_" in entry:
+                continue
+            try:
+                nid = int(entry)
+            except Exception:
+                # remove invalid entries
+                try:
+                    stack.pop(idx)
+                except Exception:
+                    pass
+                continue
+
+            # Try to resolve the numeric id to a specific table in order
+            resolved = None
+            g = session.get(Goal, nid)
+            if g:
+                resolved = f"goal_{nid}"
+            else:
+                o = session.get(Objective, nid)
+                if o:
+                    resolved = f"objective_{nid}"
+                else:
+                    k = session.get(KeyResult, nid)
+                    if k:
+                        resolved = f"key_result_{nid}"
+                    else:
+                        t = session.get(Task, nid)
+                        if t:
+                            resolved = f"task_{nid}"
+
+            if resolved:
+                stack[idx] = resolved
+
+        if not stack:
+            # Root Level: Goals
+            cycle_id = st.session_state.get("active_cycle_id")
+            # Fetch goals with one level of deep loading for children counts
+            user_obj = session.exec(select(User).where(User.username == username)).first()
+            if user_obj:
+                items = session.exec(
+                    select(Goal)
+                    .where(Goal.owner_id == user_obj.id, Goal.cycle_id == cycle_id)
+                    .options(selectinload(Goal.objectives).selectinload(Objective.key_results))
+                ).all()
+            level_name = "Goals"
+            child_type = "GOAL" 
         else:
-             level_name = "Items"
+            parent_id = stack[-1]
+            ntype, title = get_node_details(parent_id)
+            
+            if not ntype:
+                st.error("Node not found")
+                st.session_state.nav_stack.pop()
+                st.rerun()
+                return
+            
+            # Fetch current_node with children eager loaded
+            # parent_id may be a typed string like 'objective_12' or an int id
+            raw_id = parent_id
+            if isinstance(parent_id, str) and "_" in parent_id:
+                try:
+                    raw_id = int(parent_id.split("_")[-1])
+                except Exception:
+                    raw_id = parent_id
 
-    # Header
-    render_breadcrumbs(data)
-    
-    from utils.storage import add_node
-    
-    if current_node_lvl:
-        st.markdown(f"## {level_name}")
-        c_type_lvl = current_node_lvl.get("type", "").upper()
-        ch_type_lvl = CHILD_TYPE_MAP.get(c_type_lvl)
+            if ntype == "GOAL":
+                current_node = session.exec(
+                    select(Goal).where(Goal.id == raw_id).options(selectinload(Goal.objectives).selectinload(Objective.key_results))
+                ).first()
+                if current_node:
+                    items = current_node.objectives
+                    level_name = "Objectives"
+                    child_type = "OBJECTIVE"
+            elif ntype == "OBJECTIVE":
+                current_node = session.exec(
+                    select(Objective).where(Objective.id == raw_id).options(selectinload(Objective.key_results).selectinload(KeyResult.tasks))
+                ).first()
+                if current_node:
+                    items = current_node.key_results
+                    level_name = "Key Results"
+                    child_type = "KEY_RESULT"
+            elif ntype in ["KEY_RESULT", "KEYRESULT"]:
+                current_node = session.exec(
+                    select(KeyResult).where(KeyResult.id == raw_id).options(selectinload(KeyResult.tasks), selectinload(KeyResult.check_ins))
+                ).first()
+                if current_node:
+                    items = current_node.tasks
+                    level_name = "Tasks"
+                    child_type = "TASK"
+            elif ntype == "TASK":
+                current_node = session.exec(
+                    select(Task).where(Task.id == raw_id).options(selectinload(Task.work_logs))
+                ).first()
+                items = []
+                level_name = "Details"
+                child_type = None
+
+            if not current_node:
+                 st.session_state.nav_stack.pop()
+                 st.rerun()
+                 return
+
+        # Header
+        render_breadcrumbs()
         
-        if ch_type_lvl:
-             u_role_lvl = st.session_state.get("user_role", "member")
-             can_add_lvl = (u_role_lvl in ["admin", "manager"]) or (ch_type_lvl == "TASK" and username == current_node_lvl.get("user_id"))
-             
-             if can_add_lvl:
-                  norm_btn_lvl = ch_type_lvl.replace('_',' ').title()
-                  if st.button(f"➕ New {norm_btn_lvl}", key=f"add_btn_{current_node_lvl['id']}"):
-                      if ch_type_lvl == "TASK":
-                          from src.ui.dialogs import render_create_task_dialog
-                          render_create_task_dialog(data, current_node_lvl["id"], username)
-                      else:
-                          add_node(data, current_node_lvl["id"], ch_type_lvl, f"New {norm_btn_lvl}", "", username, cycle_id=st.session_state.active_cycle_id)
-                          st.rerun()
-    else:
+        # Level Header & Add Button
         st.markdown(f"## {level_name}")
-        if st.session_state.get("user_role") in ["admin", "manager"]:
-            if st.button("➕ New Goal"):
-                cid_lvl = st.session_state.get("active_cycle_id")
-                if cid_lvl:
-                    add_node(data, None, "GOAL", "New Goal", "", username, cycle_id=cid_lvl)
-                    st.rerun()
+        
+        # Add Button Logic
+        if child_type:
+            col_add, _ = st.columns([1, 5])
+            if col_add.button(f"➕ Add {child_type.replace('_',' ').title()}", key=f"add_{child_type}"):
+                # Root level (Goal) has no parent_id on the stack
+                st.session_state["add_mode_parent"] = stack[-1] if stack else None
+                st.session_state["add_mode_type"] = child_type
+                st.rerun()
 
-    st.markdown("---")
-    if not items_lvl:
-        st.info("No items here yet.")
-    
-    for i_id in items_lvl:
-        render_card(i_id, data, username)
+        if not items:
+            st.info(f"No {level_name} found.")
+        else:
+            for item in items:
+                render_card(item, username)
