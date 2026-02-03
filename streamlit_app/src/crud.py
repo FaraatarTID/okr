@@ -615,53 +615,8 @@ def create_task(key_result_id: int, title: str = "", description: str = "",
         return task
 
 # ============================================================================
-# TIMER OPERATIONS
+# TIMER OPERATIONS (legacy functions removed; see Smart Timer Logic below)
 # ============================================================================
-
-def start_timer(task_id: int, username: str):
-    """Start the timer for a task."""
-    with get_session_context() as session:
-        task = session.get(Task, task_id)
-        if task:
-            task.timer_started_at = datetime.utcnow()
-            session.add(task)
-            session.commit()
-            sync_service.push_update(task)
-
-def stop_timer(task_id: int, username: str):
-    """Stop the timer and create a WorkLog."""
-    with get_session_context() as session:
-        task = session.get(Task, task_id)
-        if task and task.timer_started_at:
-            start_time = task.timer_started_at
-            end_time = datetime.utcnow()
-            duration_minutes = (end_time - start_time).total_seconds() / 60
-            
-            # Create WorkLog
-            log = WorkLog(
-                task_id=task_id,
-                start_time=start_time,
-                end_time=end_time,
-                duration_minutes=duration_minutes,
-                summary="Session"
-            )
-            session.add(log)
-            
-            # Update Task
-            task.timer_started_at = None
-            task.total_time_spent += int(duration_minutes)
-            session.add(task)
-            
-            session.commit()
-            # Push updates for both Task and WorkLog so UI/sync layers pick up changes immediately
-            sync_service.push_update(task)
-            try:
-                sync_service.push_update(log)
-            except Exception:
-                # Some sync backends might not handle WorkLog; ignore if unsupported
-                pass
-            # Sync log? WorkLogs might not need sync if aggregated, or yes.
-            # Assuming WorkLog isn't in Sheet Sync top level yet? 
             # SyncService typically handles Task Updates. WorkLogs maybe not yet?
             # Let's skip explicit WorkLog sync unless SyncService supports it.
 
@@ -710,58 +665,13 @@ def update_goal(goal_id: int, **updates) -> Optional[Goal]:
         return goal
 
 
-def update_objective(obj_id: int, **updates) -> Optional[Objective]:
-    """Update an objective's fields."""
-    with get_session_context() as session:
-        obj = session.get(Objective, obj_id)
-        if obj:
-            for key, value in updates.items():
-                if hasattr(obj, key):
-                    setattr(obj, key, value)
-            obj.updated_at = datetime.utcnow()
-            session.add(obj)
-            session.commit()
-            session.refresh(obj)
-        return obj
+## Legacy duplicate removed: use update_objective(objective_id: int, **updates) defined later
 
 
-def update_key_result(kr_id: int, **updates) -> Optional[KeyResult]:
-    """Update a key result's fields."""
-    with get_session_context() as session:
-        kr = session.get(KeyResult, kr_id)
-        if kr:
-            import json
-            for key, value in updates.items():
-                # Store dict/list analysis as JSON string
-                if key == "gemini_analysis" and value is not None and not isinstance(value, str):
-                    try:
-                        value = json.dumps(value, ensure_ascii=False)
-                    except Exception:
-                        value = str(value)
-                if hasattr(kr, key):
-                    setattr(kr, key, value)
-            kr.updated_at = datetime.utcnow()
-            session.add(kr)
-            session.commit()
-            session.refresh(kr)
-        return kr
+## Legacy duplicate removed: use update_key_result(key_result_id: int, **updates) defined later
 
 
-def update_task(task_id: int, **updates) -> Optional[Task]:
-    """Update a task's fields."""
-    with get_session_context() as session:
-        task = session.get(Task, task_id)
-        if task:
-            for key, value in updates.items():
-                if hasattr(task, key):
-                    setattr(task, key, value)
-            task.updated_at = datetime.utcnow()
-            session.add(task)
-            session.commit()
-            session.refresh(task)
-            # S Y N C
-            sync_service.push_update(task)
-        return task
+## Legacy duplicate removed: use the later update_task(task_id, ...) implementation
 
 
 def update_key_result_analysis(key_result_id: int, analysis_json: str) -> Optional[KeyResult]:

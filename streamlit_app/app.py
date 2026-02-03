@@ -8,11 +8,27 @@ from datetime import datetime, timedelta
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Database utilities
-from src.database import init_database, export_db, import_db
+from src.database import init_database, export_db, import_db, run_migrations
 from src.services.sheet_sync import sync_service
 
 # Initialize DB and Restore from Sheets (Write-Through Architecture)
 init_database()
+# One-time preflight: apply DB migrations and check PDF engine
+if "preflight_done" not in st.session_state:
+    try:
+        run_migrations()
+        st.toast("Database migrations applied", icon="✅")
+    except Exception as e:
+        st.warning(f"DB migration warning: {e}")
+    # wkhtmltopdf presence check (for local PDF)
+    try:
+        import shutil
+        import pdfkit  # noqa: F401
+        if shutil.which("wkhtmltopdf") is None:
+            st.info("wkhtmltopdf not detected in PATH. PDF export will fall back to HTML. Install from https://wkhtmltopdf.org/downloads.html or use the launcher.")
+    except Exception:
+        pass
+    st.session_state["preflight_done"] = True
 if "db_restored" not in st.session_state:
     try:
         # sync_service.restore_to_local_db() # Disable auto-restore on boot for speed, let user trigger or smart trigger

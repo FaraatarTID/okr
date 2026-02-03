@@ -188,6 +188,65 @@ def get_ancestor_objective(node_id):
 def get_ancestor_key_result(node_id):
     return "Unknown KR" # TODO: Implement DB upward traversal
 
+def resolve_owner_username(node) -> str:
+    """Resolve and map the owner's username to User.display_name via the ancestor Goal.
+    Falls back to username, then 'Unknown'.
+    """
+    from src.crud import get_session_context
+    try:
+        goal_obj = None
+        # Direct goal
+        if hasattr(node, "__tablename__") and node.__tablename__ == "goal":
+            goal_obj = node
+        # Loaded relationships first
+        elif hasattr(node, "goal") and node.goal is not None:
+            goal_obj = node.goal
+        elif hasattr(node, "objective") and node.objective is not None:
+            if getattr(node.objective, "goal", None):
+                goal_obj = node.objective.goal
+        elif hasattr(node, "key_result") and node.key_result is not None:
+            kr = node.key_result
+            if getattr(kr, "objective", None) and getattr(kr.objective, "goal", None):
+                goal_obj = kr.objective.goal
+
+        # If goal not loaded, fetch via IDs
+        if goal_obj is None:
+            with get_session_context() as session:
+                if isinstance(node, Task):
+                    kr = session.get(KeyResult, node.key_result_id)
+                    if kr:
+                        obj = session.get(Objective, kr.objective_id)
+                        if obj:
+                            goal_obj = session.get(Goal, obj.goal_id)
+                elif isinstance(node, KeyResult):
+                    obj = session.get(Objective, node.objective_id)
+                    if obj:
+                        goal_obj = session.get(Goal, obj.goal_id)
+                elif isinstance(node, Objective):
+                    goal_obj = session.get(Goal, node.goal_id)
+
+        # Map to display name using owner_id (preferred) or username
+        if goal_obj is not None:
+            with get_session_context() as session:
+                # Prefer FK owner_id if present
+                owner_uid = getattr(goal_obj, "owner_id", None)
+                if owner_uid:
+                    u = session.get(User, owner_uid)
+                    if u and (u.display_name or u.username):
+                        return u.display_name or u.username
+                # Fallback: legacy username field
+                owner_uname = getattr(goal_obj, "user_id", None)
+                if owner_uname:
+                    # Try map to display_name via Users table by username
+                    from sqlmodel import select
+                    u = session.exec(select(User).where(User.username == owner_uname)).first()
+                    if u and (u.display_name or u.username):
+                        return u.display_name or u.username
+                    return owner_uname
+    except Exception:
+        pass
+    return "Unknown"
+
 def render_timer_content(node_id, username):
     # 'data' argument is deprecated but kept for signature compatibility during refactor
     from src.crud import stop_timer, get_session_context
@@ -1489,35 +1548,8 @@ def render_inspector_content(node_id, node_type, username):
         # Start Date
         curr_sd = node.start_date.date() if isinstance(node.start_date, datetime) else None
         
-        # Deadline (support datetime, ms/seconds timestamp, or ISO string)
-        curr_d = None
-        curr_dl_val = getattr(node, "deadline", None)
-        try:
-            if not curr_dl_val:
-                curr_d = None
-            elif isinstance(curr_dl_val, datetime):
-                curr_d = curr_dl_val.date()
-            elif isinstance(curr_dl_val, (int, float)):
-                ts = float(curr_dl_val)
-                # Heuristic: if ts looks like milliseconds
-                if ts > 1e10:
-                    ts = ts / 1000.0
-                curr_d = datetime.fromtimestamp(ts).date()
-            elif isinstance(curr_dl_val, str):
-                # Try integer first then ISO
-                try:
-                    ts = float(curr_dl_val)
-                    if ts > 1e10:
-                        ts = ts / 1000.0
-                    curr_d = datetime.fromtimestamp(ts).date()
-                except Exception:
-                    try:
-                        dtp = datetime.fromisoformat(curr_dl_val)
-                        curr_d = dtp.date()
-                    except Exception:
-                        curr_d = None
-        except Exception:
-            curr_d = None
+        # Deadline (now normalized to DateTime in DB)
+        curr_d = node.deadline.date() if isinstance(getattr(node, "deadline", None), datetime) else None
         
         col_sch1, col_sch2 = st.columns(2)
         with col_sch1:
@@ -1755,10 +1787,8 @@ def render_card(node, username):
             # Creator/Owner Tags
             user_role = st.session_state.get("user_role", "member")
             tags_row_html = ""
-            creator_name = getattr(node, "created_at", None) # Placeholder? No, should be user.
-            # Assuming node has owner/creator info? 
-            # In SQLModel we might need to join or assume user_id.
-            creator_id = getattr(node, "user_id", "Unknown")
+            # Resolve owner username from node or its ancestor goal
+            creator_id = resolve_owner_username(node)
             tags_row_html += f"<span style='background-color:#F5F5F5;color:#616161;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-right:4px;border:1px solid #e0e0e0;'>👤 {creator_id}</span>"
             
             if tags_row_html:

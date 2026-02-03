@@ -62,7 +62,8 @@ class NodeBase(SQLModel):
     updated_at: Optional[datetime] = None
     is_expanded: bool = Field(default=True)
     external_id: Optional[str] = Field(default=None, index=True)
-    deadline: Optional[int] = Field(default=None, description="Unix timestamp in milliseconds")
+    # Normalize to DateTime (previously int ms). Alembic migration updates existing columns.
+    deadline: Optional[datetime] = Field(default=None, description="Due date/time")
 
 
 # ============================================================================
