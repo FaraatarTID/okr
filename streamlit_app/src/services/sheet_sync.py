@@ -11,7 +11,7 @@ import time
 # Models to sync
 # Models to sync
 from src.models import (
-    User, Cycle, Goal, Strategy, Objective, KeyResult, Initiative, Task, 
+    User, Cycle, Goal, Objective, KeyResult, Task, 
     WorkLog, CheckIn, Retrospective
 )
 from src.database import engine, get_session_context
@@ -60,7 +60,7 @@ class SheetSyncService:
 
         required_sheets = [
             "Users", "Cycles", 
-            "Goals", "Strategies", "Objectives", "KeyResults", "Initiatives", "Tasks",
+            "Goals", "Objectives", "KeyResults", "Tasks",
             "CheckIns", "WorkLogs", "Retrospectives"
         ]
         
@@ -94,10 +94,8 @@ class SheetSyncService:
             
             # 2. Hierarchy (Top-Down to satisfy FKs)
             self._restore_table(Goal, "Goals")
-            self._restore_table(Strategy, "Strategies")
             self._restore_table(Objective, "Objectives")
             self._restore_table(KeyResult, "KeyResults")
-            self._restore_table(Initiative, "Initiatives")
             self._restore_table(Task, "Tasks")
             
             # 3. Linked Tables
@@ -173,10 +171,8 @@ class SheetSyncService:
         if isinstance(model_obj, User): sheet_name = "Users"
         elif isinstance(model_obj, Cycle): sheet_name = "Cycles"
         elif isinstance(model_obj, Goal): sheet_name = "Goals"
-        elif isinstance(model_obj, Strategy): sheet_name = "Strategies"
         elif isinstance(model_obj, Objective): sheet_name = "Objectives"
         elif isinstance(model_obj, KeyResult): sheet_name = "KeyResults"
-        elif isinstance(model_obj, Initiative): sheet_name = "Initiatives"
         elif isinstance(model_obj, Task): sheet_name = "Tasks"
         elif isinstance(model_obj, CheckIn): sheet_name = "CheckIns"
         elif isinstance(model_obj, WorkLog): sheet_name = "WorkLogs"

@@ -93,17 +93,6 @@ def load_data_from_db(username, cycle_id=None):
                 "KeyResult": "KEY_RESULT"
             }.get(cls_name, cls_name.upper())
             
-            # --- BRIDGING LOGIC: Skip Strategy and Initiative nodes in the UI Tree ---
-            if node_type in ["STRATEGY", "INITIATIVE"]:
-                # Recurse children but keep current p_id as their parent
-                children_to_recurse = []
-                if hasattr(node, 'objectives'): children_to_recurse = node.objectives
-                elif hasattr(node, 'tasks'): children_to_recurse = node.tasks
-                
-                for child in (children_to_recurse or []):
-                    flatten_node(child, p_id)
-                return
-
             # Model fields to node dict
             ext_id = getattr(node, "external_id", None) or f"{node_type}_{node.id}"
             
@@ -129,18 +118,18 @@ def load_data_from_db(username, cycle_id=None):
                 except:
                     n_dict["strategy_tags"] = []
 
-                try:
-                    i_tags = getattr(node, "initiative_tags", "[]") or "[]"
-                    n_dict["initiative_tags"] = json.loads(i_tags)
-                except:
-                    n_dict["initiative_tags"] = []
-
-            if node_type == "KEY_RESULT":
+            elif node_type == "KEY_RESULT":
                 n_dict.update({
                     "target_value": node.target_value,
                     "current_value": node.current_value,
                     "unit": node.unit
                 })
+                try:
+                    i_tags = getattr(node, "initiative_tags", "[]") or "[]"
+                    n_dict["initiative_tags"] = json.loads(i_tags)
+                except:
+                    n_dict["initiative_tags"] = []
+                    
             elif node_type == "TASK":
                 n_dict.update({
                     "status": node.status.value if hasattr(node.status, 'value') else node.status,
@@ -162,31 +151,16 @@ def load_data_from_db(username, cycle_id=None):
             
             # Recurse children based on model relationships
             children = []
-            if hasattr(node, 'strategies'): children = node.strategies
-            elif hasattr(node, 'objectives'): children = node.objectives
+            if hasattr(node, 'objectives'): children = node.objectives
             elif hasattr(node, 'key_results'): children = node.key_results
-            elif hasattr(node, 'initiatives'): children = node.initiatives
             elif hasattr(node, 'tasks'): children = node.tasks
             
             for child in (children or []):
-                # If child is a Strategy or Initiative, their children will be added directly to this node
                 c_type = child.__class__.__name__.upper()
-                if c_type in ["STRATEGY", "INITIATIVE"]:
-                    # Recurse but the child's children will point to THIS node as parent
-                    flatten_node(child, ext_id)
-                    # Collect the actual UI children (Objectives or Tasks)
-                    grand_children = []
-                    if hasattr(child, 'objectives'): grand_children = child.objectives
-                    elif hasattr(child, 'tasks'): grand_children = child.tasks
-                    for gc in (grand_children or []):
-                        gc_ext_id = getattr(gc, "external_id", None) or f"{gc.__class__.__name__.upper()}_{gc.id}"
-                        if gc_ext_id not in n_dict["children"]:
-                            n_dict["children"].append(gc_ext_id)
-                else:
-                    c_ext_id = getattr(child, "external_id", None) or f"{c_type}_{child.id}"
-                    if c_ext_id not in n_dict["children"]:
-                        n_dict["children"].append(c_ext_id)
-                    flatten_node(child, ext_id)
+                c_ext_id = getattr(child, "external_id", None) or f"{c_type}_{child.id}"
+                if c_ext_id not in n_dict["children"]:
+                    n_dict["children"].append(c_ext_id)
+                flatten_node(child, ext_id)
 
         flatten_node(full_goal)
 
@@ -429,11 +403,10 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
     
     # --- 1. SQL CREATE (SQL-PRIMARY) ---
     from src.crud import (
-        get_node_by_external_id, create_goal, create_strategy, 
-        create_objective, create_key_result, create_initiative, create_task,
-        get_or_create_default_strategy, get_or_create_default_initiative
+        get_node_by_external_id, create_goal, 
+        create_objective, create_key_result, create_task
     )
-    from src.models import Goal, Strategy, Objective, KeyResult, Initiative, Task
+    from src.models import Goal, Objective, KeyResult, Task
     
     parent_sql_id = None
     if parent_id:
@@ -442,28 +415,12 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
 
     if node_type == "GOAL":
         create_goal(user_id=username, title=final_title, description=description, cycle_id=cycle_id, external_id=new_id)
-    elif node_type == "STRATEGY":
-        create_strategy(parent_sql_id, final_title, description, external_id=new_id)
     elif node_type == "OBJECTIVE":
-        # UI: Goal -> Objective. SQL: Goal -> Strategy -> Objective.
-        # Ensure we have a Strategy container.
-        actual_parent_id = get_or_create_default_strategy(parent_sql_id)
-        create_objective(actual_parent_id, final_title, description, external_id=new_id)
+        create_objective(parent_sql_id, final_title, description, external_id=new_id)
     elif node_type == "KEY_RESULT":
         create_key_result(parent_sql_id, final_title, description, external_id=new_id)
-    elif node_type == "INITIATIVE":
-        create_initiative(parent_sql_id, final_title, description, external_id=new_id)
     elif node_type == "TASK":
-        # Check parent type from data_store to decide which FK to use
-        # UI: KR -> Task. SQL: KR -> Initiative -> Task.
-        p_json = data_store["nodes"].get(parent_id)
-        if p_json and p_json.get("type", "").upper() == "KEY_RESULT":
-            # Ensure we have an Initiative container.
-            actual_parent_id = get_or_create_default_initiative(parent_sql_id)
-            create_task(initiative_id=actual_parent_id, title=final_title, description=description, external_id=new_id, start_date=start_date, deadline=deadline)
-        else:
-            # Already an initiative or fallback
-            create_task(initiative_id=parent_sql_id, title=final_title, description=description, external_id=new_id, start_date=start_date, deadline=deadline)
+        create_task(key_result_id=parent_sql_id, title=final_title, description=description, external_id=new_id, start_date=start_date, deadline=deadline)
 
     # --- 2. JSON/MEMORY UPDATE (BACKUP) ---
     new_node = {
@@ -498,15 +455,13 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
 
 def delete_node_sql_only(node_id):
     """Helper for recursive SQL deletion without touching JSON memory structure."""
-    from src.crud import get_node_by_external_id, delete_goal, delete_strategy, delete_objective, delete_key_result, delete_initiative, delete_task
-    from src.models import Goal, Strategy, Objective, KeyResult, Initiative, Task
+    from src.crud import get_node_by_external_id, delete_goal, delete_objective, delete_key_result, delete_task
+    from src.models import Goal, Objective, KeyResult, Task
     sql_node, model_class = get_node_by_external_id(node_id)
     if sql_node:
         if model_class == Goal: delete_goal(sql_node.id)
-        elif model_class == Strategy: delete_strategy(sql_node.id)
         elif model_class == Objective: delete_objective(sql_node.id)
         elif model_class == KeyResult: delete_key_result(sql_node.id)
-        elif model_class == Initiative: delete_initiative(sql_node.id)
         elif model_class == Task: delete_task(sql_node.id)
 
 def delete_node(data_store, node_id, username=None):
@@ -516,13 +471,9 @@ def delete_node(data_store, node_id, username=None):
 
     # --- 1. SQL DELETE (SQL-PRIMARY) ---
     print(f"DEBUG: delete_node id={node_id} type={node_to_delete.get('type')} user={username}")
-    # With cascade enabled in models, we only need to delete the root node in SQL.
-    # However, for intermediate Strategy/Initiative nodes that might be bridged,
-    # we call our SQL helper which handles the DB-level deletion.
     delete_node_sql_only(node_id)
 
     # --- 2. JSON/MEMORY DELETE (BACKUP) ---
-    # Recursively delete from JSON/memory
     def delete_recursive_json(nid):
         if nid not in data_store["nodes"]:
             return
@@ -552,8 +503,8 @@ def update_node(data_store, node_id, updates, username=None):
         return
     
     # --- 1. SQL UPDATE (SQL-PRIMARY) ---
-    from src.crud import get_node_by_external_id, update_goal, update_strategy, update_objective, update_key_result, update_initiative, update_task
-    from src.models import Goal, Strategy, Objective, KeyResult, Initiative, Task
+    from src.crud import get_node_by_external_id, update_goal, update_objective, update_key_result, update_task
+    from src.models import Goal, Objective, KeyResult, Task
     
     sql_node, model_class = get_node_by_external_id(node_id)
     if sql_node:
@@ -587,10 +538,8 @@ def update_node(data_store, node_id, updates, username=None):
 
         # Call specific update based on model
         if model_class == Goal: update_goal(sql_node.id, **sql_updates)
-        elif model_class == Strategy: update_strategy(sql_node.id, **sql_updates)
         elif model_class == Objective: update_objective(sql_node.id, **sql_updates)
         elif model_class == KeyResult: update_key_result(sql_node.id, **sql_updates)
-        elif model_class == Initiative: update_initiative(sql_node.id, **sql_updates)
         elif model_class == Task: update_task(sql_node.id, **sql_updates)
 
     # --- 2. JSON/MEMORY UPDATE (BACKUP) ---

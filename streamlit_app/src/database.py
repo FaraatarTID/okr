@@ -21,8 +21,8 @@ engine = create_engine(
 def create_db_and_tables():
     """Create all database tables if they don't exist."""
     from src.models import (
-        Cycle, Goal, Strategy, Objective, KeyResult, 
-        Initiative, Task, WorkLog, CheckIn, Retrospective
+        Cycle, Goal, Objective, KeyResult, 
+        Task, WorkLog, CheckIn, Retrospective
     )
     SQLModel.metadata.create_all(engine)
     
@@ -30,7 +30,7 @@ def create_db_and_tables():
     from sqlalchemy import text
     with engine.connect() as conn:
         # Tables to add external_id
-        tables_ext = ["goal", "strategy", "objective", "key_result", "initiative", "task"]
+        tables_ext = ["goal", "objective", "key_result", "task"]
         for table in tables_ext:
             try:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN external_id TEXT"))
@@ -40,6 +40,12 @@ def create_db_and_tables():
         # Add owner_id to goal if missing
         try:
             conn.execute(text("ALTER TABLE goal ADD COLUMN owner_id INTEGER"))
+            conn.commit()
+        except Exception: pass
+
+        # Add goal_id to objective if missing
+        try:
+            conn.execute(text("ALTER TABLE objective ADD COLUMN goal_id INTEGER"))
             conn.commit()
         except Exception: pass
 
@@ -61,8 +67,9 @@ def create_db_and_tables():
             conn.commit()
         except Exception: pass
 
+        # Add tags to KR
         try:
-            conn.execute(text("ALTER TABLE goal ADD COLUMN initiative_tags TEXT"))
+            conn.execute(text("ALTER TABLE key_result ADD COLUMN initiative_tags TEXT"))
             conn.commit()
         except Exception: pass
 
