@@ -75,6 +75,32 @@ python temp_verify.py || (
 del temp_verify.py
 echo.
 
+echo [2.5/3] Checking wkhtmltopdf (for PDF export)...
+where wkhtmltopdf >nul 2>&1
+if %errorlevel% neq 0 (
+    set WKHTML_COMMON1=C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe
+    set WKHTML_COMMON2=C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe
+    if exist "%WKHTML_COMMON1%" (
+        echo [INFO] Found wkhtmltopdf at "%WKHTML_COMMON1%"
+        echo [INFO] Adding directory to PATH for future sessions...
+        set WKHTML_DIR=C:\Program Files\wkhtmltopdf\bin
+        setx PATH "%PATH%;%WKHTML_DIR%" >nul 2>&1
+        echo [INFO] You might need to open a new terminal for PATH changes to take effect.
+    ) else if exist "%WKHTML_COMMON2%" (
+        echo [INFO] Found wkhtmltopdf at "%WKHTML_COMMON2%"
+        echo [INFO] Adding directory to PATH for future sessions...
+        set WKHTML_DIR=C:\Program Files (x86)\wkhtmltopdf\bin
+        setx PATH "%PATH%;%WKHTML_DIR%" >nul 2>&1
+        echo [INFO] You might need to open a new terminal for PATH changes to take effect.
+    ) else (
+        echo [WARNING] wkhtmltopdf is not in PATH. PDF export will fall back to HTML.
+        echo [INFO] Download and install from: https://wkhtmltopdf.org/downloads.html
+    )
+) else (
+    echo [SUCCESS] wkhtmltopdf found.
+)
+echo.
+
 echo [3/3] Launching Application...
 echo.
 set LOGFILE=%~dp0run_app.log
