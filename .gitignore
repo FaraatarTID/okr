@@ -14,3 +14,40 @@ okr_data.json
 okr_database.db
 *.db
 node_modules
+
+# Logs
+*.log
+*.log.*
+**/*.log
+**/*.out
+**/*.err
+logs/
+log/
+**/logs/
+streamlit_app/run_app.log
+streamlit_app/run_app.log)
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Databases and local data
+*.sqlite
+*.sqlite3
+*.db
+okr_database.db
+okr_data*.json
+
+# Streamlit
+.streamlit/
+
+# Android build outputs
+android/**/build/
