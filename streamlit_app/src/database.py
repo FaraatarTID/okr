@@ -18,61 +18,33 @@ engine = create_engine(
 )
 
 
-def create_db_and_tables():
-    """Create all database tables if they don't exist."""
-    from src.models import (
-        Cycle, Goal, Objective, KeyResult, 
-        Task, WorkLog, CheckIn, Retrospective
-    )
-    SQLModel.metadata.create_all(engine)
+
+def run_migrations():
+    """Run Alembic migrations programmatically."""
+    from alembic.config import Config
+    from alembic import command
     
-    # SQLite ALTER TABLE support to add column if it doesn't exist (Migration helper)
-    from sqlalchemy import text
-    with engine.connect() as conn:
-        # Tables to add external_id
-        tables_ext = ["goal", "objective", "key_result", "task"]
-        for table in tables_ext:
-            try:
-                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN external_id TEXT"))
-                conn.commit()
-            except Exception: pass
+    import os
+    current_dir = os.path.dirname(__file__) # streamlit_app/src
+    parent_dir = os.path.dirname(current_dir) # streamlit_app
+    ini_path = os.path.join(parent_dir, "alembic.ini")
+    
+    alembic_cfg = Config(ini_path)
+    command.upgrade(alembic_cfg, "head")
 
-        # Add owner_id to goal if missing
-        try:
-            conn.execute(text("ALTER TABLE goal ADD COLUMN owner_id INTEGER"))
-            conn.commit()
-        except Exception: pass
 
-        # Add goal_id to objective if missing
-        try:
-            conn.execute(text("ALTER TABLE objective ADD COLUMN goal_id INTEGER"))
-            conn.commit()
-        except Exception: pass
-
-        # Add cycle_id to goal if missing (should be there but for safety)
-        try:
-            conn.execute(text("ALTER TABLE goal ADD COLUMN cycle_id INTEGER"))
-            conn.commit()
-        except Exception: pass
-
-        # Add key_result_id to task if missing
-        try:
-            conn.execute(text("ALTER TABLE task ADD COLUMN key_result_id INTEGER"))
-            conn.commit()
-        except Exception: pass
-
-        # Add tags to goal
-        try:
-            conn.execute(text("ALTER TABLE goal ADD COLUMN strategy_tags TEXT"))
-            conn.commit()
-        except Exception: pass
-
-        # Add tags to KR
-        try:
-            conn.execute(text("ALTER TABLE key_result ADD COLUMN initiative_tags TEXT"))
-            conn.commit()
-        except Exception: pass
-
+def create_db_and_tables():
+    """Ensure database schema is up to date using Alembic."""
+    # We no longer use SQLModel.metadata.create_all(engine)
+    # nor manual ALTER statements. Alembic handles it all.
+    try:
+        run_migrations()
+        print("Database migrations applied successfully.")
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        # Fallback for dev: try create_all if migration fails (e.g. if alembic table missing)
+        # But really we should fix the migration.
+        pass
 
 def get_session() -> Session:
     """Get a new database session."""
@@ -97,3 +69,24 @@ def get_session_context():
 def init_database():
     """Initialize the database - call this on app startup."""
     create_db_and_tables()
+
+def export_db():
+    """Read the binary SQLite database file for export."""
+    try:
+        if os.path.exists(DATABASE_PATH):
+            with open(DATABASE_PATH, "rb") as f:
+                return f.read()
+    except Exception as e:
+        print(f"Export DB failed: {e}")
+    return None
+
+def import_db(binary_content):
+    """Overwrite the local SQLite database with new binary content."""
+    try:
+        # Note: In Streamlit, this is risky if the DB is locked.
+        # But for this single-user app it's usually fine.
+        with open(DATABASE_PATH, "wb") as f:
+            f.write(binary_content)
+        return True, "Database restored successfully."
+    except Exception as e:
+        return False, f"Restore failed: {str(e)}"

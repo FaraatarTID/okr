@@ -11,3 +11,4 @@ google-genai
 pdfkit
 requests
 bcrypt
+alembic

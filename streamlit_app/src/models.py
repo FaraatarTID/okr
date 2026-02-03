@@ -84,7 +84,7 @@ class Cycle(SQLModel, table=True):
     is_active: bool = Field(default=True)
     
     # Relationships
-    goals: List["src.models.Goal"] = Relationship(back_populates="cycle")
+    goals: List["src.models.Goal"] = Relationship(back_populates="cycle", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
 
 
 class Goal(NodeBase, table=True):
@@ -99,7 +99,6 @@ class Goal(NodeBase, table=True):
     user_id: str = Field(index=True)  # Legacy username string
     owner_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)  # FK to User table
     cycle_id: Optional[int] = Field(default=None, foreign_key="cycle.id", index=True)
-    
     # Tags (Stored as JSON string or comma-separated)
     strategy_tags: Optional[str] = Field(default="[]")
     
@@ -142,6 +141,8 @@ class Objective(NodeBase, table=True):
         back_populates="objective",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
+
+
 
 
 class KeyResult(NodeBase, table=True):
@@ -194,8 +195,12 @@ class Task(NodeBase, table=True):
     # Active timer tracking
     timer_started_at: Optional[datetime] = None
     
+    # Assignment
+    assignee_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    
     # Relationships
     key_result: Optional[KeyResult] = Relationship(back_populates="tasks")
+    assignee: Optional["User"] = Relationship()
     work_logs: List["src.models.WorkLog"] = Relationship(
         back_populates="task",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
@@ -211,8 +216,9 @@ class WorkLog(SQLModel, table=True):
     task_id: int = Field(foreign_key="task.id", index=True)
     start_time: datetime
     end_time: Optional[datetime] = None
-    duration_minutes: int = Field(default=0)
+    duration_minutes: float = Field(default=0.0)
     note: Optional[str] = None
+    summary: Optional[str] = None # Added for timer session summary
     
     # Relationships
     task: Optional["Task"] = Relationship(back_populates="work_logs")

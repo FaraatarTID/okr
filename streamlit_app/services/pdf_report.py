@@ -1,8 +1,6 @@
 """
 Unified PDF Generator with Automatic Environment Detection
 Supports both PDFShift (cloud/deployed) and pdfkit (local Windows)
-
-Consolidated from services/pdf_report.py
 """
 
 import os
@@ -31,41 +29,8 @@ except ImportError:
 
 
 def is_deployed_environment():
-    """
-    Detect if running in a deployed/cloud environment (Streamlit Cloud)
-    Returns True if deployed, False if local
-    """
-    # PRIORITY 0: Check for manual override in secrets
-    try:
-       import streamlit as st
-       if 'PDF_METHOD' in st.secrets:
-           method = str(st.secrets['PDF_METHOD']).lower()
-           if method == 'pdfkit':
-               print("SECRETS: Forcing pdfkit (Local)")
-               return False
-           elif method == 'pdfshift':
-               print("SECRETS: Forcing PDFShift (Cloud)")
-               return True
-    except Exception as e:
-       pass  # If secrets not available, continue to other detection methods
-       
-    # Check for Streamlit Cloud specific environment variables
-    if os.getenv('STREAMLIT_SHARING_MODE') or os.getenv('IS_STREAMLIT_CLOUD'):
-        return True
-    
-    # Check if pdfshift API key is configured (indicates deployed environment)
-    try:
-        if 'pdfshift_api_key' in st.secrets:
-            return True
-    except:
-        pass
-    
-    # Check if running on Windows (likely local development)
-    if platform.system() == 'Windows':
-        return False
-    
-    # Default to deployed if uncertain and pdfshift is available
-    return PDFSHIFT_AVAILABLE and not PDFKIT_AVAILABLE
+    """Force local environment to use pdfkit as requested"""
+    return False
 
 
 def get_base64_font(font_path):
@@ -210,19 +175,13 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
 """
     # Executive Summary Section
     if report_summary:
-        # Convert markdown to HTML; if 'markdown' lib is missing, use a simple fallback
-        summary_text = report_summary.get("summary_markdown", "")
-        try:
-            import markdown as _md
-            summary_html = _md.markdown(summary_text)
-        except Exception:
-            # Fallback: basic newline to <br> conversion
-            summary_html = summary_text.replace('\n', '<br>')
+        import markdown
+        summary_html = markdown.markdown(report_summary.get("summary_markdown", ""))
         highlights = report_summary.get("highlights", [])
         
         html += f"""
     <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2ecc71;">
-        <h2 style="margin-top: 0;">📋 Executive Summary</h2>
+        <h2 style="margin-top: 0;">Executive Summary</h2>
         <div style="font-size: 14px; line-height: 1.6;">{summary_html}</div>
 """
         if highlights:
@@ -500,7 +459,7 @@ def generate_pdf_with_pdfkit(html):
                     break
             
             if not config:
-                st.error("wkhtmltopdf not found. Please install it from: https://wkhtmltopdf.org/downloads.html")
+                st.error("⚠️ wkhtmltopdf not found. Please install it from: https://wkhtmltopdf.org/downloads.html")
                 return None
         else:
             config = None  # Linux/Mac should have it in PATH

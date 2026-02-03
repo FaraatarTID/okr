@@ -9,7 +9,6 @@ import json
 import time
 
 # Models to sync
-# Models to sync
 from src.models import (
     User, Cycle, Goal, Objective, KeyResult, Task, 
     WorkLog, CheckIn, Retrospective
@@ -21,18 +20,20 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive"
 ]
 
-SPREADSHEET_NAME = "OKR_DB"
-
 class SheetSyncService:
     def __init__(self):
         self.client = None
         self.spreadsheet = None
+        self.id_cache = {} # Cache for ID -> Row Number per sheet
+        self.last_error = None
+        self.spreadsheet_name = st.secrets.get("GCP_SPREADSHEET_NAME", "OKR_DB")
         self._connect()
 
     def _connect(self):
         """Connect to Google Sheets API."""
+        self.last_error = None
         if "gcp_service_account" not in st.secrets:
-            print("Sync Error: Missing gcp_service_account")
+            self.last_error = "Missing gcp_service_account in secrets"
             return
 
         try:
@@ -43,16 +44,26 @@ class SheetSyncService:
             self.client = gspread.authorize(creds)
             
             try:
-                self.spreadsheet = self.client.open(SPREADSHEET_NAME)
+                self.spreadsheet = self.client.open(self.spreadsheet_name)
             except gspread.SpreadsheetNotFound:
-                # Assuming user wants us to use the existing one or fail.
-                # Auto-creation requires more permissions on folder, usually.
-                print(f"Sync Error: Spreadsheet '{SPREADSHEET_NAME}' not found.")
+                self.last_error = f"Spreadsheet '{self.spreadsheet_name}' not found"
+            except Exception as e:
+                self.last_error = f"Failed to open '{self.spreadsheet_name}': {str(e)}"
         except Exception as e:
-            print(f"Sync Connection Failed: {e}")
+            self.last_error = f"Connection Failed: {str(e)}"
 
     def is_ready(self):
-        return self.spreadsheet is not None
+        """Check if the sync service is connected and ready."""
+        return self.client is not None and self.spreadsheet is not None
+
+    def get_last_error(self):
+        """Return the last connection or sync error."""
+        return self.last_error
+
+    def reconnect(self):
+        """Manually trigger a reconnection attempt."""
+        self._connect()
+        return self.is_ready()
 
     def ensure_schema(self):
         """Ensure all required worksheets exist."""
@@ -71,187 +82,152 @@ class SheetSyncService:
                 if name not in existing_titles:
                     try:
                         self.spreadsheet.add_worksheet(title=name, rows=100, cols=20)
-                        print(f"Created missing worksheet: {name}")
-                    except Exception as e:
-                        print(f"Failed to create worksheet {name}: {e}")
-        except Exception as e:
-            print(f"Schema check failed: {e}")
+                    except Exception: pass
+        except Exception: pass
 
     def restore_to_local_db(self):
-        """
-        Pull all data from Sheets and insert into local SQLite.
-        Should be called on app startup.
-        """
+        """Pull all data from Sheets and insert into local SQLite."""
         if not self.is_ready(): return
-        
-        print("Restoring local database from Google Sheets...")
         self.ensure_schema()
         
         try:
-            # 1. Base Tables (Order matters)
+            # 1. Base Tables
             self._restore_table(User, "Users")
             self._restore_table(Cycle, "Cycles")
-            
-            # 2. Hierarchy (Top-Down to satisfy FKs)
+            # 2. Hierarchy
             self._restore_table(Goal, "Goals")
             self._restore_table(Objective, "Objectives")
             self._restore_table(KeyResult, "KeyResults")
             self._restore_table(Task, "Tasks")
-            
             # 3. Linked Tables
             self._restore_table(CheckIn, "CheckIns")
             self._restore_table(WorkLog, "WorkLogs")
             self._restore_table(Retrospective, "Retrospectives")
-            
-            # 4. Legacy JSON Restore (Deprecated/Fallback)
-            # self._restore_okr_trees()
-            
-            print("Database restoration complete.")
-            
-        except Exception as e:
-            print(f"Critical Restore Error: {e}")
+        except Exception: pass
 
     def _restore_table(self, model_cls: SQLModel, sheet_name: str):
         """Generic helper to restore a single table."""
         try:
             worksheet = self.spreadsheet.worksheet(sheet_name)
             data = worksheet.get_all_records()
-            
-            if not data:
-                print(f"No data found in {sheet_name}, skipping.")
-                return
+            if not data: return
 
             with get_session_context() as session:
-                # Check what IDs already exist to avoid duplicates
-                existing_ids = session.exec(select(model_cls.id)).all()
-                existing_ids_set = set(existing_ids)
-                
-                count = 0
-                for row in data:
-                    # Convert types if necessary (Sheets returns str/int/float)
-                    # We rely on Pydantic/SQLModel to coerce basic types, but dates need help
-                    
-                    # Skip if ID exists
-                    if "id" in row and row["id"] in existing_ids_set:
-                        continue
-                        
-                    # Handle DateTimes for specific fields
-                    for field in ["created_at", "updated_at", "start_date", "end_date", "start_time", "end_time"]:
-                        if field in row and row[field]:
-                            try:
-                                # Assume ISO format in Sheet
-                                row[field] = datetime.fromisoformat(row[field])
-                            except:
-                                row[field] = None 
+                existing_map = {}
+                try:
+                    rows = session.exec(select(model_cls)).all()
+                    for r in rows:
+                        ts = getattr(r, "updated_at", getattr(r, "created_at", None))
+                        existing_map[r.id] = ts
+                except Exception: pass
 
-                    # Create object
-                    # Remove empty strings for optional fields?
+                for row in data:
                     clean_row = {k: v for k, v in row.items() if v != ''}
                     
-                    obj = model_cls.model_validate(clean_row)
-                    session.add(obj)
-                    count += 1
-                
+                    # Parse sheet timestamp
+                    sheet_ts = None
+                    if "updated_at" in clean_row and clean_row["updated_at"]:
+                        try: sheet_ts = datetime.fromisoformat(clean_row["updated_at"])
+                        except: pass
+                    
+                    # Convert dates
+                    for field in ["created_at", "updated_at", "start_date", "end_date", "deadline"]:
+                        if field in clean_row and clean_row[field]:
+                             try: clean_row[field] = datetime.fromisoformat(clean_row[field])
+                             except: pass
+
+                    # Check existence
+                    obj_id = clean_row.get("id")
+                    if obj_id in existing_map:
+                        local_ts = existing_map[obj_id]
+                        if sheet_ts and local_ts and sheet_ts > local_ts:
+                            local_obj = session.get(model_cls, obj_id)
+                            for k, v in clean_row.items():
+                                if hasattr(local_obj, k):
+                                    setattr(local_obj, k, v)
+                            session.add(local_obj)
+                    else:
+                        try:
+                            obj = model_cls.model_validate(clean_row)
+                            session.add(obj)
+                        except: pass
                 session.commit()
-                print(f"Restored {count} records to {model_cls.__tablename__}.")
-                
-        except Exception as e:
-            print(f"Error restoring {sheet_name}: {e}")
+        except Exception: pass
+
+    def _get_id_map(self, worksheet):
+        """Get a map of ID -> Row Number from the sheet."""
+        try:
+            ids = worksheet.col_values(1)
+            return {str(val): i + 1 for i, val in enumerate(ids) if val}
+        except Exception: return {}
 
     def push_update(self, model_obj, delete=False):
-        """
-        Push a single object change to the Sheet.
-        Note: For simplicity/robustness in this phase, we might just append if new 
-        or overwrite row if exists. 
-        """
+        """Push a single object change to the Sheet."""
         if not self.is_ready(): return
         
-        # Determine Sheet and Schema based on type
-        # Determine Sheet and Schema based on type
-        if isinstance(model_obj, User): sheet_name = "Users"
-        elif isinstance(model_obj, Cycle): sheet_name = "Cycles"
-        elif isinstance(model_obj, Goal): sheet_name = "Goals"
-        elif isinstance(model_obj, Objective): sheet_name = "Objectives"
-        elif isinstance(model_obj, KeyResult): sheet_name = "KeyResults"
-        elif isinstance(model_obj, Task): sheet_name = "Tasks"
-        elif isinstance(model_obj, CheckIn): sheet_name = "CheckIns"
-        elif isinstance(model_obj, WorkLog): sheet_name = "WorkLogs"
-        elif isinstance(model_obj, Retrospective): sheet_name = "Retrospectives"
-        elif isinstance(model_obj, WorkLog): sheet_name = "WorkLogs"
-        else: return # Not a synced type
+        sheet_name = getattr(model_obj, "__tablename__", None)
+        if not sheet_name:
+            if isinstance(model_obj, User): sheet_name = "Users"
+            elif isinstance(model_obj, Cycle): sheet_name = "Cycles"
+            elif isinstance(model_obj, Goal): sheet_name = "Goals"
+            elif isinstance(model_obj, Objective): sheet_name = "Objectives"
+            elif isinstance(model_obj, KeyResult): sheet_name = "KeyResults"
+            elif isinstance(model_obj, Task): sheet_name = "Tasks"
+            elif isinstance(model_obj, CheckIn): sheet_name = "CheckIns"
+            elif isinstance(model_obj, WorkLog): sheet_name = "WorkLogs"
+            elif isinstance(model_obj, Retrospective): sheet_name = "Retrospectives"
+            else: return
 
         try:
             worksheet = self.spreadsheet.worksheet(sheet_name)
-            
-            # Serialize
             data = model_obj.model_dump()
+            obj_id = str(data.get("id"))
+            
             # Serialize Datetimes
             for k, v in data.items():
                 if isinstance(v, datetime):
                     data[k] = v.isoformat()
             
-            # Check if exists (Naive search by ID)
-            # Fetch all IDs (Column 1 usually)
-            # CAUTION: This is slow for large datasets. 
-            # Optimization: Cache IDs or use batch ops.
-            
-            # Headers?
+            # Get Headers
             headers = worksheet.row_values(1)
             if not headers:
-                # Write headers if empty
                 headers = list(data.keys())
                 worksheet.append_row(headers)
             
-            # Map data to headers
             row_values = [data.get(h, "") for h in headers]
+            if sheet_name not in self.id_cache:
+                self.id_cache[sheet_name] = self._get_id_map(worksheet)
             
-            existing_cell = worksheet.find(str(model_obj.id), in_column=1) # Assuming ID is col 1
+            row_num = self.id_cache[sheet_name].get(obj_id)
             
             if delete:
-                if existing_cell:
-                    worksheet.delete_rows(existing_cell.row)
+                if row_num:
+                    worksheet.delete_rows(row_num)
+                    del self.id_cache[sheet_name]
             else:
-                if existing_cell:
-                    # Update
-                    # gspread update is cell-based or range-based.
-                    # update row
-                    # Determine range A{row}:Z{row}
-                    # Helper: resize list to match headers
-                    worksheet.update(range_name=f"A{existing_cell.row}", values=[row_values])
+                if row_num:
+                    worksheet.update(range_name=f"A{row_num}", values=[row_values])
                 else:
-                    # Append
                     worksheet.append_row(row_values)
-                    
-        except Exception as e:
-            print(f"Sync Push Error ({sheet_name}): {e}")
+                    del self.id_cache[sheet_name]
+        except Exception: pass
 
-    def _restore_okr_trees(self):
-        """
-        Specialized restore for the main JSON sheet to populate SQL mirroring tables.
-        """
-        try:
-            # Main sheet is the first one usually, or use a name if we had one
-            from src.services.sheets_db import SheetsDB
-            s_db = SheetsDB()
-            if not s_db.is_connected(): return
-            
-            rows = s_db.get_all_rows()
-            if not rows: return
-            
-            from utils.sync import sync_data_to_db
-            
-            for row in rows:
-                username = row.get("username")
-                json_data = row.get("data")
-                if username and json_data:
-                    try:
-                        data = json.loads(json_data)
-                        print(f"Syncing OKR Tree for {username} to SQL...")
-                        sync_data_to_db(username, data)
-                    except:
-                        continue
-        except Exception as e:
-            print(f"Error restoring OKR trees: {e}")
+    def sync_all_to_sheets(self):
+        """Force a full push of all local data to Google Sheets."""
+        if not self.is_ready(): return
+        models = [User, Cycle, Goal, Objective, KeyResult, Task, CheckIn, WorkLog, Retrospective]
+        with get_session_context() as session:
+            for model_cls in models:
+                try:
+                    items = session.exec(select(model_cls)).all()
+                    for item in items:
+                        self.push_update(item)
+                except Exception: pass
 
-# Singleton Instance
-sync_service = SheetSyncService()
+@st.cache_resource
+def get_sync_service():
+    """Factory to get the singleton SheetSyncService with Streamlit caching."""
+    return SheetSyncService()
+
+# Singleton Instance for convenience
+sync_service = get_sync_service()

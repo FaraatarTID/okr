@@ -2,7 +2,9 @@ import json
 import os
 import time
 import uuid
+from datetime import timezone
 import streamlit as st
+<<<<<<< Updated upstream
 from datetime import datetime, timezone
 
 from src.services.sheets_db import SheetsDB
@@ -16,6 +18,16 @@ def get_sync_status():
 
 # def get_db_v2() -> Removed legacy SheetsDB
 # def get_sync_status() -> Removed legacy status check logic
+=======
+from src.crud import (
+    get_user_data_from_sql, create_goal, create_objective, 
+    create_key_result, create_task, update_goal, update_objective, update_key_result, update_task,
+    delete_goal, delete_task, start_timer as sql_start_timer, 
+    stop_timer as sql_stop_timer, add_manual_log, delete_work_log as sql_delete_work_log,
+    get_sql_id_by_external, force_stop_active_timers as sql_force_stop
+)
+from src.models import Goal, Objective, KeyResult, Task as SQLTask, TaskStatus
+>>>>>>> Stashed changes
 
 
 def filter_nodes_by_cycle(nodes: dict, cycle_id: int) -> dict:
@@ -61,6 +73,7 @@ def _get_cache_key(username):
 
 # Legacy file path constants removed
 
+<<<<<<< Updated upstream
 # --- NEW: SQL-Primary Loading Logic ---
 def load_data_from_db(username, cycle_id=None):
     """
@@ -170,10 +183,19 @@ def load_data_from_db(username, cycle_id=None):
 def load_data(username=None, force_refresh=False):
     """
     Load user data with SQL as Master and Session State as Cache.
+=======
+# --- MODIFIED: Main Load Function ---
+def load_data(username=None, force_refresh=False):
+    """
+    Load user data from SQL database.
+    1. Session State (Instant)
+    2. SQL Database
+>>>>>>> Stashed changes
     """
     if not username:
         return {"nodes": {}, "rootIds": []}
         
+<<<<<<< Updated upstream
     # Layer 1: Check Session State (Ram)
     cache_key = _get_cache_key(username)
     if not force_refresh and cache_key in st.session_state:
@@ -190,6 +212,20 @@ def load_data(username=None, force_refresh=False):
     if user_role == "member" and manager_username:
         # Fetch manager's data from DB as well
         mgr_data = load_data_from_db(manager_username)
+=======
+    cache_key = _get_cache_key(username)
+    
+    # Layer 1: Session State (Ram)
+    if not force_refresh and cache_key in st.session_state:
+        return st.session_state[cache_key]
+
+    # Layer 2: SQL Source
+    cycle_id = st.session_state.get("active_cycle_id")
+    data = get_user_data_from_sql(username, cycle_id)
+
+    # Update Session State
+    st.session_state[cache_key] = data
+>>>>>>> Stashed changes
         
         assigned_tasks = []
         for nid, node in mgr_data.get("nodes", {}).items():
@@ -245,9 +281,10 @@ def load_data(username=None, force_refresh=False):
     st.session_state[cache_key] = data
     return data
 
-# --- MODIFIED: Main Save Function ---
+# --- MODIFIED: Main Save Function (Now largely for backups/caching) ---
 def save_data(data, username=None):
     """
+<<<<<<< Updated upstream
     Syncs the current state to External Storage.
     NOW: Just invalidates cache since we write to SQL directly.
     """
@@ -263,11 +300,42 @@ def save_data(data, username=None):
         cache_key = _get_cache_key(username)
         if cache_key in st.session_state:
             del st.session_state[cache_key]
+=======
+    Update the session state and save a local JSON backup.
+    Atomic SQL updates are now preferred, but this keeps the local JSON sync for safety.
+    """
+    if username:
+        # If admin/manager, we don't want to save the HUGE aggregated dict into 
+        # their personal cache slot, as it would corrupt next load_data calls.
+        if username == "admin":
+             # Just clear all caches to force a fresh load of everything
+             for key in list(st.session_state.keys()):
+                 if key.startswith("okr_data_cache_"):
+                     del st.session_state[key]
+        else:
+            st.session_state[_get_cache_key(username)] = data
+            
+            # Clear other user caches to force refresh for Admin/Manager views
+            for key in list(st.session_state.keys()):
+                if key.startswith("okr_data_cache_") and key != _get_cache_key(username):
+                    del st.session_state[key]
+
+        # Local JSON Backup (only for the specific user being edited if possible)
+        # Note: data_store for admin is aggregated, backups here might be messy
+        if username != "admin":
+            local_file = get_local_filename(username)
+            try:
+                with open(local_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=4)
+            except Exception as e:
+                print(f"Backup error: {e}")
+>>>>>>> Stashed changes
         
 # --- MODIFIED: Aggregate All Data for Admin ---
 # REMOVED CACHE temporarily to fix "not updating" issue
 def load_all_data(force_refresh=False):
     """
+<<<<<<< Updated upstream
     Loads and merges all user data directly from SQLite.
     """
     from src.crud import get_all_users
@@ -281,6 +349,26 @@ def load_all_data(force_refresh=False):
         # Tag nodes with username for Admin attribution
         for node_id, node in user_data.get("nodes", {}).items():
             node["user_id"] = user.username
+=======
+    Loads and merges all user data from SQL.
+    Used by Admins to see the entire team's OKRs.
+    """
+    from src.crud import get_all_users
+    all_data = {"nodes": {}, "rootIds": []}
+    
+    # 1. Fetch all users from SQL
+    users = get_all_users()
+    
+    # 2. Load data for each user
+    for user in users:
+        user_data = load_data(user.username, force_refresh=force_refresh)
+        
+        # Merge nodes
+        for node_id, node in user_data.get("nodes", {}).items():
+            if "owner_display_name" not in node:
+                node["user_id"] = user.username
+            
+>>>>>>> Stashed changes
             all_data["nodes"][node_id] = node
             
         all_data["rootIds"].extend(user_data.get("rootIds", []))
@@ -363,6 +451,7 @@ def update_node_progress(node_id, nodes):
     
     return nodes
 
+<<<<<<< Updated upstream
 def add_node(data_store, parent_id, node_type, title, description, username=None, cycle_id=None, assignees=None, start_date=None, deadline=None):
     # Auto-numbering logic
     # Find siblings
@@ -424,17 +513,43 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
 
     # --- 2. JSON/MEMORY UPDATE (BACKUP) ---
     new_node = {
+=======
+def add_node(data_store, parent_id, node_type, title, description, username=None, cycle_id=None):
+    normalized_type = node_type.replace('_', ' ').title()
+    new_id = generate_id()
+    
+    # 1. Atomic SQL Save
+    if node_type == "GOAL":
+        sql_node = create_goal(
+            user_id=username,
+            title=title,
+            description=description,
+            cycle_id=cycle_id,
+            external_id=new_id
+        )
+    elif node_type == "OBJECTIVE":
+        p_id = get_sql_id_by_external(parent_id, Goal)
+        sql_node = create_objective(goal_id=p_id, title=title, description=description, external_id=new_id)
+    elif node_type == "KEY_RESULT":
+        p_id = get_sql_id_by_external(parent_id, Objective)
+        sql_node = create_key_result(objective_id=p_id, title=title, description=description, external_id=new_id)
+    elif node_type == "TASK":
+        p_id = get_sql_id_by_external(parent_id, KeyResult)
+        sql_node = create_task(key_result_id=p_id, title=title, description=description, external_id=new_id)
+    
+    # Update memory cache to keep UI snappy
+    new_node_dict = {
+>>>>>>> Stashed changes
         "id": new_id,
         "type": node_type,
-        "title": final_title,
+        "title": sql_node.title,
         "description": description,
         "progress": 0,
         "children": [],
         "parentId": parent_id,
         "createdAt": int(time.time() * 1000),
-        "created_by_username": username,
-        "created_by_display_name": st.session_state.get("display_name"),
         "isExpanded": True,
+<<<<<<< Updated upstream
         "cycle_id": cycle_id,
         "deadline": None,
         "assignees": assignees if assignees else []
@@ -447,6 +562,14 @@ def add_node(data_store, parent_id, node_type, title, description, username=None
         if parent:
             if "children" not in parent: parent["children"] = []
             parent["children"].append(new_id)
+=======
+        "cycle_id": cycle_id
+    }
+    data_store["nodes"][new_id] = new_node_dict
+    if parent_id:
+        if parent_id in data_store["nodes"]:
+            data_store["nodes"][parent_id]["children"].append(new_id)
+>>>>>>> Stashed changes
     else:
         data_store["rootIds"].append(new_id)
         
@@ -469,6 +592,7 @@ def delete_node(data_store, node_id, username=None):
     if not node_to_delete:
         return
 
+<<<<<<< Updated upstream
     # --- 1. SQL DELETE (SQL-PRIMARY) ---
     print(f"DEBUG: delete_node id={node_id} type={node_to_delete.get('type')} user={username}")
     delete_node_sql_only(node_id)
@@ -476,6 +600,22 @@ def delete_node(data_store, node_id, username=None):
     # --- 2. JSON/MEMORY DELETE (BACKUP) ---
     def delete_recursive_json(nid):
         if nid not in data_store["nodes"]:
+=======
+    # Atomic SQL Delete (Cascade is handled in SQL models)
+    ntype = node.get("type", "").upper()
+    if ntype == "GOAL":
+        sql_id = get_sql_id_by_external(node_id, Goal)
+        if sql_id: delete_goal(sql_id)
+    elif ntype == "TASK":
+        sql_id = get_sql_id_by_external(node_id, SQLTask)
+        if sql_id: delete_task(sql_id)
+    # Note: CRUD could be expanded for direct Objective/KR delete if needed
+    # For now, let's assume they are handled or add delete_objective to crud.
+
+    # Recursive delete in memory
+    def delete_recursive(nid):
+        if nid not in nodes:
+>>>>>>> Stashed changes
             return
         n = data_store["nodes"][nid]
         for child_id in n.get("children", []):
@@ -546,7 +686,33 @@ def update_node(data_store, node_id, updates, username=None):
     node = data_store["nodes"][node_id]
     node.update(updates)
     
-    # If progress changed manually (e.g. for leaf node), propagation up
+    # Atomic SQL Update
+    ntype = node.get("type", "").upper()
+    sql_model = None
+    if ntype == "GOAL": sql_model = Goal
+    elif ntype == "OBJECTIVE": sql_model = Objective
+    elif ntype == "KEY_RESULT": sql_model = KeyResult
+    elif ntype == "TASK": sql_model = SQLTask
+    
+    if sql_model:
+        sql_id = get_sql_id_by_external(node_id, sql_model)
+        if sql_id:
+            # Map JSON fields to SQL fields
+            sql_updates = {}
+            if "title" in updates: sql_updates["title"] = updates["title"]
+            if "description" in updates: sql_updates["description"] = updates["description"]
+            if "progress" in updates: sql_updates["progress"] = updates["progress"]
+            if "status" in updates: sql_updates["status"] = updates["status"]
+            from datetime import datetime
+            if "deadline" in updates: 
+                sql_updates["deadline"] = datetime.fromtimestamp(updates["deadline"]/1000) if updates["deadline"] else None
+            
+            if ntype == "TASK": update_task(sql_id, **sql_updates)
+            elif ntype == "KEY_RESULT": update_key_result(sql_id, **sql_updates)
+            elif ntype == "OBJECTIVE": update_objective(sql_id, **sql_updates)
+            else: update_goal(sql_id, **sql_updates)
+    
+    # Progress propagation in memory
     if "progress" in updates:
         children = node.get("children", [])
         if not children:
@@ -558,6 +724,7 @@ def update_node(data_store, node_id, updates, username=None):
 def start_timer(data_store, node_id, username=None):
     node = data_store["nodes"].get(node_id)
     if node:
+<<<<<<< Updated upstream
         # --- 1. SQL START (SQL-PRIMARY) ---
         from src.crud import get_node_by_external_id, start_timer as sql_start_timer
         sql_task, _ = get_node_by_external_id(node_id)
@@ -569,6 +736,10 @@ def start_timer(data_store, node_id, username=None):
         for nid, n in data_store["nodes"].items():
             if n.get("timerStartedAt"):
                 stop_timer(data_store, nid, username)
+=======
+        sql_id = get_sql_id_by_external(node_id, SQLTask)
+        if sql_id: sql_start_timer(sql_id, username)
+>>>>>>> Stashed changes
         
         node["timerStartedAt"] = int(time.time() * 1000)
         save_data(data_store, username)
@@ -576,6 +747,7 @@ def start_timer(data_store, node_id, username=None):
 def stop_timer(data_store, node_id, username=None, summary=None):
     node = data_store["nodes"].get(node_id)
     if node and node.get("timerStartedAt"):
+<<<<<<< Updated upstream
         # --- 1. SQL STOP (SQL-PRIMARY) ---
         from src.crud import get_node_by_external_id, stop_timer as sql_stop_timer
         sql_task, _ = get_node_by_external_id(node_id)
@@ -586,6 +758,14 @@ def stop_timer(data_store, node_id, username=None, summary=None):
         start_time = node["timerStartedAt"]
         elapsed_ms = int(time.time() * 1000) - start_time
         elapsed_minutes = max(1.0, elapsed_ms / 60000)
+=======
+        sql_id = get_sql_id_by_external(node_id, SQLTask)
+        if sql_id: sql_stop_timer(sql_id, summary)
+        
+        start_time = node["timerStartedAt"]
+        elapsed_ms = int(time.time() * 1000) - start_time
+        elapsed_minutes = elapsed_ms / 60000
+>>>>>>> Stashed changes
         
         current_spent = node.get("timeSpent", 0)
         node["timeSpent"] = current_spent + elapsed_minutes
@@ -603,10 +783,19 @@ def stop_timer(data_store, node_id, username=None, summary=None):
         
         save_data(data_store, username)
 
+def force_stop_all_timers(username):
+    """Emergency stop for all user timers."""
+    sql_force_stop(username)
+    # Clear caches to force refresh
+    for key in list(st.session_state.keys()):
+        if key.startswith("okr_data_cache_"):
+            del st.session_state[key]
+
 def delete_work_log(data_store, node_id, log_started_at, username=None):
     node = data_store["nodes"].get(node_id)
     if not node: return
     
+<<<<<<< Updated upstream
     # --- 1. SQL DELETE LOG (SQL-PRIMARY) ---
     from src.crud import get_node_by_external_id, get_work_log_by_start_time, delete_work_log as sql_delete_work_log
     sql_task, _ = get_node_by_external_id(node_id)
@@ -619,6 +808,26 @@ def delete_work_log(data_store, node_id, log_started_at, username=None):
             sql_delete_work_log(log.id)
 
     # --- 2. JSON/MEMORY DELETE LOG ---
+=======
+    # Atomic SQL Delete
+    sql_task_id = get_sql_id_by_external(node_id, SQLTask)
+    if sql_task_id:
+        # Find the specific log in SQL
+        from src.database import get_session_context
+        from src.models import WorkLog
+        from sqlmodel import select
+        with get_session_context() as session:
+            stmt = select(WorkLog).where(WorkLog.task_id == sql_task_id)
+            logs = session.exec(stmt).all()
+            for l in logs:
+                # Compare timestamps (allowing small buffer for floating point)
+                if abs(l.start_time.replace(tzinfo=timezone.utc).timestamp()*1000 - log_started_at) < 500:
+                    from src.crud import delete_work_log as crud_del_log
+                    crud_del_log(l.id)
+                    break
+
+    # Update memory cache
+>>>>>>> Stashed changes
     work_log = node.get("workLog", [])
     item_to_delete = None
     new_log = []
@@ -630,9 +839,16 @@ def delete_work_log(data_store, node_id, log_started_at, username=None):
     
     if item_to_delete:
         node["workLog"] = new_log
+<<<<<<< Updated upstream
         # Update total time
         old_total = node.get("timeSpent", 0)
         node["timeSpent"] = max(0, old_total - item_to_delete.get("durationMinutes", 0))
+=======
+        duration = item_to_delete.get("durationMinutes", 0)
+        current_spent = node.get("timeSpent", 0)
+        node["timeSpent"] = max(0, current_spent - duration)
+        
+>>>>>>> Stashed changes
         save_data(data_store, username)
 
 def get_total_time(node_id, nodes):

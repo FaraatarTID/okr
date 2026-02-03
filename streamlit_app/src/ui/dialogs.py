@@ -17,63 +17,118 @@ from src.crud import (
     get_all_users, update_user, create_user, reset_user_password,
     get_team_members, get_user_by_id, get_user_by_username,
     get_krs_needing_checkin, create_check_in, create_weekly_plan,
-    create_retrospective, get_user_retrospectives, get_team_retrospectives
+    create_retrospective, get_user_retrospectives, get_team_retrospectives,
+    create_goal, create_objective, create_key_result
+    , get_work_logs_by_date_range
 )
 from src.models import UserRole
-from utils.storage import add_node, save_data
+
 
 @st.dialog("Manage OKR Cycles", width="medium")
 def render_manage_cycles_dialog():
-    st.write("Add or activate/deactivate your OKR cycles.")
-    
-    with st.form("new_cycle_form"):
-        st.subheader("Add New Cycle")
-        new_title = st.text_input("Cycle Title", placeholder="e.g. Q2 2026")
-        col_d1, col_d2 = st.columns(2)
-        with col_d1:
-            new_start = st.date_input("Start Date")
-        with col_d2:
-            new_end = st.date_input("End Date")
-        
-        if st.form_submit_button("➕ Create Cycle"):
-            if new_title:
-                create_cycle(
-                    title=new_title,
-                    start_date=datetime.combine(new_start, datetime.min.time()),
-                    end_date=datetime.combine(new_end, datetime.min.time()),
-                    is_active=True
-                )
-                st.success(f"Cycle '{new_title}' created!")
-                st.rerun()
-            else:
-                st.error("Title is required.")
+    """Dialog to add/activate/deactivate OKR cycles."""
+    from src.crud import get_all_cycles, create_cycle, update_cycle, delete_cycle
+    st.markdown("### Manage OKR Cycles")
+
+    cycles = get_all_cycles()
+    if not cycles:
+        st.info("No cycles defined yet.")
+    else:
+        for c in cycles:
+            with st.container(border=True):
+                col1, col2 = st.columns([4,1])
+                with col1:
+                    st.markdown(f"**{c.title}** — {c.start_date.date()} → {c.end_date.date()}")
+                with col2:
+                    if st.button("🗑️", key=f"del_cycle_{c.id}"):
+                        try:
+                            delete_cycle(c.id)
+                            st.success("Cycle deleted")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Failed to delete: {e}")
 
     st.markdown("---")
-    st.subheader("Existing Cycles")
-    all_cycles = get_all_cycles()
-    for c in all_cycles:
-        with st.expander(f"{'✅ ' if c.is_active else '⚪ '}{c.title}"):
-            with st.form(key=f"edit_cycle_{c.id}"):
-                edit_title = st.text_input("Title", value=c.title)
-                col1, col2 = st.columns(2)
-                with col1:
-                    edit_start = st.date_input("Start Date", value=c.start_date.date(), key=f"start_{c.id}")
-                with col2:
-                    edit_end = st.date_input("End Date", value=c.end_date.date(), key=f"end_{c.id}")
-                
-                edit_active = st.checkbox("Active Cycle", value=c.is_active)
-                
-                btn_col1, btn_col2 = st.columns(2)
-                if btn_col1.form_submit_button("💾 Save Changes", type="primary"):
-                    update_cycle(
-                        cycle_id=c.id,
-                        title=edit_title,
-                        start_date=datetime.combine(edit_start, datetime.min.time()),
-                        end_date=datetime.combine(edit_end, datetime.min.time()),
-                        is_active=edit_active
-                    )
-                    st.success("Cycle updated!")
+    with st.form("new_cycle_form"):
+        new_title = st.text_input("Cycle Title", placeholder="e.g. Q2 2026")
+        new_start = st.date_input("Start Date")
+        new_end = st.date_input("End Date")
+        if st.form_submit_button("➕ Create Cycle"):
+            if not new_title:
+                st.error("Title required")
+            else:
+                try:
+                    create_cycle(title=new_title, start_date=datetime.combine(new_start, datetime.min.time()), end_date=datetime.combine(new_end, datetime.min.time()))
+                    st.success("Cycle created")
                     st.rerun()
+                except Exception as e:
+                    st.error(f"Create failed: {e}")
+
+
+@st.dialog("Create New Objective", width="medium")
+def render_create_objective_dialog(parent_id):
+    # Hide default modal close button and add a custom close at top-right
+    st.markdown("""
+        <style>
+        div[role="dialog"] { position: relative; }
+        /* hide Streamlit's native title and close to use custom header */
+        div[role="dialog"] h1, div[role="dialog"] h2 { display: none !important; }
+        div[role="dialog"] button[aria-label="Close"] { display: none; }
+        div[data-baseweb="modal-backdrop"] { display: none; }
+        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
+        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
+        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
+            position: absolute !important;
+            top: 12px !important;
+            right: 12px !important;
+            z-index: 9999 !important;
+            border-radius: 50% !important;
+            border: 1px solid #e0e0e0 !important;
+            width: 36px !important;
+            height: 36px !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
+            background-color: white !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    # Header with Close button (pinned top-right)
+    c_head, c_close = st.columns([0.92, 0.08])
+    # Title rendered here so it's aligned with the custom close
+    c_head.markdown("### Create New Objective")
+    if c_close.button("", icon=":material/close:", key=f"close_create_objective_{parent_id}"):
+        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
+        st.rerun()
+    # Subtitle below the header
+    st.caption("Measurable objective to achieve the parent goal.")
+
+    with st.form("create_objective_form"):
+        title = st.text_input("Objective Title", placeholder="e.g. Increase conversion rate by 20%")
+        desc = st.text_area("Description", height=100)
+        
+        if st.form_submit_button("Create Objective", type="primary"):
+            if not title: st.error("Objective title is required.")
+            else:
+                # parent_id may be a typed ref like 'goal_15' — extract numeric id if needed
+                goal_id_val = parent_id
+                try:
+                    if isinstance(parent_id, str) and "_" in parent_id:
+                        goal_id_val = int(parent_id.split("_")[-1])
+                    else:
+                        goal_id_val = int(parent_id)
+                except Exception:
+                    st.error(f"Invalid parent id: {parent_id}")
+                    return
+
+                create_objective(goal_id=goal_id_val, title=title, description=desc)
+                st.success("Objective created!")
+                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+                st.rerun()
                 
                 if btn_col2.form_submit_button("🗑️ Delete", type="secondary"):
                     if delete_cycle(c.id):
@@ -82,55 +137,81 @@ def render_manage_cycles_dialog():
                     else:
                         st.error("Cannot delete cycle. Please remove its Goals first to avoid data loss.")
 
-@st.dialog("Hierarchy Map", width="large")
-def render_mindmap_dialog(node_id, data):
-    """Render the mind map visualization in a dialog."""
-    from streamlit_agraph import agraph, Config
-    
-    node = data["nodes"].get(node_id)
-    if not node:
-        st.error("Node not found")
-        return
-    
-    st.markdown(f"### Hierarchy of: {node.get('title', 'Untitled')}")
-    st.caption("Drag to pan, scroll to zoom. Nodes are color-coded by type.")
-    
-    # Build graph
-    nodes_list, edges_list = build_graph_from_node(node_id, data)
-    
-    if not nodes_list:
-        st.warning("No nodes to display")
-        return
-    
-    # Configure the graph
-    config = Config(
-        width=800,
-        height=500,
-        directed=True,
-        physics=True,
-        hierarchical=True,
-        nodeHighlightBehavior=True,
-        highlightColor="#F7A7A6",
-        collapsible=False,
-        node={"labelProperty": "label"},
-        link={"labelProperty": "label", "renderLabel": False}
-    )
-    
-    # Render the graph
-    agraph(nodes=nodes_list, edges=edges_list, config=config)
-    
-    # Legend
-    st.markdown("---")
-    st.markdown("**Legend:**")
-    legend_cols = st.columns(6)
-    for i, (ntype, color) in enumerate(TYPE_COLORS.items()):
-        with legend_cols[i]:
-            icon = TYPE_ICONS.get(ntype, "")
-            st.markdown(f"<span style='color:{color};font-size:1.2em;'>{icon}</span> {ntype.replace('_', ' ').title()}", unsafe_allow_html=True)
+@st.dialog("Create New Key Result", width="medium")
+def render_create_kr_dialog(parent_id):
+    # Hide default modal close button and add a custom close at top-right
+    st.markdown("""
+        <style>
+        div[role="dialog"] { position: relative; }
+        /* hide Streamlit's native title and close to use custom header */
+        div[role="dialog"] h1, div[role="dialog"] h2 { display: none !important; }
+        div[role="dialog"] button[aria-label="Close"] { display: none; }
+        div[data-baseweb="modal-backdrop"] { display: none; }
+        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
+        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
+        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
+            position: absolute !important;
+            top: 12px !important;
+            right: 12px !important;
+            z-index: 9999 !important;
+            border-radius: 50% !important;
+            border: 1px solid #e0e0e0 !important;
+            width: 36px !important;
+            height: 36px !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
+            background-color: white !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    # Header with Close button (pinned top-right)
+    c_head, c_close = st.columns([0.92, 0.08])
+    # Title rendered here so it's aligned with the custom close
+    c_head.markdown("### Create New Key Result")
+    if c_close.button("", icon=":material/close:", key=f"close_create_kr_{parent_id}"):
+        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
+        st.rerun()
+    # Subtitle below the header
+    st.caption("Specific, time-bound metric to measure success.")
 
-@st.dialog("⏱️ Focus Timer")
-def render_timer_dialog(node_id, data, username):
-    render_timer_content(node_id, data, username)
+    with st.form("create_kr_form"):
+        title = st.text_input("Key Result Title", placeholder="e.g. 10,000 New Active Users")
+        desc = st.text_area("Description", height=100)
+        col1, col2 = st.columns(2)
+        with col1:
+            target = st.number_input("Target Value", value=100.0)
+        with col2:
+            unit = st.text_input("Unit", value="%")
+            
+        if st.form_submit_button("Create Key Result", type="primary"):
+            if not title:
+                st.error("Key Result title is required.")
+            else:
+                # parent_id may be typed ref like 'objective_1' — extract numeric id
+                try:
+                    if isinstance(parent_id, str) and "_" in parent_id:
+                        obj_id_val = int(parent_id.split("_")[-1])
+                    else:
+                        obj_id_val = int(parent_id)
+                except Exception:
+                    st.error(f"Invalid parent id: {parent_id}")
+                    return
+
+                create_key_result(objective_id=obj_id_val, title=title, description=desc, target_value=target, unit=unit)
+                st.success("Key Result created!")
+                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+                st.rerun()
+    render_timer_content(node_id, None, username)
+@st.dialog("⏱️ Timer", width="small")
+def render_timer_dialog(node_id, username):
+    """Dialog wrapper for task timer content."""
+    # Use the shared render_timer_content from components
+    render_timer_content(node_id, username)
 
 @st.dialog("📊 Leadership Dashboard", width="large")
 def render_leadership_dashboard_dialog(username):
@@ -255,7 +336,7 @@ def render_admin_panel_dialog():
                 st.error("Please enter a new password.")
 
 @st.dialog("🔄 Weekly Ritual", width="large")
-def render_weekly_ritual_dialog(data, username):
+def render_weekly_ritual_dialog(username):
     # CSS: Style Custom Close Button
     st.markdown("""
         <style>
@@ -309,12 +390,28 @@ def render_weekly_ritual_dialog(data, username):
         total_minutes = 0
         work_logs_text = []
         
-        for nid, node in data.get("nodes", {}).items():
-            for log in node.get("workLog", []):
-                if log["startedAt"] >= start_ts:
-                    mins = log.get("duration", 0) / 60
-                    total_minutes += mins
-                    work_logs_text.append(f"- {node.get('title')}: {log.get('summary', 'Work')} ({int(mins)}m)")
+        # Collect work logs for the current user via CRUD helper
+        logs = []
+        current_user_obj = get_user_by_username(username)
+        if current_user_obj:
+            logs = get_work_logs_by_date_range(current_user_obj.id, start_date, end_date)
+
+        for wl in logs:
+            mins = wl.duration_minutes or 0
+            total_minutes += mins
+            # Try to get a meaningful title from the task / KR
+            node_title = None
+            try:
+                if wl.task and getattr(wl.task, 'title', None):
+                    node_title = wl.task.title
+                elif wl.task and wl.task.key_result and getattr(wl.task.key_result, 'title', None):
+                    node_title = wl.task.key_result.title
+            except Exception:
+                node_title = None
+
+            node_title = node_title or 'Work'
+            summary = getattr(wl, 'summary', None) or getattr(wl, 'note', None) or 'Work'
+            work_logs_text.append(f"- {node_title}: {summary} ({int(mins)}m)")
         
         # AI Summary Generation
         if "ritual_summary" not in st.session_state:
@@ -455,7 +552,11 @@ def render_weekly_ritual_dialog(data, username):
             st.session_state.ritual_step = 2; st.rerun()
 
 @st.dialog("Create New Task", width="medium")
-def render_create_task_dialog(data, parent_id, username):
+def render_create_task_dialog(parent_id, username):
+    # 'data' removed
+    from src.crud import create_task, get_user_by_username, get_team_members
+    from datetime import datetime
+    
     st.caption("Define your task and assign it to team members.")
     with st.form("create_task_form"):
         title = st.text_input("Task Title", placeholder="e.g. Draft Initial Report")
@@ -466,34 +567,349 @@ def render_create_task_dialog(data, parent_id, username):
             due_date = st.date_input("Due Date", value=None)
 
         desc = st.text_area("Description", height=100)
-        assignees = []
+        
+        # Assignee Logic
+        assignee_id = None 
+        # Default assignee is creator? Or None?
+        # Let's verify role
         user_role = st.session_state.get("user_role")
-        if user_role == "manager":
+        
+        if user_role in ["manager", "admin"]:
+            # Manager can assign to team
             user_obj = get_user_by_username(username)
             if user_obj:
                 team = get_team_members(user_obj.id)
+                # Include self?
+                # Usually manager assigns to team or self.
                 member_map = {f"{m.display_name} ({m.username})": m.username for m in team}
-                selected_labels = st.multiselect("Assign To", options=list(member_map.keys()))
-                assignees = [member_map[l] for l in selected_labels]
+                # Add self if not in team list (manager usually not in own get_team_members list?)
+                member_map[f"{user_obj.display_name} (Me)"] = username
+                
+                selected_label = st.selectbox("Assign To", options=list(member_map.keys()))
+                if selected_label:
+                    assignee_username = member_map[selected_label]
+                    # We need assignee ID usually later, simpler to store username on Task?
+                    # Schema says assignee_id is user_id (int) or username (str)?
+                    # Task model: assignee_id is Optional[str] (username) based on legacy, 
+                    # but let's check validation. Ideally it's a Foreign Key.
+                    # In 4-levels schema, Task.assignee_id is likely String (Username) or Int.
+                    # Let's assume Username string for compatibility or check Model.
+                    assignee_id = assignee_username
+        else:
+             # Member assigns to self
+             assignee_id = username
+
         if st.form_submit_button("Create Task", type="primary"):
             if not title: st.error("Task title is required.")
             else:
                 sd_ts = datetime.combine(start_date, datetime.min.time()) if start_date else None
-                dd_ts = int(datetime.combine(due_date, datetime.max.time()).timestamp() * 1000) if due_date else None
-                add_node(data, parent_id, "TASK", title, desc, username, cycle_id=st.session_state.get("active_cycle_id"), assignees=assignees, start_date=sd_ts, deadline=dd_ts)
+                dd_ts = datetime.combine(due_date, datetime.max.time()) if due_date else None
+                
+                # parent_id may be a typed ref like 'key_result_1' — extract numeric id
+                try:
+                    if isinstance(parent_id, str) and "_" in parent_id:
+                        kr_id_val = int(parent_id.split("_")[-1])
+                    else:
+                        kr_id_val = int(parent_id)
+                except Exception:
+                    st.error(f"Invalid parent id: {parent_id}")
+                    return
+
+                create_task(
+                    key_result_id=kr_id_val,
+                    title=title,
+                    description=desc,
+                    start_date=sd_ts,
+                    deadline=dd_ts,
+                    assignee_id=assignee_id
+                )
+                st.success("Task created!")
+                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
                 st.rerun()
 
-@st.dialog("Weekly Report", width="large")
-def render_weekly_report_dialog(data, username):
-    render_report_content(data, username, "Weekly")
+@st.dialog("Create New Goal", width="medium")
+def render_create_goal_dialog(username):
+    # Hide default modal close button and add a custom close at top-right
+    st.markdown("""
+        <style>
+        div[role="dialog"] { position: relative; }
+        div[role="dialog"] button[aria-label="Close"] { display: none; }
+        div[data-baseweb="modal-backdrop"] { display: none; }
+        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
+        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
+        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
 
-@st.dialog("Daily Report", width="large")
-def render_daily_report_dialog(data, username):
-    render_report_content(data, username, "Daily")
+        /* Align the header column and vertically center the custom close button */
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-end !important;
+            padding: 0 !important;
+        }
+
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
+            border-radius: 50% !important;
+            border: 1px solid #e0e0e0 !important;
+            width: 36px !important;
+            height: 36px !important;
+            padding: 0 !important;
+            margin-left: 8px !important;
+            background-color: white !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    # Header with Close button (pinned top-right)
+    c_head, c_close = st.columns([0.92, 0.08])
+    if c_close.button("", icon=":material/close:", key="close_create_goal"):
+        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
+        st.rerun()
+    cycle_id = st.session_state.get("active_cycle_id")
+
+    st.caption("Strategic high-level goal for the current cycle.")
+
+    with st.form("create_goal_form"):
+        title = st.text_input("Goal Title", placeholder="e.g. Expand Market Presence")
+        desc = st.text_area("Description", height=100)
+        
+        if st.form_submit_button("Create Goal", type="primary"):
+            if not title: st.error("Goal title is required.")
+            else:
+                create_goal(user_id=username, title=title, description=desc, cycle_id=cycle_id)
+                st.success("Goal created!")
+                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+                st.rerun()
+
+@st.dialog("Create New Objective", width="medium")
+def render_create_objective_dialog(parent_id):
+    # Hide default modal close button and add a custom close at top-right
+    st.markdown("""
+        <style>
+        div[role="dialog"] { position: relative; }
+        div[role="dialog"] button[aria-label="Close"] { display: none; }
+        div[data-baseweb="modal-backdrop"] { display: none; }
+        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
+        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
+        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
+            position: absolute !important;
+            top: 18px !important;
+            right: 18px !important;
+            z-index: 9999 !important;
+            border-radius: 50% !important;
+            border: 1px solid #e0e0e0 !important;
+            width: 36px !important;
+            height: 36px !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
+            background-color: white !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    # Header with Close button (pinned top-right)
+    c_head, c_close = st.columns([0.92, 0.08])
+    if c_close.button("", icon=":material/close:", key=f"close_create_objective_{parent_id}"):
+        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
+        st.rerun()
+    st.caption("Measurable objective to achieve the parent goal.")
+
+    with st.form("create_objective_form"):
+        title = st.text_input("Objective Title", placeholder="e.g. Increase conversion rate by 20%")
+        desc = st.text_area("Description", height=100)
+        
+        if st.form_submit_button("Create Objective", type="primary"):
+            if not title:
+                st.error("Objective title is required.")
+            else:
+                # parent_id may be a typed ref like 'goal_15' — extract numeric id
+                try:
+                    if isinstance(parent_id, str) and "_" in parent_id:
+                        goal_id_val = int(parent_id.split("_")[-1])
+                    else:
+                        goal_id_val = int(parent_id)
+                except Exception:
+                    st.error(f"Invalid parent id: {parent_id}")
+                    return
+
+                create_objective(goal_id=goal_id_val, title=title, description=desc)
+                st.success("Objective created!")
+                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+                st.rerun()
+
+@st.dialog("Create New Key Result", width="medium")
+def render_create_kr_dialog(parent_id):
+    # Hide default modal close button and add a custom close at top-right
+    st.markdown("""
+        <style>
+        div[role="dialog"] { position: relative; }
+        div[role="dialog"] button[aria-label="Close"] { display: none; }
+        div[data-baseweb="modal-backdrop"] { display: none; }
+        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
+        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
+        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
+        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
+            position: absolute !important;
+            top: 18px !important;
+            right: 18px !important;
+            z-index: 9999 !important;
+            border-radius: 50% !important;
+            border: 1px solid #e0e0e0 !important;
+            width: 36px !important;
+            height: 36px !important;
+            padding: 0 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
+            background-color: white !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    # Header with Close button (pinned top-right)
+    c_head, c_close = st.columns([0.92, 0.08])
+    if c_close.button("", icon=":material/close:", key=f"close_create_kr_{parent_id}"):
+        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
+        st.rerun()
+    st.caption("Specific, time-bound metric to measure success.")
+
+    with st.form("create_kr_form"):
+        title = st.text_input("Key Result Title", placeholder="e.g. 10,000 New Active Users")
+        desc = st.text_area("Description", height=100)
+        col1, col2 = st.columns(2)
+        with col1:
+            target = st.number_input("Target Value", value=100.0)
+        with col2:
+            unit = st.text_input("Unit", value="%")
+            
+        if st.form_submit_button("Create Key Result", type="primary"):
+            if not title:
+                st.error("Key Result title is required.")
+            else:
+                # parent_id may be a typed ref like 'objective_1' — extract numeric id
+                try:
+                    if isinstance(parent_id, str) and "_" in parent_id:
+                        obj_id_val = int(parent_id.split("_")[-1])
+                    else:
+                        obj_id_val = int(parent_id)
+                except Exception:
+                    st.error(f"Invalid parent id: {parent_id}")
+                    return
+
+                create_key_result(objective_id=obj_id_val, title=title, description=desc, target_value=target, unit=unit)
+                st.success("Key Result created!")
+                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+                st.rerun()
+
+@st.dialog("📊 Weekly Report", width="large")
+def render_weekly_report_dialog(username):
+    render_report_content(username, "Weekly")
+
+@st.dialog("📅 Daily Report", width="large")
+def render_daily_report_dialog(username):
+    render_report_content(username, "Daily")
 
 @st.dialog("Inspect & Edit", width="large")
-def render_inspector_dialog(node_id, data, username):
-    render_inspector_content(node_id, data, username)
+def render_inspector_dialog(node_id, username):
+    # Accept typed reference like 'task_12' and parse it, else auto-detect
+    from src.crud import get_session_context
+    from src.models import Goal, Objective, KeyResult, Task
+    
+    # Parse typed ref if provided
+    raw_id = node_id
+    node_type = None
+    if isinstance(node_id, str) and "_" in node_id:
+        parts = node_id.split("_")
+        tab = "_".join(parts[:-1]).lower()
+        try:
+            raw_id = int(parts[-1])
+        except Exception:
+            raw_id = node_id
+        if tab == "goal": node_type = "GOAL"
+        elif tab == "objective": node_type = "OBJECTIVE"
+        elif tab in ("key_result","keyresult"): node_type = "KEY_RESULT"
+        elif tab == "task": node_type = "TASK"
+    
+    # Auto-detect if unknown
+    with get_session_context() as session:
+        if node_type is None:
+            if session.get(Task, raw_id): node_type = "TASK"
+            elif session.get(KeyResult, raw_id): node_type = "KEY_RESULT"
+            elif session.get(Objective, raw_id): node_type = "OBJECTIVE"
+            elif session.get(Goal, raw_id): node_type = "GOAL"
+    
+    if not node_type:
+        st.error(f"Node {node_id} not found")
+        return
+    
+    render_inspector_content(raw_id, node_type, username)
+
+
+@st.dialog("Mind Map", width="large")
+def render_mindmap_dialog(node_id):
+    """Render a simple mindmap graph for the given SQL node id."""
+    from src.database import get_session_context
+    from src.models import Goal, Objective, KeyResult, Task
+    from src.ui.components import build_graph_from_node
+    from streamlit_agraph import agraph, Config
+    from sqlalchemy.orm import selectinload
+
+    # Load the SQL object with its children eagerly inside a session to avoid DetachedInstanceError
+    from sqlmodel import select
+    obj = None
+    with get_session_context() as session:
+        try:
+            # Try Goal with objectives->krs->tasks
+            stmt = select(Goal).where(Goal.id == node_id).options(
+                selectinload(Goal.objectives).selectinload(Objective.key_results).selectinload(KeyResult.tasks)
+            )
+            obj = session.exec(stmt).first()
+            if not obj:
+                # Try Objective with key_results->tasks
+                stmt = select(Objective).where(Objective.id == node_id).options(
+                    selectinload(Objective.key_results).selectinload(KeyResult.tasks)
+                )
+                obj = session.exec(stmt).first()
+            if not obj:
+                # Try KeyResult with tasks
+                stmt = select(KeyResult).where(KeyResult.id == node_id).options(
+                    selectinload(KeyResult.tasks)
+                )
+                obj = session.exec(stmt).first()
+            if not obj:
+                # Try Task (no children)
+                stmt = select(Task).where(Task.id == node_id)
+                obj = session.exec(stmt).first()
+        except Exception:
+            obj = None
+
+    if not obj:
+        st.error(f"Node {node_id} not found for mindmap")
+        return
+
+    nodes, edges = build_graph_from_node(obj)
+    # Use hierarchical layout for top-down stream (parent -> children)
+    config = Config(
+        width='100%',
+        height=700,
+        directed=True,
+        nodeHighlightBehavior=True,
+        layout={
+            "hierarchical": {
+                "enabled": True,
+                "direction": "UD",  # Up -> Down
+                "sortMethod": "directed"
+            }
+        },
+        physics={"enabled": False}
+    )
+
+    agraph(nodes=nodes, edges=edges, config=config)
 
 @st.dialog("📬 RetroBox", width="large")
 def render_retrobox_dialog(username):
@@ -575,8 +991,9 @@ def render_retrobox_dialog(username):
                         with col_content:
                             st.markdown(r.content)
 
-@st.dialog("Project Timeline", width="large")
-def render_timeline_dialog(username: str, data: dict):
+@st.dialog("📅 Project Timeline", width="large")
+def render_timeline_dialog(username: str):
+    # data parameter removed as we fetch latest from SQL
     """
     Dialog to show the Gantt Chart.
     Fetches latest data from SQL to ensure accuracy.
