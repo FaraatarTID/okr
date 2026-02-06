@@ -59,7 +59,7 @@ if not exist "%DEP_FLAG%" (
 echo.
 echo [INFO] Starting Streamlit...
 echo.
-start "" /b "%PYEXE%" -m streamlit run app.py --server.headless=true
+start "" /b "%PYEXE%" -m streamlit run login_app.py --server.headless=true
 
 REM Wait a moment for the server to start, then open the app
 timeout /t 3 /nobreak >nul

@@ -1,7 +1,5 @@
 
 import streamlit as st
-import plotly.express as px
-import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
@@ -77,6 +75,8 @@ def render_gantt_chart(tasks: List[Task], current_user_role: str, current_userna
             Color=color
         ))
 
+    import pandas as pd
+    import plotly.express as px
     df = pd.DataFrame(gantt_data)
     
     # Sort by Start date for visual waterfall
