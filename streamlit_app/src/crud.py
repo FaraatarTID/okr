@@ -15,6 +15,7 @@ from src.models import (
     WeeklyPlan, Retrospective
 )
 from src.database import get_session_context
+from src.audit import audit_log
 import bcrypt
 
 
@@ -48,6 +49,7 @@ def create_user(username: str, password: str, role: UserRole = UserRole.MEMBER,
         session.refresh(user)
         # S Y N C
         sync_service.push_update(user)
+        audit_log("create", "user", actor=username, details={"role": role.value})
         return user
 
 
@@ -90,7 +92,9 @@ def authenticate_user(username: str, password: str) -> Optional[User]:
     """Authenticate a user and return the User object if successful."""
     user = get_user_by_username(username)
     if user and user.is_active and verify_password(password, user.password_hash):
+        audit_log("login", "user", actor=username, details={"success": True})
         return user
+    audit_log("login", "user", actor=username, details={"success": False})
     return None
 
 
@@ -128,6 +132,7 @@ def update_user(user_id: int, display_name: str = None, role: UserRole = None,
         session.refresh(user)
         # S Y N C
         sync_service.push_update(user)
+        audit_log("update", "user", actor=user.username, details={"user_id": user_id})
         return user
 
 
@@ -142,6 +147,7 @@ def reset_user_password(user_id: int, new_password: str) -> bool:
         session.commit()
         session.refresh(user)
         sync_service.push_update(user)
+        audit_log("reset_password", "user", actor=user.username, details={"user_id": user_id})
         return True
 
 
@@ -159,6 +165,7 @@ def ensure_admin_exists():
             )
             session.add(admin)
             session.commit()
+            audit_log("create", "user", actor="admin", details={"role": UserRole.ADMIN.value})
             return True
     return False
 
@@ -191,6 +198,7 @@ def create_check_in(kr_id: int, value: float, confidence: int, comment: str) -> 
         session.refresh(check_in)
         # S Y N C
         sync_service.push_update(check_in)
+        audit_log("create", "check_in", details={"kr_id": kr_id, "value": value, "confidence": confidence})
         return check_in
 
 def get_check_ins(kr_id: int) -> List[CheckIn]:
@@ -209,7 +217,7 @@ def get_krs_needing_checkin(user_id: str, cycle_id: int, days_threshold: int = 7
             .join(Objective)
             .join(Goal)
             .where(Goal.cycle_id == cycle_id)
-            .where(Goal.owner_id == user.id)
+            .where(Goal.user_id == user_id)
             .options(selectinload(KeyResult.tasks))
         )
         krs = session.exec(statement).all()
@@ -251,6 +259,7 @@ def create_cycle(title: str, start_date: datetime, end_date: datetime, is_active
         session.refresh(cycle)
         # S Y N C
         sync_service.push_update(cycle)
+        audit_log("create", "cycle", details={"cycle_id": cycle.id, "title": title})
         return cycle
 
 
@@ -288,6 +297,7 @@ def update_cycle(cycle_id: int, title: str, start_date: datetime, end_date: date
         session.refresh(cycle)
         # S Y N C
         sync_service.push_update(cycle)
+        audit_log("update", "cycle", details={"cycle_id": cycle_id, "title": title})
         return cycle
 
 def delete_cycle(cycle_id: int) -> bool:
@@ -307,6 +317,7 @@ def delete_cycle(cycle_id: int) -> bool:
         session.commit()
         # S Y N C (Delete)
         sync_service.push_update(cycle, delete=True)
+        audit_log("delete", "cycle", details={"cycle_id": cycle_id})
         return True
 
 # ============================================================================
@@ -470,7 +481,7 @@ def get_goal_tree(goal_id: int) -> Optional[Goal]:
         return goal
 
 
-def get_user_goals(user_id: str, cycle_id: Optional[int] = None) -> List[Goal]:
+def get_user_goals_simple(user_id: str, cycle_id: Optional[int] = None) -> List[Goal]:
     """Get all goals for a user (without full tree)."""
     with get_session_context() as session:
         statement = select(Goal).where(Goal.user_id == user_id)
@@ -516,6 +527,7 @@ def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optio
         session.refresh(goal)
         # S Y N C
         sync_service.push_update(goal)
+        audit_log("create", "goal", actor=user_id, details={"goal_id": goal.id, "cycle_id": cycle_id})
         return goal
 
 
@@ -545,6 +557,7 @@ def create_objective(goal_id: int, title: str, description: str = "", external_i
         session.refresh(objective)
         # S Y N C
         sync_service.push_update(objective)
+        audit_log("create", "objective", details={"objective_id": objective.id, "goal_id": goal_id})
         return objective
 
 
@@ -578,6 +591,7 @@ def create_key_result(objective_id: int, title: str, description: str = "",
         session.refresh(key_result)
         # S Y N C
         sync_service.push_update(key_result)
+        audit_log("create", "key_result", details={"key_result_id": key_result.id, "objective_id": objective_id})
         return key_result
 
 
@@ -612,6 +626,7 @@ def create_task(key_result_id: int, title: str = "", description: str = "",
         session.refresh(task)
         # S Y N C
         sync_service.push_update(task)
+        audit_log("create", "task", details={"task_id": task.id, "key_result_id": key_result_id})
         return task
 
 # ============================================================================
@@ -766,6 +781,7 @@ def delete_goal(goal_id: int) -> bool:
             session.commit()
             # S Y N C
             sync_service.push_update(goal, delete=True)
+            audit_log("delete", "goal", details={"goal_id": goal_id})
             return True
         return False
 
@@ -779,6 +795,7 @@ def delete_task(task_id: int) -> bool:
             session.commit()
             # S Y N C
             sync_service.push_update(task, delete=True)
+            audit_log("delete", "task", details={"task_id": task_id})
             return True
         return False
 
@@ -791,6 +808,7 @@ def delete_objective(objective_id: int) -> bool:
             session.commit()
             # S Y N C
             sync_service.push_update(item, delete=True)
+            audit_log("delete", "objective", details={"objective_id": objective_id})
             return True
         return False
 
@@ -802,6 +820,7 @@ def delete_key_result(kr_id: int) -> bool:
             session.commit()
             # S Y N C
             sync_service.push_update(item, delete=True)
+            audit_log("delete", "key_result", details={"key_result_id": kr_id})
             return True
         return False
 

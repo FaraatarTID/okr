@@ -6,6 +6,11 @@ without code changes using environment variables or Streamlit secrets.
 from sqlmodel import create_engine, Session, SQLModel
 from contextlib import contextmanager
 import os
+from src.config import is_production
+
+# Base path for local SQLite storage
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+DATABASE_PATH = os.path.join(BASE_DIR, "okr_database.db")
 
 
 def _get_database_url() -> str:
@@ -42,11 +47,12 @@ def _get_database_url() -> str:
         pass
 
     # 4: Fallback to SQLite file in streamlit_app folder
-    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "okr_database.db")
-    return f"sqlite:///{db_path}"
+    return f"sqlite:///{DATABASE_PATH}"
 
 
 DATABASE_URL = _get_database_url()
+if is_production() and DATABASE_URL.startswith("sqlite:"):
+    raise RuntimeError("PRODUCTION=true requires a non-SQLite database. Set OKR_DATABASE_URL or DATABASE_URL.")
 
 
 def _create_engine(url: str):

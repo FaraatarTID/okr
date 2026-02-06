@@ -14,6 +14,7 @@ from src.models import (
     WorkLog, CheckIn, Retrospective
 )
 from src.database import engine, get_session_context
+from src.config import is_production
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -29,9 +30,19 @@ class SheetSyncService:
         self.spreadsheet_name = st.secrets.get("GCP_SPREADSHEET_NAME", "OKR_DB")
         self._connect()
 
+    def _set_error(self, message, exc=None):
+        """Record and surface sync errors for diagnostics."""
+        if exc:
+            message = f"{message}: {exc}"
+        self.last_error = message
+        print(f"[SheetSync] {message}")
+
     def _connect(self):
         """Connect to Google Sheets API."""
         self.last_error = None
+        if is_production():
+            self.last_error = "Google Sheets sync is disabled in production mode."
+            return
         if "gcp_service_account" not in st.secrets:
             self.last_error = "Missing gcp_service_account in secrets"
             return
@@ -82,8 +93,10 @@ class SheetSyncService:
                 if name not in existing_titles:
                     try:
                         self.spreadsheet.add_worksheet(title=name, rows=100, cols=20)
-                    except Exception: pass
-        except Exception: pass
+                    except Exception as e:
+                        self._set_error(f"Failed to add worksheet '{name}'", e)
+        except Exception as e:
+            self._set_error("Failed to list worksheets", e)
 
     def restore_to_local_db(self):
         """Pull all data from Sheets and insert into local SQLite."""
@@ -103,7 +116,8 @@ class SheetSyncService:
             self._restore_table(CheckIn, "CheckIns")
             self._restore_table(WorkLog, "WorkLogs")
             self._restore_table(Retrospective, "Retrospectives")
-        except Exception: pass
+        except Exception as e:
+            self._set_error("Restore to local DB failed", e)
 
     def _restore_table(self, model_cls: SQLModel, sheet_name: str):
         """Generic helper to restore a single table."""
@@ -119,7 +133,8 @@ class SheetSyncService:
                     for r in rows:
                         ts = getattr(r, "updated_at", getattr(r, "created_at", None))
                         existing_map[r.id] = ts
-                except Exception: pass
+                except Exception as e:
+                    self._set_error(f"Failed to read local rows for '{sheet_name}'", e)
 
                 for row in data:
                     clean_row = {k: v for k, v in row.items() if v != ''}
@@ -150,16 +165,20 @@ class SheetSyncService:
                         try:
                             obj = model_cls.model_validate(clean_row)
                             session.add(obj)
-                        except: pass
+                        except Exception as e:
+                            self._set_error(f"Failed to insert row in '{sheet_name}'", e)
                 session.commit()
-        except Exception: pass
+        except Exception as e:
+            self._set_error(f"Restore failed for table '{sheet_name}'", e)
 
     def _get_id_map(self, worksheet):
         """Get a map of ID -> Row Number from the sheet."""
         try:
             ids = worksheet.col_values(1)
             return {str(val): i + 1 for i, val in enumerate(ids) if val}
-        except Exception: return {}
+        except Exception as e:
+            self._set_error("Failed to read ID map from worksheet", e)
+            return {}
 
     def push_update(self, model_obj, delete=False):
         """Push a single object change to the Sheet."""
@@ -210,7 +229,8 @@ class SheetSyncService:
                 else:
                     worksheet.append_row(row_values)
                     del self.id_cache[sheet_name]
-        except Exception: pass
+        except Exception as e:
+            self._set_error(f"Push update failed for '{sheet_name}'", e)
 
     def sync_all_to_sheets(self):
         """Force a full push of all local data to Google Sheets."""
@@ -222,9 +242,10 @@ class SheetSyncService:
                     items = session.exec(select(model_cls)).all()
                     for item in items:
                         self.push_update(item)
-                except Exception: pass
+                except Exception as e:
+                    self._set_error(f"Full sync failed for model '{model_cls.__name__}'", e)
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def get_sync_service():
     """Factory to get the singleton SheetSyncService with Streamlit caching."""
     return SheetSyncService()

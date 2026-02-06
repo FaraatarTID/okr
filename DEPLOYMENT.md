@@ -31,6 +31,16 @@ Build and run (on a server with Docker):
   - Mount it in compose by uncommenting the secrets volume line so it appears at /app/streamlit_app/.streamlit/secrets.toml
 - Alternatively, map environment variables and read them in code where supported.
 
+Production mode (optional, recommended for production)
+- Enable strict production behavior by setting PRODUCTION=true.
+  - Environment variable (e.g., in Docker Compose .env): PRODUCTION=true
+  - Or in secrets.toml:
+    [app]
+    production = true
+- When enabled:
+  - Google Sheets sync is disabled
+  - A non-SQLite database is required (set OKR_DATABASE_URL / DATABASE_URL or [database].url)
+
 4) Database and migrations
 - The app uses SQLite at streamlit_app/okr_database.db.
 - Migrations (Alembic) run on startup via code in [streamlit_app/src/database.py](streamlit_app/src/database.py).
