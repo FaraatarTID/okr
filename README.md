@@ -260,6 +260,11 @@ pip install -r streamlit_app/requirements.txt
 # 4. Configure secrets (optional - for AI features)
 # Create streamlit_app/.streamlit/secrets.toml:
 # GEMINI_API_KEY = "your-api-key"
+# Optional (recommended for production):
+# [app]
+# production = true
+# [database]
+# url = "postgresql+psycopg2://user:pass@host:5432/okr"
 
 # 5. Run the app
 streamlit run streamlit_app/app.py

@@ -26,6 +26,7 @@ Security hardening
 - Limit exposed ports (only proxy exposed)
 - Non-root containers (already configured)
 - Set firewall rules so only the proxy can reach the app port
+- If running in production, set PRODUCTION=true to disable Sheets sync and require a non-SQLite database
 
 Incident response
 - Take snapshots before risky changes

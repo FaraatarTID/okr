@@ -2,6 +2,7 @@ import streamlit as st
 import sys
 import os
 import time
+import traceback
 from datetime import datetime, timedelta
 
 # Add current directory to path so we can import modules if running from outside
@@ -9,6 +10,8 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Database utilities
 from src.database import init_database, export_db, import_db, run_migrations
+from src.config import is_production
+from src.audit import error_log
 from src.services.sheet_sync import sync_service
 
 # Initialize DB and Restore from Sheets (Write-Through Architecture)
@@ -17,15 +20,23 @@ init_database()
 if "preflight_done" not in st.session_state:
     try:
         run_migrations()
-        st.toast("Database migrations applied", icon="✅")
-    except Exception as e:
-        st.warning(f"DB migration warning: {e}")
+    except Exception:
+        # Avoid UI noise on startup; migrations can be checked via logs if needed.
+        pass
     # wkhtmltopdf presence check (for local PDF)
     try:
         import shutil
         import pdfkit  # noqa: F401
-        if shutil.which("wkhtmltopdf") is None:
-            st.info("wkhtmltopdf not detected in PATH. PDF export will fall back to HTML. Install from https://wkhtmltopdf.org/downloads.html or use the launcher.")
+        wkhtml = shutil.which("wkhtmltopdf")
+        if not wkhtml:
+            # Also check common Windows install paths
+            common_paths = [
+                r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe",
+                r"C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe",
+            ]
+            wkhtml = next((p for p in common_paths if os.path.exists(p)), None)
+        if not wkhtml:
+            st.info("wkhtmltopdf not detected in PATH. PDF export will fall back to HTML. Install from https://wkhtmltopdf.org/downloads.html or set PATH.")
     except Exception:
         pass
     st.session_state["preflight_done"] = True
@@ -46,7 +57,8 @@ from src.crud import (
     get_leadership_metrics, update_cycle, delete_cycle,
     # User Auth
     authenticate_user, get_all_users, create_user, update_user,
-    reset_user_password, get_team_members, ensure_admin_exists
+    reset_user_password, get_team_members, ensure_admin_exists,
+    get_user_by_id, verify_password
 )
 from src.models import UserRole
 import plotly.graph_objects as go
@@ -67,6 +79,16 @@ from src.ui.dialogs import (
 st.set_page_config(page_title="OKR Tracker", layout="wide")
 apply_custom_fonts()
 inject_dialog_styles()
+
+# Basic error reporting hook
+def _excepthook(exc_type, exc, tb):
+    try:
+        error_log("Uncaught exception", exc)
+    finally:
+        # Preserve default behavior
+        sys.__excepthook__(exc_type, exc, tb)
+
+sys.excepthook = _excepthook
 
 def render_login():
     st.markdown("## 🔐 Login to OKR Tracker")
@@ -112,6 +134,7 @@ def render_login():
 
 
 def render_app(username):
+    production_mode = is_production()
     # Ensure session state is initialized
     if "nav_stack" not in st.session_state:
         st.session_state.nav_stack = []
@@ -121,6 +144,17 @@ def render_app(username):
     user_role = st.session_state.get("user_role", "member")
     
     st.sidebar.markdown(f"👤 **{display_name}** ({user_role.title()})")
+    if production_mode:
+        st.sidebar.caption("🛡️ Production mode: ON")
+    else:
+        st.sidebar.caption("🧪 Production mode: OFF")
+        with st.sidebar.expander("Enable production mode"):
+            st.markdown("Set this in `streamlit_app/.streamlit/secrets.toml`:")
+            st.code(
+                "[app]\nproduction = true\n\n[database]\nurl = \"postgresql+psycopg2://user:pass@host:5432/okr\"",
+                language="toml",
+            )
+            st.markdown("Or set an environment variable `PRODUCTION=true` before starting the app.")
     if st.sidebar.button("🚪 Logout"):
         # Clear all user-related session state
         for key in ["user_id", "username", "display_name", "user_role", "nav_stack", 
@@ -131,6 +165,9 @@ def render_app(username):
     
     # Admin Panel Button (Admin only)
     if st.session_state.get("user_role") == "admin":
+        admin_user = get_user_by_id(st.session_state.get("user_id"))
+        if admin_user and verify_password("admin", admin_user.password_hash):
+            st.sidebar.warning("Default admin password is still active. Change it in Admin Panel.")
         if st.sidebar.button("👑 Admin Panel", use_container_width=True):
             st.session_state.active_report_mode = "Admin"
             st.rerun()

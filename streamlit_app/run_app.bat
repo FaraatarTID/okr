@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal
 
 REM Change directory to the script's location
 cd /d "%~dp0"
@@ -9,7 +9,7 @@ echo      OKR Tracker - Streamlit Launcher
 echo ==========================================
 echo.
 
-echo [1/3] Checking Python installation...
+echo [1/2] Checking Python installation...
 where python >nul 2>&1
 if %errorlevel% neq 0 (
     echo [ERROR] Python is not found in your PATH.
@@ -20,8 +20,8 @@ if %errorlevel% neq 0 (
 python --version
 echo.
 
-echo [2/3] Checking dependencies...
-REM Use a virtual environment and verify each required package individually.
+echo [2/2] Preparing virtual environment...
+REM Use a virtual environment and install dependencies if needed.
 set VENV_DIR=venv
 
 if not exist "%VENV_DIR%\Scripts\activate.bat" (
@@ -34,88 +34,30 @@ if not exist "%VENV_DIR%\Scripts\activate.bat" (
     )
 )
 
-echo [INFO] Activating virtual environment...
-call "%VENV_DIR%\Scripts\activate.bat"
+set PYEXE=%VENV_DIR%\Scripts\python.exe
+if not exist "%PYEXE%" (
+    echo [ERROR] Virtual environment python not found at %PYEXE%.
+    pause
+    exit /b 1
+)
 
-echo [INFO] Upgrading pip and essential build tools...
-python -m pip install --upgrade pip setuptools wheel >nul 2>&1
-
-echo [INFO] Installing packages from requirements.txt...
-pip install --quiet -r requirements.txt
+echo [INFO] Installing dependencies (this may take a minute)...
+%PYEXE% -m pip install -r requirements.txt
 if %errorlevel% neq 0 (
-    echo.
     echo [ERROR] Failed to install dependencies from requirements.txt.
-    echo Please check your internet connection and try again.
     pause
     exit /b 1
 )
 
-echo [INFO] Verifying installed packages by attempting imports...
-echo import sys, importlib > temp_verify.py
-echo names = ['streamlit', 'sqlmodel', 'pydantic', 'google.generativeai', 'plotly', 'dotenv', 'gspread', 'google.auth', 'streamlit_agraph', 'google.genai', 'pdfkit', 'requests'] >> temp_verify.py
-echo missing = [] >> temp_verify.py
-echo for n in names: >> temp_verify.py
-echo     try: >> temp_verify.py
-echo         importlib.import_module(n) >> temp_verify.py
-echo     except Exception as e: >> temp_verify.py
-echo         missing.append(n) >> temp_verify.py
-echo if missing: >> temp_verify.py
-echo     print('[ERROR] Missing modules: ' + ', '.join(missing)) >> temp_verify.py
-echo     sys.exit(1) >> temp_verify.py
-echo else: >> temp_verify.py
-echo     print('[SUCCESS] All required modules import correctly') >> temp_verify.py
-python temp_verify.py || (
-    echo.
-    echo [ERROR] Some packages failed to import after installation.
-    echo Please inspect the error above and install missing packages manually.
-    del temp_verify.py
-    pause
-    exit /b 1
-)
-del temp_verify.py
 echo.
-
-echo [2.5/3] Checking wkhtmltopdf (for PDF export)...
-where wkhtmltopdf >nul 2>&1
-if %errorlevel% neq 0 (
-    set WKHTML_COMMON1=C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe
-    set WKHTML_COMMON2=C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe
-    if exist "%WKHTML_COMMON1%" (
-        echo [INFO] Found wkhtmltopdf at "%WKHTML_COMMON1%"
-        echo [INFO] Adding directory to PATH for future sessions...
-        set WKHTML_DIR=C:\Program Files\wkhtmltopdf\bin
-        setx PATH "%PATH%;%WKHTML_DIR%" >nul 2>&1
-        echo [INFO] You might need to open a new terminal for PATH changes to take effect.
-    ) else if exist "%WKHTML_COMMON2%" (
-        echo [INFO] Found wkhtmltopdf at "%WKHTML_COMMON2%"
-        echo [INFO] Adding directory to PATH for future sessions...
-        set WKHTML_DIR=C:\Program Files (x86)\wkhtmltopdf\bin
-        setx PATH "%PATH%;%WKHTML_DIR%" >nul 2>&1
-        echo [INFO] You might need to open a new terminal for PATH changes to take effect.
-    ) else (
-        echo [WARNING] wkhtmltopdf is not in PATH. PDF export will fall back to HTML.
-        echo [INFO] Download and install from: https://wkhtmltopdf.org/downloads.html
-    )
-) else (
-    echo [SUCCESS] wkhtmltopdf found.
-)
+echo [INFO] Starting Streamlit...
 echo.
+start "" /b "%PYEXE%" -m streamlit run app.py --server.headless=true
 
-echo [3/3] Launching Application...
-echo.
-set LOGFILE=%~dp0run_app.log
-echo [INFO] Starting Streamlit in background (logs -> %LOGFILE%)...
-echo.
-
-REM Start Streamlit in background with headless mode to prevent auto-open
-start /b python -m streamlit run app.py --server.headless=true > "%LOGFILE%" 2>&1
-
-REM Wait a moment for it to start
+REM Wait a moment for the server to start, then open the app
 timeout /t 3 /nobreak >nul
+start "" "http://localhost:8501/"
 
-REM Open in a new browser window
-start "" rundll32 url.dll,FileProtocolHandler "http://localhost:8501"
-
-echo [INFO] App launched in new browser window. Closing launcher.
-echo Full log saved at: %LOGFILE%
+echo [INFO] Streamlit is running in the background. Close this window to stop showing messages.
+pause
 exit /b 0

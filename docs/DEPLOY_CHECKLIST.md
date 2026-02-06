@@ -15,6 +15,7 @@ Configuration
 - Decide BASE_URL_PATH (empty for subdomain; short slug for subpath)
 - Provide OKR_DATABASE_URL for Postgres
 - Prepare Streamlit secrets file (if using PDFShift/Google integrations)
+- (Recommended) Enable PRODUCTION=true to disable Sheets sync and require a non-SQLite database
 
 Reverse proxy
 - Configure Nginx/Caddy/Traefik to:

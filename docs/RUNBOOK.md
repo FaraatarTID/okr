@@ -11,6 +11,7 @@ Runbook: first deployment
 - Provide OKR_DATABASE_URL for Postgres (managed DB recommended)
 - Decide hosting scheme: subdomain vs subpath
 - Configure reverse proxy with TLS and websocket support
+- (Recommended) Set PRODUCTION=true to disable Sheets sync and enforce a non-SQLite database
 
 4) Start services
 - Compose: start app (and Postgres if not managed)

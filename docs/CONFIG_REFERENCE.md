@@ -6,6 +6,15 @@ Overview
   2) Streamlit secrets (mounted at streamlit_app/.streamlit/secrets.toml)
   3) Defaults inside the app
 
+Production mode
+- Environment variable: PRODUCTION=true
+- Streamlit secrets:
+  [app]
+    production = true
+- When enabled:
+  - Google Sheets sync is disabled
+  - SQLite is not allowed; set OKR_DATABASE_URL / DATABASE_URL or [database].url
+
 Database
 - Environment variables:
   - OKR_DATABASE_URL (preferred)
