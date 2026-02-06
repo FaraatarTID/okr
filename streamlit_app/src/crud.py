@@ -18,6 +18,7 @@ from src.models import (
 )
 from src.database import get_session_context
 from src.audit import audit_log
+from src.utils.cache_utils import clear_cache_safe
 import bcrypt
 
 
@@ -52,6 +53,7 @@ def create_user(username: str, password: str, role: UserRole = UserRole.MEMBER,
         # S Y N C
         _sync_service().push_update(user)
         audit_log("create", "user", actor=username, details={"role": role.value})
+        clear_cache_safe()
         return user
 
 
@@ -135,6 +137,7 @@ def update_user(user_id: int, display_name: str = None, role: UserRole = None,
         # S Y N C
         _sync_service().push_update(user)
         audit_log("update", "user", actor=user.username, details={"user_id": user_id})
+        clear_cache_safe()
         return user
 
 
@@ -150,6 +153,7 @@ def reset_user_password(user_id: int, new_password: str) -> bool:
         session.refresh(user)
         _sync_service().push_update(user)
         audit_log("reset_password", "user", actor=user.username, details={"user_id": user_id})
+        clear_cache_safe()
         return True
 
 
@@ -168,6 +172,7 @@ def ensure_admin_exists():
             session.add(admin)
             session.commit()
             audit_log("create", "user", actor="admin", details={"role": UserRole.ADMIN.value})
+            clear_cache_safe()
             return True
     return False
 
@@ -201,6 +206,7 @@ def create_check_in(kr_id: int, value: float, confidence: int, comment: str) -> 
         # S Y N C
         _sync_service().push_update(check_in)
         audit_log("create", "check_in", details={"kr_id": kr_id, "value": value, "confidence": confidence})
+        clear_cache_safe()
         return check_in
 
 def get_check_ins(kr_id: int) -> List[CheckIn]:
@@ -262,6 +268,7 @@ def create_cycle(title: str, start_date: datetime, end_date: datetime, is_active
         # S Y N C
         _sync_service().push_update(cycle)
         audit_log("create", "cycle", details={"cycle_id": cycle.id, "title": title})
+        clear_cache_safe()
         return cycle
 
 
@@ -300,6 +307,7 @@ def update_cycle(cycle_id: int, title: str, start_date: datetime, end_date: date
         # S Y N C
         _sync_service().push_update(cycle)
         audit_log("update", "cycle", details={"cycle_id": cycle_id, "title": title})
+        clear_cache_safe()
         return cycle
 
 def delete_cycle(cycle_id: int) -> bool:
@@ -320,6 +328,7 @@ def delete_cycle(cycle_id: int) -> bool:
         # S Y N C (Delete)
         _sync_service().push_update(cycle, delete=True)
         audit_log("delete", "cycle", details={"cycle_id": cycle_id})
+        clear_cache_safe()
         return True
 
 # ============================================================================
@@ -530,6 +539,7 @@ def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optio
         # S Y N C
         _sync_service().push_update(goal)
         audit_log("create", "goal", actor=user_id, details={"goal_id": goal.id, "cycle_id": cycle_id})
+        clear_cache_safe()
         return goal
 
 
@@ -560,6 +570,7 @@ def create_objective(goal_id: int, title: str, description: str = "", external_i
         # S Y N C
         _sync_service().push_update(objective)
         audit_log("create", "objective", details={"objective_id": objective.id, "goal_id": goal_id})
+        clear_cache_safe()
         return objective
 
 
@@ -594,6 +605,7 @@ def create_key_result(objective_id: int, title: str, description: str = "",
         # S Y N C
         _sync_service().push_update(key_result)
         audit_log("create", "key_result", details={"key_result_id": key_result.id, "objective_id": objective_id})
+        clear_cache_safe()
         return key_result
 
 
@@ -629,6 +641,7 @@ def create_task(key_result_id: int, title: str = "", description: str = "",
         # S Y N C
         _sync_service().push_update(task)
         audit_log("create", "task", details={"task_id": task.id, "key_result_id": key_result_id})
+        clear_cache_safe()
         return task
 
 # ============================================================================
@@ -784,6 +797,7 @@ def delete_goal(goal_id: int) -> bool:
             # S Y N C
             _sync_service().push_update(goal, delete=True)
             audit_log("delete", "goal", details={"goal_id": goal_id})
+            clear_cache_safe()
             return True
         return False
 
@@ -798,6 +812,7 @@ def delete_task(task_id: int) -> bool:
             # S Y N C
             _sync_service().push_update(task, delete=True)
             audit_log("delete", "task", details={"task_id": task_id})
+            clear_cache_safe()
             return True
         return False
 
@@ -811,6 +826,7 @@ def delete_objective(objective_id: int) -> bool:
             # S Y N C
             _sync_service().push_update(item, delete=True)
             audit_log("delete", "objective", details={"objective_id": objective_id})
+            clear_cache_safe()
             return True
         return False
 
@@ -823,6 +839,7 @@ def delete_key_result(kr_id: int) -> bool:
             # S Y N C
             _sync_service().push_update(item, delete=True)
             audit_log("delete", "key_result", details={"key_result_id": kr_id})
+            clear_cache_safe()
             return True
         return False
 
@@ -930,6 +947,7 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
         
         # S Y N C
         _sync_service().push_update(work_log)
+        clear_cache_safe()
         
         return work_log
 
@@ -975,6 +993,7 @@ def stop_timer(task_id: int, summary: str = None) -> Optional[WorkLog]:
             
             # S Y N C
             _sync_service().push_update(work_log)
+            clear_cache_safe()
             
             return work_log
         
@@ -1080,7 +1099,7 @@ def add_manual_log(task_id: int, duration_minutes: int, note: str = None,
         session.add(task)
         session.commit()
         session.refresh(work_log)
-        
+        clear_cache_safe()
         return work_log
 
 
@@ -1108,6 +1127,7 @@ def delete_work_log(log_id: int) -> bool:
             
             session.delete(work_log)
             session.commit()
+            clear_cache_safe()
             return True
         return False
 
@@ -1436,6 +1456,7 @@ def create_weekly_plan(user_id: int, start_date: datetime, end_date: datetime,
             session.add(existing)
             session.commit()
             session.refresh(existing)
+            clear_cache_safe()
             return existing
         else:
             plan = WeeklyPlan(
@@ -1449,6 +1470,7 @@ def create_weekly_plan(user_id: int, start_date: datetime, end_date: datetime,
             session.add(plan)
             session.commit()
             session.refresh(plan)
+            clear_cache_safe()
             return plan
 
 def get_active_weekly_plan(user_id: int, date: datetime = None) -> Optional[WeeklyPlan]:
@@ -1491,6 +1513,7 @@ def create_retrospective(user_id: int, cycle_id: int, week_start_date: datetime,
             session.refresh(existing)
             # S Y N C
             _sync_service().push_update(existing)
+            clear_cache_safe()
             return existing
         else:
             retro = Retrospective(
@@ -1505,6 +1528,7 @@ def create_retrospective(user_id: int, cycle_id: int, week_start_date: datetime,
             session.refresh(retro)
             # S Y N C
             _sync_service().push_update(retro)
+            clear_cache_safe()
             return retro
 
 
