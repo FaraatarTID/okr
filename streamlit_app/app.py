@@ -12,18 +12,12 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from src.database import init_database, export_db, import_db, run_migrations
 from src.config import is_production
 from src.audit import error_log
-from src.services.sheet_sync import sync_service
+from src.services.sheet_sync import get_sync_service
 
-# Initialize DB and Restore from Sheets (Write-Through Architecture)
-init_database()
-# One-time preflight: apply DB migrations and check PDF engine
-if "preflight_done" not in st.session_state:
-    try:
-        run_migrations()
-    except Exception:
-        # Avoid UI noise on startup; migrations can be checked via logs if needed.
-        pass
-    # wkhtmltopdf presence check (for local PDF)
+# One-time preflight: check PDF engine (after login to speed initial load)
+def _run_pdf_preflight():
+    if st.session_state.get("preflight_done"):
+        return
     try:
         import shutil
         import pdfkit  # noqa: F401
@@ -42,11 +36,17 @@ if "preflight_done" not in st.session_state:
     st.session_state["preflight_done"] = True
 if "db_restored" not in st.session_state:
     try:
-        # sync_service.restore_to_local_db() # Disable auto-restore on boot for speed, let user trigger or smart trigger
-        # Actually enabling it for now to ensure data consistency until fully decoupled, 
-        # BUT we just said we want to avoid overwriting. 
-        # With conflict resolution, it's safer.
-        sync_service.restore_to_local_db()
+        # Disable auto-restore on boot for speed; allow opt-in via env/secrets.
+        enable_restore = os.getenv("ENABLE_STARTUP_RESTORE", "").strip().lower() in {"1", "true", "yes", "y", "on"}
+        if not enable_restore:
+            try:
+                app_secrets = st.secrets.get("app")
+                if isinstance(app_secrets, dict):
+                    enable_restore = str(app_secrets.get("enable_startup_restore", "")).strip().lower() in {"1", "true", "yes", "y", "on"}
+            except Exception:
+                pass
+        if enable_restore:
+            get_sync_service().restore_to_local_db()
         st.session_state.db_restored = True
     except Exception as e:
         print(f"Restore failed: {e}")
@@ -61,24 +61,10 @@ from src.crud import (
     get_user_by_id, verify_password
 )
 from src.models import UserRole
-import plotly.graph_objects as go
-import pandas as pd
 
 
-# Modular UI Components
-from src.ui.styles import apply_custom_fonts, inject_dialog_styles
-from src.ui.components import render_level, navigate_to, navigate_back_to
-from src.ui.dialogs import (
-    render_weekly_report_dialog, render_daily_report_dialog,
-    render_inspector_dialog, render_retrobox_dialog, render_timeline_dialog,
-    render_create_goal_dialog, render_create_objective_dialog, render_create_kr_dialog,
-    render_weekly_ritual_dialog, render_timer_dialog, render_leadership_dashboard_dialog,
-    render_admin_panel_dialog, render_create_task_dialog, render_manage_cycles_dialog
-)
-
+# Modular UI Components (lazy import in render_app to speed initial load)
 st.set_page_config(page_title="OKR Tracker", layout="wide")
-apply_custom_fonts()
-inject_dialog_styles()
 
 # Basic error reporting hook
 def _excepthook(exc_type, exc, tb):
@@ -135,6 +121,21 @@ def render_login():
 
 def render_app(username):
     production_mode = is_production()
+    _run_pdf_preflight()
+
+    # Lazy imports to speed initial login page
+    from src.ui.styles import apply_custom_fonts, inject_dialog_styles
+    from src.ui.components import render_level, navigate_to, navigate_back_to
+    from src.ui.dialogs import (
+        render_weekly_report_dialog, render_daily_report_dialog,
+        render_inspector_dialog, render_retrobox_dialog, render_timeline_dialog,
+        render_create_goal_dialog, render_create_objective_dialog, render_create_kr_dialog,
+        render_weekly_ritual_dialog, render_timer_dialog, render_leadership_dashboard_dialog,
+        render_admin_panel_dialog, render_create_task_dialog, render_manage_cycles_dialog
+    )
+
+    apply_custom_fonts()
+    inject_dialog_styles()
     # Ensure session state is initialized
     if "nav_stack" not in st.session_state:
         st.session_state.nav_stack = []
@@ -174,7 +175,6 @@ def render_app(username):
     
     st.sidebar.markdown("---")
     
-    init_database()
     cycles = get_all_cycles()
     
     # If no cycles exist, create a default one
@@ -282,7 +282,7 @@ def render_app(username):
             if c2.button("☁️ Cloud Backup", help="Force save current data to Google Sheets (Backup)"):
                 with st.spinner("Backing up to Cloud..."):
                     # Trigger manual sync push
-                    sync_service.sync_all_to_sheets()
+                    get_sync_service().sync_all_to_sheets()
                     st.success("Successfully backed up data to Google Sheets!")
                     st.rerun()
 
@@ -299,6 +299,7 @@ def render_app(username):
                     st.error(msg)
 
     st.sidebar.markdown("--- ")
+    sync_service = get_sync_service()
     if sync_service.is_ready():
         st.sidebar.success("✅ Cloud Sync Active")
     else:
