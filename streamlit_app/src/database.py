@@ -68,8 +68,14 @@ def _create_engine(url: str):
     return create_engine(url, **kwargs)
 
 
-# Engine
-engine = _create_engine(DATABASE_URL)
+_engine = None
+
+
+def get_engine():
+    global _engine
+    if _engine is None:
+        _engine = _create_engine(DATABASE_URL)
+    return _engine
 
 
 
@@ -107,14 +113,14 @@ def create_db_and_tables():
 
 def get_session() -> Session:
     """Get a new database session."""
-    return Session(engine, expire_on_commit=False)
+    return Session(get_engine(), expire_on_commit=False)
 
 
 @contextmanager
 def get_session_context():
     """Context manager for database sessions with automatic commit/rollback."""
     # expire_on_commit=False allows using objects after session is closed (DetachedInstanceError fix)
-    session = Session(engine, expire_on_commit=False)
+    session = Session(get_engine(), expire_on_commit=False)
     try:
         yield session
         session.commit()
