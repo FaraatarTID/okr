@@ -1,6 +1,4 @@
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
 from sqlmodel import Session, select, SQLModel
 from sqlalchemy import text
 import pandas as pd
@@ -48,6 +46,8 @@ class SheetSyncService:
             return
 
         try:
+            import gspread
+            from google.oauth2.service_account import Credentials
             service_account_info = dict(st.secrets["gcp_service_account"])
             creds = Credentials.from_service_account_info(
                 service_account_info, scopes=SCOPES
@@ -250,5 +250,3 @@ def get_sync_service():
     """Factory to get the singleton SheetSyncService with Streamlit caching."""
     return SheetSyncService()
 
-# Singleton Instance for convenience
-sync_service = get_sync_service()

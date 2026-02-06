@@ -41,12 +41,19 @@ if not exist "%PYEXE%" (
     exit /b 1
 )
 
-echo [INFO] Installing dependencies (this may take a minute)...
-%PYEXE% -m pip install -r requirements.txt
-if %errorlevel% neq 0 (
-    echo [ERROR] Failed to install dependencies from requirements.txt.
-    pause
-    exit /b 1
+echo [INFO] Checking dependencies...
+set DEP_FLAG=%~dp0.deps_installed
+if not exist "%DEP_FLAG%" (
+    echo [INFO] Installing dependencies from requirements.txt...
+    %PYEXE% -m pip install -r requirements.txt
+    if %errorlevel% neq 0 (
+        echo [ERROR] Failed to install dependencies from requirements.txt.
+        pause
+        exit /b 1
+    )
+    echo done > "%DEP_FLAG%"
+) else (
+    echo [INFO] Dependencies already installed.
 )
 
 echo.
