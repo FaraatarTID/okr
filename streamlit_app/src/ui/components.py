@@ -22,6 +22,37 @@ from sqlalchemy.orm import selectinload
 from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn
 from src.crud import get_goal_tree, get_user_goals, get_session_context, get_user_by_username, get_work_logs_by_date_range, get_all_tasks_by_cycle
 
+# Cache helpers for heavy queries/aggregations
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_leadership_metrics(user_ids, cycle_id):
+    from src.crud import get_leadership_metrics
+    return get_leadership_metrics(list(user_ids), cycle_id)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_all_tasks_by_cycle(cycle_id):
+    from src.crud import get_all_tasks_by_cycle
+    return get_all_tasks_by_cycle(cycle_id)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_all_krs_by_cycle(cycle_id):
+    from src.crud import get_all_krs_by_cycle
+    return get_all_krs_by_cycle(cycle_id)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_all_users():
+    from src.crud import get_all_users
+    return get_all_users()
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_team_members(manager_id):
+    from src.crud import get_team_members
+    return get_team_members(manager_id)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_work_logs_by_range(user_id, start_dt, end_dt):
+    from src.crud import get_work_logs_by_date_range
+    return get_work_logs_by_date_range(user_id, start_dt, end_dt)
+
 def get_node_details(node_id):
     """Helper to get title and type for a node ID from DB."""
     # This is tricky because ID doesn't imply type in standard SQL.
@@ -322,8 +353,6 @@ def render_timer_content(node_id, username):
 
 def render_leadership_dashboard_content(username):
     # (Title is now in the dialog header)
-    from src.crud import get_leadership_metrics
-    
     cycle_id = st.session_state.get("active_cycle_id")
     if not cycle_id:
         st.warning("Please select a cycle to view insights.")
@@ -357,12 +386,11 @@ def render_leadership_dashboard_content(username):
         
         # Get team members based on role
         if user_role == "admin":
-            from src.crud import get_all_users
-            all_users = get_all_users()
+            all_users = _cached_get_all_users()
         else:
-            from src.crud import get_team_members, get_user_by_id
+            from src.crud import get_user_by_id
             manager_id = st.session_state.get("user_id")
-            all_users = get_team_members(manager_id)
+            all_users = _cached_get_team_members(manager_id)
             # Include self (manager) in the list
             manager_user = get_user_by_id(manager_id)
             if manager_user and manager_user not in all_users:
@@ -395,7 +423,7 @@ def render_leadership_dashboard_content(username):
     from utils.deadline_utils import get_deadline_summary, get_deadline_status
     
     # === FETCH AGGREGATED METRICS ===
-    metrics = get_leadership_metrics(selected_members, cycle_id)
+    metrics = _cached_get_leadership_metrics(selected_members, cycle_id)
     if not metrics:
         st.error("Could not fetch metrics.")
         return
@@ -592,7 +620,7 @@ def render_leadership_dashboard_content(username):
     # Build overdue tasks list from DB tasks for current cycle
     overdue_tasks = []
     try:
-        tasks = get_all_tasks_by_cycle(cycle_id)
+        tasks = _cached_get_all_tasks_by_cycle(cycle_id)
         for task in tasks:
             # Build a lightweight node dict for deadline utils
             dl = None
@@ -632,10 +660,11 @@ def render_leadership_dashboard_content(username):
     
     if overdue_tasks:
         st.markdown("#### 🔴 Overdue Tasks")
-        for task in overdue_tasks[:10]:  # Limit to 10
+        limit_overdue = st.number_input("Max overdue tasks to show", min_value=5, max_value=100, value=10, step=5)
+        for task in overdue_tasks[:limit_overdue]:
             st.error(f"**{task['title']}** — Owner: {task['owner']} ({task['progress']}% complete)")
-        if len(overdue_tasks) > 10:
-            st.caption(f"...and {len(overdue_tasks) - 10} more overdue tasks")
+        if len(overdue_tasks) > limit_overdue:
+            st.caption(f"...and {len(overdue_tasks) - limit_overdue} more overdue tasks")
  
     # === AI TEAM COACH (Admin/Manager only) ===
     if user_role in ["admin", "manager"]:
@@ -875,7 +904,7 @@ def render_report_content(username, mode):
     start_dt = datetime.fromtimestamp(start_time / 1000)
     end_dt = datetime.fromtimestamp(now / 1000)
     
-    logs = get_work_logs_by_date_range(user_obj.id, start_dt, end_dt)
+    logs = _cached_get_work_logs_by_range(user_obj.id, start_dt, end_dt)
     
     if not logs:
         st.info(f"No work recorded in the this period.")
@@ -1013,7 +1042,7 @@ def render_report_content(username, mode):
     from src.crud import get_all_tasks_by_cycle
     from utils.deadline_utils import get_deadline_status
     cycle_id_dl = st.session_state.get("active_cycle_id")
-    tasks_dl = get_all_tasks_by_cycle(cycle_id_dl)
+    tasks_dl = _cached_get_all_tasks_by_cycle(cycle_id_dl)
     
     warnings_dl = []
     for t_dl in tasks_dl:
@@ -1036,7 +1065,7 @@ def render_report_content(username, mode):
     # Filter Key Results (Needed for PDF)
     from src.crud import get_all_krs_by_cycle
     cycle_id_krs = st.session_state.get("active_cycle_id")
-    krs_list = get_all_krs_by_cycle(cycle_id_krs)
+    krs_list = _cached_get_all_krs_by_cycle(cycle_id_krs)
 
     # PDF Export (Moved to Top)
     try:

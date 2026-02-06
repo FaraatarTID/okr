@@ -23,6 +23,27 @@ from src.crud import (
 )
 from src.models import UserRole
 
+# Cache helpers for dialog-heavy queries
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_user_by_username(username):
+    return get_user_by_username(username)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_work_logs_by_range(user_id, start_date, end_date):
+    return get_work_logs_by_date_range(user_id, start_date, end_date)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_user_retrospectives(user_id, cycle_id):
+    return get_user_retrospectives(user_id, cycle_id)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_team_retrospectives(manager_id, cycle_id):
+    return get_team_retrospectives(manager_id, cycle_id)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_krs_needing_checkin(user_id, cycle_id, days_threshold):
+    return get_krs_needing_checkin(user_id, cycle_id, days_threshold)
+
 
 @st.dialog("Manage OKR Cycles", width="medium")
 def render_manage_cycles_dialog():
@@ -43,6 +64,7 @@ def render_manage_cycles_dialog():
                     if st.button("🗑️", key=f"del_cycle_{c.id}"):
                         try:
                             delete_cycle(c.id)
+                            st.cache_data.clear()
                             st.success("Cycle deleted")
                             st.rerun()
                         except Exception as e:
@@ -59,6 +81,7 @@ def render_manage_cycles_dialog():
             else:
                 try:
                     create_cycle(title=new_title, start_date=datetime.combine(new_start, datetime.min.time()), end_date=datetime.combine(new_end, datetime.min.time()))
+                    st.cache_data.clear()
                     st.success("Cycle created")
                     st.rerun()
                 except Exception as e:
@@ -392,9 +415,9 @@ def render_weekly_ritual_dialog(username):
         
         # Collect work logs for the current user via CRUD helper
         logs = []
-        current_user_obj = get_user_by_username(username)
+        current_user_obj = _cached_get_user_by_username(username)
         if current_user_obj:
-            logs = get_work_logs_by_date_range(current_user_obj.id, start_date, end_date)
+            logs = _cached_get_work_logs_by_range(current_user_obj.id, start_date, end_date)
 
         for wl in logs:
             mins = wl.duration_minutes or 0
@@ -447,7 +470,7 @@ def render_weekly_ritual_dialog(username):
         
         # Check for existing retro for this week
         # We define "this week" as the start_date calculated above
-        current_user_obj = get_user_by_username(username)
+        current_user_obj = _cached_get_user_by_username(username)
         existing_retro = None
         if current_user_obj:
             # We need to find if there's a retro for roughly this week.
@@ -456,7 +479,7 @@ def render_weekly_ritual_dialog(username):
             # For simplicity, we use the calculated start_date (7 days ago) as the anchor.
             # Better: Fetch latest and see if it's recent? 
             # Let's use get_user_retrospectives and check date.
-            past_retros = get_user_retrospectives(current_user_obj.id, cycle_id)
+            past_retros = _cached_get_user_retrospectives(current_user_obj.id, cycle_id)
             for r in past_retros:
                 # If created within last 7 days? Or week_start_date matches?
                 # Let's match week_start_date.
@@ -485,7 +508,7 @@ def render_weekly_ritual_dialog(username):
     # === STEP 2: UPDATE KRs ===
     elif step == 2:
         st.markdown("#### 📊 Key Result Updates")
-        needing_update = get_krs_needing_checkin(user_id=username, cycle_id=cycle_id, days_threshold=7)
+        needing_update = _cached_get_krs_needing_checkin(user_id=username, cycle_id=cycle_id, days_threshold=7)
         
         if not needing_update:
             st.success("🎉 All Key Results are up to date!")
@@ -540,7 +563,7 @@ def render_weekly_ritual_dialog(username):
         with st.form("planning_form"):
             p1 = st.text_input("Priority #1"); p2 = st.text_input("Priority #2"); p3 = st.text_input("Priority #3")
             if st.form_submit_button("🚀 Finish Ritual"):
-                user_obj_p = get_user_by_username(username)
+                user_obj_p = _cached_get_user_by_username(username)
                 if user_obj_p:
                     sd = datetime.utcnow(); ed = sd + timedelta(days=7)
                     create_weekly_plan(user_obj_p.id, sd, ed, p1, p2, p3)
@@ -576,7 +599,7 @@ def render_create_task_dialog(parent_id, username):
         
         if user_role in ["manager", "admin"]:
             # Manager can assign to team
-            user_obj = get_user_by_username(username)
+            user_obj = _cached_get_user_by_username(username)
             if user_obj:
                 team = get_team_members(user_obj.id)
                 # Include self?
@@ -935,7 +958,7 @@ def render_retrobox_dialog(username):
         st.rerun()
     
     # Check User Role
-    current_user = get_user_by_username(username)
+    current_user = _cached_get_user_by_username(username)
     if not current_user:
         st.error("User context lost.")
         return
@@ -951,7 +974,7 @@ def render_retrobox_dialog(username):
     
     # --- MY RETROS ---
     with tabs[0]:
-        my_retros = get_user_retrospectives(current_user.id, cycle_id)
+        my_retros = _cached_get_user_retrospectives(current_user.id, cycle_id)
         if not my_retros:
             st.info("No retrospectives found for this cycle.")
         else:
@@ -963,7 +986,7 @@ def render_retrobox_dialog(username):
     # --- TEAM RETROS ---
     if len(tabs) > 1:
         with tabs[1]:
-            team_retros = get_team_retrospectives(current_user.id, cycle_id)
+            team_retros = _cached_get_team_retrospectives(current_user.id, cycle_id)
             if not team_retros:
                 st.info("No team retrospectives found.")
             else:

@@ -62,6 +62,10 @@ from src.crud import (
 )
 from src.models import UserRole
 
+@st.cache_data(ttl=30, show_spinner=False)
+def _cached_get_all_cycles():
+    return get_all_cycles()
+
 
 # Modular UI Components (lazy import in render_app to speed initial load)
 st.set_page_config(page_title="OKR Tracker", layout="wide")
@@ -175,7 +179,7 @@ def render_app(username):
     
     st.sidebar.markdown("---")
     
-    cycles = get_all_cycles()
+    cycles = _cached_get_all_cycles()
     
     # If no cycles exist, create a default one
     if not cycles:

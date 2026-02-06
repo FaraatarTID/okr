@@ -38,8 +38,7 @@ def render_login():
 
                     st.success(f"Welcome, {user.display_name}!")
                     st.info("Loading full app…")
-                    from app import render_app
-                    render_app(st.session_state["username"])
+                    st.rerun()
                 else:
                     st.error("Invalid username or password.")
             else:
