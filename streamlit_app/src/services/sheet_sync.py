@@ -11,7 +11,7 @@ from src.models import (
     User, Cycle, Goal, Objective, KeyResult, Task, 
     WorkLog, CheckIn, Retrospective
 )
-from src.database import engine, get_session_context
+from src.database import get_engine, get_session_context
 from src.config import is_production
 
 SCOPES = [

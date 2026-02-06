@@ -383,18 +383,13 @@ def render_app(username):
                 render_create_task_dialog(parent_id, username)
 
 def main():
-    init_database() # Ensure tables exist
-    
-    # Phase 4: SQL is now Master. Direct restoration on startup disabled 
-    # to prevent stale Cloud data from overwriting local SQL.
-    # sync_service.restore_to_local_db() can still be triggered manually.
-    
-    ensure_admin_exists() # Create default admin if no users
-    
     if "user_id" not in st.session_state:
         render_login()
-    else:
-        render_app(st.session_state["username"])
+        return
+
+    init_database() # Ensure tables exist (after login)
+    ensure_admin_exists() # Create default admin if no users
+    render_app(st.session_state["username"])
 
 if __name__ == "__main__":
     main()
