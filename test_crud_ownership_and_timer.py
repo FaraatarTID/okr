@@ -133,6 +133,24 @@ def test_work_logs_and_cycle_tasks_use_owner_id_ownership(isolated_db):
     assert loaded_task.key_result.objective.goal.title == "Owned Tree Goal"
 
 
+def test_user_data_goal_nodes_emit_owner_id_only(isolated_db):
+    from src.crud import create_cycle, create_goal, create_user, get_user_data_from_sql
+
+    create_user("alice", "alice-pass")
+    cycle = create_cycle(
+        "Q2B",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+    )
+    create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
+
+    payload = get_user_data_from_sql("alice", cycle.id)
+    goal_nodes = [node for node in payload["nodes"].values() if node.get("type") == "GOAL"]
+    assert goal_nodes
+    assert all("owner_id" in node for node in goal_nodes)
+    assert all("user_id" not in node for node in goal_nodes)
+
+
 def test_timer_start_stop_enforces_task_ownership(isolated_db):
     from src.crud import (
         create_cycle,

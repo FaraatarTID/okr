@@ -3,10 +3,10 @@ Database connection and session management for OKR Application.
 Default: SQLite, but can be switched to a managed DB (e.g., PostgreSQL)
 without code changes using environment variables or Streamlit secrets.
 """
-from sqlmodel import create_engine, Session, SQLModel
+from sqlmodel import create_engine, Session
 from contextlib import contextmanager
 import os
-from sqlalchemy import event, inspect as sa_inspect
+from sqlalchemy import event
 from src.config import is_production
 
 # Base path for local SQLite storage
@@ -54,9 +54,6 @@ def _get_database_url() -> str:
 DATABASE_URL = _get_database_url()
 if is_production() and DATABASE_URL.startswith("sqlite:"):
     raise RuntimeError("PRODUCTION=true requires a non-SQLite database. Set OKR_DATABASE_URL or DATABASE_URL.")
-
-INITIAL_SCHEMA_REVISION = "9aa9ae459f5b"
-
 
 def _create_engine(url: str):
     """Create SQLModel engine with dialect-aware options."""
@@ -106,49 +103,18 @@ def run_migrations():
     script_location = os.path.join(parent_dir, "alembic")
     alembic_cfg.set_main_option("script_location", script_location)
 
-    engine = get_engine()
-    inspector = sa_inspect(engine)
-    existing_tables = set(inspector.get_table_names())
-    core_tables = {"user", "cycle", "goal", "objective", "key_result", "task", "work_log"}
-
-    if "alembic_version" not in existing_tables:
-        # Ensure model tables are registered on SQLModel metadata.
-        import src.models  # noqa: F401
-        SQLModel.metadata.create_all(engine)
-
-        # Fresh installs are stamped directly at head (schema already matches models).
-        if existing_tables.isdisjoint(core_tables):
-            command.stamp(alembic_cfg, "head")
-            return
-
-        # Legacy installs with app tables but no Alembic history should not replay the
-        # initial migration, which assumes historical pre-OKR table shapes. Stamp at
-        # the initial schema revision, then apply additive/idempotent migrations.
-        command.stamp(alembic_cfg, INITIAL_SCHEMA_REVISION)
-        command.upgrade(alembic_cfg, "head")
-        return
-
     command.upgrade(alembic_cfg, "head")
 
 
 def create_db_and_tables():
     """Ensure database schema is up to date using Alembic."""
-    # We no longer use SQLModel.metadata.create_all(engine)
-    # nor manual ALTER statements. Alembic handles it all.
+    # Schema setup is strictly migration-driven.
     try:
         run_migrations()
         print("Database migrations applied successfully.")
     except Exception as e:
         print(f"Migration failed: {e}")
-        allow_continue = os.getenv("ALLOW_MIGRATION_FAILURE", "").strip().lower() in {
-            "1", "true", "yes", "y", "on"
-        }
-        if is_production() or not allow_continue:
-            raise RuntimeError(
-                "Database migration failed. Fix migrations before startup, or set "
-                "ALLOW_MIGRATION_FAILURE=true for local debugging only."
-            ) from e
-        print("ALLOW_MIGRATION_FAILURE=true: continuing despite migration error.")
+        raise RuntimeError("Database migration failed. Fix migrations before startup.") from e
 
 def get_session() -> Session:
     """Get a new database session."""

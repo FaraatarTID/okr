@@ -676,9 +676,8 @@ def render_create_task_dialog(parent_id, username):
         desc = st.text_area("Description", height=100)
         
         # Assignee Logic
-        assignee_id = None 
-        # Default assignee is creator? Or None?
-        # Let's verify role
+        assignee_id = None
+        # Default assignee is creator (resolved to User.id).
         user_role = st.session_state.get("user_role")
         
         if user_role in ["manager", "admin"]:
@@ -686,25 +685,20 @@ def render_create_task_dialog(parent_id, username):
             user_obj = _cached_get_user_by_username(username)
             if user_obj:
                 team = get_team_members(user_obj.id)
-                # Include self?
-                # Usually manager assigns to team or self.
-                member_map = {f"{m.display_name} ({m.username})": m.username for m in team}
-                # Add self if not in team list (manager usually not in own get_team_members list?)
-                member_map[f"{user_obj.display_name} (Me)"] = username
+                member_map = {
+                    f"{m.display_name or m.username} ({m.username})": m.id
+                    for m in team
+                    if m.id is not None
+                }
+                if user_obj.id is not None:
+                    member_map[f"{user_obj.display_name or user_obj.username} (Me)"] = user_obj.id
                 
                 selected_label = st.selectbox("Assign To", options=list(member_map.keys()))
                 if selected_label:
-                    assignee_username = member_map[selected_label]
-                    # We need assignee ID usually later, simpler to store username on Task?
-                    # Schema says assignee_id is user_id (int) or username (str)?
-                    # Task model: assignee_id is Optional[str] (username) based on legacy, 
-                    # but let's check validation. Ideally it's a Foreign Key.
-                    # In 4-levels schema, Task.assignee_id is likely String (Username) or Int.
-                    # Let's assume Username string for compatibility or check Model.
-                    assignee_id = assignee_username
+                    assignee_id = member_map[selected_label]
         else:
-             # Member assigns to self
-             assignee_id = username
+            # Member assigns to self.
+            assignee_id = st.session_state.get("user_id")
 
         if st.form_submit_button("Create Task", type="primary"):
             if not title: st.error("Task title is required.")
@@ -723,6 +717,8 @@ def render_create_task_dialog(parent_id, username):
                     return
 
                 try:
+                    if assignee_id is not None:
+                        assignee_id = int(assignee_id)
                     create_task(
                         key_result_id=kr_id_val,
                         title=title,

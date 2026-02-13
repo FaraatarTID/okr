@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 
 import pytest
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, select
@@ -151,7 +152,7 @@ def test_run_migrations_bootstraps_fresh_database(monkeypatch, tmp_path):
 
     database.run_migrations()
 
-    inspector = database.sa_inspect(database.get_engine())
+    inspector = sa_inspect(database.get_engine())
     tables = set(inspector.get_table_names())
     assert "alembic_version" in tables
     for table_name in {
@@ -168,6 +169,44 @@ def test_run_migrations_bootstraps_fresh_database(monkeypatch, tmp_path):
     goal_columns = {col["name"] for col in inspector.get_columns("goal")}
     assert "user_id" not in goal_columns
     assert "owner_id" in goal_columns
+
+
+def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(tmp_path):
+    from alembic import command
+    from alembic.config import Config
+    from src.database import _create_engine
+    from sqlalchemy import inspect as sa_inspect
+
+    db_path = tmp_path / "okr_fresh_cli_upgrade.db"
+    db_url = f"sqlite:///{db_path}"
+
+    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
+    script_location = ROOT_DIR / "streamlit_app" / "alembic"
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    cfg.set_main_option("script_location", str(script_location))
+
+    command.upgrade(cfg, "head")
+
+    engine = _create_engine(db_url)
+    inspector = sa_inspect(engine)
+    tables = set(inspector.get_table_names())
+    assert "alembic_version" in tables
+    for table_name in {
+        "user",
+        "goal",
+        "objective",
+        "key_result",
+        "task",
+        "work_log",
+        "sync_retry_event",
+        "auth_throttle_state",
+    }:
+        assert table_name in tables
+    goal_columns = {col["name"] for col in inspector.get_columns("goal")}
+    assert "user_id" not in goal_columns
+    assert "owner_id" in goal_columns
+    engine.dispose()
 
 
 def test_run_migrations_adopts_legacy_database_without_alembic_version(monkeypatch, tmp_path):
@@ -189,7 +228,7 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(monkeypat
 
     database.run_migrations()
 
-    inspector = database.sa_inspect(database.get_engine())
+    inspector = sa_inspect(database.get_engine())
     tables = set(inspector.get_table_names())
     assert "alembic_version" in tables
     for table_name in {"sync_retry_event", "auth_throttle_state"}:
@@ -266,6 +305,71 @@ def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(tmp_path)
     with engine.begin() as conn:
         owner_id = conn.execute(sa_text("SELECT owner_id FROM goal WHERE id = 1")).scalar_one()
         assert owner_id == 1
+
+    engine.dispose()
+
+
+def test_goal_hard_cutover_migration_blocks_unresolved_ownerless_goals(tmp_path):
+    from alembic import command
+    from alembic.config import Config
+    from src.database import _create_engine
+
+    db_path = tmp_path / "okr_goal_hard_cutover_blocked.db"
+    db_url = f"sqlite:///{db_path}"
+    engine = _create_engine(db_url)
+    with engine.begin() as conn:
+        conn.execute(
+            sa_text(
+                """
+                CREATE TABLE "user" (
+                    id INTEGER PRIMARY KEY,
+                    username VARCHAR NOT NULL UNIQUE,
+                    password_hash VARCHAR NOT NULL
+                )
+                """
+            )
+        )
+        conn.execute(
+            sa_text(
+                """
+                CREATE TABLE goal (
+                    id INTEGER PRIMARY KEY,
+                    user_id VARCHAR NOT NULL,
+                    owner_id INTEGER NULL,
+                    cycle_id INTEGER NULL,
+                    title VARCHAR NOT NULL,
+                    description VARCHAR NULL,
+                    progress INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NULL,
+                    updated_at DATETIME NULL,
+                    is_expanded BOOLEAN NOT NULL DEFAULT 1,
+                    external_id VARCHAR NULL,
+                    deadline DATETIME NULL,
+                    strategy_tags VARCHAR NULL
+                )
+                """
+            )
+        )
+        conn.execute(sa_text("CREATE INDEX ix_goal_user_id ON goal (user_id)"))
+        conn.execute(
+            sa_text(
+                """
+                INSERT INTO goal (id, user_id, owner_id, title, progress, is_expanded)
+                VALUES (1, 'missing_user', NULL, 'Unresolved Goal', 0, 1)
+                """
+            )
+        )
+
+    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
+    script_location = ROOT_DIR / "streamlit_app" / "alembic"
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    cfg.set_main_option("script_location", str(script_location))
+
+    command.stamp(cfg, "h8b9c0d1e2f3")
+    with pytest.raises(Exception) as exc_info:
+        command.upgrade(cfg, "head")
+    assert "Hard cutover blocked" in str(exc_info.value)
 
     engine.dispose()
 
