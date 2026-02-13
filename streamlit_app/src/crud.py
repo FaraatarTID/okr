@@ -129,36 +129,19 @@ def get_user_by_username(username: str) -> Optional[User]:
 
 
 def _goal_owner_predicate_by_username(username: str):
-    """Match goals owned by username via either legacy or normalized ownership fields."""
+    """Match goals owned by username."""
     owner_id_subq = (
         select(User.id)
         .where(User.username == username)
         .limit(1)
         .scalar_subquery()
     )
-    return or_(Goal.owner_id == owner_id_subq, Goal.user_id == username)
+    return Goal.owner_id == owner_id_subq
 
 
 def _goal_owner_predicate_by_user_id(user_id: int):
-    """Match goals owned by user id, including legacy username-owned records."""
-    username_subq = (
-        select(User.username)
-        .where(User.id == user_id)
-        .limit(1)
-        .scalar_subquery()
-    )
-    return or_(Goal.owner_id == user_id, Goal.user_id == username_subq)
-
-
-def _resolve_goal_owner_id(session: Session, goal: Goal) -> Optional[int]:
-    """Resolve goal owner to a User.id, supporting legacy username-only records."""
-    if goal.owner_id is not None:
-        return goal.owner_id
-    if goal.user_id:
-        owner = session.exec(select(User).where(User.username == goal.user_id)).first()
-        if owner and owner.id is not None:
-            return owner.id
-    return None
+    """Match goals owned by user id."""
+    return Goal.owner_id == user_id
 
 
 def _can_manage_goal(session: Session, actor: User, goal: Goal) -> bool:
@@ -166,7 +149,7 @@ def _can_manage_goal(session: Session, actor: User, goal: Goal) -> bool:
     if actor.role == UserRole.ADMIN:
         return True
 
-    owner_id = _resolve_goal_owner_id(session, goal)
+    owner_id = goal.owner_id
     if owner_id is None or actor.id is None:
         return False
 
@@ -262,7 +245,7 @@ def get_user_goals(username: str, cycle_id: int):
         # Query Goals with eager loading of Objectives
         # We also load Key Results for those objectives so UI cards can show child counts
         statement = select(Goal).where(
-            or_(Goal.owner_id == user.id, Goal.user_id == username),
+            Goal.owner_id == user.id,
             Goal.cycle_id == cycle_id
         ).options(
             selectinload(Goal.objectives).selectinload(Objective.key_results)
@@ -909,7 +892,6 @@ def create_goal(
         if not user_obj or user_obj.id is None:
             raise ValueError(f"User '{user_id}' not found")
         owner_id = user_obj.id
-        canonical_username = user_obj.username
 
         if actor_username is None:
             raise PermissionError("Actor username is required for this operation")
@@ -920,9 +902,7 @@ def create_goal(
             raise PermissionError("Insufficient permissions to create goals for this user")
         
         # Get sibling count for auto-numbering
-        statement = select(Goal).where(
-            or_(Goal.owner_id == owner_id, Goal.user_id == canonical_username)
-        )
+        statement = select(Goal).where(Goal.owner_id == owner_id)
         if cycle_id:
             statement = statement.where(Goal.cycle_id == cycle_id)
         
@@ -932,7 +912,6 @@ def create_goal(
             title = f"Goal #{len(existing) + 1}"
         
         goal = Goal(
-            user_id=canonical_username,
             owner_id=owner_id,
             title=title,
             description=description,
@@ -1699,13 +1678,9 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
         for uname in selected_usernames:
             member_display_map.setdefault(uname, uname)
 
-        owner_filters = [Goal.user_id.in_(selected_usernames)]
-        if selected_user_ids:
-            owner_filters.append(Goal.owner_id.in_(selected_user_ids))
-
         statement = (
             select(Goal)
-            .where(or_(*owner_filters))
+            .where(Goal.owner_id.in_(selected_user_ids))
             .where(Goal.cycle_id == cycle_id)
             .options(
                 selectinload(Goal.objectives)
@@ -1725,8 +1700,6 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
             owner = None
             if goal.owner_id in user_by_id:
                 owner = user_by_id[goal.owner_id].username
-            elif goal.user_id:
-                owner = goal.user_id
             if owner not in member_stats:
                 continue
 
@@ -2156,7 +2129,7 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
         if not user: return {"nodes": {}, "rootIds": []}
         
         statement = select(Goal).where(
-            or_(Goal.owner_id == user.id, Goal.user_id == user.username)
+            Goal.owner_id == user.id
         )
         if cycle_id:
             statement = statement.where(Goal.cycle_id == cycle_id)
@@ -2188,7 +2161,7 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
                 "isExpanded": goal.is_expanded,
                 "cycle_id": goal.cycle_id,
                 "strategy_tags": json.loads(goal.strategy_tags) if goal.strategy_tags else [],
-                "user_id": user.username
+                "owner_id": goal.owner_id
             }
             
             for obj in goal.objectives:

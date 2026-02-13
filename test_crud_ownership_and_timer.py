@@ -40,7 +40,7 @@ def isolated_db(monkeypatch, tmp_path):
         engine.dispose()
 
 
-def test_legacy_username_goals_are_visible_in_user_queries(isolated_db):
+def test_owner_id_goals_are_visible_in_user_queries(isolated_db):
     from src.crud import create_user, create_cycle, get_dashboard_data, get_user_data_from_sql, get_user_goals
     from src.database import get_session_context
     from src.models import Goal
@@ -55,26 +55,25 @@ def test_legacy_username_goals_are_visible_in_user_queries(isolated_db):
     with get_session_context() as session:
         session.add(
             Goal(
-                user_id=user.username,
-                owner_id=None,
+                owner_id=user.id,
                 cycle_id=cycle.id,
-                title="Legacy Goal",
-                description="Legacy ownership record",
+                title="Owned Goal",
+                description="Owner id ownership record",
             )
         )
 
     dashboard = get_dashboard_data(user.username, cycle.id)
-    assert any(item.title == "Legacy Goal" for item in dashboard)
+    assert any(item.title == "Owned Goal" for item in dashboard)
 
     goals = get_user_goals(user.username, cycle.id)
-    assert any(goal.title == "Legacy Goal" for goal in goals)
+    assert any(goal.title == "Owned Goal" for goal in goals)
 
     user_data = get_user_data_from_sql(user.username, cycle.id)
     goal_titles = [node.get("title") for node in user_data["nodes"].values() if node.get("type") == "GOAL"]
-    assert "Legacy Goal" in goal_titles
+    assert "Owned Goal" in goal_titles
 
 
-def test_work_logs_and_cycle_tasks_support_legacy_owner_fallback(isolated_db):
+def test_work_logs_and_cycle_tasks_use_owner_id_ownership(isolated_db):
     from src.crud import (
         add_manual_log,
         create_cycle,
@@ -96,16 +95,15 @@ def test_work_logs_and_cycle_tasks_support_legacy_owner_fallback(isolated_db):
     )
 
     with get_session_context() as session:
-        legacy_goal = Goal(
-            user_id=user.username,
-            owner_id=None,
+        owned_goal = Goal(
+            owner_id=user.id,
             cycle_id=cycle.id,
-            title="Legacy Tree Goal",
+            title="Owned Tree Goal",
             description="",
         )
-        session.add(legacy_goal)
+        session.add(owned_goal)
         session.flush()
-        goal_id = legacy_goal.id
+        goal_id = owned_goal.id
 
     objective = create_objective(goal_id, "Objective A", actor_username="alice")
     key_result = create_key_result(objective.id, "KR A", actor_username="alice")
@@ -132,7 +130,7 @@ def test_work_logs_and_cycle_tasks_support_legacy_owner_fallback(isolated_db):
     assert loaded_task.key_result is not None
     assert loaded_task.key_result.objective is not None
     assert loaded_task.key_result.objective.goal is not None
-    assert loaded_task.key_result.objective.goal.title == "Legacy Tree Goal"
+    assert loaded_task.key_result.objective.goal.title == "Owned Tree Goal"
 
 
 def test_timer_start_stop_enforces_task_ownership(isolated_db):

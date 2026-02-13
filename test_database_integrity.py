@@ -165,6 +165,9 @@ def test_run_migrations_bootstraps_fresh_database(monkeypatch, tmp_path):
         "auth_throttle_state",
     }:
         assert table_name in tables
+    goal_columns = {col["name"] for col in inspector.get_columns("goal")}
+    assert "user_id" not in goal_columns
+    assert "owner_id" in goal_columns
 
 
 def test_run_migrations_adopts_legacy_database_without_alembic_version(monkeypatch, tmp_path):
@@ -193,31 +196,58 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(monkeypat
         assert table_name in tables
 
 
-def test_owner_backfill_migration_populates_goal_owner_id(tmp_path):
+def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(tmp_path):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine
-    from src.models import Goal, SQLModel, User
-    from sqlmodel import Session
+    from sqlalchemy import inspect as sa_inspect
 
-    db_path = tmp_path / "okr_owner_backfill.db"
+    db_path = tmp_path / "okr_goal_hard_cutover.db"
     db_url = f"sqlite:///{db_path}"
     engine = _create_engine(db_url)
-    SQLModel.metadata.create_all(engine)
-
-    with Session(engine, expire_on_commit=False) as session:
-        alice = User(username="alice", password_hash="x")
-        session.add(alice)
-        session.flush()
-        session.add(
-            Goal(
-                user_id="alice",
-                owner_id=None,
-                title="Legacy Owner Goal",
-                cycle_id=None,
+    with engine.begin() as conn:
+        conn.execute(
+            sa_text(
+                """
+                CREATE TABLE "user" (
+                    id INTEGER PRIMARY KEY,
+                    username VARCHAR NOT NULL UNIQUE,
+                    password_hash VARCHAR NOT NULL
+                )
+                """
             )
         )
-        session.commit()
+        conn.execute(
+            sa_text(
+                """
+                CREATE TABLE goal (
+                    id INTEGER PRIMARY KEY,
+                    user_id VARCHAR NOT NULL,
+                    owner_id INTEGER NULL,
+                    cycle_id INTEGER NULL,
+                    title VARCHAR NOT NULL,
+                    description VARCHAR NULL,
+                    progress INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NULL,
+                    updated_at DATETIME NULL,
+                    is_expanded BOOLEAN NOT NULL DEFAULT 1,
+                    external_id VARCHAR NULL,
+                    deadline DATETIME NULL,
+                    strategy_tags VARCHAR NULL
+                )
+                """
+            )
+        )
+        conn.execute(sa_text("CREATE INDEX ix_goal_user_id ON goal (user_id)"))
+        conn.execute(sa_text("INSERT INTO \"user\" (id, username, password_hash) VALUES (1, 'alice', 'x')"))
+        conn.execute(
+            sa_text(
+                """
+                INSERT INTO goal (id, user_id, owner_id, title, progress, is_expanded)
+                VALUES (1, 'alice', NULL, 'Legacy Owner Goal', 0, 1)
+                """
+            )
+        )
 
     ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
     script_location = ROOT_DIR / "streamlit_app" / "alembic"
@@ -225,16 +255,17 @@ def test_owner_backfill_migration_populates_goal_owner_id(tmp_path):
     cfg.set_main_option("sqlalchemy.url", db_url)
     cfg.set_main_option("script_location", str(script_location))
 
-    command.stamp(cfg, "d4e5f6a7b8c9")
+    command.stamp(cfg, "h8b9c0d1e2f3")
     command.upgrade(cfg, "head")
 
-    # Re-open with migration-managed engine.
-    with Session(engine, expire_on_commit=False) as session:
-        alice = session.exec(select(User).where(User.username == "alice")).first()
-        goal = session.exec(select(Goal).where(Goal.title == "Legacy Owner Goal")).first()
-        assert alice is not None
-        assert goal is not None
-        assert goal.owner_id == alice.id
+    inspector = sa_inspect(engine)
+    goal_columns = {col["name"] for col in inspector.get_columns("goal")}
+    assert "user_id" not in goal_columns
+    assert "owner_id" in goal_columns
+
+    with engine.begin() as conn:
+        owner_id = conn.execute(sa_text("SELECT owner_id FROM goal WHERE id = 1")).scalar_one()
+        assert owner_id == 1
 
     engine.dispose()
 

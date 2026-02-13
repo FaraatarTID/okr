@@ -40,7 +40,7 @@ def isolated_db(monkeypatch, tmp_path):
         engine.dispose()
 
 
-def test_sync_cleanup_uses_owner_id_fallback_for_goal_selection(isolated_db):
+def test_sync_cleanup_uses_owner_id_for_goal_selection(isolated_db):
     from src.crud import create_user
     from src.database import get_session_context
     from src.models import Goal
@@ -51,14 +51,12 @@ def test_sync_cleanup_uses_owner_id_fallback_for_goal_selection(isolated_db):
 
     with get_session_context() as session:
         alice_goal = Goal(
-            user_id="legacy-mismatch",
             owner_id=alice.id,
             title="Alice stale goal",
             external_id="goal_alice_stale",
             created_at=_utc_now_naive(),
         )
         bob_goal = Goal(
-            user_id=bob.username,
             owner_id=bob.id,
             title="Bob goal",
             external_id="goal_bob_keep",
@@ -102,5 +100,4 @@ def test_sync_new_goal_sets_owner_id_for_normalized_ownership(isolated_db):
     with get_session_context() as session:
         goal = session.exec(select(Goal).where(Goal.external_id == "goal_ext_1")).first()
         assert goal is not None
-        assert goal.user_id == "alice"
         assert goal.owner_id == alice.id
