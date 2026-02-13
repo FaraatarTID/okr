@@ -55,6 +55,8 @@ DATABASE_URL = _get_database_url()
 if is_production() and DATABASE_URL.startswith("sqlite:"):
     raise RuntimeError("PRODUCTION=true requires a non-SQLite database. Set OKR_DATABASE_URL or DATABASE_URL.")
 
+INITIAL_SCHEMA_REVISION = "9aa9ae459f5b"
+
 
 def _create_engine(url: str):
     """Create SQLModel engine with dialect-aware options."""
@@ -109,13 +111,21 @@ def run_migrations():
     existing_tables = set(inspector.get_table_names())
     core_tables = {"user", "cycle", "goal", "objective", "key_result", "task", "work_log"}
 
-    # Fresh installs are bootstrapped directly from metadata, then stamped at head.
-    # This avoids replaying legacy migration steps that assume pre-existing schemas.
-    if "alembic_version" not in existing_tables and existing_tables.isdisjoint(core_tables):
+    if "alembic_version" not in existing_tables:
         # Ensure model tables are registered on SQLModel metadata.
         import src.models  # noqa: F401
         SQLModel.metadata.create_all(engine)
-        command.stamp(alembic_cfg, "head")
+
+        # Fresh installs are stamped directly at head (schema already matches models).
+        if existing_tables.isdisjoint(core_tables):
+            command.stamp(alembic_cfg, "head")
+            return
+
+        # Legacy installs with app tables but no Alembic history should not replay the
+        # initial migration, which assumes historical pre-OKR table shapes. Stamp at
+        # the initial schema revision, then apply additive/idempotent migrations.
+        command.stamp(alembic_cfg, INITIAL_SCHEMA_REVISION)
+        command.upgrade(alembic_cfg, "head")
         return
 
     command.upgrade(alembic_cfg, "head")
