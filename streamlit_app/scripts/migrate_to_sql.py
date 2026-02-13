@@ -59,7 +59,8 @@ def migrate():
                 cycle_id=node.get("cycle_id") or default_cycle_id,
                 external_id=node.get("id"),
                 created_at=datetime.fromtimestamp(node.get("createdAt", 0)/1000) if node.get("createdAt") else None,
-                strategy_tags=json.dumps(node.get("strategy_tags", []))
+                strategy_tags=json.dumps(node.get("strategy_tags", [])),
+                actor_username=username,
             )
             id_map[node.get("id")] = sql_goal.id
             print(f"  [GOAL] {node.get('title')}")
@@ -74,7 +75,8 @@ def migrate():
                     title=o_node.get("title"),
                     description=o_node.get("description"),
                     external_id=o_node.get("id"),
-                    created_at=datetime.fromtimestamp(o_node.get("createdAt", 0)/1000) if o_node.get("createdAt") else None
+                    created_at=datetime.fromtimestamp(o_node.get("createdAt", 0)/1000) if o_node.get("createdAt") else None,
+                    actor_username=username,
                 )
                 id_map[o_node.get("id")] = sql_obj.id
                 print(f"    [OBJ] {o_node.get('title')}")
@@ -92,7 +94,8 @@ def migrate():
                         unit=k_node.get("unit", "%"),
                         external_id=k_node.get("id"),
                         created_at=datetime.fromtimestamp(k_node.get("createdAt", 0)/1000) if k_node.get("createdAt") else None,
-                        initiative_tags=json.dumps(k_node.get("initiative_tags", []))
+                        initiative_tags=json.dumps(k_node.get("initiative_tags", [])),
+                        actor_username=username,
                     )
                     id_map[k_node.get("id")] = sql_kr.id
                     print(f"      [KR] {k_node.get('title')}")
@@ -113,11 +116,12 @@ def migrate():
                             description=t_node.get("description"),
                             external_id=t_node.get("id"),
                             created_at=datetime.fromtimestamp(t_node.get("createdAt", 0)/1000) if t_node.get("createdAt") else None,
-                            deadline=datetime.fromtimestamp(t_node.get("deadline", 0)/1000) if t_node.get("deadline") else None
+                            deadline=datetime.fromtimestamp(t_node.get("deadline", 0)/1000) if t_node.get("deadline") else None,
+                            actor_username=username,
                         )
                         # Set status manually after creation as create_task doesn't take it yet
                         from src.crud import update_task
-                        update_task(sql_task.id, status=status)
+                        update_task(sql_task.id, status=status, actor_username=username)
                         
                         id_map[t_node.get("id")] = sql_task.id
                         print(f"        [TASK] {t_node.get('title')}")
@@ -129,7 +133,8 @@ def migrate():
                                 task_id=sql_task.id,
                                 duration_minutes=int(log.get("durationMinutes", 0)),
                                 note=log.get("summary"), # Summary from JSON to Note in SQL
-                                log_date=log_date
+                                log_date=log_date,
+                                actor_username=username,
                             )
     
     print("Migration Complete!")

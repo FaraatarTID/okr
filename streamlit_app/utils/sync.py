@@ -1,16 +1,11 @@
 import json
-import streamlit as st
-from typing import Dict, Any, List
+from typing import Dict, Any
 from datetime import datetime
 from src.database import get_session_context
-from src.models import Goal, Objective, KeyResult, Task, WorkLog, Cycle
-from src.crud import (
-    create_goal, create_objective, 
-    create_key_result, create_task,
-    update_goal, update_task
-)
+from src.models import Goal, Objective, KeyResult, Task, WorkLog, User
+from src.utils.time_utils import utc_now_naive
 from sqlmodel import select
-from datetime import datetime
+from sqlalchemy import or_
 
 def sync_data_to_db(username: str, data: Dict[Any, Any]):
     """
@@ -51,8 +46,16 @@ def _cleanup_stale_nodes(session, username, current_ids: set):
     """Removes records from DB that were deleted from JSON."""
     from src.models import Goal, Objective, KeyResult, Task
     
-    # 1. Get all user goals
-    goals = session.exec(select(Goal).where(Goal.user_id == username)).all()
+    # 1. Get all user goals (owner_id preferred, username fallback)
+    owner_id_subq = (
+        select(User.id)
+        .where(User.username == username)
+        .limit(1)
+        .scalar_subquery()
+    )
+    goals = session.exec(
+        select(Goal).where(or_(Goal.owner_id == owner_id_subq, Goal.user_id == username))
+    ).all()
     goal_ids = [g.id for g in goals]
     if not goal_ids: return
 
@@ -130,6 +133,10 @@ def _sync_node(session, model_class, json_node, username, parent_id=None, all_no
         for key, value in fields.items():
             if hasattr(sql_node, key):
                 setattr(sql_node, key, value)
+        if model_class == Goal and not getattr(sql_node, "owner_id", None):
+            owner = session.exec(select(User).where(User.username == username)).first()
+            if owner and owner.id is not None:
+                sql_node.owner_id = owner.id
         
         # Update parent link if applicable
         if parent_id is not None:
@@ -143,14 +150,17 @@ def _sync_node(session, model_class, json_node, username, parent_id=None, all_no
     else:
         # Create new (directly in shared session)
         if model_class == Goal:
+            owner = session.exec(select(User).where(User.username == username)).first()
+            owner_id = owner.id if owner and owner.id is not None else None
             new_node = Goal(
                 user_id=username,
+                owner_id=owner_id,
                 title=fields["title"],
                 description=fields["description"],
                 cycle_id=json_node.get("cycle_id"),
                 strategy_tags=fields.get("strategy_tags", "[]"),
                 external_id=node_id,
-                created_at=fields.get("created_at") or datetime.utcnow()
+                created_at=fields.get("created_at") or utc_now_naive()
             )
         elif model_class == Objective:
             new_node = Objective(
@@ -158,7 +168,7 @@ def _sync_node(session, model_class, json_node, username, parent_id=None, all_no
                 title=fields["title"],
                 description=fields["description"],
                 external_id=node_id,
-                created_at=fields.get("created_at") or datetime.utcnow()
+                created_at=fields.get("created_at") or utc_now_naive()
             )
         elif model_class == KeyResult:
             new_node = KeyResult(
@@ -169,7 +179,7 @@ def _sync_node(session, model_class, json_node, username, parent_id=None, all_no
                 unit=fields["unit"],
                 initiative_tags=fields.get("initiative_tags", "[]"),
                 external_id=node_id,
-                created_at=fields.get("created_at") or datetime.utcnow()
+                created_at=fields.get("created_at") or utc_now_naive()
             )
         elif model_class == Task:
             new_node = Task(
@@ -177,7 +187,7 @@ def _sync_node(session, model_class, json_node, username, parent_id=None, all_no
                 title=fields["title"],
                 description=fields["description"],
                 external_id=node_id,
-                created_at=fields.get("created_at") or datetime.utcnow()
+                created_at=fields.get("created_at") or utc_now_naive()
             )
         else:
             return None

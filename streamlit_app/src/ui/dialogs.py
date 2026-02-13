@@ -149,7 +149,16 @@ def render_create_objective_dialog(parent_id):
                     st.error(f"Invalid parent id: {parent_id}")
                     return
 
-                create_objective(goal_id=goal_id_val, title=title, description=desc)
+                try:
+                    create_objective(
+                        goal_id=goal_id_val,
+                        title=title,
+                        description=desc,
+                        actor_username=st.session_state.get("username"),
+                    )
+                except PermissionError as e:
+                    st.error(str(e))
+                    return
                 st.success("Objective created!")
                 if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
                 st.rerun()
@@ -226,7 +235,18 @@ def render_create_kr_dialog(parent_id):
                     st.error(f"Invalid parent id: {parent_id}")
                     return
 
-                create_key_result(objective_id=obj_id_val, title=title, description=desc, target_value=target, unit=unit)
+                try:
+                    create_key_result(
+                        objective_id=obj_id_val,
+                        title=title,
+                        description=desc,
+                        target_value=target,
+                        unit=unit,
+                        actor_username=st.session_state.get("username"),
+                    )
+                except PermissionError as e:
+                    st.error(str(e))
+                    return
                 st.success("Key Result created!")
                 if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
                 st.rerun()
@@ -546,7 +566,17 @@ def render_weekly_ritual_dialog(username):
                         
                         comment = st.text_area("What changed?", key=f"comm_{kr.id}")
                         if st.form_submit_button("✅ Update"):
-                            create_check_in(kr.id, new_val_in, conf, comment)
+                            try:
+                                create_check_in(
+                                    kr.id,
+                                    new_val_in,
+                                    conf,
+                                    comment,
+                                    actor_username=username,
+                                )
+                            except PermissionError as e:
+                                st.error(str(e))
+                                return
                             if kr.external_id in data["nodes"]:
                                 n = data["nodes"][kr.external_id]
                                 n["current_value"] = new_val_in
@@ -642,14 +672,19 @@ def render_create_task_dialog(parent_id, username):
                     st.error(f"Invalid parent id: {parent_id}")
                     return
 
-                create_task(
-                    key_result_id=kr_id_val,
-                    title=title,
-                    description=desc,
-                    start_date=sd_ts,
-                    deadline=dd_ts,
-                    assignee_id=assignee_id
-                )
+                try:
+                    create_task(
+                        key_result_id=kr_id_val,
+                        title=title,
+                        description=desc,
+                        start_date=sd_ts,
+                        deadline=dd_ts,
+                        assignee_id=assignee_id,
+                        actor_username=username,
+                    )
+                except PermissionError as e:
+                    st.error(str(e))
+                    return
                 st.success("Task created!")
                 if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
                 st.rerun()
@@ -703,7 +738,17 @@ def render_create_goal_dialog(username):
         if st.form_submit_button("Create Goal", type="primary"):
             if not title: st.error("Goal title is required.")
             else:
-                create_goal(user_id=username, title=title, description=desc, cycle_id=cycle_id)
+                try:
+                    create_goal(
+                        user_id=username,
+                        title=title,
+                        description=desc,
+                        cycle_id=cycle_id,
+                        actor_username=username,
+                    )
+                except PermissionError as e:
+                    st.error(str(e))
+                    return
                 st.success("Goal created!")
                 if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
                 st.rerun()
@@ -763,7 +808,16 @@ def render_create_objective_dialog(parent_id):
                     st.error(f"Invalid parent id: {parent_id}")
                     return
 
-                create_objective(goal_id=goal_id_val, title=title, description=desc)
+                try:
+                    create_objective(
+                        goal_id=goal_id_val,
+                        title=title,
+                        description=desc,
+                        actor_username=st.session_state.get("username"),
+                    )
+                except PermissionError as e:
+                    st.error(str(e))
+                    return
                 st.success("Objective created!")
                 if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
                 st.rerun()
@@ -828,7 +882,18 @@ def render_create_kr_dialog(parent_id):
                     st.error(f"Invalid parent id: {parent_id}")
                     return
 
-                create_key_result(objective_id=obj_id_val, title=title, description=desc, target_value=target, unit=unit)
+                try:
+                    create_key_result(
+                        objective_id=obj_id_val,
+                        title=title,
+                        description=desc,
+                        target_value=target,
+                        unit=unit,
+                        actor_username=st.session_state.get("username"),
+                    )
+                except PermissionError as e:
+                    st.error(str(e))
+                    return
                 st.success("Key Result created!")
                 if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
                 st.rerun()
