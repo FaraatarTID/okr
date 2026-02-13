@@ -5,11 +5,40 @@ import os
 # Add current directory to path so we can import modules if running from outside
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from src.crud import authenticate_user, get_user_by_id, reset_user_password, ensure_admin_exists
+from src.crud import (
+    authenticate_user_detailed,
+    ensure_admin_exists,
+    get_user_by_id,
+    reset_user_password,
+)
 from src.database import init_database
 
 
 st.set_page_config(page_title="OKR Tracker - Login", layout="centered")
+
+
+def _get_client_ip() -> str | None:
+    """Best-effort client IP extraction from Streamlit request headers."""
+    try:
+        context = getattr(st, "context", None)
+        headers = getattr(context, "headers", None) if context is not None else None
+        if headers is None:
+            return None
+
+        header_map = {str(k).lower(): str(v) for k, v in dict(headers).items()}
+        for key in [
+            "x-forwarded-for",
+            "x-real-ip",
+            "cf-connecting-ip",
+            "x-client-ip",
+            "x-cluster-client-ip",
+        ]:
+            value = header_map.get(key)
+            if value:
+                return value.split(",", 1)[0].strip() or None
+    except Exception:
+        return None
+    return None
 
 
 def render_login():
@@ -23,7 +52,12 @@ def render_login():
 
         if st.button("Login", type="primary"):
             if username.strip() and password:
-                user = authenticate_user(username.strip(), password)
+                auth = authenticate_user_detailed(
+                    username.strip(),
+                    password,
+                    client_ip=_get_client_ip(),
+                )
+                user = auth.get("user")
                 if user:
                     # Store user info in session
                     st.session_state["user_id"] = user.id
@@ -42,7 +76,14 @@ def render_login():
                     st.info("Loading full app…")
                     st.rerun()
                 else:
-                    st.error("Invalid username or password.")
+                    if str(auth.get("error_code", "")).startswith("AUTH_LOCKED"):
+                        retry_after = int(auth.get("retry_after_seconds") or 0)
+                        minutes = max(1, (retry_after + 59) // 60)
+                        st.error(
+                            f"Too many failed attempts. Try again in about {minutes} minute(s)."
+                        )
+                    else:
+                        st.error("Invalid username or password.")
             else:
                 st.error("Please enter both username and password.")
 

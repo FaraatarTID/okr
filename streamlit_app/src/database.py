@@ -6,6 +6,7 @@ without code changes using environment variables or Streamlit secrets.
 from sqlmodel import create_engine, Session, SQLModel
 from contextlib import contextmanager
 import os
+from sqlalchemy import event, inspect as sa_inspect
 from src.config import is_production
 
 # Base path for local SQLite storage
@@ -65,7 +66,15 @@ def _create_engine(url: str):
     else:
         # Make long-lived connections safer for managed DBs
         kwargs["pool_pre_ping"] = True
-    return create_engine(url, **kwargs)
+    engine = create_engine(url, **kwargs)
+    if is_sqlite:
+        # Enforce FK constraints consistently on every SQLite connection.
+        @event.listens_for(engine, "connect")
+        def _set_sqlite_pragma(dbapi_connection, _connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+    return engine
 
 
 _engine = None
@@ -94,6 +103,20 @@ def run_migrations():
     # Also ensure script_location resolves correctly when running from this CWD
     script_location = os.path.join(parent_dir, "alembic")
     alembic_cfg.set_main_option("script_location", script_location)
+
+    engine = get_engine()
+    inspector = sa_inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    core_tables = {"user", "cycle", "goal", "objective", "key_result", "task", "work_log"}
+
+    # Fresh installs are bootstrapped directly from metadata, then stamped at head.
+    # This avoids replaying legacy migration steps that assume pre-existing schemas.
+    if "alembic_version" not in existing_tables and existing_tables.isdisjoint(core_tables):
+        # Ensure model tables are registered on SQLModel metadata.
+        import src.models  # noqa: F401
+        SQLModel.metadata.create_all(engine)
+        command.stamp(alembic_cfg, "head")
+        return
 
     command.upgrade(alembic_cfg, "head")
 

@@ -4,7 +4,7 @@ Hierarchy: Cycle -> Goal -> Objective -> KeyResult -> Task
 Plus WorkLog for time tracking.
 """
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import event, Index
+from sqlalchemy import CheckConstraint, event, Index, text
 from sqlalchemy.orm import clear_mappers
 # Fix for Streamlit reloading: Clear existing mappers to prevent "Multiple classes found" error
 clear_mappers()
@@ -52,6 +52,26 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=True)
 
 
+class AuthThrottleState(SQLModel, table=True):
+    """Tracks failed authentication attempts for rate limiting and lockouts."""
+    __tablename__ = "auth_throttle_state"
+    __table_args__ = (
+        CheckConstraint("failed_attempts >= 0", name="ck_auth_throttle_failed_attempts_non_negative"),
+        Index("ux_auth_throttle_scope_identifier", "scope", "identifier", unique=True),
+        Index("ix_auth_throttle_locked_until", "locked_until"),
+        {"extend_existing": True},
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    scope: str = Field(index=True)  # "user" or "ip"
+    identifier: str = Field(index=True)
+    failed_attempts: int = Field(default=0)
+    window_started_at: datetime = Field(default_factory=utc_now_naive)
+    locked_until: Optional[datetime] = None
+    last_failed_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
 # ============================================================================
 # BASE MODELS (shared fields)
 # ============================================================================
@@ -95,6 +115,7 @@ class Goal(NodeBase, table=True):
     """Top-level strategic goal."""
     __tablename__ = "goal"
     __table_args__ = (
+        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_goal_progress_range"),
         Index("ix_goal_owner_cycle", "owner_id", "cycle_id"),
         {"extend_existing": True}
     )
@@ -131,10 +152,33 @@ class Retrospective(SQLModel, table=True):
     cycle: Optional[Cycle] = Relationship() # No back_populates needed for now
 
 
+class SyncRetryEvent(SQLModel, table=True):
+    """Durable queue item for deferred cloud sync operations."""
+    __tablename__ = "sync_retry_event"
+    __table_args__ = (
+        CheckConstraint("attempts >= 0", name="ck_sync_retry_attempts_non_negative"),
+        Index("ix_sync_retry_event_next_attempt", "next_attempt_at"),
+        {"extend_existing": True},
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    queue_key: str = Field(unique=True, index=True)
+    payload_json: str
+    attempts: int = Field(default=0)
+    next_attempt_at: datetime = Field(default_factory=utc_now_naive)
+    last_error_code: Optional[str] = None
+    last_error: Optional[str] = None
+    created_at: datetime = Field(default_factory=utc_now_naive)
+    updated_at: Optional[datetime] = None
+
+
 class Objective(NodeBase, table=True):
     """Measurable objective within a goal."""
     __tablename__ = "objective"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_objective_progress_range"),
+        {"extend_existing": True},
+    )
     
     id: Optional[int] = Field(default=None, primary_key=True)
     goal_id: int = Field(foreign_key="goal.id", index=True)
@@ -152,7 +196,10 @@ class Objective(NodeBase, table=True):
 class KeyResult(NodeBase, table=True):
     """Key result metrics for an objective."""
     __tablename__ = "key_result"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_key_result_progress_range"),
+        {"extend_existing": True},
+    )
     
     id: Optional[int] = Field(default=None, primary_key=True)
     objective_id: int = Field(foreign_key="objective.id", index=True)
@@ -183,6 +230,9 @@ class Task(NodeBase, table=True):
     """Actionable task within a key result."""
     __tablename__ = "task"
     __table_args__ = (
+        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_task_progress_range"),
+        CheckConstraint("estimated_minutes >= 0", name="ck_task_estimated_minutes_non_negative"),
+        CheckConstraint("total_time_spent >= 0", name="ck_task_total_time_spent_non_negative"),
         Index("ix_task_status_kr", "status", "key_result_id"),
         Index("ix_task_timer_started_at", "timer_started_at"),
         Index("ix_task_deadline_progress", "deadline", "progress"),
@@ -217,6 +267,14 @@ class WorkLog(SQLModel, table=True):
     """Time log entry for a specific task."""
     __tablename__ = "work_log"
     __table_args__ = (
+        CheckConstraint("duration_minutes >= 0", name="ck_work_log_duration_non_negative"),
+        Index(
+            "ux_work_log_task_open",
+            "task_id",
+            unique=True,
+            sqlite_where=text("end_time IS NULL"),
+            postgresql_where=text("end_time IS NULL"),
+        ),
         Index("ix_work_log_task_start", "task_id", "start_time"),
         Index("ix_work_log_start_time", "start_time"),
         {"extend_existing": True},
@@ -259,6 +317,7 @@ class CheckIn(SQLModel, table=True):
     """Weekly check-in for a Key Result."""
     __tablename__ = "check_in"
     __table_args__ = (
+        CheckConstraint("confidence_score >= 0 AND confidence_score <= 10", name="ck_check_in_confidence_range"),
         Index("ix_check_in_kr_created", "key_result_id", "created_at"),
         {"extend_existing": True},
     )

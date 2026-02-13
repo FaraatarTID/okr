@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 
 import pytest
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -171,3 +171,79 @@ def test_timer_start_stop_enforces_task_ownership(isolated_db):
     stopped = stop_timer(task.id, user_id="alice")
     assert stopped is not None
     assert stopped.end_time is not None
+
+
+def test_start_timer_is_idempotent_for_same_task(isolated_db):
+    from src.crud import (
+        create_cycle,
+        create_goal,
+        create_key_result,
+        create_objective,
+        create_task,
+        create_user,
+        start_timer,
+        stop_timer,
+    )
+    from src.database import get_session_context
+    from src.models import WorkLog
+
+    create_user("alice", "alice-pass")
+    cycle = create_cycle(
+        "Q4",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+    )
+    goal = create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
+    objective = create_objective(goal.id, "Alice Objective", actor_username="alice")
+    key_result = create_key_result(objective.id, "Alice KR", actor_username="alice")
+    task = create_task(key_result.id, "Alice Task", actor_username="alice")
+
+    started_1 = start_timer(task.id, "alice")
+    started_2 = start_timer(task.id, "alice")
+
+    assert started_1.id == started_2.id
+
+    with get_session_context() as session:
+        open_logs = session.exec(
+            select(WorkLog).where(WorkLog.task_id == task.id).where(WorkLog.end_time.is_(None))
+        ).all()
+        assert len(open_logs) == 1
+
+    stop_timer(task.id, user_id="alice")
+
+
+def test_stop_timer_recovers_stale_running_task_without_open_log(isolated_db):
+    from src.crud import (
+        create_cycle,
+        create_goal,
+        create_key_result,
+        create_objective,
+        create_task,
+        create_user,
+        stop_timer,
+    )
+    from src.database import get_session_context
+    from src.models import Task
+
+    create_user("alice", "alice-pass")
+    cycle = create_cycle(
+        "Q5",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+    )
+    goal = create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
+    objective = create_objective(goal.id, "Alice Objective", actor_username="alice")
+    key_result = create_key_result(objective.id, "Alice KR", actor_username="alice")
+    task = create_task(key_result.id, "Alice Task", actor_username="alice")
+
+    with get_session_context() as session:
+        row = session.get(Task, task.id)
+        row.timer_started_at = _utc_now_naive()
+        session.add(row)
+
+    assert stop_timer(task.id, user_id="alice") is None
+
+    with get_session_context() as session:
+        row = session.get(Task, task.id)
+        assert row is not None
+        assert row.timer_started_at is None
