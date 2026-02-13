@@ -56,7 +56,7 @@ from src.crud import (
     create_check_in, get_krs_needing_checkin, get_check_ins,
     get_leadership_metrics, update_cycle, delete_cycle,
     # User Auth
-    authenticate_user, get_all_users, create_user, update_user,
+    authenticate_user_detailed, get_all_users, create_user, update_user,
     reset_user_password, get_team_members, ensure_admin_exists,
     get_user_by_id, verify_password
 )
@@ -80,6 +80,29 @@ def _excepthook(exc_type, exc, tb):
 
 sys.excepthook = _excepthook
 
+def _get_client_ip() -> str | None:
+    """Best-effort client IP extraction from Streamlit request headers."""
+    try:
+        context = getattr(st, "context", None)
+        headers = getattr(context, "headers", None) if context is not None else None
+        if headers is None:
+            return None
+
+        header_map = {str(k).lower(): str(v) for k, v in dict(headers).items()}
+        for key in [
+            "x-forwarded-for",
+            "x-real-ip",
+            "cf-connecting-ip",
+            "x-client-ip",
+            "x-cluster-client-ip",
+        ]:
+            value = header_map.get(key)
+            if value:
+                return value.split(",", 1)[0].strip() or None
+    except Exception:
+        return None
+    return None
+
 def render_login():
     st.markdown("## 🔐 Login to OKR Tracker")
     st.info("👋 Welcome! Please enter your credentials to access your data.")
@@ -91,7 +114,12 @@ def render_login():
         
         if st.button("Login", type="primary"):
             if username.strip() and password:
-                user = authenticate_user(username.strip(), password)
+                auth = authenticate_user_detailed(
+                    username.strip(),
+                    password,
+                    client_ip=_get_client_ip(),
+                )
+                user = auth.get("user")
                 if user:
                     # Store user info in session
                     st.session_state["user_id"] = user.id
@@ -109,7 +137,14 @@ def render_login():
                     st.success(f"Welcome, {user.display_name}!")
                     st.rerun()
                 else:
-                    st.error("Invalid username or password.")
+                    if str(auth.get("error_code", "")).startswith("AUTH_LOCKED"):
+                        retry_after = int(auth.get("retry_after_seconds") or 0)
+                        minutes = max(1, (retry_after + 59) // 60)
+                        st.error(
+                            f"Too many failed attempts. Try again in about {minutes} minute(s)."
+                        )
+                    else:
+                        st.error("Invalid username or password.")
             else:
                 st.error("Please enter both username and password.")
 
@@ -357,14 +392,32 @@ def render_app(username):
 
     st.sidebar.markdown("--- ")
     sync_service = get_sync_service()
-    if sync_service.is_ready():
+    sync_diag = sync_service.get_diagnostics()
+    if sync_diag.get("ready"):
         st.sidebar.success("✅ Cloud Sync Active")
+        if sync_diag.get("retry_queue_size", 0) > 0:
+            st.sidebar.caption(
+                f"Pending retries: {sync_diag.get('retry_queue_size', 0)} "
+                f"/ {sync_diag.get('retry_queue_limit', 0)}"
+            )
     else:
         st.sidebar.warning("⚠️ Local Storage Only")
-        last_err = sync_service.get_last_error()
+        last_err = sync_diag.get("last_error")
         if last_err:
             with st.sidebar.expander("🔍 Sync Diagnostics", expanded=True):
                 st.error(last_err)
+                st.caption(f"Code: {sync_diag.get('last_error_code') or 'unknown'}")
+                if sync_diag.get("last_error_at"):
+                    st.caption(f"When (UTC): {sync_diag['last_error_at']}")
+                st.caption(f"Recent error count: {sync_diag.get('error_count', 0)}")
+                st.caption(
+                    f"Retry queue: {sync_diag.get('retry_queue_size', 0)} "
+                    f"/ {sync_diag.get('retry_queue_limit', 0)}"
+                )
+                st.caption(
+                    "Retry persistence: "
+                    f"{'enabled' if sync_diag.get('retry_persistence_enabled') else 'disabled'}"
+                )
                 if st.button("🔄 Attempt Reconnect", key="sync_retry_btn"):
                     if sync_service.reconnect():
                         st.success("Connected successfully!")

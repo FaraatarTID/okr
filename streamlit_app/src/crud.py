@@ -5,8 +5,10 @@ Provides efficient data access with JOINs for dashboard and tree loading.
 from sqlmodel import Session, select, col, delete
 from sqlalchemy.orm import selectinload
 from sqlalchemy import and_, func, or_
+from sqlalchemy.exc import IntegrityError
 import json
-from typing import Optional, List
+import os
+from typing import Any, Dict, Optional, List
 from datetime import datetime, timedelta
 from src.utils.time_utils import ensure_utc, to_epoch_millis, utc_now_naive
 def _sync_service():
@@ -16,7 +18,7 @@ def _sync_service():
 from src.models import (
     Goal, Objective, KeyResult, Task, WorkLog,
     TaskStatus, DashboardGoal, TaskWithTimer, Cycle, CheckIn, User, UserRole,
-    WeeklyPlan, Retrospective
+    WeeklyPlan, Retrospective, AuthThrottleState
 )
 from src.database import get_session_context
 from src.audit import audit_log
@@ -60,6 +62,11 @@ _ALLOWED_TASK_UPDATE_KWARGS = {
     "is_expanded",
 }
 _UNSET = object()
+AUTH_USER_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_USER_WINDOW_SECONDS", "300")))
+AUTH_USER_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_USER_MAX_ATTEMPTS", "5")))
+AUTH_IP_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_IP_WINDOW_SECONDS", "300")))
+AUTH_IP_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_IP_MAX_ATTEMPTS", "20")))
+AUTH_LOCKOUT_SECONDS = max(1, int(os.getenv("AUTH_LOCKOUT_SECONDS", "900")))
 
 
 def _validate_update_fields(entity_name: str, updates: dict, allowed_fields: set) -> None:
@@ -274,14 +281,266 @@ def get_user_by_id(user_id: int) -> Optional[User]:
         return session.get(User, user_id)
 
 
-def authenticate_user(username: str, password: str) -> Optional[User]:
+def _normalize_throttle_username(username: str) -> str:
+    return (username or "").strip().lower()
+
+
+def _normalize_client_ip(client_ip: Optional[str]) -> Optional[str]:
+    if not client_ip:
+        return None
+    value = str(client_ip).strip()
+    if not value:
+        return None
+    if "," in value:
+        value = value.split(",", 1)[0].strip()
+    return value or None
+
+
+def _get_or_create_auth_throttle_state(
+    session: Session,
+    scope: str,
+    identifier: str,
+    now: datetime,
+) -> AuthThrottleState:
+    state = session.exec(
+        select(AuthThrottleState)
+        .where(AuthThrottleState.scope == scope)
+        .where(AuthThrottleState.identifier == identifier)
+    ).first()
+    if state:
+        return state
+    state = AuthThrottleState(
+        scope=scope,
+        identifier=identifier,
+        failed_attempts=0,
+        window_started_at=now,
+    )
+    session.add(state)
+    session.flush()
+    return state
+
+
+def _remaining_lockout_seconds(state: Optional[AuthThrottleState], now: datetime) -> int:
+    if not state or not state.locked_until:
+        return 0
+    delta = ensure_utc(state.locked_until) - ensure_utc(now)
+    remaining = int(delta.total_seconds())
+    return remaining if remaining > 0 else 0
+
+
+def _prepare_throttle_state_for_check(
+    state: AuthThrottleState,
+    now: datetime,
+    window_seconds: int,
+) -> int:
+    remaining = _remaining_lockout_seconds(state, now)
+    if remaining > 0:
+        return remaining
+
+    # Lockout expired: clear stale lock marker and reset window.
+    if state.locked_until is not None:
+        state.locked_until = None
+        state.failed_attempts = 0
+        state.window_started_at = now
+        state.updated_at = now
+        return 0
+
+    window_started = state.window_started_at or now
+    if (ensure_utc(now) - ensure_utc(window_started)).total_seconds() >= window_seconds:
+        state.failed_attempts = 0
+        state.window_started_at = now
+        state.updated_at = now
+    return 0
+
+
+def _record_failed_auth_attempt(
+    state: AuthThrottleState,
+    now: datetime,
+    window_seconds: int,
+    max_attempts: int,
+    lockout_seconds: int,
+) -> int:
+    _prepare_throttle_state_for_check(state, now, window_seconds)
+    state.failed_attempts = int(state.failed_attempts or 0) + 1
+    state.last_failed_at = now
+    state.updated_at = now
+    if state.failed_attempts >= max_attempts:
+        state.locked_until = now + timedelta(seconds=lockout_seconds)
+        state.failed_attempts = 0
+        state.window_started_at = now
+    return _remaining_lockout_seconds(state, now)
+
+
+def _clear_auth_throttle_state(state: Optional[AuthThrottleState], now: datetime) -> None:
+    if not state:
+        return
+    state.failed_attempts = 0
+    state.window_started_at = now
+    state.locked_until = None
+    state.updated_at = now
+
+
+def authenticate_user_detailed(
+    username: str,
+    password: str,
+    client_ip: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Authenticate user with per-user and per-IP throttling/temporary lockouts.
+    """
+    now = utc_now_naive()
+    normalized_username = _normalize_throttle_username(username)
+    normalized_ip = _normalize_client_ip(client_ip)
+
+    with get_session_context() as session:
+        user_state: Optional[AuthThrottleState] = None
+        ip_state: Optional[AuthThrottleState] = None
+        if normalized_username:
+            user_state = _get_or_create_auth_throttle_state(
+                session, "user", normalized_username, now
+            )
+        if normalized_ip:
+            ip_state = _get_or_create_auth_throttle_state(
+                session, "ip", normalized_ip, now
+            )
+
+        user_lock_remaining = (
+            _prepare_throttle_state_for_check(user_state, now, AUTH_USER_WINDOW_SECONDS)
+            if user_state
+            else 0
+        )
+        ip_lock_remaining = (
+            _prepare_throttle_state_for_check(ip_state, now, AUTH_IP_WINDOW_SECONDS)
+            if ip_state
+            else 0
+        )
+        lock_remaining = max(user_lock_remaining, ip_lock_remaining)
+        if lock_remaining > 0:
+            lock_scope = "both" if user_lock_remaining and ip_lock_remaining else ("user" if user_lock_remaining else "ip")
+            error_code = (
+                "AUTH_LOCKED_BOTH"
+                if lock_scope == "both"
+                else ("AUTH_LOCKED_USER" if lock_scope == "user" else "AUTH_LOCKED_IP")
+            )
+            audit_log(
+                "login",
+                "user",
+                actor=normalized_username or username,
+                details={
+                    "success": False,
+                    "reason": "locked",
+                    "error_code": error_code,
+                    "lock_scope": lock_scope,
+                    "retry_after_seconds": lock_remaining,
+                    "client_ip": normalized_ip,
+                },
+            )
+            return {
+                "user": None,
+                "success": False,
+                "error_code": error_code,
+                "retry_after_seconds": lock_remaining,
+                "lock_scope": lock_scope,
+            }
+
+        user = session.exec(select(User).where(User.username == username)).first()
+        if user and user.is_active and verify_password(password, user.password_hash):
+            _clear_auth_throttle_state(user_state, now)
+            _clear_auth_throttle_state(ip_state, now)
+            if user_state:
+                session.add(user_state)
+            if ip_state:
+                session.add(ip_state)
+
+            audit_log(
+                "login",
+                "user",
+                actor=username,
+                details={"success": True, "client_ip": normalized_ip},
+            )
+            return {
+                "user": user,
+                "success": True,
+                "error_code": None,
+                "retry_after_seconds": 0,
+                "lock_scope": None,
+            }
+
+        user_lock_remaining = (
+            _record_failed_auth_attempt(
+                user_state,
+                now,
+                AUTH_USER_WINDOW_SECONDS,
+                AUTH_USER_MAX_ATTEMPTS,
+                AUTH_LOCKOUT_SECONDS,
+            )
+            if user_state
+            else 0
+        )
+        ip_lock_remaining = (
+            _record_failed_auth_attempt(
+                ip_state,
+                now,
+                AUTH_IP_WINDOW_SECONDS,
+                AUTH_IP_MAX_ATTEMPTS,
+                AUTH_LOCKOUT_SECONDS,
+            )
+            if ip_state
+            else 0
+        )
+
+        if user_state:
+            session.add(user_state)
+        if ip_state:
+            session.add(ip_state)
+
+        lock_remaining = max(user_lock_remaining, ip_lock_remaining)
+        if lock_remaining > 0:
+            lock_scope = "both" if user_lock_remaining and ip_lock_remaining else ("user" if user_lock_remaining else "ip")
+            error_code = (
+                "AUTH_LOCKED_BOTH"
+                if lock_scope == "both"
+                else ("AUTH_LOCKED_USER" if lock_scope == "user" else "AUTH_LOCKED_IP")
+            )
+            audit_log(
+                "login",
+                "user",
+                actor=normalized_username or username,
+                details={
+                    "success": False,
+                    "reason": "locked",
+                    "error_code": error_code,
+                    "lock_scope": lock_scope,
+                    "retry_after_seconds": lock_remaining,
+                    "client_ip": normalized_ip,
+                },
+            )
+            return {
+                "user": None,
+                "success": False,
+                "error_code": error_code,
+                "retry_after_seconds": lock_remaining,
+                "lock_scope": lock_scope,
+            }
+
+        audit_log(
+            "login",
+            "user",
+            actor=normalized_username or username,
+            details={"success": False, "reason": "invalid_credentials", "client_ip": normalized_ip},
+        )
+        return {
+            "user": None,
+            "success": False,
+            "error_code": "AUTH_INVALID_CREDENTIALS",
+            "retry_after_seconds": 0,
+            "lock_scope": None,
+        }
+
+
+def authenticate_user(username: str, password: str, client_ip: Optional[str] = None) -> Optional[User]:
     """Authenticate a user and return the User object if successful."""
-    user = get_user_by_username(username)
-    if user and user.is_active and verify_password(password, user.password_hash):
-        audit_log("login", "user", actor=username, details={"success": True})
-        return user
-    audit_log("login", "user", actor=username, details={"success": False})
-    return None
+    return authenticate_user_detailed(username, password, client_ip=client_ip)["user"]
 
 
 def get_all_users() -> List[User]:
@@ -1113,6 +1372,28 @@ def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
         return None
 
 
+def _query_owned_task_for_timer(session: Session, task_id: int, user_id: str) -> Optional[Task]:
+    statement = (
+        select(Task)
+        .join(KeyResult)
+        .join(Objective)
+        .join(Goal)
+        .where(Task.id == task_id)
+        .where(_goal_owner_predicate_by_username(user_id))
+    )
+    return session.exec(statement).first()
+
+
+def _get_active_work_log_for_task(session: Session, task_id: int) -> Optional[WorkLog]:
+    statement = (
+        select(WorkLog)
+        .where(WorkLog.task_id == task_id)
+        .where(WorkLog.end_time.is_(None))
+        .order_by(col(WorkLog.start_time).desc())
+    )
+    return session.exec(statement).first()
+
+
 def start_timer(task_id: int, user_id: str) -> WorkLog:
     """
     Start a timer for a task.
@@ -1121,36 +1402,46 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
     """
     with get_session_context() as session:
         # Enforce ownership on timer start before changing any timer state.
-        task = session.exec(
-            select(Task)
-            .join(KeyResult)
-            .join(Objective)
-            .join(Goal)
-            .where(Task.id == task_id)
-            .where(_goal_owner_predicate_by_username(user_id))
-        ).first()
+        task = _query_owned_task_for_timer(session, task_id, user_id)
         if not task:
             raise ValueError(f"Task {task_id} not found for user '{user_id}'")
 
-        # Stop any running timer after target validation (single active timer policy).
-        _stop_all_active_timers(session, user_id)
-        now = utc_now_naive()
+        # Idempotency: duplicate "start" actions on a running task return the same open log.
+        active_work_log = _get_active_work_log_for_task(session, task_id)
+        if task.timer_started_at is not None and active_work_log:
+            return active_work_log
+
+        # Stop other running timers after target validation (single active timer policy).
+        _stop_all_active_timers(session, user_id, exclude_task_id=task_id)
+        start_time = task.timer_started_at or utc_now_naive()
         
         # Mark timer as started on task
-        task.timer_started_at = now
+        task.timer_started_at = start_time
         session.add(task)
         
         # Create new WorkLog entry
         work_log = WorkLog(
             task_id=task_id,
-            start_time=now
+            start_time=start_time
         )
         session.add(work_log)
-        session.commit()
+
+        try:
+            session.commit()
+        except IntegrityError:
+            # Concurrency safety: if another request started it first, return that open log.
+            session.rollback()
+            task = _query_owned_task_for_timer(session, task_id, user_id)
+            active_work_log = _get_active_work_log_for_task(session, task_id)
+            if task and task.timer_started_at is not None and active_work_log:
+                return active_work_log
+            raise
+
         session.refresh(work_log)
         
         # S Y N C
         _sync_service().push_update(work_log)
+        audit_log("start_timer", "task", actor=user_id, details={"task_id": task_id, "work_log_id": work_log.id})
         clear_cache_safe()
         
         return work_log
@@ -1163,58 +1454,64 @@ def stop_timer(task_id: int, summary: str = None, user_id: Optional[str] = None)
     and updates the parent Task's total_time_spent.
     """
     with get_session_context() as session:
-        task_statement = select(Task).where(Task.id == task_id)
         if user_id:
-            task_statement = (
-                task_statement
-                .join(KeyResult)
-                .join(Objective)
-                .join(Goal)
-                .where(_goal_owner_predicate_by_username(user_id))
-            )
-        task = session.exec(task_statement).first()
-        if not task or not task.timer_started_at:
+            task = _query_owned_task_for_timer(session, task_id, user_id)
+        else:
+            task = session.get(Task, task_id)
+
+        if not task:
             return None
         
-        # Find the active work log (no end_time)
-        statement = (
-            select(WorkLog)
-            .where(WorkLog.task_id == task_id)
-            .where(WorkLog.end_time.is_(None))
-            .order_by(col(WorkLog.start_time).desc())
+        work_log = _get_active_work_log_for_task(session, task_id)
+        if not work_log:
+            # Recover stale state where task is marked running but has no open log.
+            if task.timer_started_at is not None:
+                task.timer_started_at = None
+                session.add(task)
+                session.commit()
+                _sync_service().push_update(task)
+                audit_log(
+                    "timer_recover",
+                    "task",
+                    actor=user_id,
+                    details={"task_id": task_id, "reason": "missing_active_work_log"},
+                )
+                clear_cache_safe()
+            return None
+
+        now = utc_now_naive()
+        work_log.end_time = now
+        
+        # Calculate duration in minutes (min 1 minute for non-zero elapsed)
+        elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
+        duration_minutes = max(0.0, elapsed.total_seconds() / 60)
+        credited_minutes = max(1, int(duration_minutes)) if duration_minutes > 0 else 0
+        work_log.duration_minutes = credited_minutes
+        work_log.summary = summary
+        
+        # Update task's cached total time
+        task.total_time_spent += credited_minutes
+        task.timer_started_at = None
+        
+        session.add(work_log)
+        session.add(task)
+        session.commit()
+        session.refresh(work_log)
+        
+        # S Y N C
+        _sync_service().push_update(work_log)
+        audit_log(
+            "stop_timer",
+            "task",
+            actor=user_id,
+            details={"task_id": task_id, "work_log_id": work_log.id, "credited_minutes": credited_minutes},
         )
-        work_log = session.exec(statement).first()
+        clear_cache_safe()
         
-        if work_log:
-            now = utc_now_naive()
-            work_log.end_time = now
-            
-            # Calculate duration in minutes (min 1 minute)
-            elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
-            duration_minutes = max(0.0, elapsed.total_seconds() / 60)
-            credited_minutes = max(1, int(duration_minutes)) if duration_minutes > 0 else 0
-            work_log.duration_minutes = credited_minutes
-            work_log.summary = summary
-            
-            # Update task's cached total time
-            task.total_time_spent += credited_minutes
-            task.timer_started_at = None
-            
-            session.add(work_log)
-            session.add(task)
-            session.commit()
-            session.refresh(work_log)
-            
-            # S Y N C
-            _sync_service().push_update(work_log)
-            clear_cache_safe()
-            
-            return work_log
-        
-        return None
+        return work_log
 
 
-def _stop_all_active_timers(session: Session, user_id: str) -> int:
+def _stop_all_active_timers(session: Session, user_id: str, exclude_task_id: Optional[int] = None) -> int:
     """Internal: Stop all active timers for a user. Returns count stopped."""
     # Find all tasks with active timers for this user
     statement = (
@@ -1225,32 +1522,29 @@ def _stop_all_active_timers(session: Session, user_id: str) -> int:
         .where(_goal_owner_predicate_by_username(user_id))
         .where(Task.timer_started_at.isnot(None))
     )
+    if exclude_task_id is not None:
+        statement = statement.where(Task.id != exclude_task_id)
     active_tasks = session.exec(statement).all()
     
     count = 0
     for task in active_tasks:
         # Find and close open work logs
-        work_log_stmt = (
-            select(WorkLog)
-            .where(WorkLog.task_id == task.id)
-            .where(WorkLog.end_time.is_(None))
-        )
-        work_log = session.exec(work_log_stmt).first()
+        work_log = _get_active_work_log_for_task(session, task.id)
         
         if work_log:
             now = utc_now_naive()
             work_log.end_time = now
             elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
-            duration_minutes = int(elapsed.total_seconds() / 60)
+            duration_minutes = max(0, int(elapsed.total_seconds() / 60))
             work_log.duration_minutes = duration_minutes
             
             task.total_time_spent += duration_minutes
             session.add(work_log)
-        
+
         task.timer_started_at = None
         session.add(task)
         count += 1
-    
+
     return count
 
 

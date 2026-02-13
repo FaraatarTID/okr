@@ -34,9 +34,6 @@ def sync_data_to_db(username: str, data: Dict[Any, Any]):
                 # Recursively sync children starting from the NEXT level (OBJECTIVE)
                 _sync_children(session, nodes, node, sql_goal.id, "GOAL", username)
         
-        # 3. COMMIT EVERYTHING
-        session.commit()
-        
         # 2. CLEANUP PHASE
         # Delete SQL nodes that are no longer in JSON
         current_external_ids = set(nodes.keys())
@@ -68,11 +65,14 @@ def _cleanup_stale_nodes(session, username, current_ids: set):
     def clean_model(model_class, parent_field, parent_ids):
         if not parent_ids: return []
         items = session.exec(select(model_class).where(getattr(model_class, parent_field).in_(parent_ids))).all()
+        kept_ids = []
         for item in items:
             if item.external_id not in current_ids:
                 session.delete(item)
-        session.commit()
-        return [i.id for i in items if i.external_id in current_ids]
+            else:
+                kept_ids.append(item.id)
+        session.flush()
+        return [item_id for item_id in kept_ids if item_id is not None]
 
     # Objectives
     o_ids = clean_model(Objective, "goal_id", goal_ids)
@@ -83,13 +83,13 @@ def _cleanup_stale_nodes(session, username, current_ids: set):
     for t in t_items:
         if t.external_id not in current_ids:
             session.delete(t)
-    session.commit()
+    session.flush()
 
     # Finally Goals
     for g in goals:
         if g.external_id not in current_ids:
             session.delete(g)
-    session.commit()
+    session.flush()
 
 def _sync_node(session, model_class, json_node, username, parent_id=None, all_nodes=None):
     node_id = json_node.get("id")
