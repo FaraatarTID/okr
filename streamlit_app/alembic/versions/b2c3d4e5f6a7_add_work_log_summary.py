@@ -10,6 +10,7 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 import sqlmodel
+from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
@@ -21,9 +22,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema: add summary column to work_log."""
-    op.add_column('work_log', sa.Column('summary', sqlmodel.sql.sqltypes.AutoString(), nullable=True))
+    inspector = inspect(op.get_bind())
+    try:
+        column_names = {col["name"] for col in inspector.get_columns("work_log")}
+    except Exception:
+        column_names = set()
+
+    if "summary" not in column_names:
+        op.add_column("work_log", sa.Column("summary", sqlmodel.sql.sqltypes.AutoString(), nullable=True))
 
 
 def downgrade() -> None:
     """Downgrade schema: remove summary column from work_log."""
-    op.drop_column('work_log', 'summary')
+    inspector = inspect(op.get_bind())
+    try:
+        column_names = {col["name"] for col in inspector.get_columns("work_log")}
+    except Exception:
+        column_names = set()
+
+    if "summary" in column_names:
+        op.drop_column("work_log", "summary")

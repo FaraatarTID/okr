@@ -167,6 +167,32 @@ def test_run_migrations_bootstraps_fresh_database(monkeypatch, tmp_path):
         assert table_name in tables
 
 
+def test_run_migrations_adopts_legacy_database_without_alembic_version(monkeypatch, tmp_path):
+    import src.database as database
+    from sqlmodel import SQLModel
+    import src.models  # noqa: F401
+
+    db_path = tmp_path / "okr_legacy_no_alembic.db"
+    db_url = f"sqlite:///{db_path}"
+    engine = database._create_engine(db_url)
+
+    # Simulate a legacy install: app tables exist but Alembic tracking does not.
+    SQLModel.metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(sa_text("DROP TABLE IF EXISTS alembic_version"))
+
+    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
+    monkeypatch.setattr(database, "_engine", engine, raising=False)
+
+    database.run_migrations()
+
+    inspector = database.sa_inspect(database.get_engine())
+    tables = set(inspector.get_table_names())
+    assert "alembic_version" in tables
+    for table_name in {"sync_retry_event", "auth_throttle_state"}:
+        assert table_name in tables
+
+
 def test_owner_backfill_migration_populates_goal_owner_id(tmp_path):
     from alembic import command
     from alembic.config import Config
