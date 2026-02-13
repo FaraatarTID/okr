@@ -133,24 +133,25 @@ def upgrade() -> None:
                   AND owner_id NOT IN (SELECT id FROM "user")
                 """
             )
-            op.execute(
-                """
-                UPDATE "goal"
-                SET owner_id = (
-                    SELECT u.id
-                    FROM "user" AS u
-                    WHERE u.username = "goal".user_id
-                    LIMIT 1
+            if "user_id" in goal_columns:
+                op.execute(
+                    """
+                    UPDATE "goal"
+                    SET owner_id = (
+                        SELECT u.id
+                        FROM "user" AS u
+                        WHERE u.username = "goal".user_id
+                        LIMIT 1
+                    )
+                    WHERE owner_id IS NULL
+                      AND user_id IS NOT NULL
+                      AND EXISTS (
+                          SELECT 1
+                          FROM "user" AS ux
+                          WHERE ux.username = "goal".user_id
+                      )
+                    """
                 )
-                WHERE owner_id IS NULL
-                  AND user_id IS NOT NULL
-                  AND EXISTS (
-                      SELECT 1
-                      FROM "user" AS ux
-                      WHERE ux.username = "goal".user_id
-                  )
-                """
-            )
 
             # Add FK if it is not already enforced.
             if not _has_fk_for_column("goal", "owner_id"):

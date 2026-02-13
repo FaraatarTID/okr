@@ -19,7 +19,6 @@ def format_time(minutes):
     return f"{h:02d}:{m:02d}"
 
 from sqlmodel import select, col
-from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn
 from src.crud import get_goal_tree, get_user_goals, get_session_context, get_user_by_username, get_work_logs_by_date_range, get_all_tasks_by_cycle
@@ -259,24 +258,14 @@ def resolve_owner_username(node) -> str:
                 elif isinstance(node, Objective):
                     goal_obj = session.get(Goal, node.goal_id)
 
-        # Map to display name using owner_id (preferred) or username
+        # Map to display name from owner_id.
         if goal_obj is not None:
             with get_session_context() as session:
-                # Prefer FK owner_id if present
                 owner_uid = getattr(goal_obj, "owner_id", None)
                 if owner_uid:
                     u = session.get(User, owner_uid)
                     if u and (u.display_name or u.username):
                         return u.display_name or u.username
-                # Fallback: legacy username field
-                owner_uname = getattr(goal_obj, "user_id", None)
-                if owner_uname:
-                    # Try map to display_name via Users table by username
-                    from sqlmodel import select
-                    u = session.exec(select(User).where(User.username == owner_uname)).first()
-                    if u and (u.display_name or u.username):
-                        return u.display_name or u.username
-                    return owner_uname
     except Exception:
         pass
     return "Unknown"
@@ -426,6 +415,7 @@ def render_leadership_dashboard_content(username):
     if not metrics:
         st.error("Could not fetch metrics.")
         return
+    users_map = {u.id: u for u in _cached_get_all_users() if u.id is not None}
         
     member_progress_data = metrics.get("member_progress", [])
     member_deadline_data = metrics.get("member_deadlines", [])
@@ -644,8 +634,10 @@ def render_leadership_dashboard_content(username):
                 owner_disp = "Unknown"
                 try:
                     if task.key_result and task.key_result.objective and task.key_result.objective.goal:
-                        owner_name = task.key_result.objective.goal.user_id
-                        owner_disp = member_display_map.get(owner_name, owner_name)
+                        goal_owner_id = task.key_result.objective.goal.owner_id
+                        if goal_owner_id and goal_owner_id in users_map:
+                            user_obj = users_map[goal_owner_id]
+                            owner_disp = user_obj.display_name or user_obj.username
                 except Exception:
                     owner_disp = "Unknown"
 
@@ -1556,9 +1548,7 @@ def render_inspector_content(node_id, node_type, username):
                   elap = int((ensure_utc(utc_now_naive()) - ensure_utc(start_t)).total_seconds() / 60)
                   st.info(f"Timer Running: {elap}m")
                   
-             # Permission check: Admin/Manager or Assigned/Creator
-             # For now, simplify to Admin/Manager or the user is the owner of the goal?
-             # Let's check Goal user_id for simplicity as we are refactoring.
+             # Permission check: enforced in CRUD ownership rules.
              can_track = bool(username)
              
              if can_track:
@@ -2007,7 +1997,7 @@ def render_level(username):
                 items = session.exec(
                     select(Goal)
                     .where(
-                        or_(Goal.owner_id == user_obj.id, Goal.user_id == username),
+                        Goal.owner_id == user_obj.id,
                         Goal.cycle_id == cycle_id
                     )
                     .options(selectinload(Goal.objectives).selectinload(Objective.key_results))

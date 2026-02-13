@@ -121,8 +121,7 @@ class Goal(NodeBase, table=True):
     )
     
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: str = Field(index=True)  # Legacy username string
-    owner_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)  # FK to User table
+    owner_id: int = Field(foreign_key="user.id", index=True)  # FK to User table
     cycle_id: Optional[int] = Field(default=None, foreign_key="cycle.id", index=True)
     # Tags (Stored as JSON string or comma-separated)
     strategy_tags: Optional[str] = Field(default="[]")
@@ -341,7 +340,7 @@ class CheckIn(SQLModel, table=True):
 class GoalRead(NodeBase):
     """Goal with its objectives for reading."""
     id: int
-    user_id: str
+    owner_id: int
 
 
 class DashboardGoal(SQLModel):

@@ -5,7 +5,6 @@ from src.database import get_session_context
 from src.models import Goal, Objective, KeyResult, Task, WorkLog, User
 from src.utils.time_utils import utc_now_naive
 from sqlmodel import select
-from sqlalchemy import or_
 
 def sync_data_to_db(username: str, data: Dict[Any, Any]):
     """
@@ -43,7 +42,7 @@ def _cleanup_stale_nodes(session, username, current_ids: set):
     """Removes records from DB that were deleted from JSON."""
     from src.models import Goal, Objective, KeyResult, Task
     
-    # 1. Get all user goals (owner_id preferred, username fallback)
+    # 1. Get all user goals
     owner_id_subq = (
         select(User.id)
         .where(User.username == username)
@@ -51,7 +50,7 @@ def _cleanup_stale_nodes(session, username, current_ids: set):
         .scalar_subquery()
     )
     goals = session.exec(
-        select(Goal).where(or_(Goal.owner_id == owner_id_subq, Goal.user_id == username))
+        select(Goal).where(Goal.owner_id == owner_id_subq)
     ).all()
     goal_ids = [g.id for g in goals]
     if not goal_ids: return
@@ -152,8 +151,9 @@ def _sync_node(session, model_class, json_node, username, parent_id=None, all_no
         if model_class == Goal:
             owner = session.exec(select(User).where(User.username == username)).first()
             owner_id = owner.id if owner and owner.id is not None else None
+            if owner_id is None:
+                raise ValueError(f"Cannot sync goal for unknown user '{username}'")
             new_node = Goal(
-                user_id=username,
                 owner_id=owner_id,
                 title=fields["title"],
                 description=fields["description"],
