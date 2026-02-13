@@ -6,13 +6,14 @@ import streamlit as st
 from datetime import datetime
 from typing import Optional, Callable
 
+from src.utils.time_utils import ensure_utc, utc_now_naive
 
 def format_elapsed_time(start_time: datetime) -> str:
     """Format elapsed time as HH:MM:SS."""
     if not start_time:
         return "00:00:00"
     
-    elapsed = datetime.utcnow() - start_time
+    elapsed = ensure_utc(utc_now_naive()) - ensure_utc(start_time)
     total_seconds = int(elapsed.total_seconds())
     
     hours = total_seconds // 3600

@@ -99,6 +99,7 @@ def render_login():
                     st.session_state["display_name"] = user.display_name
                     st.session_state["user_role"] = user.role.value
                     st.session_state["manager_id"] = user.manager_id
+                    st.session_state["must_change_password"] = bool(user.must_change_password)
                     
                     # Fetch manager username if applicable
                     if user.manager_id:
@@ -121,6 +122,62 @@ def render_login():
 
 
 
+
+
+def _clear_user_session():
+    for key in [
+        "user_id",
+        "username",
+        "display_name",
+        "user_role",
+        "manager_id",
+        "manager_username",
+        "nav_stack",
+        "active_cycle_id",
+        "active_report_mode",
+        "active_timer_node_id",
+        "active_inspector_id",
+        "must_change_password",
+    ]:
+        if key in st.session_state:
+            del st.session_state[key]
+
+
+def render_password_reset_gate():
+    st.markdown("## Change Your Password")
+    st.warning("For security, you must change your temporary password before continuing.")
+
+    user_id = st.session_state.get("user_id")
+    if not user_id:
+        _clear_user_session()
+        st.rerun()
+
+    if st.button("Logout"):
+        _clear_user_session()
+        st.rerun()
+
+    with st.form("force_password_change_form"):
+        new_pw = st.text_input("New Password", type="password")
+        confirm_pw = st.text_input("Confirm Password", type="password")
+        submitted = st.form_submit_button("Update Password", type="primary")
+
+    if not submitted:
+        return
+    if not new_pw:
+        st.error("Password is required.")
+        return
+    if len(new_pw) < 8:
+        st.error("Use at least 8 characters.")
+        return
+    if new_pw != confirm_pw:
+        st.error("Passwords do not match.")
+        return
+    if reset_user_password(user_id, new_pw):
+        st.session_state["must_change_password"] = False
+        st.success("Password updated successfully.")
+        time.sleep(0.7)
+        st.rerun()
+    st.error("Failed to update password.")
 
 
 def render_app(username):
@@ -161,17 +218,13 @@ def render_app(username):
             )
             st.markdown("Or set an environment variable `PRODUCTION=true` before starting the app.")
     if st.sidebar.button("🚪 Logout"):
-        # Clear all user-related session state
-        for key in ["user_id", "username", "display_name", "user_role", "nav_stack", 
-                    "active_cycle_id", "active_report_mode", "active_timer_node_id", "active_inspector_id"]:
-            if key in st.session_state:
-                del st.session_state[key]
+        _clear_user_session()
         st.rerun()
     
     # Admin Panel Button (Admin only)
     if st.session_state.get("user_role") == "admin":
         admin_user = get_user_by_id(st.session_state.get("user_id"))
-        if admin_user and verify_password("admin", admin_user.password_hash):
+        if admin_user and (admin_user.must_change_password or verify_password("admin", admin_user.password_hash)):
             st.sidebar.warning("Default admin password is still active. Change it in Admin Panel.")
         if st.sidebar.button("👑 Admin Panel", use_container_width=True):
             st.session_state.active_report_mode = "Admin"
@@ -387,12 +440,26 @@ def render_app(username):
                 render_create_task_dialog(parent_id, username)
 
 def main():
+    if not st.session_state.get("_bootstrap_ready"):
+        init_database()
+        ensure_admin_exists()
+        st.session_state["_bootstrap_ready"] = True
+
     if "user_id" not in st.session_state:
         render_login()
         return
 
-    init_database() # Ensure tables exist (after login)
-    ensure_admin_exists() # Create default admin if no users
+    current_user = get_user_by_id(st.session_state["user_id"])
+    if not current_user or not current_user.is_active:
+        _clear_user_session()
+        st.error("Your session is no longer valid. Please log in again.")
+        return
+
+    st.session_state["must_change_password"] = bool(current_user.must_change_password)
+    if st.session_state.get("must_change_password"):
+        render_password_reset_gate()
+        return
+
     render_app(st.session_state["username"])
 
 if __name__ == "__main__":

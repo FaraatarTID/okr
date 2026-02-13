@@ -14,6 +14,7 @@ clear_mappers()
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
+from src.utils.time_utils import utc_now_naive
 
 
 class TaskStatus(str, Enum):
@@ -42,10 +43,12 @@ class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
     password_hash: str
+    must_change_password: bool = Field(default=False, index=True)
+    password_changed_at: Optional[datetime] = None
     display_name: Optional[str] = None
     role: UserRole = Field(default=UserRole.MEMBER)
     manager_id: Optional[int] = Field(default=None, foreign_key="user.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now_naive)
     is_active: bool = Field(default=True)
 
 
@@ -58,7 +61,7 @@ class NodeBase(SQLModel):
     title: str = Field(index=True)
     description: Optional[str] = None
     progress: int = Field(default=0, ge=0, le=100)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now_naive)
     updated_at: Optional[datetime] = None
     is_expanded: bool = Field(default=True)
     external_id: Optional[str] = Field(default=None, index=True)
@@ -121,7 +124,7 @@ class Retrospective(SQLModel, table=True):
     week_start_date: datetime = Field(index=True) # To identify the week
     content: str
     sentiment: Optional[str] = None # For future AI analysis
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now_naive)
     
     # Relationships
     user: "src.models.User" = Relationship()
@@ -181,6 +184,8 @@ class Task(NodeBase, table=True):
     __tablename__ = "task"
     __table_args__ = (
         Index("ix_task_status_kr", "status", "key_result_id"),
+        Index("ix_task_timer_started_at", "timer_started_at"),
+        Index("ix_task_deadline_progress", "deadline", "progress"),
         {"extend_existing": True}
     )
     
@@ -211,7 +216,11 @@ class Task(NodeBase, table=True):
 class WorkLog(SQLModel, table=True):
     """Time log entry for a specific task."""
     __tablename__ = "work_log"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        Index("ix_work_log_task_start", "task_id", "start_time"),
+        Index("ix_work_log_start_time", "start_time"),
+        {"extend_existing": True},
+    )
     
     id: Optional[int] = Field(default=None, primary_key=True)
     task_id: int = Field(foreign_key="task.id", index=True)
@@ -242,14 +251,17 @@ class WeeklyPlan(SQLModel, table=True):
     priority_2: Optional[str] = None
     priority_3: Optional[str] = None
     
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now_naive)
     is_active: bool = Field(default=True)
 
 
 class CheckIn(SQLModel, table=True):
     """Weekly check-in for a Key Result."""
     __tablename__ = "check_in"
-    __table_args__ = {"extend_existing": True}
+    __table_args__ = (
+        Index("ix_check_in_kr_created", "key_result_id", "created_at"),
+        {"extend_existing": True},
+    )
     
     id: Optional[int] = Field(default=None, primary_key=True)
     key_result_id: int = Field(foreign_key="key_result.id", index=True)
@@ -257,7 +269,7 @@ class CheckIn(SQLModel, table=True):
     value: float  # The metric value at this time
     confidence_score: int = Field(default=5, ge=0, le=10) # 0-10 scale
     comment: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=utc_now_naive)
     
     # Relationships
     key_result: Optional["src.models.KeyResult"] = Relationship(back_populates="check_ins")
@@ -308,4 +320,4 @@ class AnalysisContext(SQLModel):
 @event.listens_for(NodeBase, 'before_update', propagate=True)
 def timestamp_before_update(mapper, connection, target):
     """Automatically update updated_at timestamp before update."""
-    target.updated_at = datetime.utcnow()
+    target.updated_at = utc_now_naive()

@@ -107,9 +107,15 @@ def create_db_and_tables():
         print("Database migrations applied successfully.")
     except Exception as e:
         print(f"Migration failed: {e}")
-        # Fallback for dev: try create_all if migration fails (e.g. if alembic table missing)
-        # But really we should fix the migration.
-        pass
+        allow_continue = os.getenv("ALLOW_MIGRATION_FAILURE", "").strip().lower() in {
+            "1", "true", "yes", "y", "on"
+        }
+        if is_production() or not allow_continue:
+            raise RuntimeError(
+                "Database migration failed. Fix migrations before startup, or set "
+                "ALLOW_MIGRATION_FAILURE=true for local debugging only."
+            ) from e
+        print("ALLOW_MIGRATION_FAILURE=true: continuing despite migration error.")
 
 def get_session() -> Session:
     """Get a new database session."""

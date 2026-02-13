@@ -4,9 +4,11 @@ Provides efficient data access with JOINs for dashboard and tree loading.
 """
 from sqlmodel import Session, select, col, delete
 from sqlalchemy.orm import selectinload
+from sqlalchemy import and_, func, or_
 import json
 from typing import Optional, List
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from src.utils.time_utils import ensure_utc, to_epoch_millis, utc_now_naive
 def _sync_service():
     from src.services.sheet_sync import get_sync_service
     return get_sync_service()
@@ -36,13 +38,21 @@ def verify_password(password: str, password_hash: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), password_hash.encode('utf-8'))
 
 
-def create_user(username: str, password: str, role: UserRole = UserRole.MEMBER, 
-                display_name: str = None, manager_id: int = None) -> User:
+def create_user(
+    username: str,
+    password: str,
+    role: UserRole = UserRole.MEMBER,
+    display_name: str = None,
+    manager_id: int = None,
+    must_change_password: bool = False,
+) -> User:
     """Create a new user with hashed password."""
     with get_session_context() as session:
         user = User(
             username=username,
             password_hash=hash_password(password),
+            must_change_password=must_change_password,
+            password_changed_at=None if must_change_password else utc_now_naive(),
             display_name=display_name or username,
             role=role,
             manager_id=manager_id
@@ -63,6 +73,28 @@ def get_user_by_username(username: str) -> Optional[User]:
         statement = select(User).where(User.username == username)
         return session.exec(statement).first()
 
+
+def _goal_owner_predicate_by_username(username: str):
+    """Match goals owned by username via either legacy or normalized ownership fields."""
+    owner_id_subq = (
+        select(User.id)
+        .where(User.username == username)
+        .limit(1)
+        .scalar_subquery()
+    )
+    return or_(Goal.owner_id == owner_id_subq, Goal.user_id == username)
+
+
+def _goal_owner_predicate_by_user_id(user_id: int):
+    """Match goals owned by user id, including legacy username-owned records."""
+    username_subq = (
+        select(User.username)
+        .where(User.id == user_id)
+        .limit(1)
+        .scalar_subquery()
+    )
+    return or_(Goal.owner_id == user_id, Goal.user_id == username_subq)
+
 def get_user_goals(username: str, cycle_id: int):
     """Fetch top-level Goals for a user in a specific cycle with eager loaded children."""
     with get_session_context() as session:
@@ -73,7 +105,7 @@ def get_user_goals(username: str, cycle_id: int):
         # Query Goals with eager loading of Objectives
         # We also load Key Results for those objectives so UI cards can show child counts
         statement = select(Goal).where(
-            Goal.owner_id == user.id,
+            or_(Goal.owner_id == user.id, Goal.user_id == username),
             Goal.cycle_id == cycle_id
         ).options(
             selectinload(Goal.objectives).selectinload(Objective.key_results)
@@ -141,13 +173,15 @@ def update_user(user_id: int, display_name: str = None, role: UserRole = None,
         return user
 
 
-def reset_user_password(user_id: int, new_password: str) -> bool:
+def reset_user_password(user_id: int, new_password: str, require_change: bool = False) -> bool:
     """Reset a user's password."""
     with get_session_context() as session:
         user = session.get(User, user_id)
         if not user:
             return False
         user.password_hash = hash_password(new_password)
+        user.must_change_password = bool(require_change)
+        user.password_changed_at = None if require_change else utc_now_naive()
         session.add(user)
         session.commit()
         session.refresh(user)
@@ -166,6 +200,8 @@ def ensure_admin_exists():
             admin = User(
                 username="admin",
                 password_hash=hash_password("admin"),
+                must_change_password=True,
+                password_changed_at=None,
                 display_name="Administrator",
                 role=UserRole.ADMIN
             )
@@ -174,6 +210,14 @@ def ensure_admin_exists():
             audit_log("create", "user", actor="admin", details={"role": UserRole.ADMIN.value})
             clear_cache_safe()
             return True
+        admin = session.exec(select(User).where(User.username == "admin")).first()
+        if admin and verify_password("admin", admin.password_hash) and not admin.must_change_password:
+            admin.must_change_password = True
+            admin.password_changed_at = None
+            session.add(admin)
+            session.commit()
+            audit_log("update", "user", actor="admin", details={"forced_password_change": True})
+            clear_cache_safe()
     return False
 
 
@@ -215,6 +259,37 @@ def get_check_ins(kr_id: int) -> List[CheckIn]:
         statement = select(CheckIn).where(CheckIn.key_result_id == kr_id).order_by(col(CheckIn.created_at).desc())
         return list(session.exec(statement).all())
 
+
+def _get_latest_checkins_by_kr(session: Session, kr_ids: List[int]) -> dict:
+    """Batch-fetch latest check-in per KR to avoid N+1 query patterns."""
+    if not kr_ids:
+        return {}
+    latest_subq = (
+        select(
+            CheckIn.key_result_id.label("kr_id"),
+            func.max(CheckIn.created_at).label("max_created_at"),
+        )
+        .where(CheckIn.key_result_id.in_(kr_ids))
+        .group_by(CheckIn.key_result_id)
+        .subquery()
+    )
+    latest_rows = session.exec(
+        select(CheckIn).join(
+            latest_subq,
+            and_(
+                CheckIn.key_result_id == latest_subq.c.kr_id,
+                CheckIn.created_at == latest_subq.c.max_created_at,
+            ),
+        )
+    ).all()
+    latest_map = {}
+    for row in latest_rows:
+        # If timestamps tie, keep the highest PK to produce deterministic output.
+        existing = latest_map.get(row.key_result_id)
+        if existing is None or (row.id or 0) > (existing.id or 0):
+            latest_map[row.key_result_id] = row
+    return latest_map
+
 def get_krs_needing_checkin(user_id: str, cycle_id: int, days_threshold: int = 7) -> List[KeyResult]:
     """
     Get KRs that haven't had a check-in within the threshold days.
@@ -225,25 +300,21 @@ def get_krs_needing_checkin(user_id: str, cycle_id: int, days_threshold: int = 7
             .join(Objective)
             .join(Goal)
             .where(Goal.cycle_id == cycle_id)
-            .where(Goal.user_id == user_id)
+            .where(_goal_owner_predicate_by_username(user_id))
             .options(selectinload(KeyResult.tasks))
         )
         krs = session.exec(statement).all()
         
         needing_update = []
-        now = datetime.utcnow()
+        now = ensure_utc(utc_now_naive())
         threshold = now - timedelta(days=days_threshold)
+        latest_by_kr = _get_latest_checkins_by_kr(session, [kr.id for kr in krs if kr.id is not None])
         
         for kr in krs:
-            # Get latest check-in
-            latest_checkin = session.exec(
-                select(CheckIn)
-                .where(CheckIn.key_result_id == kr.id)
-                .order_by(col(CheckIn.created_at).desc())
-                .limit(1)
-            ).first()
+            latest_checkin = latest_by_kr.get(kr.id)
             
-            if not latest_checkin or latest_checkin.created_at < threshold:
+            latest_created_at = ensure_utc(latest_checkin.created_at) if latest_checkin else None
+            if not latest_checkin or not latest_created_at or latest_created_at < threshold:
                 needing_update.append(kr)
                 
         return needing_update
@@ -332,114 +403,6 @@ def delete_cycle(cycle_id: int) -> bool:
         return True
 
 # ============================================================================
-# LEADERSHIP ANALYTICS (Phase 3)
-# ============================================================================
-
-def get_leadership_metrics(user_ids: List[str], cycle_id: int):
-    """
-    Aggregate metrics for the Strategic Health Dashboard.
-    Returns hygiene %, confidence trends, and heatmap data.
-    """
-    with get_session_context() as session:
-        # 1. Get all KRs in this cycle for selected users
-        statement = (
-            select(KeyResult)
-            .join(Objective)
-            .join(Goal)
-            .where(Goal.cycle_id == cycle_id)
-            .where(Goal.owner_id.in_(user_ids))
-        )
-        krs = session.exec(statement).all()
-        
-        if not krs:
-            return None
-            
-        total_krs = len(krs)
-        now = datetime.utcnow()
-        week_ago = now - timedelta(days=7)
-        ten_days_ago = now - timedelta(days=10)
-        
-        updated_count = 0
-        total_confidence = 0
-        confidence_count = 0
-        heatmap_data = []
-        at_risk = []
-        
-        for kr in krs:
-            # Check hygiene
-            latest_checkin = session.exec(
-                select(CheckIn)
-                .where(CheckIn.key_result_id == kr.id)
-                .order_by(col(CheckIn.created_at).desc())
-                .limit(1)
-            ).first()
-            
-            if latest_checkin:
-                if latest_checkin.created_at >= week_ago:
-                    updated_count += 1
-                
-                total_confidence += latest_checkin.confidence_score
-                confidence_count += 1
-                
-            # Parse AI analysis for heatmap
-            efficiency = 0
-            effectiveness = 0
-            has_ai = False
-            if kr.gemini_analysis:
-                try:
-                    analysis = json.loads(kr.gemini_analysis)
-                    efficiency = analysis.get("efficiency_score") or 0
-                    effectiveness = analysis.get("effectiveness_score") or 0
-                    has_ai = True
-                except:
-                    pass
-            
-            if has_ai:
-                heatmap_data.append({
-                    "title": kr.title,
-                    "efficiency": efficiency,
-                    "effectiveness": effectiveness,
-                    "confidence": latest_checkin.confidence_score if latest_checkin else 5
-                })
-            
-            # Risk Detection
-            is_at_risk = False
-            risk_reason = []
-            
-            if latest_checkin and latest_checkin.confidence_score < 4:
-                is_at_risk = True
-                risk_reason.append("Low Confidence")
-            
-            if not latest_checkin or latest_checkin.created_at < ten_days_ago:
-                is_at_risk = True
-                risk_reason.append("Stale Data (>10d)")
-                
-            if kr.gemini_analysis:
-                 try:
-                    analysis = json.loads(kr.gemini_analysis)
-                    if analysis.get("effectiveness_score", 100) < 50:
-                        is_at_risk = True
-                        risk_reason.append("Low Strategy Fit")
-                 except: pass
-            
-            if is_at_risk:
-                at_risk.append({
-                    "id": kr.id,
-                    "title": kr.title,
-                    "reason": ", ".join(risk_reason),
-                    "confidence": latest_checkin.confidence_score if latest_checkin else "N/A"
-                })
-
-        return {
-            "hygiene_pct": (updated_count / total_krs * 100) if total_krs > 0 else 0,
-            "avg_confidence": (total_confidence / confidence_count) if confidence_count > 0 else 0,
-            "heatmap_data": heatmap_data,
-            "at_risk": at_risk,
-            "total_krs": total_krs
-        }
-
-
-# ============================================================================
 # DASHBOARD QUERIES (Efficient JOINs)
 # ============================================================================
 
@@ -449,7 +412,7 @@ def get_dashboard_data(user_id: str, cycle_id: Optional[int] = None) -> List[Das
     Uses JOINs to count strategies and objectives without loading full tree.
     """
     with get_session_context() as session:
-        statement = select(Goal).where(Goal.user_id == user_id)
+        statement = select(Goal).where(_goal_owner_predicate_by_username(user_id))
         if cycle_id:
             statement = statement.where(Goal.cycle_id == cycle_id)
             
@@ -495,7 +458,7 @@ def get_goal_tree(goal_id: int) -> Optional[Goal]:
 def get_user_goals_simple(user_id: str, cycle_id: Optional[int] = None) -> List[Goal]:
     """Get all goals for a user (without full tree)."""
     with get_session_context() as session:
-        statement = select(Goal).where(Goal.user_id == user_id)
+        statement = select(Goal).where(_goal_owner_predicate_by_username(user_id))
         if cycle_id:
             statement = statement.where(Goal.cycle_id == cycle_id)
         goals = session.exec(statement).all()
@@ -511,10 +474,15 @@ def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optio
     with get_session_context() as session:
         # Get owner_id from username
         user_obj = session.exec(select(User).where(User.username == user_id)).first()
-        owner_id = user_obj.id if user_obj else None
+        if not user_obj or user_obj.id is None:
+            raise ValueError(f"User '{user_id}' not found")
+        owner_id = user_obj.id
+        canonical_username = user_obj.username
         
         # Get sibling count for auto-numbering
-        statement = select(Goal).where(Goal.user_id == user_id)
+        statement = select(Goal).where(
+            or_(Goal.owner_id == owner_id, Goal.user_id == canonical_username)
+        )
         if cycle_id:
             statement = statement.where(Goal.cycle_id == cycle_id)
         
@@ -524,13 +492,13 @@ def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optio
             title = f"Goal #{len(existing) + 1}"
         
         goal = Goal(
-            user_id=user_id,
+            user_id=canonical_username,
             owner_id=owner_id,
             title=title,
             description=description,
             cycle_id=cycle_id,
             external_id=external_id,
-            created_at=created_at or datetime.utcnow(),
+            created_at=created_at or utc_now_naive(),
             strategy_tags=strategy_tags
         )
         session.add(goal)
@@ -562,7 +530,7 @@ def create_objective(goal_id: int, title: str, description: str = "", external_i
             title=title,
             description=description,
             external_id=external_id,
-            created_at=created_at or datetime.utcnow()
+            created_at=created_at or utc_now_naive()
         )
         session.add(objective)
         session.commit()
@@ -596,7 +564,7 @@ def create_key_result(objective_id: int, title: str, description: str = "",
             target_value=target_value,
             unit=unit,
             external_id=external_id,
-            created_at=created_at or datetime.utcnow(),
+            created_at=created_at or utc_now_naive(),
             initiative_tags=initiative_tags
         )
         session.add(key_result)
@@ -630,7 +598,7 @@ def create_task(key_result_id: int, title: str = "", description: str = "",
             description=description,
             estimated_minutes=estimated_minutes,
             external_id=external_id,
-            created_at=created_at or datetime.utcnow(),
+            created_at=created_at or utc_now_naive(),
             start_date=start_date,
             deadline=deadline,
             assignee_id=assignee_id
@@ -686,7 +654,7 @@ def update_goal(goal_id: int, **updates) -> Optional[Goal]:
             for key, value in updates.items():
                 if hasattr(goal, key):
                     setattr(goal, key, value)
-            goal.updated_at = datetime.utcnow()
+            goal.updated_at = utc_now_naive()
             session.add(goal)
             session.commit()
             session.refresh(goal)
@@ -710,7 +678,7 @@ def update_key_result_analysis(key_result_id: int, analysis_json: str) -> Option
         kr = session.get(KeyResult, key_result_id)
         if kr:
             kr.gemini_analysis = analysis_json
-            kr.analysis_updated_at = datetime.utcnow()
+            kr.analysis_updated_at = utc_now_naive()
             session.add(kr)
             session.commit()
             session.refresh(kr)
@@ -725,7 +693,7 @@ def update_objective(objective_id: int, **updates) -> Optional[Objective]:
         if item:
             for key, value in updates.items():
                 if hasattr(item, key): setattr(item, key, value)
-            item.updated_at = datetime.utcnow()
+            item.updated_at = utc_now_naive()
             session.add(item)
             session.commit()
             session.refresh(item)
@@ -743,7 +711,7 @@ def update_key_result(key_result_id: int, **updates) -> Optional[KeyResult]:
                     except Exception:
                         value = str(value)
                 if hasattr(item, key): setattr(item, key, value)
-            item.updated_at = datetime.utcnow()
+            item.updated_at = utc_now_naive()
             session.add(item)
             session.commit()
             session.refresh(item)
@@ -772,7 +740,7 @@ def update_task(task_id: int, title: str = None,
             if hasattr(task, key):
                 setattr(task, key, value)
 
-        task.updated_at = datetime.utcnow()
+        task.updated_at = utc_now_naive()
         session.add(task)
         session.commit()
         session.refresh(task)
@@ -896,15 +864,16 @@ def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
             .join(KeyResult)
             .join(Objective)
             .join(Goal)
-            .where(Goal.user_id == user_id)
+            .where(_goal_owner_predicate_by_username(user_id))
             .where(Task.timer_started_at.isnot(None))
+            .options(selectinload(Task.key_result).selectinload(KeyResult.objective))
         )
         task = session.exec(statement).first()
         
         if task:
-            # Get ancestor titles for context
-            kr = session.get(KeyResult, task.key_result_id)
-            objective = session.get(Objective, kr.objective_id) if kr else None
+            # KeyResult/Objective are eager loaded above to avoid follow-up queries.
+            kr = task.key_result
+            objective = kr.objective if kr else None
             
             return TaskWithTimer(
                 id=task.id,
@@ -928,18 +897,26 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
         # First, stop any running timer
         active = _stop_all_active_timers(session, user_id)
         
-        task = session.get(Task, task_id)
+        # Enforce ownership on timer start to prevent cross-user task access.
+        task = session.exec(
+            select(Task)
+            .join(KeyResult)
+            .join(Objective)
+            .join(Goal)
+            .where(Task.id == task_id)
+            .where(_goal_owner_predicate_by_username(user_id))
+        ).first()
         if not task:
-            raise ValueError(f"Task {task_id} not found")
+            raise ValueError(f"Task {task_id} not found for user '{user_id}'")
         
         # Mark timer as started on task
-        task.timer_started_at = datetime.utcnow()
+        task.timer_started_at = utc_now_naive()
         session.add(task)
         
         # Create new WorkLog entry
         work_log = WorkLog(
             task_id=task_id,
-            start_time=datetime.utcnow()
+            start_time=utc_now_naive()
         )
         session.add(work_log)
         session.commit()
@@ -952,14 +929,23 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
         return work_log
 
 
-def stop_timer(task_id: int, summary: str = None) -> Optional[WorkLog]:
+def stop_timer(task_id: int, summary: str = None, user_id: Optional[str] = None) -> Optional[WorkLog]:
     """
     Stop the timer for a task.
     Updates the WorkLog end_time, calculates duration,
     and updates the parent Task's total_time_spent.
     """
     with get_session_context() as session:
-        task = session.get(Task, task_id)
+        task_statement = select(Task).where(Task.id == task_id)
+        if user_id:
+            task_statement = (
+                task_statement
+                .join(KeyResult)
+                .join(Objective)
+                .join(Goal)
+                .where(_goal_owner_predicate_by_username(user_id))
+            )
+        task = session.exec(task_statement).first()
         if not task or not task.timer_started_at:
             return None
         
@@ -973,11 +959,11 @@ def stop_timer(task_id: int, summary: str = None) -> Optional[WorkLog]:
         work_log = session.exec(statement).first()
         
         if work_log:
-            now = datetime.utcnow()
+            now = utc_now_naive()
             work_log.end_time = now
             
             # Calculate duration in minutes (min 1 minute)
-            elapsed = now - work_log.start_time
+            elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
             duration_minutes = elapsed.total_seconds() / 60
             work_log.duration_minutes = duration_minutes
             work_log.summary = summary
@@ -1008,7 +994,7 @@ def _stop_all_active_timers(session: Session, user_id: str) -> int:
         .join(KeyResult)
         .join(Objective)
         .join(Goal)
-        .where(Goal.user_id == user_id)
+        .where(_goal_owner_predicate_by_username(user_id))
         .where(Task.timer_started_at.isnot(None))
     )
     active_tasks = session.exec(statement).all()
@@ -1024,9 +1010,9 @@ def _stop_all_active_timers(session: Session, user_id: str) -> int:
         work_log = session.exec(work_log_stmt).first()
         
         if work_log:
-            now = datetime.utcnow()
+            now = utc_now_naive()
             work_log.end_time = now
-            elapsed = now - work_log.start_time
+            elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
             duration_minutes = int(elapsed.total_seconds() / 60)
             work_log.duration_minutes = duration_minutes
             
@@ -1047,7 +1033,6 @@ def force_stop_active_timers(user_id: str) -> int:
     """
     with get_session_context() as session:
         from src.models import Task as TableTask, WorkLog as TableWorkLog
-        from datetime import timezone
         # Stop ALL active tasks (emergency cleanup)
         all_active_tasks = session.exec(select(TableTask).where(TableTask.timer_started_at != None)).all()
         
@@ -1059,9 +1044,9 @@ def force_stop_active_timers(user_id: str) -> int:
             # Close any dangling work logs
             active_logs = session.exec(select(TableWorkLog).where(TableWorkLog.task_id == task.id).where(TableWorkLog.end_time == None)).all()
             for log in active_logs:
-                now = datetime.utcnow()
+                now = utc_now_naive()
                 log.end_time = now
-                delta = now - log.start_time.replace(tzinfo=None) # Ensure naive comparison if needed
+                delta = ensure_utc(now) - ensure_utc(log.start_time)
                 log.duration_minutes = int(delta.total_seconds() / 60)
                 session.add(log)
             count += 1
@@ -1081,7 +1066,7 @@ def add_manual_log(task_id: int, duration_minutes: int, note: str = None,
         if not task:
             raise ValueError(f"Task {task_id} not found")
         
-        start_time = log_date or datetime.utcnow()
+        start_time = ensure_utc(log_date) if log_date else utc_now_naive()
         end_time = start_time + timedelta(minutes=duration_minutes)
         
         work_log = WorkLog(
@@ -1137,23 +1122,50 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
     Calculate hygiene, health, and per-member performance metrics.
     Used by Leadership Dashboard to show aggregated team status.
     """
-    from src.models import Goal, Objective, KeyResult, CheckIn, Task, User
-    from sqlalchemy.orm import selectinload
-    
-    with get_session_context() as session:
-        # Resolve usernames to IDs
-        user_objs = session.exec(select(User).where(User.username.in_(usernames))).all()
-        user_id_map = {u.id: (u.display_name or u.username) for u in user_objs}
-        user_ids = list(user_id_map.keys())
-        
-        if not user_ids:
-            return {"hygiene_pct": 0, "avg_confidence": 0, "at_risk_count": 0, "total_krs": 0, "at_risk_list": [], "member_progress": [], "member_deadlines": []}
+    from utils.deadline_utils import get_deadline_status
 
-        # 1. Fetch all Goals -> Objectives -> KRs -> Tasks for these users in this cycle
+    def _empty_payload():
+        return {
+            "hygiene_pct": 0,
+            "avg_confidence": 0,
+            "at_risk_count": 0,
+            "total_krs": 0,
+            "at_risk": [],
+            "member_progress": [],
+            "member_deadlines": [],
+            "heatmap_data": [],
+        }
+
+    def _to_int_score(value):
+        if value is None:
+            return None
+        try:
+            return int(float(value))
+        except Exception:
+            return None
+
+    if not usernames:
+        return _empty_payload()
+
+    with get_session_context() as session:
+        user_objs = session.exec(select(User).where(User.username.in_(usernames))).all()
+        if not user_objs:
+            return _empty_payload()
+
+        user_by_id = {u.id: u for u in user_objs if u.id is not None}
+        selected_user_ids = list(user_by_id.keys())
+        selected_usernames = list(dict.fromkeys(usernames))
+        member_display_map = {u.username: (u.display_name or u.username) for u in user_objs}
+        for uname in selected_usernames:
+            member_display_map.setdefault(uname, uname)
+
+        owner_filters = [Goal.user_id.in_(selected_usernames)]
+        if selected_user_ids:
+            owner_filters.append(Goal.owner_id.in_(selected_user_ids))
+
         statement = (
             select(Goal)
-            .where(Goal.user_id.in_(usernames)) # Note: Goal table uses username in user_id field in some parts of this legacy app logic? 
-            # Actually, looking at Goal model in models.py (I'll check later, but usually it's foreign key)
+            .where(or_(*owner_filters))
             .where(Goal.cycle_id == cycle_id)
             .options(
                 selectinload(Goal.objectives)
@@ -1161,44 +1173,53 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 .selectinload(KeyResult.tasks)
             )
         )
-        # Assuming goal.user_id matches the User.username or User.id? 
-        # In current models.py, Goal.user_id is often a String (username) for legacy reasons.
-        
         goals = session.exec(statement).all()
-        
-        # Aggregate Metrics
+
         all_krs = []
-        member_stats = {uid: {"progress": [], "overdue": 0, "at_risk": 0, "on_track": 0, "completed": 0, "tasks": 0} for uid in usernames}
-        
+        member_stats = {
+            uname: {"progress": [], "overdue": 0, "at_risk": 0, "on_track": 0, "completed": 0, "tasks": 0}
+            for uname in selected_usernames
+        }
+
         for goal in goals:
-            owner = goal.user_id # username
-            if owner not in member_stats: continue
-            
+            owner = None
+            if goal.owner_id in user_by_id:
+                owner = user_by_id[goal.owner_id].username
+            elif goal.user_id:
+                owner = goal.user_id
+            if owner not in member_stats:
+                continue
+
             for obj in goal.objectives:
                 for kr in obj.key_results:
-                    all_krs.append(kr)
+                    all_krs.append((kr, owner))
                     for task in kr.tasks:
-                        member_stats[owner]["tasks"] += 1
-                        member_stats[owner]["progress"].append(task.progress)
-                        
-                        # Deadline Health
+                        stats = member_stats[owner]
+                        progress_value = task.progress or 0
+                        stats["tasks"] += 1
+                        stats["progress"].append(progress_value)
+                        if progress_value >= 100:
+                            stats["completed"] += 1
+
                         if task.deadline:
-                            from utils.deadline_utils import get_deadline_status
                             try:
                                 status_code, _, _ = get_deadline_status(task)
-                                if status_code == "overdue": member_stats[owner]["overdue"] += 1
-                                elif status_code == "at_risk": member_stats[owner]["at_risk"] += 1
-                                else: member_stats[owner]["on_track"] += 1
-                                if task.progress >= 100: member_stats[owner]["completed"] += 1
-                            except: pass
+                                if status_code == "overdue":
+                                    stats["overdue"] += 1
+                                elif status_code == "at_risk":
+                                    stats["at_risk"] += 1
+                                else:
+                                    stats["on_track"] += 1
+                            except Exception:
+                                continue
 
-        # Finalize per-member data
         member_progress = []
         member_deadlines = []
-        for uname, stats in member_stats.items():
+        for uname in selected_usernames:
+            stats = member_stats[uname]
             avg_p = int(sum(stats["progress"]) / len(stats["progress"])) if stats["progress"] else 0
-            disp = member_display_map.get(uname, uname) if 'member_display_map' in locals() else uname
-            
+            disp = member_display_map.get(uname, uname)
+
             member_progress.append({
                 "member": disp,
                 "username": uname,
@@ -1215,59 +1236,74 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 "completed": stats["completed"]
             })
 
-        # Hygiene & Risks
+        if not all_krs:
+            payload = _empty_payload()
+            payload["member_progress"] = member_progress
+            payload["member_deadlines"] = member_deadlines
+            return payload
+
         updated_count = 0
         total_confidence = 0
         conf_count = 0
         at_risk_list = []
-        seven_days_ago = datetime.utcnow() - timedelta(days=7)
-        ten_days_ago = datetime.utcnow() - timedelta(days=10)
+        seven_days_ago = ensure_utc(utc_now_naive()) - timedelta(days=7)
+        ten_days_ago = ensure_utc(utc_now_naive()) - timedelta(days=10)
+        latest_by_kr = _get_latest_checkins_by_kr(
+            session, [kr.id for kr, _ in all_krs if kr.id is not None]
+        )
 
-        for kr in all_krs:
-            latest = session.exec(select(CheckIn).where(CheckIn.key_result_id == kr.id).order_by(CheckIn.created_at.desc()).limit(1)).first()
+        heatmap_data = []
+        for kr, owner in all_krs:
+            latest = latest_by_kr.get(kr.id)
+            analysis = None
+            if kr.gemini_analysis:
+                try:
+                    analysis = json.loads(kr.gemini_analysis)
+                except Exception:
+                    analysis = None
+
+            risk_reasons = []
             if latest:
-                if latest.created_at >= seven_days_ago: updated_count += 1
+                latest_created_at = ensure_utc(latest.created_at)
+                if latest_created_at and latest_created_at >= seven_days_ago:
+                    updated_count += 1
                 total_confidence += latest.confidence_score
                 conf_count += 1
-                
-                risk_reasons = []
-                if latest.confidence_score < 4: risk_reasons.append("Low Confidence")
-                if latest.created_at < ten_days_ago: risk_reasons.append("Stale Data")
-                if kr.gemini_analysis:
-                    try:
-                        an = json.loads(kr.gemini_analysis)
-                        if an.get("effectiveness_score", 100) < 50: risk_reasons.append("Low Strategy Fit")
-                    except: pass
-                
-                if risk_reasons:
-                    at_risk_list.append({"title": kr.title, "owner": kr.objective.goal.user_id, "reason": ", ".join(risk_reasons), "confidence": latest.confidence_score})
+                if latest.confidence_score < 4:
+                    risk_reasons.append("Low Confidence")
+                if not latest_created_at or latest_created_at < ten_days_ago:
+                    risk_reasons.append("Stale Data")
             else:
-                at_risk_list.append({"title": kr.title, "owner": kr.objective.goal.user_id, "reason": "Missing Check-in", "confidence": "N/A"})
+                risk_reasons.append("Missing Check-in")
 
-        # Prepare heatmap / strategic alignment data from KR analysis if available
-        heatmap_data = []
-        for kr in all_krs:
-            try:
-                if kr.gemini_analysis:
-                    import json
-                    an = json.loads(kr.gemini_analysis)
-                    eff = an.get("efficiency_score") or an.get("efficiency") or an.get("efficiency_pct")
-                    eff = int(eff) if eff is not None else None
-                    eff_score = eff if eff is not None else 0
-                    strat = an.get("effectiveness_score") or an.get("strategy_fit") or an.get("effectiveness_pct")
-                    strat = int(strat) if strat is not None else None
-                    strat_score = strat if strat is not None else 0
-                    # Confidence from latest check-in if available
-                    latest = session.exec(select(CheckIn).where(CheckIn.key_result_id == kr.id).order_by(CheckIn.created_at.desc()).limit(1)).first()
-                    conf = latest.confidence_score if latest else 0
-                    heatmap_data.append({
-                        "title": kr.title,
-                        "efficiency": eff_score,
-                        "effectiveness": strat_score,
-                        "confidence": conf
-                    })
-            except Exception:
-                continue
+            if analysis:
+                effectiveness_score = _to_int_score(
+                    analysis.get("effectiveness_score")
+                    or analysis.get("strategy_fit")
+                    or analysis.get("effectiveness_pct")
+                )
+                if effectiveness_score is not None and effectiveness_score < 50:
+                    risk_reasons.append("Low Strategy Fit")
+
+                efficiency_score = _to_int_score(
+                    analysis.get("efficiency_score")
+                    or analysis.get("efficiency")
+                    or analysis.get("efficiency_pct")
+                )
+                heatmap_data.append({
+                    "title": kr.title,
+                    "efficiency": efficiency_score if efficiency_score is not None else 0,
+                    "effectiveness": effectiveness_score if effectiveness_score is not None else 0,
+                    "confidence": latest.confidence_score if latest else 0,
+                })
+
+            if risk_reasons:
+                at_risk_list.append({
+                    "title": kr.title,
+                    "owner": member_display_map.get(owner, owner),
+                    "reason": ", ".join(risk_reasons),
+                    "confidence": latest.confidence_score if latest else "N/A",
+                })
 
         return {
             "hygiene_pct": (updated_count / len(all_krs) * 100) if all_krs else 0,
@@ -1296,7 +1332,7 @@ def get_work_logs_by_date_range(user_id: int, start_date: datetime,
                 .selectinload(KeyResult.objective)
                 .selectinload(Objective.goal)
             )
-            .where(Goal.owner_id == user_id)
+            .where(_goal_owner_predicate_by_user_id(user_id))
             .where(WorkLog.start_time >= start_date)
             .where(WorkLog.start_time <= end_date)
             .order_by(col(WorkLog.start_time).desc())
@@ -1326,18 +1362,30 @@ def get_all_tasks_by_cycle(cycle_id: int) -> List[Task]:
             .join(Objective)
             .join(Goal)
             .where(Goal.cycle_id == cycle_id)
+            .options(
+                selectinload(Task.key_result)
+                .selectinload(KeyResult.objective)
+                .selectinload(Objective.goal)
+            )
         )
         return list(session.exec(statement).all())
 
 
 def get_hours_by_goal(user_id: int, days: int = 7) -> dict:
     """Get total hours worked per goal in the last N days."""
-    end_date = datetime.utcnow()
+    end_date = ensure_utc(utc_now_naive())
     start_date = end_date - timedelta(days=days)
     
     with get_session_context() as session:
         goals = session.exec(
-            select(Goal).where(Goal.owner_id == user_id)
+            select(Goal)
+            .where(_goal_owner_predicate_by_user_id(user_id))
+            .options(
+                selectinload(Goal.objectives)
+                .selectinload(Objective.key_results)
+                .selectinload(KeyResult.tasks)
+                .selectinload(Task.work_logs)
+            )
         ).all()
         
         hours_by_goal = {}
@@ -1351,7 +1399,8 @@ def get_hours_by_goal(user_id: int, days: int = 7) -> dict:
                     for task in kr.tasks:
                         # Sum work logs in date range
                         for log in task.work_logs:
-                            if start_date <= log.start_time <= end_date:
+                            log_start = ensure_utc(log.start_time)
+                            if log_start and start_date <= log_start <= end_date:
                                 total_minutes += log.duration_minutes
             
             hours_by_goal[goal.title] = total_minutes / 60
@@ -1359,9 +1408,9 @@ def get_hours_by_goal(user_id: int, days: int = 7) -> dict:
         return hours_by_goal
 
 
-def get_daily_work_trend(user_id: str, days: int = 7) -> dict:
+def get_daily_work_trend(user_id: int, days: int = 7) -> dict:
     """Get hours worked per day for the last N days."""
-    end_date = datetime.utcnow().replace(hour=23, minute=59, second=59)
+    end_date = utc_now_naive().replace(hour=23, minute=59, second=59)
     start_date = (end_date - timedelta(days=days-1)).replace(hour=0, minute=0, second=0)
     
     logs = get_work_logs_by_date_range(user_id, start_date, end_date)
@@ -1374,7 +1423,7 @@ def get_daily_work_trend(user_id: str, days: int = 7) -> dict:
     
     # Sum logs by day
     for log in logs:
-        day = log.start_time.strftime("%Y-%m-%d")
+        day = ensure_utc(log.start_time).strftime("%Y-%m-%d")
         if day in daily_hours:
             daily_hours[day] += log.duration_minutes / 60
     
@@ -1476,7 +1525,7 @@ def create_weekly_plan(user_id: int, start_date: datetime, end_date: datetime,
 def get_active_weekly_plan(user_id: int, date: datetime = None) -> Optional[WeeklyPlan]:
     """Get the weekly plan active for the given date (default: now)."""
     if date is None:
-        date = datetime.utcnow()
+        date = utc_now_naive()
         
     with get_session_context() as session:
         # Find plan where date is between start and end
@@ -1507,7 +1556,7 @@ def create_retrospective(user_id: int, cycle_id: int, week_start_date: datetime,
         if existing:
             existing.content = content
             existing.sentiment = sentiment
-            existing.created_at = datetime.utcnow()
+            existing.created_at = utc_now_naive()
             session.add(existing)
             session.commit()
             session.refresh(existing)
@@ -1566,7 +1615,9 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
         user = session.exec(select(User).where(User.username == username)).first()
         if not user: return {"nodes": {}, "rootIds": []}
         
-        statement = select(Goal).where(Goal.user_id == user.id)
+        statement = select(Goal).where(
+            or_(Goal.owner_id == user.id, Goal.user_id == user.username)
+        )
         if cycle_id:
             statement = statement.where(Goal.cycle_id == cycle_id)
             
@@ -1593,7 +1644,7 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
                 "description": goal.description,
                 "progress": goal.progress,
                 "children": [],
-                "createdAt": int(goal.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if goal.created_at else None,
+                "createdAt": to_epoch_millis(goal.created_at),
                 "isExpanded": goal.is_expanded,
                 "cycle_id": goal.cycle_id,
                 "strategy_tags": json.loads(goal.strategy_tags) if goal.strategy_tags else [],
@@ -1611,7 +1662,7 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
                     "progress": obj.progress,
                     "children": [],
                     "parentId": g_id,
-                    "createdAt": int(obj.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if obj.created_at else None,
+                    "createdAt": to_epoch_millis(obj.created_at),
                     "isExpanded": obj.is_expanded
                 }
                 
@@ -1637,7 +1688,7 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
                         "progress": kr.progress,
                         "children": [],
                         "parentId": o_id,
-                        "createdAt": int(kr.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if kr.created_at else None,
+                        "createdAt": to_epoch_millis(kr.created_at),
                         "target_value": kr.target_value,
                         "current_value": kr.current_value,
                         "unit": kr.unit,
@@ -1653,8 +1704,8 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
                         work_log = []
                         for log in task.work_logs:
                             work_log.append({
-                                "startedAt": int(log.start_time.replace(tzinfo=timezone.utc).timestamp() * 1000),
-                                "endedAt": int(log.end_time.replace(tzinfo=timezone.utc).timestamp() * 1000) if log.end_time else None,
+                                "startedAt": to_epoch_millis(log.start_time),
+                                "endedAt": to_epoch_millis(log.end_time),
                                 "durationMinutes": log.duration_minutes,
                                 "summary": log.summary
                             })
@@ -1667,12 +1718,12 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
                             "progress": task.progress,
                             "children": [],
                             "parentId": k_id,
-                            "createdAt": int(task.created_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if task.created_at else None,
+                            "createdAt": to_epoch_millis(task.created_at),
                             "isExpanded": task.is_expanded,
                             "status": task.status.value,
                             "timeSpent": task.total_time_spent,
-                            "timerStartedAt": int(task.timer_started_at.replace(tzinfo=timezone.utc).timestamp() * 1000) if task.timer_started_at else None,
-                            "deadline": int(task.deadline.replace(tzinfo=timezone.utc).timestamp() * 1000) if task.deadline else None,
+                            "timerStartedAt": to_epoch_millis(task.timer_started_at),
+                            "deadline": to_epoch_millis(task.deadline),
                             "workLog": work_log
                         }
         

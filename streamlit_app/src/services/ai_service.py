@@ -8,6 +8,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 from dotenv import load_dotenv
 import streamlit as st
+from src.utils.time_utils import utc_now
 
 try:
     from google import genai
@@ -212,7 +213,7 @@ def analyze_efficiency_effectiveness(
             "advice_list": data.get("advice_list", []),
             "gap_analysis": data.get("gap_analysis", ""),
             "summary": data.get("summary", ""),
-            "analyzed_at": datetime.utcnow().isoformat()
+            "analyzed_at": utc_now().isoformat()
         }
         
     except json.JSONDecodeError as e:
@@ -317,7 +318,7 @@ def analyze_objective(objective: Objective,
             "advice_list": data.get("advice_list", []),
             "risk_factors": data.get("risk_factors", []),
             "summary": data.get("summary", ""),
-            "analyzed_at": datetime.utcnow().isoformat()
+            "analyzed_at": utc_now().isoformat()
         }
         
     except Exception as e:
@@ -534,7 +535,7 @@ def analyze_node(node_id: int, node_type: str = "KEY_RESULT"):
             "quality_assessment": data.get("quality_assessment", ""),
             "proposed_tasks": data.get("proposed_tasks", []),
             "summary": data.get("summary", ""),
-            "analyzed_at": datetime.utcnow().isoformat()
+            "analyzed_at": utc_now().isoformat()
         }
     except Exception as e:
         return {"error": str(e)}
