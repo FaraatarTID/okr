@@ -107,12 +107,18 @@ def test_work_logs_and_cycle_tasks_support_legacy_owner_fallback(isolated_db):
         session.flush()
         goal_id = legacy_goal.id
 
-    objective = create_objective(goal_id, "Objective A")
-    key_result = create_key_result(objective.id, "KR A")
-    task = create_task(key_result.id, "Task A")
+    objective = create_objective(goal_id, "Objective A", actor_username="alice")
+    key_result = create_key_result(objective.id, "KR A", actor_username="alice")
+    task = create_task(key_result.id, "Task A", actor_username="alice")
 
     log_start = _utc_now_naive() - timedelta(hours=2)
-    add_manual_log(task.id, duration_minutes=25, note="Focused work", log_date=log_start)
+    add_manual_log(
+        task.id,
+        duration_minutes=25,
+        note="Focused work",
+        log_date=log_start,
+        actor_username="alice",
+    )
 
     logs = get_work_logs_by_date_range(
         user.id,
@@ -149,10 +155,10 @@ def test_timer_start_stop_enforces_task_ownership(isolated_db):
         end_date=_utc_now_naive() + timedelta(days=90),
     )
 
-    goal = create_goal("alice", title="Alice Goal", cycle_id=cycle.id)
-    objective = create_objective(goal.id, "Alice Objective")
-    key_result = create_key_result(objective.id, "Alice KR")
-    task = create_task(key_result.id, "Alice Task")
+    goal = create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
+    objective = create_objective(goal.id, "Alice Objective", actor_username="alice")
+    key_result = create_key_result(objective.id, "Alice KR", actor_username="alice")
+    task = create_task(key_result.id, "Alice Task", actor_username="alice")
 
     started = start_timer(task.id, "alice")
     assert started.task_id == task.id

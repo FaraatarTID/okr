@@ -24,6 +24,53 @@ from src.utils.cache_utils import clear_cache_safe
 import bcrypt
 
 
+_ALLOWED_GOAL_UPDATE_FIELDS = {
+    "title",
+    "description",
+    "progress",
+    "cycle_id",
+    "strategy_tags",
+    "is_expanded",
+    "deadline",
+}
+_ALLOWED_OBJECTIVE_UPDATE_FIELDS = {
+    "title",
+    "description",
+    "progress",
+    "is_expanded",
+    "deadline",
+}
+_ALLOWED_KEY_RESULT_UPDATE_FIELDS = {
+    "title",
+    "description",
+    "progress",
+    "target_value",
+    "current_value",
+    "unit",
+    "initiative_tags",
+    "gemini_analysis",
+    "is_expanded",
+    "deadline",
+}
+_ALLOWED_TASK_UPDATE_KWARGS = {
+    "description",
+    "progress",
+    "deadline",
+    "assignee_id",
+    "is_expanded",
+}
+_UNSET = object()
+
+
+def _validate_update_fields(entity_name: str, updates: dict, allowed_fields: set) -> None:
+    """Raise on update keys that are not explicitly allowed."""
+    invalid_fields = sorted([key for key in updates.keys() if key not in allowed_fields])
+    if invalid_fields:
+        raise ValueError(
+            f"Unsupported {entity_name} update fields: {', '.join(invalid_fields)}"
+        )
+
+
 # ============================================================================
 # USER OPERATIONS (Authentication & Authorization)
 # ============================================================================
@@ -94,6 +141,109 @@ def _goal_owner_predicate_by_user_id(user_id: int):
         .scalar_subquery()
     )
     return or_(Goal.owner_id == user_id, Goal.user_id == username_subq)
+
+
+def _resolve_goal_owner_id(session: Session, goal: Goal) -> Optional[int]:
+    """Resolve goal owner to a User.id, supporting legacy username-only records."""
+    if goal.owner_id is not None:
+        return goal.owner_id
+    if goal.user_id:
+        owner = session.exec(select(User).where(User.username == goal.user_id)).first()
+        if owner and owner.id is not None:
+            return owner.id
+    return None
+
+
+def _can_manage_goal(session: Session, actor: User, goal: Goal) -> bool:
+    """Return True if actor can mutate a goal."""
+    if actor.role == UserRole.ADMIN:
+        return True
+
+    owner_id = _resolve_goal_owner_id(session, goal)
+    if owner_id is None or actor.id is None:
+        return False
+
+    if owner_id == actor.id:
+        return True
+
+    if actor.role == UserRole.MANAGER:
+        owner = session.get(User, owner_id)
+        return bool(owner and owner.manager_id == actor.id)
+
+    return False
+
+
+def _can_manage_owner(session: Session, actor: User, owner_id: Optional[int]) -> bool:
+    """Return True if actor can create/manage nodes owned by owner_id."""
+    if actor.role == UserRole.ADMIN:
+        return True
+    if owner_id is None or actor.id is None:
+        return False
+    if owner_id == actor.id:
+        return True
+    if actor.role == UserRole.MANAGER:
+        owner = session.get(User, owner_id)
+        return bool(owner and owner.manager_id == actor.id)
+    return False
+
+
+def _authorize_goal_mutation(session: Session, goal: Optional[Goal], actor_username: Optional[str]) -> None:
+    """
+    Enforce RBAC for goal-scoped mutations.
+    """
+    if actor_username is None:
+        raise PermissionError("Actor username is required for this operation")
+    if goal is None:
+        raise ValueError("Target goal not found")
+
+    actor = session.exec(select(User).where(User.username == actor_username)).first()
+    if not actor or not actor.is_active:
+        raise PermissionError("Actor is not authorized")
+
+    if not _can_manage_goal(session, actor, goal):
+        raise PermissionError("Insufficient permissions for this goal")
+
+
+def _get_goal_for_objective(session: Session, objective_id: int) -> Optional[Goal]:
+    statement = (
+        select(Goal)
+        .join(Objective)
+        .where(Objective.id == objective_id)
+    )
+    return session.exec(statement).first()
+
+
+def _get_goal_for_key_result(session: Session, key_result_id: int) -> Optional[Goal]:
+    statement = (
+        select(Goal)
+        .join(Objective)
+        .join(KeyResult)
+        .where(KeyResult.id == key_result_id)
+    )
+    return session.exec(statement).first()
+
+
+def _get_goal_for_task(session: Session, task_id: int) -> Optional[Goal]:
+    statement = (
+        select(Goal)
+        .join(Objective)
+        .join(KeyResult)
+        .join(Task)
+        .where(Task.id == task_id)
+    )
+    return session.exec(statement).first()
+
+
+def _get_goal_for_work_log(session: Session, work_log_id: int) -> Optional[Goal]:
+    statement = (
+        select(Goal)
+        .join(Objective)
+        .join(KeyResult)
+        .join(Task)
+        .join(WorkLog)
+        .where(WorkLog.id == work_log_id)
+    )
+    return session.exec(statement).first()
 
 def get_user_goals(username: str, cycle_id: int):
     """Fetch top-level Goals for a user in a specific cycle with eager loaded children."""
@@ -225,9 +375,18 @@ def ensure_admin_exists():
 # CHECK-IN OPERATIONS
 # ============================================================================
 
-def create_check_in(kr_id: int, value: float, confidence: int, comment: str) -> CheckIn:
+def create_check_in(
+    kr_id: int,
+    value: float,
+    confidence: int,
+    comment: str,
+    actor_username: Optional[str] = None,
+) -> CheckIn:
     """Create a new check-in and update the KR's current value."""
     with get_session_context() as session:
+        goal = _get_goal_for_key_result(session, kr_id)
+        _authorize_goal_mutation(session, goal, actor_username)
+
         # Create CheckIn
         check_in = CheckIn(
             key_result_id=kr_id,
@@ -249,7 +408,12 @@ def create_check_in(kr_id: int, value: float, confidence: int, comment: str) -> 
         session.refresh(check_in)
         # S Y N C
         _sync_service().push_update(check_in)
-        audit_log("create", "check_in", details={"kr_id": kr_id, "value": value, "confidence": confidence})
+        audit_log(
+            "create",
+            "check_in",
+            actor=actor_username,
+            details={"kr_id": kr_id, "value": value, "confidence": confidence},
+        )
         clear_cache_safe()
         return check_in
 
@@ -469,7 +633,16 @@ def get_user_goals_simple(user_id: str, cycle_id: Optional[int] = None) -> List[
 # CREATE OPERATIONS
 # ============================================================================
 
-def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optional[int] = None, external_id: Optional[str] = None, created_at: Optional[datetime] = None, strategy_tags: Optional[str] = None) -> Goal:
+def create_goal(
+    user_id: str,
+    title: str,
+    description: str = "",
+    cycle_id: Optional[int] = None,
+    external_id: Optional[str] = None,
+    created_at: Optional[datetime] = None,
+    strategy_tags: Optional[str] = None,
+    actor_username: Optional[str] = None,
+) -> Goal:
     """Create a new goal."""
     with get_session_context() as session:
         # Get owner_id from username
@@ -478,6 +651,14 @@ def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optio
             raise ValueError(f"User '{user_id}' not found")
         owner_id = user_obj.id
         canonical_username = user_obj.username
+
+        if actor_username is None:
+            raise PermissionError("Actor username is required for this operation")
+        actor = session.exec(select(User).where(User.username == actor_username)).first()
+        if not actor or not actor.is_active:
+            raise PermissionError("Actor is not authorized")
+        if not _can_manage_owner(session, actor, owner_id):
+            raise PermissionError("Insufficient permissions to create goals for this user")
         
         # Get sibling count for auto-numbering
         statement = select(Goal).where(
@@ -506,17 +687,25 @@ def create_goal(user_id: str, title: str, description: str = "", cycle_id: Optio
         session.refresh(goal)
         # S Y N C
         _sync_service().push_update(goal)
-        audit_log("create", "goal", actor=user_id, details={"goal_id": goal.id, "cycle_id": cycle_id})
+        audit_log("create", "goal", actor=actor_username, details={"goal_id": goal.id, "cycle_id": cycle_id})
         clear_cache_safe()
         return goal
 
 
-def create_objective(goal_id: int, title: str, description: str = "", external_id: Optional[str] = None, created_at: Optional[datetime] = None) -> Objective:
+def create_objective(
+    goal_id: int,
+    title: str,
+    description: str = "",
+    external_id: Optional[str] = None,
+    created_at: Optional[datetime] = None,
+    actor_username: Optional[str] = None,
+) -> Objective:
     """Create a new objective under a goal."""
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
         if not goal:
             raise ValueError(f"Goal {goal_id} not found")
+        _authorize_goal_mutation(session, goal, actor_username)
         
         existing = session.exec(
             select(Objective).where(Objective.goal_id == goal_id)
@@ -542,13 +731,24 @@ def create_objective(goal_id: int, title: str, description: str = "", external_i
         return objective
 
 
-def create_key_result(objective_id: int, title: str, description: str = "",
-                      target_value: float = 100.0, unit: str = "%", external_id: Optional[str] = None, created_at: Optional[datetime] = None, initiative_tags: Optional[str] = None) -> KeyResult:
+def create_key_result(
+    objective_id: int,
+    title: str,
+    description: str = "",
+    target_value: float = 100.0,
+    unit: str = "%",
+    external_id: Optional[str] = None,
+    created_at: Optional[datetime] = None,
+    initiative_tags: Optional[str] = None,
+    actor_username: Optional[str] = None,
+) -> KeyResult:
     """Create a new key result under an objective."""
     with get_session_context() as session:
         objective = session.get(Objective, objective_id)
         if not objective:
             raise ValueError(f"Objective {objective_id} not found")
+        goal = session.get(Goal, objective.goal_id)
+        _authorize_goal_mutation(session, goal, actor_username)
         
         existing = session.exec(
             select(KeyResult).where(KeyResult.objective_id == objective_id)
@@ -577,13 +777,27 @@ def create_key_result(objective_id: int, title: str, description: str = "",
         return key_result
 
 
-def create_task(key_result_id: int, title: str = "", description: str = "",
-                estimated_minutes: int = 0, external_id: Optional[str] = None, created_at: Optional[datetime] = None, start_date: Optional[datetime] = None, deadline: Optional[int] = None, assignee_id: Optional[int] = None) -> Task:
+def create_task(
+    key_result_id: int,
+    title: str = "",
+    description: str = "",
+    estimated_minutes: int = 0,
+    external_id: Optional[str] = None,
+    created_at: Optional[datetime] = None,
+    start_date: Optional[datetime] = None,
+    deadline: Optional[datetime] = None,
+    assignee_id: Optional[int] = None,
+    actor_username: Optional[str] = None,
+) -> Task:
     """Create a new task under a key result."""
     with get_session_context() as session:
         parent_check = session.get(KeyResult, key_result_id)
         if not parent_check:
             raise ValueError(f"KeyResult {key_result_id} not found")
+        if estimated_minutes < 0:
+            raise ValueError("estimated_minutes must be >= 0")
+        goal = _get_goal_for_key_result(session, key_result_id)
+        _authorize_goal_mutation(session, goal, actor_username)
         
         existing = session.exec(
             select(Task).where(Task.key_result_id == key_result_id)
@@ -624,33 +838,16 @@ def get_total_time(task_id: int):
         task = session.get(Task, task_id)
         return task.total_time_spent if task else 0
 
-def delete_work_log(log_id: int):
-    """Delete a work log entry."""
-    with get_session_context() as session:
-        log = session.get(WorkLog, log_id)
-        if log:
-            task_id = log.task_id
-            duration = int(log.duration_minutes)
-            session.delete(log)
-            
-            # Update Task total
-            task = session.get(Task, task_id)
-            if task:
-                task.total_time_spent = max(0, task.total_time_spent - duration)
-                session.add(task)
-                
-            session.commit()
-            # Push update for task total
-            if task: _sync_service().push_update(task)
-
 
 
 # ============================================================================
-def update_goal(goal_id: int, **updates) -> Optional[Goal]:
+def update_goal(goal_id: int, actor_username: Optional[str] = None, **updates) -> Optional[Goal]:
     """Update a goal's fields."""
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
         if goal:
+            _authorize_goal_mutation(session, goal, actor_username)
+            _validate_update_fields("goal", updates, _ALLOWED_GOAL_UPDATE_FIELDS)
             for key, value in updates.items():
                 if hasattr(goal, key):
                     setattr(goal, key, value)
@@ -672,11 +869,17 @@ def update_goal(goal_id: int, **updates) -> Optional[Goal]:
 ## Legacy duplicate removed: use the later update_task(task_id, ...) implementation
 
 
-def update_key_result_analysis(key_result_id: int, analysis_json: str) -> Optional[KeyResult]:
+def update_key_result_analysis(
+    key_result_id: int,
+    analysis_json: str,
+    actor_username: Optional[str] = None,
+) -> Optional[KeyResult]:
     """Update AI analysis cache for a key result."""
     with get_session_context() as session:
         kr = session.get(KeyResult, key_result_id)
         if kr:
+            goal = _get_goal_for_key_result(session, key_result_id)
+            _authorize_goal_mutation(session, goal, actor_username)
             kr.gemini_analysis = analysis_json
             kr.analysis_updated_at = utc_now_naive()
             session.add(kr)
@@ -687,23 +890,30 @@ def update_key_result_analysis(key_result_id: int, analysis_json: str) -> Option
         return kr
 
 
-def update_objective(objective_id: int, **updates) -> Optional[Objective]:
+def update_objective(objective_id: int, actor_username: Optional[str] = None, **updates) -> Optional[Objective]:
     with get_session_context() as session:
         item = session.get(Objective, objective_id)
         if item:
+            goal = _get_goal_for_objective(session, objective_id)
+            _authorize_goal_mutation(session, goal, actor_username)
+            _validate_update_fields("objective", updates, _ALLOWED_OBJECTIVE_UPDATE_FIELDS)
             for key, value in updates.items():
                 if hasattr(item, key): setattr(item, key, value)
             item.updated_at = utc_now_naive()
             session.add(item)
             session.commit()
             session.refresh(item)
+            _sync_service().push_update(item)
         return item
 
-def update_key_result(key_result_id: int, **updates) -> Optional[KeyResult]:
+def update_key_result(key_result_id: int, actor_username: Optional[str] = None, **updates) -> Optional[KeyResult]:
     with get_session_context() as session:
         item = session.get(KeyResult, key_result_id)
         if item:
+            goal = _get_goal_for_key_result(session, key_result_id)
+            _authorize_goal_mutation(session, goal, actor_username)
             import json
+            _validate_update_fields("key_result", updates, _ALLOWED_KEY_RESULT_UPDATE_FIELDS)
             for key, value in updates.items():
                 if key == "gemini_analysis" and value is not None and not isinstance(value, str):
                     try:
@@ -715,6 +925,7 @@ def update_key_result(key_result_id: int, **updates) -> Optional[KeyResult]:
             session.add(item)
             session.commit()
             session.refresh(item)
+            _sync_service().push_update(item)
         return item
 
 
@@ -722,18 +933,26 @@ def update_key_result(key_result_id: int, **updates) -> Optional[KeyResult]:
 def update_task(task_id: int, title: str = None, 
                 status: TaskStatus = None, 
                 estimated_minutes: int = None,
-                start_date: Optional[datetime] = None,
+                start_date=_UNSET,
+                actor_username: Optional[str] = None,
                 **kwargs) -> Optional[Task]:
     """Update task details."""
     with get_session_context() as session:
         task = session.get(Task, task_id)
         if not task:
             return None
+        goal = _get_goal_for_task(session, task_id)
+        _authorize_goal_mutation(session, goal, actor_username)
+        _validate_update_fields("task", kwargs, _ALLOWED_TASK_UPDATE_KWARGS)
             
         if title is not None: task.title = title
         if status is not None: task.status = status
-        if estimated_minutes is not None: task.estimated_minutes = estimated_minutes
-        if start_date is not None: task.start_date = start_date
+        if estimated_minutes is not None:
+            if estimated_minutes < 0:
+                raise ValueError("estimated_minutes must be >= 0")
+            task.estimated_minutes = estimated_minutes
+        if start_date is not _UNSET:
+            task.start_date = start_date
         
         # Handle generic kwargs (e.g. deadline)
         for key, value in kwargs.items():
@@ -753,11 +972,12 @@ def update_task(task_id: int, title: str = None,
 # DELETE OPERATIONS
 # ============================================================================
 
-def delete_goal(goal_id: int) -> bool:
+def delete_goal(goal_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a goal and all its children (cascade)."""
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
         if goal:
+            _authorize_goal_mutation(session, goal, actor_username)
             # SQLModel/SQLAlchemy will cascade delete if configured
             # Otherwise, manually delete children
             session.delete(goal)
@@ -770,11 +990,13 @@ def delete_goal(goal_id: int) -> bool:
         return False
 
 
-def delete_task(task_id: int) -> bool:
+def delete_task(task_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a task and its work logs."""
     with get_session_context() as session:
         task = session.get(Task, task_id)
         if task:
+            goal = _get_goal_for_task(session, task_id)
+            _authorize_goal_mutation(session, goal, actor_username)
             session.delete(task)
             session.commit()
             # S Y N C
@@ -785,10 +1007,12 @@ def delete_task(task_id: int) -> bool:
         return False
 
 
-def delete_objective(objective_id: int) -> bool:
+def delete_objective(objective_id: int, actor_username: Optional[str] = None) -> bool:
     with get_session_context() as session:
         item = session.get(Objective, objective_id)
         if item:
+            goal = _get_goal_for_objective(session, objective_id)
+            _authorize_goal_mutation(session, goal, actor_username)
             session.delete(item)
             session.commit()
             # S Y N C
@@ -798,10 +1022,12 @@ def delete_objective(objective_id: int) -> bool:
             return True
         return False
 
-def delete_key_result(kr_id: int) -> bool:
+def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
     with get_session_context() as session:
         item = session.get(KeyResult, kr_id)
         if item:
+            goal = _get_goal_for_key_result(session, kr_id)
+            _authorize_goal_mutation(session, goal, actor_username)
             session.delete(item)
             session.commit()
             # S Y N C
@@ -894,10 +1120,7 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
     Stops any other running timer first (single active timer policy).
     """
     with get_session_context() as session:
-        # First, stop any running timer
-        active = _stop_all_active_timers(session, user_id)
-        
-        # Enforce ownership on timer start to prevent cross-user task access.
+        # Enforce ownership on timer start before changing any timer state.
         task = session.exec(
             select(Task)
             .join(KeyResult)
@@ -908,15 +1131,19 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
         ).first()
         if not task:
             raise ValueError(f"Task {task_id} not found for user '{user_id}'")
+
+        # Stop any running timer after target validation (single active timer policy).
+        _stop_all_active_timers(session, user_id)
+        now = utc_now_naive()
         
         # Mark timer as started on task
-        task.timer_started_at = utc_now_naive()
+        task.timer_started_at = now
         session.add(task)
         
         # Create new WorkLog entry
         work_log = WorkLog(
             task_id=task_id,
-            start_time=utc_now_naive()
+            start_time=now
         )
         session.add(work_log)
         session.commit()
@@ -964,12 +1191,13 @@ def stop_timer(task_id: int, summary: str = None, user_id: Optional[str] = None)
             
             # Calculate duration in minutes (min 1 minute)
             elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
-            duration_minutes = elapsed.total_seconds() / 60
-            work_log.duration_minutes = duration_minutes
+            duration_minutes = max(0.0, elapsed.total_seconds() / 60)
+            credited_minutes = max(1, int(duration_minutes)) if duration_minutes > 0 else 0
+            work_log.duration_minutes = credited_minutes
             work_log.summary = summary
             
             # Update task's cached total time
-            task.total_time_spent += int(duration_minutes)
+            task.total_time_spent += credited_minutes
             task.timer_started_at = None
             
             session.add(work_log)
@@ -1033,8 +1261,15 @@ def force_stop_active_timers(user_id: str) -> int:
     """
     with get_session_context() as session:
         from src.models import Task as TableTask, WorkLog as TableWorkLog
-        # Stop ALL active tasks (emergency cleanup)
-        all_active_tasks = session.exec(select(TableTask).where(TableTask.timer_started_at != None)).all()
+        # Stop active tasks owned by the requested user.
+        all_active_tasks = session.exec(
+            select(TableTask)
+            .join(KeyResult)
+            .join(Objective)
+            .join(Goal)
+            .where(_goal_owner_predicate_by_username(user_id))
+            .where(TableTask.timer_started_at.isnot(None))
+        ).all()
         
         count = 0
         for task in all_active_tasks:
@@ -1055,16 +1290,25 @@ def force_stop_active_timers(user_id: str) -> int:
         return count
 
 
-def add_manual_log(task_id: int, duration_minutes: int, note: str = None,
-                   log_date: datetime = None) -> WorkLog:
+def add_manual_log(
+    task_id: int,
+    duration_minutes: int,
+    note: str = None,
+    log_date: datetime = None,
+    actor_username: Optional[str] = None,
+) -> WorkLog:
     """
     Add a manual work log entry (Quick Add feature).
     Updates the task's total_time_spent immediately.
     """
     with get_session_context() as session:
+        if duration_minutes <= 0:
+            raise ValueError("duration_minutes must be > 0")
         task = session.get(Task, task_id)
         if not task:
             raise ValueError(f"Task {task_id} not found")
+        goal = _get_goal_for_task(session, task_id)
+        _authorize_goal_mutation(session, goal, actor_username)
         
         start_time = ensure_utc(log_date) if log_date else utc_now_naive()
         end_time = start_time + timedelta(minutes=duration_minutes)
@@ -1100,11 +1344,13 @@ def get_work_log_by_start_time(task_id: int, start_time: datetime) -> Optional[W
         )
         return session.exec(statement).first()
 
-def delete_work_log(log_id: int) -> bool:
+def delete_work_log(log_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a work log and update the task's total_time_spent."""
     with get_session_context() as session:
         work_log = session.get(WorkLog, log_id)
         if work_log:
+            goal = _get_goal_for_work_log(session, log_id)
+            _authorize_goal_mutation(session, goal, actor_username)
             task = session.get(Task, work_log.task_id)
             if task:
                 task.total_time_spent = max(0, task.total_time_spent - work_log.duration_minutes)

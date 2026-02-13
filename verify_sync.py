@@ -42,7 +42,8 @@ def test_sync():
         user_id="admin",
         title="Test Sync Goal",
         description="Created by verification script",
-        external_id=test_id
+        external_id=test_id,
+        actor_username="admin",
     )
     
     if not goal:
@@ -62,7 +63,7 @@ def test_sync():
 
     # 3. Test Update Goal
     print("Updating Goal title...")
-    update_goal(goal.id, title="Test Sync Goal UPDATED")
+    update_goal(goal.id, title="Test Sync Goal UPDATED", actor_username="admin")
     
     try:
         # Re-fetch row
@@ -79,7 +80,7 @@ def test_sync():
 
     # 4. Test Delete Goal
     print("Deleting Goal...")
-    delete_goal(goal.id)
+    delete_goal(goal.id, actor_username="admin")
     
     try:
         cell = None

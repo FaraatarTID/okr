@@ -1318,7 +1318,11 @@ def render_report_content(username, mode):
                             st.error(res_kr["error"])
                         else:
                             # Update DB
-                            update_key_result(kr_item.id, gemini_analysis=res_kr)
+                            try:
+                                update_key_result(kr_item.id, gemini_analysis=res_kr, actor_username=username)
+                            except PermissionError as e:
+                                st.error(str(e))
+                                return
                             # Update UI immediately
                             kr_item.gemini_analysis = res_kr 
                             render_kr_state(kr_item)
@@ -1502,7 +1506,7 @@ def render_inspector_content(node_id, node_type, username):
             new_init_tags_input = st.text_input("Add Initiative Tags (comma-separated)", value=", ".join(curr_inits), key=f"init_tags_{node_id}")
 
         user_role_perm = st.session_state.get("user_role")
-        can_save_insp = (user_role_perm in ["admin", "manager"]) or (username == node.get("user_id"))
+        can_save_insp = bool(username)
         
         if st.form_submit_button("💾 Save Changes", disabled=not can_save_insp):
             updates = {
@@ -1511,28 +1515,31 @@ def render_inspector_content(node_id, node_type, username):
                 "progress": new_progress_insp
             }
             
-            if node_type_insp == "GOAL":
-                updates.update({
-                    "cycle_id": new_cycle_id_insp,
-                    "strategy_tags": [t.strip() for t in new_strat_tags_input.split(",") if t.strip()]
-                })
-                update_goal(node_id, **updates)
-            elif node_type_insp == "OBJECTIVE":
-                update_objective(node_id, **updates)
-            elif node_type_insp == "KEY_RESULT":
-                updates.update({
-                    "target_value": new_target_insp,
-                    "current_value": new_curr_insp,
-                    "unit": new_unit_insp,
-                    "initiative_tags": [t.strip() for t in new_init_tags_input.split(",") if t.strip()]
-                })
-                update_key_result(node_id, **updates)
-            elif node_type_insp == "TASK":
-                updates.update({
-                    "assignee_id": new_assignee_id_insp
-                })
-                update_task(node_id, **updates)
-            
+            try:
+                if node_type_insp == "GOAL":
+                    updates.update({
+                        "cycle_id": new_cycle_id_insp,
+                        "strategy_tags": [t.strip() for t in new_strat_tags_input.split(",") if t.strip()]
+                    })
+                    update_goal(node_id, actor_username=username, **updates)
+                elif node_type_insp == "OBJECTIVE":
+                    update_objective(node_id, actor_username=username, **updates)
+                elif node_type_insp == "KEY_RESULT":
+                    updates.update({
+                        "target_value": new_target_insp,
+                        "current_value": new_curr_insp,
+                        "unit": new_unit_insp,
+                        "initiative_tags": [t.strip() for t in new_init_tags_input.split(",") if t.strip()]
+                    })
+                    update_key_result(node_id, actor_username=username, **updates)
+                elif node_type_insp == "TASK":
+                    updates.update({
+                        "assignee_id": new_assignee_id_insp
+                    })
+                    update_task(node_id, actor_username=username, **updates)
+            except PermissionError as e:
+                st.error(str(e))
+                return
             st.success("Saved!")
             st.rerun()
 
@@ -1552,7 +1559,7 @@ def render_inspector_content(node_id, node_type, username):
              # Permission check: Admin/Manager or Assigned/Creator
              # For now, simplify to Admin/Manager or the user is the owner of the goal?
              # Let's check Goal user_id for simplicity as we are refactoring.
-             can_track = (u_role in ["admin", "manager"]) or (username == getattr(node, "user_id", None))
+             can_track = bool(username)
              
              if can_track:
                   if is_run:
@@ -1568,7 +1575,11 @@ def render_inspector_content(node_id, node_type, username):
                            st.rerun()
                   else:
                        if st.button("Start Timer", icon=":material/play_circle:", key=f"start_t_{node_id}"):
-                           start_timer(node_id, username)
+                           try:
+                               start_timer(node_id, username)
+                           except ValueError as e:
+                               st.error(str(e))
+                               return
                            st.session_state.active_timer_node_id = node_id
                            if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                            st.rerun()
@@ -1591,24 +1602,40 @@ def render_inspector_content(node_id, node_type, username):
             new_sd = st.date_input("Start Date", value=curr_sd, key=f"sd_inp_{node_id}")
             if st.button("💾 Save Start Date", key=f"save_sd_{node_id}"):
                 new_sd_dt = datetime.combine(new_sd, datetime.min.time()) if new_sd else None
-                update_task(node_id, start_date=new_sd_dt)
+                try:
+                    update_task(node_id, start_date=new_sd_dt, actor_username=username)
+                except PermissionError as e:
+                    st.error(str(e))
+                    return
                 st.rerun()
 
         with col_sch2:
             new_d = st.date_input("Due Date", value=curr_d, key=f"dl_inp_{node_id}")
             if st.button("💾 Save Due Date", key=f"save_dl_{node_id}"):
                 new_dl_dt = datetime.combine(new_d, datetime.max.time()) if new_d else None
-                update_task(node_id, deadline=new_dl_dt)
+                try:
+                    update_task(node_id, deadline=new_dl_dt, actor_username=username)
+                except PermissionError as e:
+                    st.error(str(e))
+                    return
                 st.rerun()
 
         # Clear Buttons Row
         clr1, clr2 = st.columns(2)
         if curr_sd and clr1.button("🗑️ Clear Start", key=f"clear_sd_{node_id}"):
-            update_task(node_id, start_date=None)
+            try:
+                update_task(node_id, start_date=None, actor_username=username)
+            except PermissionError as e:
+                st.error(str(e))
+                return
             st.rerun()
         has_deadline = getattr(node, "deadline", None) is not None
         if has_deadline and clr2.button("🗑️ Clear Due", key=f"clear_dl_{node_id}"):
-            update_task(node_id, deadline=None)
+            try:
+                update_task(node_id, deadline=None, actor_username=username)
+            except PermissionError as e:
+                st.error(str(e))
+                return
             st.rerun()
 
         if has_deadline:
@@ -1649,7 +1676,11 @@ def render_inspector_content(node_id, node_type, username):
                     col_l1.write(f"**{ended_at}** | {dur_str} | {sm}")
                     if col_l2.button("🗑️", key=f"del_log_{l.id}"):
                         from src.crud import delete_work_log
-                        delete_work_log(l.id)
+                        try:
+                            delete_work_log(l.id, actor_username=username)
+                        except PermissionError as e:
+                            st.error(str(e))
+                            return
                         st.rerun()
 
     if node_type_insp == "KEY_RESULT":
@@ -1664,7 +1695,7 @@ def render_inspector_content(node_id, node_type, username):
                 
                 if "error" not in res_ai:
                     # Store full analysis dict; update_key_result will serialize
-                    update_key_result(node_id, gemini_analysis=res_ai)
+                    update_key_result(node_id, gemini_analysis=res_ai, actor_username=username)
                     st.rerun()
         
         analysis_raw = getattr(node, "gemini_analysis", None)
@@ -1682,7 +1713,7 @@ def render_inspector_content(node_id, node_type, username):
                             analysis_data = tmp
                             # Normalize storage to proper JSON
                             from src.crud import update_key_result
-                            update_key_result(node_id, gemini_analysis=analysis_data)
+                            update_key_result(node_id, gemini_analysis=analysis_data, actor_username=username)
                     except Exception:
                         analysis_data = None
             elif isinstance(analysis_raw, dict):
@@ -1732,15 +1763,23 @@ def render_inspector_content(node_id, node_type, username):
     st.markdown("---")
     user_role_del = st.session_state.get("user_role")
     # Permissions based on SQLModel ownership
-    can_delete = (user_role_del == "admin") or (username == getattr(node, "user_id", None))
+    can_delete = bool(username)
     
     if can_delete:
         if st.button("🗑️ Delete Entity", type="primary", key=f"del_insp_{node_id}"):
             from src.crud import delete_goal, delete_objective, delete_key_result, delete_task
-            if node_type_insp == "GOAL": delete_goal(node_id)
-            elif node_type_insp == "OBJECTIVE": delete_objective(node_id)
-            elif node_type_insp == "KEY_RESULT": delete_key_result(node_id)
-            elif node_type_insp == "TASK": delete_task(node_id)
+            try:
+                if node_type_insp == "GOAL":
+                    delete_goal(node_id, actor_username=username)
+                elif node_type_insp == "OBJECTIVE":
+                    delete_objective(node_id, actor_username=username)
+                elif node_type_insp == "KEY_RESULT":
+                    delete_key_result(node_id, actor_username=username)
+                elif node_type_insp == "TASK":
+                    delete_task(node_id, actor_username=username)
+            except PermissionError as e:
+                st.error(str(e))
+                return
             # Clear any cached UI data that may hold stale references
             keys_to_clear = [k for k in st.session_state.keys() if k.startswith("okr_data_cache_")]
             for k in keys_to_clear:
@@ -1861,7 +1900,11 @@ def render_card(node, username):
                          st.rerun()
                  else:
                      if st.button("Start Timer", icon=":material/play_arrow:", key=f"start_c_{node_id}"):
-                         start_timer(node_id, username)
+                         try:
+                             start_timer(node_id, username)
+                         except ValueError as e:
+                             st.error(str(e))
+                             return
                          st.session_state.active_timer_node_id = node_id
                          if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
                          st.rerun()
@@ -1897,7 +1940,11 @@ def render_card(node, username):
                         res_c = analyze_node(node_id, "KEY_RESULT")
                         if "error" not in res_c:
                             # analyze_node returns results directly as a dict now.
-                            update_key_result(node_id, gemini_analysis=res_c)
+                            try:
+                                update_key_result(node_id, gemini_analysis=res_c, actor_username=username)
+                            except PermissionError as e:
+                                st.error(str(e))
+                                return
                             st.rerun()
                         else:
                             st.error(res_c["error"])
