@@ -239,6 +239,44 @@ def test_owner_backfill_migration_populates_goal_owner_id(tmp_path):
     engine.dispose()
 
 
+def test_integrity_migration_tolerates_legacy_orphaned_fk_metadata(tmp_path):
+    from alembic import command
+    from alembic.config import Config
+    from src.database import _create_engine
+
+    db_path = tmp_path / "okr_integrity_orphan_fk.db"
+    db_url = f"sqlite:///{db_path}"
+    engine = _create_engine(db_url)
+
+    with engine.begin() as conn:
+        conn.execute(
+            sa_text(
+                """
+                CREATE TABLE task (
+                    id INTEGER PRIMARY KEY,
+                    title VARCHAR NOT NULL,
+                    progress INTEGER NOT NULL DEFAULT 0,
+                    estimated_minutes INTEGER NOT NULL DEFAULT 0,
+                    total_time_spent INTEGER NOT NULL DEFAULT 0,
+                    initiative_id INTEGER,
+                    FOREIGN KEY(initiative_id) REFERENCES initiative(id)
+                )
+                """
+            )
+        )
+
+    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
+    script_location = ROOT_DIR / "streamlit_app" / "alembic"
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    cfg.set_main_option("script_location", str(script_location))
+
+    command.stamp(cfg, "d4e5f6a7b8c9")
+    command.upgrade(cfg, "e5f6a7b8c9d0")
+
+    engine.dispose()
+
+
 def test_worklog_unique_open_index_migration_heals_duplicates(tmp_path):
     from alembic import command
     from alembic.config import Config

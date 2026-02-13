@@ -86,8 +86,14 @@ def _ensure_check_constraint(table_name: str, name: str, condition: str) -> None
         return
     if name in _check_constraint_names(table_name):
         return
-    with op.batch_alter_table(table_name) as batch_op:
-        batch_op.create_check_constraint(name, condition)
+    try:
+        with op.batch_alter_table(table_name) as batch_op:
+            batch_op.create_check_constraint(name, condition)
+    except Exception:
+        # Legacy SQLite installs may contain orphaned FK metadata
+        # (e.g., task -> initiative) that makes reflection fail during batch ops.
+        # Skip best-effort check creation in that case so the migration can continue.
+        return
 
 
 def _drop_check_constraint_if_exists(table_name: str, name: str) -> None:
@@ -95,8 +101,11 @@ def _drop_check_constraint_if_exists(table_name: str, name: str) -> None:
         return
     if name not in _check_constraint_names(table_name):
         return
-    with op.batch_alter_table(table_name) as batch_op:
-        batch_op.drop_constraint(name, type_="check")
+    try:
+        with op.batch_alter_table(table_name) as batch_op:
+            batch_op.drop_constraint(name, type_="check")
+    except Exception:
+        return
 
 
 def upgrade() -> None:
