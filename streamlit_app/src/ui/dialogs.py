@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 from datetime import datetime, timedelta
+from src.utils.time_utils import utc_now_naive
 from src.ui.styles import TYPE_COLORS, TYPE_ICONS, inject_dialog_styles
 from src.ui.components import (
     render_timer_content, 
@@ -315,6 +316,7 @@ def render_admin_panel_dialog():
         new_display = st.text_input("Display Name", key="new_display")
         new_password = st.text_input("Password", type="password", key="new_password")
         new_role = st.selectbox("Role", options=["member", "manager", "admin"], key="new_role")
+        require_pw_change = st.checkbox("Require password change on first login", value=True, key="new_require_pw_change")
         
         # Manager assignment (for members)
         managers = [u for u in get_all_users() if u.role.value in ["manager", "admin"]]
@@ -330,7 +332,8 @@ def render_admin_panel_dialog():
                         password=new_password,
                         role=UserRole(new_role),
                         display_name=new_display or new_username,
-                        manager_id=manager_id_val
+                        manager_id=manager_id_val,
+                        must_change_password=require_pw_change,
                     )
                     st.success(f"User '{new_username}' created successfully!")
                     st.rerun()
@@ -345,11 +348,12 @@ def render_admin_panel_dialog():
         selected_user = st.selectbox("Select User", options=list(user_options_reset.keys()), key="reset_user")
         new_pw = st.text_input("New Password", type="password", key="new_pw")
         confirm_pw = st.text_input("Confirm Password", type="password", key="confirm_pw")
+        force_change = st.checkbox("Require change at next login", value=False, key="reset_force_change")
         
         if st.button("Reset Password", type="primary", key="reset_pw_btn"):
             if new_pw and new_pw == confirm_pw:
                 u_id = user_options_reset.get(selected_user)
-                if u_id and reset_user_password(u_id, new_pw):
+                if u_id and reset_user_password(u_id, new_pw, require_change=force_change):
                     st.success(f"Password for '{selected_user}' reset successfully!")
                 else:
                     st.error("Failed to reset password.")
@@ -565,7 +569,7 @@ def render_weekly_ritual_dialog(username):
             if st.form_submit_button("🚀 Finish Ritual"):
                 user_obj_p = _cached_get_user_by_username(username)
                 if user_obj_p:
-                    sd = datetime.utcnow(); ed = sd + timedelta(days=7)
+                    sd = utc_now_naive(); ed = sd + timedelta(days=7)
                     create_weekly_plan(user_obj_p.id, sd, ed, p1, p2, p3)
                 st.toast("Weekly Ritual Complete!")
                 del st.session_state.ritual_step

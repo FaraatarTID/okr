@@ -1,9 +1,9 @@
 import json
 import logging
 import os
-from datetime import datetime
 from typing import Optional
 
+from src.utils.time_utils import utc_now
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 LOG_FILE = os.path.join(LOG_DIR, "audit.log")
@@ -39,7 +39,7 @@ def _get_error_logger() -> logging.Logger:
 def audit_log(action: str, entity: str, actor: Optional[str] = None, details: Optional[dict] = None):
     logger = _get_logger()
     payload = {
-        "ts": datetime.utcnow().isoformat(),
+        "ts": utc_now().isoformat(),
         "action": action,
         "entity": entity,
         "actor": actor,

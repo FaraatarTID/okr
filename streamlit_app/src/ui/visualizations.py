@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
 from src.models import Task, TaskStatus
+from src.utils.time_utils import utc_now_naive
 
 def render_gantt_chart(tasks: List[Task], current_user_role: str, current_username: str, users_map: Dict[int, Any] = None):
     """
@@ -22,7 +23,7 @@ def render_gantt_chart(tasks: List[Task], current_user_role: str, current_userna
     # Prepare data for DataFrame
     gantt_data = []
     
-    now = datetime.utcnow()
+    now = utc_now_naive()
     
     for t in tasks:
         # Determine Start Date

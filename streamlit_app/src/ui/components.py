@@ -9,6 +9,7 @@ from streamlit_agraph import agraph, Node, Edge, Config
 
 # Import UI constants
 from src.ui.styles import TYPE_ICONS, TYPE_COLORS, CHILD_TYPE_MAP, TYPES
+from src.ui.safe_html import escape_html
 
 def format_time(minutes):
     """Simple formatter for minutes -> HH:MM"""
@@ -18,9 +19,11 @@ def format_time(minutes):
     return f"{h:02d}:{m:02d}"
 
 from sqlmodel import select, col
+from sqlalchemy import or_
 from sqlalchemy.orm import selectinload
 from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn
 from src.crud import get_goal_tree, get_user_goals, get_session_context, get_user_by_username, get_work_logs_by_date_range, get_all_tasks_by_cycle
+from src.utils.time_utils import ensure_utc, utc_now_naive
 
 # Cache helpers for heavy queries/aggregations
 @st.cache_data(ttl=60, show_spinner=False)
@@ -289,7 +292,8 @@ def render_timer_content(node_id, username):
             st.error("Task not found")
             return
             
-        st.markdown(f"<div class='timer-task-title'>{node.title}</div>", unsafe_allow_html=True)
+        safe_title = escape_html(node.title)
+        st.markdown(f"<div class='timer-task-title'>{safe_title}</div>", unsafe_allow_html=True)
         st.markdown("<div class='timer-subtext'>Focus on this task and record your flow.</div>", unsafe_allow_html=True)
         
         placeholder = st.empty()
@@ -303,14 +307,9 @@ def render_timer_content(node_id, username):
             # In Models it is Optional[datetime].
             # We need to convert to timestamp for the math or use timedelta.
             import time
-            from datetime import timezone
-            
-            # If it's timezone aware, make current time aware
-            now = datetime.utcnow() # Naive UTC
-            if start_ts.tzinfo:
-                now = datetime.now(timezone.utc)
-                
-            elapsed = now - start_ts
+
+            now = ensure_utc(utc_now_naive())
+            elapsed = now - ensure_utc(start_ts)
             elapsed_sec = int(elapsed.total_seconds())
             
             h = elapsed_sec // 3600
@@ -323,7 +322,7 @@ def render_timer_content(node_id, username):
             
             if c2.button("✋ Stop & Log", type="primary", use_container_width=True):
                 # Call CRUD stop_timer directly
-                wl = stop_timer(node_id, summary=summary)
+                wl = stop_timer(node_id, summary=summary, user_id=username)
                 if wl:
                     # Fetch latest work logs and show confirmation
                     from src.database import get_session_context
@@ -636,7 +635,7 @@ def render_leadership_dashboard_content(username):
                 "type": "TASK",
                 "deadline": dl,
                 "progress": getattr(task, 'progress', 0),
-                "createdAt": int(getattr(task, 'created_at', datetime.utcnow()).timestamp() * 1000),
+                "createdAt": int(getattr(task, 'created_at', utc_now_naive()).timestamp() * 1000),
                 "title": getattr(task, 'title', 'Untitled')
             }
             status_code_dl, _, _ = get_deadline_status(node)
@@ -1160,15 +1159,21 @@ def render_report_content(username, mode):
             </thead>
             <tbody>"""
         for itm in report_items:
-            summary_txt = itm.get("Summary", "")
+            summary_txt = escape_html(itm.get("Summary", ""))
+            task_txt = escape_html(itm.get("Task", ""))
+            objective_txt = escape_html(itm.get("Objective", ""))
+            kr_txt = escape_html(itm.get("KeyResult", ""))
+            date_txt = escape_html(itm.get("Date", ""))
+            time_txt = escape_html(itm.get("Time", ""))
+            duration_txt = escape_html(itm.get("Duration (m)", "0"))
             
             table_html += f"""
                 <tr style="border-bottom: 1px solid #eee;">
-                    <td style="padding: 8px;">{itm['Task']}</td>
-                     <td style="padding: 8px; color: #555;">{itm['Objective']}</td>
-                     <td style="padding: 8px; color: #555;">{itm['KeyResult']}</td>
-                    <td style="padding: 8px; white-space: nowrap;">{itm['Date']} {itm['Time']}</td>
-                    <td style="padding: 8px; text-align: right;">{itm['Duration (m)']}m</td>
+                    <td style="padding: 8px;">{task_txt}</td>
+                     <td style="padding: 8px; color: #555;">{objective_txt}</td>
+                     <td style="padding: 8px; color: #555;">{kr_txt}</td>
+                    <td style="padding: 8px; white-space: nowrap;">{date_txt} {time_txt}</td>
+                    <td style="padding: 8px; text-align: right;">{duration_txt}m</td>
                     <td style="padding: 8px; color: #555;">{summary_txt}</td>
                 </tr>"""
         table_html += "</tbody></table>"
@@ -1198,10 +1203,11 @@ def render_report_content(username, mode):
         percentage_obj = (mins_obj / total * 100) if total > 0 else 0
         p_str_obj = f"{percentage_obj:.1f}%"
         t_str_obj = format_time(mins_obj)
+        objective_txt = escape_html(t_obj)
         
         obj_table_h += f"""
             <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 8px;">{t_obj}</td>
+                <td style="padding: 8px;">{objective_txt}</td>
                 <td style="padding: 8px; text-align: right;">{t_str_obj}</td>
                 <td style="padding: 8px; text-align: right;">{p_str_obj}</td>
             </tr>"""
@@ -1540,7 +1546,7 @@ def render_inspector_content(node_id, node_type, username):
              if is_run:
                   start_t = node.timer_started_at
                   # Calculate elapsed in minutes
-                  elap = int((datetime.utcnow() - start_t).total_seconds() / 60)
+                  elap = int((ensure_utc(utc_now_naive()) - ensure_utc(start_t)).total_seconds() / 60)
                   st.info(f"Timer Running: {elap}m")
                   
              # Permission check: Admin/Manager or Assigned/Creator
@@ -1557,7 +1563,7 @@ def render_inspector_content(node_id, node_type, username):
                            st.rerun()
                        if c_a2.button("Stop", icon=":material/stop_circle:", key=f"stop_t_{node_id}"):
                            # stop_timer accepts an optional summary; pass None here
-                           stop_timer(node_id)
+                           stop_timer(node_id, user_id=username)
                            if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
                            st.rerun()
                   else:
@@ -1797,20 +1803,36 @@ def render_card(node, username):
             if node_type == "GOAL":
                 raw_strats = getattr(node, "strategy_tags", "[]")
                 strat_tags = []
-                try: strat_tags = json.loads(raw_strats) if isinstance(raw_strats, str) else raw_strats
-                except: pass
+                try:
+                    strat_tags = json.loads(raw_strats) if isinstance(raw_strats, str) else raw_strats
+                except Exception:
+                    pass
                 if strat_tags:
-                    tags_html = " ".join([f"<span style='background-color:#1E88E5;color:white;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-right:4px;'>♟️ {t}</span>" for t in strat_tags])
+                    tags_html = " ".join(
+                        [
+                            "<span style='background-color:#1E88E5;color:white;padding:2px 8px;border-radius:10px;"
+                            f"font-size:0.75em;margin-right:4px;'>♟️ {escape_html(t)}</span>"
+                            for t in strat_tags
+                        ]
+                    )
                     st.markdown(tags_html, unsafe_allow_html=True)
             
             # Show Initiative Tags for Key Results
             if node_type == "KEY_RESULT":
                 raw_inits = getattr(node, "initiative_tags", "[]")
                 init_tags = []
-                try: init_tags = json.loads(raw_inits) if isinstance(raw_inits, str) else raw_inits
-                except: pass
+                try:
+                    init_tags = json.loads(raw_inits) if isinstance(raw_inits, str) else raw_inits
+                except Exception:
+                    pass
                 if init_tags:
-                    tags_html = " ".join([f"<span style='background-color:#8E24AA;color:white;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-right:4px;'>⚡ {t}</span>" for t in init_tags])
+                    tags_html = " ".join(
+                        [
+                            "<span style='background-color:#8E24AA;color:white;padding:2px 8px;border-radius:10px;"
+                            f"font-size:0.75em;margin-right:4px;'>⚡ {escape_html(t)}</span>"
+                            for t in init_tags
+                        ]
+                    )
                     st.markdown(tags_html, unsafe_allow_html=True)
             
             # Creator/Owner Tags
@@ -1818,7 +1840,11 @@ def render_card(node, username):
             tags_row_html = ""
             # Resolve owner username from node or its ancestor goal
             creator_id = resolve_owner_username(node)
-            tags_row_html += f"<span style='background-color:#F5F5F5;color:#616161;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-right:4px;border:1px solid #e0e0e0;'>👤 {creator_id}</span>"
+            tags_row_html += (
+                "<span style='background-color:#F5F5F5;color:#616161;padding:2px 8px;border-radius:10px;"
+                "font-size:0.75em;margin-right:4px;border:1px solid #e0e0e0;'>👤 "
+                f"{escape_html(creator_id)}</span>"
+            )
             
             if tags_row_html:
                 st.markdown(f"<div style='margin-top:4px;'>{tags_row_html}</div>", unsafe_allow_html=True)
@@ -1933,7 +1959,10 @@ def render_level(username):
             if user_obj:
                 items = session.exec(
                     select(Goal)
-                    .where(Goal.owner_id == user_obj.id, Goal.cycle_id == cycle_id)
+                    .where(
+                        or_(Goal.owner_id == user_obj.id, Goal.user_id == username),
+                        Goal.cycle_id == cycle_id
+                    )
                     .options(selectinload(Goal.objectives).selectinload(Objective.key_results))
                 ).all()
             level_name = "Goals"

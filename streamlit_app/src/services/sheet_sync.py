@@ -2,7 +2,7 @@ import streamlit as st
 from sqlmodel import Session, select, SQLModel
 from sqlalchemy import text
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import time
 
@@ -76,6 +76,52 @@ class SheetSyncService:
         self._connect()
         return self.is_ready()
 
+    @staticmethod
+    def _normalize_id(value):
+        """Normalize IDs from Sheets/local DB to a stable comparable type."""
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value) if value.is_integer() else str(value)
+        text_value = str(value).strip()
+        if not text_value:
+            return None
+        if text_value.lstrip("-").isdigit():
+            try:
+                return int(text_value)
+            except Exception:
+                return text_value
+        return text_value
+
+    @staticmethod
+    def _parse_datetime(value):
+        if not value:
+            return None
+        if isinstance(value, datetime):
+            return value
+        raw = str(value).strip()
+        if not raw:
+            return None
+        # Allow ISO-8601 UTC suffix used by APIs/sheets.
+        if raw.endswith("Z"):
+            raw = f"{raw[:-1]}+00:00"
+        try:
+            return datetime.fromisoformat(raw)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _to_naive_utc(value):
+        if not isinstance(value, datetime):
+            return value
+        if value.tzinfo is None:
+            return value
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
+
     def ensure_schema(self):
         """Ensure all required worksheets exist."""
         if not self.is_ready(): return
@@ -132,7 +178,9 @@ class SheetSyncService:
                     rows = session.exec(select(model_cls)).all()
                     for r in rows:
                         ts = getattr(r, "updated_at", getattr(r, "created_at", None))
-                        existing_map[r.id] = ts
+                        row_id = self._normalize_id(getattr(r, "id", None))
+                        if row_id is not None:
+                            existing_map[row_id] = ts
                 except Exception as e:
                     self._set_error(f"Failed to read local rows for '{sheet_name}'", e)
 
@@ -142,25 +190,47 @@ class SheetSyncService:
                     # Parse sheet timestamp
                     sheet_ts = None
                     if "updated_at" in clean_row and clean_row["updated_at"]:
-                        try: sheet_ts = datetime.fromisoformat(clean_row["updated_at"])
-                        except: pass
+                        sheet_ts = self._parse_datetime(clean_row["updated_at"])
                     
                     # Convert dates
-                    for field in ["created_at", "updated_at", "start_date", "end_date", "deadline"]:
+                    for field in [
+                        "created_at",
+                        "updated_at",
+                        "start_date",
+                        "end_date",
+                        "deadline",
+                        "password_changed_at",
+                    ]:
                         if field in clean_row and clean_row[field]:
-                             try: clean_row[field] = datetime.fromisoformat(clean_row[field])
-                             except: pass
+                            parsed = self._parse_datetime(clean_row[field])
+                            if parsed:
+                                clean_row[field] = parsed
 
                     # Check existence
-                    obj_id = clean_row.get("id")
+                    obj_id = self._normalize_id(clean_row.get("id"))
+                    clean_row["id"] = obj_id
+                    if obj_id is None:
+                        continue
+
                     if obj_id in existing_map:
                         local_ts = existing_map[obj_id]
-                        if sheet_ts and local_ts and sheet_ts > local_ts:
+                        should_update = False
+                        if sheet_ts and local_ts:
+                            sheet_cmp = self._to_naive_utc(sheet_ts)
+                            local_cmp = self._to_naive_utc(local_ts)
+                            if isinstance(sheet_cmp, datetime) and isinstance(local_cmp, datetime):
+                                should_update = sheet_cmp > local_cmp
+                            else:
+                                should_update = True
+                        elif sheet_ts and not local_ts:
+                            should_update = True
+                        if should_update:
                             local_obj = session.get(model_cls, obj_id)
                             for k, v in clean_row.items():
-                                if hasattr(local_obj, k):
+                                if local_obj is not None and hasattr(local_obj, k):
                                     setattr(local_obj, k, v)
-                            session.add(local_obj)
+                            if local_obj is not None:
+                                session.add(local_obj)
                     else:
                         try:
                             obj = model_cls.model_validate(clean_row)

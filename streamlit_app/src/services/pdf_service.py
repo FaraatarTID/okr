@@ -10,8 +10,10 @@ import sys
 import platform
 import datetime
 import base64
+from html import escape as html_escape
 from io import BytesIO
 import streamlit as st
+from src.services.http_client import post_json_with_retry
 
 # Try importing both libraries
 PDFSHIFT_AVAILABLE = False
@@ -28,6 +30,12 @@ try:
     PDFKIT_AVAILABLE = True
 except ImportError:
     pass
+
+
+def _escape(value):
+    if value is None:
+        return ""
+    return html_escape(str(value), quote=True)
 
 
 def is_deployed_environment():
@@ -199,12 +207,12 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
 </head>
 <body>
     <div id="header">
-        <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{title}</h1>
+        <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{_escape(title)}</h1>
         <p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
     </div>
 
     <div class="total-box">
-        Total Time ({time_label}): {total_time_str}
+        Total Time ({_escape(time_label)}): {_escape(total_time_str)}
     </div>
 
 """
@@ -222,7 +230,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
         
         html += f"""
     <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2ecc71;">
-        <h2 style="margin-top: 0;">📋 Executive Summary</h2>
+        <h2 style="margin-top: 0;">Executive Summary</h2>
         <div style="font-size: 14px; line-height: 1.6;">{summary_html}</div>
 """
         if highlights:
@@ -230,7 +238,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
         <ul style="margin-top: 15px;">
 """
             for h in highlights:
-                html += f"""            <li style="margin-bottom: 5px; font-weight: 500;">{h}</li>"""
+                html += f"""            <li style="margin-bottom: 5px; font-weight: 500;">{_escape(h)}</li>"""
             html += """
         </ul>
 """
@@ -249,7 +257,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
              html += f"""
             <li style="padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center;">
                 <span style="color: #2ecc71; margin-right: 10px; font-size: 1.2em;">[OK]</span>
-                <span style="font-weight: 500;">{a}</span>
+                <span style="font-weight: 500;">{_escape(a)}</span>
             </li>"""
         html += """
         </ul>
@@ -278,14 +286,14 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
         <tbody>
 """
         for item in report_items:
-            task_name = item.get('Task', 'Untitled')
-            date_str = item.get('Date', '')
-            time_str = item.get('Time', '')
-            duration = item.get('Duration (m)', 0)
-            summary = item.get('Summary', '')
-            obj_title = item.get('Objective', '-')
-            kr_title = item.get('KeyResult', '-')
-            deadline = item.get('Deadline', '—')
+            task_name = _escape(item.get("Task", "Untitled"))
+            date_str = _escape(item.get("Date", ""))
+            time_str = _escape(item.get("Time", ""))
+            duration = item.get("Duration (m)", 0)
+            summary = _escape(item.get("Summary", ""))
+            obj_title = _escape(item.get("Objective", "-"))
+            kr_title = _escape(item.get("KeyResult", "-"))
+            deadline = _escape(item.get("Deadline", "-"))
             
             # Format Date/Time
             date_time_html = f"""
@@ -302,7 +310,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
             elif "Overdue" in deadline:
                 badge_class = "badge-red"
             
-            deadline_html = f'<span class="badge {badge_class}">{deadline}</span>' if deadline != "—" else "—"
+            deadline_html = f'<span class="badge {badge_class}">{deadline}</span>' if deadline != "-" else "-"
 
             html += f"""
             <tr>
@@ -310,7 +318,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
                 <td>{obj_title}</td>
                 <td>{kr_title}</td>
                 <td>{date_time_html}</td>
-                <td>{duration}m</td>
+                <td>{_escape(duration)}m</td>
                 <td>{deadline_html}</td>
                 <td style="color: #555;">{summary}</td>
             </tr>
@@ -357,8 +365,8 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
             
             html += f"""
             <tr>
-                <td>{obj_title}</td>
-                <td>{fmt(mins)}</td>
+                <td>{_escape(obj_title)}</td>
+                <td>{_escape(fmt(mins))}</td>
                 <td>{pct:.1f}%</td>
             </tr>
 """
@@ -389,7 +397,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
 """
 
         for kr in key_results:
-            kr_title = kr.get("title", "Untitled")
+            kr_title = _escape(kr.get("title", "Untitled"))
             progress = kr.get("progress", 0)
             
             an = kr.get("geminiAnalysis")
@@ -408,9 +416,9 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
                 if q_val is not None: qual_score = f"{q_val}%"
                 if o_val is not None: fulfillment = f"{o_val}%"
                 
-                summary = an.get('summary', '')
-                gap = an.get('gap_analysis', '')
-                quality = an.get('quality_assessment', '')
+                summary = _escape(an.get("summary", ""))
+                gap = _escape(an.get("gap_analysis", ""))
+                quality = _escape(an.get("quality_assessment", ""))
                 
                 if summary or gap or quality:
                     analysis_html = f"""
@@ -428,10 +436,10 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
             html += f"""
             <tr style="border-bottom: {'none' if analysis_html else '1px solid #dee2e6'};">
                 <td>{kr_title}</td>
-                <td>{progress}%</td>
-                <td>{eff_score}</td>
-                <td>{qual_score}</td>
-                <td>{fulfillment}</td>
+                <td>{_escape(progress)}%</td>
+                <td>{_escape(eff_score)}</td>
+                <td>{_escape(qual_score)}</td>
+                <td>{_escape(fulfillment)}</td>
             </tr>
             {analysis_html}
 """
@@ -454,16 +462,18 @@ def generate_pdf_with_pdfshift(html):
     try:
         pdfshift_api_key = st.secrets["pdfshift_api_key"]
         
-        response = requests.post(
+        response = post_json_with_retry(
             "https://api.pdfshift.io/v3/convert/pdf",
-            headers={'X-API-Key': pdfshift_api_key},
-            json={
+            headers={"X-API-Key": pdfshift_api_key},
+            json_payload={
                 "source": html,
                 "sandbox": True,
                 "landscape": True,
                 "format": "A4",
-                "use_print": False
-            }
+                "use_print": False,
+            },
+            timeout=(5.0, 60.0),
+            retries=2,
         )
         
         if response.status_code == 200:
@@ -573,3 +583,4 @@ def get_pdf_generator_info():
     }
     
     return info
+
