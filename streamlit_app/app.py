@@ -114,11 +114,19 @@ def render_login():
         
         if st.button("Login", type="primary"):
             if username.strip() and password:
-                auth = authenticate_user_detailed(
-                    username.strip(),
-                    password,
-                    client_ip=_get_client_ip(),
-                )
+                try:
+                    auth = authenticate_user_detailed(
+                        username.strip(),
+                        password,
+                        client_ip=_get_client_ip(),
+                    )
+                except Exception as exc:
+                    error_log("Authentication failed unexpectedly", exc)
+                    st.error(
+                        "Login is temporarily unavailable due to a database issue. "
+                        "Please contact your administrator."
+                    )
+                    return
                 user = auth.get("user")
                 if user:
                     # Store user info in session
