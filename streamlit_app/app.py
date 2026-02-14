@@ -193,6 +193,10 @@ def _clear_user_session():
         "atlas_scope_selector",
         "atlas_focus_mode",
         "atlas_sort_mode",
+        "atlas_focus_task_ref",
+        "atlas_focus_task_picker",
+        "atlas_last_selected_ref",
+        "atlas_map_last_click_ref",
         "atlas_breadcrumbs",
         "workspace_mode",
         "must_change_password",
@@ -326,6 +330,10 @@ def render_app(username):
             "atlas_selected_ref",
             "atlas_jump_query",
             "atlas_breadcrumbs",
+            "atlas_focus_task_ref",
+            "atlas_focus_task_picker",
+            "atlas_last_selected_ref",
+            "atlas_map_last_click_ref",
         ]:
             if key in st.session_state:
                 del st.session_state[key]
@@ -345,7 +353,15 @@ def render_app(username):
         if "active_report_mode" in st.session_state:
             del st.session_state.active_report_mode
         st.session_state.nav_stack = []
-        for key in ["atlas_selected_ref", "atlas_breadcrumbs", "active_inspector_id"]:
+        for key in [
+            "atlas_selected_ref",
+            "atlas_breadcrumbs",
+            "atlas_focus_task_ref",
+            "atlas_focus_task_picker",
+            "atlas_last_selected_ref",
+            "atlas_map_last_click_ref",
+            "active_inspector_id",
+        ]:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()

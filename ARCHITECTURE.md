@@ -8,7 +8,7 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
-  - Primary hierarchy UX: Atlas timer-first workspace (`Focus Dock` + `Flow Board` + `Hierarchy` + `Inspector`)
+  - Primary hierarchy UX: Atlas timer-first workspace (`Focus Dock` + `Timer Studio` + `Focus Map` + `Flow Board` + `Hierarchy` + `Inspector`)
   - Compatibility UX: Classic drill-down cards with breadcrumb navigation
 - Domain/data operations: `streamlit_app/src/crud.py`
 - Extracted domain modules:
@@ -51,8 +51,10 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 1b. Hierarchy navigation flow (Atlas mode)
 - `render_level` dispatches to `render_atlas_workspace` when `workspace_mode=Atlas`.
 - Top command bar handles quick jump and role-aware scope/focus/sort controls.
-- `Focus Dock` computes and presents a single focus task for fast timer start/stop.
+- `Focus Dock` computes and presents a single focus task with always-visible focus selection.
+- `Timer Studio` hosts timer mutations (`Start Timer` / `Stop Timer`) and running timer controls.
 - Workspace uses progressive disclosure tabs:
+  - `Focus Map`: first-glance treemap + ranked focus candidates
   - `Flow Board`: execution queue and child actions
   - `Hierarchy`: structural navigation and expansion controls
   - `Inspector`: deep edit/read context for selected node
@@ -61,12 +63,14 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 Interaction model is intentionally split into control-plane and work-plane:
 
-1. Control-plane: Focus Dock
-- One dominant action: `Start Timer` / `Stop Timer`.
+1. Control-plane: Focus Dock + Timer Studio
+- Focus selection is always visible in Focus Dock.
+- Timer actions are isolated in Timer Studio to reduce dock clutter.
 - Focused task state is sticky across tab changes.
 - Rollup signals (`Tasks`, `Running`, `Attention`, `Done`) provide instant context.
 
 2. Work-plane: Progressive disclosure
+- `Focus Map` is the first-glance visual overview for focus choice.
 - `Flow Board` is optimized for throughput (open node, set focus, add child).
 - `Hierarchy` is optimized for structural movement (expand/collapse/select).
 - `Inspector` is optimized for depth (details, edits, map).
@@ -75,10 +79,15 @@ Interaction model is intentionally split into control-plane and work-plane:
 - `atlas_selected_ref`: single source of truth for current node context.
 - `atlas_focus_task_ref`: explicit focus target for timer operations.
 - `atlas_expanded_*`: hierarchy expansion state, independent from selected context.
-- Selection changes reset transient focus-picker state to avoid stale controls.
+- `Focus Map` and `Flow Board` both mutate only these shared selection keys.
 
 4. Permission contract
 - Timer mutations remain ownership-gated (`owner_id == actor_id`) at UI + CRUD boundaries.
+
+5. Attention classification contract
+- A node is `Needs attention` when incomplete and either:
+  - marked overdue/risk by deadline/status evaluation, or
+  - below progress threshold (40%).
 
 2. Check-in flow
 - UI weekly ritual submits `create_check_in`.
