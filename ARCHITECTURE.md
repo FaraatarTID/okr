@@ -7,6 +7,9 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
 - Domain/data operations: `streamlit_app/src/crud.py`
+- Extracted domain modules:
+  - `streamlit_app/src/domain/authorization.py` (ownership/RBAC predicates + authorizers)
+  - `streamlit_app/src/domain/analytics.py` (hot-path analytics/reporting queries)
 - Persistence: `streamlit_app/src/database.py`, `streamlit_app/src/models.py`, Alembic migrations in `streamlit_app/alembic/`
 - External integrations: `streamlit_app/src/services/sheet_sync.py`, `streamlit_app/src/services/ai_service.py`, `streamlit_app/src/services/pdf_service.py`
 - Shared business helpers: `streamlit_app/utils/deadline_utils.py`
@@ -17,13 +20,14 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 - Owns Streamlit rendering and session state orchestration.
 - Calls CRUD/service functions; does not own database transactions.
 
-2. Domain boundary (`crud.py` + `deadline_utils.py`)
+2. Domain boundary (`crud.py` facade + `src/domain/*` + `deadline_utils.py`)
 - Owns business rules for:
   - CRUD and hierarchy traversal
   - authorization checks (owner/manager/admin)
   - check-ins, reports, leadership metrics, timer semantics
   - deadline health/status logic
 - Keeps rules testable without Streamlit runtime.
+- `crud.py` remains the compatibility API used by UI/tests, while domain modules hold focused logic.
 
 3. Persistence boundary (`database.py`, `models.py`, migrations)
 - Owns connection lifecycle, schema, constraints, and indexes.
