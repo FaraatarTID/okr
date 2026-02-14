@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r streamlit_app/requirements.txt
+          pip install ruff mypy
+
+      - name: Lint (Ruff)
+        run: |
+          python -m ruff check \
+            streamlit_app/src/crud.py \
+            streamlit_app/utils/deadline_utils.py \
+            streamlit_app/scripts/perf_hotpaths.py \
+            test_deadline_utils.py \
+            test_performance_hotpaths.py \
+            --select E9,F63,F7,F82
+
+      - name: Format Check (Ruff)
+        run: |
+          python -m ruff format --check \
+            streamlit_app/src/crud.py \
+            streamlit_app/utils/deadline_utils.py \
+            streamlit_app/scripts/perf_hotpaths.py \
+            test_deadline_utils.py \
+            test_performance_hotpaths.py
+
+      - name: Type Check (Mypy)
+        run: |
+          python -m mypy --ignore-missing-imports \
+            streamlit_app/utils/deadline_utils.py \
+            streamlit_app/scripts/perf_hotpaths.py
+
+      - name: Test
+        run: python -m pytest -q
