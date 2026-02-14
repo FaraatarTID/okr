@@ -121,8 +121,8 @@ def render_password_reset_gate():
         st.error("Passwords do not match.")
         return
     if reset_user_password(st.session_state["user_id"], new_pw):
-        st.session_state["must_change_password"] = False
-        st.success("Password updated successfully.")
+        st.success("Password updated successfully. Please log in again with your new password.")
+        _clear_user_session()
         st.rerun()
     st.error("Failed to update password.")
 

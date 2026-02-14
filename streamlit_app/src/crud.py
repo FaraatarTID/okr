@@ -666,21 +666,46 @@ def reset_user_password(
     user_id: int, new_password: str, require_change: bool = False
 ) -> bool:
     """Reset a user's password."""
-    with get_session_context() as session:
-        user = session.get(User, user_id)
-        if not user:
-            return False
-        user.password_hash = hash_password(new_password)
-        user.must_change_password = bool(require_change)
-        user.password_changed_at = None if require_change else utc_now_naive()
-        session.add(user)
-        session.commit()
-        session.refresh(user)
+    username = None
+    try:
+        with get_session_context() as session:
+            user = session.get(User, user_id)
+            if not user:
+                return False
+            username = user.username
+            user.password_hash = hash_password(new_password)
+            user.must_change_password = bool(require_change)
+            user.password_changed_at = None if require_change else utc_now_naive()
+            session.add(user)
+            session.flush()
+            session.refresh(user)
+
+        # Verify persistence in a fresh session so next login uses the new hash.
+        with get_session_context() as verify_session:
+            persisted = verify_session.get(User, user_id)
+            if not persisted:
+                return False
+            if not verify_password(new_password, persisted.password_hash):
+                return False
+            if bool(persisted.must_change_password) != bool(require_change):
+                return False
+
         audit_log(
-            "reset_password", "user", actor=user.username, details={"user_id": user_id}
+            "reset_password",
+            "user",
+            actor=username,
+            details={"user_id": user_id, "verified": True},
         )
         clear_cache_safe()
         return True
+    except Exception as exc:
+        audit_log(
+            "reset_password_failed",
+            "user",
+            actor=username,
+            details={"user_id": user_id, "error": str(exc)},
+        )
+        return False
 
 
 def ensure_admin_exists():
