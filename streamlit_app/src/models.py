@@ -151,26 +151,6 @@ class Retrospective(SQLModel, table=True):
     cycle: Optional[Cycle] = Relationship() # No back_populates needed for now
 
 
-class SyncRetryEvent(SQLModel, table=True):
-    """Durable queue item for deferred cloud sync operations."""
-    __tablename__ = "sync_retry_event"
-    __table_args__ = (
-        CheckConstraint("attempts >= 0", name="ck_sync_retry_attempts_non_negative"),
-        Index("ix_sync_retry_event_next_attempt", "next_attempt_at"),
-        {"extend_existing": True},
-    )
-
-    id: Optional[int] = Field(default=None, primary_key=True)
-    queue_key: str = Field(unique=True, index=True)
-    payload_json: str
-    attempts: int = Field(default=0)
-    next_attempt_at: datetime = Field(default_factory=utc_now_naive)
-    last_error_code: Optional[str] = None
-    last_error: Optional[str] = None
-    created_at: datetime = Field(default_factory=utc_now_naive)
-    updated_at: Optional[datetime] = None
-
-
 class Objective(NodeBase, table=True):
     """Measurable objective within a goal."""
     __tablename__ = "objective"

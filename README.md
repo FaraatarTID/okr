@@ -287,9 +287,6 @@ pip install -r streamlit_app/requirements.txt
 # 4. Configure secrets (optional - for AI features)
 # Create streamlit_app/.streamlit/secrets.toml:
 # GEMINI_API_KEY = "your-api-key"
-# Optional (recommended for production):
-# [app]
-# production = true
 # [database]
 # url = "postgresql+psycopg2://user:pass@host:5432/okr"
 
@@ -306,8 +303,8 @@ streamlit run streamlit_app/app.py
 | Frontend  | Streamlit + Plotly + streamlit-agraph                                  |
 | Styling   | Vanilla CSS + Vazirmatn font                                           |
 | Auth      | bcrypt password hashing                                                |
-| Database  | SQLModel (SQLite) + **Google Sheets (Unified Single Source of Truth)** |
-| Storage   | **Write-Through Caching** (Sheets Master -> MySQL/SQLite Cache)        |
+| Database  | SQLModel + Supabase PostgreSQL                                           |
+| Storage   | Supabase PostgreSQL (single source of truth)                             |
 | AI        | Google Gemini API                                                      |
 | PDF       | pdfkit (local) / PDFShift (cloud)                                      |
 
@@ -323,10 +320,10 @@ The codebase is organized modularly to separate concerns across the UI, business
     - **`styles.py`**: Centralized CSS injections, font applications, and UI color/icon constants.
     - **`components.py`**: Functional UI components like cards, navigation levels, and breadcrumbs.
     - **`dialogs.py`**: Streamlit `@st.dialog` modal definitions for reports, timers, and management panels.
-  - **`services/`**: Core business services including AI analysis (Gemini), PDF generation, and Google Sheets synchronization.
+  - **`services/`**: Core business services including AI analysis (Gemini) and PDF generation.
   - **`models.py`**: Data models defined using SQLModel and Pydantic.
   - **`crud.py`**: Specialized Create, Read, Update, and Delete operations for the OKR hierarchy.
-  - **`database.py`**: SQLite database configuration and session handling.
+  - **`database.py`**: Supabase PostgreSQL configuration and session handling.
 - **`utils/`**: Utility modules for state management, deadline logic, and data storage.
 - **`assets/`**: Static assets and media.
 
@@ -341,10 +338,10 @@ The codebase is organized modularly to separate concerns across the UI, business
 - **Collaborative Timer**: Members can track time on tasks assigned by their manager.
 - **Enhanced Visibility**: Task assignees are clearly visible on cards and in the inspector.
 
-### ☁️ Unified Data Architecture
+### Supabase-Only Data Architecture
 
-- **Google Sheets Master Data**: All app data uses Google Sheets as the single source of truth.
-- **Resilient Sync**: Automatic write-through caching ensures data safety and offline resilience.
+- **Supabase PostgreSQL**: All app data uses Supabase as the single source of truth.
+- **No local database fallback**: Runtime persistence is centralized and migration-driven.
 
 ### AI Team Coach
 

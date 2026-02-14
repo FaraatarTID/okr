@@ -10,10 +10,9 @@ This guide is for deploying the OKR app in a company environment where users acc
 
 If you are not sure what to choose, use this default stack:
 - Docker Compose
-- PostgreSQL
+- Supabase PostgreSQL
 - Nginx reverse proxy
 - HTTPS (TLS certificate)
-- `PRODUCTION=true`
 
 This is the safest and easiest enterprise path for this repo.
 
@@ -29,7 +28,6 @@ What this deployment gives you
 Key files used by this guide
 - `deploy/docker/Dockerfile`
 - `deploy/docker/docker-compose.yml`
-- `deploy/docker/docker-compose.postgres.yml`
 - `deploy/docker/.env.example`
 - `deploy/docker/.env.mycompany.example`
 - `deploy/nginx.conf`
@@ -46,9 +44,7 @@ Quick decision matrix
 - Use subpath only if your company policy requires it: `mycompany.com/okr`
 
 2) Which database?
-- Recommended: managed Postgres (AWS RDS, Azure DB, GCP Cloud SQL, internal Postgres)
-- Acceptable for pilot: local Postgres container
-- Do not use SQLite for production workloads
+- Required: Supabase PostgreSQL (Session Pooler URL with `sslmode=require`)
 
 3) Which platform?
 - Start with Docker Compose on one VM
@@ -65,7 +61,7 @@ Step 0: Collect required values
 Prepare these values first:
 - `APP_DOMAIN`: for example `okr.mycompany.com`
 - `SERVER_IP`: public/private server IP
-- `OKR_DATABASE_URL`: example `postgresql+psycopg2://okr_user:strong_password@db.company.net:5432/okr`
+- `OKR_DATABASE_URL`: example `postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require`
 - `CONTACT_EMAIL`: certificate contact email
 
 Step 1: Prepare the Linux host (Ubuntu example)
@@ -115,8 +111,7 @@ Edit `deploy/docker/.env` and set at minimum:
 PORT=8501
 HOST_PORT=8501
 BASE_URL_PATH=
-PRODUCTION=true
-OKR_DATABASE_URL=postgresql+psycopg2://okr_user:strong_password@db.company.net:5432/okr
+OKR_DATABASE_URL=postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require
 
 # Optional image pin (recommended after first stable release)
 # IMAGE=ghcr.io/your-org/okr-streamlit:2026-02-14
@@ -125,7 +120,6 @@ OKR_DATABASE_URL=postgresql+psycopg2://okr_user:strong_password@db.company.net:5
 Notes:
 - Keep `BASE_URL_PATH` empty for subdomain hosting.
 - For subpath hosting (`/okr`), set `BASE_URL_PATH=okr`.
-- `PRODUCTION=true` disables Google Sheets sync and enforces non-SQLite DB.
 
 Step 4: Configure optional secrets (PDF/API integrations)
 
@@ -255,24 +249,7 @@ Confirm manually:
 
 ---
 
-Path B: Docker Compose + bundled Postgres (pilot environments)
-
-Use this only when managed Postgres is not available yet.
-
-```bash
-cp deploy/docker/.env.example deploy/docker/.env
-docker compose -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.postgres.yml up -d --build
-```
-
-What this does:
-- Starts app container + `postgres:16` container
-- App uses connection string generated in `deploy/docker/docker-compose.postgres.yml`
-
-For enterprise production, managed Postgres is still preferred for backup/HA/compliance.
-
----
-
-Path C: Kubernetes (for teams already running K8s)
+Path B: Kubernetes (for teams already running K8s)
 
 Use manifests in `deploy/k8s`.
 
@@ -284,8 +261,7 @@ High-level sequence:
 5. Verify readiness/liveness and HTTPS.
 
 Important:
-- With SQLite keep replicas at 1.
-- With Postgres you can scale more safely, but Streamlit sessions are stateful, so use sticky sessions at ingress when scaling.
+- Streamlit sessions are stateful, so use sticky sessions at ingress when scaling.
 
 Detailed docs:
 - `docs/KUBERNETES.md`
@@ -323,16 +299,13 @@ docker compose -f deploy/docker/docker-compose.yml up -d
 ```
 
 Backups
-- Managed Postgres: enable provider snapshots and test restore quarterly.
-- Local Postgres container: schedule `pg_dump` + offsite storage.
-- SQLite fallback: snapshot Docker volume `okr_data`.
+- Supabase PostgreSQL: enable provider snapshots and test restore quarterly.
 
 ---
 
 Security hardening checklist
 
-- Use `PRODUCTION=true`.
-- Use Postgres, not SQLite, for production.
+- Use Supabase PostgreSQL only.
 - Keep only ports 80/443 exposed publicly.
 - Block direct public access to `8501`.
 - Keep secrets in `deploy/secrets/secrets.toml` or platform secret manager.
@@ -352,8 +325,8 @@ Assets broken under subpath:
 - Set `BASE_URL_PATH=okr`.
 - Ensure reverse proxy strips `/okr` before forwarding.
 
-App fails at startup with production mode:
-- You likely set `PRODUCTION=true` without `OKR_DATABASE_URL`.
+App fails at startup with database URL error:
+- Ensure `OKR_DATABASE_URL` is set and points to `*.supabase.com` with `postgresql+psycopg2://`.
 
 Cannot log in:
 - If DB is new, use `admin/admin` once and change password.

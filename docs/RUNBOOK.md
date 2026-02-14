@@ -10,13 +10,12 @@ Runbook: first deployment
 - Kubernetes in a cluster (optional)
 
 3) Configure environment
-- Provide OKR_DATABASE_URL for Postgres (managed DB recommended)
+- Provide OKR_DATABASE_URL for Supabase PostgreSQL (required)
 - Decide hosting scheme: subdomain vs subpath
 - Configure reverse proxy with TLS and websocket support
-- (Recommended) Set PRODUCTION=true to disable Sheets sync and enforce a non-SQLite database
 
 4) Start services
-- Compose: start app (and Postgres if not managed)
+- Compose: start app
 - K8s: apply manifests
 
 5) Post-deploy checks
@@ -25,7 +24,7 @@ Runbook: first deployment
 - Create your first cycle and users
 
 6) Enable optional integrations
-- Add secrets.toml for PDFShift or Google sheets if required
+- Add secrets.toml for PDFShift or Gemini if required
 
 7) Set up backups and monitoring
 - Automated DB backups

@@ -37,9 +37,6 @@ spec:
                 secretKeyRef:
                   name: okr-db
                   key: OKR_DATABASE_URL
-          volumeMounts:
-            - name: data
-              mountPath: /data
           readinessProbe:
             httpGet:
               path: /
@@ -61,18 +58,3 @@ spec:
             limits:
               cpu: 500m
               memory: 1Gi
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: okr-data
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: okr-data
-  namespace: okr
-spec:
-  accessModes: ["ReadWriteOnce"]
-  resources:
-    requests:
-      storage: 1Gi

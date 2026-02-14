@@ -46,11 +46,6 @@ from src.models import (
 )
 
 
-class _NoopSync:
-    def push_update(self, *_args, **_kwargs):
-        return None
-
-
 def _setup_db():
     tmpdir = Path(tempfile.mkdtemp(prefix="okr_perf_"))
     db_path = tmpdir / "perf.db"
@@ -58,7 +53,6 @@ def _setup_db():
     engine = database._create_engine(db_url)
     database.DATABASE_URL = db_url
     database._engine = engine
-    crud._sync_service = lambda: _NoopSync()
     SQLModel.metadata.create_all(engine)
     return engine
 

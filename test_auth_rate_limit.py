@@ -22,13 +22,8 @@ def isolated_db(monkeypatch, tmp_path):
     db_url = f"sqlite:///{db_path}"
     engine = database._create_engine(db_url)
 
-    class _NoopSyncService:
-        def push_update(self, *_args, **_kwargs):
-            return None
-
     monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
     monkeypatch.setattr(database, "_engine", engine, raising=False)
-    monkeypatch.setattr(crud, "_sync_service", lambda: _NoopSyncService(), raising=True)
 
     # Deterministic, test-friendly throttle defaults.
     monkeypatch.setattr(crud, "AUTH_USER_WINDOW_SECONDS", 300, raising=True)

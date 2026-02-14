@@ -11,7 +11,6 @@ secrets.toml
 # Data
 okr_data.json
 *.json
-okr_database.db
 *.db
 node_modules
 
@@ -43,7 +42,6 @@ env/
 *.sqlite
 *.sqlite3
 *.db
-okr_database.db
 okr_data*.json
 
 # Streamlit

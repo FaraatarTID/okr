@@ -15,13 +15,21 @@ from src.audit import error_log
 # One-time preflight: check PDF engine (after login to speed initial load)
 def _get_pdf_method() -> str:
     try:
+        app_cfg = st.secrets.get("app", {})
         method = str(st.secrets.get("PDF_METHOD", "")).strip().lower()
+        if not method and hasattr(app_cfg, "get"):
+            method = str(app_cfg.get("PDF_METHOD", app_cfg.get("pdf_method", ""))).strip().lower()
         # Accept common typo to keep deployments resilient.
         if method == "shiftpdf":
             method = "pdfshift"
         if method in {"pdfshift", "pdfkit"}:
             return method
-        if "pdfshift_api_key" in st.secrets:
+        if (
+            "pdfshift_api_key" in st.secrets
+            or ("PDFSHIFT_API_KEY" in st.secrets)
+            or (hasattr(app_cfg, "get") and app_cfg.get("pdfshift_api_key"))
+            or (hasattr(app_cfg, "get") and app_cfg.get("PDFSHIFT_API_KEY"))
+        ):
             return "pdfshift"
     except Exception:
         pass

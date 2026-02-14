@@ -23,8 +23,7 @@ Mark each item complete before go-live.
 - [ ] Repo is cloned on the server.
 - [ ] `deploy/docker/.env` exists (copied from `deploy/docker/.env.example`).
 - [ ] Optional shortcut used if applicable: `deploy/docker/.env.mycompany.example`.
-- [ ] `PRODUCTION=true` is set in `.env`.
-- [ ] `OKR_DATABASE_URL` is set in `.env`.
+- [ ] `OKR_DATABASE_URL` is set in `.env` and points to Supabase (`*.supabase.com`).
 - [ ] `BASE_URL_PATH` is empty for subdomain deployment.
 - [ ] Optional integrations secrets are prepared in `deploy/secrets/secrets.toml`.
 

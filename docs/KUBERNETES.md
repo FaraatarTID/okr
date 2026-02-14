@@ -22,7 +22,7 @@ Subpath hosting
 - Ensure ingress annotations handle path rewrites for websockets
 
 Scaling
-- Keep replicas=1 with SQLite; with Postgres you can scale reads but Streamlit is stateful per-user via session
+- Streamlit is stateful per-user via session; use sticky sessions at ingress when scaling
 - Prefer horizontal scale by adding more pods and sticky sessions at the ingress
 
 Rollouts
@@ -34,5 +34,4 @@ Monitoring & logs
 - Health check: GET /
 
 Backups
-- Rely on managed Postgres backups
-- If using PVC (SQLite fallback), snapshot the PVC
+- Rely on Supabase PostgreSQL backups/snapshots

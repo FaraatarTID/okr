@@ -28,10 +28,7 @@ RUN python -m pip install --upgrade pip \
 RUN useradd -m -u 10001 appuser \
     && chown -R appuser:appuser /app
 
-# Persist database and any generated files under /data
-VOLUME ["/data"]
-
-# Add entrypoint for DB persistence/linking
+# Add entrypoint
 COPY deploy/docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh \
     && chown appuser:appuser /entrypoint.sh

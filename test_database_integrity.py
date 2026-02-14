@@ -22,19 +22,13 @@ def _utc_now_naive() -> datetime:
 @pytest.fixture()
 def isolated_db(monkeypatch, tmp_path):
     import src.database as database
-    import src.crud as crud
 
     db_path = tmp_path / "okr_integrity_test.db"
     db_url = f"sqlite:///{db_path}"
     engine = database._create_engine(db_url)
 
-    class _NoopSyncService:
-        def push_update(self, *_args, **_kwargs):
-            return None
-
     monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
     monkeypatch.setattr(database, "_engine", engine, raising=False)
-    monkeypatch.setattr(crud, "_sync_service", lambda: _NoopSyncService(), raising=True)
 
     SQLModel.metadata.create_all(engine)
     try:
@@ -162,7 +156,6 @@ def test_run_migrations_bootstraps_fresh_database(monkeypatch, tmp_path):
         "key_result",
         "task",
         "work_log",
-        "sync_retry_event",
         "auth_throttle_state",
     }:
         assert table_name in tables
@@ -199,7 +192,6 @@ def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(tmp_path):
         "key_result",
         "task",
         "work_log",
-        "sync_retry_event",
         "auth_throttle_state",
     }:
         assert table_name in tables
@@ -231,8 +223,8 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(monkeypat
     inspector = sa_inspect(database.get_engine())
     tables = set(inspector.get_table_names())
     assert "alembic_version" in tables
-    for table_name in {"sync_retry_event", "auth_throttle_state"}:
-        assert table_name in tables
+    assert "auth_throttle_state" in tables
+    assert "sync_retry_event" not in tables
 
 
 def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(tmp_path):
@@ -462,36 +454,6 @@ def test_worklog_unique_open_index_migration_heals_duplicates(tmp_path):
         ).all()
         assert len(open_logs) == 1
 
-    engine.dispose()
-
-
-def test_sync_retry_event_table_is_created_by_migration(tmp_path):
-    from alembic import command
-    from alembic.config import Config
-    from src.database import _create_engine
-    from src.models import SQLModel
-
-    db_path = tmp_path / "okr_sync_retry_table_migration.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = _create_engine(db_url)
-    SQLModel.metadata.create_all(engine)
-
-    with engine.begin() as conn:
-        conn.execute(sa_text("DROP TABLE IF EXISTS sync_retry_event"))
-
-    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
-    script_location = ROOT_DIR / "streamlit_app" / "alembic"
-    cfg = Config(str(ini_path))
-    cfg.set_main_option("sqlalchemy.url", db_url)
-    cfg.set_main_option("script_location", str(script_location))
-
-    command.stamp(cfg, "f6a7b8c9d0e1")
-    command.upgrade(cfg, "head")
-
-    from sqlalchemy import inspect as sa_inspect
-
-    table_names = set(sa_inspect(engine).get_table_names())
-    assert "sync_retry_event" in table_names
     engine.dispose()
 
 
