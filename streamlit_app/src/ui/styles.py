@@ -148,3 +148,64 @@ def apply_custom_fonts():
         """,
         unsafe_allow_html=True
     )
+
+
+def inject_atlas_styles():
+    """Styling tokens for the Atlas 3-pane workspace."""
+    st.markdown(
+        """
+        <style>
+        :root {
+            --atlas-border: #d9e2ec;
+            --atlas-bg-soft: #f8fbff;
+            --atlas-ink: #0f172a;
+            --atlas-muted: #475569;
+            --atlas-accent: #0f766e;
+        }
+
+        .atlas-hero {
+            border: 1px solid var(--atlas-border);
+            border-radius: 16px;
+            padding: 0.95rem 1.1rem;
+            background: linear-gradient(135deg, #f8fbff 0%, #eef2ff 42%, #ecfeff 100%);
+            margin-bottom: 0.75rem;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+        }
+
+        .atlas-title {
+            margin: 0;
+            font-size: 1.1rem;
+            color: var(--atlas-ink);
+            font-weight: 700;
+        }
+
+        .atlas-subtitle {
+            margin: 0.2rem 0 0;
+            font-size: 0.88rem;
+            color: var(--atlas-muted);
+        }
+
+        .atlas-pane-title {
+            margin: 0.15rem 0 0.35rem;
+            color: var(--atlas-ink);
+            font-weight: 700;
+            letter-spacing: 0.01em;
+        }
+
+        .atlas-kicker {
+            text-transform: uppercase;
+            font-size: 0.72rem;
+            letter-spacing: 0.08em;
+            color: var(--atlas-accent);
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .atlas-meta {
+            font-size: 0.82rem;
+            color: var(--atlas-muted);
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
