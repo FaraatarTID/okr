@@ -151,25 +151,26 @@ def apply_custom_fonts():
 
 
 def inject_atlas_styles():
-    """Styling tokens for the Atlas 3-pane workspace."""
+    """Styling tokens for the Atlas timer-first workspace."""
     st.markdown(
         """
         <style>
         :root {
-            --atlas-border: #d9e2ec;
-            --atlas-bg-soft: #f8fbff;
-            --atlas-ink: #0f172a;
-            --atlas-muted: #475569;
-            --atlas-accent: #0f766e;
+            --atlas-border: #e5dccb;
+            --atlas-bg-soft: #fffaf2;
+            --atlas-ink: #1f2933;
+            --atlas-muted: #5f6b7a;
+            --atlas-accent: #8a6827;
+            --atlas-emerald: #0f766e;
         }
 
         .atlas-hero {
             border: 1px solid var(--atlas-border);
             border-radius: 16px;
             padding: 0.95rem 1.1rem;
-            background: linear-gradient(135deg, #f8fbff 0%, #eef2ff 42%, #ecfeff 100%);
+            background: linear-gradient(128deg, #fffdf7 0%, #f8f1e4 44%, #f0f7f5 100%);
             margin-bottom: 0.75rem;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+            box-shadow: 0 10px 26px rgba(39, 34, 26, 0.08);
         }
 
         .atlas-title {
@@ -204,6 +205,60 @@ def inject_atlas_styles():
         .atlas-meta {
             font-size: 0.82rem;
             color: var(--atlas-muted);
+        }
+
+        .atlas-luxe-strip {
+            height: 4px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #8a6827 0%, #d2b26b 50%, #8a6827 100%);
+            margin-bottom: 0.65rem;
+            opacity: 0.95;
+        }
+
+        .atlas-focus-entity {
+            font-size: 1.7rem;
+            font-weight: 760;
+            letter-spacing: 0.01em;
+            color: var(--atlas-ink);
+            margin: 0.15rem 0 0.65rem;
+        }
+
+        .atlas-nextup-label {
+            margin-top: 0.65rem;
+            margin-bottom: 0.2rem;
+            font-size: 0.74rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--atlas-accent);
+        }
+
+        .atlas-tree-leaf-marker {
+            text-align: center;
+            color: #a4acb8;
+            font-weight: 700;
+            padding-top: 0.35rem;
+        }
+
+        div[data-testid="stTabs"] button[role="tab"] {
+            font-weight: 650;
+            color: #6b7280;
+        }
+
+        div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+            color: var(--atlas-accent);
+        }
+
+        button[data-testid="stBaseButton-primary"] {
+            border: none !important;
+            background: linear-gradient(110deg, #0f766e 0%, #129989 100%) !important;
+            color: #ffffff !important;
+            font-weight: 700 !important;
+            box-shadow: 0 6px 14px rgba(15, 118, 110, 0.22);
+        }
+
+        button[data-testid="stBaseButton-secondary"] {
+            border-color: var(--atlas-border) !important;
         }
         </style>
         """,
