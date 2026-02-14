@@ -381,12 +381,15 @@ _Built for excellence in strategic alignment and execution tracking._
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r streamlit_app/requirements.txt
-pip install ruff mypy
+pip install ruff mypy pre-commit
+pre-commit install
 ```
 
 ### Verify quality locally
 
 ```bash
+pre-commit run --all-files
+# Runs Documentation HQ link checks + targeted Ruff + targeted Mypy hooks
 python scripts/check_docs_hq_links.py
 python -m ruff check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py --select E9,F63,F7,F82
 python -m ruff format --check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py
