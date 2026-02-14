@@ -237,6 +237,7 @@ def inject_atlas_styles():
             text-align: center;
             color: #a4acb8;
             font-weight: 700;
+            font-size: 1rem;
             padding-top: 0.35rem;
         }
 
@@ -259,6 +260,11 @@ def inject_atlas_styles():
 
         button[data-testid="stBaseButton-secondary"] {
             border-color: var(--atlas-border) !important;
+            color: var(--atlas-ink) !important;
+        }
+
+        button[data-testid="stBaseButton-secondary"] p {
+            font-weight: 560 !important;
         }
         </style>
         """,
