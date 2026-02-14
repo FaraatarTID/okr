@@ -322,12 +322,35 @@ def _clear_auth_throttle_state(
     state.updated_at = now
 
 
+def _is_auth_throttle_operational_error(exc: OperationalError) -> bool:
+    statement = str(getattr(exc, "statement", "") or "").lower()
+    message = str(getattr(exc, "orig", exc) or exc).lower()
+    if "auth_throttle_state" in statement or "auth_throttle_state" in message:
+        return True
+    # Common driver words that may appear in relation/table missing scenarios.
+    if "auth throttle" in message:
+        return True
+    schema_markers = (
+        "auth_throttle",
+        "ck_auth_throttle",
+        "ux_auth_throttle",
+        "ix_auth_throttle",
+    )
+    if any(marker in statement for marker in schema_markers):
+        return True
+    if any(marker in message for marker in schema_markers):
+        return True
+    # If the error text has no throttle identifiers, caller can still
+    # decide to try fallback auth and re-raise on failure.
+    return False
+
+
 def _is_auth_throttle_schema_operational_error(exc: OperationalError) -> bool:
     statement = str(getattr(exc, "statement", "") or "").lower()
     message = str(getattr(exc, "orig", exc) or exc).lower()
     if "auth_throttle_state" not in statement and "auth_throttle_state" not in message:
         return False
-    schema_markers = (
+    missing_schema_markers = (
         "no such table",
         "no such column",
         "has no column named",
@@ -335,7 +358,7 @@ def _is_auth_throttle_schema_operational_error(exc: OperationalError) -> bool:
         "undefined table",
         "undefined column",
     )
-    return any(marker in message for marker in schema_markers)
+    return any(marker in message for marker in missing_schema_markers)
 
 
 def _authenticate_user_without_throttle(
@@ -569,26 +592,36 @@ def authenticate_user_detailed(
                 "lock_scope": None,
             }
         except OperationalError as exc:
-            if not _is_auth_throttle_schema_operational_error(exc):
-                raise
             session.rollback()
+            fallback_reason = (
+                "auth_throttle_schema_error"
+                if _is_auth_throttle_schema_operational_error(exc)
+                else (
+                    "auth_throttle_operational_error"
+                    if _is_auth_throttle_operational_error(exc)
+                    else "auth_operational_error"
+                )
+            )
             audit_log(
                 "login",
                 "user",
                 actor=normalized_username or username,
                 details={
                     "success": False,
-                    "reason": "auth_throttle_schema_error",
+                    "reason": fallback_reason,
                     "client_ip": normalized_ip,
                 },
             )
-            return _authenticate_user_without_throttle(
-                session=session,
-                username=username,
-                password=password,
-                normalized_username=normalized_username,
-                normalized_ip=normalized_ip,
-            )
+            try:
+                return _authenticate_user_without_throttle(
+                    session=session,
+                    username=username,
+                    password=password,
+                    normalized_username=normalized_username,
+                    normalized_ip=normalized_ip,
+                )
+            except OperationalError:
+                raise exc
 
 
 def authenticate_user(

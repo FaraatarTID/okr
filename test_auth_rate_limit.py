@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 
 import pytest
+from sqlalchemy.exc import OperationalError
 from sqlmodel import SQLModel, select
 
 
@@ -175,6 +176,34 @@ def test_authentication_falls_back_when_throttle_table_missing(isolated_db):
     create_user("alice", "alice-pass")
     with get_engine().begin() as conn:
         conn.exec_driver_sql("DROP TABLE auth_throttle_state")
+
+    failed = authenticate_user_detailed("alice", "wrong-pass", client_ip="203.0.113.10")
+    assert failed["success"] is False
+    assert failed["error_code"] == "AUTH_INVALID_CREDENTIALS"
+
+    success = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
+    assert success["success"] is True
+    assert success["user"] is not None
+
+
+def test_authentication_falls_back_on_generic_throttle_operational_error(
+    isolated_db, monkeypatch
+):
+    import src.crud as crud
+    from src.crud import authenticate_user_detailed, create_user
+
+    create_user("alice", "alice-pass")
+
+    def _raise_operational_error(*_args, **_kwargs):
+        raise OperationalError(
+            statement="select * from auth_throttle_state where scope=:scope",
+            params={"scope": "user"},
+            orig=Exception("permission denied"),
+        )
+
+    monkeypatch.setattr(
+        crud, "_get_or_create_auth_throttle_state", _raise_operational_error, raising=True
+    )
 
     failed = authenticate_user_detailed("alice", "wrong-pass", client_ip="203.0.113.10")
     assert failed["success"] is False
