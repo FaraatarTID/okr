@@ -334,13 +334,8 @@ def render_app(username):
     st.sidebar.markdown("---")
 
     st.sidebar.markdown("### Experience")
-    st.sidebar.radio(
-        "Workspace Mode",
-        options=["Atlas", "Classic"],
-        key="workspace_mode",
-        label_visibility="collapsed",
-    )
-    workspace_mode = st.session_state.get("workspace_mode", "Atlas")
+    st.session_state["workspace_mode"] = "Atlas"
+    st.sidebar.success("Atlas Workspace Active")
 
     st.sidebar.markdown("---")
     
@@ -430,7 +425,7 @@ def render_app(username):
     if not dialog_active:
         if "active_timer_node_id" in st.session_state:
             render_timer_dialog(st.session_state.active_timer_node_id, username)
-        elif "active_inspector_id" in st.session_state and workspace_mode != "Atlas":
+        elif "active_inspector_id" in st.session_state:
             render_inspector_dialog(st.session_state.active_inspector_id, username)
         elif "active_report_mode" in st.session_state:
             mode = st.session_state.active_report_mode

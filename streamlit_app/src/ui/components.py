@@ -2413,10 +2413,9 @@ def render_card(node, username):
                             st.error(res_c["error"])
 
 def render_level(username):
-    if st.session_state.get("workspace_mode", "Atlas") == "Atlas":
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        return render_atlas_workspace(username)
+    if "active_inspector_id" in st.session_state:
+        del st.session_state.active_inspector_id
+    return render_atlas_workspace(username)
 
     # 'data' and 'root_ids' removed as we now fetch directly from SQL.
     
