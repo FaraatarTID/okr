@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 import sys
 import os
 import time
@@ -104,8 +104,8 @@ def _get_client_ip() -> str | None:
     return None
 
 def render_login():
-    st.markdown("## 🔐 Login to OKR Tracker")
-    st.info("👋 Welcome! Please enter your credentials to access your data.")
+    st.markdown("## ðŸ” Login to OKR Tracker")
+    st.info("ðŸ‘‹ Welcome! Please enter your credentials to access your data.")
     
     col1, col2 = st.columns([1, 2])
     with col1:
@@ -241,18 +241,21 @@ def render_app(username):
     user_role = st.session_state.get("user_role", "member")
     
     st.sidebar.markdown(f"👤 **{display_name}** ({user_role.title()})")
-    if production_mode:
-        st.sidebar.caption("🛡️ Production mode: ON")
-    else:
-        st.sidebar.caption("🧪 Production mode: OFF")
-        with st.sidebar.expander("Enable production mode"):
-            st.markdown("Set this in `streamlit_app/.streamlit/secrets.toml`:")
-            st.code(
-                "[app]\nproduction = true\n\n[database]\nurl = \"postgresql+psycopg2://user:pass@host:5432/okr\"",
-                language="toml",
-            )
-            st.markdown("Or set an environment variable `PRODUCTION=true` before starting the app.")
-    if st.sidebar.button("🚪 Logout"):
+    if user_role == "admin":
+        if production_mode:
+            st.sidebar.caption("🛡️ Production mode: ON")
+        else:
+            st.sidebar.caption("🧪 Production mode: OFF")
+            with st.sidebar.expander("Enable production mode"):
+                st.markdown("Set this in `streamlit_app/.streamlit/secrets.toml`:")
+                st.code(
+                    "[app]\nproduction = true\n\n[database]\nurl = \"postgresql+psycopg2://user:pass@host:5432/okr\"",
+                    language="toml",
+                )
+                st.markdown(
+                    "Or set an environment variable `PRODUCTION=true` before starting the app."
+                )
+    if st.sidebar.button("ðŸšª Logout"):
         _clear_user_session()
         st.rerun()
     
@@ -261,7 +264,7 @@ def render_app(username):
         admin_user = get_user_by_id(st.session_state.get("user_id"))
         if admin_user and (admin_user.must_change_password or verify_password("admin", admin_user.password_hash)):
             st.sidebar.warning("Default admin password is still active. Change it in Admin Panel.")
-        if st.sidebar.button("👑 Admin Panel", use_container_width=True):
+        if st.sidebar.button("ðŸ‘‘ Admin Panel", use_container_width=True):
             st.session_state.active_report_mode = "Admin"
             st.rerun()
     
@@ -282,7 +285,7 @@ def render_app(username):
         cycles = [default_cycle]
     
     # Cycle Selection in Sidebar
-    st.sidebar.markdown("### 📅 OKR Cycle")
+    st.sidebar.markdown("### ðŸ“… OKR Cycle")
     cycle_titles = [c.title for c in cycles]
     
     # Store selected cycle in session state
@@ -303,7 +306,7 @@ def render_app(username):
         label_visibility="collapsed"
     )
     
-    if st.sidebar.button("⚙️ Manage Cycles", key="manage_cycles_sidebar"):
+    if st.sidebar.button("âš™ï¸ Manage Cycles", key="manage_cycles_sidebar"):
         render_manage_cycles_dialog()
     
     # Update active_cycle_id if changed
@@ -315,50 +318,50 @@ def render_app(username):
     st.sidebar.markdown("---")
     
     # Navigation & Views
-    st.sidebar.markdown("### 🧭 Navigation")
-    if st.sidebar.button("🏠 Home / OKRs", use_container_width=True):
+    st.sidebar.markdown("### ðŸ§­ Navigation")
+    if st.sidebar.button("ðŸ  Home / OKRs", use_container_width=True):
         if "active_report_mode" in st.session_state:
             del st.session_state.active_report_mode
         st.session_state.nav_stack = []
         st.rerun()
         
-    st.sidebar.markdown("### 📈 Insights & Reports")
+    st.sidebar.markdown("### ðŸ“ˆ Insights & Reports")
     
     dialog_active = False
 
-    if st.sidebar.button("📊 Weekly Report", use_container_width=True):
+    if st.sidebar.button("ðŸ“Š Weekly Report", use_container_width=True):
         st.session_state.active_report_mode = "Weekly"
         # Clear others
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
         
-    if st.sidebar.button("📅 Daily Report", use_container_width=True):
+    if st.sidebar.button("ðŸ“… Daily Report", use_container_width=True):
         st.session_state.active_report_mode = "Daily"
         # Clear others
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
 
-    if st.sidebar.button("🔄 Weekly Ritual", help="Guided check-in for your metrics", use_container_width=True):
+    if st.sidebar.button("ðŸ”„ Weekly Ritual", help="Guided check-in for your metrics", use_container_width=True):
         st.session_state.active_report_mode = "Ritual"
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
 
-    if st.sidebar.button("📬 RetroBox", help="Weekly retrospectives", use_container_width=True):
+    if st.sidebar.button("ðŸ“¬ RetroBox", help="Weekly retrospectives", use_container_width=True):
         st.session_state.active_report_mode = "RetroBox"
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
 
-    if st.sidebar.button("📅 Project Timeline", help="Smart Gantt Chart", use_container_width=True):
+    if st.sidebar.button("ðŸ“… Project Timeline", help="Smart Gantt Chart", use_container_width=True):
         st.session_state.active_report_mode = "Timeline"
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
 
-    if st.sidebar.button("🧭 Strategic \nDashboard", help="Executive visibility", use_container_width=True):
+    if st.sidebar.button("ðŸ§­ Strategic \nDashboard", help="Executive visibility", use_container_width=True):
         st.session_state.active_report_mode = "Dashboard"
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
@@ -369,9 +372,9 @@ def render_app(username):
         with st.sidebar.expander("Storage & Sync"):
             c1, c2 = st.columns(2)
             db_binary = export_db()
-            c1.download_button("📥 Export Database", db_binary, "okr_database.db", help="Download the live SQLite database file")
+            c1.download_button("ðŸ“¥ Export Database", db_binary, "okr_database.db", help="Download the live SQLite database file")
             
-            if c2.button("☁️ Cloud Backup", help="Force save current data to Google Sheets (Backup)"):
+            if c2.button("â˜ï¸ Cloud Backup", help="Force save current data to Google Sheets (Backup)"):
                 with st.spinner("Backing up to Cloud..."):
                     # Trigger manual sync push
                     get_sync_service().sync_all_to_sheets()
@@ -381,7 +384,7 @@ def render_app(username):
             st.markdown("---")
             st.markdown("#### Restore Database")
             uploaded_db = st.file_uploader("Upload .db file", type=["db"], help="Restore from a previously exported okr_database.db file")
-            if uploaded_db and st.button("🚀 Restore Database", type="primary"):
+            if uploaded_db and st.button("ðŸš€ Restore Database", type="primary"):
                 success, msg = import_db(uploaded_db.read())
                 if success:
                     st.success(msg)
@@ -394,17 +397,17 @@ def render_app(username):
     sync_service = get_sync_service()
     sync_diag = sync_service.get_diagnostics()
     if sync_diag.get("ready"):
-        st.sidebar.success("✅ Cloud Sync Active")
+        st.sidebar.success("âœ… Cloud Sync Active")
         if sync_diag.get("retry_queue_size", 0) > 0:
             st.sidebar.caption(
                 f"Pending retries: {sync_diag.get('retry_queue_size', 0)} "
                 f"/ {sync_diag.get('retry_queue_limit', 0)}"
             )
     else:
-        st.sidebar.warning("⚠️ Local Storage Only")
+        st.sidebar.warning("âš ï¸ Local Storage Only")
         last_err = sync_diag.get("last_error")
         if last_err:
-            with st.sidebar.expander("🔍 Sync Diagnostics", expanded=True):
+            with st.sidebar.expander("ðŸ” Sync Diagnostics", expanded=True):
                 st.error(last_err)
                 st.caption(f"Code: {sync_diag.get('last_error_code') or 'unknown'}")
                 if sync_diag.get("last_error_at"):
@@ -418,7 +421,7 @@ def render_app(username):
                     "Retry persistence: "
                     f"{'enabled' if sync_diag.get('retry_persistence_enabled') else 'disabled'}"
                 )
-                if st.button("🔄 Attempt Reconnect", key="sync_retry_btn"):
+                if st.button("ðŸ”„ Attempt Reconnect", key="sync_retry_btn"):
                     if sync_service.reconnect():
                         st.success("Connected successfully!")
                         st.rerun()
@@ -438,7 +441,7 @@ def render_app(username):
             with st.container(border=True):
                 c_wc1, c_wc2 = st.columns([0.15, 0.85])
                 with c_wc1:
-                    st.markdown("### 🎯")
+                    st.markdown("### ðŸŽ¯")
                     st.caption("Weekly Focus")
                 with c_wc2:
                     # Display priorities as pills or structured list
