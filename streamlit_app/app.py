@@ -188,6 +188,13 @@ def _clear_user_session():
         "active_report_mode",
         "active_timer_node_id",
         "active_inspector_id",
+        "atlas_selected_ref",
+        "atlas_jump_query",
+        "atlas_scope_selector",
+        "atlas_focus_mode",
+        "atlas_sort_mode",
+        "atlas_breadcrumbs",
+        "workspace_mode",
         "must_change_password",
     ]:
         if key in st.session_state:
@@ -314,7 +321,26 @@ def render_app(username):
     selected_cycle = next(c for c in cycles if c.title == selected_cycle_title)
     if selected_cycle.id != st.session_state.active_cycle_id:
         st.session_state.active_cycle_id = selected_cycle.id
+        st.session_state.nav_stack = []
+        for key in [
+            "atlas_selected_ref",
+            "atlas_jump_query",
+            "atlas_breadcrumbs",
+        ]:
+            if key in st.session_state:
+                del st.session_state[key]
         st.rerun()
+
+    st.sidebar.markdown("---")
+
+    st.sidebar.markdown("### Experience")
+    st.sidebar.radio(
+        "Workspace Mode",
+        options=["Atlas", "Classic"],
+        key="workspace_mode",
+        label_visibility="collapsed",
+    )
+    workspace_mode = st.session_state.get("workspace_mode", "Atlas")
 
     st.sidebar.markdown("---")
     
@@ -324,6 +350,9 @@ def render_app(username):
         if "active_report_mode" in st.session_state:
             del st.session_state.active_report_mode
         st.session_state.nav_stack = []
+        for key in ["atlas_selected_ref", "atlas_breadcrumbs", "active_inspector_id"]:
+            if key in st.session_state:
+                del st.session_state[key]
         st.rerun()
         
     st.sidebar.markdown("### 📈 Insights & Reports")
@@ -401,7 +430,7 @@ def render_app(username):
     if not dialog_active:
         if "active_timer_node_id" in st.session_state:
             render_timer_dialog(st.session_state.active_timer_node_id, username)
-        elif "active_inspector_id" in st.session_state:
+        elif "active_inspector_id" in st.session_state and workspace_mode != "Atlas":
             render_inspector_dialog(st.session_state.active_inspector_id, username)
         elif "active_report_mode" in st.session_state:
             mode = st.session_state.active_report_mode

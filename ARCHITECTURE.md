@@ -8,6 +8,8 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
+  - Primary hierarchy UX: Atlas 3-pane workspace (Navigator / Workspace / Inspector)
+  - Compatibility UX: Classic drill-down cards with breadcrumb navigation
 - Domain/data operations: `streamlit_app/src/crud.py`
 - Extracted domain modules:
   - `streamlit_app/src/domain/authorization.py` (ownership/RBAC predicates + authorizers)
@@ -45,6 +47,12 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 - UI dialog submits to `create_goal` / `create_objective` / `create_key_result` / `create_task`.
 - CRUD validates actor permissions using ancestor goal ownership.
 - DB commit persists node on Supabase PostgreSQL.
+
+1b. Hierarchy navigation flow (Atlas mode)
+- `render_level` dispatches to `render_atlas_workspace` when `workspace_mode=Atlas`.
+- Left pane builds a typed-reference tree for active cycle scope and role-aware owner filters.
+- Center pane renders selected node context, filtered/sorted children, and inline add actions.
+- Right pane mounts `render_inspector_content(..., show_close=False)` as persistent inspector.
 
 2. Check-in flow
 - UI weekly ritual submits `create_check_in`.
