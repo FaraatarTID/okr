@@ -5,7 +5,7 @@ Provides efficient data access with JOINs for dashboard and tree loading.
 
 from sqlmodel import Session, col, select
 from sqlalchemy.orm import selectinload
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 import os
 from typing import Any, Dict, Optional, List
 from datetime import datetime, timedelta
@@ -322,6 +322,69 @@ def _clear_auth_throttle_state(
     state.updated_at = now
 
 
+def _is_auth_throttle_schema_operational_error(exc: OperationalError) -> bool:
+    statement = str(getattr(exc, "statement", "") or "").lower()
+    message = str(getattr(exc, "orig", exc) or exc).lower()
+    if "auth_throttle_state" not in statement and "auth_throttle_state" not in message:
+        return False
+    schema_markers = (
+        "no such table",
+        "no such column",
+        "has no column named",
+        "does not exist",
+        "undefined table",
+        "undefined column",
+    )
+    return any(marker in message for marker in schema_markers)
+
+
+def _authenticate_user_without_throttle(
+    session: Session,
+    username: str,
+    password: str,
+    normalized_username: str,
+    normalized_ip: Optional[str],
+) -> Dict[str, Any]:
+    user = session.exec(select(User).where(User.username == username)).first()
+    if user and user.is_active and verify_password(password, user.password_hash):
+        audit_log(
+            "login",
+            "user",
+            actor=username,
+            details={
+                "success": True,
+                "client_ip": normalized_ip,
+                "auth_throttle_mode": "bypassed_due_to_schema_error",
+            },
+        )
+        return {
+            "user": user,
+            "success": True,
+            "error_code": None,
+            "retry_after_seconds": 0,
+            "lock_scope": None,
+        }
+
+    audit_log(
+        "login",
+        "user",
+        actor=normalized_username or username,
+        details={
+            "success": False,
+            "reason": "invalid_credentials",
+            "client_ip": normalized_ip,
+            "auth_throttle_mode": "bypassed_due_to_schema_error",
+        },
+    )
+    return {
+        "user": None,
+        "success": False,
+        "error_code": "AUTH_INVALID_CREDENTIALS",
+        "retry_after_seconds": 0,
+        "lock_scope": None,
+    }
+
+
 def authenticate_user_detailed(
     username: str,
     password: str,
@@ -335,161 +398,197 @@ def authenticate_user_detailed(
     normalized_ip = _normalize_client_ip(client_ip)
 
     with get_session_context() as session:
-        user_state: Optional[AuthThrottleState] = None
-        ip_state: Optional[AuthThrottleState] = None
-        if normalized_username:
-            user_state = _get_or_create_auth_throttle_state(
-                session, "user", normalized_username, now
-            )
-        if normalized_ip:
-            ip_state = _get_or_create_auth_throttle_state(
-                session, "ip", normalized_ip, now
-            )
+        try:
+            user_state: Optional[AuthThrottleState] = None
+            ip_state: Optional[AuthThrottleState] = None
+            if normalized_username:
+                user_state = _get_or_create_auth_throttle_state(
+                    session, "user", normalized_username, now
+                )
+            if normalized_ip:
+                ip_state = _get_or_create_auth_throttle_state(
+                    session, "ip", normalized_ip, now
+                )
 
-        user_lock_remaining = (
-            _prepare_throttle_state_for_check(user_state, now, AUTH_USER_WINDOW_SECONDS)
-            if user_state
-            else 0
-        )
-        ip_lock_remaining = (
-            _prepare_throttle_state_for_check(ip_state, now, AUTH_IP_WINDOW_SECONDS)
-            if ip_state
-            else 0
-        )
-        lock_remaining = max(user_lock_remaining, ip_lock_remaining)
-        if lock_remaining > 0:
-            lock_scope = (
-                "both"
-                if user_lock_remaining and ip_lock_remaining
-                else ("user" if user_lock_remaining else "ip")
+            user_lock_remaining = (
+                _prepare_throttle_state_for_check(
+                    user_state, now, AUTH_USER_WINDOW_SECONDS
+                )
+                if user_state
+                else 0
             )
-            error_code = (
-                "AUTH_LOCKED_BOTH"
-                if lock_scope == "both"
-                else ("AUTH_LOCKED_USER" if lock_scope == "user" else "AUTH_LOCKED_IP")
+            ip_lock_remaining = (
+                _prepare_throttle_state_for_check(
+                    ip_state, now, AUTH_IP_WINDOW_SECONDS
+                )
+                if ip_state
+                else 0
             )
-            audit_log(
-                "login",
-                "user",
-                actor=normalized_username or username,
-                details={
+            lock_remaining = max(user_lock_remaining, ip_lock_remaining)
+            if lock_remaining > 0:
+                lock_scope = (
+                    "both"
+                    if user_lock_remaining and ip_lock_remaining
+                    else ("user" if user_lock_remaining else "ip")
+                )
+                error_code = (
+                    "AUTH_LOCKED_BOTH"
+                    if lock_scope == "both"
+                    else (
+                        "AUTH_LOCKED_USER"
+                        if lock_scope == "user"
+                        else "AUTH_LOCKED_IP"
+                    )
+                )
+                audit_log(
+                    "login",
+                    "user",
+                    actor=normalized_username or username,
+                    details={
+                        "success": False,
+                        "reason": "locked",
+                        "error_code": error_code,
+                        "lock_scope": lock_scope,
+                        "retry_after_seconds": lock_remaining,
+                        "client_ip": normalized_ip,
+                    },
+                )
+                return {
+                    "user": None,
                     "success": False,
-                    "reason": "locked",
                     "error_code": error_code,
-                    "lock_scope": lock_scope,
                     "retry_after_seconds": lock_remaining,
-                    "client_ip": normalized_ip,
-                },
-            )
-            return {
-                "user": None,
-                "success": False,
-                "error_code": error_code,
-                "retry_after_seconds": lock_remaining,
-                "lock_scope": lock_scope,
-            }
+                    "lock_scope": lock_scope,
+                }
 
-        user = session.exec(select(User).where(User.username == username)).first()
-        if user and user.is_active and verify_password(password, user.password_hash):
-            _clear_auth_throttle_state(user_state, now)
-            _clear_auth_throttle_state(ip_state, now)
+            user = session.exec(select(User).where(User.username == username)).first()
+            if user and user.is_active and verify_password(password, user.password_hash):
+                _clear_auth_throttle_state(user_state, now)
+                _clear_auth_throttle_state(ip_state, now)
+                if user_state:
+                    session.add(user_state)
+                if ip_state:
+                    session.add(ip_state)
+                session.flush()
+
+                audit_log(
+                    "login",
+                    "user",
+                    actor=username,
+                    details={"success": True, "client_ip": normalized_ip},
+                )
+                return {
+                    "user": user,
+                    "success": True,
+                    "error_code": None,
+                    "retry_after_seconds": 0,
+                    "lock_scope": None,
+                }
+
+            user_lock_remaining = (
+                _record_failed_auth_attempt(
+                    user_state,
+                    now,
+                    AUTH_USER_WINDOW_SECONDS,
+                    AUTH_USER_MAX_ATTEMPTS,
+                    AUTH_LOCKOUT_SECONDS,
+                )
+                if user_state
+                else 0
+            )
+            ip_lock_remaining = (
+                _record_failed_auth_attempt(
+                    ip_state,
+                    now,
+                    AUTH_IP_WINDOW_SECONDS,
+                    AUTH_IP_MAX_ATTEMPTS,
+                    AUTH_LOCKOUT_SECONDS,
+                )
+                if ip_state
+                else 0
+            )
+
             if user_state:
                 session.add(user_state)
             if ip_state:
                 session.add(ip_state)
+            session.flush()
 
-            audit_log(
-                "login",
-                "user",
-                actor=username,
-                details={"success": True, "client_ip": normalized_ip},
-            )
-            return {
-                "user": user,
-                "success": True,
-                "error_code": None,
-                "retry_after_seconds": 0,
-                "lock_scope": None,
-            }
+            lock_remaining = max(user_lock_remaining, ip_lock_remaining)
+            if lock_remaining > 0:
+                lock_scope = (
+                    "both"
+                    if user_lock_remaining and ip_lock_remaining
+                    else ("user" if user_lock_remaining else "ip")
+                )
+                error_code = (
+                    "AUTH_LOCKED_BOTH"
+                    if lock_scope == "both"
+                    else (
+                        "AUTH_LOCKED_USER"
+                        if lock_scope == "user"
+                        else "AUTH_LOCKED_IP"
+                    )
+                )
+                audit_log(
+                    "login",
+                    "user",
+                    actor=normalized_username or username,
+                    details={
+                        "success": False,
+                        "reason": "locked",
+                        "error_code": error_code,
+                        "lock_scope": lock_scope,
+                        "retry_after_seconds": lock_remaining,
+                        "client_ip": normalized_ip,
+                    },
+                )
+                return {
+                    "user": None,
+                    "success": False,
+                    "error_code": error_code,
+                    "retry_after_seconds": lock_remaining,
+                    "lock_scope": lock_scope,
+                }
 
-        user_lock_remaining = (
-            _record_failed_auth_attempt(
-                user_state,
-                now,
-                AUTH_USER_WINDOW_SECONDS,
-                AUTH_USER_MAX_ATTEMPTS,
-                AUTH_LOCKOUT_SECONDS,
-            )
-            if user_state
-            else 0
-        )
-        ip_lock_remaining = (
-            _record_failed_auth_attempt(
-                ip_state,
-                now,
-                AUTH_IP_WINDOW_SECONDS,
-                AUTH_IP_MAX_ATTEMPTS,
-                AUTH_LOCKOUT_SECONDS,
-            )
-            if ip_state
-            else 0
-        )
-
-        if user_state:
-            session.add(user_state)
-        if ip_state:
-            session.add(ip_state)
-
-        lock_remaining = max(user_lock_remaining, ip_lock_remaining)
-        if lock_remaining > 0:
-            lock_scope = (
-                "both"
-                if user_lock_remaining and ip_lock_remaining
-                else ("user" if user_lock_remaining else "ip")
-            )
-            error_code = (
-                "AUTH_LOCKED_BOTH"
-                if lock_scope == "both"
-                else ("AUTH_LOCKED_USER" if lock_scope == "user" else "AUTH_LOCKED_IP")
-            )
             audit_log(
                 "login",
                 "user",
                 actor=normalized_username or username,
                 details={
                     "success": False,
-                    "reason": "locked",
-                    "error_code": error_code,
-                    "lock_scope": lock_scope,
-                    "retry_after_seconds": lock_remaining,
+                    "reason": "invalid_credentials",
                     "client_ip": normalized_ip,
                 },
             )
             return {
                 "user": None,
                 "success": False,
-                "error_code": error_code,
-                "retry_after_seconds": lock_remaining,
-                "lock_scope": lock_scope,
+                "error_code": "AUTH_INVALID_CREDENTIALS",
+                "retry_after_seconds": 0,
+                "lock_scope": None,
             }
-
-        audit_log(
-            "login",
-            "user",
-            actor=normalized_username or username,
-            details={
-                "success": False,
-                "reason": "invalid_credentials",
-                "client_ip": normalized_ip,
-            },
-        )
-        return {
-            "user": None,
-            "success": False,
-            "error_code": "AUTH_INVALID_CREDENTIALS",
-            "retry_after_seconds": 0,
-            "lock_scope": None,
-        }
+        except OperationalError as exc:
+            if not _is_auth_throttle_schema_operational_error(exc):
+                raise
+            session.rollback()
+            audit_log(
+                "login",
+                "user",
+                actor=normalized_username or username,
+                details={
+                    "success": False,
+                    "reason": "auth_throttle_schema_error",
+                    "client_ip": normalized_ip,
+                },
+            )
+            return _authenticate_user_without_throttle(
+                session=session,
+                username=username,
+                password=password,
+                normalized_username=normalized_username,
+                normalized_ip=normalized_ip,
+            )
 
 
 def authenticate_user(
