@@ -5,9 +5,6 @@ Plus WorkLog for time tracking.
 """
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import CheckConstraint, event, Index, text
-from sqlalchemy.orm import clear_mappers
-# Fix for Streamlit reloading: Clear existing mappers to prevent "Multiple classes found" error
-clear_mappers()
 
 # We can't easily clear the registry here without side effects.
 # Instead, the fully qualified names + extend_existing MUST be enough.
