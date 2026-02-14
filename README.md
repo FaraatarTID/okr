@@ -343,3 +343,33 @@ The codebase is organized modularly to separate concerns across the UI, business
 ---
 
 _Built for excellence in strategic alignment and execution tracking._
+
+---
+
+## Developer Workflow (Fast Loop)
+
+### Local setup
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r streamlit_app/requirements.txt
+pip install ruff mypy
+```
+
+### Verify quality locally
+
+```bash
+python -m ruff check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py --select E9,F63,F7,F82
+python -m ruff format --check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py
+python -m mypy --ignore-missing-imports streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py
+python -m pytest -q
+```
+
+### Benchmark hot paths
+
+```bash
+python streamlit_app/scripts/perf_hotpaths.py
+```
+
+See `performance.md` for current baselines and budgets.
