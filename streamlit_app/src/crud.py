@@ -11,16 +11,6 @@ from typing import Any, Dict, Optional, List
 from datetime import datetime, timedelta
 from src.utils.time_utils import ensure_utc, to_epoch_millis, utc_now_naive
 
-
-class _NoopSyncService:
-    def push_update(self, *_args, **_kwargs):
-        return None
-
-
-def _sync_service():
-    return _NoopSyncService()
-
-
 from src.models import (
     Goal,
     Objective,
@@ -139,8 +129,6 @@ def create_user(
         session.add(user)
         session.commit()
         session.refresh(user)
-        # S Y N C
-        _sync_service().push_update(user)
         audit_log("create", "user", actor=username, details={"role": role.value})
         clear_cache_safe()
         return user
@@ -444,9 +432,7 @@ def authenticate_user_detailed(
                 else 0
             )
             ip_lock_remaining = (
-                _prepare_throttle_state_for_check(
-                    ip_state, now, AUTH_IP_WINDOW_SECONDS
-                )
+                _prepare_throttle_state_for_check(ip_state, now, AUTH_IP_WINDOW_SECONDS)
                 if ip_state
                 else 0
             )
@@ -461,9 +447,7 @@ def authenticate_user_detailed(
                     "AUTH_LOCKED_BOTH"
                     if lock_scope == "both"
                     else (
-                        "AUTH_LOCKED_USER"
-                        if lock_scope == "user"
-                        else "AUTH_LOCKED_IP"
+                        "AUTH_LOCKED_USER" if lock_scope == "user" else "AUTH_LOCKED_IP"
                     )
                 )
                 audit_log(
@@ -488,7 +472,11 @@ def authenticate_user_detailed(
                 }
 
             user = session.exec(select(User).where(User.username == username)).first()
-            if user and user.is_active and verify_password(password, user.password_hash):
+            if (
+                user
+                and user.is_active
+                and verify_password(password, user.password_hash)
+            ):
                 _clear_auth_throttle_state(user_state, now)
                 _clear_auth_throttle_state(ip_state, now)
                 if user_state:
@@ -551,9 +539,7 @@ def authenticate_user_detailed(
                     "AUTH_LOCKED_BOTH"
                     if lock_scope == "both"
                     else (
-                        "AUTH_LOCKED_USER"
-                        if lock_scope == "user"
-                        else "AUTH_LOCKED_IP"
+                        "AUTH_LOCKED_USER" if lock_scope == "user" else "AUTH_LOCKED_IP"
                     )
                 )
                 audit_log(
@@ -671,8 +657,6 @@ def update_user(
         session.add(user)
         session.commit()
         session.refresh(user)
-        # S Y N C
-        _sync_service().push_update(user)
         audit_log("update", "user", actor=user.username, details={"user_id": user_id})
         clear_cache_safe()
         return user
@@ -692,7 +676,6 @@ def reset_user_password(
         session.add(user)
         session.commit()
         session.refresh(user)
-        _sync_service().push_update(user)
         audit_log(
             "reset_password", "user", actor=user.username, details={"user_id": user_id}
         )
@@ -777,8 +760,6 @@ def create_check_in(
 
         session.commit()
         session.refresh(check_in)
-        # S Y N C
-        _sync_service().push_update(check_in)
         audit_log(
             "create",
             "check_in",
@@ -826,8 +807,6 @@ def create_cycle(
         session.add(cycle)
         session.commit()
         session.refresh(cycle)
-        # S Y N C
-        _sync_service().push_update(cycle)
         audit_log("create", "cycle", details={"cycle_id": cycle.id, "title": title})
         clear_cache_safe()
         return cycle
@@ -868,8 +847,6 @@ def update_cycle(
         session.add(cycle)
         session.commit()
         session.refresh(cycle)
-        # S Y N C
-        _sync_service().push_update(cycle)
         audit_log("update", "cycle", details={"cycle_id": cycle_id, "title": title})
         clear_cache_safe()
         return cycle
@@ -890,8 +867,6 @@ def delete_cycle(cycle_id: int) -> bool:
 
         session.delete(cycle)
         session.commit()
-        # S Y N C (Delete)
-        _sync_service().push_update(cycle, delete=True)
         audit_log("delete", "cycle", details={"cycle_id": cycle_id})
         clear_cache_safe()
         return True
@@ -1020,8 +995,6 @@ def create_goal(
         session.add(goal)
         session.commit()
         session.refresh(goal)
-        # S Y N C
-        _sync_service().push_update(goal)
         audit_log(
             "create",
             "goal",
@@ -1064,8 +1037,6 @@ def create_objective(
         session.add(objective)
         session.commit()
         session.refresh(objective)
-        # S Y N C
-        _sync_service().push_update(objective)
         audit_log(
             "create",
             "objective",
@@ -1114,8 +1085,6 @@ def create_key_result(
         session.add(key_result)
         session.commit()
         session.refresh(key_result)
-        # S Y N C
-        _sync_service().push_update(key_result)
         audit_log(
             "create",
             "key_result",
@@ -1168,8 +1137,6 @@ def create_task(
         session.add(task)
         session.commit()
         session.refresh(task)
-        # S Y N C
-        _sync_service().push_update(task)
         audit_log(
             "create",
             "task",
@@ -1182,8 +1149,6 @@ def create_task(
 # ============================================================================
 # TIMER OPERATIONS (legacy functions removed; see Smart Timer Logic below)
 # ============================================================================
-# SyncService typically handles Task Updates. WorkLogs maybe not yet?
-# Let's skip explicit WorkLog sync unless SyncService supports it.
 
 
 def get_total_time(task_id: int):
@@ -1210,8 +1175,6 @@ def update_goal(
             session.add(goal)
             session.commit()
             session.refresh(goal)
-            # S Y N C
-            _sync_service().push_update(goal)
         return goal
 
 
@@ -1240,8 +1203,6 @@ def update_key_result_analysis(
             session.add(kr)
             session.commit()
             session.refresh(kr)
-            # S Y N C
-            _sync_service().push_update(kr)
         return kr
 
 
@@ -1263,7 +1224,6 @@ def update_objective(
             session.add(item)
             session.commit()
             session.refresh(item)
-            _sync_service().push_update(item)
         return item
 
 
@@ -1296,7 +1256,6 @@ def update_key_result(
             session.add(item)
             session.commit()
             session.refresh(item)
-            _sync_service().push_update(item)
         return item
 
 
@@ -1338,8 +1297,6 @@ def update_task(
         session.add(task)
         session.commit()
         session.refresh(task)
-        # S Y N C
-        _sync_service().push_update(task)
         return task
 
 
@@ -1358,8 +1315,6 @@ def delete_goal(goal_id: int, actor_username: Optional[str] = None) -> bool:
             # Otherwise, manually delete children
             session.delete(goal)
             session.commit()
-            # S Y N C
-            _sync_service().push_update(goal, delete=True)
             audit_log("delete", "goal", details={"goal_id": goal_id})
             clear_cache_safe()
             return True
@@ -1375,8 +1330,6 @@ def delete_task(task_id: int, actor_username: Optional[str] = None) -> bool:
             _authorize_goal_mutation(session, goal, actor_username)
             session.delete(task)
             session.commit()
-            # S Y N C
-            _sync_service().push_update(task, delete=True)
             audit_log("delete", "task", details={"task_id": task_id})
             clear_cache_safe()
             return True
@@ -1391,8 +1344,6 @@ def delete_objective(objective_id: int, actor_username: Optional[str] = None) ->
             _authorize_goal_mutation(session, goal, actor_username)
             session.delete(item)
             session.commit()
-            # S Y N C
-            _sync_service().push_update(item, delete=True)
             audit_log("delete", "objective", details={"objective_id": objective_id})
             clear_cache_safe()
             return True
@@ -1407,8 +1358,6 @@ def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
             _authorize_goal_mutation(session, goal, actor_username)
             session.delete(item)
             session.commit()
-            # S Y N C
-            _sync_service().push_update(item, delete=True)
             audit_log("delete", "key_result", details={"key_result_id": kr_id})
             clear_cache_safe()
             return True
@@ -1573,8 +1522,6 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
 
         session.refresh(work_log)
 
-        # S Y N C
-        _sync_service().push_update(work_log)
         audit_log(
             "start_timer",
             "task",
@@ -1610,7 +1557,6 @@ def stop_timer(
                 task.timer_started_at = None
                 session.add(task)
                 session.commit()
-                _sync_service().push_update(task)
                 audit_log(
                     "timer_recover",
                     "task",
@@ -1639,8 +1585,6 @@ def stop_timer(
         session.commit()
         session.refresh(work_log)
 
-        # S Y N C
-        _sync_service().push_update(work_log)
         audit_log(
             "stop_timer",
             "task",
@@ -1999,8 +1943,6 @@ def create_retrospective(
             session.add(existing)
             session.commit()
             session.refresh(existing)
-            # S Y N C
-            _sync_service().push_update(existing)
             clear_cache_safe()
             return existing
         else:
@@ -2014,8 +1956,6 @@ def create_retrospective(
             session.add(retro)
             session.commit()
             session.refresh(retro)
-            # S Y N C
-            _sync_service().push_update(retro)
             clear_cache_safe()
             return retro
 

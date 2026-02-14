@@ -6,28 +6,20 @@ Overview
 - The app reads configuration from, in order of precedence:
   1) Environment variables
   2) Streamlit secrets (mounted at streamlit_app/.streamlit/secrets.toml)
-  3) Defaults inside the app
-
-Production mode
-- Environment variable: PRODUCTION=true
-- Streamlit secrets:
-  [app]
-    production = true
-- When enabled:
-  - Google Sheets sync is disabled
-  - SQLite is not allowed; set OKR_DATABASE_URL / DATABASE_URL or [database].url
 
 Database
 - Environment variables:
-  - OKR_DATABASE_URL (preferred)
-  - DATABASE_URL (fallback)
-  - Example: postgresql+psycopg2://user:pass@db-host:5432/okr
+  - OKR_DATABASE_URL (recommended)
+  - DATABASE_URL (optional alias)
+  - Example:
+    - `postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require`
 - Streamlit secrets:
   - [database]
-    - url: full connection string (preferred)
-    - Or parts to construct: driver, user, password, host, port, name
+    - url: full connection string
   - See template: [deploy/secrets/secrets.toml.example](deploy/secrets/secrets.toml.example)
-- Default (if unset): SQLite at streamlit_app/okr_database.db
+- Requirements enforced by runtime:
+  - URL must start with `postgresql+psycopg2://`
+  - Host must include `supabase.com`
 
 Streamlit server
 - Environment variables:
@@ -42,12 +34,6 @@ PDF generation
   - PDF_METHOD: pdfshift or pdfkit (optional override)
   - pdfshift_api_key: required if using pdfshift
 - System dependency for pdfkit: wkhtmltopdf (already installed in the container)
-
-Google integration (optional)
-- Used only if you want Google Sheets/Drive sync. If omitted, sync is disabled.
-- Streamlit secrets keys:
-  - gcp_service_account: JSON service account credentials (as TOML map)
-  - GCP_SPREADSHEET_NAME: Defaults to OKR_DB if not set
 
 Admin bootstrap
 - On first run (empty DB), a default admin user is created:

@@ -7,8 +7,7 @@ First run
 - Default admin admin/admin is created; change password immediately
 
 Backups
-- Postgres: enable automated backups/snapshots and test restore
-- SQLite fallback: snapshot the okr_data volume (Compose) or PVC (K8s)
+- Supabase PostgreSQL: enable automated backups/snapshots and test restore
 
 Monitoring
 - Uptime check: GET /
@@ -28,7 +27,7 @@ Security hardening
 - Limit exposed ports (only proxy exposed)
 - Non-root containers (already configured)
 - Set firewall rules so only the proxy can reach the app port
-- If running in production, set PRODUCTION=true to disable Sheets sync and require a non-SQLite database
+- Keep DB credentials in secret manager and rotate regularly
 
 Incident response
 - Take snapshots before risky changes

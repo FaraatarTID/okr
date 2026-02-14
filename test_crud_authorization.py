@@ -19,19 +19,13 @@ def _utc_now_naive() -> datetime:
 @pytest.fixture()
 def isolated_db(monkeypatch, tmp_path):
     import src.database as database
-    import src.crud as crud
 
     db_path = tmp_path / "okr_auth_test.db"
     db_url = f"sqlite:///{db_path}"
     engine = database._create_engine(db_url)
 
-    class _NoopSyncService:
-        def push_update(self, *_args, **_kwargs):
-            return None
-
     monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
     monkeypatch.setattr(database, "_engine", engine, raising=False)
-    monkeypatch.setattr(crud, "_sync_service", lambda: _NoopSyncService(), raising=True)
 
     SQLModel.metadata.create_all(engine)
     try:

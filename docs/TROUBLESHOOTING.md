@@ -18,9 +18,11 @@ Login not working
 - Default admin only exists on an empty DB
 - Check password hash path; try reset via Admin Panel after login
 
-Google Sheets sync unavailable
-- Provide gcp_service_account in secrets and GCP_SPREADSHEET_NAME if needed
-- Without secrets, sync is disabled by design
+Supabase connection errors
+- Verify OKR_DATABASE_URL uses `postgresql+psycopg2://`
+- Verify host includes `supabase.com`
+- Ensure `sslmode=require` is present
+- Confirm DB password is URL-encoded if it contains special characters
 
 Hosting under subpath breaks assets
 - Ensure proxy rewrite strips the prefix

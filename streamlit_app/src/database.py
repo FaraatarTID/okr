@@ -1,17 +1,12 @@
 """
 Database connection and session management for OKR Application.
-Default: SQLite, but can be switched to a managed DB (e.g., PostgreSQL)
-without code changes using environment variables or Streamlit secrets.
+Supabase/PostgreSQL only.
 """
 from sqlmodel import create_engine, Session
 from contextlib import contextmanager
 import os
-from sqlalchemy import event
-from src.config import is_production
-
-# Base path for local SQLite storage
-BASE_DIR = os.path.dirname(os.path.dirname(__file__))
-DATABASE_PATH = os.path.join(BASE_DIR, "okr_database.db")
+from collections.abc import Mapping
+from typing import Optional
 
 
 def _get_database_url() -> str:
@@ -19,25 +14,29 @@ def _get_database_url() -> str:
     1. Environment variable OKR_DATABASE_URL
     2. Environment variable DATABASE_URL
     3. Streamlit secrets [database][url] or components to build one
-    4. Fallback to local SQLite in project folder
     """
     # 1/2: Environment
     env_url = os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL")
     if env_url:
-        return env_url
+        return str(env_url).strip()
 
     # 3: Streamlit secrets (optional)
     try:
         import streamlit as st
+        direct_secret_url = st.secrets.get("OKR_DATABASE_URL") or st.secrets.get(
+            "DATABASE_URL"
+        )
+        if direct_secret_url:
+            return str(direct_secret_url).strip()
         db_secrets = st.secrets.get("database")
-        if isinstance(db_secrets, dict):
+        if isinstance(db_secrets, Mapping):
             if db_secrets.get("url"):
-                return str(db_secrets["url"])
+                return str(db_secrets["url"]).strip()
             # Build URL from parts if provided
             driver = db_secrets.get("driver", "postgresql+psycopg2")
             user = db_secrets.get("user")
             password = db_secrets.get("password")
-            host = db_secrets.get("host", "localhost")
+            host = db_secrets.get("host")
             port = db_secrets.get("port")
             name = db_secrets.get("name")
             if user and password and host and name:
@@ -47,42 +46,86 @@ def _get_database_url() -> str:
         # secrets not available
         pass
 
-    # 4: Fallback to SQLite file in streamlit_app folder
-    return f"sqlite:///{DATABASE_PATH}"
+    raise RuntimeError(
+        "Database URL is required. Set OKR_DATABASE_URL, DATABASE_URL, or "
+        "Streamlit secrets [database].url."
+    )
 
 
-DATABASE_URL = _get_database_url()
-if is_production() and DATABASE_URL.startswith("sqlite:"):
-    raise RuntimeError("PRODUCTION=true requires a non-SQLite database. Set OKR_DATABASE_URL or DATABASE_URL.")
+def _normalize_database_url(url: str) -> str:
+    normalized = str(url or "").strip()
+    if normalized.startswith("postgres://"):
+        normalized = normalized.replace("postgres://", "postgresql+psycopg2://", 1)
+    return normalized
+
+
+def _allow_non_supabase_url() -> bool:
+    """Test-only escape hatch for local CI fixtures."""
+    flag = os.getenv("OKR_ALLOW_NON_SUPABASE_DB", "").strip().lower()
+    if flag in {"1", "true", "yes", "on"}:
+        return True
+    return "PYTEST_CURRENT_TEST" in os.environ
+
+
+def _validate_database_url(url: str) -> str:
+    normalized = _normalize_database_url(url)
+    if _allow_non_supabase_url():
+        return normalized
+    if not normalized.startswith("postgresql+psycopg2://"):
+        raise RuntimeError(
+            "Supabase PostgreSQL URL is required and must start with "
+            "'postgresql+psycopg2://'."
+        )
+    if "supabase.com" not in normalized.lower():
+        raise RuntimeError(
+            "Supabase PostgreSQL URL is required (host must include 'supabase.com')."
+        )
+    return normalized
+
+
+DATABASE_URL: Optional[str] = os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL")
 
 def _create_engine(url: str):
     """Create SQLModel engine with dialect-aware options."""
-    is_sqlite = url.startswith("sqlite:")
-    kwargs = {"echo": False}
-    if is_sqlite:
-        # Required for SQLite with Streamlit multi-threaded server
+    normalized = _normalize_database_url(url)
+    kwargs = {}
+    if normalized.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
-    else:
-        # Make long-lived connections safer for managed DBs
-        kwargs["pool_pre_ping"] = True
-    engine = create_engine(url, **kwargs)
-    if is_sqlite:
-        # Enforce FK constraints consistently on every SQLite connection.
+
+    engine = create_engine(
+        normalized,
+        echo=False,
+        pool_pre_ping=True,
+        **kwargs,
+    )
+    if normalized.startswith("sqlite"):
+        from sqlalchemy import event
+
         @event.listens_for(engine, "connect")
         def _set_sqlite_pragma(dbapi_connection, _connection_record):
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
+
     return engine
 
 
 _engine = None
 
 
+def _resolved_database_url() -> str:
+    """Resolve and validate DATABASE_URL with caching."""
+    global DATABASE_URL
+    if DATABASE_URL and str(DATABASE_URL).strip():
+        return _validate_database_url(str(DATABASE_URL).strip())
+    DATABASE_URL = _get_database_url()
+    return _validate_database_url(DATABASE_URL)
+
+
 def get_engine():
     global _engine
     if _engine is None:
-        _engine = _create_engine(DATABASE_URL)
+        _engine = _create_engine(_resolved_database_url())
     return _engine
 
 
@@ -98,7 +141,7 @@ def run_migrations():
 
     alembic_cfg = Config(ini_path)
     # Ensure Alembic uses the same database as the app
-    alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
+    alembic_cfg.set_main_option("sqlalchemy.url", _resolved_database_url())
     # Also ensure script_location resolves correctly when running from this CWD
     script_location = os.path.join(parent_dir, "alembic")
     alembic_cfg.set_main_option("script_location", script_location)
@@ -139,24 +182,3 @@ def get_session_context():
 def init_database():
     """Initialize the database - call this on app startup."""
     create_db_and_tables()
-
-def export_db():
-    """Read the binary SQLite database file for export."""
-    try:
-        if os.path.exists(DATABASE_PATH):
-            with open(DATABASE_PATH, "rb") as f:
-                return f.read()
-    except Exception as e:
-        print(f"Export DB failed: {e}")
-    return None
-
-def import_db(binary_content):
-    """Overwrite the local SQLite database with new binary content."""
-    try:
-        # Note: In Streamlit, this is risky if the DB is locked.
-        # But for this single-user app it's usually fine.
-        with open(DATABASE_PATH, "wb") as f:
-            f.write(binary_content)
-        return True, "Database restored successfully."
-    except Exception as e:
-        return False, f"Restore failed: {str(e)}"

@@ -13,11 +13,9 @@ Single host, subpath
 - Use the subpath location in deploy/nginx.conf (with rewrite removing the prefix)
 
 Starting with PostgreSQL
-- Preferred: managed Postgres (RDS/Azure/GCP)
+- Required: Supabase PostgreSQL
   - Set OKR_DATABASE_URL in the environment (compose env or .env)
-- Alternative: local Postgres service
-  - Use the override file deploy/docker/docker-compose.postgres.yml
-  - It adds a postgres:16 service and wires OKR_DATABASE_URL for the app
+  - Use the session pooler URL with `sslmode=require`
 
 Secrets
 - Create a secrets file if using integrations and mount as:
@@ -25,8 +23,8 @@ Secrets
 - Use deploy/secrets/secrets.toml.example as a template
 
 Persistence
-- App volume okr_data stores the SQLite DB if fallback is used
-- With Postgres, data is in the DB; ensure DB backups are enabled
+- All runtime data is stored in Supabase PostgreSQL
+- Ensure DB backups are enabled
 
 Health & logs
 - Health: GET / should return 200

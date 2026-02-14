@@ -4,7 +4,7 @@ Documentation HQ: [README](README.md)
 
 ## System Overview
 
-This repository is a Streamlit-based OKR product with a SQLModel persistence layer and optional Google Sheets sync.
+This repository is a Streamlit-based OKR product with a SQLModel persistence layer on Supabase PostgreSQL.
 
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
@@ -13,7 +13,7 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
   - `streamlit_app/src/domain/authorization.py` (ownership/RBAC predicates + authorizers)
   - `streamlit_app/src/domain/analytics.py` (hot-path analytics/reporting queries)
 - Persistence: `streamlit_app/src/database.py`, `streamlit_app/src/models.py`, Alembic migrations in `streamlit_app/alembic/`
-- External integrations: `streamlit_app/src/services/sheet_sync.py`, `streamlit_app/src/services/ai_service.py`, `streamlit_app/src/services/pdf_service.py`
+- External integrations: `streamlit_app/src/services/ai_service.py`, `streamlit_app/src/services/pdf_service.py`
 - Shared business helpers: `streamlit_app/utils/deadline_utils.py`
 
 ## Module Boundaries
@@ -36,7 +36,7 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 - Guarantees FK integrity, check constraints, and migration-driven schema updates.
 
 4. Integration boundary (`services/*`)
-- Owns AI analysis, cloud sync, and PDF/report output.
+- Owns AI analysis and PDF/report output.
 - Should not contain core authorization logic.
 
 ## Critical Request/Data Flows
@@ -44,7 +44,7 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 1. Objective / KR / Task creation
 - UI dialog submits to `create_goal` / `create_objective` / `create_key_result` / `create_task`.
 - CRUD validates actor permissions using ancestor goal ownership.
-- DB commit persists node; sync service receives write-through update.
+- DB commit persists node on Supabase PostgreSQL.
 
 2. Check-in flow
 - UI weekly ritual submits `create_check_in`.
