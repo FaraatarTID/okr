@@ -5,6 +5,7 @@ Plus WorkLog for time tracking.
 """
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import CheckConstraint, event, Index, text
+from sqlalchemy.orm import relationship
 
 # We can't easily clear the registry here without side effects.
 # Instead, the fully qualified names + extend_existing MUST be enough.
@@ -105,7 +106,13 @@ class Cycle(SQLModel, table=True):
     is_active: bool = Field(default=True)
     
     # Relationships
-    goals: List["src.models.Goal"] = Relationship(back_populates="cycle", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    goals: List["Goal"] = Relationship(
+        sa_relationship=relationship(
+            lambda: Goal,
+            back_populates="cycle",
+            cascade="all, delete-orphan",
+        )
+    )
 
 
 class Goal(NodeBase, table=True):
@@ -124,9 +131,15 @@ class Goal(NodeBase, table=True):
     strategy_tags: Optional[str] = Field(default="[]")
     
     # Relationships
-    cycle: Optional[Cycle] = Relationship(back_populates="goals")
-    objectives: List["src.models.Objective"] = Relationship(
-        back_populates="goal", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    cycle: Optional[Cycle] = Relationship(
+        sa_relationship=relationship(lambda: Cycle, back_populates="goals")
+    )
+    objectives: List["Objective"] = Relationship(
+        sa_relationship=relationship(
+            lambda: Objective,
+            back_populates="goal",
+            cascade="all, delete-orphan",
+        )
     )
 
 
@@ -144,8 +157,8 @@ class Retrospective(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now_naive)
     
     # Relationships
-    user: "src.models.User" = Relationship()
-    cycle: Optional[Cycle] = Relationship() # No back_populates needed for now
+    user: "User" = Relationship(sa_relationship=relationship(lambda: User))
+    cycle: Optional[Cycle] = Relationship(sa_relationship=relationship(lambda: Cycle)) # No back_populates needed for now
 
 
 class Objective(NodeBase, table=True):
@@ -160,10 +173,15 @@ class Objective(NodeBase, table=True):
     goal_id: int = Field(foreign_key="goal.id", index=True)
     
     # Relationships
-    goal: Optional[Goal] = Relationship(back_populates="objectives")
-    key_results: List["src.models.KeyResult"] = Relationship(
-        back_populates="objective",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    goal: Optional[Goal] = Relationship(
+        sa_relationship=relationship(lambda: Goal, back_populates="objectives")
+    )
+    key_results: List["KeyResult"] = Relationship(
+        sa_relationship=relationship(
+            lambda: KeyResult,
+            back_populates="objective",
+            cascade="all, delete-orphan",
+        )
     )
 
 
@@ -191,14 +209,22 @@ class KeyResult(NodeBase, table=True):
     analysis_updated_at: Optional[datetime] = None
     
     # Relationships
-    objective: Optional[Objective] = Relationship(back_populates="key_results")
-    tasks: List["src.models.Task"] = Relationship(
-        back_populates="key_result",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    objective: Optional[Objective] = Relationship(
+        sa_relationship=relationship(lambda: Objective, back_populates="key_results")
     )
-    check_ins: List["src.models.CheckIn"] = Relationship(
-        back_populates="key_result",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    tasks: List["Task"] = Relationship(
+        sa_relationship=relationship(
+            lambda: Task,
+            back_populates="key_result",
+            cascade="all, delete-orphan",
+        )
+    )
+    check_ins: List["CheckIn"] = Relationship(
+        sa_relationship=relationship(
+            lambda: CheckIn,
+            back_populates="key_result",
+            cascade="all, delete-orphan",
+        )
     )
 
 
@@ -231,11 +257,16 @@ class Task(NodeBase, table=True):
     assignee_id: Optional[int] = Field(default=None, foreign_key="user.id")
     
     # Relationships
-    key_result: Optional[KeyResult] = Relationship(back_populates="tasks")
-    assignee: Optional["User"] = Relationship()
-    work_logs: List["src.models.WorkLog"] = Relationship(
-        back_populates="task",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+    key_result: Optional[KeyResult] = Relationship(
+        sa_relationship=relationship(lambda: KeyResult, back_populates="tasks")
+    )
+    assignee: Optional["User"] = Relationship(sa_relationship=relationship(lambda: User))
+    work_logs: List["WorkLog"] = Relationship(
+        sa_relationship=relationship(
+            lambda: WorkLog,
+            back_populates="task",
+            cascade="all, delete-orphan",
+        )
     )
 
 
@@ -265,7 +296,9 @@ class WorkLog(SQLModel, table=True):
     summary: Optional[str] = None # Added for timer session summary
     
     # Relationships
-    task: Optional["Task"] = Relationship(back_populates="work_logs")
+    task: Optional["Task"] = Relationship(
+        sa_relationship=relationship(lambda: Task, back_populates="work_logs")
+    )
 
 
 class WeeklyPlan(SQLModel, table=True):
@@ -307,7 +340,9 @@ class CheckIn(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now_naive)
     
     # Relationships
-    key_result: Optional["src.models.KeyResult"] = Relationship(back_populates="check_ins")
+    key_result: Optional["KeyResult"] = Relationship(
+        sa_relationship=relationship(lambda: KeyResult, back_populates="check_ins")
+    )
 
 
 # ============================================================================
