@@ -62,3 +62,7 @@ For the same benchmark dataset above:
   - `test_deadline_utils.py` (deadline scoring compatibility)
 - Benchmark harness added: `streamlit_app/scripts/perf_hotpaths.py`
 - Delivery docs added: `ARCHITECTURE.md`, `performance.md`
+- Architecture simplification pass completed:
+  - Extracted authorization logic to `streamlit_app/src/domain/authorization.py`
+  - Extracted analytics/reporting hot paths to `streamlit_app/src/domain/analytics.py`
+  - Kept `streamlit_app/src/crud.py` as stable facade for callers
