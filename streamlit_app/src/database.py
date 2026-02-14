@@ -5,6 +5,8 @@ Supabase/PostgreSQL only.
 from sqlmodel import create_engine, Session
 from contextlib import contextmanager
 import os
+import re
+import traceback
 from collections.abc import Mapping
 from typing import Optional
 
@@ -158,8 +160,18 @@ def create_db_and_tables():
         run_migrations()
         print("Database migrations applied successfully.")
     except Exception as e:
-        print(f"Migration failed: {e}")
-        raise RuntimeError("Database migration failed. Fix migrations before startup.") from e
+        raw_message = f"{type(e).__name__}: {e}"
+        # Redact credential-bearing URLs if present in driver errors.
+        sanitized_message = re.sub(
+            r"(postgres(?:ql\+psycopg2)?://)([^:@/\s]+):([^@/\s]+)@",
+            r"\1\2:***@",
+            raw_message,
+        )
+        print(f"Migration failed: {sanitized_message}")
+        print(traceback.format_exc())
+        raise RuntimeError(
+            f"Database migration failed. {sanitized_message}"
+        ) from e
 
 def get_session() -> Session:
     """Get a new database session."""
