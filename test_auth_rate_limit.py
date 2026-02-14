@@ -166,3 +166,20 @@ def test_lockout_expires_after_configured_duration(isolated_db, monkeypatch):
     success = authenticate_user_detailed("alice", "alice-pass", client_ip=client_ip)
     assert success["success"] is True
     assert success["user"] is not None
+
+
+def test_authentication_falls_back_when_throttle_table_missing(isolated_db):
+    from src.crud import authenticate_user_detailed, create_user
+    from src.database import get_engine
+
+    create_user("alice", "alice-pass")
+    with get_engine().begin() as conn:
+        conn.exec_driver_sql("DROP TABLE auth_throttle_state")
+
+    failed = authenticate_user_detailed("alice", "wrong-pass", client_ip="203.0.113.10")
+    assert failed["success"] is False
+    assert failed["error_code"] == "AUTH_INVALID_CREDENTIALS"
+
+    success = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
+    assert success["success"] is True
+    assert success["user"] is not None
