@@ -1,5 +1,7 @@
 # Performance
 
+Documentation HQ: [README](README.md)
+
 Date: 2026-02-14
 
 ## Baseline Method

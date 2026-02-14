@@ -1,3 +1,5 @@
+Documentation HQ: [README](../README.md)
+
 Docker Compose deployment
 
 Single host, subdomain (recommended)

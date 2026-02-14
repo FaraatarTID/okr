@@ -11,6 +11,14 @@ services:
       - PORT=${PORT:-8501}
       - BASE_URL_PATH=${BASE_URL_PATH:-}
       - STREAMLIT_SERVER_HEADLESS=true
+      - PRODUCTION=${PRODUCTION:-}
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL:-}
+      - DATABASE_URL=${DATABASE_URL:-}
+      - AUTH_USER_WINDOW_SECONDS=${AUTH_USER_WINDOW_SECONDS:-300}
+      - AUTH_USER_MAX_ATTEMPTS=${AUTH_USER_MAX_ATTEMPTS:-5}
+      - AUTH_IP_WINDOW_SECONDS=${AUTH_IP_WINDOW_SECONDS:-300}
+      - AUTH_IP_MAX_ATTEMPTS=${AUTH_IP_MAX_ATTEMPTS:-20}
+      - AUTH_LOCKOUT_SECONDS=${AUTH_LOCKOUT_SECONDS:-900}
     volumes:
       - okr_data:/data
       # Mount secrets.toml if you use Streamlit secrets (uncomment and provide a file)

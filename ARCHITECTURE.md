@@ -1,5 +1,7 @@
 # Architecture
 
+Documentation HQ: [README](README.md)
+
 ## System Overview
 
 This repository is a Streamlit-based OKR product with a SQLModel persistence layer and optional Google Sheets sync.

@@ -1,104 +1,390 @@
-Deployment guide: OKR Streamlit app
+Documentation HQ: [README](README.md)
 
-This app was originally built as a Streamlit MVP. The steps below package it for production with minimal code changes and run it behind your company domain.
+Enterprise Deployment Guide (Step-by-Step, Beginner Friendly)
 
-Two common ways to expose it:
-- Subdomain (recommended): okr.yourcompany.com
-- Subpath: yourcompany.com/okr (set BASE_URL_PATH=okr)
+Last updated: 2026-02-14
 
-1) Containerize the app (hardened)
-- A production Dockerfile and compose file are provided in [deploy/docker/Dockerfile](deploy/docker/Dockerfile) and [deploy/docker/docker-compose.yml](deploy/docker/docker-compose.yml).
-- Requirements are installed from [streamlit_app/requirements.txt](streamlit_app/requirements.txt); system dependency wkhtmltopdf is included.
-- Non-root user, healthcheck, and minimal attack surface included.
-- The SQLite database is persisted in a Docker volume using [deploy/docker/entrypoint.sh](deploy/docker/entrypoint.sh). No code changes required.
+This guide is for deploying the OKR app in a company environment where users access it through a corporate URL such as:
+- `https://okr.mycompany.com` (recommended)
+- `https://mycompany.com/okr` (supported)
 
-Build and run (on a server with Docker):
-- Copy [deploy/docker/.env.example](deploy/docker/.env.example) to .env and adjust ports and BASE_URL_PATH if using a subpath.
-- From the deploy/docker folder:
-  - docker compose up -d --build
-- App will listen on HOST_PORT (default 8501). Test at http://SERVER:8501
+If you are not sure what to choose, use this default stack:
+- Docker Compose
+- PostgreSQL
+- Nginx reverse proxy
+- HTTPS (TLS certificate)
+- `PRODUCTION=true`
 
-2) Reverse proxy and domain (HTTPS)
-- Put the app behind Nginx (or Caddy/Traefik) on your corporate host.
-- An example Nginx config is provided in [deploy/nginx.conf](deploy/nginx.conf):
-  - Subdomain: proxy / to the container’s port
-  - Subpath: also set BASE_URL_PATH=okr in compose and use the /okr location block
-- Add TLS with your corporate certificate or Certbot.
+This is the safest and easiest enterprise path for this repo.
 
-3) Secrets and API keys
-- If the app uses Streamlit secrets (e.g., PDFShift, Google APIs), mount a secrets file into the container:
-  - Create deploy/secrets/secrets.toml (do not commit it)
-  - Mount it in compose by uncommenting the secrets volume line so it appears at /app/streamlit_app/.streamlit/secrets.toml
-- Alternatively, map environment variables and read them in code where supported.
+---
 
-Production mode (optional, recommended for production)
-- Enable strict production behavior by setting PRODUCTION=true.
-  - Environment variable (e.g., in Docker Compose .env): PRODUCTION=true
-  - Or in secrets.toml:
-    [app]
-    production = true
-- When enabled:
-  - Google Sheets sync is disabled
-  - A non-SQLite database is required (set OKR_DATABASE_URL / DATABASE_URL or [database].url)
+What this deployment gives you
+- Non-root container runtime
+- Automatic DB migrations at app startup
+- Health checks and restart policy
+- Reverse-proxy compatible with Streamlit websocket traffic
+- Optional CI/CD via GitHub Actions
 
-4) Database and migrations
-- The app uses SQLite at streamlit_app/okr_database.db.
-- Migrations (Alembic) run on startup via code in [streamlit_app/src/database.py](streamlit_app/src/database.py).
-- Data is persisted in a Docker named volume (okr_data). Back up by "docker run --rm -v okr_data:/data alpine tar -czf - /data > backup.tar.gz".
+Key files used by this guide
+- `deploy/docker/Dockerfile`
+- `deploy/docker/docker-compose.yml`
+- `deploy/docker/docker-compose.postgres.yml`
+- `deploy/docker/.env.example`
+- `deploy/docker/.env.mycompany.example`
+- `deploy/nginx.conf`
+- `deploy/nginx.okr.mycompany.com.conf`
+- `deploy/secrets/secrets.toml.example`
+- `.github/workflows/docker-deploy.yml`
 
-5) Running under a subpath
-- Use a reverse proxy rule that strips the prefix and set BASE_URL_PATH in the container.
-- Example: BASE_URL_PATH=okr, proxy /okr/ to http://127.0.0.1:8501/ with a rewrite to remove /okr/.
+---
 
-6) Windows service (alternative to Docker)
-- If you prefer not to use Docker on Windows, run Streamlit as a Windows Service and put IIS/NGINX in front:
-  - Install Python 3.11 and dependencies from requirements.txt
-  - Create a Windows Service with NSSM (Non-Sucking Service Manager):
-    - Path: python.exe
-    - Args: -m streamlit run app.py --server.address 0.0.0.0 --server.port 8501
-    - Working dir: streamlit_app
-  - Reverse proxy from IIS/NGINX to http://127.0.0.1:8501
+Quick decision matrix
 
-7) Health checks and restarts
-- Compose sets restart: unless-stopped. The image has an HTTP healthcheck. Integrate with your platform’s observability (e.g., Prometheus/nginx logs, uptime monitors).
+1) Which URL structure?
+- Use subdomain if possible: `okr.mycompany.com`
+- Use subpath only if your company policy requires it: `mycompany.com/okr`
 
-8) Upgrades and migrations
-- Pull latest code, rebuild the image, and recreate the container:
-  - docker compose pull || true
-  - docker compose up -d --build
-- Alembic migrations run automatically on app start.
+2) Which database?
+- Recommended: managed Postgres (AWS RDS, Azure DB, GCP Cloud SQL, internal Postgres)
+- Acceptable for pilot: local Postgres container
+- Do not use SQLite for production workloads
 
-Notes
-- This keeps the application code unchanged. Operational settings are provided via container args and the reverse proxy.
-- For subpath hosting, Streamlit requires the baseUrlPath flag (already supported by the container CMD).
+3) Which platform?
+- Start with Docker Compose on one VM
+- Use Kubernetes only if your team already runs K8s operationally
 
-Appendix A: CI/CD (GitHub Actions)
-- A workflow is included: [\.github/workflows/docker-deploy.yml](.github/workflows/docker-deploy.yml)
-  - Builds and pushes image to GHCR on push to main/master
-  - Optional remote deployment to a Docker Compose host via SSH (configure secrets: SSH_HOST, SSH_USER, SSH_KEY, REMOTE_DEPLOY_DIR)
+---
 
-Appendix B: Kubernetes (optional)
-- Manifests in [deploy/k8s](deploy/k8s): Deployment (1 replica), Service, Ingress with TLS via cert-manager, and a PVC for SQLite.
-- Because SQLite is a single-writer DB, keep replicas=1. For multi-user scale, consider migrating to a network database (e.g., Postgres) in a later phase.
+Path A (recommended): Docker Compose + Postgres + Nginx + TLS
 
-Appendix C: Upgrade storage beyond Google Drive/SQLite
-- Switch to PostgreSQL with no code changes:
-  - Provide a database URL via env OKR_DATABASE_URL or DATABASE_URL, or via [streamlit secrets] [database.url].
-  - The app and Alembic will use that URL automatically.
-- With Docker Compose, bring up Postgres and point the app to it:
-  - cp deploy/docker/.env.example deploy/docker/.env
-  - docker compose -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.postgres.yml up -d --build
-  - The override adds a postgres:16 service and sets OKR_DATABASE_URL for the app.
-- Initial data migration from Google Sheets:
-  - In the app, use the existing Sheets restore (Sync → Restore) to pull all data into the new DB; it uses the same session, so it will load into Postgres when configured.
-  - Alternatively, export current SQLite and import into Postgres with standard tools if needed. For most MVPs, a one-time restore from Sheets is sufficient.
- 
-Further reading (comprehensive docs)
-- Configuration reference: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
-- Deployment checklist: [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
-- Docker Compose guide: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
-- Kubernetes guide: [docs/KUBERNETES.md](docs/KUBERNETES.md)
-- Reverse proxy guide: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
-- Operations: [docs/OPERATIONS.md](docs/OPERATIONS.md)
-- Troubleshooting: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-- Runbook: [docs/RUNBOOK.md](docs/RUNBOOK.md)
+Use this if you want the fastest reliable enterprise deployment.
+
+Step 0: Collect required values
+
+Prepare these values first:
+- `APP_DOMAIN`: for example `okr.mycompany.com`
+- `SERVER_IP`: public/private server IP
+- `OKR_DATABASE_URL`: example `postgresql+psycopg2://okr_user:strong_password@db.company.net:5432/okr`
+- `CONTACT_EMAIL`: certificate contact email
+
+Step 1: Prepare the Linux host (Ubuntu example)
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg lsb-release nginx
+
+# Install Docker Engine + Compose plugin (official repo method)
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo \"$VERSION_CODENAME\") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+sudo usermod -aG docker "$USER"
+newgrp docker
+```
+
+Step 2: Pull the project
+
+```bash
+git clone <YOUR_REPO_URL> okr
+cd okr
+```
+
+Step 3: Configure app environment
+
+```bash
+cp deploy/docker/.env.example deploy/docker/.env
+```
+
+If you are deploying exactly to `okr.mycompany.com`, you can start from the prefilled template:
+
+```bash
+cp deploy/docker/.env.mycompany.example deploy/docker/.env
+```
+
+Edit `deploy/docker/.env` and set at minimum:
+
+```dotenv
+# Required
+PORT=8501
+HOST_PORT=8501
+BASE_URL_PATH=
+PRODUCTION=true
+OKR_DATABASE_URL=postgresql+psycopg2://okr_user:strong_password@db.company.net:5432/okr
+
+# Optional image pin (recommended after first stable release)
+# IMAGE=ghcr.io/your-org/okr-streamlit:2026-02-14
+```
+
+Notes:
+- Keep `BASE_URL_PATH` empty for subdomain hosting.
+- For subpath hosting (`/okr`), set `BASE_URL_PATH=okr`.
+- `PRODUCTION=true` disables Google Sheets sync and enforces non-SQLite DB.
+
+Step 4: Configure optional secrets (PDF/API integrations)
+
+```bash
+mkdir -p deploy/secrets
+cp deploy/secrets/secrets.toml.example deploy/secrets/secrets.toml
+```
+
+Then edit `deploy/secrets/secrets.toml` with your real keys if needed.
+Do not commit this file.
+
+Step 5: Start the application
+
+From repo root:
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml up -d --build
+```
+
+Health check:
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml ps
+curl -I http://127.0.0.1:8501/
+```
+
+Expected:
+- Container status is `Up` (eventually healthy)
+- HTTP response from `/` is `200 OK`
+
+Step 6: Configure Nginx reverse proxy
+
+Fastest path for this exact domain:
+
+```bash
+sudo cp deploy/nginx.okr.mycompany.com.conf /etc/nginx/sites-available/okr.conf
+```
+
+Create a site file:
+
+```bash
+sudo tee /etc/nginx/sites-available/okr.conf > /dev/null <<'EOF'
+server {
+    listen 80;
+    server_name okr.mycompany.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8501/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600;
+        proxy_send_timeout 3600;
+    }
+}
+EOF
+```
+
+Enable and validate Nginx:
+
+```bash
+sudo ln -sf /etc/nginx/sites-available/okr.conf /etc/nginx/sites-enabled/okr.conf
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Step 7: Create DNS record
+
+In your DNS provider:
+- Add `A` record: `okr.mycompany.com -> SERVER_IP`
+
+Wait for propagation and confirm:
+
+```bash
+nslookup okr.mycompany.com
+```
+
+Step 8: Enable HTTPS (TLS)
+
+Using Certbot (public CA):
+
+```bash
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d okr.mycompany.com -m your-email@company.com --agree-tos --redirect --non-interactive
+```
+
+If your company uses internal PKI, install certificates per your security policy instead of Certbot.
+
+Step 9: First login and hardening
+
+On first run with empty DB:
+- Default login is `admin / admin`
+- You will be forced to change password
+
+Immediately after login:
+1. Change admin password to a strong one.
+2. Create named admin accounts for real admins.
+3. Disable unused accounts.
+4. Create initial OKR cycle.
+5. Verify role-based access for manager/member users.
+
+Step 10: Validate production readiness
+
+Run these checks:
+
+```bash
+# App reachable over HTTPS
+curl -I https://okr.mycompany.com
+
+# Container logs
+docker compose -f deploy/docker/docker-compose.yml logs --tail=200 okr
+
+# Confirm proxy configuration active
+sudo nginx -t
+```
+
+Confirm manually:
+- Login works
+- Create Goal/Objectives/KRs/Tasks
+- Timer starts/stops
+- Reports load
+- No websocket reconnect loops in browser
+
+---
+
+Path B: Docker Compose + bundled Postgres (pilot environments)
+
+Use this only when managed Postgres is not available yet.
+
+```bash
+cp deploy/docker/.env.example deploy/docker/.env
+docker compose -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.postgres.yml up -d --build
+```
+
+What this does:
+- Starts app container + `postgres:16` container
+- App uses connection string generated in `deploy/docker/docker-compose.postgres.yml`
+
+For enterprise production, managed Postgres is still preferred for backup/HA/compliance.
+
+---
+
+Path C: Kubernetes (for teams already running K8s)
+
+Use manifests in `deploy/k8s`.
+
+High-level sequence:
+1. Create namespace `okr`.
+2. Create DB secret (`OKR_DATABASE_URL`) from `deploy/k8s/secret-db.yaml`.
+3. Apply deployment/service/ingress.
+4. Set ingress host/TLS secret.
+5. Verify readiness/liveness and HTTPS.
+
+Important:
+- With SQLite keep replicas at 1.
+- With Postgres you can scale more safely, but Streamlit sessions are stateful, so use sticky sessions at ingress when scaling.
+
+Detailed docs:
+- `docs/KUBERNETES.md`
+
+---
+
+Operations (day 2)
+
+Logs
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml logs -f okr
+```
+
+Restart app
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml restart okr
+```
+
+Upgrade (same server, new code/image)
+
+```bash
+git pull
+docker compose -f deploy/docker/docker-compose.yml pull || true
+docker compose -f deploy/docker/docker-compose.yml up -d --build
+```
+
+Rollback (if new release is bad)
+1. Pin previous image tag in `deploy/docker/.env` using `IMAGE=...`.
+2. Recreate containers:
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml up -d
+```
+
+Backups
+- Managed Postgres: enable provider snapshots and test restore quarterly.
+- Local Postgres container: schedule `pg_dump` + offsite storage.
+- SQLite fallback: snapshot Docker volume `okr_data`.
+
+---
+
+Security hardening checklist
+
+- Use `PRODUCTION=true`.
+- Use Postgres, not SQLite, for production.
+- Keep only ports 80/443 exposed publicly.
+- Block direct public access to `8501`.
+- Keep secrets in `deploy/secrets/secrets.toml` or platform secret manager.
+- Do not commit secrets to git.
+- Rotate DB/API credentials periodically.
+- Keep TLS certificates valid and auto-renewed.
+- Monitor auth lockout behavior and audit/error logs.
+
+---
+
+Common mistakes and fixes
+
+Blank page or repeated reconnect:
+- Check Nginx websocket headers (`Upgrade`, `Connection`) and 3600s timeouts.
+
+Assets broken under subpath:
+- Set `BASE_URL_PATH=okr`.
+- Ensure reverse proxy strips `/okr` before forwarding.
+
+App fails at startup with production mode:
+- You likely set `PRODUCTION=true` without `OKR_DATABASE_URL`.
+
+Cannot log in:
+- If DB is new, use `admin/admin` once and change password.
+- If DB is existing, default admin bootstrap does not run again.
+
+---
+
+CI/CD option (GitHub Actions)
+
+Workflow file:
+- `.github/workflows/docker-deploy.yml`
+
+What it can do:
+- Build and push image to GHCR on push to `main`/`master`
+- Optional remote deploy over SSH using:
+  - `SSH_HOST`
+  - `SSH_USER`
+  - `SSH_KEY`
+  - `REMOTE_DEPLOY_DIR`
+
+Tip:
+- Use immutable image tags for controlled rollback.
+
+---
+
+Related docs
+- `docs/CONFIG_REFERENCE.md`
+- `docs/DEPLOY_CHECKLIST.md`
+- `docs/DOCKER_COMPOSE.md`
+- `docs/KUBERNETES.md`
+- `docs/REVERSE_PROXY.md`
+- `docs/OPERATIONS.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/RUNBOOK.md`

@@ -1,3 +1,5 @@
+Documentation HQ: [README](../README.md)
+
 Configuration reference
 
 Overview
