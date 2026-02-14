@@ -1951,6 +1951,34 @@ def _atlas_sorted_refs(child_refs, index, sort_mode: str):
     return sorted(child_refs, key=_priority_key)
 
 
+def _atlas_task_rollup(task_refs, index):
+    rollup = {
+        "total": 0,
+        "running": 0,
+        "attention": 0,
+        "done": 0,
+    }
+
+    for ref in task_refs:
+        meta = index.get(ref)
+        if not meta or meta.get("type") != "TASK":
+            continue
+        rollup["total"] += 1
+
+        task = meta.get("node")
+        if getattr(task, "timer_started_at", None) is not None:
+            rollup["running"] += 1
+
+        progress = int(meta.get("progress", 0) or 0)
+        status = _atlas_status_label(meta).lower()
+        if progress >= 100:
+            rollup["done"] += 1
+        if "overdue" in status or "risk" in status or progress < 40:
+            rollup["attention"] += 1
+
+    return rollup
+
+
 def render_atlas_workspace(username):
     inject_atlas_styles()
 
@@ -2145,8 +2173,11 @@ def render_atlas_workspace(username):
                         st.session_state["atlas_selected_ref"] = ref
                         st.rerun()
 
-    # Focus Dock (timer-first)
+    task_rollup = _atlas_task_rollup(task_refs, index)
+
+    # Focus Dock (timer-first control plane)
     with st.container(border=True):
+        st.markdown("<div class='atlas-luxe-strip'></div>", unsafe_allow_html=True)
         st.markdown("<div class='atlas-kicker'>Focus Dock</div>", unsafe_allow_html=True)
 
         breadcrumbs = ["HOME"] + list(selected_meta["path"])
@@ -2170,7 +2201,15 @@ def render_atlas_workspace(username):
                 st.session_state["atlas_selected_ref"] = selected_crumb
             st.rerun()
 
-        st.markdown(f"### {TYPE_ICONS.get(selected_meta['type'], '')} {selected_meta['title']}")
+        st.markdown(
+            f"<div class='atlas-focus-entity'>{TYPE_ICONS.get(selected_meta['type'], '')} {escape_html(selected_meta['title'])}</div>",
+            unsafe_allow_html=True,
+        )
+        signal_cols = st.columns(4)
+        signal_cols[0].metric("Tasks", task_rollup["total"])
+        signal_cols[1].metric("Running", task_rollup["running"])
+        signal_cols[2].metric("Attention", task_rollup["attention"])
+        signal_cols[3].metric("Done", task_rollup["done"])
 
         if not focus_task_ref:
             st.info("No tasks under this node yet.")
@@ -2180,10 +2219,10 @@ def render_atlas_workspace(username):
             is_running = getattr(focus_task, "timer_started_at", None) is not None
             can_track_focus = _can_track_task(focus_meta)
 
-            dock_cols = st.columns([4.2, 1.6, 1.2])
+            dock_cols = st.columns([4.0, 1.6, 1.2])
             dock_cols[0].markdown(f"**{TYPE_ICONS.get('TASK', '')} {focus_meta['title']}**")
             dock_cols[0].caption(
-                f"Owner: {focus_meta['owner_name']} | { _atlas_status_label(focus_meta) } | Progress {focus_meta['progress']}%"
+                f"Owner: {focus_meta['owner_name']} | {_atlas_status_label(focus_meta)} | Progress {focus_meta['progress']}%"
             )
 
             if is_running:
@@ -2233,16 +2272,120 @@ def render_atlas_workspace(username):
                     st.session_state["atlas_focus_task_ref"] = picked_ref
                     st.rerun()
 
-    main_left, main_right = st.columns([1.05, 1.95], gap="large")
+            queue_refs = [ref for ref in task_refs if ref != focus_task_ref][:4]
+            if queue_refs:
+                st.markdown("<div class='atlas-nextup-label'>Next Up</div>", unsafe_allow_html=True)
+                queue_cols = st.columns(len(queue_refs))
+                for idx, queue_ref in enumerate(queue_refs):
+                    queue_meta = index[queue_ref]
+                    queue_title = queue_meta["title"]
+                    if len(queue_title) > 28:
+                        queue_title = f"{queue_title[:25]}..."
+                    if queue_cols[idx].button(
+                        f"{TYPE_ICONS.get('TASK', '')} {queue_title}",
+                        key=f"atlas_focus_queue_{queue_ref}",
+                        use_container_width=True,
+                    ):
+                        st.session_state["atlas_focus_task_ref"] = queue_ref
+                        st.rerun()
 
-    with main_left:
+    flow_tab, hierarchy_tab, inspector_tab = st.tabs(["Flow Board", "Hierarchy", "Inspector"])
+
+    with flow_tab:
         with st.container(border=True):
-            st.markdown("<div class='atlas-kicker'>Navigator</div>", unsafe_allow_html=True)
+            st.markdown("<div class='atlas-kicker'>Flow Board</div>", unsafe_allow_html=True)
 
-            if st.button("Add Goal", key="atlas_add_goal_left", use_container_width=True):
+            child_refs = _atlas_sorted_refs(selected_meta["children"], index, sort_mode)
+            child_refs = [ref for ref in child_refs if _atlas_matches_focus(index[ref], focus_mode)]
+            attention_refs = [
+                ref for ref in child_refs
+                if ("overdue" in _atlas_status_label(index[ref]).lower())
+                or (int(index[ref].get("progress", 0) or 0) < 40)
+            ]
+
+            ws_head = st.columns([1.0, 1.0, 1.0, 1.8])
+            ws_head[0].metric("Progress", f"{selected_meta['progress']}%")
+            ws_head[1].metric("Children", len(child_refs))
+            ws_head[2].metric("Attention", len(attention_refs))
+            child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
+            if child_type and ws_head[3].button(
+                f"Add {child_type.replace('_', ' ').title()}",
+                key=f"atlas_add_child_{selected_ref}",
+                use_container_width=True,
+            ):
+                st.session_state["add_mode_parent"] = selected_ref
+                st.session_state["add_mode_type"] = child_type
+                st.rerun()
+
+            if not child_refs:
+                st.info("No child items for this selection and filter.")
+            else:
+                for child_ref in child_refs:
+                    meta = index[child_ref]
+                    is_task = meta["type"] == "TASK"
+                    is_focused = child_ref == focus_task_ref
+                    is_running = is_task and (getattr(meta["node"], "timer_started_at", None) is not None)
+
+                    with st.container(border=True):
+                        row = st.columns([4.3, 1.1, 1.0, 1.6])
+                        if row[0].button(
+                            f"{TYPE_ICONS.get(meta['type'], '')} {meta['title']}",
+                            key=f"atlas_open_{child_ref}",
+                            use_container_width=True,
+                        ):
+                            st.session_state["atlas_selected_ref"] = child_ref
+                            st.rerun()
+
+                        tag_bits = [meta["type"].replace("_", " ").title(), _atlas_status_label(meta)]
+                        if is_focused:
+                            tag_bits.append("Focused")
+                        if is_running:
+                            tag_bits.append("Running")
+                        row[0].caption(f"{meta['owner_name']} | " + " | ".join(tag_bits))
+                        row[1].metric("Progress", f"{meta['progress']}%")
+
+                        if is_task:
+                            row[2].caption("Task")
+                            if row[3].button(
+                                "Focused" if is_focused else "Set Focus",
+                                key=f"atlas_set_focus_{child_ref}",
+                                disabled=is_focused,
+                                use_container_width=True,
+                            ):
+                                st.session_state["atlas_focus_task_ref"] = child_ref
+                                st.rerun()
+                        else:
+                            row[2].caption("Node")
+                            row[3].caption(f"{len(meta['children'])} sub")
+
+    with hierarchy_tab:
+        with st.container(border=True):
+            st.markdown("<div class='atlas-kicker'>Hierarchy</div>", unsafe_allow_html=True)
+
+            def _set_expanded_tree(node_ref: str, expanded: bool):
+                st.session_state[f"atlas_expanded_{node_ref}"] = expanded
+                for child_ref in index[node_ref]["children"]:
+                    _set_expanded_tree(child_ref, expanded)
+
+            nav_actions = st.columns([1.3, 1.0, 1.0, 1.0])
+            if nav_actions[0].button("Add Goal", key="atlas_add_goal_left", use_container_width=True):
                 st.session_state["add_mode_parent"] = None
                 st.session_state["add_mode_type"] = "GOAL"
                 st.rerun()
+            if nav_actions[1].button("Expand all", key="atlas_expand_all", use_container_width=True):
+                for root_ref in roots:
+                    _set_expanded_tree(root_ref, True)
+                st.rerun()
+            if nav_actions[2].button("Collapse all", key="atlas_collapse_all", use_container_width=True):
+                for root_ref in roots:
+                    _set_expanded_tree(root_ref, False)
+                for path_ref in selected_meta["path"]:
+                    st.session_state[f"atlas_expanded_{path_ref}"] = True
+                st.rerun()
+            if nav_actions[3].button("Select Focus", key="atlas_select_focus_node", use_container_width=True):
+                if focus_task_ref and focus_task_ref in index:
+                    st.session_state["atlas_selected_ref"] = focus_task_ref
+                    st.rerun()
 
             def _render_tree_item(node_ref: str):
                 meta = index[node_ref]
@@ -2251,18 +2394,22 @@ def render_atlas_workspace(username):
                 expanded_key = f"atlas_expanded_{node_ref}"
                 default_expanded = depth <= 1 or node_ref in selected_path_refs
                 expanded = bool(st.session_state.get(expanded_key, default_expanded))
+                col_toggle, col_label, col_meta = st.columns([0.09, 0.73, 0.18])
 
-                col_toggle, col_label = st.columns([0.12, 0.88])
                 if has_children:
                     if col_toggle.button(
-                        "-" if expanded else "+",
+                        "v" if expanded else ">",
                         key=f"atlas_toggle_{node_ref}",
+                        help="Collapse" if expanded else "Expand",
                         use_container_width=True,
                     ):
                         st.session_state[expanded_key] = not expanded
                         st.rerun()
                 else:
-                    col_toggle.markdown("&nbsp;", unsafe_allow_html=True)
+                    col_toggle.markdown(
+                        "<div class='atlas-tree-leaf-marker'>.</div>",
+                        unsafe_allow_html=True,
+                    )
 
                 prefix = ". " * depth
                 label = f"{prefix}{TYPE_ICONS.get(meta['type'], '')} {meta['title']}"
@@ -2276,6 +2423,14 @@ def render_atlas_workspace(username):
                     st.session_state["atlas_selected_ref"] = node_ref
                     st.rerun()
 
+                child_count = len(meta["children"])
+                if node_ref == focus_task_ref:
+                    col_meta.caption("Focus")
+                elif child_count:
+                    col_meta.caption(f"{child_count} sub")
+                elif meta["type"] == "TASK":
+                    col_meta.caption(f"{meta['progress']}%")
+
                 if has_children and expanded:
                     for child_ref in meta["children"]:
                         _render_tree_item(child_ref)
@@ -2283,76 +2438,24 @@ def render_atlas_workspace(username):
             for root_ref in roots:
                 _render_tree_item(root_ref)
 
-    with main_right:
+    with inspector_tab:
         with st.container(border=True):
-            st.markdown("<div class='atlas-kicker'>Workspace</div>", unsafe_allow_html=True)
-
-            ws_head = st.columns([1.0, 1.0, 2.0])
-            ws_head[0].metric("Progress", f"{selected_meta['progress']}%")
-            ws_head[1].metric("Children", len(selected_meta["children"]))
-            child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
-            if child_type and ws_head[2].button(
-                f"Add {child_type.replace('_', ' ').title()}",
-                key=f"atlas_add_child_{selected_ref}",
-                use_container_width=True,
-            ):
-                st.session_state["add_mode_parent"] = selected_ref
-                st.session_state["add_mode_type"] = child_type
-                st.rerun()
-
-            child_refs = _atlas_sorted_refs(selected_meta["children"], index, sort_mode)
-            child_refs = [ref for ref in child_refs if _atlas_matches_focus(index[ref], focus_mode)]
-
-            if not child_refs:
-                st.info("No child items for this selection and filter.")
+            st.markdown("<div class='atlas-kicker'>Inspector</div>", unsafe_allow_html=True)
+            selected_type, selected_id = _parse_typed_ref(selected_ref)
+            if not selected_type or selected_id is None:
+                st.info("Select a node to inspect.")
             else:
-                for child_ref in child_refs:
-                    meta = index[child_ref]
-                    with st.container(border=True):
-                        row = st.columns([4.8, 1.2, 1.6])
-                        if row[0].button(
-                            f"{TYPE_ICONS.get(meta['type'], '')} {meta['title']}",
-                            key=f"atlas_open_{child_ref}",
-                            use_container_width=True,
-                        ):
-                            st.session_state["atlas_selected_ref"] = child_ref
-                            st.rerun()
+                selected_node = index[selected_ref]["node"]
+                if index[selected_ref]["children"]:
+                    if st.button(
+                        "Open Mind Map",
+                        key=f"atlas_map_{selected_ref}",
+                        use_container_width=True,
+                    ):
+                        from src.ui.dialogs import render_mindmap_dialog
 
-                        tag_bits = [meta["type"].replace("_", " ").title()]
-                        if child_ref == focus_task_ref:
-                            tag_bits.append("Focused")
-                        if meta["type"] == "TASK" and getattr(meta["node"], "timer_started_at", None) is not None:
-                            tag_bits.append("Running")
-                        row[0].caption(" | ".join(tag_bits))
-                        row[1].metric("Progress", f"{meta['progress']}%")
-
-                        if meta["type"] == "TASK":
-                            if row[2].button(
-                                "Set Focus",
-                                key=f"atlas_set_focus_{child_ref}",
-                                use_container_width=True,
-                            ):
-                                st.session_state["atlas_focus_task_ref"] = child_ref
-                                st.rerun()
-                        else:
-                            row[2].caption(_atlas_status_label(meta))
-
-            with st.expander("Inspector", expanded=False):
-                selected_type, selected_id = _parse_typed_ref(selected_ref)
-                if not selected_type or selected_id is None:
-                    st.info("Select a node to inspect.")
-                else:
-                    selected_node = index[selected_ref]["node"]
-                    if index[selected_ref]["children"]:
-                        if st.button(
-                            "Open Mind Map",
-                            key=f"atlas_map_{selected_ref}",
-                            use_container_width=True,
-                        ):
-                            from src.ui.dialogs import render_mindmap_dialog
-
-                            render_mindmap_dialog(getattr(selected_node, "id", None))
-                    render_inspector_content(selected_id, selected_type, username, show_close=False)
+                        render_mindmap_dialog(getattr(selected_node, "id", None))
+                render_inspector_content(selected_id, selected_type, username, show_close=False)
 
 def render_card(node, username):
     node_id = node.id
@@ -2653,3 +2756,4 @@ def render_level(username):
         else:
             for item in items:
                 render_card(item, username)
+

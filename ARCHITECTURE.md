@@ -8,7 +8,7 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
-  - Primary hierarchy UX: Atlas 3-pane workspace (Navigator / Workspace / Inspector)
+  - Primary hierarchy UX: Atlas timer-first workspace (`Focus Dock` + `Flow Board` + `Hierarchy` + `Inspector`)
   - Compatibility UX: Classic drill-down cards with breadcrumb navigation
 - Domain/data operations: `streamlit_app/src/crud.py`
 - Extracted domain modules:
@@ -50,9 +50,35 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 1b. Hierarchy navigation flow (Atlas mode)
 - `render_level` dispatches to `render_atlas_workspace` when `workspace_mode=Atlas`.
-- Left pane builds a typed-reference tree for active cycle scope and role-aware owner filters.
-- Center pane renders selected node context, filtered/sorted children, and inline add actions.
-- Right pane mounts `render_inspector_content(..., show_close=False)` as persistent inspector.
+- Top command bar handles quick jump and role-aware scope/focus/sort controls.
+- `Focus Dock` computes and presents a single focus task for fast timer start/stop.
+- Workspace uses progressive disclosure tabs:
+  - `Flow Board`: execution queue and child actions
+  - `Hierarchy`: structural navigation and expansion controls
+  - `Inspector`: deep edit/read context for selected node
+
+## Atlas UX Architecture (v2)
+
+Interaction model is intentionally split into control-plane and work-plane:
+
+1. Control-plane: Focus Dock
+- One dominant action: `Start Timer` / `Stop Timer`.
+- Focused task state is sticky across tab changes.
+- Rollup signals (`Tasks`, `Running`, `Attention`, `Done`) provide instant context.
+
+2. Work-plane: Progressive disclosure
+- `Flow Board` is optimized for throughput (open node, set focus, add child).
+- `Hierarchy` is optimized for structural movement (expand/collapse/select).
+- `Inspector` is optimized for depth (details, edits, map).
+
+3. State contracts
+- `atlas_selected_ref`: single source of truth for current node context.
+- `atlas_focus_task_ref`: explicit focus target for timer operations.
+- `atlas_expanded_*`: hierarchy expansion state, independent from selected context.
+- Selection changes reset transient focus-picker state to avoid stale controls.
+
+4. Permission contract
+- Timer mutations remain ownership-gated (`owner_id == actor_id`) at UI + CRUD boundaries.
 
 2. Check-in flow
 - UI weekly ritual submits `create_check_in`.
