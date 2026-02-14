@@ -4,6 +4,33 @@ A powerful Streamlit application for managing Objectives and Key Results (OKRs),
 
 ---
 
+## Documentation HQ
+
+Use this section as the single entry point for all project docs.
+
+### Core docs
+
+- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- Enterprise deployment guide: [DEPLOYMENT.md](DEPLOYMENT.md)
+- Performance baselines and budgets: [performance.md](performance.md)
+- Engineering worklog: [WORKLOG.md](WORKLOG.md)
+
+### Deployment and operations docs
+
+- Configuration reference: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
+- Deployment checklist: [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
+- Docker Compose guide: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
+- Kubernetes guide: [docs/KUBERNETES.md](docs/KUBERNETES.md)
+- Reverse proxy guide: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
+- Operations guide: [docs/OPERATIONS.md](docs/OPERATIONS.md)
+- Troubleshooting guide: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- First deployment runbook: [docs/RUNBOOK.md](docs/RUNBOOK.md)
+
+### Subproject docs
+
+- Odoo module documentation: [odoo_module/okr_tracker/README.md](odoo_module/okr_tracker/README.md)
+
+---
 ## 🌟 Features Overview
 
 ### Core Functionality
@@ -360,6 +387,7 @@ pip install ruff mypy
 ### Verify quality locally
 
 ```bash
+python scripts/check_docs_hq_links.py
 python -m ruff check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py --select E9,F63,F7,F82
 python -m ruff format --check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py
 python -m mypy --ignore-missing-imports streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py

@@ -1,3 +1,5 @@
+Documentation HQ: [README](../README.md)
+
 Kubernetes deployment
 
 Prerequisites

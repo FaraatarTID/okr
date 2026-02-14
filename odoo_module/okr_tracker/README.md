@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../README.md)
+
 OKR Tracker (Odoo module)
 
 Purpose

@@ -1,3 +1,5 @@
+Documentation HQ: [README](../README.md)
+
 Reverse proxy guide
 
 Goals
@@ -7,6 +9,7 @@ Goals
 
 Nginx (subdomain)
 - Use deploy/nginx.conf server block for okr.example.com
+- For a ready-made company-domain template, use deploy/nginx.okr.mycompany.com.conf
 - Ensure proxy_read_timeout and proxy_send_timeout >= 3600
 - Pass Upgrade and Connection headers for websocket
 

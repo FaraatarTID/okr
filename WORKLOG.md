@@ -1,5 +1,7 @@
 # WORKLOG
 
+Documentation HQ: [README](README.md)
+
 Date: 2026-02-14
 
 ## Phase 1: Repo Truth (Measured)

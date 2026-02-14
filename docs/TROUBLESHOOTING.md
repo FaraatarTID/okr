@@ -1,3 +1,5 @@
+Documentation HQ: [README](../README.md)
+
 Troubleshooting
 
 Blank page or reconnecting loop
