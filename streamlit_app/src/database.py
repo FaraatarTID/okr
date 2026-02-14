@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import os
 import re
 import traceback
+from threading import Lock
 from collections.abc import Mapping
 from typing import Optional
 
@@ -115,6 +116,8 @@ def _create_engine(url: str):
 
 
 _engine = None
+_migrations_lock = Lock()
+_migrations_applied = False
 
 
 def _resolved_database_url() -> str:
@@ -133,24 +136,64 @@ def get_engine():
     return _engine
 
 
+def _is_benign_alembic_config_keyerror(exc: BaseException) -> bool:
+    return isinstance(exc, KeyError) and len(getattr(exc, "args", ())) == 1 and exc.args[0] == "config"
+
+
+def _database_is_at_migration_head(alembic_cfg) -> bool:
+    """Best-effort verification that DB revision is already at Alembic head."""
+    try:
+        from alembic.runtime.migration import MigrationContext
+        from alembic.script import ScriptDirectory
+
+        script = ScriptDirectory.from_config(alembic_cfg)
+        heads = set(script.get_heads())
+        if not heads:
+            return True
+
+        with get_engine().connect() as connection:
+            current = MigrationContext.configure(connection).get_current_revision()
+        return bool(current) and current in heads
+    except Exception:
+        return False
+
+
 
 def run_migrations():
     """Run Alembic migrations programmatically with the active DATABASE_URL."""
+    global _migrations_applied
+    if _migrations_applied:
+        return
+
     from alembic.config import Config
     from alembic import command
 
-    current_dir = os.path.dirname(__file__)  # streamlit_app/src
-    parent_dir = os.path.dirname(current_dir)  # streamlit_app
-    ini_path = os.path.join(parent_dir, "alembic.ini")
+    with _migrations_lock:
+        if _migrations_applied:
+            return
 
-    alembic_cfg = Config(ini_path)
-    # Ensure Alembic uses the same database as the app
-    alembic_cfg.set_main_option("sqlalchemy.url", _resolved_database_url())
-    # Also ensure script_location resolves correctly when running from this CWD
-    script_location = os.path.join(parent_dir, "alembic")
-    alembic_cfg.set_main_option("script_location", script_location)
+        current_dir = os.path.dirname(__file__)  # streamlit_app/src
+        parent_dir = os.path.dirname(current_dir)  # streamlit_app
+        ini_path = os.path.join(parent_dir, "alembic.ini")
 
-    command.upgrade(alembic_cfg, "head")
+        alembic_cfg = Config(ini_path)
+        # Ensure Alembic uses the same database as the app
+        alembic_cfg.set_main_option("sqlalchemy.url", _resolved_database_url())
+        # Also ensure script_location resolves correctly when running from this CWD
+        script_location = os.path.join(parent_dir, "alembic")
+        alembic_cfg.set_main_option("script_location", script_location)
+
+        try:
+            command.upgrade(alembic_cfg, "head")
+        except Exception as exc:
+            # Alembic can raise KeyError('config') during cleanup when multiple
+            # script threads race through init. If DB is already at head, continue.
+            if _is_benign_alembic_config_keyerror(exc) and _database_is_at_migration_head(alembic_cfg):
+                print("Alembic reported KeyError('config') after reaching head; continuing.")
+            else:
+                raise
+
+        _migrations_applied = True
 
 
 def create_db_and_tables():
