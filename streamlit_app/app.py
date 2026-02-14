@@ -435,7 +435,16 @@ def render_app(username):
 
 def main():
     if not st.session_state.get("_bootstrap_ready"):
-        init_database()
+        try:
+            init_database()
+        except Exception as exc:
+            error_log("Database initialization failed", exc)
+            st.error(
+                "Database initialization failed. "
+                "Please verify Supabase URL/secrets and migration state."
+            )
+            st.code(str(exc))
+            return
         ensure_admin_exists()
         st.session_state["_bootstrap_ready"] = True
 
