@@ -76,9 +76,11 @@ def _validate_database_url(url: str) -> str:
             "Supabase PostgreSQL URL is required and must start with "
             "'postgresql+psycopg2://'."
         )
-    if "supabase.com" not in normalized.lower():
+    normalized_lower = normalized.lower()
+    if ("supabase.com" not in normalized_lower) and ("supabase.co" not in normalized_lower):
         raise RuntimeError(
-            "Supabase PostgreSQL URL is required (host must include 'supabase.com')."
+            "Supabase PostgreSQL URL is required (host must include "
+            "'supabase.com' or 'supabase.co')."
         )
     return normalized
 
