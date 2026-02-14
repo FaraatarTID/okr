@@ -1,0 +1,49 @@
+exclude: |
+  (?x)^(
+    android/\.idea/|
+    android/.*/build/|
+    android/app/src/main/assets/public/|
+    streamlit_app/run_app\.log|
+    streamlit_app/\.deps_installed
+  )
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        files: \.(md|ya?ml)$
+      - id: end-of-file-fixer
+        files: \.(md|ya?ml)$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: docs-hq-link-check
+        name: Documentation HQ link check
+        entry: python scripts/check_docs_hq_links.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: ruff-check-targeted
+        name: Ruff check (targeted)
+        entry: python -m ruff check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py --select E9,F63,F7,F82
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: ruff-format-check-targeted
+        name: Ruff format check (targeted)
+        entry: python -m ruff format --check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: mypy-check-targeted
+        name: Mypy check (targeted)
+        entry: python -m mypy --ignore-missing-imports streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py
+        language: system
+        pass_filenames: false
+        always_run: true
