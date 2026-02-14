@@ -40,7 +40,7 @@ def upgrade() -> None:
         if "ix_user_must_change_password" not in index_names:
             batch_op.create_index("ix_user_must_change_password", ["must_change_password"], unique=False)
 
-    op.execute('UPDATE "user" SET must_change_password = 1 WHERE username = \'admin\'')
+    op.execute('UPDATE "user" SET must_change_password = TRUE WHERE username = \'admin\'')
 
 
 def downgrade() -> None:
