@@ -9,10 +9,8 @@ from datetime import datetime, timedelta
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Database utilities
-from src.database import DATABASE_URL, init_database, export_db, import_db, run_migrations
-from src.config import is_production
+from src.database import init_database
 from src.audit import error_log
-from src.services.sheet_sync import get_sync_service
 
 # One-time preflight: check PDF engine (after login to speed initial load)
 def _get_pdf_method() -> str:
@@ -28,22 +26,6 @@ def _get_pdf_method() -> str:
     except Exception:
         pass
     return "pdfkit"
-
-
-def _is_sqlite_backend() -> bool:
-    try:
-        return str(DATABASE_URL).lower().startswith("sqlite:")
-    except Exception:
-        return False
-
-
-def _is_sheets_sync_enabled() -> bool:
-    if is_production():
-        return False
-    try:
-        return "gcp_service_account" in st.secrets
-    except Exception:
-        return False
 
 
 def _run_pdf_preflight():
@@ -68,22 +50,6 @@ def _run_pdf_preflight():
     except Exception:
         pass
     st.session_state["preflight_done"] = True
-if "db_restored" not in st.session_state:
-    try:
-        # Disable auto-restore on boot for speed; allow opt-in via env/secrets.
-        enable_restore = os.getenv("ENABLE_STARTUP_RESTORE", "").strip().lower() in {"1", "true", "yes", "y", "on"}
-        if not enable_restore:
-            try:
-                app_secrets = st.secrets.get("app")
-                if isinstance(app_secrets, dict):
-                    enable_restore = str(app_secrets.get("enable_startup_restore", "")).strip().lower() in {"1", "true", "yes", "y", "on"}
-            except Exception:
-                pass
-        if enable_restore:
-            get_sync_service().restore_to_local_db()
-        st.session_state.db_restored = True
-    except Exception as e:
-        print(f"Restore failed: {e}")
 
 from src.crud import (
     get_all_cycles, create_cycle, get_active_cycles,
@@ -258,9 +224,6 @@ def render_password_reset_gate():
 
 
 def render_app(username):
-    production_mode = is_production()
-    sheets_sync_enabled = _is_sheets_sync_enabled()
-    sqlite_backend = _is_sqlite_backend()
     _run_pdf_preflight()
 
     # Lazy imports to speed initial login page
@@ -285,20 +248,6 @@ def render_app(username):
     user_role = st.session_state.get("user_role", "member")
     
     st.sidebar.markdown(f"👤 **{display_name}** ({user_role.title()})")
-    if user_role == "admin":
-        if production_mode:
-            st.sidebar.caption("🛡️ Production mode: ON")
-        else:
-            st.sidebar.caption("🧪 Production mode: OFF")
-            with st.sidebar.expander("Enable production mode"):
-                st.markdown("Set this in `streamlit_app/.streamlit/secrets.toml`:")
-                st.code(
-                    "[app]\nproduction = true\n\n[database]\nurl = \"postgresql+psycopg2://user:pass@host:5432/okr\"",
-                    language="toml",
-                )
-                st.markdown(
-                    "Or set an environment variable `PRODUCTION=true` before starting the app."
-                )
     if st.sidebar.button("🚪 Logout"):
         _clear_user_session()
         st.rerun()
@@ -410,68 +359,6 @@ def render_app(username):
         if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
         st.rerun()
-    
-    # Sidebar Utilities (Export) - Admin Only
-    if user_role == "admin" and sqlite_backend:
-        with st.sidebar.expander("Storage & Sync"):
-            c1, c2 = st.columns(2)
-            db_binary = export_db()
-            c1.download_button("📥 Export Database", db_binary, "okr_database.db", help="Download the live SQLite database file")
-            
-            if c2.button("☁️ Cloud Backup", help="Force save current data to Google Sheets (Backup)"):
-                with st.spinner("Backing up to Cloud..."):
-                    # Trigger manual sync push
-                    get_sync_service().sync_all_to_sheets()
-                    st.success("Successfully backed up data to Google Sheets!")
-                    st.rerun()
-
-            st.markdown("---")
-            st.markdown("#### Restore Database")
-            uploaded_db = st.file_uploader("Upload .db file", type=["db"], help="Restore from a previously exported okr_database.db file")
-            if uploaded_db and st.button("🚀 Restore Database", type="primary"):
-                success, msg = import_db(uploaded_db.read())
-                if success:
-                    st.success(msg)
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error(msg)
-
-    if sheets_sync_enabled:
-        st.sidebar.markdown("--- ")
-        sync_service = get_sync_service()
-        sync_diag = sync_service.get_diagnostics()
-        if sync_diag.get("ready"):
-            st.sidebar.success("✅ Cloud Sync Active")
-            if sync_diag.get("retry_queue_size", 0) > 0:
-                st.sidebar.caption(
-                    f"Pending retries: {sync_diag.get('retry_queue_size', 0)} "
-                    f"/ {sync_diag.get('retry_queue_limit', 0)}"
-                )
-        else:
-            st.sidebar.warning("⚠️ Local Storage Only")
-            last_err = sync_diag.get("last_error")
-            if last_err:
-                with st.sidebar.expander("🔍 Sync Diagnostics", expanded=True):
-                    st.error(last_err)
-                    st.caption(f"Code: {sync_diag.get('last_error_code') or 'unknown'}")
-                    if sync_diag.get("last_error_at"):
-                        st.caption(f"When (UTC): {sync_diag['last_error_at']}")
-                    st.caption(f"Recent error count: {sync_diag.get('error_count', 0)}")
-                    st.caption(
-                        f"Retry queue: {sync_diag.get('retry_queue_size', 0)} "
-                        f"/ {sync_diag.get('retry_queue_limit', 0)}"
-                    )
-                    st.caption(
-                        "Retry persistence: "
-                        f"{'enabled' if sync_diag.get('retry_persistence_enabled') else 'disabled'}"
-                    )
-                    if st.button("🔄 Attempt Reconnect", key="sync_retry_btn"):
-                        if sync_service.reconnect():
-                            st.success("Connected successfully!")
-                            st.rerun()
-                        else:
-                            st.error("Reconnection failed. Check network.")
 
     # === WEEKLY FOCUS CARD ===
     from src.crud import get_active_weekly_plan, get_user_by_username

@@ -362,56 +362,6 @@ def render_admin_panel_dialog():
             else:
                 st.error("Username and Password are required.")
     
-    with st.expander("☁️ Sync Health"):
-        from src.services.sheet_sync import get_sync_service
-
-        sync_service = get_sync_service()
-        diag = sync_service.get_diagnostics()
-
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Connection", "Ready" if diag.get("ready") else "Offline")
-        c2.metric("Queue", f"{diag.get('retry_queue_size', 0)} / {diag.get('retry_queue_limit', 0)}")
-        c3.metric("Errors", str(diag.get("error_count", 0)))
-
-        c4, c5, c6 = st.columns(3)
-        c4.metric("Retries Sent", str(diag.get("retry_sent_count", 0)))
-        c5.metric("Retries Failed", str(diag.get("retry_failed_count", 0)))
-        c6.metric("Dropped/Exhausted", f"{diag.get('retry_dropped_count', 0)} / {diag.get('retry_exhausted_count', 0)}")
-        st.caption(
-            "Retry persistence: "
-            f"{'enabled' if diag.get('retry_persistence_enabled') else 'disabled'}"
-        )
-
-        if diag.get("last_error"):
-            st.error(diag["last_error"])
-            st.caption(f"Code: {diag.get('last_error_code') or 'unknown'}")
-            if diag.get("last_error_at"):
-                st.caption(f"When (UTC): {diag['last_error_at']}")
-
-        col_flush, col_reconnect = st.columns(2)
-        if col_flush.button("Flush Retry Queue", key="sync_flush_retry_btn"):
-            result = sync_service.process_retry_queue(force=True, max_items=200)
-            st.success(
-                f"Processed={result.get('processed', 0)}, "
-                f"Succeeded={result.get('succeeded', 0)}, Failed={result.get('failed', 0)}"
-            )
-            st.rerun()
-        if col_reconnect.button("Reconnect Sync", key="sync_reconnect_btn"):
-            if sync_service.reconnect():
-                st.success("Cloud sync reconnected.")
-            else:
-                st.warning("Reconnect failed. Check credentials/network.")
-            st.rerun()
-
-        recent_errors = diag.get("recent_errors") or []
-        if recent_errors:
-            st.caption("Recent Errors")
-            for event in reversed(recent_errors):
-                st.caption(
-                    f"{event.get('ts', '')} | {event.get('code', '')} | "
-                    f"{event.get('message', '')}"
-                )
-
     with st.expander("🔑 Reset Password"):
         user_list_reset = get_all_users()
         user_options_reset = {u.display_name: u.id for u in user_list_reset}

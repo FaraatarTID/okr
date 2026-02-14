@@ -12,10 +12,13 @@ from datetime import datetime, timedelta
 from src.utils.time_utils import ensure_utc, to_epoch_millis, utc_now_naive
 
 
-def _sync_service():
-    from src.services.sheet_sync import get_sync_service
+class _NoopSyncService:
+    def push_update(self, *_args, **_kwargs):
+        return None
 
-    return get_sync_service()
+
+def _sync_service():
+    return _NoopSyncService()
 
 
 from src.models import (

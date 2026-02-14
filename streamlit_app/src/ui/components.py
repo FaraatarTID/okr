@@ -349,12 +349,7 @@ def render_leadership_dashboard_content(username):
     # === REFRESH BUTTON ===
     col_refresh, col_spacer = st.columns([1, 5])
     with col_refresh:
-        if st.button("🔄 Refresh Data", help="Cloud Sync and DB Reload", key="dash_refresh"):
-            # Instead of legacy storage clearing, we trigger sync if available
-            from src.services.sheet_sync import get_sync_service
-            with st.spinner("Syncing with cloud..."):
-                get_sync_service().sync_all_to_sheets()
-            
+        if st.button("🔄 Refresh Data", help="Reload dashboard data", key="dash_refresh"):
             # Clear session state data cache
             keys_to_clear = [k for k in st.session_state.keys() if k.startswith("okr_data_cache_")]
             for k in keys_to_clear:
