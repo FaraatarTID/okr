@@ -309,7 +309,7 @@ def render_admin_panel_dialog():
         st.error("🚫 Access Denied. Admin privileges required.")
         return
     
-    tab1, tab2 = st.tabs(["👥 User List", "➕ Create User"])
+    tab1, tab2, tab3 = st.tabs(["👥 User List", "➕ Create User", "🗄️ DB Backup"])
     
     with tab1:
         users = get_all_users()
@@ -361,6 +361,93 @@ def render_admin_panel_dialog():
                     st.error(f"Error creating user: {e}")
             else:
                 st.error("Username and Password are required.")
+
+    with tab3:
+        from src.database import (
+            BACKUP_FORMAT_VERSION,
+            export_database_backup,
+            import_database_backup,
+        )
+
+        st.markdown("#### Full Database Backup")
+        st.caption(
+            "Export a full logical JSON backup or restore one. "
+            "Restore replaces all current application data."
+        )
+
+        export_col, import_col = st.columns(2)
+
+        with export_col:
+            st.markdown("##### Export")
+            if st.button("Prepare Backup File", key="admin_prepare_backup"):
+                try:
+                    backup_bytes = export_database_backup()
+                    st.session_state["admin_backup_bytes"] = backup_bytes
+                    st.session_state["admin_backup_created_at"] = utc_now_naive().strftime(
+                        "%Y-%m-%d_%H-%M-%S"
+                    )
+                    st.success("Backup file prepared.")
+                except Exception as exc:
+                    st.error(f"Backup export failed: {exc}")
+
+            prepared_bytes = st.session_state.get("admin_backup_bytes")
+            if prepared_bytes:
+                created_at = st.session_state.get("admin_backup_created_at", "unknown")
+                st.download_button(
+                    label="Download Backup",
+                    data=prepared_bytes,
+                    file_name=f"okr_backup_{created_at}.json",
+                    mime="application/json",
+                    key="admin_download_backup",
+                )
+                st.caption(f"Format: `{BACKUP_FORMAT_VERSION}`")
+
+        with import_col:
+            st.markdown("##### Import")
+            uploaded_backup = st.file_uploader(
+                "Upload backup file",
+                type=["json"],
+                key="admin_backup_upload",
+                accept_multiple_files=False,
+            )
+            confirm_restore = st.checkbox(
+                "I understand this will overwrite all current OKR data.",
+                key="admin_backup_confirm_restore",
+            )
+            confirm_phrase = st.text_input(
+                "Type RESTORE to confirm",
+                key="admin_backup_confirm_phrase",
+                placeholder="RESTORE",
+            )
+
+            restore_disabled = (
+                uploaded_backup is None
+                or not confirm_restore
+                or confirm_phrase.strip() != "RESTORE"
+            )
+            if st.button(
+                "Restore Backup",
+                type="primary",
+                key="admin_restore_backup",
+                disabled=restore_disabled,
+            ):
+                try:
+                    result = import_database_backup(uploaded_backup.getvalue())
+                    st.success("Backup restored successfully.")
+                    restored_counts = result.get("restored_counts", {})
+                    if restored_counts:
+                        with st.expander("Restored rows by table", expanded=True):
+                            for table_name, row_count in restored_counts.items():
+                                st.write(f"- `{table_name}`: {row_count}")
+                    unknown_tables = result.get("unknown_tables") or []
+                    if unknown_tables:
+                        st.warning(
+                            "Backup included unknown tables that were ignored: "
+                            + ", ".join(unknown_tables)
+                        )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Backup import failed: {exc}")
     
     with st.expander("🔑 Reset Password"):
         user_list_reset = get_all_users()
@@ -1136,3 +1223,4 @@ def render_timeline_dialog(username: str):
              return
 
         render_gantt_chart(visible_tasks, role, username, users_map)
+
