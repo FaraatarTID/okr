@@ -2,14 +2,20 @@
 Database connection and session management for OKR Application.
 Supabase/PostgreSQL only.
 """
-from sqlmodel import create_engine, Session
+from sqlmodel import create_engine, Session, SQLModel
 from contextlib import contextmanager
 import os
 import re
 import traceback
+import json
+import base64
 from threading import Lock
 from collections.abc import Mapping
+from datetime import datetime, date, time
+from decimal import Decimal
 from typing import Optional
+from sqlalchemy import text
+from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
 
 
 def _get_database_url() -> str:
@@ -118,6 +124,9 @@ def _create_engine(url: str):
 _engine = None
 _migrations_lock = Lock()
 _migrations_applied_urls = set()
+_backup_lock = Lock()
+
+BACKUP_FORMAT_VERSION = "okr-db-backup/v1"
 
 
 def _resolved_database_url() -> str:
@@ -241,3 +250,181 @@ def get_session_context():
 def init_database():
     """Initialize the database - call this on app startup."""
     create_db_and_tables()
+
+
+def _json_backup_encode_value(value):
+    if isinstance(value, datetime):
+        return {"__okr_type__": "datetime", "value": value.isoformat()}
+    if isinstance(value, date):
+        return {"__okr_type__": "date", "value": value.isoformat()}
+    if isinstance(value, time):
+        return {"__okr_type__": "time", "value": value.isoformat()}
+    if isinstance(value, Decimal):
+        return {"__okr_type__": "decimal", "value": str(value)}
+    if isinstance(value, bytes):
+        return {"__okr_type__": "bytes", "value": base64.b64encode(value).decode("ascii")}
+    return value
+
+
+def _json_backup_decode_value(value):
+    if not isinstance(value, dict):
+        return value
+    value_type = value.get("__okr_type__")
+    raw = value.get("value")
+    if value_type == "datetime" and isinstance(raw, str):
+        return datetime.fromisoformat(raw)
+    if value_type == "date" and isinstance(raw, str):
+        return date.fromisoformat(raw)
+    if value_type == "time" and isinstance(raw, str):
+        return time.fromisoformat(raw)
+    if value_type == "decimal" and raw is not None:
+        return Decimal(str(raw))
+    if value_type == "bytes" and isinstance(raw, str):
+        return base64.b64decode(raw.encode("ascii"))
+    return value
+
+
+def _backup_table_names() -> list[str]:
+    # Ensure all table metadata is registered.
+    import src.models  # noqa: F401
+
+    return [table.name for table in SQLModel.metadata.sorted_tables if table.name != "alembic_version"]
+
+
+def _sanitize_url_for_backup(url: str) -> str:
+    return re.sub(
+        r"(postgres(?:ql\+psycopg2)?://)([^:@/\s]+):([^@/\s]+)@",
+        r"\1\2:***@",
+        str(url or ""),
+    )
+
+
+def export_database_backup() -> bytes:
+    """
+    Export a full logical backup of application tables as JSON bytes.
+    """
+    engine = get_engine()
+    table_names = _backup_table_names()
+    payload = {
+        "format": BACKUP_FORMAT_VERSION,
+        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "database_url": _sanitize_url_for_backup(_resolved_database_url()),
+        "tables": {},
+    }
+
+    with _backup_lock:
+        with engine.connect() as conn:
+            for table_name in table_names:
+                table = SQLModel.metadata.tables.get(table_name)
+                if table is None:
+                    payload["tables"][table_name] = []
+                    continue
+                rows = conn.execute(table.select()).mappings().all()
+                payload["tables"][table_name] = [
+                    {key: _json_backup_encode_value(value) for key, value in row.items()}
+                    for row in rows
+                ]
+
+    return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def _reset_postgres_sequences(conn, table_names: list[str]) -> None:
+    for table_name in table_names:
+        table = SQLModel.metadata.tables.get(table_name)
+        if table is None:
+            continue
+        pk_columns = list(table.primary_key.columns)
+        if len(pk_columns) != 1:
+            continue
+        pk_col = pk_columns[0]
+        if not isinstance(pk_col.type, (Integer, BigInteger, SmallInteger)):
+            continue
+
+        sequence_name = conn.execute(
+            text("SELECT pg_get_serial_sequence(:table_name, :column_name)"),
+            {"table_name": table_name, "column_name": pk_col.name},
+        ).scalar()
+        if not sequence_name:
+            continue
+
+        quoted_table = f'"{table_name}"'
+        quoted_column = f'"{pk_col.name}"'
+        next_value = conn.execute(
+            text(f"SELECT COALESCE(MAX({quoted_column}), 0) + 1 FROM {quoted_table}")
+        ).scalar()
+        conn.execute(
+            text("SELECT setval(CAST(:seq_name AS regclass), :next_value, false)"),
+            {"seq_name": sequence_name, "next_value": int(next_value or 1)},
+        )
+
+
+def import_database_backup(backup_content: bytes | str | Mapping) -> dict:
+    """
+    Import a full logical backup and replace existing application data.
+    """
+    if isinstance(backup_content, bytes):
+        payload = json.loads(backup_content.decode("utf-8"))
+    elif isinstance(backup_content, str):
+        payload = json.loads(backup_content)
+    elif isinstance(backup_content, Mapping):
+        payload = dict(backup_content)
+    else:
+        raise ValueError("Unsupported backup content type.")
+
+    if payload.get("format") != BACKUP_FORMAT_VERSION:
+        raise ValueError("Unsupported backup format version.")
+
+    tables_payload = payload.get("tables")
+    if not isinstance(tables_payload, Mapping):
+        raise ValueError("Backup payload is missing 'tables' mapping.")
+
+    table_names = _backup_table_names()
+    unknown_tables = sorted(set(tables_payload.keys()) - set(table_names))
+    restored_counts = {table_name: 0 for table_name in table_names}
+
+    engine = get_engine()
+    with _backup_lock:
+        with engine.begin() as conn:
+            # Delete children first to satisfy FK constraints.
+            for table_name in reversed(table_names):
+                table = SQLModel.metadata.tables.get(table_name)
+                if table is not None:
+                    conn.execute(table.delete())
+
+            # Insert parents first to satisfy FK constraints.
+            for table_name in table_names:
+                table = SQLModel.metadata.tables.get(table_name)
+                if table is None:
+                    continue
+                raw_rows = tables_payload.get(table_name) or []
+                if not isinstance(raw_rows, list):
+                    raise ValueError(f"Backup table '{table_name}' must be a list of rows.")
+
+                allowed_columns = {column.name for column in table.columns}
+                decoded_rows = []
+                for raw_row in raw_rows:
+                    if not isinstance(raw_row, Mapping):
+                        raise ValueError(f"Invalid row format in table '{table_name}'.")
+                    decoded_row = {
+                        key: _json_backup_decode_value(value)
+                        for key, value in raw_row.items()
+                        if key in allowed_columns
+                    }
+                    decoded_rows.append(decoded_row)
+
+                if decoded_rows:
+                    conn.execute(table.insert(), decoded_rows)
+                    restored_counts[table_name] = len(decoded_rows)
+
+            if engine.dialect.name == "postgresql":
+                _reset_postgres_sequences(conn, table_names)
+
+    from src.utils.cache_utils import clear_cache_safe
+
+    clear_cache_safe()
+    return {
+        "format": payload.get("format"),
+        "exported_at": payload.get("exported_at"),
+        "restored_counts": restored_counts,
+        "unknown_tables": unknown_tables,
+    }
