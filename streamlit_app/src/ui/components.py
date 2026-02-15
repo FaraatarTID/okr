@@ -1954,6 +1954,42 @@ def _atlas_commit_target_minutes(preset_choice: str, custom_minutes: int | None 
     return 25
 
 
+def _atlas_sprint_run_key(task_ref: str | None, target_minutes: int, started_at_epoch) -> str | None:
+    if not task_ref:
+        return None
+    try:
+        target = int(target_minutes or 0)
+    except Exception:
+        target = 0
+    if target <= 0:
+        return None
+    try:
+        started = int(float(started_at_epoch or 0))
+    except Exception:
+        started = 0
+    if started <= 0:
+        return None
+    return f"{task_ref}|{target}|{started}"
+
+
+def _atlas_should_show_soft_reminder(
+    elapsed_minutes: int,
+    target_minutes: int,
+    sprint_key: str | None,
+    dismissed_key: str | None,
+) -> bool:
+    if not sprint_key:
+        return False
+    if dismissed_key == sprint_key:
+        return False
+    try:
+        elapsed = int(elapsed_minutes or 0)
+        target = int(target_minutes or 0)
+    except Exception:
+        return False
+    return target > 0 and elapsed >= target
+
+
 def _atlas_suggested_next_score(meta, actor_id: int, index=None):
     running = getattr(meta.get("node"), "timer_started_at", None) is not None
     attention_kind = _atlas_attention_kind(meta, index)
@@ -2533,6 +2569,24 @@ def render_atlas_workspace(username):
                     unsafe_allow_html=True,
                 )
 
+                def _stop_focus_session():
+                    worklog_local = stop_timer(focus_task.id, user_id=username)
+                    if worklog_local:
+                        st.session_state["atlas_last_session_summary"] = {
+                            "task_ref": focus_task_ref,
+                            "minutes": round(float(worklog_local.duration_minutes or 0), 1),
+                            "at": time.time(),
+                        }
+                    for state_key in [
+                        "atlas_sprint_target_minutes",
+                        "atlas_sprint_task_ref",
+                        "atlas_sprint_started_at_epoch",
+                        "atlas_sprint_reminder_dismissed_for",
+                    ]:
+                        if state_key in st.session_state:
+                            del st.session_state[state_key]
+                    return worklog_local
+
                 if focus_running:
                     elapsed_minutes = 0
                     try:
@@ -2555,6 +2609,40 @@ def render_atlas_workspace(username):
                     else:
                         spotlight_cols[0].caption(f"Running now: {elapsed_minutes}m")
 
+                    sprint_key = _atlas_sprint_run_key(
+                        focus_task_ref if target_for_focus > 0 else None,
+                        target_for_focus,
+                        st.session_state.get("atlas_sprint_started_at_epoch"),
+                    )
+                    dismissed_key = st.session_state.get("atlas_sprint_reminder_dismissed_for")
+                    if _atlas_should_show_soft_reminder(
+                        elapsed_minutes=elapsed_minutes,
+                        target_minutes=target_for_focus,
+                        sprint_key=sprint_key,
+                        dismissed_key=dismissed_key,
+                    ):
+                        overtime_minutes = max(0, elapsed_minutes - target_for_focus)
+                        spotlight_cols[0].warning(
+                            f"Sprint target reached ({target_for_focus}m). "
+                            f"You are {overtime_minutes}m over target."
+                        )
+                        reminder_cols = spotlight_cols[0].columns([1.2, 1.4, 2.0])
+                        if reminder_cols[0].button(
+                            "Stop now",
+                            key=f"atlas_soft_reminder_stop_{focus_task_ref}",
+                            disabled=not can_track_focus,
+                            use_container_width=True,
+                        ):
+                            _stop_focus_session()
+                            st.rerun()
+                        if reminder_cols[1].button(
+                            "Keep running",
+                            key=f"atlas_soft_reminder_keep_{focus_task_ref}",
+                            use_container_width=True,
+                        ):
+                            st.session_state["atlas_sprint_reminder_dismissed_for"] = sprint_key
+                            st.rerun()
+
                 if focus_running:
                     if spotlight_cols[1].button(
                         "Stop Session",
@@ -2563,20 +2651,7 @@ def render_atlas_workspace(username):
                         disabled=not can_track_focus,
                         use_container_width=True,
                     ):
-                        worklog = stop_timer(focus_task.id, user_id=username)
-                        if worklog:
-                            st.session_state["atlas_last_session_summary"] = {
-                                "task_ref": focus_task_ref,
-                                "minutes": round(float(worklog.duration_minutes or 0), 1),
-                                "at": time.time(),
-                            }
-                        for state_key in [
-                            "atlas_sprint_target_minutes",
-                            "atlas_sprint_task_ref",
-                            "atlas_sprint_started_at_epoch",
-                        ]:
-                            if state_key in st.session_state:
-                                del st.session_state[state_key]
+                        _stop_focus_session()
                         st.rerun()
                 else:
                     if spotlight_cols[1].button(
@@ -2594,6 +2669,8 @@ def render_atlas_workspace(username):
                             st.session_state["atlas_sprint_target_minutes"] = int(target_minutes)
                             st.session_state["atlas_sprint_task_ref"] = focus_task_ref
                             st.session_state["atlas_sprint_started_at_epoch"] = float(time.time())
+                            if "atlas_sprint_reminder_dismissed_for" in st.session_state:
+                                del st.session_state["atlas_sprint_reminder_dismissed_for"]
                             st.rerun()
 
                 if not can_track_focus:

@@ -230,6 +230,7 @@ def _clear_user_session():
         "atlas_sprint_target_minutes",
         "atlas_sprint_task_ref",
         "atlas_sprint_started_at_epoch",
+        "atlas_sprint_reminder_dismissed_for",
         "atlas_last_session_summary",
         "atlas_breadcrumbs",
         "workspace_mode",
@@ -374,6 +375,7 @@ def render_app(username):
             "atlas_sprint_target_minutes",
             "atlas_sprint_task_ref",
             "atlas_sprint_started_at_epoch",
+            "atlas_sprint_reminder_dismissed_for",
             "atlas_last_session_summary",
         ]:
             if key in st.session_state:
@@ -408,6 +410,7 @@ def render_app(username):
             "atlas_sprint_target_minutes",
             "atlas_sprint_task_ref",
             "atlas_sprint_started_at_epoch",
+            "atlas_sprint_reminder_dismissed_for",
             "atlas_last_session_summary",
             "active_inspector_id",
         ]:
