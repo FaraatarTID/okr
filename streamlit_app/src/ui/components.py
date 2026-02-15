@@ -2685,15 +2685,16 @@ def render_atlas_workspace(username):
                     rendered_with_events = False
                     if plotly_events is not None:
                         try:
-                            points = plotly_events(
-                                treemap,
-                                click_event=True,
-                                select_event=False,
-                                hover_event=False,
-                                override_height=430,
-                                override_width="100%",
-                                key=chart_events_key,
-                            ) or []
+                            with map_cols[0]:
+                                points = plotly_events(
+                                    treemap,
+                                    click_event=True,
+                                    select_event=False,
+                                    hover_event=False,
+                                    override_height=430,
+                                    override_width="100%",
+                                    key=chart_events_key,
+                                ) or []
                             rendered_with_events = True
                         except Exception:
                             points = []
