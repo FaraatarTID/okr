@@ -2,6 +2,7 @@
 import sys
 import os
 import time
+import subprocess
 import traceback
 from datetime import datetime, timedelta
 
@@ -73,6 +74,34 @@ from src.models import UserRole
 @st.cache_data(ttl=30, show_spinner=False)
 def _cached_get_all_cycles():
     return get_all_cycles()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_build_fingerprint() -> str:
+    """Best-effort runtime build marker to diagnose stale cloud deployments."""
+    env_sha = str(
+        os.getenv("STREAMLIT_GIT_COMMIT")
+        or os.getenv("GIT_COMMIT")
+        or os.getenv("SOURCE_COMMIT")
+        or ""
+    ).strip()
+    if env_sha:
+        return env_sha[:8]
+
+    try:
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        sha = subprocess.check_output(
+            ["git", "rev-parse", "--short=8", "HEAD"],
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        if sha:
+            return sha
+    except Exception:
+        pass
+
+    return "unknown"
 
 
 # Modular UI Components (lazy import in render_app to speed initial load)
@@ -360,6 +389,7 @@ def render_app(username):
     st.sidebar.markdown("### Experience")
     st.session_state["workspace_mode"] = "Atlas"
     st.sidebar.success("Atlas Workspace Active")
+    st.sidebar.caption(f"Build `{_get_build_fingerprint()}`")
 
     st.sidebar.markdown("---")
     
