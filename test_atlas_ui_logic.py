@@ -116,9 +116,10 @@ def test_treemap_selected_node_uses_hatch_pattern_without_changing_status_fill()
     trace = fig.data[0]
     goal_idx = list(trace.ids).index("goal_1")
     task_idx = list(trace.ids).index("task_2")
-    assert trace.marker.pattern.shape[goal_idx] == "/"
+    assert trace.marker.pattern.shape[goal_idx] == "x"
     assert trace.marker.pattern.shape[task_idx] == ""
     assert trace.marker.colors[goal_idx] == "#c36d27"
+    assert str(trace.labels[goal_idx]).startswith("▧ ")
 
 
 def test_needs_attention_for_incomplete_task_below_threshold():
