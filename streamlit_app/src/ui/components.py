@@ -5,6 +5,7 @@ import os
 import sys
 import json
 from datetime import datetime
+from types import SimpleNamespace
 import plotly.graph_objects as go
 import pandas as pd
 from streamlit_agraph import agraph, Node, Edge, Config
@@ -66,6 +67,110 @@ def _cached_get_team_members(manager_id):
 def _cached_get_work_logs_by_range(user_id, start_dt, end_dt):
     from src.crud import get_work_logs_by_date_range
     return get_work_logs_by_date_range(user_id, start_dt, end_dt)
+
+
+@st.cache_data(ttl=45, show_spinner=False)
+def _cached_get_atlas_scope_snapshot(cycle_id: int, owner_ids_key):
+    """Cached, serialization-safe Atlas snapshot to reduce rerun DB latency."""
+    with get_session_context() as session:
+        statement = (
+            select(Goal)
+            .where(Goal.cycle_id == cycle_id)
+            .options(
+                selectinload(Goal.objectives)
+                .selectinload(Objective.key_results)
+                .selectinload(KeyResult.tasks)
+            )
+            .order_by(col(Goal.title))
+        )
+        if owner_ids_key is not None:
+            owner_ids = [int(owner_id) for owner_id in owner_ids_key]
+            if not owner_ids:
+                return {"goals": [], "users_map": {}}
+            statement = statement.where(Goal.owner_id.in_(owner_ids))
+        goals = list(session.exec(statement).all())
+
+        owner_ids_in_scope = sorted(
+            {
+                int(goal.owner_id)
+                for goal in goals
+                if goal.owner_id is not None
+            }
+        )
+        users_map = {}
+        if owner_ids_in_scope:
+            users = session.exec(
+                select(User)
+                .where(User.id.in_(owner_ids_in_scope))
+                .order_by(col(User.display_name), col(User.username))
+            ).all()
+            users_map = {
+                user.id: (user.display_name or user.username or "Unknown")
+                for user in users
+            }
+
+        goals_payload = []
+        for goal in goals:
+            objectives_payload = []
+            for objective in sorted(
+                list(goal.objectives or []),
+                key=lambda item: (item.title or "").lower(),
+            ):
+                key_results_payload = []
+                for key_result in sorted(
+                    list(objective.key_results or []),
+                    key=lambda item: (item.title or "").lower(),
+                ):
+                    tasks_payload = []
+                    for task in sorted(
+                        list(key_result.tasks or []),
+                        key=lambda item: (item.title or "").lower(),
+                    ):
+                        tasks_payload.append(
+                            {
+                                "id": task.id,
+                                "title": task.title,
+                                "description": task.description,
+                                "progress": int(task.progress or 0),
+                                "deadline": task.deadline,
+                                "timer_started_at": task.timer_started_at,
+                                "status": str(getattr(task.status, "value", task.status)),
+                                "total_time_spent": int(task.total_time_spent or 0),
+                            }
+                        )
+
+                    key_results_payload.append(
+                        {
+                            "id": key_result.id,
+                            "title": key_result.title,
+                            "description": key_result.description,
+                            "progress": int(key_result.progress or 0),
+                            "tasks": tasks_payload,
+                        }
+                    )
+
+                objectives_payload.append(
+                    {
+                        "id": objective.id,
+                        "title": objective.title,
+                        "description": objective.description,
+                        "progress": int(objective.progress or 0),
+                        "key_results": key_results_payload,
+                    }
+                )
+
+            goals_payload.append(
+                {
+                    "id": goal.id,
+                    "title": goal.title,
+                    "description": goal.description,
+                    "progress": int(goal.progress or 0),
+                    "owner_id": goal.owner_id,
+                    "objectives": objectives_payload,
+                }
+            )
+
+        return {"goals": goals_payload, "users_map": users_map}
 
 def get_node_details(node_id):
     """Helper to get title and type for a node ID from DB."""
@@ -1885,6 +1990,103 @@ def _build_atlas_index(goals, users_map):
     return index, roots
 
 
+def _typed_ref_for_type_and_id(node_type: str, node_id) -> str | None:
+    if node_id is None:
+        return None
+    norm_type = _normalize_node_type(node_type)
+    table_name = {
+        "GOAL": "goal",
+        "OBJECTIVE": "objective",
+        "KEY_RESULT": "key_result",
+        "TASK": "task",
+    }.get(norm_type)
+    if not table_name:
+        return None
+    return f"{table_name}_{int(node_id)}"
+
+
+def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
+    index = {}
+    roots = []
+
+    def visit(node_type: str, payload: dict, parent_ref=None, path=None, owner_id=None):
+        node_ref = _typed_ref_for_type_and_id(node_type, payload.get("id"))
+        if not node_ref:
+            return
+
+        title = (payload.get("title") or "Untitled").strip()
+        progress = int(payload.get("progress", 0) or 0)
+        resolved_owner = owner_id if owner_id is not None else payload.get("owner_id")
+        next_path = list(path or [])
+        next_path.append(node_ref)
+
+        if node_type == "GOAL":
+            child_type = "OBJECTIVE"
+            children_payload = list(payload.get("objectives") or [])
+        elif node_type == "OBJECTIVE":
+            child_type = "KEY_RESULT"
+            children_payload = list(payload.get("key_results") or [])
+        elif node_type == "KEY_RESULT":
+            child_type = "TASK"
+            children_payload = list(payload.get("tasks") or [])
+        else:
+            child_type = None
+            children_payload = []
+
+        child_refs = []
+        if child_type:
+            for child in children_payload:
+                child_ref = _typed_ref_for_type_and_id(child_type, child.get("id"))
+                if child_ref:
+                    child_refs.append(child_ref)
+
+        node = SimpleNamespace(
+            id=payload.get("id"),
+            title=title,
+            description=payload.get("description"),
+            progress=progress,
+            deadline=payload.get("deadline"),
+            timer_started_at=payload.get("timer_started_at"),
+            status=payload.get("status"),
+            total_time_spent=int(payload.get("total_time_spent", 0) or 0),
+        )
+
+        index[node_ref] = {
+            "ref": node_ref,
+            "id": payload.get("id"),
+            "node": node,
+            "type": node_type,
+            "title": title,
+            "title_l": title.lower(),
+            "progress": progress,
+            "depth": len(next_path) - 1,
+            "parent": parent_ref,
+            "path": next_path,
+            "children": child_refs,
+            "owner_id": resolved_owner,
+            "owner_name": users_map.get(resolved_owner, "Unknown"),
+        }
+
+        if child_type:
+            for child in children_payload:
+                visit(
+                    child_type,
+                    child,
+                    parent_ref=node_ref,
+                    path=next_path,
+                    owner_id=resolved_owner,
+                )
+
+    for goal in goals_snapshot:
+        root_ref = _typed_ref_for_type_and_id("GOAL", goal.get("id"))
+        if not root_ref:
+            continue
+        roots.append(root_ref)
+        visit("GOAL", goal, parent_ref=None, path=[], owner_id=goal.get("owner_id"))
+
+    return index, roots
+
+
 def _atlas_status_label(meta):
     progress = int(meta.get("progress", 0) or 0)
     node_type = meta.get("type")
@@ -2373,69 +2575,51 @@ def render_atlas_workspace(username):
             st.error("User context is unavailable.")
             return
         actor_id = actor.id
-
-        users = session.exec(
-            select(User)
-            .where(User.is_active == True)
-            .order_by(col(User.display_name), col(User.username))
-        ).all()
-        users_map = {
-            u.id: (u.display_name or u.username or "Unknown")
-            for u in users
-        }
-
-        scope_options = {"My OKRs": [actor.id]}
         role_value = str(getattr(actor.role, "value", actor.role))
-        if role_value == "manager":
-            team_members = session.exec(
-                select(User)
-                .where(User.manager_id == actor.id, User.is_active == True)
-                .order_by(col(User.display_name), col(User.username))
-            ).all()
-            if team_members:
-                scope_options["My Team"] = sorted(set([actor.id] + [m.id for m in team_members]))
-                for member in team_members:
-                    label = f"{member.display_name or member.username} (@{member.username})"
-                    scope_options[label] = [member.id]
-        elif role_value == "admin":
-            scope_options["All Users"] = None
-            for member in users:
+
+    scope_options = {"My OKRs": [actor_id]}
+    if role_value == "manager":
+        team_members = [
+            member for member in _cached_get_team_members(actor_id)
+            if bool(getattr(member, "is_active", True))
+        ]
+        if team_members:
+            scope_options["My Team"] = sorted(set([actor_id] + [member.id for member in team_members]))
+            for member in team_members:
                 label = f"{member.display_name or member.username} (@{member.username})"
                 scope_options[label] = [member.id]
+    elif role_value == "admin":
+        all_users = [
+            member for member in _cached_get_all_users()
+            if bool(getattr(member, "is_active", True))
+        ]
+        scope_options["All Users"] = None
+        for member in all_users:
+            label = f"{member.display_name or member.username} (@{member.username})"
+            scope_options[label] = [member.id]
 
-        toolbar = st.columns([2.9, 1.1])
-        query = toolbar[0].text_input(
-            "Quick Jump",
-            value=st.session_state.get("atlas_jump_query", ""),
-            placeholder="Find any goal, objective, KR, or task",
-            key="atlas_jump_query",
-        ).strip()
+    toolbar = st.columns([2.9, 1.1])
+    query = toolbar[0].text_input(
+        "Quick Jump",
+        value=st.session_state.get("atlas_jump_query", ""),
+        placeholder="Find any goal, objective, KR, or task",
+        key="atlas_jump_query",
+    ).strip()
 
-        scope_labels = list(scope_options.keys())
-        if st.session_state.get("atlas_scope_selector") not in scope_labels:
-            st.session_state["atlas_scope_selector"] = scope_labels[0]
-        selected_scope = toolbar[1].selectbox(
-            "Scope",
-            options=scope_labels,
-            key="atlas_scope_selector",
-        )
+    scope_labels = list(scope_options.keys())
+    if st.session_state.get("atlas_scope_selector") not in scope_labels:
+        st.session_state["atlas_scope_selector"] = scope_labels[0]
+    selected_scope = toolbar[1].selectbox(
+        "Scope",
+        options=scope_labels,
+        key="atlas_scope_selector",
+    )
 
-        owner_ids = scope_options.get(selected_scope)
-        statement = (
-            select(Goal)
-            .where(Goal.cycle_id == cycle_id)
-            .options(
-                selectinload(Goal.objectives)
-                .selectinload(Objective.key_results)
-                .selectinload(KeyResult.tasks)
-            )
-            .order_by(col(Goal.title))
-        )
-        if owner_ids is not None:
-            statement = statement.where(Goal.owner_id.in_(owner_ids))
-        goals = list(session.exec(statement).all())
-
-    index, roots = _build_atlas_index(goals, users_map)
+    owner_ids = scope_options.get(selected_scope)
+    owner_ids_key = None if owner_ids is None else tuple(sorted(set(int(owner_id) for owner_id in owner_ids)))
+    atlas_snapshot = _cached_get_atlas_scope_snapshot(int(cycle_id), owner_ids_key)
+    users_map = atlas_snapshot.get("users_map", {})
+    index, roots = _build_atlas_index_from_snapshot(atlas_snapshot.get("goals", []), users_map)
     if not roots:
         st.info("No goals found for this cycle and scope.")
         if st.button("Create Goal", key="atlas_create_goal_empty", type="primary"):

@@ -12,6 +12,7 @@ if str(APP_DIR) not in sys.path:
 from src.ui.components import (  # noqa: E402
     _atlas_attention_kind,
     _atlas_attention_reason,
+    _build_atlas_index_from_snapshot,
     _atlas_commit_target_minutes,
     _atlas_extract_clicked_ref,
     _atlas_extract_clicked_ref_from_points,
@@ -33,6 +34,51 @@ def _task_meta(progress: int):
         "children": [],
         "node": SimpleNamespace(deadline=None),
     }
+
+
+def test_build_atlas_index_from_snapshot_preserves_hierarchy_and_owner():
+    goals_snapshot = [
+        {
+            "id": 1,
+            "title": "G",
+            "description": "",
+            "progress": 10,
+            "owner_id": 7,
+            "objectives": [
+                {
+                    "id": 2,
+                    "title": "O",
+                    "description": "",
+                    "progress": 20,
+                    "key_results": [
+                        {
+                            "id": 3,
+                            "title": "K",
+                            "description": "",
+                            "progress": 30,
+                            "tasks": [
+                                {
+                                    "id": 4,
+                                    "title": "T",
+                                    "description": "",
+                                    "progress": 40,
+                                    "deadline": None,
+                                    "timer_started_at": None,
+                                    "status": "todo",
+                                    "total_time_spent": 0,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    ]
+    index, roots = _build_atlas_index_from_snapshot(goals_snapshot, users_map={7: "Owner"})
+    assert roots == ["goal_1"]
+    assert "task_4" in index
+    assert index["task_4"]["path"] == ["goal_1", "objective_2", "key_result_3", "task_4"]
+    assert index["task_4"]["owner_name"] == "Owner"
 
 
 def test_needs_attention_for_incomplete_task_below_threshold():
