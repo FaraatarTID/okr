@@ -5,6 +5,7 @@ google-generativeai
 plotly
 python-dotenv
 streamlit-agraph
+streamlit-plotly-events
 google-genai
 pdfkit
 requests

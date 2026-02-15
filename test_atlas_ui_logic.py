@@ -15,6 +15,7 @@ from src.ui.components import (  # noqa: E402
     _atlas_commit_target_minutes,
     _atlas_extract_clicked_ref,
     _atlas_extract_clicked_ref_from_points,
+    _atlas_extract_selection_points,
     _atlas_needs_attention,
     _atlas_scope_refs,
     _atlas_suggested_next_reason,
@@ -189,6 +190,16 @@ def test_extract_clicked_ref_supports_dict_and_object_payload_shapes():
     assert _atlas_extract_clicked_ref(None) is None
 
 
+def test_extract_clicked_ref_supports_point_index_and_label_fallbacks():
+    point_refs = ["goal_1", "objective_2", "task_7"]
+    point_with_idx = {"pointIndex": 2}
+    assert _atlas_extract_clicked_ref(point_with_idx, point_refs=point_refs) == "task_7"
+
+    label_lookup = {"📋 test task": ["task_7"]}
+    point_with_label = {"label": "📋 test task"}
+    assert _atlas_extract_clicked_ref(point_with_label, label_lookup=label_lookup) == "task_7"
+
+
 def test_extract_clicked_ref_from_points_picks_deepest_node_from_path():
     points = [
         {"id": "goal_1", "customdata": ["goal_1", "Goal"]},
@@ -220,3 +231,13 @@ def test_extract_clicked_ref_from_points_ignores_current_selected_when_possible(
         )
         == "objective_2"
     )
+
+
+def test_extract_selection_points_supports_selection_object_shape():
+    payload = {"selection": {"points": [{"pointIndex": 1}]}}
+    points = _atlas_extract_selection_points(payload)
+    assert points == [{"pointIndex": 1}]
+
+    payload_obj = SimpleNamespace(selection=SimpleNamespace(points=[{"pointNumber": 0}]))
+    points_obj = _atlas_extract_selection_points(payload_obj)
+    assert points_obj == [{"pointNumber": 0}]
