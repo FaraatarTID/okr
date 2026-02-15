@@ -8,7 +8,7 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
-  - Primary hierarchy UX: Atlas focus-first workspace (`Focus Map` + `Flow Board` + `Hierarchy` + `Inspector`)
+  - Primary hierarchy UX: Atlas focus-first workspace (`Focus Map` + `Inspector`)
   - Compatibility UX: Classic drill-down cards with breadcrumb navigation
 - Domain/data operations: `streamlit_app/src/crud.py`
 - Extracted domain modules:
@@ -50,14 +50,11 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 1b. Hierarchy navigation flow (Atlas mode)
 - `render_level` dispatches to `render_atlas_workspace` when `workspace_mode=Atlas`.
-- Top command bar handles quick jump and role-aware scope/focus/sort controls.
-- Advanced focus/sort controls are tucked into `Refine View` to keep first glance calm.
+- Top command bar handles quick jump and role-aware scope controls.
 - Focus selection and timer commitment are consolidated inside `Focus Map` to avoid duplicated surfaces.
-- Workspace uses progressive disclosure tabs:
+- Workspace uses two surfaces:
   - `Focus Map`: first-glance clickable treemap + urgency legend + ranked focus candidates + commit spotlight
     - `Commit Spotlight`: single dominant commit action with sprint presets (`25m`, `50m`, `Custom`)
-  - `Flow Board`: execution queue and child actions
-  - `Hierarchy`: structural navigation and expansion controls
   - `Inspector`: deep edit/read context for selected node
 
 ## Atlas UX Architecture (v2)
@@ -75,16 +72,12 @@ Interaction model is intentionally split into control-plane and work-plane:
 - `Focus Map` encodes urgency with explicit visual semantics while presenting a simplified human label (`Needs care` / `On track` / `Complete`).
 - Treemap urgency is intentionally grouped into a coherent `Needs care` tone to avoid visual overload.
 - `Focus Map` defaults to full scope lens and supports branch lens for local drill-in.
-- `Flow Board` is optimized for throughput (open node, set focus, add child).
-- `Flow Board` defaults to action-oriented cards (minimal metrics, clear next action).
-- `Hierarchy` is optimized for structural movement (expand/collapse/select).
 - `Inspector` is optimized for depth (details and edits).
 
 3. State contracts
 - `atlas_selected_ref`: single source of truth for current node context.
 - `atlas_focus_task_ref`: explicit focus target for timer operations.
-- `atlas_expanded_*`: hierarchy expansion state, independent from selected context.
-- `Focus Map` and `Flow Board` both mutate only these shared selection keys.
+- `Focus Map` and `Inspector` mutate only these shared selection keys.
 
 4. Permission contract
 - Timer mutations remain ownership-gated (`owner_id == actor_id`) at UI + CRUD boundaries.

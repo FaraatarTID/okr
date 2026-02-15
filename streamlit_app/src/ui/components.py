@@ -1977,49 +1977,6 @@ def _atlas_extract_clicked_ref(selected_point) -> str | None:
     return str(clicked_ref)
 
 
-def _atlas_matches_focus(meta, focus_mode: str, index=None) -> bool:
-    focus = str(focus_mode or "All")
-    progress = int(meta.get("progress", 0) or 0)
-
-    if focus == "Completed":
-        return progress >= 100
-    if focus == "In Progress":
-        return 0 < progress < 100
-    if focus == "Needs Attention":
-        return _atlas_needs_attention(meta, index)
-    return True
-
-
-def _atlas_sorted_refs(child_refs, index, sort_mode: str):
-    mode = str(sort_mode or "Priority")
-
-    if mode == "Title":
-        return sorted(child_refs, key=lambda ref: index[ref]["title_l"])
-
-    if mode == "Progress":
-        return sorted(
-            child_refs,
-            key=lambda ref: (int(index[ref]["progress"]), index[ref]["title_l"]),
-        )
-
-    # Priority sort: urgent first, complete items last.
-    def _priority_key(ref):
-        meta = index[ref]
-        progress = int(meta.get("progress", 0) or 0)
-        status = _atlas_status_label(meta).lower()
-        if "overdue" in status:
-            bucket = 0
-        elif _atlas_needs_attention(meta, index):
-            bucket = 1
-        elif progress >= 100:
-            bucket = 3
-        else:
-            bucket = 2
-        return (bucket, progress, meta["title_l"])
-
-    return sorted(child_refs, key=_priority_key)
-
-
 def _atlas_task_rollup(task_refs, index):
     rollup = {
         "total": 0,
@@ -2226,26 +2183,6 @@ def render_atlas_workspace(username):
             key="atlas_scope_selector",
         )
 
-        focus_modes = ["All", "Needs Attention", "In Progress", "Completed"]
-        if st.session_state.get("atlas_focus_mode") not in focus_modes:
-            st.session_state["atlas_focus_mode"] = "All"
-
-        sort_modes = ["Priority", "Progress", "Title"]
-        if st.session_state.get("atlas_sort_mode") not in sort_modes:
-            st.session_state["atlas_sort_mode"] = "Priority"
-        with st.expander("Refine View", expanded=False):
-            refine_cols = st.columns(2)
-            focus_mode = refine_cols[0].selectbox(
-                "Focus",
-                options=focus_modes,
-                key="atlas_focus_mode",
-            )
-            sort_mode = refine_cols[1].selectbox(
-                "Sort",
-                options=sort_modes,
-                key="atlas_sort_mode",
-            )
-
         owner_ids = scope_options.get(selected_scope)
         statement = (
             select(Goal)
@@ -2366,9 +2303,7 @@ def render_atlas_workspace(username):
                         st.session_state["atlas_selected_ref"] = ref
                         st.rerun()
 
-    focus_map_tab, flow_tab, hierarchy_tab, inspector_tab = st.tabs(
-        ["Focus Map", "Flow Board", "Hierarchy", "Inspector"]
-    )
+    focus_map_tab, inspector_tab = st.tabs(["Focus Map", "Inspector"])
 
     with focus_map_tab:
         with st.container(border=True):
@@ -2555,6 +2490,20 @@ def render_atlas_workspace(username):
                 ),
                 unsafe_allow_html=True,
             )
+            map_cols[1].markdown("**Create**")
+            if map_cols[1].button("Add Goal", key="atlas_add_goal_focus_map", use_container_width=True):
+                st.session_state["add_mode_parent"] = None
+                st.session_state["add_mode_type"] = "GOAL"
+                st.rerun()
+            child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
+            if child_type and map_cols[1].button(
+                f"Add {child_type.replace('_', ' ').title()}",
+                key=f"atlas_add_child_map_{selected_ref}",
+                use_container_width=True,
+            ):
+                st.session_state["add_mode_parent"] = selected_ref
+                st.session_state["add_mode_type"] = child_type
+                st.rerun()
 
             map_lens_options = ["Scope", "Branch"]
             if st.session_state.get("atlas_map_lens") not in map_lens_options:
@@ -2655,147 +2604,6 @@ def render_atlas_workspace(username):
                     map_cols[1].info("No tasks available in current scope.")
                 else:
                     map_cols[1].info("No tasks to choose focus from in this branch.")
-
-    with flow_tab:
-        with st.container(border=True):
-            st.markdown("<div class='atlas-kicker'>Flow Board</div>", unsafe_allow_html=True)
-
-            child_refs = _atlas_sorted_refs(selected_meta["children"], index, sort_mode)
-            child_refs = [ref for ref in child_refs if _atlas_matches_focus(index[ref], focus_mode, index)]
-
-            ws_head = st.columns([2.6, 1.4])
-            ws_head[0].markdown("<div class='atlas-human-note'>Move one item forward, then return to focus.</div>", unsafe_allow_html=True)
-            child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
-            if child_type and ws_head[1].button(
-                f"Add {child_type.replace('_', ' ').title()}",
-                key=f"atlas_add_child_{selected_ref}",
-                use_container_width=True,
-            ):
-                st.session_state["add_mode_parent"] = selected_ref
-                st.session_state["add_mode_type"] = child_type
-                st.rerun()
-
-            if not child_refs:
-                st.info("No child items for this selection and filter.")
-            else:
-                for child_ref in child_refs:
-                    meta = index[child_ref]
-                    is_task = meta["type"] == "TASK"
-                    is_focused = child_ref == focus_task_ref
-                    is_running = is_task and (getattr(meta["node"], "timer_started_at", None) is not None)
-
-                    with st.container(border=True):
-                        row = st.columns([4.6, 1.4])
-                        if row[0].button(
-                            f"{TYPE_ICONS.get(meta['type'], '')} {meta['title']}",
-                            key=f"atlas_open_{child_ref}",
-                            use_container_width=True,
-                        ):
-                            st.session_state["atlas_selected_ref"] = child_ref
-                            st.rerun()
-
-                        tag_bits = [meta["type"].replace("_", " ").title(), _atlas_attention_reason(meta, index)]
-                        if is_focused:
-                            tag_bits.append("Focused")
-                        if is_running:
-                            tag_bits.append("Running")
-                        row[0].caption(f"{meta['owner_name']} | " + " | ".join(tag_bits))
-                        row[0].markdown(
-                            f"<div class='atlas-chip-row'>{_atlas_attention_chip_html(meta)}</div>",
-                            unsafe_allow_html=True,
-                        )
-
-                        if is_task:
-                            if row[1].button(
-                                "Focused" if is_focused else "Set Focus",
-                                key=f"atlas_set_focus_{child_ref}",
-                                disabled=is_focused,
-                                use_container_width=True,
-                            ):
-                                st.session_state["atlas_focus_task_ref"] = child_ref
-                                st.rerun()
-                        else:
-                            row[1].caption(f"{len(meta['children'])} sub")
-
-    with hierarchy_tab:
-        with st.container(border=True):
-            st.markdown("<div class='atlas-kicker'>Hierarchy</div>", unsafe_allow_html=True)
-
-            def _set_expanded_tree(node_ref: str, expanded: bool):
-                st.session_state[f"atlas_expanded_{node_ref}"] = expanded
-                for child_ref in index[node_ref]["children"]:
-                    _set_expanded_tree(child_ref, expanded)
-
-            nav_actions = st.columns([1.3, 1.0, 1.0, 1.0])
-            if nav_actions[0].button("Add Goal", key="atlas_add_goal_left", use_container_width=True):
-                st.session_state["add_mode_parent"] = None
-                st.session_state["add_mode_type"] = "GOAL"
-                st.rerun()
-            if nav_actions[1].button("Expand all", key="atlas_expand_all", use_container_width=True):
-                for root_ref in roots:
-                    _set_expanded_tree(root_ref, True)
-                st.rerun()
-            if nav_actions[2].button("Collapse all", key="atlas_collapse_all", use_container_width=True):
-                for root_ref in roots:
-                    _set_expanded_tree(root_ref, False)
-                for path_ref in selected_meta["path"]:
-                    st.session_state[f"atlas_expanded_{path_ref}"] = True
-                st.rerun()
-            if nav_actions[3].button("Select Focus", key="atlas_select_focus_node", use_container_width=True):
-                if focus_task_ref and focus_task_ref in index:
-                    st.session_state["atlas_selected_ref"] = focus_task_ref
-                    st.rerun()
-
-            def _render_tree_item(node_ref: str):
-                meta = index[node_ref]
-                has_children = bool(meta["children"])
-                depth = int(meta["depth"])
-                expanded_key = f"atlas_expanded_{node_ref}"
-                default_expanded = depth <= 1 or node_ref in selected_path_refs
-                expanded = bool(st.session_state.get(expanded_key, default_expanded))
-                col_toggle, col_label, col_meta = st.columns([0.14, 0.68, 0.18])
-
-                if has_children:
-                    if col_toggle.button(
-                        "Hide" if expanded else "Show",
-                        key=f"atlas_toggle_{node_ref}",
-                        help="Collapse" if expanded else "Expand",
-                        use_container_width=True,
-                    ):
-                        st.session_state[expanded_key] = not expanded
-                        st.rerun()
-                else:
-                    col_toggle.markdown(
-                        "<div class='atlas-tree-leaf-marker'>&bull;</div>",
-                        unsafe_allow_html=True,
-                    )
-
-                prefix = "  " * depth
-                label = f"{prefix}{TYPE_ICONS.get(meta['type'], '')} {meta['title']}"
-                btn_type = "primary" if node_ref == selected_ref else "secondary"
-                if col_label.button(
-                    label,
-                    key=f"atlas_select_{node_ref}",
-                    type=btn_type,
-                    use_container_width=True,
-                ):
-                    st.session_state["atlas_selected_ref"] = node_ref
-                    st.rerun()
-
-                child_count = len(meta["children"])
-                if node_ref == focus_task_ref:
-                    col_meta.caption("Focus")
-                elif child_count:
-                    col_meta.caption(f"{child_count} sub")
-                elif meta["type"] == "TASK":
-                    col_meta.caption(f"{meta['progress']}%")
-
-                if has_children and expanded:
-                    for child_ref in meta["children"]:
-                        _render_tree_item(child_ref)
-
-            for root_ref in roots:
-                _render_tree_item(root_ref)
 
     with inspector_tab:
         with st.container(border=True):
