@@ -14,6 +14,7 @@ from src.ui.components import (  # noqa: E402
     _atlas_attention_reason,
     _atlas_commit_target_minutes,
     _atlas_extract_clicked_ref,
+    _atlas_extract_clicked_ref_from_points,
     _atlas_needs_attention,
     _atlas_scope_refs,
     _atlas_suggested_next_reason,
@@ -186,3 +187,36 @@ def test_extract_clicked_ref_supports_dict_and_object_payload_shapes():
     assert _atlas_extract_clicked_ref(obj_point_without_custom) == "goal_2"
 
     assert _atlas_extract_clicked_ref(None) is None
+
+
+def test_extract_clicked_ref_from_points_picks_deepest_node_from_path():
+    points = [
+        {"id": "goal_1", "customdata": ["goal_1", "Goal"]},
+        {"id": "objective_2", "customdata": ["objective_2", "Objective"]},
+        {"id": "task_7", "customdata": ["task_7", "Task"]},
+    ]
+    index = {
+        "goal_1": {"depth": 1},
+        "objective_2": {"depth": 2},
+        "task_7": {"depth": 4},
+    }
+    assert _atlas_extract_clicked_ref_from_points(points, index=index) == "task_7"
+
+
+def test_extract_clicked_ref_from_points_ignores_current_selected_when_possible():
+    points = [
+        {"id": "goal_1", "customdata": ["goal_1", "Goal"]},
+        {"id": "objective_2", "customdata": ["objective_2", "Objective"]},
+    ]
+    index = {
+        "goal_1": {"depth": 1},
+        "objective_2": {"depth": 2},
+    }
+    assert (
+        _atlas_extract_clicked_ref_from_points(
+            points,
+            index=index,
+            current_selected="goal_1",
+        )
+        == "objective_2"
+    )
