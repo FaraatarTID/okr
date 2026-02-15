@@ -51,10 +51,12 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 1b. Hierarchy navigation flow (Atlas mode)
 - `render_level` dispatches to `render_atlas_workspace` when `workspace_mode=Atlas`.
 - Top command bar handles quick jump and role-aware scope/focus/sort controls.
+- Advanced focus/sort controls are tucked into `Refine View` to keep first glance calm.
 - `Focus Dock` computes and presents a single focus task with always-visible focus selection.
-- `Timer Studio` hosts timer mutations (`Start Timer` / `Stop Timer`) and running timer controls.
+- `Timer Studio` shows active session visibility and multi-task running controls.
 - Workspace uses progressive disclosure tabs:
-  - `Focus Map`: first-glance treemap + ranked focus candidates
+  - `Focus Map`: first-glance clickable treemap + urgency legend + ranked focus candidates + commit spotlight
+    - `Commit Spotlight`: single dominant commit action with sprint presets (`25m`, `50m`, `Custom`)
   - `Flow Board`: execution queue and child actions
   - `Hierarchy`: structural navigation and expansion controls
   - `Inspector`: deep edit/read context for selected node
@@ -65,14 +67,17 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 1. Control-plane: Focus Dock + Timer Studio
 - Focus selection is always visible in Focus Dock.
-- Timer actions are isolated in Timer Studio to reduce dock clutter.
+- Primary timer commitment happens in `Commit Spotlight` inside Focus Map.
+- Timer Studio remains dedicated to running-session visibility/control.
 - Focused task state is sticky across tab changes.
-- Rollup signals (`Tasks`, `Running`, `Attention`, `Done`) provide instant context.
+- Human-first prompts and status chips provide instant context without metric overload.
 
 2. Work-plane: Progressive disclosure
 - `Focus Map` is the first-glance visual overview for focus choice.
+- `Focus Map` encodes urgency with explicit visual semantics (`Overdue`, `At risk`, `Low progress`, `Child risk`, `On track`, `Complete`).
 - `Focus Map` defaults to full scope lens and supports branch lens for local drill-in.
 - `Flow Board` is optimized for throughput (open node, set focus, add child).
+- `Flow Board` defaults to action-oriented cards (minimal metrics, clear next action).
 - `Hierarchy` is optimized for structural movement (expand/collapse/select).
 - `Inspector` is optimized for depth (details and edits).
 

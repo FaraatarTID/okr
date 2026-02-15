@@ -207,6 +207,13 @@ def inject_atlas_styles():
             color: var(--atlas-muted);
         }
 
+        .atlas-human-note {
+            font-size: 0.88rem;
+            color: #3c4757;
+            line-height: 1.45;
+            margin: 0.12rem 0 0.55rem;
+        }
+
         .atlas-luxe-strip {
             height: 4px;
             border-radius: 999px;
@@ -233,12 +240,97 @@ def inject_atlas_styles():
             color: var(--atlas-accent);
         }
 
+        .atlas-spotlight-path {
+            margin-top: 0.2rem;
+            margin-bottom: 0.12rem;
+            color: var(--atlas-muted);
+            font-size: 0.8rem;
+            letter-spacing: 0.02em;
+        }
+
+        .atlas-spotlight-title {
+            margin-top: 0.08rem;
+            margin-bottom: 0.08rem;
+            color: var(--atlas-ink);
+            font-size: 1.22rem;
+            font-weight: 740;
+        }
+
+        .atlas-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            margin: 0.15rem 0 0.2rem;
+        }
+
+        .atlas-attn-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .atlas-attn-chip {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 0.08rem 0.5rem;
+            border: 1px solid transparent;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            line-height: 1.45;
+        }
+
+        .atlas-attn-overdue {
+            background: #fce7e2;
+            border-color: #e7b7ac;
+            color: #8f2717;
+        }
+
+        .atlas-attn-risk {
+            background: #fff1de;
+            border-color: #f0cca0;
+            color: #8b4a0f;
+        }
+
+        .atlas-attn-low_progress {
+            background: #fff7d8;
+            border-color: #ead68d;
+            color: #7a6100;
+        }
+
+        .atlas-attn-inherited {
+            background: #efe8ff;
+            border-color: #cebdf7;
+            color: #5f3f9f;
+        }
+
+        .atlas-attn-on_track {
+            background: #e8f8f3;
+            border-color: #b8ddd1;
+            color: #17665f;
+        }
+
+        .atlas-attn-done {
+            background: #eef2f7;
+            border-color: #cdd6e1;
+            color: #4f5c70;
+        }
+
+        .atlas-candidate-meta {
+            font-size: 0.76rem;
+            color: var(--atlas-muted);
+            margin: 0.18rem 0 0;
+        }
+
         .atlas-tree-leaf-marker {
             text-align: center;
-            color: #a4acb8;
+            color: #96a0ae;
             font-weight: 700;
-            font-size: 1rem;
-            padding-top: 0.35rem;
+            font-size: 1.15rem;
+            padding-top: 0.2rem;
+            opacity: 0.7;
         }
 
         div[data-testid="stTabs"] button[role="tab"] {
