@@ -72,13 +72,17 @@ Interaction model is intentionally split into control-plane and work-plane:
 - `Focus Map` is the first-glance visual overview for focus choice.
 - `Focus Map` encodes urgency with explicit visual semantics while presenting a simplified human label (`Needs care` / `On track` / `Complete`).
 - Treemap urgency is intentionally grouped into a coherent `Needs care` tone to avoid visual overload.
-- Map key swatches are palette-matched to actual treemap tile colors (focus/selected/path/needs-care/on-track/complete).
+- Map key semantics are split for clarity:
+  - tile fill colors represent status (`Needs care` / `On track` / `Complete`)
+  - outline/ring states represent navigation context (`Focused task` / `Selected node` / `Path context`)
 - `Focus Map` defaults to full scope lens and supports branch lens for local drill-in.
+- Treemap click handling uses `streamlit-plotly-events` as primary click capture with Streamlit selection fallback, normalizing payload shape differences across runtimes.
 - `Inspector` is optimized for depth (details and edits).
 
 3. State contracts
 - `atlas_selected_ref`: single source of truth for current node context.
 - `atlas_focus_task_ref`: explicit focus target for timer operations.
+- A map click must update `atlas_selected_ref`; navigation path and `Inspector` are derived from that shared selected ref.
 - `Focus Map` and `Inspector` mutate only these shared selection keys.
 
 4. Permission contract
