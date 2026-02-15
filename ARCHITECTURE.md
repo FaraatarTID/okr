@@ -66,6 +66,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Primary timer commitment happens in `Commit Spotlight`.
 - Focused task state is sticky across tab changes.
 - Human-first prompts and status chips provide instant context without metric overload.
+- `Suggested Next` ranks by: running session, needs-care urgency, ownership/actionability, then progress.
 
 2. Work-plane: Progressive disclosure
 - `Focus Map` is the first-glance visual overview for focus choice.

@@ -1950,6 +1950,41 @@ def _atlas_commit_target_minutes(preset_choice: str, custom_minutes: int | None 
     return 25
 
 
+def _atlas_suggested_next_score(meta, actor_id: int, index=None):
+    running = getattr(meta.get("node"), "timer_started_at", None) is not None
+    attention_kind = _atlas_attention_kind(meta, index)
+    attention_rank = {
+        "overdue": 0,
+        "risk": 1,
+        "low_progress": 2,
+        "inherited": 2,
+        "on_track": 3,
+        "done": 4,
+    }.get(attention_kind, 3)
+    owner_rank = 0 if meta.get("owner_id") == actor_id else 1
+    progress = int(meta.get("progress", 0) or 0)
+    return (
+        0 if running else 1,
+        attention_rank,
+        owner_rank,
+        progress,
+        meta.get("title_l", ""),
+    )
+
+
+def _atlas_suggested_next_reason(meta, actor_id: int, index=None) -> str:
+    if getattr(meta.get("node"), "timer_started_at", None) is not None:
+        return "Already running"
+    attention_kind = _atlas_attention_kind(meta, index)
+    if attention_kind in {"overdue", "risk", "low_progress", "inherited"}:
+        return "Needs care"
+    if int(meta.get("progress", 0) or 0) >= 100:
+        return "Complete"
+    if meta.get("owner_id") != actor_id:
+        return "Ready to coordinate"
+    return "Continue momentum"
+
+
 def _atlas_extract_clicked_ref(selected_point) -> str | None:
     if selected_point is None:
         return None
@@ -2220,6 +2255,7 @@ def render_atlas_workspace(username):
     if st.session_state.get("atlas_last_selected_ref") != selected_ref:
         st.session_state["atlas_last_selected_ref"] = selected_ref
         st.session_state["atlas_map_last_click_ref"] = None
+        st.session_state["atlas_breadcrumbs"] = selected_ref
 
     def _collect_task_refs(root_ref: str, limit: int = 200):
         pending = [root_ref]
@@ -2311,11 +2347,12 @@ def render_atlas_workspace(username):
             st.caption("Your primary surface: pick focus, commit sprint, navigate the map.")
 
             breadcrumbs = ["HOME"] + list(selected_meta["path"])
+            if st.session_state.get("atlas_breadcrumbs") not in breadcrumbs:
+                st.session_state["atlas_breadcrumbs"] = selected_ref
             selected_crumb = st.pills(
                 "Path",
                 options=breadcrumbs,
                 selection_mode="single",
-                default=selected_ref,
                 key="atlas_breadcrumbs",
                 label_visibility="collapsed",
                 format_func=lambda opt: (
@@ -2330,6 +2367,8 @@ def render_atlas_workspace(username):
                 elif selected_crumb in index:
                     st.session_state["atlas_selected_ref"] = selected_crumb
                 st.rerun()
+
+            map_placeholder = st.empty()
 
             if focus_task_ref and task_refs:
                 picked_ref = st.selectbox(
@@ -2478,136 +2517,139 @@ def render_atlas_workspace(username):
             else:
                 st.info("Select a branch with tasks to start a focus sprint.")
 
-            map_cols = st.columns([2.4, 1.2], gap="large")
-            map_cols[1].markdown("<div class='atlas-kicker'>Map Key</div>", unsafe_allow_html=True)
-            map_cols[1].markdown(
-                (
-                    "<div class='atlas-attn-legend'>"
-                    "<span class='atlas-attn-chip atlas-attn-overdue'>Needs care</span>"
-                    "<span class='atlas-attn-chip atlas-attn-on_track'>On track</span>"
-                    "<span class='atlas-attn-chip atlas-attn-done'>Complete</span>"
-                    "</div>"
-                ),
-                unsafe_allow_html=True,
-            )
-            map_cols[1].markdown("**Create**")
-            if map_cols[1].button("Add Goal", key="atlas_add_goal_focus_map", use_container_width=True):
-                st.session_state["add_mode_parent"] = None
-                st.session_state["add_mode_type"] = "GOAL"
-                st.rerun()
-            child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
-            if child_type and map_cols[1].button(
-                f"Add {child_type.replace('_', ' ').title()}",
-                key=f"atlas_add_child_map_{selected_ref}",
-                use_container_width=True,
-            ):
-                st.session_state["add_mode_parent"] = selected_ref
-                st.session_state["add_mode_type"] = child_type
-                st.rerun()
-
-            map_lens_options = ["Scope", "Branch"]
-            if st.session_state.get("atlas_map_lens") not in map_lens_options:
-                st.session_state["atlas_map_lens"] = "Scope"
-            map_lens = st.segmented_control(
-                "Map Lens",
-                options=map_lens_options,
-                key="atlas_map_lens",
-                selection_mode="single",
-                label_visibility="collapsed",
-            )
-            if map_lens not in map_lens_options:
-                map_lens = "Scope"
-
-            map_refs = (
-                _atlas_scope_refs(roots, index, limit=800)
-                if map_lens == "Scope"
-                else _atlas_descendant_refs(selected_ref, index, limit=400)
-            )
-            treemap = _build_atlas_treemap(
-                map_refs,
-                index,
-                selected_ref,
-                focus_task_ref,
-                selected_path_refs=selected_path_refs,
-            )
-            if treemap is not None:
-                treemap_event = map_cols[0].plotly_chart(
-                    treemap,
-                    use_container_width=True,
-                    config={"displayModeBar": False},
-                    key=f"atlas_focus_treemap_{selected_ref}",
-                    on_select="rerun",
-                    selection_mode=("points",),
-                )
-
-                selected_point = None
-                if treemap_event is not None:
-                    selection_data = None
-                    if isinstance(treemap_event, dict):
-                        selection_data = treemap_event.get("selection")
-                    else:
-                        selection_data = getattr(treemap_event, "selection", None)
-
-                    if selection_data is not None:
-                        if isinstance(selection_data, dict):
-                            points = selection_data.get("points", [])
-                        else:
-                            points = getattr(selection_data, "points", [])
-                        if points:
-                            selected_point = points[-1]
-
-                clicked_ref = _atlas_extract_clicked_ref(selected_point)
-
-                if clicked_ref in index:
-                    if st.session_state.get("atlas_map_last_click_ref") != clicked_ref:
-                        st.session_state["atlas_map_last_click_ref"] = clicked_ref
-                        st.session_state["atlas_selected_ref"] = clicked_ref
-                        clicked_meta = index[clicked_ref]
-                        if clicked_meta["type"] == "TASK":
-                            st.session_state["atlas_focus_task_ref"] = clicked_ref
-                        else:
-                            branch_tasks = _collect_task_refs(clicked_ref, limit=200)
-                            if branch_tasks:
-                                st.session_state["atlas_focus_task_ref"] = _suggest_focus_task(branch_tasks) or branch_tasks[0]
-                        st.rerun()
-            else:
-                map_cols[0].info("No map data available.")
-
-            map_task_refs = [
-                ref for ref in map_refs
-                if ref in index and index[ref]["type"] == "TASK"
-            ]
-            if map_task_refs:
-                ranked_focus_refs = sorted(
-                    map_task_refs,
-                    key=lambda ref: (
-                        0 if getattr(index[ref]["node"], "timer_started_at", None) is not None else 1,
-                        0 if _atlas_needs_attention(index[ref], index) else 1,
-                        int(index[ref].get("progress", 0) or 0),
-                        index[ref]["title_l"],
+            with map_placeholder.container():
+                map_cols = st.columns([2.4, 1.2], gap="large")
+                map_cols[1].markdown("<div class='atlas-kicker'>Map Key</div>", unsafe_allow_html=True)
+                map_cols[1].markdown(
+                    (
+                        "<div class='atlas-attn-legend'>"
+                        "<span class='atlas-attn-chip atlas-attn-overdue'>Needs care</span>"
+                        "<span class='atlas-attn-chip atlas-attn-on_track'>On track</span>"
+                        "<span class='atlas-attn-chip atlas-attn-done'>Complete</span>"
+                        "</div>"
                     ),
+                    unsafe_allow_html=True,
                 )
-                map_cols[1].markdown("**Suggested Next**")
-                for ref in ranked_focus_refs[:6]:
-                    meta = index[ref]
-                    button_label = f"{TYPE_ICONS.get('TASK', '')} {meta['title']}"
-                    if map_cols[1].button(button_label, key=f"atlas_map_focus_{ref}", use_container_width=True):
-                        st.session_state["atlas_focus_task_ref"] = ref
-                        st.session_state["atlas_selected_ref"] = ref
-                        st.rerun()
-                    map_cols[1].markdown(
-                        f"<div class='atlas-chip-row'>{_atlas_attention_chip_html(meta)}</div>",
-                        unsafe_allow_html=True,
+                map_cols[1].markdown("**Create**")
+                if map_cols[1].button("Add Goal", key="atlas_add_goal_focus_map", use_container_width=True):
+                    st.session_state["add_mode_parent"] = None
+                    st.session_state["add_mode_type"] = "GOAL"
+                    st.rerun()
+                child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
+                if child_type and map_cols[1].button(
+                    f"Add {child_type.replace('_', ' ').title()}",
+                    key=f"atlas_add_child_map_{selected_ref}",
+                    use_container_width=True,
+                ):
+                    st.session_state["add_mode_parent"] = selected_ref
+                    st.session_state["add_mode_type"] = child_type
+                    st.rerun()
+
+                map_lens_options = ["Scope", "Branch"]
+                if st.session_state.get("atlas_map_lens") not in map_lens_options:
+                    st.session_state["atlas_map_lens"] = "Scope"
+                map_lens = st.segmented_control(
+                    "Map Lens",
+                    options=map_lens_options,
+                    key="atlas_map_lens",
+                    selection_mode="single",
+                    label_visibility="collapsed",
+                )
+                if map_lens not in map_lens_options:
+                    map_lens = "Scope"
+
+                map_refs = (
+                    _atlas_scope_refs(roots, index, limit=800)
+                    if map_lens == "Scope"
+                    else _atlas_descendant_refs(selected_ref, index, limit=400)
+                )
+                treemap = _build_atlas_treemap(
+                    map_refs,
+                    index,
+                    selected_ref,
+                    focus_task_ref,
+                    selected_path_refs=selected_path_refs,
+                )
+                if treemap is not None:
+                    treemap_event = map_cols[0].plotly_chart(
+                        treemap,
+                        use_container_width=True,
+                        config={"displayModeBar": False},
+                        key=f"atlas_focus_treemap_{selected_ref}",
+                        on_select="rerun",
+                        selection_mode=("points",),
                     )
-            else:
-                if map_lens == "Scope":
-                    map_cols[1].info("No tasks available in current scope.")
+
+                    selected_point = None
+                    if treemap_event is not None:
+                        selection_data = None
+                        if isinstance(treemap_event, dict):
+                            selection_data = treemap_event.get("selection")
+                        else:
+                            selection_data = getattr(treemap_event, "selection", None)
+
+                        if selection_data is not None:
+                            if isinstance(selection_data, dict):
+                                points = selection_data.get("points", [])
+                            else:
+                                points = getattr(selection_data, "points", [])
+                            if points:
+                                selected_point = points[-1]
+
+                    clicked_ref = _atlas_extract_clicked_ref(selected_point)
+
+                    if clicked_ref in index:
+                        if st.session_state.get("atlas_map_last_click_ref") != clicked_ref:
+                            st.session_state["atlas_map_last_click_ref"] = clicked_ref
+                            st.session_state["atlas_selected_ref"] = clicked_ref
+                            clicked_meta = index[clicked_ref]
+                            if clicked_meta["type"] == "TASK":
+                                st.session_state["atlas_focus_task_ref"] = clicked_ref
+                            else:
+                                branch_tasks = _collect_task_refs(clicked_ref, limit=200)
+                                if branch_tasks:
+                                    st.session_state["atlas_focus_task_ref"] = _suggest_focus_task(branch_tasks) or branch_tasks[0]
+                            st.rerun()
                 else:
-                    map_cols[1].info("No tasks to choose focus from in this branch.")
+                    map_cols[0].info("No map data available.")
+
+                map_task_refs = [
+                    ref for ref in map_refs
+                    if ref in index and index[ref]["type"] == "TASK"
+                ]
+                if map_task_refs:
+                    actionable_refs = [
+                        ref for ref in map_task_refs
+                        if int(index[ref].get("progress", 0) or 0) < 100
+                    ]
+                    candidate_refs = actionable_refs or map_task_refs
+                    ranked_focus_refs = sorted(
+                        candidate_refs,
+                        key=lambda ref: _atlas_suggested_next_score(index[ref], actor_id, index),
+                    )
+                    map_cols[1].markdown("**Suggested Next**")
+                    for ref in ranked_focus_refs[:6]:
+                        meta = index[ref]
+                        button_label = f"{TYPE_ICONS.get('TASK', '')} {meta['title']}"
+                        if map_cols[1].button(button_label, key=f"atlas_map_focus_{ref}", use_container_width=True):
+                            st.session_state["atlas_focus_task_ref"] = ref
+                            st.session_state["atlas_selected_ref"] = ref
+                            st.rerun()
+                        map_cols[1].markdown(
+                            f"<div class='atlas-chip-row'>{_atlas_attention_chip_html(meta)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                        map_cols[1].caption(_atlas_suggested_next_reason(meta, actor_id, index))
+                else:
+                    if map_lens == "Scope":
+                        map_cols[1].info("No tasks available in current scope.")
+                    else:
+                        map_cols[1].info("No tasks to choose focus from in this branch.")
 
     with inspector_tab:
         with st.container(border=True):
             st.markdown("<div class='atlas-kicker'>Inspector</div>", unsafe_allow_html=True)
+            st.caption(f"Selected from map: {selected_meta['title']}")
             selected_type, selected_id = _parse_typed_ref(selected_ref)
             if not selected_type or selected_id is None:
                 st.info("Select a node to inspect.")

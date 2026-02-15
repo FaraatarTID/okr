@@ -16,6 +16,8 @@ from src.ui.components import (  # noqa: E402
     _atlas_extract_clicked_ref,
     _atlas_needs_attention,
     _atlas_scope_refs,
+    _atlas_suggested_next_reason,
+    _atlas_suggested_next_score,
 )
 
 
@@ -107,6 +109,67 @@ def test_commit_target_minutes_normalizes_presets_and_bounds():
     assert _atlas_commit_target_minutes("Custom", 1) == 5
     assert _atlas_commit_target_minutes("Custom", None) == 35
     assert _atlas_commit_target_minutes("unknown") == 25
+
+
+def test_suggested_next_prioritizes_running_then_attention_then_owner():
+    running_owned = {
+        "type": "TASK",
+        "progress": 50,
+        "children": [],
+        "title_l": "a",
+        "owner_id": 1,
+        "node": SimpleNamespace(deadline=None, timer_started_at=object()),
+    }
+    needs_care_owned = {
+        "type": "TASK",
+        "progress": 10,
+        "children": [],
+        "title_l": "b",
+        "owner_id": 1,
+        "node": SimpleNamespace(deadline=None, timer_started_at=None),
+    }
+    on_track_other = {
+        "type": "TASK",
+        "progress": 70,
+        "children": [],
+        "title_l": "c",
+        "owner_id": 2,
+        "node": SimpleNamespace(deadline=None, timer_started_at=None),
+    }
+
+    scores = [
+        _atlas_suggested_next_score(on_track_other, actor_id=1),
+        _atlas_suggested_next_score(needs_care_owned, actor_id=1),
+        _atlas_suggested_next_score(running_owned, actor_id=1),
+    ]
+    assert scores[2] < scores[1] < scores[0]
+
+
+def test_suggested_next_reason_is_human_readable():
+    running_meta = {
+        "type": "TASK",
+        "progress": 50,
+        "children": [],
+        "owner_id": 1,
+        "node": SimpleNamespace(deadline=None, timer_started_at=object()),
+    }
+    needs_care_meta = {
+        "type": "TASK",
+        "progress": 10,
+        "children": [],
+        "owner_id": 1,
+        "node": SimpleNamespace(deadline=None, timer_started_at=None),
+    }
+    done_meta = {
+        "type": "TASK",
+        "progress": 100,
+        "children": [],
+        "owner_id": 1,
+        "node": SimpleNamespace(deadline=None, timer_started_at=None),
+    }
+    assert _atlas_suggested_next_reason(running_meta, actor_id=1) == "Already running"
+    assert _atlas_suggested_next_reason(needs_care_meta, actor_id=1) == "Needs care"
+    assert _atlas_suggested_next_reason(done_meta, actor_id=1) == "Complete"
 
 
 def test_extract_clicked_ref_supports_dict_and_object_payload_shapes():
