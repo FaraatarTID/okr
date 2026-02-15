@@ -1682,6 +1682,9 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                             st.error(str(e))
                             return
                         st.rerun()
+    else:
+        st.markdown("---")
+        st.info("Work logs are attached to tasks. Select a task in Focus Map to view its Work History.")
 
     if node_type_insp == "KEY_RESULT":
         st.markdown("---")
