@@ -72,6 +72,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - `Focus Map` is the first-glance visual overview for focus choice.
 - `Focus Map` encodes urgency with explicit visual semantics while presenting a simplified human label (`Needs care` / `On track` / `Complete`).
 - Treemap urgency is intentionally grouped into a coherent `Needs care` tone to avoid visual overload.
+- Map key swatches are palette-matched to actual treemap tile colors (focus/selected/path/needs-care/on-track/complete).
 - `Focus Map` defaults to full scope lens and supports branch lens for local drill-in.
 - `Inspector` is optimized for depth (details and edits).
 

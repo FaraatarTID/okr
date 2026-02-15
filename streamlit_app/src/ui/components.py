@@ -2346,27 +2346,15 @@ def render_atlas_workspace(username):
             st.markdown("<div class='atlas-kicker'>Focus Map</div>", unsafe_allow_html=True)
             st.caption("Your primary surface: pick focus, commit sprint, navigate the map.")
 
-            breadcrumbs = ["HOME"] + list(selected_meta["path"])
-            if st.session_state.get("atlas_breadcrumbs") not in breadcrumbs:
-                st.session_state["atlas_breadcrumbs"] = selected_ref
-            selected_crumb = st.pills(
-                "Path",
-                options=breadcrumbs,
-                selection_mode="single",
-                key="atlas_breadcrumbs",
-                label_visibility="collapsed",
-                format_func=lambda opt: (
-                    "Home"
-                    if opt == "HOME"
-                    else f"{TYPE_ICONS.get(index.get(opt, {}).get('type', ''), '')} {index.get(opt, {}).get('title', 'Unknown')}"
-                ),
+            nav_labels = ["Home"] + [
+                f"{TYPE_ICONS.get(index[path_ref]['type'], '')} {index[path_ref]['title']}"
+                for path_ref in selected_meta["path"]
+                if path_ref in index
+            ]
+            st.markdown(
+                f"<div class='atlas-nav-line'>{escape_html(' > '.join(nav_labels))}</div>",
+                unsafe_allow_html=True,
             )
-            if selected_crumb != selected_ref:
-                if selected_crumb == "HOME":
-                    st.session_state["atlas_selected_ref"] = roots[0]
-                elif selected_crumb in index:
-                    st.session_state["atlas_selected_ref"] = selected_crumb
-                st.rerun()
 
             map_placeholder = st.empty()
 
@@ -2523,9 +2511,12 @@ def render_atlas_workspace(username):
                 map_cols[1].markdown(
                     (
                         "<div class='atlas-attn-legend'>"
-                        "<span class='atlas-attn-chip atlas-attn-overdue'>Needs care</span>"
-                        "<span class='atlas-attn-chip atlas-attn-on_track'>On track</span>"
-                        "<span class='atlas-attn-chip atlas-attn-done'>Complete</span>"
+                        "<span class='atlas-map-chip atlas-map-focus'>Focused</span>"
+                        "<span class='atlas-map-chip atlas-map-selected'>Selected</span>"
+                        "<span class='atlas-map-chip atlas-map-path'>Path</span>"
+                        "<span class='atlas-map-chip atlas-map-needs'>Needs care</span>"
+                        "<span class='atlas-map-chip atlas-map-ontrack'>On track</span>"
+                        "<span class='atlas-map-chip atlas-map-done'>Complete</span>"
                         "</div>"
                     ),
                     unsafe_allow_html=True,
@@ -2602,6 +2593,7 @@ def render_atlas_workspace(username):
                         if st.session_state.get("atlas_map_last_click_ref") != clicked_ref:
                             st.session_state["atlas_map_last_click_ref"] = clicked_ref
                             st.session_state["atlas_selected_ref"] = clicked_ref
+                            st.session_state["atlas_breadcrumbs"] = clicked_ref
                             clicked_meta = index[clicked_ref]
                             if clicked_meta["type"] == "TASK":
                                 st.session_state["atlas_focus_task_ref"] = clicked_ref
