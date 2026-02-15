@@ -2672,6 +2672,7 @@ def render_atlas_workspace(username):
                 )
                 if treemap is not None:
                     chart_key = f"atlas_focus_treemap_{selected_ref}"
+                    chart_events_key = f"{chart_key}_events"
                     trace = treemap.data[0] if treemap.data else None
                     point_refs = [str(ref) for ref in (trace.ids or [])] if trace is not None else [str(ref) for ref in map_refs]
                     point_labels = [str(lbl) for lbl in (trace.labels or [])] if trace is not None else []
@@ -2681,6 +2682,7 @@ def render_atlas_workspace(username):
                             label_lookup.setdefault(label, []).append(point_refs[idx])
 
                     points = []
+                    rendered_with_events = False
                     if plotly_events is not None:
                         try:
                             points = plotly_events(
@@ -2690,12 +2692,13 @@ def render_atlas_workspace(username):
                                 hover_event=False,
                                 override_height=430,
                                 override_width="100%",
-                                key=chart_key,
+                                key=chart_events_key,
                             ) or []
+                            rendered_with_events = True
                         except Exception:
                             points = []
 
-                    if not points:
+                    if not rendered_with_events:
                         treemap_event = map_cols[0].plotly_chart(
                             treemap,
                             use_container_width=True,
@@ -2707,6 +2710,8 @@ def render_atlas_workspace(username):
                         points = _atlas_extract_selection_points(treemap_event)
                         if not points:
                             points = _atlas_extract_selection_points(st.session_state.get(chart_key))
+                    elif not points:
+                        points = _atlas_extract_selection_points(st.session_state.get(chart_events_key))
 
                     clicked_ref = _atlas_extract_clicked_ref_from_points(
                         points,
