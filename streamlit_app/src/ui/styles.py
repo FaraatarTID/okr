@@ -346,13 +346,13 @@ def inject_atlas_styles():
             border-radius: 0.15rem;
             display: inline-block;
             border: 1px solid #8a6827;
-            background-color: #f4ead8;
+            background-color: #f7eddb;
             background-image: repeating-linear-gradient(
                 135deg,
-                rgba(111, 85, 36, 0.95) 0px,
-                rgba(111, 85, 36, 0.95) 1px,
-                transparent 1px,
-                transparent 4px
+                rgba(47, 38, 18, 0.95) 0px,
+                rgba(47, 38, 18, 0.95) 1.2px,
+                transparent 1.2px,
+                transparent 3.2px
             );
         }
 

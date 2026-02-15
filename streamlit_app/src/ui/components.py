@@ -2514,24 +2514,25 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
             line_width = 2.0
         if ref == selected_ref:
             line_color = "#8a6827"
-            line_width = 2.8
+            line_width = 3.2
         if ref == focus_task_ref:
             line_color = "#0d9488"
             line_width = 3.6
 
         pattern_shape = ""
         pattern_fg = "#8a6827"
-        pattern_size = 8
+        pattern_size = 7
         pattern_solidity = 0.0
         if ref == selected_ref:
             # Hatch the selected navigation node so selection stands out without changing base fill color.
-            pattern_shape = "/"
-            pattern_fg = "#6f5524"
-            pattern_size = 8
-            pattern_solidity = 0.18
+            pattern_shape = "x"
+            pattern_fg = "#2f2612"
+            pattern_size = 7
+            pattern_solidity = 0.46
 
         ids.append(ref)
-        labels.append(f"{TYPE_ICONS.get(node_type, '')} {title}")
+        selected_prefix = "▧ " if ref == selected_ref else ""
+        labels.append(f"{selected_prefix}{TYPE_ICONS.get(node_type, '')} {title}")
         parents.append(parent_ref)
         values.append(value)
         fill_colors.append(fill)
@@ -2985,7 +2986,7 @@ def render_atlas_workspace(username):
                         "</div>"
                         "<div class='atlas-map-state-legend'>"
                         "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-focus'></span>Focused task</span>"
-                        "<span class='atlas-map-state-item'><span class='atlas-map-hatch'></span>Selected node</span>"
+                        "<span class='atlas-map-state-item'><span class='atlas-map-hatch'></span>Selected node (hatch / ▧)</span>"
                         "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-path'></span>Path context</span>"
                         "</div>"
                     ),
