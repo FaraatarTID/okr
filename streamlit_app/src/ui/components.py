@@ -2013,6 +2013,20 @@ def _atlas_descendant_refs(root_ref: str, index, limit: int = 350):
     return refs
 
 
+def _atlas_scope_refs(roots, index, limit: int = 800):
+    refs = []
+    seen = set()
+    for root_ref in roots:
+        for ref in _atlas_descendant_refs(root_ref, index, limit=limit):
+            if ref in seen:
+                continue
+            seen.add(ref)
+            refs.append(ref)
+            if len(refs) >= limit:
+                return refs
+    return refs
+
+
 def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str):
     ids = []
     labels = []
@@ -2445,9 +2459,28 @@ def render_atlas_workspace(username):
     with focus_map_tab:
         with st.container(border=True):
             st.markdown("<div class='atlas-kicker'>Focus Map</div>", unsafe_allow_html=True)
+            st.caption("Click any tile to set focus and navigate to that node.")
             map_cols = st.columns([2.4, 1.2], gap="large")
 
-            map_refs = _atlas_descendant_refs(selected_ref, index)
+            map_lens_options = ["Scope", "Branch"]
+            if st.session_state.get("atlas_map_lens") not in map_lens_options:
+                st.session_state["atlas_map_lens"] = "Scope"
+            map_lens = st.segmented_control(
+                "Map Lens",
+                options=map_lens_options,
+                key="atlas_map_lens",
+                selection_mode="single",
+                label_visibility="collapsed",
+                default=st.session_state["atlas_map_lens"],
+            )
+            if map_lens not in map_lens_options:
+                map_lens = "Scope"
+
+            map_refs = (
+                _atlas_scope_refs(roots, index, limit=800)
+                if map_lens == "Scope"
+                else _atlas_descendant_refs(selected_ref, index, limit=400)
+            )
             treemap = _build_atlas_treemap(map_refs, index, selected_ref, focus_task_ref)
             if treemap is not None:
                 treemap_event = map_cols[0].plotly_chart(
@@ -2476,12 +2509,26 @@ def render_atlas_workspace(username):
                             selected_point = points[-1]
 
                 clicked_ref = None
-                if isinstance(selected_point, dict):
-                    customdata = selected_point.get("customdata")
-                    if isinstance(customdata, list) and customdata:
-                        clicked_ref = customdata[0]
-                    if not clicked_ref:
-                        clicked_ref = selected_point.get("id")
+                if selected_point is not None:
+                    if isinstance(selected_point, dict):
+                        customdata = selected_point.get("customdata")
+                        if isinstance(customdata, (list, tuple)) and customdata:
+                            clicked_ref = customdata[0]
+                        elif isinstance(customdata, str):
+                            clicked_ref = customdata
+                        if not clicked_ref:
+                            clicked_ref = selected_point.get("id")
+                    else:
+                        customdata = getattr(selected_point, "customdata", None)
+                        if isinstance(customdata, (list, tuple)) and customdata:
+                            clicked_ref = customdata[0]
+                        elif isinstance(customdata, str):
+                            clicked_ref = customdata
+                        if not clicked_ref:
+                            clicked_ref = getattr(selected_point, "id", None)
+
+                if clicked_ref is not None:
+                    clicked_ref = str(clicked_ref)
 
                 if clicked_ref in index:
                     if st.session_state.get("atlas_map_last_click_ref") != clicked_ref:
@@ -2498,9 +2545,13 @@ def render_atlas_workspace(username):
             else:
                 map_cols[0].info("No map data available.")
 
-            if task_refs:
+            map_task_refs = [
+                ref for ref in map_refs
+                if ref in index and index[ref]["type"] == "TASK"
+            ]
+            if map_task_refs:
                 ranked_focus_refs = sorted(
-                    task_refs,
+                    map_task_refs,
                     key=lambda ref: (
                         0 if getattr(index[ref]["node"], "timer_started_at", None) is not None else 1,
                         0 if _atlas_needs_attention(index[ref], index) else 1,
@@ -2520,7 +2571,10 @@ def render_atlas_workspace(username):
                         f"{meta['owner_name']} | {_atlas_status_label(meta)} | {meta['progress']}%"
                     )
             else:
-                map_cols[1].info("No tasks to choose focus from in this branch.")
+                if map_lens == "Scope":
+                    map_cols[1].info("No tasks available in current scope.")
+                else:
+                    map_cols[1].info("No tasks to choose focus from in this branch.")
 
     with flow_tab:
         with st.container(border=True):
@@ -2672,16 +2726,6 @@ def render_atlas_workspace(username):
             if not selected_type or selected_id is None:
                 st.info("Select a node to inspect.")
             else:
-                selected_node = index[selected_ref]["node"]
-                if index[selected_ref]["children"]:
-                    if st.button(
-                        "Open Mind Map",
-                        key=f"atlas_map_{selected_ref}",
-                        use_container_width=True,
-                    ):
-                        from src.ui.dialogs import render_mindmap_dialog
-
-                        render_mindmap_dialog(getattr(selected_node, "id", None))
                 render_inspector_content(selected_id, selected_type, username, show_close=False)
 
 def render_card(node, username):

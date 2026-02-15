@@ -71,9 +71,10 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 2. Work-plane: Progressive disclosure
 - `Focus Map` is the first-glance visual overview for focus choice.
+- `Focus Map` defaults to full scope lens and supports branch lens for local drill-in.
 - `Flow Board` is optimized for throughput (open node, set focus, add child).
 - `Hierarchy` is optimized for structural movement (expand/collapse/select).
-- `Inspector` is optimized for depth (details, edits, map).
+- `Inspector` is optimized for depth (details and edits).
 
 3. State contracts
 - `atlas_selected_ref`: single source of truth for current node context.
