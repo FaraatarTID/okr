@@ -75,6 +75,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 2. Work-plane: Progressive disclosure
 - `Focus Map` is the first-glance visual overview for focus choice.
 - `Focus Map` encodes urgency with explicit visual semantics (`Overdue`, `At risk`, `Low progress`, `Child risk`, `On track`, `Complete`).
+- Treemap urgency is intentionally grouped into a coherent `Needs care` tone to avoid visual overload.
 - `Focus Map` defaults to full scope lens and supports branch lens for local drill-in.
 - `Flow Board` is optimized for throughput (open node, set focus, add child).
 - `Flow Board` defaults to action-oriented cards (minimal metrics, clear next action).

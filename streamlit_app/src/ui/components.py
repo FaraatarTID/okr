@@ -2119,14 +2119,9 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
             color = "#8a6827"
         elif ref in path_refs:
             color = "#b9914a"
-        elif attention_kind == "overdue":
-            color = "#b93824"
-        elif attention_kind == "risk":
+        elif attention_kind in {"overdue", "risk", "low_progress", "inherited"}:
+            # Keep "needs care" visually coherent instead of using multiple competing tones.
             color = "#c36d27"
-        elif attention_kind == "low_progress":
-            color = "#d1a73f"
-        elif attention_kind == "inherited":
-            color = "#7a59be"
         elif progress >= 100:
             color = "#b5becb"
         else:
@@ -2553,21 +2548,20 @@ def render_atlas_workspace(username):
                     key="atlas_commit_preset",
                     selection_mode="single",
                     label_visibility="collapsed",
-                    default=st.session_state["atlas_commit_preset"],
                 )
                 if preset_choice not in preset_options:
                     preset_choice = "25m"
 
                 target_minutes = _atlas_commit_target_minutes(preset_choice)
                 if preset_choice == "Custom":
-                    default_custom = int(st.session_state.get("atlas_commit_custom_min") or 35)
+                    if "atlas_commit_custom_min" not in st.session_state:
+                        st.session_state["atlas_commit_custom_min"] = 35
                     custom_minutes = int(
                         st.number_input(
                             "Custom Sprint (min)",
                             min_value=5,
                             max_value=240,
                             step=5,
-                            value=default_custom,
                             key="atlas_commit_custom_min",
                         )
                     )
@@ -2705,7 +2699,6 @@ def render_atlas_workspace(username):
                 key="atlas_map_lens",
                 selection_mode="single",
                 label_visibility="collapsed",
-                default=st.session_state["atlas_map_lens"],
             )
             if map_lens not in map_lens_options:
                 map_lens = "Scope"
