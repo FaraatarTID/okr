@@ -42,7 +42,7 @@ def test_needs_attention_false_for_completed_task():
 def test_attention_kind_and_reason_for_low_progress_task():
     meta = _task_meta(progress=10)
     assert _atlas_attention_kind(meta) == "low_progress"
-    assert _atlas_attention_reason(meta) == "Low progress"
+    assert _atlas_attention_reason(meta) == "Needs care"
 
 
 def test_attention_kind_and_reason_for_done_task():
@@ -62,7 +62,7 @@ def test_attention_kind_for_parent_is_inherited_when_child_needs_attention():
         "task_1": _task_meta(progress=20),
     }
     assert _atlas_attention_kind(index["objective_1"], index=index) == "inherited"
-    assert _atlas_attention_reason(index["objective_1"], index=index) == "Child needs attention"
+    assert _atlas_attention_reason(index["objective_1"], index=index) == "Needs care"
 
 
 def test_parent_inherits_attention_from_descendant_when_index_provided():

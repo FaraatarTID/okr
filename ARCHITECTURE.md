@@ -8,7 +8,7 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
-  - Primary hierarchy UX: Atlas timer-first workspace (`Focus Dock` + `Timer Studio` + `Focus Map` + `Flow Board` + `Hierarchy` + `Inspector`)
+  - Primary hierarchy UX: Atlas focus-first workspace (`Focus Map` + `Flow Board` + `Hierarchy` + `Inspector`)
   - Compatibility UX: Classic drill-down cards with breadcrumb navigation
 - Domain/data operations: `streamlit_app/src/crud.py`
 - Extracted domain modules:
@@ -52,8 +52,7 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 - `render_level` dispatches to `render_atlas_workspace` when `workspace_mode=Atlas`.
 - Top command bar handles quick jump and role-aware scope/focus/sort controls.
 - Advanced focus/sort controls are tucked into `Refine View` to keep first glance calm.
-- `Focus Dock` computes and presents a single focus task with always-visible focus selection.
-- `Timer Studio` shows active session visibility and multi-task running controls.
+- Focus selection and timer commitment are consolidated inside `Focus Map` to avoid duplicated surfaces.
 - Workspace uses progressive disclosure tabs:
   - `Focus Map`: first-glance clickable treemap + urgency legend + ranked focus candidates + commit spotlight
     - `Commit Spotlight`: single dominant commit action with sprint presets (`25m`, `50m`, `Custom`)
@@ -65,16 +64,15 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 Interaction model is intentionally split into control-plane and work-plane:
 
-1. Control-plane: Focus Dock + Timer Studio
-- Focus selection is always visible in Focus Dock.
-- Primary timer commitment happens in `Commit Spotlight` inside Focus Map.
-- Timer Studio remains dedicated to running-session visibility/control.
+1. Control-plane: Focus Map Commit Loop
+- Focus selection and sprint control happen in one place (`Focus Map`).
+- Primary timer commitment happens in `Commit Spotlight`.
 - Focused task state is sticky across tab changes.
 - Human-first prompts and status chips provide instant context without metric overload.
 
 2. Work-plane: Progressive disclosure
 - `Focus Map` is the first-glance visual overview for focus choice.
-- `Focus Map` encodes urgency with explicit visual semantics (`Overdue`, `At risk`, `Low progress`, `Child risk`, `On track`, `Complete`).
+- `Focus Map` encodes urgency with explicit visual semantics while presenting a simplified human label (`Needs care` / `On track` / `Complete`).
 - Treemap urgency is intentionally grouped into a coherent `Needs care` tone to avoid visual overload.
 - `Focus Map` defaults to full scope lens and supports branch lens for local drill-in.
 - `Flow Board` is optimized for throughput (open node, set focus, add child).
