@@ -196,6 +196,7 @@ def _clear_user_session():
         "atlas_focus_task_ref",
         "atlas_focus_task_picker",
         "atlas_last_selected_ref",
+        "atlas_map_lens",
         "atlas_map_last_click_ref",
         "atlas_breadcrumbs",
         "workspace_mode",
@@ -333,6 +334,7 @@ def render_app(username):
             "atlas_focus_task_ref",
             "atlas_focus_task_picker",
             "atlas_last_selected_ref",
+            "atlas_map_lens",
             "atlas_map_last_click_ref",
         ]:
             if key in st.session_state:
@@ -359,6 +361,7 @@ def render_app(username):
             "atlas_focus_task_ref",
             "atlas_focus_task_picker",
             "atlas_last_selected_ref",
+            "atlas_map_lens",
             "atlas_map_last_click_ref",
             "active_inspector_id",
         ]:

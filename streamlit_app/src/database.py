@@ -117,7 +117,7 @@ def _create_engine(url: str):
 
 _engine = None
 _migrations_lock = Lock()
-_migrations_applied = False
+_migrations_applied_urls = set()
 
 
 def _resolved_database_url() -> str:
@@ -161,15 +161,17 @@ def _database_is_at_migration_head(alembic_cfg) -> bool:
 
 def run_migrations():
     """Run Alembic migrations programmatically with the active DATABASE_URL."""
-    global _migrations_applied
-    if _migrations_applied:
+    global _migrations_applied_urls
+    active_url = _resolved_database_url()
+    if active_url in _migrations_applied_urls:
         return
 
     from alembic.config import Config
     from alembic import command
 
     with _migrations_lock:
-        if _migrations_applied:
+        active_url = _resolved_database_url()
+        if active_url in _migrations_applied_urls:
             return
 
         current_dir = os.path.dirname(__file__)  # streamlit_app/src
@@ -178,7 +180,7 @@ def run_migrations():
 
         alembic_cfg = Config(ini_path)
         # Ensure Alembic uses the same database as the app
-        alembic_cfg.set_main_option("sqlalchemy.url", _resolved_database_url())
+        alembic_cfg.set_main_option("sqlalchemy.url", active_url)
         # Also ensure script_location resolves correctly when running from this CWD
         script_location = os.path.join(parent_dir, "alembic")
         alembic_cfg.set_main_option("script_location", script_location)
@@ -193,7 +195,7 @@ def run_migrations():
             else:
                 raise
 
-        _migrations_applied = True
+        _migrations_applied_urls.add(active_url)
 
 
 def create_db_and_tables():
