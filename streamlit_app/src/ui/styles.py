@@ -303,22 +303,41 @@ def inject_atlas_styles():
             line-height: 1.45;
         }
 
-        .atlas-map-focus {
-            background: #0d9488;
-            border-color: #0b7f75;
-            color: #ffffff;
+        .atlas-map-state-legend {
+            margin-top: 0.2rem;
+            margin-bottom: 0.55rem;
+            display: grid;
+            gap: 0.28rem;
         }
 
-        .atlas-map-selected {
-            background: #8a6827;
-            border-color: #785920;
-            color: #ffffff;
+        .atlas-map-state-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.36rem;
+            color: #51606f;
+            font-size: 0.77rem;
+            font-weight: 560;
         }
 
-        .atlas-map-path {
-            background: #b9914a;
-            border-color: #a6813f;
-            color: #ffffff;
+        .atlas-map-ring {
+            width: 0.72rem;
+            height: 0.72rem;
+            border-radius: 999px;
+            display: inline-block;
+            background: rgba(255, 255, 255, 0.8);
+            border: 2px solid #b4bcc8;
+        }
+
+        .atlas-map-ring-focus {
+            border-color: #0d9488;
+        }
+
+        .atlas-map-ring-selected {
+            border-color: #8a6827;
+        }
+
+        .atlas-map-ring-path {
+            border-color: #b9914a;
         }
 
         .atlas-map-needs {

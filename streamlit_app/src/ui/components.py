@@ -7,6 +7,10 @@ from datetime import datetime
 import plotly.graph_objects as go
 import pandas as pd
 from streamlit_agraph import agraph, Node, Edge, Config
+try:
+    from streamlit_plotly_events import plotly_events
+except Exception:
+    plotly_events = None
 
 # Import UI constants
 from src.ui.styles import (
@@ -1985,40 +1989,80 @@ def _atlas_suggested_next_reason(meta, actor_id: int, index=None) -> str:
     return "Continue momentum"
 
 
-def _atlas_extract_clicked_ref(selected_point) -> str | None:
+def _atlas_point_value(point, keys):
+    key_candidates = keys if isinstance(keys, (list, tuple)) else [keys]
+    for key in key_candidates:
+        if isinstance(point, dict):
+            if key in point:
+                return point.get(key)
+        else:
+            value = getattr(point, key, None)
+            if value is not None:
+                return value
+    return None
+
+
+def _atlas_extract_clicked_ref(selected_point, point_refs=None, label_lookup=None) -> str | None:
     if selected_point is None:
         return None
 
     clicked_ref = None
-    if isinstance(selected_point, dict):
-        customdata = selected_point.get("customdata")
-        if isinstance(customdata, (list, tuple)) and customdata:
-            clicked_ref = customdata[0]
-        elif isinstance(customdata, str):
-            clicked_ref = customdata
-        if not clicked_ref:
-            clicked_ref = selected_point.get("id")
-    else:
-        customdata = getattr(selected_point, "customdata", None)
-        if isinstance(customdata, (list, tuple)) and customdata:
-            clicked_ref = customdata[0]
-        elif isinstance(customdata, str):
-            clicked_ref = customdata
-        if not clicked_ref:
-            clicked_ref = getattr(selected_point, "id", None)
+
+    customdata = _atlas_point_value(selected_point, "customdata")
+    if isinstance(customdata, (list, tuple)) and customdata:
+        clicked_ref = customdata[0]
+        if isinstance(clicked_ref, (list, tuple)) and clicked_ref:
+            clicked_ref = clicked_ref[0]
+    elif isinstance(customdata, str):
+        clicked_ref = customdata
+    elif isinstance(customdata, dict):
+        clicked_ref = customdata.get("ref") or customdata.get("id")
+
+    if not clicked_ref:
+        clicked_ref = _atlas_point_value(selected_point, "id")
+
+    if not clicked_ref and point_refs:
+        raw_idx = _atlas_point_value(
+            selected_point,
+            ("point_index", "pointIndex", "point_number", "pointNumber"),
+        )
+        if raw_idx is not None:
+            try:
+                point_idx = int(raw_idx)
+            except Exception:
+                point_idx = -1
+            if 0 <= point_idx < len(point_refs):
+                clicked_ref = point_refs[point_idx]
+
+    if not clicked_ref and label_lookup:
+        point_label = _atlas_point_value(selected_point, ("label", "text"))
+        if point_label is not None:
+            matched_refs = label_lookup.get(str(point_label), [])
+            if len(matched_refs) == 1:
+                clicked_ref = matched_refs[0]
 
     if clicked_ref is None:
         return None
     return str(clicked_ref)
 
 
-def _atlas_extract_clicked_ref_from_points(points, index=None, current_selected: str | None = None) -> str | None:
+def _atlas_extract_clicked_ref_from_points(
+    points,
+    index=None,
+    current_selected: str | None = None,
+    point_refs=None,
+    label_lookup=None,
+) -> str | None:
     if not points:
         return None
 
     refs = []
     for point in points:
-        ref = _atlas_extract_clicked_ref(point)
+        ref = _atlas_extract_clicked_ref(
+            point,
+            point_refs=point_refs,
+            label_lookup=label_lookup,
+        )
         if ref:
             refs.append(ref)
     if not refs:
@@ -2038,10 +2082,33 @@ def _atlas_extract_clicked_ref_from_points(points, index=None, current_selected:
         in_index = [ref for ref in candidate_refs if ref in index]
         if in_index:
             candidate_refs = in_index
+        else:
+            return None
         # Treemap point payloads may include multiple nodes across a path. Use deepest node.
         return max(candidate_refs, key=lambda ref: int(index.get(ref, {}).get("depth", -1)))
 
     return candidate_refs[-1]
+
+
+def _atlas_extract_selection_points(event_payload):
+    if event_payload is None:
+        return []
+
+    if isinstance(event_payload, list):
+        return list(event_payload)
+
+    if isinstance(event_payload, dict):
+        selection_data = event_payload.get("selection")
+    else:
+        selection_data = getattr(event_payload, "selection", None)
+
+    if selection_data is None:
+        return []
+    if isinstance(selection_data, dict):
+        points = selection_data.get("points", [])
+    else:
+        points = getattr(selection_data, "points", [])
+    return list(points or [])
 
 
 def _atlas_task_rollup(task_refs, index):
@@ -2108,7 +2175,9 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
     labels = []
     parents = []
     values = []
-    colors = []
+    fill_colors = []
+    line_colors = []
+    line_widths = []
     custom = []
 
     path_refs = set(selected_path_refs or [])
@@ -2131,25 +2200,32 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
         else:
             value = max(2, len(meta.get("children", [])) * 6)
 
-        if ref == focus_task_ref:
-            color = "#0d9488"
-        elif ref == selected_ref:
-            color = "#8a6827"
-        elif ref in path_refs:
-            color = "#b9914a"
-        elif attention_kind in {"overdue", "risk", "low_progress", "inherited"}:
-            # Keep "needs care" visually coherent instead of using multiple competing tones.
-            color = "#c36d27"
+        if attention_kind in {"overdue", "risk", "low_progress", "inherited"}:
+            fill = "#c36d27"
         elif progress >= 100:
-            color = "#b5becb"
+            fill = "#b5becb"
         else:
-            color = "#e5d6bb"
+            fill = "#e5d6bb"
+
+        line_color = "#f5ede0"
+        line_width = 1.4
+        if ref in path_refs:
+            line_color = "#b9914a"
+            line_width = 2.0
+        if ref == selected_ref:
+            line_color = "#8a6827"
+            line_width = 2.8
+        if ref == focus_task_ref:
+            line_color = "#0d9488"
+            line_width = 3.6
 
         ids.append(ref)
         labels.append(f"{TYPE_ICONS.get(node_type, '')} {title}")
         parents.append(parent_ref)
         values.append(value)
-        colors.append(color)
+        fill_colors.append(fill)
+        line_colors.append(line_color)
+        line_widths.append(line_width)
         custom.append(
             [
                 ref,
@@ -2170,7 +2246,7 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
             parents=parents,
             values=values,
             branchvalues="remainder",
-            marker=dict(colors=colors, line=dict(color="#f5ede0", width=1.5)),
+            marker=dict(colors=fill_colors, line=dict(color=line_colors, width=line_widths)),
             textinfo="label",
             customdata=custom,
             hovertemplate="<b>%{label}</b><br>%{customdata[1]}<extra></extra>",
@@ -2542,12 +2618,14 @@ def render_atlas_workspace(username):
                 map_cols[1].markdown(
                     (
                         "<div class='atlas-attn-legend'>"
-                        "<span class='atlas-map-chip atlas-map-focus'>Focused</span>"
-                        "<span class='atlas-map-chip atlas-map-selected'>Selected</span>"
-                        "<span class='atlas-map-chip atlas-map-path'>Path</span>"
                         "<span class='atlas-map-chip atlas-map-needs'>Needs care</span>"
                         "<span class='atlas-map-chip atlas-map-ontrack'>On track</span>"
                         "<span class='atlas-map-chip atlas-map-done'>Complete</span>"
+                        "</div>"
+                        "<div class='atlas-map-state-legend'>"
+                        "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-focus'></span>Focused task</span>"
+                        "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-selected'></span>Selected node</span>"
+                        "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-path'></span>Path context</span>"
                         "</div>"
                     ),
                     unsafe_allow_html=True,
@@ -2593,32 +2671,49 @@ def render_atlas_workspace(username):
                     selected_path_refs=selected_path_refs,
                 )
                 if treemap is not None:
-                    treemap_event = map_cols[0].plotly_chart(
-                        treemap,
-                        use_container_width=True,
-                        config={"displayModeBar": False},
-                        key=f"atlas_focus_treemap_{selected_ref}",
-                        on_select="rerun",
-                        selection_mode=("points",),
-                    )
+                    chart_key = f"atlas_focus_treemap_{selected_ref}"
+                    trace = treemap.data[0] if treemap.data else None
+                    point_refs = [str(ref) for ref in (trace.ids or [])] if trace is not None else [str(ref) for ref in map_refs]
+                    point_labels = [str(lbl) for lbl in (trace.labels or [])] if trace is not None else []
+                    label_lookup = {}
+                    for idx, label in enumerate(point_labels):
+                        if idx < len(point_refs):
+                            label_lookup.setdefault(label, []).append(point_refs[idx])
 
                     points = []
-                    if treemap_event is not None:
-                        selection_data = None
-                        if isinstance(treemap_event, dict):
-                            selection_data = treemap_event.get("selection")
-                        else:
-                            selection_data = getattr(treemap_event, "selection", None)
+                    if plotly_events is not None:
+                        try:
+                            points = plotly_events(
+                                treemap,
+                                click_event=True,
+                                select_event=False,
+                                hover_event=False,
+                                override_height=430,
+                                override_width="100%",
+                                key=chart_key,
+                            ) or []
+                        except Exception:
+                            points = []
 
-                        if selection_data is not None:
-                            if isinstance(selection_data, dict):
-                                points = selection_data.get("points", [])
-                            else:
-                                points = getattr(selection_data, "points", [])
+                    if not points:
+                        treemap_event = map_cols[0].plotly_chart(
+                            treemap,
+                            use_container_width=True,
+                            config={"displayModeBar": False},
+                            key=chart_key,
+                            on_select="rerun",
+                            selection_mode=("points",),
+                        )
+                        points = _atlas_extract_selection_points(treemap_event)
+                        if not points:
+                            points = _atlas_extract_selection_points(st.session_state.get(chart_key))
+
                     clicked_ref = _atlas_extract_clicked_ref_from_points(
                         points,
                         index=index,
                         current_selected=selected_ref,
+                        point_refs=point_refs,
+                        label_lookup=label_lookup,
                     )
 
                     if clicked_ref in index and clicked_ref != selected_ref:
