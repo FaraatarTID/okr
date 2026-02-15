@@ -145,6 +145,7 @@ def _cached_get_atlas_scope_snapshot(cycle_id: int, owner_ids_key):
                             "title": key_result.title,
                             "description": key_result.description,
                             "progress": int(key_result.progress or 0),
+                            "gemini_analysis": key_result.gemini_analysis,
                             "tasks": tasks_payload,
                         }
                     )
@@ -1797,9 +1798,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         if st.button("✨ Run Analysis", type="primary", key=f"run_ai_insp_{node_id}"):
             with st.spinner("Analyzing..."):
                 from src.services.ai_service import analyze_node
-                from src.crud import update_key_result, get_goal_tree
-                context_dict = get_goal_tree(as_dict=True)
-                res_ai = analyze_node(node_id, context_dict.get("nodes", {}))
+                from src.crud import update_key_result
+                res_ai = analyze_node(node_id, "KEY_RESULT")
                 
                 if "error" not in res_ai:
                     # Store full analysis dict; update_key_result will serialize
@@ -2049,6 +2049,7 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
             timer_started_at=payload.get("timer_started_at"),
             status=payload.get("status"),
             total_time_spent=int(payload.get("total_time_spent", 0) or 0),
+            gemini_analysis=payload.get("gemini_analysis"),
         )
 
         index[node_ref] = {
@@ -2087,12 +2088,64 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
     return index, roots
 
 
+def _atlas_parse_ai_analysis(raw_analysis):
+    if not raw_analysis:
+        return None
+    if isinstance(raw_analysis, dict):
+        return raw_analysis
+    if isinstance(raw_analysis, str):
+        try:
+            parsed = json.loads(raw_analysis)
+            return parsed if isinstance(parsed, dict) else None
+        except Exception:
+            try:
+                import ast
+
+                parsed = ast.literal_eval(raw_analysis)
+                return parsed if isinstance(parsed, dict) else None
+            except Exception:
+                return None
+    return None
+
+
+def _atlas_ai_overall_score(meta):
+    node = meta.get("node")
+    analysis = _atlas_parse_ai_analysis(getattr(node, "gemini_analysis", None))
+    if not analysis:
+        return None
+    score_val = analysis.get("overall_score")
+    try:
+        return max(0, min(100, int(float(score_val))))
+    except Exception:
+        return None
+
+
+def _atlas_ai_deadline_warnings(meta):
+    node = meta.get("node")
+    analysis = _atlas_parse_ai_analysis(getattr(node, "gemini_analysis", None))
+    if not analysis:
+        return []
+    warnings_list = analysis.get("deadline_warnings") or []
+    if not isinstance(warnings_list, list):
+        return []
+    cleaned = [str(item).strip() for item in warnings_list if str(item).strip()]
+    return cleaned
+
+
 def _atlas_status_label(meta):
     progress = int(meta.get("progress", 0) or 0)
     node_type = meta.get("type")
     node = meta.get("node")
 
     if node_type == "TASK":
+        task_status = str(
+            getattr(getattr(node, "status", None), "value", getattr(node, "status", ""))
+        ).lower()
+        if task_status == "done":
+            return "Done"
+        if task_status == "in_progress" and progress <= 0:
+            return "In progress"
+
         deadline = getattr(node, "deadline", None)
         if deadline is not None:
             try:
@@ -2108,6 +2161,21 @@ def _atlas_status_label(meta):
             return "Not started"
         return "In progress"
 
+    if node_type == "KEY_RESULT":
+        ai_warnings = _atlas_ai_deadline_warnings(meta)
+        if ai_warnings:
+            joined = " ".join(ai_warnings).lower()
+            if "overdue" in joined:
+                return "Overdue (AI)"
+            return "At risk (AI)"
+        ai_score = _atlas_ai_overall_score(meta)
+        if ai_score is not None:
+            if ai_score >= 100:
+                return "Complete (AI)"
+            if ai_score < 40:
+                return "Needs attention (AI)"
+            return "In progress (AI)"
+
     if progress >= 100:
         return "Done"
     if progress < 40:
@@ -2117,10 +2185,29 @@ def _atlas_status_label(meta):
 
 def _atlas_attention_kind(meta, index=None) -> str:
     progress = int(meta.get("progress", 0) or 0)
+    if meta.get("type") == "KEY_RESULT":
+        ai_warnings = _atlas_ai_deadline_warnings(meta)
+        if ai_warnings:
+            joined = " ".join(ai_warnings).lower()
+            if "overdue" in joined:
+                return "overdue"
+            return "risk"
+        ai_score = _atlas_ai_overall_score(meta)
+        if ai_score is not None:
+            if ai_score >= 100:
+                return "done"
+            if ai_score < 40:
+                return "low_progress"
+            if ai_score < 60:
+                return "risk"
+            return "on_track"
+
     if progress >= 100:
         return "done"
 
     status = _atlas_status_label(meta).lower()
+    if "done" in status or "complete" in status:
+        return "done"
     if "overdue" in status:
         return "overdue"
     if "risk" in status:
@@ -3025,6 +3112,138 @@ def render_atlas_workspace(username):
                     if map_lens == "Scope"
                     else _atlas_descendant_refs(selected_ref, index, limit=400)
                 )
+                map_kr_refs = [
+                    ref for ref in map_refs if ref in index and index[ref].get("type") == "KEY_RESULT"
+                ]
+
+                map_cols[1].markdown("**AI**")
+                sync_scope_label = "scope" if map_lens == "Scope" else "branch"
+                map_cols[1].caption(
+                    f"Run AI refresh for visible key results in this {sync_scope_label}."
+                )
+                if "atlas_ai_apply_overall_to_progress" not in st.session_state:
+                    st.session_state["atlas_ai_apply_overall_to_progress"] = False
+                apply_ai_score_to_progress = map_cols[1].toggle(
+                    "Apply AI overall score to KR progress",
+                    key="atlas_ai_apply_overall_to_progress",
+                    disabled=not map_kr_refs,
+                )
+                map_cols[1].caption("Progress is updated from AI overall score; current/target values are unchanged.")
+                if map_cols[1].button(
+                    "AI Progress Sync",
+                    key="atlas_ai_progress_sync_btn",
+                    use_container_width=True,
+                    disabled=not map_kr_refs,
+                ):
+                    from src.services.ai_service import analyze_node
+                    from src.crud import update_key_result, recalculate_rollup_for_key_results
+
+                    total_kr = len(map_kr_refs)
+                    synced = 0
+                    applied_progress = 0
+                    missing_ai_score = 0
+                    rollup_kr_ids = []
+                    failed = []
+                    progress_bar = map_cols[1].progress(
+                        0.0,
+                        text=f"Syncing AI analysis for {total_kr} key result(s)...",
+                    )
+
+                    for idx, kr_ref in enumerate(map_kr_refs, start=1):
+                        kr_meta = index.get(kr_ref, {})
+                        kr_id = kr_meta.get("id")
+                        kr_title = kr_meta.get("title", kr_ref)
+                        if kr_id is None:
+                            failed.append(f"{kr_title}: missing ID")
+                            progress_bar.progress(
+                                idx / total_kr,
+                                text=f"Syncing {idx}/{total_kr}",
+                            )
+                            continue
+
+                        try:
+                            result = analyze_node(int(kr_id), "KEY_RESULT")
+                            if isinstance(result, dict) and "error" not in result:
+                                updates = {"gemini_analysis": result}
+                                if apply_ai_score_to_progress:
+                                    ai_score = None
+                                    try:
+                                        ai_score = max(0, min(100, int(float(result.get("overall_score")))))
+                                    except Exception:
+                                        ai_score = None
+                                    if ai_score is not None:
+                                        updates["progress"] = ai_score
+                                        applied_progress += 1
+                                        rollup_kr_ids.append(int(kr_id))
+                                    else:
+                                        missing_ai_score += 1
+                                update_key_result(
+                                    int(kr_id),
+                                    **updates,
+                                    actor_username=username,
+                                )
+                                synced += 1
+                            else:
+                                err_msg = (
+                                    str(result.get("error"))
+                                    if isinstance(result, dict)
+                                    else "unknown AI error"
+                                )
+                                failed.append(f"{kr_title}: {err_msg}")
+                        except PermissionError as exc:
+                            failed.append(f"{kr_title}: {exc}")
+                        except Exception as exc:
+                            failed.append(f"{kr_title}: {exc}")
+
+                        progress_bar.progress(
+                            idx / total_kr,
+                            text=f"Syncing {idx}/{total_kr}",
+                        )
+
+                    if apply_ai_score_to_progress and rollup_kr_ids:
+                        try:
+                            recalculate_rollup_for_key_results(rollup_kr_ids)
+                        except Exception as exc:
+                            failed.append(f"Rollup refresh failed: {exc}")
+
+                    progress_bar.empty()
+                    st.session_state["atlas_ai_sync_report"] = {
+                        "synced": synced,
+                        "failed": failed[:6],
+                        "total": total_kr,
+                        "apply_progress": bool(apply_ai_score_to_progress),
+                        "applied_progress": int(applied_progress),
+                        "missing_ai_score": int(missing_ai_score),
+                        "at": float(time.time()),
+                    }
+                    st.rerun()
+
+                sync_report = st.session_state.get("atlas_ai_sync_report")
+                if isinstance(sync_report, dict):
+                    sync_age = float(time.time() - float(sync_report.get("at") or 0))
+                    if sync_age <= 20:
+                        synced = int(sync_report.get("synced") or 0)
+                        total = int(sync_report.get("total") or 0)
+                        if bool(sync_report.get("apply_progress")):
+                            applied = int(sync_report.get("applied_progress") or 0)
+                            missing = int(sync_report.get("missing_ai_score") or 0)
+                            msg = (
+                                f"AI sync updated analysis on {synced}/{total} KRs "
+                                f"and applied progress on {applied}."
+                            )
+                            if missing > 0:
+                                msg += f" ({missing} had no usable AI score.)"
+                            map_cols[1].success(msg)
+                        else:
+                            map_cols[1].success(
+                                f"AI sync updated {synced}/{total} key result analysis records."
+                            )
+                        failed_items = list(sync_report.get("failed") or [])
+                        if failed_items:
+                            map_cols[1].warning("Some items failed:\n- " + "\n- ".join(failed_items))
+                    else:
+                        del st.session_state["atlas_ai_sync_report"]
+
                 treemap = _build_atlas_treemap(
                     map_refs,
                     index,

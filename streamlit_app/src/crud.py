@@ -1200,6 +1200,7 @@ def update_goal(
             session.add(goal)
             session.commit()
             session.refresh(goal)
+            clear_cache_safe()
         return goal
 
 
@@ -1228,6 +1229,7 @@ def update_key_result_analysis(
             session.add(kr)
             session.commit()
             session.refresh(kr)
+            clear_cache_safe()
         return kr
 
 
@@ -1249,6 +1251,7 @@ def update_objective(
             session.add(item)
             session.commit()
             session.refresh(item)
+            clear_cache_safe()
         return item
 
 
@@ -1281,6 +1284,7 @@ def update_key_result(
             session.add(item)
             session.commit()
             session.refresh(item)
+            clear_cache_safe()
         return item
 
 
@@ -1318,10 +1322,16 @@ def update_task(
             if hasattr(task, key):
                 setattr(task, key, value)
 
+        # Keep status/progress reasonably in sync for completion semantics unless
+        # caller explicitly sets progress in kwargs.
+        if status == TaskStatus.DONE and "progress" not in kwargs:
+            task.progress = 100
+
         task.updated_at = utc_now_naive()
         session.add(task)
         session.commit()
         session.refresh(task)
+        clear_cache_safe()
         return task
 
 
@@ -1870,6 +1880,45 @@ def update_progress_chain(task_id: int):
                     session.add(goal)
 
         session.commit()
+        clear_cache_safe()
+
+
+def recalculate_rollup_for_key_results(key_result_ids: List[int]) -> None:
+    """
+    Recalculate Objective/Goal progress rollups for affected key results.
+    """
+    unique_ids = sorted({int(kr_id) for kr_id in (key_result_ids or []) if kr_id is not None})
+    if not unique_ids:
+        return
+
+    with get_session_context() as session:
+        objective_ids = set()
+        for key_result_id in unique_ids:
+            kr = session.get(KeyResult, key_result_id)
+            if kr and kr.objective_id is not None:
+                objective_ids.add(int(kr.objective_id))
+
+        goal_ids = set()
+        for objective_id in objective_ids:
+            objective = session.get(Objective, objective_id)
+            if not objective:
+                continue
+            total_kr = sum(int(getattr(kr, "progress", 0) or 0) for kr in objective.key_results)
+            objective.progress = int(total_kr / len(objective.key_results)) if objective.key_results else 0
+            session.add(objective)
+            if objective.goal_id is not None:
+                goal_ids.add(int(objective.goal_id))
+
+        for goal_id in goal_ids:
+            goal = session.get(Goal, goal_id)
+            if not goal:
+                continue
+            total_obj = sum(int(getattr(obj, "progress", 0) or 0) for obj in goal.objectives)
+            goal.progress = int(total_obj / len(goal.objectives)) if goal.objectives else 0
+            session.add(goal)
+
+        session.commit()
+        clear_cache_safe()
 
 
 # ============================================================================
