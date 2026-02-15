@@ -220,8 +220,6 @@ def _clear_user_session():
         "atlas_selected_ref",
         "atlas_jump_query",
         "atlas_scope_selector",
-        "atlas_focus_mode",
-        "atlas_sort_mode",
         "atlas_focus_task_ref",
         "atlas_focus_task_picker",
         "atlas_last_selected_ref",

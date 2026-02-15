@@ -14,7 +14,6 @@ from src.ui.components import (  # noqa: E402
     _atlas_attention_reason,
     _atlas_commit_target_minutes,
     _atlas_extract_clicked_ref,
-    _atlas_matches_focus,
     _atlas_needs_attention,
     _atlas_scope_refs,
 )
@@ -83,20 +82,6 @@ def test_parent_inherits_attention_from_descendant_when_index_provided():
     }
     assert _atlas_needs_attention(index["goal_1"], index=index) is True
     assert _atlas_needs_attention(index["objective_1"], index=index) is True
-
-
-def test_matches_focus_needs_attention_uses_index_semantics():
-    index = {
-        "goal_1": {
-            "type": "GOAL",
-            "progress": 95,
-            "children": ["task_1"],
-            "node": None,
-        },
-        "task_1": _task_meta(progress=15),
-    }
-    assert _atlas_matches_focus(index["goal_1"], "Needs Attention", index=index) is True
-    assert _atlas_matches_focus(index["goal_1"], "Completed", index=index) is False
 
 
 def test_scope_refs_flattens_all_roots_without_duplicates():
