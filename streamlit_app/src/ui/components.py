@@ -2012,6 +2012,38 @@ def _atlas_extract_clicked_ref(selected_point) -> str | None:
     return str(clicked_ref)
 
 
+def _atlas_extract_clicked_ref_from_points(points, index=None, current_selected: str | None = None) -> str | None:
+    if not points:
+        return None
+
+    refs = []
+    for point in points:
+        ref = _atlas_extract_clicked_ref(point)
+        if ref:
+            refs.append(ref)
+    if not refs:
+        return None
+
+    unique_refs = []
+    for ref in refs:
+        if ref not in unique_refs:
+            unique_refs.append(ref)
+
+    if current_selected and current_selected in unique_refs and len(unique_refs) > 1:
+        candidate_refs = [ref for ref in unique_refs if ref != current_selected]
+    else:
+        candidate_refs = list(unique_refs)
+
+    if index is not None:
+        in_index = [ref for ref in candidate_refs if ref in index]
+        if in_index:
+            candidate_refs = in_index
+        # Treemap point payloads may include multiple nodes across a path. Use deepest node.
+        return max(candidate_refs, key=lambda ref: int(index.get(ref, {}).get("depth", -1)))
+
+    return candidate_refs[-1]
+
+
 def _atlas_task_rollup(task_refs, index):
     rollup = {
         "total": 0,
@@ -2254,7 +2286,6 @@ def render_atlas_workspace(username):
     selected_path_refs = set(selected_meta["path"])
     if st.session_state.get("atlas_last_selected_ref") != selected_ref:
         st.session_state["atlas_last_selected_ref"] = selected_ref
-        st.session_state["atlas_map_last_click_ref"] = None
         st.session_state["atlas_breadcrumbs"] = selected_ref
 
     def _collect_task_refs(root_ref: str, limit: int = 200):
@@ -2571,7 +2602,7 @@ def render_atlas_workspace(username):
                         selection_mode=("points",),
                     )
 
-                    selected_point = None
+                    points = []
                     if treemap_event is not None:
                         selection_data = None
                         if isinstance(treemap_event, dict):
@@ -2584,24 +2615,23 @@ def render_atlas_workspace(username):
                                 points = selection_data.get("points", [])
                             else:
                                 points = getattr(selection_data, "points", [])
-                            if points:
-                                selected_point = points[-1]
+                    clicked_ref = _atlas_extract_clicked_ref_from_points(
+                        points,
+                        index=index,
+                        current_selected=selected_ref,
+                    )
 
-                    clicked_ref = _atlas_extract_clicked_ref(selected_point)
-
-                    if clicked_ref in index:
-                        if st.session_state.get("atlas_map_last_click_ref") != clicked_ref:
-                            st.session_state["atlas_map_last_click_ref"] = clicked_ref
-                            st.session_state["atlas_selected_ref"] = clicked_ref
-                            st.session_state["atlas_breadcrumbs"] = clicked_ref
-                            clicked_meta = index[clicked_ref]
-                            if clicked_meta["type"] == "TASK":
-                                st.session_state["atlas_focus_task_ref"] = clicked_ref
-                            else:
-                                branch_tasks = _collect_task_refs(clicked_ref, limit=200)
-                                if branch_tasks:
-                                    st.session_state["atlas_focus_task_ref"] = _suggest_focus_task(branch_tasks) or branch_tasks[0]
-                            st.rerun()
+                    if clicked_ref in index and clicked_ref != selected_ref:
+                        st.session_state["atlas_selected_ref"] = clicked_ref
+                        st.session_state["atlas_breadcrumbs"] = clicked_ref
+                        clicked_meta = index[clicked_ref]
+                        if clicked_meta["type"] == "TASK":
+                            st.session_state["atlas_focus_task_ref"] = clicked_ref
+                        else:
+                            branch_tasks = _collect_task_refs(clicked_ref, limit=200)
+                            if branch_tasks:
+                                st.session_state["atlas_focus_task_ref"] = _suggest_focus_task(branch_tasks) or branch_tasks[0]
+                        st.rerun()
                 else:
                     map_cols[0].info("No map data available.")
 
