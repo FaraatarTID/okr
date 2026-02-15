@@ -309,7 +309,7 @@ def render_admin_panel_dialog():
         st.error("🚫 Access Denied. Admin privileges required.")
         return
     
-    tab1, tab2, tab3 = st.tabs(["👥 User List", "➕ Create User", "🗄️ DB Backup"])
+    tab1, tab2, tab3, tab4 = st.tabs(["👥 User List", "➕ Create User", "🗄️ DB Backup", "🔑 Reset Password"])
     
     with tab1:
         users = get_all_users()
@@ -449,7 +449,8 @@ def render_admin_panel_dialog():
                 except Exception as exc:
                     st.error(f"Backup import failed: {exc}")
     
-    with st.expander("🔑 Reset Password"):
+    with tab4:
+        st.markdown("#### Reset Password")
         user_list_reset = get_all_users()
         user_options_reset = {u.display_name: u.id for u in user_list_reset}
         selected_user = st.selectbox("Select User", options=list(user_options_reset.keys()), key="reset_user")
