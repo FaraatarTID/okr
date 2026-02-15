@@ -18,6 +18,8 @@ from src.ui.components import (  # noqa: E402
     _atlas_extract_selection_points,
     _atlas_needs_attention,
     _atlas_scope_refs,
+    _atlas_should_show_soft_reminder,
+    _atlas_sprint_run_key,
     _atlas_suggested_next_reason,
     _atlas_suggested_next_score,
 )
@@ -111,6 +113,20 @@ def test_commit_target_minutes_normalizes_presets_and_bounds():
     assert _atlas_commit_target_minutes("Custom", 1) == 5
     assert _atlas_commit_target_minutes("Custom", None) == 35
     assert _atlas_commit_target_minutes("unknown") == 25
+
+
+def test_sprint_run_key_requires_valid_task_target_and_start_time():
+    assert _atlas_sprint_run_key("task_1", 25, 1730000000.0) == "task_1|25|1730000000"
+    assert _atlas_sprint_run_key("task_1", 0, 1730000000.0) is None
+    assert _atlas_sprint_run_key("task_1", 25, None) is None
+    assert _atlas_sprint_run_key(None, 25, 1730000000.0) is None
+
+
+def test_soft_reminder_shows_once_after_target_until_dismissed():
+    sprint_key = "task_1|25|1730000000"
+    assert _atlas_should_show_soft_reminder(25, 25, sprint_key, dismissed_key=None) is True
+    assert _atlas_should_show_soft_reminder(45, 25, sprint_key, dismissed_key=sprint_key) is False
+    assert _atlas_should_show_soft_reminder(20, 25, sprint_key, dismissed_key=None) is False
 
 
 def test_suggested_next_prioritizes_running_then_attention_then_owner():
