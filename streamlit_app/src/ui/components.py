@@ -2474,6 +2474,10 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
     fill_colors = []
     line_colors = []
     line_widths = []
+    pattern_shapes = []
+    pattern_fgcolors = []
+    pattern_sizes = []
+    pattern_solidities = []
     custom = []
 
     path_refs = set(selected_path_refs or [])
@@ -2515,6 +2519,17 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
             line_color = "#0d9488"
             line_width = 3.6
 
+        pattern_shape = ""
+        pattern_fg = "#8a6827"
+        pattern_size = 8
+        pattern_solidity = 0.0
+        if ref == selected_ref:
+            # Hatch the selected navigation node so selection stands out without changing base fill color.
+            pattern_shape = "/"
+            pattern_fg = "#6f5524"
+            pattern_size = 8
+            pattern_solidity = 0.18
+
         ids.append(ref)
         labels.append(f"{TYPE_ICONS.get(node_type, '')} {title}")
         parents.append(parent_ref)
@@ -2522,6 +2537,10 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
         fill_colors.append(fill)
         line_colors.append(line_color)
         line_widths.append(line_width)
+        pattern_shapes.append(pattern_shape)
+        pattern_fgcolors.append(pattern_fg)
+        pattern_sizes.append(pattern_size)
+        pattern_solidities.append(pattern_solidity)
         custom.append(
             [
                 ref,
@@ -2542,7 +2561,16 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
             parents=parents,
             values=values,
             branchvalues="remainder",
-            marker=dict(colors=fill_colors, line=dict(color=line_colors, width=line_widths)),
+            marker=dict(
+                colors=fill_colors,
+                line=dict(color=line_colors, width=line_widths),
+                pattern=dict(
+                    shape=pattern_shapes,
+                    fgcolor=pattern_fgcolors,
+                    size=pattern_sizes,
+                    solidity=pattern_solidities,
+                ),
+            ),
             textinfo="label",
             customdata=custom,
             hovertemplate="<b>%{label}</b><br>%{customdata[1]}<extra></extra>",
@@ -2957,7 +2985,7 @@ def render_atlas_workspace(username):
                         "</div>"
                         "<div class='atlas-map-state-legend'>"
                         "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-focus'></span>Focused task</span>"
-                        "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-selected'></span>Selected node</span>"
+                        "<span class='atlas-map-state-item'><span class='atlas-map-hatch'></span>Selected node</span>"
                         "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-path'></span>Path context</span>"
                         "</div>"
                     ),

@@ -12,6 +12,7 @@ if str(APP_DIR) not in sys.path:
 from src.ui.components import (  # noqa: E402
     _atlas_attention_kind,
     _atlas_attention_reason,
+    _build_atlas_treemap,
     _build_atlas_index_from_snapshot,
     _atlas_commit_target_minutes,
     _atlas_extract_clicked_ref,
@@ -79,6 +80,45 @@ def test_build_atlas_index_from_snapshot_preserves_hierarchy_and_owner():
     assert "task_4" in index
     assert index["task_4"]["path"] == ["goal_1", "objective_2", "key_result_3", "task_4"]
     assert index["task_4"]["owner_name"] == "Owner"
+
+
+def test_treemap_selected_node_uses_hatch_pattern_without_changing_status_fill():
+    index = {
+        "goal_1": {
+            "ref": "goal_1",
+            "type": "GOAL",
+            "title": "Goal",
+            "progress": 20,
+            "children": ["task_2"],
+            "parent": None,
+            "path": ["goal_1"],
+            "node": SimpleNamespace(deadline=None, timer_started_at=None),
+        },
+        "task_2": {
+            "ref": "task_2",
+            "type": "TASK",
+            "title": "Task",
+            "progress": 20,
+            "children": [],
+            "parent": "goal_1",
+            "path": ["goal_1", "task_2"],
+            "node": SimpleNamespace(deadline=None, timer_started_at=None),
+        },
+    }
+    fig = _build_atlas_treemap(
+        refs=["goal_1", "task_2"],
+        index=index,
+        selected_ref="goal_1",
+        focus_task_ref="task_2",
+        selected_path_refs={"goal_1"},
+    )
+    assert fig is not None
+    trace = fig.data[0]
+    goal_idx = list(trace.ids).index("goal_1")
+    task_idx = list(trace.ids).index("task_2")
+    assert trace.marker.pattern.shape[goal_idx] == "/"
+    assert trace.marker.pattern.shape[task_idx] == ""
+    assert trace.marker.colors[goal_idx] == "#c36d27"
 
 
 def test_needs_attention_for_incomplete_task_below_threshold():
