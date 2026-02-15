@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import time
 import os
 import sys
@@ -1990,6 +1991,60 @@ def _atlas_should_show_soft_reminder(
     return target > 0 and elapsed >= target
 
 
+def _atlas_should_emit_target_notification(sprint_key: str | None, emitted_key: str | None) -> bool:
+    return bool(sprint_key and sprint_key != emitted_key)
+
+
+def _atlas_fire_browser_notification(title: str, body: str):
+    title_json = json.dumps(str(title or "Sprint update"))
+    body_json = json.dumps(str(body or "Target reached"))
+    components.html(
+        f"""
+        <script>
+        (function () {{
+          const title = {title_json};
+          const body = {body_json};
+          try {{
+            const beep = () => {{
+              const Ctx = window.AudioContext || window.webkitAudioContext;
+              if (!Ctx) return;
+              const ctx = new Ctx();
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = "sine";
+              osc.frequency.value = 880;
+              gain.gain.value = 0.04;
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.start();
+              setTimeout(() => {{
+                osc.stop();
+                if (ctx.close) ctx.close();
+              }}, 180);
+            }};
+            beep();
+            if (!("Notification" in window)) return;
+            if (Notification.permission === "granted") {{
+              new Notification(title, {{ body }});
+              return;
+            }}
+            if (Notification.permission === "default") {{
+              Notification.requestPermission().then((permission) => {{
+                if (permission === "granted") {{
+                  new Notification(title, {{ body }});
+                }}
+              }});
+            }}
+          }} catch (e) {{
+            // best-effort only
+          }}
+        }})();
+        </script>
+        """,
+        height=0,
+    )
+
+
 def _atlas_suggested_next_score(meta, actor_id: int, index=None):
     running = getattr(meta.get("node"), "timer_started_at", None) is not None
     attention_kind = _atlas_attention_kind(meta, index)
@@ -2582,6 +2637,7 @@ def render_atlas_workspace(username):
                         "atlas_sprint_task_ref",
                         "atlas_sprint_started_at_epoch",
                         "atlas_sprint_reminder_dismissed_for",
+                        "atlas_sprint_notification_sent_for",
                     ]:
                         if state_key in st.session_state:
                             del st.session_state[state_key]
@@ -2621,6 +2677,17 @@ def render_atlas_workspace(username):
                         sprint_key=sprint_key,
                         dismissed_key=dismissed_key,
                     ):
+                        emitted_key = st.session_state.get("atlas_sprint_notification_sent_for")
+                        if _atlas_should_emit_target_notification(sprint_key, emitted_key):
+                            st.toast(
+                                f"Sprint target reached: {target_for_focus}m on {focus_meta['title']}",
+                                icon="⏱️",
+                            )
+                            _atlas_fire_browser_notification(
+                                "Sprint target reached",
+                                f"{focus_meta['title']} hit {target_for_focus}m. Stop now or keep running.",
+                            )
+                            st.session_state["atlas_sprint_notification_sent_for"] = sprint_key
                         overtime_minutes = max(0, elapsed_minutes - target_for_focus)
                         spotlight_cols[0].warning(
                             f"Sprint target reached ({target_for_focus}m). "
@@ -2671,6 +2738,8 @@ def render_atlas_workspace(username):
                             st.session_state["atlas_sprint_started_at_epoch"] = float(time.time())
                             if "atlas_sprint_reminder_dismissed_for" in st.session_state:
                                 del st.session_state["atlas_sprint_reminder_dismissed_for"]
+                            if "atlas_sprint_notification_sent_for" in st.session_state:
+                                del st.session_state["atlas_sprint_notification_sent_for"]
                             st.rerun()
 
                 if not can_track_focus:

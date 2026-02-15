@@ -18,6 +18,7 @@ from src.ui.components import (  # noqa: E402
     _atlas_extract_selection_points,
     _atlas_needs_attention,
     _atlas_scope_refs,
+    _atlas_should_emit_target_notification,
     _atlas_should_show_soft_reminder,
     _atlas_sprint_run_key,
     _atlas_suggested_next_reason,
@@ -127,6 +128,13 @@ def test_soft_reminder_shows_once_after_target_until_dismissed():
     assert _atlas_should_show_soft_reminder(25, 25, sprint_key, dismissed_key=None) is True
     assert _atlas_should_show_soft_reminder(45, 25, sprint_key, dismissed_key=sprint_key) is False
     assert _atlas_should_show_soft_reminder(20, 25, sprint_key, dismissed_key=None) is False
+
+
+def test_soft_notification_emits_once_per_sprint_key():
+    sprint_key = "task_1|25|1730000000"
+    assert _atlas_should_emit_target_notification(sprint_key, emitted_key=None) is True
+    assert _atlas_should_emit_target_notification(sprint_key, emitted_key=sprint_key) is False
+    assert _atlas_should_emit_target_notification(None, emitted_key=None) is False
 
 
 def test_suggested_next_prioritizes_running_then_attention_then_owner():
