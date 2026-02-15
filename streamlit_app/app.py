@@ -386,10 +386,11 @@ def render_app(username):
 
     st.sidebar.markdown("---")
 
-    st.sidebar.markdown("### Experience")
     st.session_state["workspace_mode"] = "Atlas"
-    st.sidebar.success("Atlas Workspace Active")
-    st.sidebar.caption(f"Build `{_get_build_fingerprint()}`")
+    if user_role == "admin":
+        st.sidebar.markdown("### Experience")
+        st.sidebar.success("Atlas Workspace Active")
+        st.sidebar.caption(f"Build `{_get_build_fingerprint()}`")
 
     st.sidebar.markdown("---")
     
