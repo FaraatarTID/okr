@@ -12,6 +12,7 @@ from src.crud import (
     reset_user_password,
 )
 from src.database import init_database
+from src.audit import error_log
 
 
 st.set_page_config(page_title="OKR Tracker - Login", layout="centered")
@@ -129,8 +130,16 @@ def render_password_reset_gate():
 
 def main():
     if not st.session_state.get("_bootstrap_ready"):
-        init_database()
-        ensure_admin_exists()
+        try:
+            init_database()
+            ensure_admin_exists()
+        except Exception as exc:
+            error_log("Login bootstrap failed", exc)
+            st.error(
+                "Database startup failed. Please verify Supabase connectivity and retry."
+            )
+            st.code(str(exc))
+            return
         st.session_state["_bootstrap_ready"] = True
 
     if "user_id" in st.session_state:

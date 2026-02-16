@@ -7,6 +7,7 @@ from sqlmodel import Session, col, select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError, OperationalError
 import os
+import time
 from typing import Any, Dict, Optional, List
 from datetime import datetime, timedelta
 from src.utils.time_utils import ensure_utc, to_epoch_millis, utc_now_naive
@@ -77,6 +78,12 @@ AUTH_USER_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_USER_MAX_ATTEMPTS", "5")))
 AUTH_IP_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_IP_WINDOW_SECONDS", "300")))
 AUTH_IP_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_IP_MAX_ATTEMPTS", "20")))
 AUTH_LOCKOUT_SECONDS = max(1, int(os.getenv("AUTH_LOCKOUT_SECONDS", "900")))
+ADMIN_BOOTSTRAP_MAX_RETRIES = max(
+    1, int(os.getenv("ADMIN_BOOTSTRAP_MAX_RETRIES", "3"))
+)
+ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS = max(
+    0.0, float(os.getenv("ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", "0.4"))
+)
 
 
 def _validate_update_fields(
@@ -350,6 +357,24 @@ def _is_auth_throttle_schema_operational_error(exc: OperationalError) -> bool:
         "undefined column",
     )
     return any(marker in message for marker in missing_schema_markers)
+
+
+def _is_transient_connection_operational_error(exc: OperationalError) -> bool:
+    message = str(getattr(exc, "orig", exc) or exc).lower()
+    transient_markers = (
+        "server closed the connection unexpectedly",
+        "closed the connection unexpectedly",
+        "connection reset by peer",
+        "terminating connection",
+        "could not connect to server",
+        "connection refused",
+        "connection timed out",
+        "timeout expired",
+        "too many connections",
+        "eof detected",
+        "ssl syscall error: eof detected",
+    )
+    return any(marker in message for marker in transient_markers)
 
 
 def _authenticate_user_without_throttle(
@@ -708,7 +733,7 @@ def reset_user_password(
         return False
 
 
-def ensure_admin_exists():
+def _ensure_admin_exists_once() -> bool:
     """Create a default admin user if no users exist."""
     with get_session_context() as session:
         statement = select(User)
@@ -746,6 +771,25 @@ def ensure_admin_exists():
                 details={"forced_password_change": True},
             )
             clear_cache_safe()
+    return False
+
+
+def ensure_admin_exists() -> bool:
+    """Create a default admin user if no users exist."""
+    last_exc: Optional[OperationalError] = None
+    for attempt in range(1, ADMIN_BOOTSTRAP_MAX_RETRIES + 1):
+        try:
+            return _ensure_admin_exists_once()
+        except OperationalError as exc:
+            last_exc = exc
+            if (
+                attempt >= ADMIN_BOOTSTRAP_MAX_RETRIES
+                or not _is_transient_connection_operational_error(exc)
+            ):
+                raise
+            time.sleep(ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS * attempt)
+    if last_exc is not None:
+        raise last_exc
     return False
 
 
