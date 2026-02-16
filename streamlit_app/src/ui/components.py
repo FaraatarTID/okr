@@ -3434,7 +3434,16 @@ def render_atlas_workspace(username):
             suggested_label = (
                 "AI Suggested Next" if suggested_focus_is_ai else "Suggested Next"
             )
-            st.markdown(
+            suggested_row = st.columns([1.9, 3.6], gap="small")
+            if suggested_row[0].button(
+                "Use Suggested",
+                key=f"atlas_top_suggest_focus_{suggested_focus_ref}",
+                use_container_width=False,
+            ):
+                st.session_state["atlas_focus_task_ref"] = suggested_focus_ref
+                st.session_state["atlas_selected_ref"] = suggested_focus_ref
+                st.rerun()
+            suggested_row[1].markdown(
                 (
                     "<div class='atlas-suggested-line'>"
                     f"<span class='atlas-suggested-label'>{escape_html(suggested_label)}:</span> "
@@ -3454,14 +3463,6 @@ def render_atlas_workspace(username):
                 f"<div class='atlas-suggested-reason'>{escape_html(reason_text)}</div>",
                 unsafe_allow_html=True,
             )
-            if st.button(
-                "Use Suggested",
-                key=f"atlas_top_suggest_focus_{suggested_focus_ref}",
-                use_container_width=True,
-            ):
-                st.session_state["atlas_focus_task_ref"] = suggested_focus_ref
-                st.session_state["atlas_selected_ref"] = suggested_focus_ref
-                st.rerun()
 
         if focus_task_ref and task_refs:
             st.markdown(
