@@ -6,14 +6,19 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-# System deps (wkhtmltopdf is needed by pdfkit)
-RUN apt-get update \
-     && apt-get install -y --no-install-recommends \
-         wkhtmltopdf \
-         fonts-dejavu \
-         ca-certificates \
-         curl \
-     && rm -rf /var/lib/apt/lists/*
+# System deps.
+# wkhtmltopdf is optional because Atlas already falls back to HTML/PDFShift when
+# local PDF binaries are unavailable.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      fonts-dejavu \
+      ca-certificates \
+      curl; \
+    if ! apt-get install -y --no-install-recommends wkhtmltopdf; then \
+      echo "wkhtmltopdf install failed; continuing without local pdfkit binary"; \
+    fi; \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
