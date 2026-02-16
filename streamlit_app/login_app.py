@@ -7,12 +7,11 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.crud import (
     authenticate_user_detailed,
-    ensure_admin_exists,
     get_user_by_id,
     reset_user_password,
 )
-from src.database import init_database
 from src.audit import error_log
+from src.bootstrap import ensure_startup_ready
 
 
 st.set_page_config(page_title="OKR Tracker - Login", layout="centered")
@@ -53,6 +52,15 @@ def render_login():
 
         if st.button("Login", type="primary"):
             if username.strip() and password:
+                try:
+                    ensure_startup_ready()
+                except Exception as exc:
+                    error_log("Login bootstrap failed", exc)
+                    st.error(
+                        "Login is temporarily unavailable due to a database issue. "
+                        "Please try again shortly."
+                    )
+                    return
                 auth = authenticate_user_detailed(
                     username.strip(),
                     password,
@@ -129,10 +137,9 @@ def render_password_reset_gate():
 
 
 def main():
-    if not st.session_state.get("_bootstrap_ready"):
+    if "user_id" in st.session_state:
         try:
-            init_database()
-            ensure_admin_exists()
+            ensure_startup_ready()
         except Exception as exc:
             error_log("Login bootstrap failed", exc)
             st.error(
@@ -140,9 +147,6 @@ def main():
             )
             st.code(str(exc))
             return
-        st.session_state["_bootstrap_ready"] = True
-
-    if "user_id" in st.session_state:
         current_user = get_user_by_id(st.session_state["user_id"])
         if not current_user or not current_user.is_active:
             _clear_user_session()
