@@ -2830,32 +2830,50 @@ def render_atlas_workspace(username):
         )
 
         suggested_focus_ref = None
+        suggested_focus_reason = None
+        suggested_focus_confidence = None
+        suggested_focus_is_ai = False
+        ai_suggested_state = st.session_state.get("atlas_ai_suggested_next")
+        if isinstance(ai_suggested_state, dict):
+            ai_ref = str(ai_suggested_state.get("task_ref") or "")
+            ai_scope = str(ai_suggested_state.get("scope") or "")
+            if ai_ref in task_refs and ai_scope == str(selected_scope):
+                suggested_focus_ref = ai_ref
+                suggested_focus_reason = str(ai_suggested_state.get("reason") or "").strip() or None
+                suggested_focus_confidence = ai_suggested_state.get("confidence")
+                suggested_focus_is_ai = True
+            elif ai_ref and ai_ref not in task_refs:
+                st.session_state.pop("atlas_ai_suggested_next", None)
+
         if task_refs:
-            actionable_refs = [
-                ref for ref in task_refs
-                if int(index.get(ref, {}).get("progress", 0) or 0) < 100
-            ]
-            candidate_refs = actionable_refs or task_refs
-            ranked_refs = sorted(
-                candidate_refs,
-                key=lambda ref: _atlas_suggested_next_score(index[ref], actor_id, index),
-            )
-            if ranked_refs:
-                suggested_focus_ref = ranked_refs[0]
+            if suggested_focus_ref is None:
+                actionable_refs = [
+                    ref for ref in task_refs
+                    if int(index.get(ref, {}).get("progress", 0) or 0) < 100
+                ]
+                candidate_refs = actionable_refs or task_refs
+                ranked_refs = sorted(
+                    candidate_refs,
+                    key=lambda ref: _atlas_suggested_next_score(index[ref], actor_id, index),
+                )
+                if ranked_refs:
+                    suggested_focus_ref = ranked_refs[0]
 
         if suggested_focus_ref and suggested_focus_ref in index:
             suggested_meta = index[suggested_focus_ref]
             suggested_cols = st.columns([3.2, 1.2], gap="large")
             suggested_cols[0].markdown(
                 (
-                    f"**Suggested Next:** {TYPE_ICONS.get('TASK', '')} "
+                    f"**{'AI Suggested Next' if suggested_focus_is_ai else 'Suggested Next'}:** "
+                    f"{TYPE_ICONS.get('TASK', '')} "
                     f"{escape_html(suggested_meta['title'])}"
                 ),
                 unsafe_allow_html=True,
             )
-            suggested_cols[0].caption(
-                _atlas_suggested_next_reason(suggested_meta, actor_id, index)
-            )
+            reason_text = suggested_focus_reason or _atlas_suggested_next_reason(suggested_meta, actor_id, index)
+            if suggested_focus_confidence is not None:
+                reason_text = f"{reason_text} (AI confidence: {suggested_focus_confidence}%)"
+            suggested_cols[0].caption(reason_text)
             if suggested_cols[1].button(
                 "Use Suggested",
                 key=f"atlas_top_suggest_focus_{suggested_focus_ref}",
@@ -3173,6 +3191,9 @@ def render_atlas_workspace(username):
                 map_kr_refs = [
                     ref for ref in map_refs if ref in index and index[ref].get("type") == "KEY_RESULT"
                 ]
+                map_task_refs = [
+                    ref for ref in map_refs if ref in index and index[ref].get("type") == "TASK"
+                ]
 
                 map_cols[1].markdown("**AI**")
                 if "atlas_ai_apply_overall_to_progress" not in st.session_state:
@@ -3188,7 +3209,7 @@ def render_atlas_workspace(username):
                     use_container_width=True,
                     disabled=not map_kr_refs,
                 ):
-                    from src.services.ai_service import analyze_node
+                    from src.services.ai_service import analyze_node, suggest_critical_task
                     from src.crud import update_key_result, recalculate_rollup_for_key_results
 
                     total_kr = len(map_kr_refs)
@@ -3197,6 +3218,8 @@ def render_atlas_workspace(username):
                     missing_ai_score = 0
                     rollup_kr_ids = []
                     failed = []
+                    ai_suggest_error = None
+                    ai_suggested_payload = None
                     progress_bar = map_cols[1].progress(
                         0.0,
                         text=f"Syncing AI analysis for {total_kr} key result(s)...",
@@ -3260,6 +3283,91 @@ def render_atlas_workspace(username):
                             failed.append(f"Rollup refresh failed: {exc}")
 
                     progress_bar.empty()
+
+                    if map_task_refs:
+                        def _deadline_iso(deadline_raw):
+                            if deadline_raw is None:
+                                return None
+                            try:
+                                if isinstance(deadline_raw, datetime):
+                                    return deadline_raw.isoformat()
+                                ts = float(deadline_raw)
+                                if ts > 1e10:
+                                    return datetime.fromtimestamp(ts / 1000.0).isoformat()
+                                return datetime.fromtimestamp(ts).isoformat()
+                            except Exception:
+                                try:
+                                    return str(deadline_raw)
+                                except Exception:
+                                    return None
+
+                        ranked_task_refs = sorted(
+                            map_task_refs,
+                            key=lambda ref: _atlas_suggested_next_score(index[ref], actor_id, index),
+                        )
+                        task_candidates = []
+                        for task_ref in ranked_task_refs[:80]:
+                            task_meta = index.get(task_ref, {})
+                            task_node = task_meta.get("node")
+                            parent_ref = task_meta.get("parent")
+                            parent_meta = index.get(parent_ref) if parent_ref else None
+                            parent_ai_score = (
+                                _atlas_ai_overall_score(parent_meta)
+                                if parent_meta and parent_meta.get("type") == "KEY_RESULT"
+                                else None
+                            )
+                            task_path_titles = [
+                                index[path_ref]["title"]
+                                for path_ref in (task_meta.get("path") or [])
+                                if path_ref in index
+                            ]
+                            task_candidates.append(
+                                {
+                                    "task_ref": task_ref,
+                                    "title": task_meta.get("title"),
+                                    "status": _atlas_status_label(task_meta),
+                                    "progress": int(task_meta.get("progress", 0) or 0),
+                                    "deadline": _deadline_iso(getattr(task_node, "deadline", None)),
+                                    "owner_name": task_meta.get("owner_name"),
+                                    "path": " > ".join(task_path_titles),
+                                    "attention": _atlas_attention_reason(task_meta, index),
+                                    "parent_kr_ai_score": parent_ai_score,
+                                    "local_priority_score": _atlas_suggested_next_score(task_meta, actor_id, index),
+                                }
+                            )
+
+                        ai_pick = suggest_critical_task(
+                            task_candidates,
+                            context={
+                                "scope": selected_scope,
+                                "lens": map_lens,
+                                "selected_node": selected_meta.get("title"),
+                                "candidate_count": len(task_candidates),
+                            },
+                        )
+                        if isinstance(ai_pick, dict) and "error" not in ai_pick:
+                            ai_ref = str(ai_pick.get("task_ref") or "")
+                            if ai_ref in map_task_refs and ai_ref in index:
+                                ai_suggested_payload = {
+                                    "task_ref": ai_ref,
+                                    "reason": str(ai_pick.get("reason") or "").strip(),
+                                    "confidence": ai_pick.get("confidence"),
+                                    "scope": str(selected_scope),
+                                    "lens": str(map_lens),
+                                    "at": float(time.time()),
+                                }
+                                st.session_state["atlas_ai_suggested_next"] = ai_suggested_payload
+                            else:
+                                ai_suggest_error = "AI returned a task outside this map scope."
+                        else:
+                            ai_suggest_error = (
+                                str(ai_pick.get("error"))
+                                if isinstance(ai_pick, dict)
+                                else "AI suggestion failed."
+                            )
+                    else:
+                        st.session_state.pop("atlas_ai_suggested_next", None)
+
                     st.session_state["atlas_ai_sync_report"] = {
                         "synced": synced,
                         "failed": failed[:6],
@@ -3267,6 +3375,10 @@ def render_atlas_workspace(username):
                         "apply_progress": bool(apply_ai_score_to_progress),
                         "applied_progress": int(applied_progress),
                         "missing_ai_score": int(missing_ai_score),
+                        "ai_suggested_ref": (ai_suggested_payload or {}).get("task_ref"),
+                        "ai_suggested_reason": (ai_suggested_payload or {}).get("reason"),
+                        "ai_suggested_confidence": (ai_suggested_payload or {}).get("confidence"),
+                        "ai_suggest_error": ai_suggest_error,
                         "at": float(time.time()),
                     }
                     st.rerun()
@@ -3294,6 +3406,21 @@ def render_atlas_workspace(username):
                         failed_items = list(sync_report.get("failed") or [])
                         if failed_items:
                             map_cols[1].warning("Some items failed:\n- " + "\n- ".join(failed_items))
+                        ai_suggest_ref = str(sync_report.get("ai_suggested_ref") or "")
+                        if ai_suggest_ref in index:
+                            ai_title = index[ai_suggest_ref].get("title", ai_suggest_ref)
+                            ai_reason = str(sync_report.get("ai_suggested_reason") or "").strip()
+                            ai_conf = sync_report.get("ai_suggested_confidence")
+                            ai_line = f"AI suggested next: {ai_title}"
+                            if ai_conf is not None:
+                                ai_line += f" (confidence: {ai_conf}%)"
+                            map_cols[1].info(ai_line)
+                            if ai_reason:
+                                map_cols[1].caption(ai_reason)
+                        elif sync_report.get("ai_suggest_error"):
+                            map_cols[1].warning(
+                                f"AI task suggestion skipped: {sync_report.get('ai_suggest_error')}"
+                            )
                     else:
                         del st.session_state["atlas_ai_sync_report"]
 
@@ -3372,10 +3499,6 @@ def render_atlas_workspace(username):
                 else:
                     map_cols[0].info("No map data available.")
 
-                map_task_refs = [
-                    ref for ref in map_refs
-                    if ref in index and index[ref]["type"] == "TASK"
-                ]
                 if not map_task_refs:
                     if map_lens == "Scope":
                         map_cols[1].info("No tasks available in current scope.")
