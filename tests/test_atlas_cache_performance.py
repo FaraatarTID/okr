@@ -44,7 +44,15 @@ def _count_queries(engine, fn) -> int:
 
 
 def _seed_small_tree():
-    from src.crud import create_cycle, create_goal, create_key_result, create_objective, create_task, create_user, update_key_result
+    from src.crud import (
+        create_cycle,
+        create_goal,
+        create_key_result,
+        create_objective,
+        create_task,
+        create_user,
+        update_key_result,
+    )
 
     user = create_user("atlas_user", "pass")
     cycle = create_cycle(
@@ -87,7 +95,10 @@ def test_atlas_owner_scope_cache_key_is_deterministic():
 
 
 def test_atlas_snapshot_excludes_analysis_blob_by_default(isolated_db):
-    from src.ui.components import _cached_get_atlas_scope_snapshot, _canonical_owner_ids_key
+    from src.ui.components import (
+        _cached_get_atlas_scope_snapshot,
+        _canonical_owner_ids_key,
+    )
 
     user, cycle = _seed_small_tree()
     owner_ids_key = _canonical_owner_ids_key([user.id])
@@ -163,3 +174,25 @@ def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db):
 
     query_count = _count_queries(isolated_db, _cache_hit_navigation_work)
     assert query_count == 0
+
+
+def test_atlas_cache_miss_snapshot_query_budget(isolated_db):
+    from src.ui.components import (
+        _cached_get_atlas_scope_snapshot,
+        _canonical_owner_ids_key,
+    )
+
+    user, cycle = _seed_small_tree()
+    owner_ids_key = _canonical_owner_ids_key([user.id])
+
+    _cached_get_atlas_scope_snapshot.clear()
+
+    def _cache_miss_snapshot_work():
+        _cached_get_atlas_scope_snapshot(
+            cycle.id,
+            owner_ids_key,
+            include_analysis=False,
+        )
+
+    query_count = _count_queries(isolated_db, _cache_miss_snapshot_work)
+    assert query_count <= 4

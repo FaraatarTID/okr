@@ -10,6 +10,8 @@ import time
 from threading import Lock, Thread, current_thread
 from typing import Any, Dict, Optional
 
+from sqlalchemy.exc import OperationalError
+
 from src.crud import ensure_admin_exists
 from src.database import init_database
 
@@ -23,6 +25,49 @@ _last_success_monotonic = 0.0
 _last_duration_ms = 0.0
 _prewarm_lock = Lock()
 _prewarm_thread: Optional[Thread] = None
+
+
+_TRANSIENT_AUTH_DB_MARKERS = (
+    "server closed the connection unexpectedly",
+    "closed the connection unexpectedly",
+    "connection reset by peer",
+    "terminating connection",
+    "could not connect to server",
+    "connection refused",
+    "connection timed out",
+    "timeout expired",
+    "too many connections",
+    "eof detected",
+    "ssl syscall error: eof detected",
+)
+
+_SCHEMA_NOT_READY_MARKERS = (
+    "no such table",
+    "no such column",
+    "has no column named",
+    "does not exist",
+    "undefined table",
+    "undefined column",
+    "auth_throttle_state",
+    "alembic_version",
+)
+
+
+def should_run_startup_recovery(exc: BaseException) -> bool:
+    """
+    Decide whether login-time auth failures should trigger startup bootstrap recovery.
+
+    Bootstrap recovery is expensive; it should run only when failure looks like
+    schema/startup-not-ready and should be skipped for transient DB connectivity
+    errors where retrying bootstrap adds latency without helping.
+    """
+
+    message = str(getattr(exc, "orig", exc) or exc).lower()
+    if isinstance(exc, OperationalError):
+        if any(marker in message for marker in _TRANSIENT_AUTH_DB_MARKERS):
+            return False
+        return any(marker in message for marker in _SCHEMA_NOT_READY_MARKERS)
+    return True
 
 
 def _is_recent_success(now: Optional[float] = None) -> bool:

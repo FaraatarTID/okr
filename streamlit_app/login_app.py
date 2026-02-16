@@ -11,7 +11,11 @@ from src.crud import (
     reset_user_password,
 )
 from src.audit import error_log
-from src.bootstrap import ensure_startup_ready, prewarm_startup_ready_async
+from src.bootstrap import (
+    ensure_startup_ready,
+    prewarm_startup_ready_async,
+    should_run_startup_recovery,
+)
 
 
 st.set_page_config(page_title="OKR Tracker - Login", layout="centered")
@@ -66,6 +70,12 @@ def render_login():
                     # Fast path: auth first. If startup bootstrap wasn't ready yet,
                     # run it once and retry auth.
                     error_log("Authentication attempt failed before startup ready", exc)
+                    if not should_run_startup_recovery(exc):
+                        st.error(
+                            "Login is temporarily unavailable due to a database issue. "
+                            "Please try again shortly."
+                        )
+                        return
                     try:
                         ensure_startup_ready()
                         auth = authenticate_user_detailed(
@@ -88,12 +98,9 @@ def render_login():
                     st.session_state["display_name"] = user.display_name
                     st.session_state["user_role"] = user.role.value
                     st.session_state["manager_id"] = user.manager_id
-                    st.session_state["must_change_password"] = bool(user.must_change_password)
-
-                    # Fetch manager username if applicable
-                    if user.manager_id:
-                        mgr = get_user_by_id(user.manager_id)
-                        st.session_state["manager_username"] = mgr.username if mgr else None
+                    st.session_state["must_change_password"] = bool(
+                        user.must_change_password
+                    )
 
                     st.success(f"Welcome, {user.display_name}!")
                     st.info("Loading full app…")
@@ -127,7 +134,9 @@ def _clear_user_session():
 
 def render_password_reset_gate():
     st.markdown("## Change Your Password")
-    st.warning("For security, you must change your temporary password before continuing.")
+    st.warning(
+        "For security, you must change your temporary password before continuing."
+    )
     with st.form("force_password_change_form"):
         new_pw = st.text_input("New Password", type="password")
         confirm_pw = st.text_input("Confirm Password", type="password")
@@ -144,7 +153,9 @@ def render_password_reset_gate():
         st.error("Passwords do not match.")
         return
     if reset_user_password(st.session_state["user_id"], new_pw):
-        st.success("Password updated successfully. Please log in again with your new password.")
+        st.success(
+            "Password updated successfully. Please log in again with your new password."
+        )
         _clear_user_session()
         st.rerun()
     st.error("Failed to update password.")
@@ -165,12 +176,31 @@ def main():
             _clear_user_session()
             st.error("Your session is no longer valid. Please log in again.")
             return
-        st.session_state["must_change_password"] = bool(current_user.must_change_password)
+        st.session_state["must_change_password"] = bool(
+            current_user.must_change_password
+        )
         if st.session_state.get("must_change_password"):
             render_password_reset_gate()
             return
-        from app import render_app
-        render_app(st.session_state["username"])
+        try:
+            from app import (
+                _build_runtime_user_snapshot,
+                _resolve_app_shell_runtime_from_user_snapshot,
+                render_app,
+            )
+
+            user_snapshot = _build_runtime_user_snapshot(current_user)
+            runtime_bundle = _resolve_app_shell_runtime_from_user_snapshot(
+                user_snapshot
+            )
+        except Exception as exc:
+            error_log("Workspace runtime load failed", exc)
+            st.error(
+                "Workspace is temporarily unavailable due to a database issue. "
+                "Please retry shortly."
+            )
+            return
+        render_app(st.session_state["username"], runtime_bundle=runtime_bundle)
         return
     render_login()
 

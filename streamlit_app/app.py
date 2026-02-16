@@ -1,4 +1,4 @@
-﻿import streamlit as st
+import streamlit as st
 import sys
 import os
 import time
@@ -11,8 +11,13 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Database utilities
 from src.audit import error_log
-from src.bootstrap import ensure_startup_ready, prewarm_startup_ready_async
+from src.bootstrap import (
+    ensure_startup_ready,
+    prewarm_startup_ready_async,
+    should_run_startup_recovery,
+)
 from src.utils.time_utils import utc_now_naive
+
 
 # One-time preflight: check PDF engine (after login to speed initial load)
 def _get_pdf_method() -> str:
@@ -20,7 +25,11 @@ def _get_pdf_method() -> str:
         app_cfg = st.secrets.get("app", {})
         method = str(st.secrets.get("PDF_METHOD", "")).strip().lower()
         if not method and hasattr(app_cfg, "get"):
-            method = str(app_cfg.get("PDF_METHOD", app_cfg.get("pdf_method", ""))).strip().lower()
+            method = (
+                str(app_cfg.get("PDF_METHOD", app_cfg.get("pdf_method", "")))
+                .strip()
+                .lower()
+            )
         # Accept common typo to keep deployments resilient.
         if method == "shiftpdf":
             method = "pdfshift"
@@ -47,6 +56,7 @@ def _run_pdf_preflight():
     try:
         import shutil
         import pdfkit  # noqa: F401
+
         wkhtml = shutil.which("wkhtmltopdf")
         if not wkhtml:
             # Also check common Windows install paths
@@ -56,21 +66,35 @@ def _run_pdf_preflight():
             ]
             wkhtml = next((p for p in common_paths if os.path.exists(p)), None)
         if not wkhtml:
-            st.info("wkhtmltopdf not detected in PATH. PDF export will fall back to HTML. Install from https://wkhtmltopdf.org/downloads.html or set PATH.")
+            st.info(
+                "wkhtmltopdf not detected in PATH. PDF export will fall back to HTML. Install from https://wkhtmltopdf.org/downloads.html or set PATH."
+            )
     except Exception:
         pass
     st.session_state["preflight_done"] = True
 
+
 from src.crud import (
-    get_all_cycles, create_cycle, get_active_cycles,
-    create_check_in, get_krs_needing_checkin, get_check_ins,
-    get_leadership_metrics, update_cycle, delete_cycle,
+    get_all_cycles,
+    create_cycle,
+    get_active_cycles,
+    create_check_in,
+    get_krs_needing_checkin,
+    get_check_ins,
+    get_leadership_metrics,
+    update_cycle,
+    delete_cycle,
     # User Auth
-    authenticate_user_detailed, get_all_users, create_user, update_user,
-    reset_user_password, get_team_members,
-    get_user_by_id
+    authenticate_user_detailed,
+    get_all_users,
+    create_user,
+    update_user,
+    reset_user_password,
+    get_team_members,
+    get_user_by_id,
 )
 from src.models import UserRole
+
 
 @st.cache_data(ttl=30, show_spinner=False)
 def _cached_get_all_cycles():
@@ -80,18 +104,7 @@ def _cached_get_all_cycles():
 @st.cache_data(ttl=10, show_spinner=False)
 def _cached_get_user_runtime_snapshot(user_id: int):
     user = get_user_by_id(int(user_id))
-    if not user:
-        return None
-    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
-    return {
-        "id": int(user.id),
-        "username": user.username,
-        "display_name": user.display_name,
-        "role": role_value,
-        "manager_id": user.manager_id,
-        "is_active": bool(user.is_active),
-        "must_change_password": bool(user.must_change_password),
-    }
+    return _build_runtime_user_snapshot(user)
 
 
 def _weekly_plan_cache_bucket(now: datetime | None = None) -> str:
@@ -115,9 +128,7 @@ def _cached_get_active_weekly_plan_snapshot(user_id: int, week_bucket: str):
     }
 
 
-def _get_active_weekly_plan_snapshot(
-    user_id: int, now: datetime | None = None
-):
+def _get_active_weekly_plan_snapshot(user_id: int, now: datetime | None = None):
     return _cached_get_active_weekly_plan_snapshot(
         int(user_id),
         _weekly_plan_cache_bucket(now),
@@ -134,8 +145,23 @@ def _should_warn_default_admin_password(user_snapshot: dict | None) -> bool:
     return bool(user_snapshot.get("must_change_password"))
 
 
-def _resolve_app_shell_runtime(user_id: int) -> dict:
-    snapshot = _cached_get_user_runtime_snapshot(int(user_id))
+def _build_runtime_user_snapshot(user) -> dict | None:
+    if not user:
+        return None
+    role_attr = getattr(user, "role", None)
+    role_value = role_attr.value if hasattr(role_attr, "value") else str(role_attr)
+    return {
+        "id": int(user.id),
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": role_value,
+        "manager_id": user.manager_id,
+        "is_active": bool(user.is_active),
+        "must_change_password": bool(user.must_change_password),
+    }
+
+
+def _resolve_app_shell_runtime_from_user_snapshot(snapshot: dict | None) -> dict:
     if not snapshot:
         return {
             "user": None,
@@ -143,14 +169,28 @@ def _resolve_app_shell_runtime(user_id: int) -> dict:
             "weekly_plan": None,
             "show_admin_default_password_warning": False,
         }
+    user_id = snapshot.get("id")
+    if user_id is None:
+        return {
+            "user": None,
+            "cycles": [],
+            "weekly_plan": None,
+            "show_admin_default_password_warning": False,
+        }
+    user_id = int(user_id)
     return {
         "user": snapshot,
         "cycles": _cached_get_all_cycles(),
-        "weekly_plan": _get_active_weekly_plan_snapshot(int(user_id)),
+        "weekly_plan": _get_active_weekly_plan_snapshot(user_id),
         "show_admin_default_password_warning": _should_warn_default_admin_password(
             snapshot
         ),
     }
+
+
+def _resolve_app_shell_runtime(user_id: int) -> dict:
+    snapshot = _cached_get_user_runtime_snapshot(int(user_id))
+    return _resolve_app_shell_runtime_from_user_snapshot(snapshot)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -184,6 +224,7 @@ def _get_build_fingerprint() -> str:
 # Modular UI Components (lazy import in render_app to speed initial load)
 st.set_page_config(page_title="OKR Tracker", layout="wide")
 
+
 # Basic error reporting hook
 def _excepthook(exc_type, exc, tb):
     try:
@@ -192,7 +233,9 @@ def _excepthook(exc_type, exc, tb):
         # Preserve default behavior
         sys.__excepthook__(exc_type, exc, tb)
 
+
 sys.excepthook = _excepthook
+
 
 def _get_client_ip() -> str | None:
     """Best-effort client IP extraction from Streamlit request headers."""
@@ -217,6 +260,7 @@ def _get_client_ip() -> str | None:
         return None
     return None
 
+
 def render_login():
     st.markdown("## 🔐 Login to OKR Tracker")
     st.info("👋 Welcome! Please enter your credentials to access your data.")
@@ -224,12 +268,12 @@ def render_login():
         prewarm_startup_ready_async()
     except Exception as exc:
         error_log("Login bootstrap prewarm scheduling failed", exc)
-    
+
     col1, col2 = st.columns([1, 2])
     with col1:
         username = st.text_input("Username", placeholder="e.g. admin")
         password = st.text_input("Password", type="password")
-        
+
         if st.button("Login", type="primary"):
             if username.strip() and password:
                 try:
@@ -242,6 +286,12 @@ def render_login():
                     # Fast path: auth first. If startup bootstrap wasn't ready yet,
                     # run it once and retry auth.
                     error_log("Authentication attempt failed before startup ready", exc)
+                    if not should_run_startup_recovery(exc):
+                        st.error(
+                            "Login is temporarily unavailable due to a database issue. "
+                            "Please contact your administrator."
+                        )
+                        return
                     try:
                         ensure_startup_ready()
                         auth = authenticate_user_detailed(
@@ -264,13 +314,10 @@ def render_login():
                     st.session_state["display_name"] = user.display_name
                     st.session_state["user_role"] = user.role.value
                     st.session_state["manager_id"] = user.manager_id
-                    st.session_state["must_change_password"] = bool(user.must_change_password)
-                    
-                    # Fetch manager username if applicable
-                    if user.manager_id:
-                        mgr = get_user_by_id(user.manager_id)
-                        st.session_state["manager_username"] = mgr.username if mgr else None
-                    
+                    st.session_state["must_change_password"] = bool(
+                        user.must_change_password
+                    )
+
                     st.success(f"Welcome, {user.display_name}!")
                     st.rerun()
                 else:
@@ -284,16 +331,6 @@ def render_login():
                         st.error("Invalid username or password.")
             else:
                 st.error("Please enter both username and password.")
-
-
-
-
-
-
-
-
-
-
 
 
 def _clear_user_session():
@@ -335,7 +372,9 @@ def _clear_user_session():
 
 def render_password_reset_gate():
     st.markdown("## Change Your Password")
-    st.warning("For security, you must change your temporary password before continuing.")
+    st.warning(
+        "For security, you must change your temporary password before continuing."
+    )
 
     user_id = st.session_state.get("user_id")
     if not user_id:
@@ -363,7 +402,9 @@ def render_password_reset_gate():
         st.error("Passwords do not match.")
         return
     if reset_user_password(user_id, new_pw):
-        st.success("Password updated successfully. Please log in again with your new password.")
+        st.success(
+            "Password updated successfully. Please log in again with your new password."
+        )
         time.sleep(0.7)
         _clear_user_session()
         st.rerun()
@@ -377,11 +418,20 @@ def render_app(username, runtime_bundle=None):
     from src.ui.styles import apply_custom_fonts, inject_dialog_styles
     from src.ui.components import render_level, navigate_to, navigate_back_to
     from src.ui.dialogs import (
-        render_weekly_report_dialog, render_daily_report_dialog,
-        render_inspector_dialog, render_retrobox_dialog, render_timeline_dialog,
-        render_create_goal_dialog, render_create_objective_dialog, render_create_kr_dialog,
-        render_weekly_ritual_dialog, render_timer_dialog, render_leadership_dashboard_dialog,
-        render_admin_panel_dialog, render_create_task_dialog, render_manage_cycles_dialog
+        render_weekly_report_dialog,
+        render_daily_report_dialog,
+        render_inspector_dialog,
+        render_retrobox_dialog,
+        render_timeline_dialog,
+        render_create_goal_dialog,
+        render_create_objective_dialog,
+        render_create_kr_dialog,
+        render_weekly_ritual_dialog,
+        render_timer_dialog,
+        render_leadership_dashboard_dialog,
+        render_admin_panel_dialog,
+        render_create_task_dialog,
+        render_manage_cycles_dialog,
     )
 
     apply_custom_fonts()
@@ -400,59 +450,62 @@ def render_app(username, runtime_bundle=None):
     # Sidebar Header
     display_name = st.session_state.get("display_name", username)
     user_role = st.session_state.get("user_role", "member")
-    
+
     st.sidebar.markdown(f"👤 **{display_name}** ({user_role.title()})")
     if st.sidebar.button("🚪 Logout"):
         _clear_user_session()
         st.rerun()
-    
+
     # Admin Panel Button (Admin only)
     if st.session_state.get("user_role") == "admin":
         if runtime_bundle.get("show_admin_default_password_warning"):
-            st.sidebar.warning("Default admin password is still active. Change it in Admin Panel.")
+            st.sidebar.warning(
+                "Default admin password is still active. Change it in Admin Panel."
+            )
         if st.sidebar.button("🛠️ Admin Panel", use_container_width=True):
             st.session_state.active_report_mode = "Admin"
             st.rerun()
-    
+
     st.sidebar.markdown("---")
 
     # If no cycles exist, create a default one
     if not cycles:
         from datetime import datetime, timedelta
+
         now = datetime.utcnow()
         default_cycle = create_cycle(
             title="Q1 2026",
             start_date=now,
             end_date=now + timedelta(days=90),
-            is_active=True
+            is_active=True,
         )
         cycles = [default_cycle]
-    
+
     # Cycle Selection in Sidebar
     st.sidebar.markdown("### 📅 OKR Cycle")
     cycle_titles = [c.title for c in cycles]
-    
+
     # Store selected cycle in session state
     if "active_cycle_id" not in st.session_state:
         # Default to first active cycle or just the first one
         st.session_state.active_cycle_id = cycles[0].id
-        
+
     current_cycle_index = 0
     for i, c in enumerate(cycles):
         if c.id == st.session_state.active_cycle_id:
             current_cycle_index = i
             break
-            
+
     selected_cycle_title = st.sidebar.selectbox(
-        "Select Cycle", 
-        options=cycle_titles, 
+        "Select Cycle",
+        options=cycle_titles,
         index=current_cycle_index,
-        label_visibility="collapsed"
+        label_visibility="collapsed",
     )
-    
+
     if st.sidebar.button("⚙️ Manage Cycles", key="manage_cycles_sidebar"):
         render_manage_cycles_dialog()
-    
+
     # Update active_cycle_id if changed
     selected_cycle = next(c for c in cycles if c.title == selected_cycle_title)
     if selected_cycle.id != st.session_state.active_cycle_id:
@@ -489,7 +542,7 @@ def render_app(username, runtime_bundle=None):
         st.sidebar.caption(f"Build `{_get_build_fingerprint()}`")
 
     st.sidebar.markdown("---")
-    
+
     # Navigation & Views
     st.sidebar.markdown("### 🧭 Navigation")
     if st.sidebar.button("🏠 Home / OKRs", use_container_width=True):
@@ -517,77 +570,101 @@ def render_app(username, runtime_bundle=None):
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
-        
+
     st.sidebar.markdown("### 📈 Insights & Reports")
-    
+
     dialog_active = False
 
     if st.sidebar.button("📊 Weekly Report", use_container_width=True):
         st.session_state.active_report_mode = "Weekly"
         # Clear others
-        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        if "active_timer_node_id" in st.session_state:
+            del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state:
+            del st.session_state.active_inspector_id
         st.rerun()
-        
+
     if st.sidebar.button("📅 Daily Report", use_container_width=True):
         st.session_state.active_report_mode = "Daily"
         # Clear others
-        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        if "active_timer_node_id" in st.session_state:
+            del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state:
+            del st.session_state.active_inspector_id
         st.rerun()
 
-    if st.sidebar.button("🔄 Weekly Ritual", help="Guided check-in for your metrics", use_container_width=True):
+    if st.sidebar.button(
+        "🔄 Weekly Ritual",
+        help="Guided check-in for your metrics",
+        use_container_width=True,
+    ):
         st.session_state.active_report_mode = "Ritual"
-        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        if "active_timer_node_id" in st.session_state:
+            del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state:
+            del st.session_state.active_inspector_id
         st.rerun()
 
-    if st.sidebar.button("📬 RetroBox", help="Weekly retrospectives", use_container_width=True):
+    if st.sidebar.button(
+        "📬 RetroBox", help="Weekly retrospectives", use_container_width=True
+    ):
         st.session_state.active_report_mode = "RetroBox"
-        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        if "active_timer_node_id" in st.session_state:
+            del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state:
+            del st.session_state.active_inspector_id
         st.rerun()
 
-    if st.sidebar.button("📅 Project Timeline", help="Smart Gantt Chart", use_container_width=True):
+    if st.sidebar.button(
+        "📅 Project Timeline", help="Smart Gantt Chart", use_container_width=True
+    ):
         st.session_state.active_report_mode = "Timeline"
-        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        if "active_timer_node_id" in st.session_state:
+            del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state:
+            del st.session_state.active_inspector_id
         st.rerun()
 
-    if st.sidebar.button("🧭 Strategic \nDashboard", help="Executive visibility", use_container_width=True):
+    if st.sidebar.button(
+        "🧭 Strategic \nDashboard",
+        help="Executive visibility",
+        use_container_width=True,
+    ):
         st.session_state.active_report_mode = "Dashboard"
-        if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
+        if "active_timer_node_id" in st.session_state:
+            del st.session_state.active_timer_node_id
+        if "active_inspector_id" in st.session_state:
+            del st.session_state.active_inspector_id
         st.rerun()
 
     # === WEEKLY FOCUS CARD ===
     if current_user_snapshot and weekly_plan:
-            with st.container(border=True):
-                c_wc1, c_wc2 = st.columns([0.15, 0.85])
-                with c_wc1:
-                    st.markdown("### ðŸŽ¯")
-                    st.caption("Weekly Focus")
-                with c_wc2:
-                    # Display priorities as pills or structured list
-                    priorities = [
-                        p
-                        for p in [
-                            weekly_plan.get("priority_1"),
-                            weekly_plan.get("priority_2"),
-                            weekly_plan.get("priority_3"),
-                        ]
-                        if p
+        with st.container(border=True):
+            c_wc1, c_wc2 = st.columns([0.15, 0.85])
+            with c_wc1:
+                st.markdown("### ðŸŽ¯")
+                st.caption("Weekly Focus")
+            with c_wc2:
+                # Display priorities as pills or structured list
+                priorities = [
+                    p
+                    for p in [
+                        weekly_plan.get("priority_1"),
+                        weekly_plan.get("priority_2"),
+                        weekly_plan.get("priority_3"),
                     ]
-                    
-                    if not priorities:
-                        st.info("No priorities set for this week.")
-                    else:
-                        # CSS for custom pills/cards
-                        cols = st.columns(len(priorities))
-                        for idx, p in enumerate(priorities):
-                            with cols[idx]:
-                                st.markdown(f"**{idx+1}.** {p}")
-    
+                    if p
+                ]
+
+                if not priorities:
+                    st.info("No priorities set for this week.")
+                else:
+                    # CSS for custom pills/cards
+                    cols = st.columns(len(priorities))
+                    for idx, p in enumerate(priorities):
+                        with cols[idx]:
+                            st.markdown(f"**{idx + 1}.** {p}")
+
     render_level(username)
 
     # Persistent Dialog Checks - Only if no other dialog is active
@@ -617,7 +694,7 @@ def render_app(username, runtime_bundle=None):
         if "add_mode_type" in st.session_state:
             ntype = st.session_state.add_mode_type
             parent_id = st.session_state.get("add_mode_parent")
-            
+
             if ntype == "GOAL":
                 render_create_goal_dialog(username)
             elif ntype == "OBJECTIVE":
@@ -626,6 +703,7 @@ def render_app(username, runtime_bundle=None):
                 render_create_kr_dialog(parent_id)
             elif ntype == "TASK":
                 render_create_task_dialog(parent_id, username)
+
 
 def main():
     if "user_id" not in st.session_state:
@@ -662,6 +740,7 @@ def main():
         return
 
     render_app(st.session_state["username"], runtime_bundle=runtime_bundle)
+
 
 if __name__ == "__main__":
     main()

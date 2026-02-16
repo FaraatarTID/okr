@@ -1,5 +1,6 @@
 import pytest
 import time
+from sqlalchemy.exc import OperationalError
 
 
 def test_ensure_startup_ready_throttles_repeated_calls(monkeypatch):
@@ -127,3 +128,25 @@ def test_prewarm_startup_ready_skips_when_already_cached(monkeypatch):
     assert prewarm["inflight"] is False
     assert calls["db"] == 1
     assert calls["admin"] == 1
+
+
+def test_should_run_startup_recovery_skips_transient_connection_errors():
+    import src.bootstrap as bootstrap
+
+    exc = OperationalError(
+        statement="select 1",
+        params={},
+        orig=Exception("server closed the connection unexpectedly"),
+    )
+    assert bootstrap.should_run_startup_recovery(exc) is False
+
+
+def test_should_run_startup_recovery_runs_for_schema_not_ready_errors():
+    import src.bootstrap as bootstrap
+
+    exc = OperationalError(
+        statement="select * from auth_throttle_state",
+        params={},
+        orig=Exception('relation "auth_throttle_state" does not exist'),
+    )
+    assert bootstrap.should_run_startup_recovery(exc) is True

@@ -7,8 +7,7 @@ import json
 from datetime import datetime
 from types import SimpleNamespace
 import plotly.graph_objects as go
-import pandas as pd
-from streamlit_agraph import agraph, Node, Edge, Config
+
 try:
     from streamlit_plotly_events import plotly_events
 except Exception:
@@ -24,49 +23,71 @@ from src.ui.styles import (
 )
 from src.ui.safe_html import escape_html
 
+
 def format_time(minutes):
     """Simple formatter for minutes -> HH:MM"""
-    if minutes < 0: minutes = 0
+    if minutes < 0:
+        minutes = 0
     h = int(minutes // 60)
     m = int(minutes % 60)
     return f"{h:02d}:{m:02d}"
 
-from sqlmodel import select, col
+
+from sqlmodel import select
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn
-from src.crud import get_goal_tree, get_user_goals, get_session_context, get_user_by_username, get_work_logs_by_date_range, get_all_tasks_by_cycle
+from src.crud import (
+    get_goal_tree,
+    get_user_goals,
+    get_session_context,
+    get_user_by_username,
+    get_work_logs_by_date_range,
+    get_all_tasks_by_cycle,
+)
 from src.utils.time_utils import ensure_utc, utc_now_naive
+
 
 # Cache helpers for heavy queries/aggregations
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_leadership_metrics(user_ids, cycle_id):
     from src.crud import get_leadership_metrics
+
     return get_leadership_metrics(list(user_ids), cycle_id)
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_all_tasks_by_cycle(cycle_id):
     from src.crud import get_all_tasks_by_cycle
+
     return get_all_tasks_by_cycle(cycle_id)
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_all_krs_by_cycle(cycle_id):
     from src.crud import get_all_krs_by_cycle
+
     return get_all_krs_by_cycle(cycle_id)
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_all_users():
     from src.crud import get_all_users
+
     return get_all_users()
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_team_members(manager_id):
     from src.crud import get_team_members
+
     return get_team_members(manager_id)
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_work_logs_by_range(user_id, start_dt, end_dt):
     from src.crud import get_work_logs_by_date_range
+
     return get_work_logs_by_date_range(user_id, start_dt, end_dt)
 
 
@@ -74,11 +95,7 @@ def _canonical_owner_ids_key(owner_ids):
     if owner_ids is None:
         return None
     canonical = sorted(
-        {
-            int(owner_id)
-            for owner_id in owner_ids
-            if owner_id is not None
-        }
+        {int(owner_id) for owner_id in owner_ids if owner_id is not None}
     )
     return tuple(canonical)
 
@@ -100,7 +117,9 @@ def _atlas_extract_ai_snapshot_fields(raw_analysis):
 
     warnings_list = analysis.get("deadline_warnings") or []
     if isinstance(warnings_list, list) and warnings_list:
-        joined = " ".join(str(item) for item in warnings_list if item is not None).lower()
+        joined = " ".join(
+            str(item) for item in warnings_list if item is not None
+        ).lower()
         if "overdue" in joined:
             ai_deadline_state = "overdue"
         else:
@@ -125,7 +144,10 @@ def _cached_get_atlas_scope_snapshot(
                 Goal.title,
                 Goal.progress,
                 Goal.owner_id,
+                User.display_name,
+                User.username,
             )
+            .join(User, User.id == Goal.owner_id)
             .where(Goal.cycle_id == cycle_id)
             .order_by(func.lower(Goal.title), Goal.id)
         )
@@ -142,17 +164,25 @@ def _cached_get_atlas_scope_snapshot(
         goal_ids = []
         goal_payload_by_id = {}
         goals_payload = []
-        owner_ids_in_scope = set()
-        for goal_id, title, progress, owner_id in goal_rows:
+        users_map = {}
+        for (
+            goal_id,
+            title,
+            progress,
+            owner_id,
+            owner_display_name,
+            owner_username,
+        ) in goal_rows:
             if goal_id is None:
                 continue
             goal_ids.append(int(goal_id))
-            owner_ids_in_scope.add(int(owner_id))
+            owner_id_int = int(owner_id)
+            users_map[owner_id_int] = owner_display_name or owner_username or "Unknown"
             payload = {
                 "id": int(goal_id),
                 "title": title,
                 "progress": int(progress or 0),
-                "owner_id": int(owner_id),
+                "owner_id": owner_id_int,
                 "objectives": [],
             }
             goals_payload.append(payload)
@@ -283,21 +313,6 @@ def _cached_get_atlas_scope_snapshot(
                     }
                 )
 
-        users_map = {}
-        if owner_ids_in_scope:
-            users = list(
-                session.exec(
-                    select(User.id, User.display_name, User.username)
-                    .where(User.id.in_(sorted(owner_ids_in_scope)))
-                    .order_by(col(User.display_name), col(User.username))
-                ).all()
-            )
-            users_map = {
-                int(user_id): (display_name or username or "Unknown")
-                for user_id, display_name, username in users
-                if user_id is not None
-            }
-
         return {"goals": goals_payload, "users_map": users_map}
 
 
@@ -313,7 +328,9 @@ def _cached_get_atlas_scope_runtime(
         include_analysis=include_analysis,
     )
     users_map = snapshot.get("users_map", {})
-    index, roots = _build_atlas_index_from_snapshot(snapshot.get("goals", []), users_map)
+    index, roots = _build_atlas_index_from_snapshot(
+        snapshot.get("goals", []), users_map
+    )
     node_lookup = _atlas_build_node_lookup(index)
     return {
         "snapshot": snapshot,
@@ -321,6 +338,7 @@ def _cached_get_atlas_scope_runtime(
         "roots": roots,
         "node_lookup": node_lookup,
     }
+
 
 def _atlas_build_node_lookup(index: dict) -> dict:
     return {
@@ -350,7 +368,9 @@ def _atlas_get_node_details_from_lookup(node_id, node_lookup=None):
 
 def get_node_details(node_id, node_lookup=None):
     """Resolve node details with O(1) Atlas lookup first, DB fallback for legacy paths."""
-    lookup_type, lookup_title = _atlas_get_node_details_from_lookup(node_id, node_lookup)
+    lookup_type, lookup_title = _atlas_get_node_details_from_lookup(
+        node_id, node_lookup
+    )
     if lookup_type:
         return lookup_type, lookup_title
 
@@ -400,55 +420,57 @@ def get_node_details(node_id, node_lookup=None):
                 continue
     return None, "Unknown"
 
+
 def build_graph_from_node(root_obj):
     """
     Recursively build a graph from a starting SQLModel object.
     Returns (list of Node, list of Edge).
     """
+    from streamlit_agraph import Edge, Node
+
     nodes_list = []
     edges_list = []
     visited = set()
 
     def traverse(obj, parent_id=None):
-        if not obj: return
-        nid = f"{obj.__tablename__}_{obj.id}" # Unique string ID for graph
-        
-        if nid in visited: return
+        if not obj:
+            return
+        nid = f"{obj.__tablename__}_{obj.id}"  # Unique string ID for graph
+
+        if nid in visited:
+            return
         visited.add(nid)
-        
-        ntype = obj.__tablename__.upper() # goal, objective, etc.
-        if ntype == "KEYRESULT": ntype = "KEY_RESULT" # Fix name
-        
+
+        ntype = obj.__tablename__.upper()  # goal, objective, etc.
+        if ntype == "KEYRESULT":
+            ntype = "KEY_RESULT"  # Fix name
+
         color = TYPE_COLORS.get(ntype, "#757575")
         icon = TYPE_ICONS.get(ntype, "")
         title = getattr(obj, "title", "Untitled")
-        
-        nodes_list.append(Node(
-            id=nid,
-            label=f"{icon} {title}",
-            size=25,
-            color=color
-        ))
-        
+
+        nodes_list.append(Node(id=nid, label=f"{icon} {title}", size=25, color=color))
+
         if parent_id:
-            edges_list.append(Edge(
-                source=parent_id,
-                target=nid,
-                label="",
-                color="#CCCCCC"
-            ))
-            
+            edges_list.append(
+                Edge(source=parent_id, target=nid, label="", color="#CCCCCC")
+            )
+
         # Children
         children = []
-        if hasattr(obj, "objectives"): children.extend(obj.objectives)
-        if hasattr(obj, "key_results"): children.extend(obj.key_results)
-        if hasattr(obj, "tasks"): children.extend(obj.tasks)
-         
+        if hasattr(obj, "objectives"):
+            children.extend(obj.objectives)
+        if hasattr(obj, "key_results"):
+            children.extend(obj.key_results)
+        if hasattr(obj, "tasks"):
+            children.extend(obj.tasks)
+
         for child in children:
             traverse(child, nid)
-            
+
     traverse(root_obj)
     return nodes_list, edges_list
+
 
 def navigate_to(node_id):
     """Push node to stack."""
@@ -456,10 +478,11 @@ def navigate_to(node_id):
         st.session_state.nav_stack.append(node_id)
         st.rerun()
 
+
 def navigate_back_to(index):
     """Pop stack to specific index."""
     if "nav_stack" in st.session_state:
-        st.session_state.nav_stack = st.session_state.nav_stack[:index+1]
+        st.session_state.nav_stack = st.session_state.nav_stack[: index + 1]
         st.rerun()
 
 
@@ -487,7 +510,7 @@ def render_breadcrumbs(node_lookup=None):
         ntype, title = get_node_details(opt, node_lookup=node_lookup)
         if not ntype:
             return f"Unknown: {title}"
-        return f"{ntype.replace('_',' ').title()}: {title}"
+        return f"{ntype.replace('_', ' ').title()}: {title}"
 
     current_selection = stack[-1] if stack else "HOME"
 
@@ -497,7 +520,7 @@ def render_breadcrumbs(node_lookup=None):
         selection_mode="single",
         default=current_selection,
         format_func=get_label,
-        key="nav_pills"
+        key="nav_pills",
     )
 
     if selected != current_selection:
@@ -511,23 +534,29 @@ def render_breadcrumbs(node_lookup=None):
             except ValueError:
                 pass
 
+
 def get_ancestor_objective(node_id):
     """Find ancestor Objective using DB."""
     # This requires traversing up DB relationships.
     # Since we don't have parent pointers loaded easily without a session...
     # We might need to fetch the task, then KR, then Obj.
     # optimizing: Assume 4-level
-    _, title = get_node_details(node_id) # Just a placeholder if we don't do full lookup
-    return "Unknown Objective" # TODO: Implement DB upward traversal
+    _, title = get_node_details(
+        node_id
+    )  # Just a placeholder if we don't do full lookup
+    return "Unknown Objective"  # TODO: Implement DB upward traversal
+
 
 def get_ancestor_key_result(node_id):
-    return "Unknown KR" # TODO: Implement DB upward traversal
+    return "Unknown KR"  # TODO: Implement DB upward traversal
+
 
 def resolve_owner_username(node) -> str:
     """Resolve and map the owner's username to User.display_name via the ancestor Goal.
     Falls back to username, then 'Unknown'.
     """
     from src.crud import get_session_context
+
     try:
         goal_obj = None
         # Direct goal
@@ -572,26 +601,32 @@ def resolve_owner_username(node) -> str:
         pass
     return "Unknown"
 
+
 def render_timer_content(node_id, username):
     # 'data' argument is deprecated but kept for signature compatibility during refactor
     from src.crud import stop_timer, get_session_context
     from src.models import Task
-    
+
     with get_session_context() as session:
         node = session.get(Task, node_id)
         if not node:
             st.error("Task not found")
             return
-            
+
         safe_title = escape_html(node.title)
-        st.markdown(f"<div class='timer-task-title'>{safe_title}</div>", unsafe_allow_html=True)
-        st.markdown("<div class='timer-subtext'>Focus on this task and record your flow.</div>", unsafe_allow_html=True)
-        
+        st.markdown(
+            f"<div class='timer-task-title'>{safe_title}</div>", unsafe_allow_html=True
+        )
+        st.markdown(
+            "<div class='timer-subtext'>Focus on this task and record your flow.</div>",
+            unsafe_allow_html=True,
+        )
+
         placeholder = st.empty()
-        c1, c2, c3 = st.columns([1,1,1])
-        
+        c1, c2, c3 = st.columns([1, 1, 1])
+
         start_ts = node.timer_started_at
-        
+
         if start_ts:
             # Calculate elapsed
             # Ensure start_ts is handled correctly (it's a datetime in SQLModel usually, but might be float in JSON?)
@@ -602,15 +637,22 @@ def render_timer_content(node_id, username):
             now = ensure_utc(utc_now_naive())
             elapsed = now - ensure_utc(start_ts)
             elapsed_sec = int(elapsed.total_seconds())
-            
+
             h = elapsed_sec // 3600
             m = (elapsed_sec % 3600) // 60
             s = elapsed_sec % 60
-            
-            placeholder.markdown(f"<div class='timer-display'>{h:02d}:{m:02d}:{s:02d}</div>", unsafe_allow_html=True)
-            
-            summary = st.text_input("What did you work on?", placeholder="e.g. Drafted initial outline...", key=f"timer_sum_{node_id}")
-            
+
+            placeholder.markdown(
+                f"<div class='timer-display'>{h:02d}:{m:02d}:{s:02d}</div>",
+                unsafe_allow_html=True,
+            )
+
+            summary = st.text_input(
+                "What did you work on?",
+                placeholder="e.g. Drafted initial outline...",
+                key=f"timer_sum_{node_id}",
+            )
+
             if c2.button("✋ Stop & Log", type="primary", use_container_width=True):
                 # Call CRUD stop_timer directly
                 wl = stop_timer(node_id, summary=summary, user_id=username)
@@ -619,27 +661,37 @@ def render_timer_content(node_id, username):
                     from src.database import get_session_context
                     from sqlmodel import select
                     from src.models import WorkLog
+
                     with get_session_context() as session:
-                        logs = session.exec(select(WorkLog).where(WorkLog.task_id == node_id).order_by(WorkLog.start_time.desc())).all()
-                    st.success(f"Logged {round(wl.duration_minutes,1)} minutes")
+                        logs = session.exec(
+                            select(WorkLog)
+                            .where(WorkLog.task_id == node_id)
+                            .order_by(WorkLog.start_time.desc())
+                        ).all()
+                    st.success(f"Logged {round(wl.duration_minutes, 1)} minutes")
                     if logs:
                         latest = logs[0]
-                        st.info(f"Last log: {latest.start_time.strftime('%Y-%m-%d %H:%M')} — {round(latest.duration_minutes,1)}m — {latest.summary or '-'}")
+                        st.info(
+                            f"Last log: {latest.start_time.strftime('%Y-%m-%d %H:%M')} — {round(latest.duration_minutes, 1)}m — {latest.summary or '-'}"
+                        )
                 else:
                     st.warning("No running timer found for this task.")
                 if "active_timer_node_id" in st.session_state:
                     del st.session_state.active_timer_node_id
                 st.rerun()
-                
+
             time.sleep(1)
             st.rerun()
         else:
-            placeholder.markdown("<div class='timer-display'>00:00:00</div>", unsafe_allow_html=True)
+            placeholder.markdown(
+                "<div class='timer-display'>00:00:00</div>", unsafe_allow_html=True
+            )
             st.warning("Timer is not running.")
             if c2.button("Close", use_container_width=True):
-                 if "active_timer_node_id" in st.session_state:
+                if "active_timer_node_id" in st.session_state:
                     del st.session_state.active_timer_node_id
-                 st.rerun()
+                st.rerun()
+
 
 def render_leadership_dashboard_content(username):
     # (Title is now in the dialog header)
@@ -647,45 +699,55 @@ def render_leadership_dashboard_content(username):
     if not cycle_id:
         st.warning("Please select a cycle to view insights.")
         return
-    
+
     # === REFRESH BUTTON ===
     col_refresh, col_spacer = st.columns([1, 5])
     with col_refresh:
-        if st.button("🔄 Refresh Data", help="Reload dashboard data", key="dash_refresh"):
+        if st.button(
+            "🔄 Refresh Data", help="Reload dashboard data", key="dash_refresh"
+        ):
             # Clear session state data cache
-            keys_to_clear = [k for k in st.session_state.keys() if k.startswith("okr_data_cache_")]
+            keys_to_clear = [
+                k for k in st.session_state.keys() if k.startswith("okr_data_cache_")
+            ]
             for k in keys_to_clear:
                 del st.session_state[k]
-            
-            if "report_summary" in st.session_state: del st.session_state["report_summary"]
+
+            if "report_summary" in st.session_state:
+                del st.session_state["report_summary"]
             st.rerun()
-    
+
     user_role = st.session_state.get("user_role", "member")
-    
+
     # === TEAM MEMBER FILTER (Admin/Manager only) ===
     selected_members = [username]  # Default to current user
     member_display_map = {username: st.session_state.get("display_name", username)}
-    
+
     if user_role in ["admin", "manager"]:
         st.markdown("#### 👥 Team Filter")
-        
+
         # Get team members based on role
         if user_role == "admin":
             all_users = _cached_get_all_users()
         else:
             from src.crud import get_user_by_id
+
             manager_id = st.session_state.get("user_id")
             all_users = _cached_get_team_members(manager_id)
             # Include self (manager) in the list
             manager_user = get_user_by_id(manager_id)
             if manager_user and manager_user not in all_users:
                 all_users.insert(0, manager_user)
-        
+
         # Filter active users and create options
         active_users = [u for u in all_users if u.is_active]
-        member_options = {u.display_name or u.username: u.username for u in active_users}
-        member_display_map = {u.username: u.display_name or u.username for u in active_users}
-        
+        member_options = {
+            u.display_name or u.username: u.username for u in active_users
+        }
+        member_display_map = {
+            u.username: u.display_name or u.username for u in active_users
+        }
+
         if member_options:
             # Multi-select with all selected by default
             selected_names = st.multiselect(
@@ -693,64 +755,67 @@ def render_leadership_dashboard_content(username):
                 options=list(member_options.keys()),
                 default=list(member_options.keys()),
                 help="Filter dashboard metrics to show data for selected members only",
-                key="dash_members"
+                key="dash_members",
             )
-            
+
             selected_members = [member_options[name] for name in selected_names]
-            
+
             if not selected_members:
                 st.warning("Please select at least one team member.")
                 return
-        
+
         st.markdown("---")
-    
+
     # === AGGREGATE METRICS FROM SELECTED MEMBERS ===
     from src.utils.deadline_utils import get_deadline_summary, get_deadline_status
-    
+
     # === FETCH AGGREGATED METRICS ===
     metrics = _cached_get_leadership_metrics(selected_members, cycle_id)
     if not metrics:
         st.error("Could not fetch metrics.")
         return
     users_map = {u.id: u for u in _cached_get_all_users() if u.id is not None}
-        
+
     member_progress_data = metrics.get("member_progress", [])
     member_deadline_data = metrics.get("member_deadlines", [])
 
     # === SCORECARD ===
     st.markdown("#### 📈 Key Metrics")
     col1, col2, col3, col4, col5 = st.columns(5)
-    
+
     with col1:
         st.metric(
-            "Data Hygiene", 
-            f"{metrics['hygiene_pct']:.0f}%", 
-            help="% of KRs updated in the last 7 days"
+            "Data Hygiene",
+            f"{metrics['hygiene_pct']:.0f}%",
+            help="% of KRs updated in the last 7 days",
         )
     with col2:
         st.metric(
-            "Avg Confidence", 
+            "Avg Confidence",
             f"{metrics['avg_confidence']:.1f}/10",
-            delta_color="normal"
+            delta_color="normal",
         )
     with col3:
         st.metric(
-            "At-Risk KRs", 
+            "At-Risk KRs",
             metrics["at_risk_count"],
-            delta="-bad" if metrics["at_risk_count"] > 0 else "off"
+            delta="-bad" if metrics["at_risk_count"] > 0 else "off",
         )
-    
+
     # Calculate aggregate deadline stats from member_deadlines
     total_overdue = sum(m["overdue"] for m in member_deadline_data)
     total_at_risk = sum(m["at_risk"] for m in member_deadline_data)
 
     # Aggregate deadline summary for AI coach (constructed from member_deadline_data)
     aggregate_deadline = {
-        "total_with_deadline": sum(m.get("overdue",0) + m.get("at_risk",0) + m.get("on_track",0) for m in member_deadline_data),
-        "completed": sum(m.get("completed",0) for m in member_deadline_data),
-        "on_track": sum(m.get("on_track",0) for m in member_deadline_data),
-        "at_risk": sum(m.get("at_risk",0) for m in member_deadline_data),
-        "overdue": sum(m.get("overdue",0) for m in member_deadline_data)
+        "total_with_deadline": sum(
+            m.get("overdue", 0) + m.get("at_risk", 0) + m.get("on_track", 0)
+            for m in member_deadline_data
+        ),
+        "completed": sum(m.get("completed", 0) for m in member_deadline_data),
+        "on_track": sum(m.get("on_track", 0) for m in member_deadline_data),
+        "at_risk": sum(m.get("at_risk", 0) for m in member_deadline_data),
+        "overdue": sum(m.get("overdue", 0) for m in member_deadline_data),
     }
 
     with col4:
@@ -758,150 +823,192 @@ def render_leadership_dashboard_content(username):
             "🔴 Overdue Tasks",
             total_overdue,
             delta="-bad" if total_overdue > 0 else "off",
-            help="Tasks past deadline with < 100% progress"
+            help="Tasks past deadline with < 100% progress",
         )
     with col5:
         st.metric(
             "🟡 At Risk Tasks",
             total_at_risk,
             delta="-normal" if total_at_risk > 0 else "off",
-            help="Tasks behind expected progress pace"
+            help="Tasks behind expected progress pace",
         )
-    
+
     st.markdown("---")
-    
+
     # === PROGRESS BY MEMBER (Only show if multiple members) ===
     if len(selected_members) > 1 and member_progress_data:
         st.markdown("#### 📊 Progress by Team Member")
-        
+
         # Sort by progress descending
-        sorted_progress = sorted(member_progress_data, key=lambda x: x["progress"], reverse=True)
-        
+        sorted_progress = sorted(
+            member_progress_data, key=lambda x: x["progress"], reverse=True
+        )
+
         fig_progress = go.Figure()
-        
+
         # Add progress bars
-        fig_progress.add_trace(go.Bar(
-            y=[m["member"] for m in sorted_progress],
-            x=[m["progress"] for m in sorted_progress],
-            orientation='h',
-            marker=dict(
-                color=[m["progress"] for m in sorted_progress],
-                colorscale='RdYlGn',
-                cmin=0,
-                cmax=100
-            ),
-            text=[f"{m['progress']}% ({m['completed']}/{m['tasks']} tasks)" for m in sorted_progress],
-            textposition='inside',
-            hovertemplate="<b>%{y}</b><br>Progress: %{x}%<extra></extra>"
-        ))
-        
+        fig_progress.add_trace(
+            go.Bar(
+                y=[m["member"] for m in sorted_progress],
+                x=[m["progress"] for m in sorted_progress],
+                orientation="h",
+                marker=dict(
+                    color=[m["progress"] for m in sorted_progress],
+                    colorscale="RdYlGn",
+                    cmin=0,
+                    cmax=100,
+                ),
+                text=[
+                    f"{m['progress']}% ({m['completed']}/{m['tasks']} tasks)"
+                    for m in sorted_progress
+                ],
+                textposition="inside",
+                hovertemplate="<b>%{y}</b><br>Progress: %{x}%<extra></extra>",
+            )
+        )
+
         fig_progress.update_layout(
             xaxis_title="Average Task Progress %",
             xaxis=dict(range=[0, 105]),
             height=max(200, len(sorted_progress) * 40),
             showlegend=False,
-            template="simple_white"
+            template="simple_white",
         )
-        
+
         st.plotly_chart(fig_progress, key="dash_bar_progress", use_container_width=True)
         st.markdown("---")
-    
+
     # === DEADLINE HEALTH BY MEMBER ===
-    if len(selected_members) > 1 and any(m["overdue"] + m["at_risk"] > 0 for m in member_deadline_data):
+    if len(selected_members) > 1 and any(
+        m["overdue"] + m["at_risk"] > 0 for m in member_deadline_data
+    ):
         st.markdown("#### 📅 Deadline Health by Member")
-        
+
         # Filter to members with deadline issues
-        members_with_issues = [m for m in member_deadline_data if m["overdue"] + m["at_risk"] > 0]
-        
+        members_with_issues = [
+            m for m in member_deadline_data if m["overdue"] + m["at_risk"] > 0
+        ]
+
         if members_with_issues:
             fig_deadline = go.Figure()
-            
+
             member_names = [m["member"] for m in members_with_issues]
-            
-            fig_deadline.add_trace(go.Bar(
-                name="🔴 Overdue",
-                y=member_names,
-                x=[m["overdue"] for m in members_with_issues],
-                orientation='h',
-                marker_color='#E53935'
-            ))
-            fig_deadline.add_trace(go.Bar(
-                name="🟡 At Risk",
-                y=member_names,
-                x=[m["at_risk"] for m in members_with_issues],
-                orientation='h',
-                marker_color='#FFA726'
-            ))
-            
+
+            fig_deadline.add_trace(
+                go.Bar(
+                    name="🔴 Overdue",
+                    y=member_names,
+                    x=[m["overdue"] for m in members_with_issues],
+                    orientation="h",
+                    marker_color="#E53935",
+                )
+            )
+            fig_deadline.add_trace(
+                go.Bar(
+                    name="🟡 At Risk",
+                    y=member_names,
+                    x=[m["at_risk"] for m in members_with_issues],
+                    orientation="h",
+                    marker_color="#FFA726",
+                )
+            )
+
             fig_deadline.update_layout(
-                barmode='stack',
+                barmode="stack",
                 xaxis_title="Number of Tasks",
                 height=max(200, len(members_with_issues) * 50),
                 template="simple_white",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02)
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
             )
-            
-            st.plotly_chart(fig_deadline, key="dash_bar_deadline", use_container_width=True)
+
+            st.plotly_chart(
+                fig_deadline, key="dash_bar_deadline", use_container_width=True
+            )
         st.markdown("---")
-    
+
     # === STRATEGIC ALIGNMENT MATRIX ===
     st.markdown("#### 📊 Strategic Alignment Matrix")
-    
+
     data_heatmap = metrics["heatmap_data"]
     if data_heatmap:
+        import pandas as pd
+
         df = pd.DataFrame(data_heatmap)
-        
+
         colors = df["confidence"]
-        
-        fig = go.Figure(data=go.Scatter(
-            x=df["efficiency"],
-            y=df["effectiveness"],
-            mode='markers+text',
-            text=df["title"],
-            textposition="top center",
-            marker=dict(
-                size=14,
-                color=colors,
-                colorscale='RdYlGn',
-                cmin=0,
-                cmax=10,
-                showscale=True,
-                colorbar=dict(title="Confidence"),
-                line=dict(color='black', width=1)
-            ),
-            hovertext=df.apply(lambda row: f"<b>{row['title']}</b><br>Eff: {row['efficiency']}%<br>Str fit: {row['effectiveness']}%", axis=1),
-            hoverinfo="text"
-        ))
-        
+
+        fig = go.Figure(
+            data=go.Scatter(
+                x=df["efficiency"],
+                y=df["effectiveness"],
+                mode="markers+text",
+                text=df["title"],
+                textposition="top center",
+                marker=dict(
+                    size=14,
+                    color=colors,
+                    colorscale="RdYlGn",
+                    cmin=0,
+                    cmax=10,
+                    showscale=True,
+                    colorbar=dict(title="Confidence"),
+                    line=dict(color="black", width=1),
+                ),
+                hovertext=df.apply(
+                    lambda row: (
+                        f"<b>{row['title']}</b><br>Eff: {row['efficiency']}%<br>Str fit: {row['effectiveness']}%"
+                    ),
+                    axis=1,
+                ),
+                hoverinfo="text",
+            )
+        )
+
         # Quadrant Lines
         fig.add_hline(y=50, line_dash="dash", line_color="gray", opacity=0.5)
         fig.add_vline(x=50, line_dash="dash", line_color="gray", opacity=0.5)
-        
+
         # Quadrant Labels
-        fig.add_annotation(x=90, y=90, text="🌟 High Performers", showarrow=False, font=dict(color="green"))
-        fig.add_annotation(x=90, y=10, text="⚠️ Busy Work", showarrow=False, font=dict(color="orange"))
-        fig.add_annotation(x=10, y=90, text="🤔 Strategy Gap", showarrow=False, font=dict(color="blue"))
-        fig.add_annotation(x=10, y=10, text="❌ Disconnected", showarrow=False, font=dict(color="red"))
- 
+        fig.add_annotation(
+            x=90,
+            y=90,
+            text="🌟 High Performers",
+            showarrow=False,
+            font=dict(color="green"),
+        )
+        fig.add_annotation(
+            x=90, y=10, text="⚠️ Busy Work", showarrow=False, font=dict(color="orange")
+        )
+        fig.add_annotation(
+            x=10, y=90, text="🤔 Strategy Gap", showarrow=False, font=dict(color="blue")
+        )
+        fig.add_annotation(
+            x=10, y=10, text="❌ Disconnected", showarrow=False, font=dict(color="red")
+        )
+
         fig.update_layout(
             xaxis_title="Efficiency (Execution Quality)",
             yaxis_title="Effectiveness (Strategy Fit)",
             xaxis=dict(range=[0, 105]),
             yaxis=dict(range=[0, 105]),
             height=500,
-            template="simple_white"
+            template="simple_white",
         )
-        
+
         st.plotly_chart(fig, key="dash_scatter_strategic", use_container_width=True)
     else:
-        st.info("Not enough AI analysis data yet. Run AI analysis on Key Results to populate this chart.")
- 
+        st.info(
+            "Not enough AI analysis data yet. Run AI analysis on Key Results to populate this chart."
+        )
+
     # === AT-RISK KEY RESULTS (Grouped by Member if multi-select) ===
     if metrics["at_risk"]:
         st.markdown("#### 🚨 At-Risk Key Results")
         for item in metrics["at_risk"]:
-            st.error(f"**{item['title']}** — Reason: {item['reason']} (Conf: {item['confidence']})")
-    
+            st.error(
+                f"**{item['title']}** — Reason: {item['reason']} (Conf: {item['confidence']})"
+            )
+
     # === OVERDUE TASKS LIST ===
     # Build overdue tasks list from DB tasks for current cycle
     overdue_tasks = []
@@ -910,10 +1017,10 @@ def render_leadership_dashboard_content(username):
         for task in tasks:
             # Build a lightweight node dict for deadline utils
             dl = None
-            if getattr(task, 'deadline', None):
+            if getattr(task, "deadline", None):
                 # Task.deadline may be datetime or int(ms)
                 dval = task.deadline
-                if hasattr(dval, 'timestamp'):
+                if hasattr(dval, "timestamp"):
                     dl = int(dval.timestamp() * 1000)
                 else:
                     dl = dval
@@ -921,16 +1028,22 @@ def render_leadership_dashboard_content(username):
             node = {
                 "type": "TASK",
                 "deadline": dl,
-                "progress": getattr(task, 'progress', 0),
-                "createdAt": int(getattr(task, 'created_at', utc_now_naive()).timestamp() * 1000),
-                "title": getattr(task, 'title', 'Untitled')
+                "progress": getattr(task, "progress", 0),
+                "createdAt": int(
+                    getattr(task, "created_at", utc_now_naive()).timestamp() * 1000
+                ),
+                "title": getattr(task, "title", "Untitled"),
             }
             status_code_dl, _, _ = get_deadline_status(node)
             if status_code_dl == "overdue":
                 # Owner display: try to find goal.owner via relationships
                 owner_disp = "Unknown"
                 try:
-                    if task.key_result and task.key_result.objective and task.key_result.objective.goal:
+                    if (
+                        task.key_result
+                        and task.key_result.objective
+                        and task.key_result.objective.goal
+                    ):
                         goal_owner_id = task.key_result.objective.goal.owner_id
                         if goal_owner_id and goal_owner_id in users_map:
                             user_obj = users_map[goal_owner_id]
@@ -938,28 +1051,36 @@ def render_leadership_dashboard_content(username):
                 except Exception:
                     owner_disp = "Unknown"
 
-                overdue_tasks.append({
-                    "title": node.get("title", "Untitled"),
-                    "owner": owner_disp,
-                    "progress": node.get("progress", 0)
-                })
+                overdue_tasks.append(
+                    {
+                        "title": node.get("title", "Untitled"),
+                        "owner": owner_disp,
+                        "progress": node.get("progress", 0),
+                    }
+                )
     except Exception:
         overdue_tasks = []
-    
+
     if overdue_tasks:
         st.markdown("#### 🔴 Overdue Tasks")
-        limit_overdue = st.number_input("Max overdue tasks to show", min_value=5, max_value=100, value=10, step=5)
+        limit_overdue = st.number_input(
+            "Max overdue tasks to show", min_value=5, max_value=100, value=10, step=5
+        )
         for task in overdue_tasks[:limit_overdue]:
-            st.error(f"**{task['title']}** — Owner: {task['owner']} ({task['progress']}% complete)")
+            st.error(
+                f"**{task['title']}** — Owner: {task['owner']} ({task['progress']}% complete)"
+            )
         if len(overdue_tasks) > limit_overdue:
-            st.caption(f"...and {len(overdue_tasks) - limit_overdue} more overdue tasks")
- 
+            st.caption(
+                f"...and {len(overdue_tasks) - limit_overdue} more overdue tasks"
+            )
+
     # === AI TEAM COACH (Admin/Manager only) ===
     if user_role in ["admin", "manager"]:
         st.markdown("---")
         st.markdown("#### 🧠 AI Team Coach")
         st.caption("Get strategic coaching tips based on your team's performance data")
-        
+
         # Prepare team data for AI
         team_coaching_data = {
             "members": member_progress_data,
@@ -972,27 +1093,32 @@ def render_leadership_dashboard_content(username):
             "at_risk_krs": len(metrics.get("at_risk", [])),
             "avg_confidence": metrics.get("avg_confidence", 0),
             "hygiene_pct": metrics.get("hygiene_pct", 0),
-            "progress_distribution": member_progress_data
+            "progress_distribution": member_progress_data,
         }
-        
+
         col_coach_btn, col_coach_spacer = st.columns([1, 3])
         with col_coach_btn:
-            run_coach = st.button("✨ Get Coaching Tips", type="primary", use_container_width=True, key="dash_coach_btn")
-        
+            run_coach = st.button(
+                "✨ Get Coaching Tips",
+                type="primary",
+                use_container_width=True,
+                key="dash_coach_btn",
+            )
+
         if run_coach:
             from src.services.ai_service import analyze_team_health
-            
+
             with st.spinner("🧠 AI Coach is analyzing your team..."):
                 result = analyze_team_health(team_coaching_data)
-            
+
             if "error" in result:
                 st.error(f"Coaching failed: {result['error']}")
             else:
                 coaching = result.get("coaching", {})
-                
+
                 # Store in session for persistence
                 st.session_state["last_coaching"] = coaching
-        
+
         # Display coaching results (if available)
         coaching = st.session_state.get("last_coaching")
         if coaching:
@@ -1000,13 +1126,20 @@ def render_leadership_dashboard_content(username):
             health_score = coaching.get("overall_health_score", 0)
             grade = coaching.get("health_grade", "?")
             headline = coaching.get("headline", "")
-            
+
             # Color based on grade
-            grade_colors = {"A": "#4CAF50", "B": "#8BC34A", "C": "#FFC107", "D": "#FF9800", "F": "#F44336"}
+            grade_colors = {
+                "A": "#4CAF50",
+                "B": "#8BC34A",
+                "C": "#FFC107",
+                "D": "#FF9800",
+                "F": "#F44336",
+            }
             grade_color = grade_colors.get(grade, "#9E9E9E")
-            
+
             # Score Card
-            st.markdown(f"""
+            st.markdown(
+                f"""
             <div style="background: linear-gradient(135deg, {grade_color}22, {grade_color}11); 
                         border-left: 4px solid {grade_color}; 
                         padding: 20px; 
@@ -1023,28 +1156,30 @@ def render_leadership_dashboard_content(username):
                     </div>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
-            
+            """,
+                unsafe_allow_html=True,
+            )
+
             # Dimension Scores
             dimensions = coaching.get("dimensions", {})
             if dimensions:
                 st.markdown("##### 📊 Performance Dimensions")
-                
+
                 dim_labels = {
                     "productivity": "🚀 Productivity",
                     "deadline_discipline": "⏰ Deadline Discipline",
                     "strategic_alignment": "🎯 Strategic Alignment",
                     "workload_balance": "⚖️ Workload Balance",
-                    "momentum": "📈 Momentum"
+                    "momentum": "📈 Momentum",
                 }
-                
+
                 # Display as columns with progress bars
                 cols = st.columns(5)
                 for i, (key, label) in enumerate(dim_labels.items()):
                     dim = dimensions.get(key, {})
                     score_val = dim.get("score", 0)
                     status_str = dim.get("status", "")
-                    
+
                     with cols[i]:
                         st.metric(label.split(" ")[0], f"{score_val}%")
                         if "🟢" in status_str:
@@ -1053,7 +1188,7 @@ def render_leadership_dashboard_content(username):
                             st.error(status_str, icon="🚨")
                         else:
                             st.warning(status_str, icon="⚠️")
-                
+
                 # Expandable insights per dimension
                 with st.expander("💡 Detailed Insights & Actions", expanded=False):
                     for key, label in dim_labels.items():
@@ -1062,26 +1197,27 @@ def render_leadership_dashboard_content(username):
                         st.info(f"📌 {dim.get('insight', 'N/A')}")
                         st.success(f"✅ Action: {dim.get('action', 'N/A')}")
                         st.markdown("---")
-            
+
             # Top Priorities
             priorities = coaching.get("top_priorities", [])
             if priorities:
                 st.markdown("##### 🎯 Top Priorities This Week")
                 for i, p in enumerate(priorities, 1):
                     st.markdown(f"**{i}.** {p}")
-            
+
             # Quick Wins
             quick_wins = coaching.get("quick_wins", [])
             if quick_wins:
                 st.markdown("##### ⚡ Quick Wins")
                 for win in quick_wins:
                     st.success(f"💡 {win}")
-            
+
             # Watch Out
             watch_out = coaching.get("watch_out")
             if watch_out:
                 st.markdown("##### ⚠️ Risk Alert")
                 st.warning(f"🔔 {watch_out}")
+
 
 @st.fragment
 def render_report_content(username, mode):
@@ -1101,7 +1237,8 @@ def render_report_content(username, mode):
         period_label = "Last 7 Days"
 
     # CSS: Style YOUR EXISTING custom button as a circle (Dialog specific)
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         /* 1. Hide the Native Close Button */
         div[role="dialog"] button[aria-label="Close"] {
@@ -1159,23 +1296,25 @@ def render_report_content(username, mode):
             background-color: #fff5f5;
         }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # Header with Close Button
     c_head, c_opts, c_close = st.columns([2, 1, 0.5])
     c_head.caption(f"Tasks with work recorded for: {mode} ({period_label})")
-    
+
     # PDF Direction Toggle
     if "report_direction" not in st.session_state:
         st.session_state.report_direction = "LTR"
-        
+
     with c_opts:
         st.session_state.report_direction = st.segmented_control(
             "PDF Direction",
             options=["LTR", "RTL"],
             default=st.session_state.report_direction,
             key=f"rep_dir_{mode}",
-            label_visibility="collapsed"
+            label_visibility="collapsed",
         )
 
     with c_close:
@@ -1183,62 +1322,66 @@ def render_report_content(username, mode):
             if "active_report_mode" in st.session_state:
                 del st.session_state.active_report_mode
             st.rerun()
-    
+
     user_obj = get_user_by_username(username)
     if not user_obj:
         st.error("User not found")
         return
-        
+
     start_dt = datetime.fromtimestamp(start_time / 1000)
     end_dt = datetime.fromtimestamp(now / 1000)
-    
+
     logs = _cached_get_work_logs_by_range(user_obj.id, start_dt, end_dt)
-    
+
     if not logs:
         st.info(f"No work recorded in the this period.")
         return
 
     report_items = []
-    objective_stats = {} # { "Objective Title": total_minutes }
-    daily_minutes = {}   # { "YYYY-MM-DD": total_minutes }
-    achievements = set() # Completed task titles
-    
+    objective_stats = {}  # { "Objective Title": total_minutes }
+    daily_minutes = {}  # { "YYYY-MM-DD": total_minutes }
+    achievements = set()  # Completed task titles
+
     for log in logs:
         task = log.task
         kr = task.key_result
         obj = kr.objective
         goal = obj.goal
-        
+
         duration = log.duration_minutes
         obj_title = obj.title
         kr_title = kr.title
-        
+
         # Get deadline status if available
         deadline_status = "—"
         if task.deadline:
             from src.utils.deadline_utils import get_deadline_status
+
             try:
                 _, status_label, _ = get_deadline_status(task)
                 deadline_status = status_label
-            except: pass
-        
-        log_date = log.start_time.strftime('%Y-%m-%d')
-        
-        report_items.append({
-            "Task": task.title,
-            "Type": "TASK",
-            "Date": log_date,
-            "Time": log.start_time.strftime('%H:%M'),
-            "Duration (m)": round(duration, 2),
-            "Deadline": deadline_status,
-            "Summary": log.summary or log.note or "-",
-            "Objective": obj_title,
-            "KeyResult": kr_title
-        })
-        
+            except:
+                pass
+
+        log_date = log.start_time.strftime("%Y-%m-%d")
+
+        report_items.append(
+            {
+                "Task": task.title,
+                "Type": "TASK",
+                "Date": log_date,
+                "Time": log.start_time.strftime("%H:%M"),
+                "Duration (m)": round(duration, 2),
+                "Deadline": deadline_status,
+                "Summary": log.summary or log.note or "-",
+                "Objective": obj_title,
+                "KeyResult": kr_title,
+            }
+        )
+
         objective_stats[obj_title] = objective_stats.get(obj_title, 0) + duration
         daily_minutes[log_date] = daily_minutes.get(log_date, 0) + duration
-        
+
         if task.status == "done" or task.progress == 100:
             achievements.add(task.title)
 
@@ -1250,46 +1393,60 @@ def render_report_content(username, mode):
     if mode != "Daily":
         with st.container():
             st.markdown("### 📋 Executive Summary")
-            
+
             # AI Summary
             if "report_summary" not in st.session_state:
-                if st.button("✨ Generate AI Weekly Brief", type="primary", key="report_gen_ai"):
-                     with st.spinner("Drafting executive summary..."):
-                         from src.services.ai_service import generate_weekly_summary
-                         # Prepare context
-                         krs_updated = len(set(i["KeyResult"] for i in report_items))
-                         obj_summary = [f"{k}: {int(v)}m" for k, v in objective_stats.items()]
-                         
-                         stats = {
-                             "total_minutes": total,
-                             "tasks_completed": len(achievements),
-                             "krs_updated": krs_updated,
-                             "objectives_text": obj_summary,
-                             "key_achievements": achievements,
-                             "work_logs_text": "\n".join([f"{i['Task']}: {i['Summary']}" for i in report_items[:30]])
-                         }
-                         
-                         res = generate_weekly_summary(username, 
-                                                     datetime.fromtimestamp(start_time/1000).strftime("%Y-%m-%d"),
-                                                     datetime.now().strftime("%Y-%m-%d"),
-                                                     stats)
-                                                     
-                         if "error" not in res:
-                             st.session_state.report_summary = res
-                             st.rerun()
-                         else:
-                             st.error(res["error"])
-                             
+                if st.button(
+                    "✨ Generate AI Weekly Brief", type="primary", key="report_gen_ai"
+                ):
+                    with st.spinner("Drafting executive summary..."):
+                        from src.services.ai_service import generate_weekly_summary
+
+                        # Prepare context
+                        krs_updated = len(set(i["KeyResult"] for i in report_items))
+                        obj_summary = [
+                            f"{k}: {int(v)}m" for k, v in objective_stats.items()
+                        ]
+
+                        stats = {
+                            "total_minutes": total,
+                            "tasks_completed": len(achievements),
+                            "krs_updated": krs_updated,
+                            "objectives_text": obj_summary,
+                            "key_achievements": achievements,
+                            "work_logs_text": "\n".join(
+                                [
+                                    f"{i['Task']}: {i['Summary']}"
+                                    for i in report_items[:30]
+                                ]
+                            ),
+                        }
+
+                        res = generate_weekly_summary(
+                            username,
+                            datetime.fromtimestamp(start_time / 1000).strftime(
+                                "%Y-%m-%d"
+                            ),
+                            datetime.now().strftime("%Y-%m-%d"),
+                            stats,
+                        )
+
+                        if "error" not in res:
+                            st.session_state.report_summary = res
+                            st.rerun()
+                        else:
+                            st.error(res["error"])
+
             summary_res = st.session_state.get("report_summary")
             if summary_res:
                 st.markdown(summary_res.get("summary_markdown"))
-                
+
                 # Metrics Row
                 m1, m2, m3 = st.columns(3)
                 m1.metric("Total Focus", format_time(total))
                 m2.metric("Tasks Completed", len(achievements))
                 m3.metric("Key Highlights", len(summary_res.get("highlights", [])))
-                
+
                 with st.expander("📌 Highlights"):
                     for h in summary_res.get("highlights", []):
                         st.markdown(f"- {h}")
@@ -1300,7 +1457,7 @@ def render_report_content(username, mode):
 
     # === TRENDS & ANALYSIS ===
     c_trend, c_achieve = st.columns([1.5, 1])
-    
+
     with c_trend:
         if mode != "Daily":
             st.subheader("📈 Weekly Trends")
@@ -1309,13 +1466,13 @@ def render_report_content(username, mode):
                 sorted_dates = sorted(daily_minutes.keys())
                 chart_data = {
                     "Date": sorted_dates,
-                    "Hours": [daily_minutes[d]/60 for d in sorted_dates]
+                    "Hours": [daily_minutes[d] / 60 for d in sorted_dates],
                 }
                 st.bar_chart(chart_data, x="Date", y="Hours", color="#4CAF50")
             else:
                 st.caption("No trend data available.")
         else:
-             st.info("Trend analysis available in Weekly Report.")
+            st.info("Trend analysis available in Weekly Report.")
 
     with c_achieve:
         st.subheader("🏆 Achievements")
@@ -1324,34 +1481,36 @@ def render_report_content(username, mode):
                 st.success(f"✅ {ach}")
         else:
             st.caption("No completed tasks this period.")
-            
+
     # Deadline Health
     st.subheader("⚠️ Deadline Health")
     from src.crud import get_all_tasks_by_cycle
     from src.utils.deadline_utils import get_deadline_status
+
     cycle_id_dl = st.session_state.get("active_cycle_id")
     tasks_dl = _cached_get_all_tasks_by_cycle(cycle_id_dl)
-    
+
     warnings_dl = []
     for t_dl in tasks_dl:
         if t_dl.deadline and t_dl.progress < 100:
-             try:
-                 _, label_dl, _ = get_deadline_status(t_dl)
-                 if "Overdue" in label_dl or "At Risk" in label_dl:
-                     warnings_dl.append(f"{label_dl} - {t_dl.title}")
-             except: pass
-    
+            try:
+                _, label_dl, _ = get_deadline_status(t_dl)
+                if "Overdue" in label_dl or "At Risk" in label_dl:
+                    warnings_dl.append(f"{label_dl} - {t_dl.title}")
+            except:
+                pass
+
     if warnings_dl:
         for w in warnings_dl[:5]:
             st.error(w)
         if len(warnings_dl) > 5:
-            st.caption(f"...and {len(warnings_dl)-5} more.")
+            st.caption(f"...and {len(warnings_dl) - 5} more.")
     else:
         st.success("All tasks on track!", icon="🟢")
 
-
     # Filter Key Results (Needed for PDF)
     from src.crud import get_all_krs_by_cycle
+
     cycle_id_krs = st.session_state.get("active_cycle_id")
     krs_list = _cached_get_all_krs_by_cycle(cycle_id_krs)
 
@@ -1359,7 +1518,7 @@ def render_report_content(username, mode):
     try:
         from src.services.pdf_service import generate_weekly_pdf_v2, generate_pdf_html
         import json
-        
+
         # Generate PDF
         # Only include key_results filter for PDF if mode is Weekly
         def _kr_to_dict(kr):
@@ -1379,29 +1538,29 @@ def render_report_content(username, mode):
             }
 
         pdf_krs = [_kr_to_dict(k) for k in krs_list] if mode == "Weekly" else []
-        
+
         # Determine Title
         pdf_title = "Daily Work Report" if mode == "Daily" else "Weekly Work Report"
-        
+
         pdf_buffer = generate_weekly_pdf_v2(
-            report_items, 
-            objective_stats, 
-            format_time(total), 
-            pdf_krs, 
-            st.session_state.report_direction, 
-            title=pdf_title, 
+            report_items,
+            objective_stats,
+            format_time(total),
+            pdf_krs,
+            st.session_state.report_direction,
+            title=pdf_title,
             time_label=period_label,
-            report_summary=st.session_state.get("report_summary"), # Pass AI summary
-            achievements=achievements # Pass achievements list
+            report_summary=st.session_state.get("report_summary"),  # Pass AI summary
+            achievements=achievements,  # Pass achievements list
         )
-        
+
         if pdf_buffer:
             st.download_button(
                 label="📄 Export as PDF",
                 data=pdf_buffer,
                 file_name=f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
                 mime="application/pdf",
-                key="report_pdf_download"
+                key="report_pdf_download",
             )
         else:
             # Fallback: export HTML if PDF engine (wkhtmltopdf/PDFShift) isn't available
@@ -1416,13 +1575,15 @@ def render_report_content(username, mode):
                 report_summary=st.session_state.get("report_summary"),
                 achievements=achievements,
             )
-            st.info("PDF engine not available (wkhtmltopdf/PDFShift). Download the HTML report instead.")
+            st.info(
+                "PDF engine not available (wkhtmltopdf/PDFShift). Download the HTML report instead."
+            )
             st.download_button(
                 label="📄 Export as HTML",
                 data=fallback_html.encode("utf-8"),
                 file_name=f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.html",
                 mime="text/html",
-                key="report_html_download"
+                key="report_html_download",
             )
     except Exception as e_pdf:
         st.error(f"PDF Generation Error: {e_pdf}")
@@ -1432,7 +1593,7 @@ def render_report_content(username, mode):
 
     # Sort items for display
     report_items.sort(key=lambda x: x["Date"] + x["Time"], reverse=True)
-    
+
     # Using HTML table to ensure font consistency
     if report_items:
         table_html = """<table style="width:100%; border-collapse: collapse; font-family: 'Vazirmatn', sans-serif; font-size: 0.85em;">
@@ -1455,7 +1616,7 @@ def render_report_content(username, mode):
             date_txt = escape_html(itm.get("Date", ""))
             time_txt = escape_html(itm.get("Time", ""))
             duration_txt = escape_html(itm.get("Duration (m)", "0"))
-            
+
             table_html += f"""
                 <tr style="border-bottom: 1px solid #eee;">
                     <td style="padding: 8px;">{task_txt}</td>
@@ -1467,16 +1628,18 @@ def render_report_content(username, mode):
                 </tr>"""
         table_html += "</tbody></table>"
         st.markdown(table_html, unsafe_allow_html=True)
-    
+
     st.metric(f"Total Time ({period_label})", format_time(total))
-    
+
     st.markdown("---")
     st.subheader("Time Distribution by Objective")
-    
+
     # Prepare data for chart/table
     # Sort stats by minutes descending first
-    sorted_stats_obj = sorted(objective_stats.items(), key=lambda item: item[1], reverse=True)
-    
+    sorted_stats_obj = sorted(
+        objective_stats.items(), key=lambda item: item[1], reverse=True
+    )
+
     # Using HTML table for objectives too
     obj_table_h = """<table style="width:100%; border-collapse: collapse; font-family: 'Vazirmatn', sans-serif; font-size: 0.95em;">
         <thead>
@@ -1487,13 +1650,13 @@ def render_report_content(username, mode):
             </tr>
         </thead>
         <tbody>"""
-    
+
     for t_obj, mins_obj in sorted_stats_obj:
         percentage_obj = (mins_obj / total * 100) if total > 0 else 0
         p_str_obj = f"{percentage_obj:.1f}%"
         t_str_obj = format_time(mins_obj)
         objective_txt = escape_html(t_obj)
-        
+
         obj_table_h += f"""
             <tr style="border-bottom: 1px solid #eee;">
                 <td style="padding: 8px;">{objective_txt}</td>
@@ -1503,12 +1666,11 @@ def render_report_content(username, mode):
     obj_table_h += "</tbody></table>"
     st.markdown(obj_table_h, unsafe_allow_html=True)
 
-    
     # --- SECTION: Key Result Strategic Status (Weekly Only) ---
     if mode == "Weekly":
         st.markdown("---")
         st.subheader("Key Result Strategic Status")
-        
+
         if not krs_list:
             st.info("No Key Results found.")
         else:
@@ -1520,32 +1682,42 @@ def render_report_content(username, mode):
             h4.markdown("**Effectiveness**", help="Quality of strategy and methods")
             h5.markdown("**Fulfillment**", help="Overall Score")
             h6.markdown("**Action**")
-            
-            st.markdown("<hr style='margin: 5px 0; border: none; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
-            
+
+            st.markdown(
+                "<hr style='margin: 5px 0; border: none; border-top: 1px solid #eee;'>",
+                unsafe_allow_html=True,
+            )
+
             from src.services.ai_service import analyze_node
 
             for kr_item in krs_list:
                 # Prepare Data
                 kr_title_text = kr_item.title
-                
+
                 # Render Row Layout
-                c1_kr, c2_kr, c3_kr, c4_kr, c5_kr, c6_kr = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
-                
+                c1_kr, c2_kr, c3_kr, c4_kr, c5_kr, c6_kr = st.columns(
+                    [2.5, 1.2, 1.2, 1.2, 1.2, 0.8]
+                )
+
                 c1_kr.markdown(f"{kr_title_text}")
                 c2_kr.markdown(f"{kr_item.progress}%")
-                
+
                 # Placeholders for dynamic updates
                 p_eff = c3_kr.empty()
                 p_qual = c4_kr.empty()
                 p_full = c5_kr.empty()
-                
+
                 # Action Button
-                do_update = c6_kr.button("🔄", key=f"upd_kr_{kr_item.id}", help="Update Analysis")
-                
+                do_update = c6_kr.button(
+                    "🔄", key=f"upd_kr_{kr_item.id}", help="Update Analysis"
+                )
+
                 # Row Separator
-                st.markdown("<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>", unsafe_allow_html=True)
-                
+                st.markdown(
+                    "<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>",
+                    unsafe_allow_html=True,
+                )
+
                 # Details Placeholder
                 p_details = st.empty()
 
@@ -1555,66 +1727,87 @@ def render_report_content(username, mode):
                     eff_score = "N/A"
                     qual_score = "N/A"
                     fulfillment = "N/A"
-                    
+
                     if an and isinstance(an, dict):
-                        e_val = an.get('efficiency_score')
-                        q_val = an.get('effectiveness_score')
-                        o_val = an.get('overall_score')
-                        
-                        if e_val is not None: eff_score = f"{e_val}%"
-                        if q_val is not None: qual_score = f"{q_val}%"
-                        if o_val is not None: fulfillment = f"{o_val}%"
+                        e_val = an.get("efficiency_score")
+                        q_val = an.get("effectiveness_score")
+                        o_val = an.get("overall_score")
+
+                        if e_val is not None:
+                            eff_score = f"{e_val}%"
+                        if q_val is not None:
+                            qual_score = f"{q_val}%"
+                        if o_val is not None:
+                            fulfillment = f"{o_val}%"
                     elif an and isinstance(an, str):
                         # Some older analysis might be stored as strings
                         try:
                             an_dict = json.loads(an)
-                            e_val = an_dict.get('efficiency_score')
-                            q_val = an_dict.get('effectiveness_score')
-                            o_val = an_dict.get('overall_score')
-                            if e_val is not None: eff_score = f"{e_val}%"
-                            if q_val is not None: qual_score = f"{q_val}%"
-                            if o_val is not None: fulfillment = f"{o_val}%"
-                        except: pass
+                            e_val = an_dict.get("efficiency_score")
+                            q_val = an_dict.get("effectiveness_score")
+                            o_val = an_dict.get("overall_score")
+                            if e_val is not None:
+                                eff_score = f"{e_val}%"
+                            if q_val is not None:
+                                qual_score = f"{q_val}%"
+                            if o_val is not None:
+                                fulfillment = f"{o_val}%"
+                        except:
+                            pass
 
                     p_eff.markdown(eff_score)
                     p_qual.markdown(qual_score)
                     p_full.markdown(f"**{fulfillment}**")
-                    
+
                     # Render Details
                     with p_details.container():
-                         if an and isinstance(an, dict):
-                             with st.expander("📝 Analysis Details"):
-                                  if an.get('summary'):
-                                       st.markdown(f"**Executive Summary:** {an.get('summary')}")
-                                  
-                                  c_d1, c_d2 = st.columns(2)
-                                  with c_d1:
-                                       if an.get('gap_analysis'):
-                                            st.markdown(f"**Gap Analysis:**\n{an.get('gap_analysis')}")
-                                  with c_d2:
-                                       if an.get('quality_assessment'):
-                                            st.markdown(f"**Quality Assessment:**\n{an.get('quality_assessment')}")
+                        if an and isinstance(an, dict):
+                            with st.expander("📝 Analysis Details"):
+                                if an.get("summary"):
+                                    st.markdown(
+                                        f"**Executive Summary:** {an.get('summary')}"
+                                    )
+
+                                c_d1, c_d2 = st.columns(2)
+                                with c_d1:
+                                    if an.get("gap_analysis"):
+                                        st.markdown(
+                                            f"**Gap Analysis:**\n{an.get('gap_analysis')}"
+                                        )
+                                with c_d2:
+                                    if an.get("quality_assessment"):
+                                        st.markdown(
+                                            f"**Quality Assessment:**\n{an.get('quality_assessment')}"
+                                        )
 
                 # Initial Render
                 render_kr_state(kr_item)
-            
+
                 # Handle Update
                 if do_update:
                     with st.spinner("Analyzing..."):
                         from src.crud import update_key_result
-                        res_kr = analyze_node(kr_item.id, None) # analyze_node now fetches from DB
+
+                        res_kr = analyze_node(
+                            kr_item.id, None
+                        )  # analyze_node now fetches from DB
                         if "error" in res_kr:
                             st.error(res_kr["error"])
                         else:
                             # Update DB
                             try:
-                                update_key_result(kr_item.id, gemini_analysis=res_kr, actor_username=username)
+                                update_key_result(
+                                    kr_item.id,
+                                    gemini_analysis=res_kr,
+                                    actor_username=username,
+                                )
                             except PermissionError as e:
                                 st.error(str(e))
                                 return
                             # Update UI immediately
-                            kr_item.gemini_analysis = res_kr 
+                            kr_item.gemini_analysis = res_kr
                             render_kr_state(kr_item)
+
 
 @st.fragment
 def render_inspector_content(node_id, node_type, username, show_close=True):
@@ -1623,15 +1816,29 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
     node_type: GOAL, OBJECTIVE, KEY_RESULT, or TASK
     """
     from src.crud import (
-        get_node, update_goal, update_objective, update_key_result, update_task,
-        delete_goal, delete_objective, delete_key_result, delete_task,
-        start_timer, stop_timer, get_total_time, delete_work_log,
-        get_all_cycles, get_all_users, get_team_members, get_user_by_id
+        get_node,
+        update_goal,
+        update_objective,
+        update_key_result,
+        update_task,
+        delete_goal,
+        delete_objective,
+        delete_key_result,
+        delete_task,
+        start_timer,
+        stop_timer,
+        get_total_time,
+        delete_work_log,
+        get_all_cycles,
+        get_all_users,
+        get_team_members,
+        get_user_by_id,
     )
     from src.models import Goal, Objective, KeyResult, Task, WorkLog
 
     # CSS for dialog styling
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         div[role="dialog"] button[aria-label="Close"] { display: none; }
         div[data-baseweb="modal-backdrop"] { display: none; }
@@ -1641,7 +1848,9 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
         div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button:hover { border-color: #ff4b4b; color: #ff4b4b; background-color: #fff5f5; }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # Fetch node from DB
     node = get_node(node_id, node_type)
@@ -1657,7 +1866,7 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
     title_insp = node.title
     progress_insp = node.progress
     node_type_insp = node_type.upper()
-    
+
     # Check for children based on relationships
     has_children_insp = False
     if node_type_insp == "GOAL" and hasattr(node, "objectives"):
@@ -1666,12 +1875,14 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         has_children_insp = len(node.key_results) > 0
     elif node_type_insp == "KEY_RESULT" and hasattr(node, "tasks"):
         has_children_insp = len(node.tasks) > 0
-    
+
     # Header logic with optional close action (dialog uses close, Atlas pane does not)
     if show_close:
         c_head_insp, c_close_insp = st.columns([0.92, 0.08])
         c_head_insp.markdown(f"### {TYPE_ICONS.get(node_type_insp, '')} {title_insp}")
-        if c_close_insp.button("", icon=":material/close:", key=f"close_insp_{node_id}"):
+        if c_close_insp.button(
+            "", icon=":material/close:", key=f"close_insp_{node_id}"
+        ):
             if "active_inspector_id" in st.session_state:
                 del st.session_state.active_inspector_id
             st.rerun()
@@ -1681,9 +1892,11 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
     with st.form(key=f"edit_form_{node_id}"):
         new_title_insp = st.text_input("Title", value=title_insp)
         new_desc_insp = st.text_area("Description", value=node.description or "")
-        
+
         # Show Assignee (Editable for Admin/Manager, only for Tasks)
-        new_assignee_id_insp = getattr(node, "assignee_id", None) if node_type_insp == "TASK" else None
+        new_assignee_id_insp = (
+            getattr(node, "assignee_id", None) if node_type_insp == "TASK" else None
+        )
         if node_type_insp == "TASK":
             user_role_insp = st.session_state.get("user_role")
             if user_role_insp in ["admin", "manager"]:
@@ -1694,11 +1907,15 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                     manager_id_insp = st.session_state.get("user_id")
                     manager_obj = get_user_by_id(manager_id_insp)
                     potential_assignees = get_team_members(manager_id_insp)
-                    if manager_obj: potential_assignees.append(manager_obj)
-                
+                    if manager_obj:
+                        potential_assignees.append(manager_obj)
+
                 # Map for selection
-                member_options = {f"{u.display_name} (@{u.username})": u.id for u in potential_assignees}
-                
+                member_options = {
+                    f"{u.display_name} (@{u.username})": u.id
+                    for u in potential_assignees
+                }
+
                 # Find current index
                 curr_idx_ass = 0
                 if new_assignee_id_insp:
@@ -1706,12 +1923,12 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                         if uid == new_assignee_id_insp:
                             curr_idx_ass = i
                             break
-                
+
                 selected_label_ass = st.selectbox(
-                    "Assign To", 
+                    "Assign To",
                     options=list(member_options.keys()),
                     index=curr_idx_ass,
-                    key=f"assign_sel_{node_id}"
+                    key=f"assign_sel_{node_id}",
                 )
                 new_assignee_id_insp = member_options[selected_label_ass]
             else:
@@ -1725,16 +1942,23 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         with col1_insp:
             p_prog_cont = st.empty()
             if has_children_insp:
-                 p_prog_cont.metric("Progress (Calculated)", value=f"{progress_insp}%")
-                 new_progress_insp = progress_insp
+                p_prog_cont.metric("Progress (Calculated)", value=f"{progress_insp}%")
+                new_progress_insp = progress_insp
             else:
-                 new_progress_insp = p_prog_cont.slider("Progress (Manual)", 0, 100, value=progress_insp)
-        
+                new_progress_insp = p_prog_cont.slider(
+                    "Progress (Manual)", 0, 100, value=progress_insp
+                )
+
         with col2_insp:
             # Type is now READ-ONLY in Inspector to maintain hierarchy integrity
-            st.text_input("Type", value=node_type_insp.replace('_', ' ').title(), disabled=True, key=f"type_disp_{node_id}")
+            st.text_input(
+                "Type",
+                value=node_type_insp.replace("_", " ").title(),
+                disabled=True,
+                key=f"type_disp_{node_id}",
+            )
             new_type_insp = node_type_insp
-            
+
         # GOAL Specific Cycle Assignment and Tags
         new_cycle_id_insp = getattr(node, "cycle_id", None)
         new_strat_tags_input = ""
@@ -1744,90 +1968,125 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             all_cycles_insp = get_all_cycles()
             cycle_titles_insp = [c.title for c in all_cycles_insp]
             cycle_ids_insp = [c.id for c in all_cycles_insp]
-            
+
             try:
                 curr_idx_cyc = cycle_ids_insp.index(new_cycle_id_insp)
             except:
                 curr_idx_cyc = 0
-                
-            sel_cyc = st.selectbox("Assign to Cycle", options=cycle_titles_insp, index=curr_idx_cyc, key=f"cyc_assign_{node_id}")
+
+            sel_cyc = st.selectbox(
+                "Assign to Cycle",
+                options=cycle_titles_insp,
+                index=curr_idx_cyc,
+                key=f"cyc_assign_{node_id}",
+            )
             new_cycle_id_insp = all_cycles_insp[cycle_titles_insp.index(sel_cyc)].id
-            
+
             st.caption("♟️ Strategy Tags")
             # Handle potential JSON string or list
             raw_strats = getattr(node, "strategy_tags", "[]")
             curr_strats = []
             if isinstance(raw_strats, str):
-                try: curr_strats = json.loads(raw_strats)
-                except: curr_strats = [t.strip() for t in raw_strats.split(",") if t.strip()]
+                try:
+                    curr_strats = json.loads(raw_strats)
+                except:
+                    curr_strats = [
+                        t.strip() for t in raw_strats.split(",") if t.strip()
+                    ]
             elif isinstance(raw_strats, list):
                 curr_strats = raw_strats
-            
-            new_strat_tags_input = st.text_input("Add Strategy Tags (comma-separated)", value=", ".join(curr_strats), key=f"strat_tags_{node_id}")
+
+            new_strat_tags_input = st.text_input(
+                "Add Strategy Tags (comma-separated)",
+                value=", ".join(curr_strats),
+                key=f"strat_tags_{node_id}",
+            )
 
         # KEY_RESULT Specific Metrics
         new_target_insp = getattr(node, "target_value", 100.0)
         new_curr_insp = getattr(node, "current_value", 0.0)
         new_unit_insp = getattr(node, "unit", "%")
         new_init_tags_input = ""
-        
+
         if node_type_insp == "KEY_RESULT":
             st.markdown("---")
             st.caption("📈 Progress Metrics")
             mc1_in, mc2_in, mc3_in = st.columns(3)
-            new_target_insp = mc1_in.number_input("Target Value", value=float(new_target_insp), key=f"target_{node_id}")
-            new_curr_insp = mc2_in.number_input("Current Value", value=float(new_curr_insp), key=f"curr_val_{node_id}")
-            new_unit_insp = mc3_in.text_input("Unit", value=new_unit_insp, key=f"unit_{node_id}")
-            
+            new_target_insp = mc1_in.number_input(
+                "Target Value", value=float(new_target_insp), key=f"target_{node_id}"
+            )
+            new_curr_insp = mc2_in.number_input(
+                "Current Value", value=float(new_curr_insp), key=f"curr_val_{node_id}"
+            )
+            new_unit_insp = mc3_in.text_input(
+                "Unit", value=new_unit_insp, key=f"unit_{node_id}"
+            )
+
             if new_target_insp > 0:
                 calc_p = int((new_curr_insp / new_target_insp) * 100)
                 calc_p = max(0, min(100, calc_p))
                 if not has_children_insp:
                     new_progress_insp = calc_p
                     st.info(f"Calculated Progress: {new_progress_insp}%")
-            
+
             st.caption("⚡ Initiative Tags")
             raw_inits = getattr(node, "initiative_tags", "[]")
             curr_inits = []
             if isinstance(raw_inits, str):
-                try: curr_inits = json.loads(raw_inits)
-                except: curr_inits = [t.strip() for t in raw_inits.split(",") if t.strip()]
+                try:
+                    curr_inits = json.loads(raw_inits)
+                except:
+                    curr_inits = [t.strip() for t in raw_inits.split(",") if t.strip()]
             elif isinstance(raw_inits, list):
                 curr_inits = raw_inits
 
-            new_init_tags_input = st.text_input("Add Initiative Tags (comma-separated)", value=", ".join(curr_inits), key=f"init_tags_{node_id}")
+            new_init_tags_input = st.text_input(
+                "Add Initiative Tags (comma-separated)",
+                value=", ".join(curr_inits),
+                key=f"init_tags_{node_id}",
+            )
 
         user_role_perm = st.session_state.get("user_role")
         can_save_insp = bool(username)
-        
+
         if st.form_submit_button("💾 Save Changes", disabled=not can_save_insp):
             updates = {
                 "title": new_title_insp,
                 "description": new_desc_insp,
-                "progress": new_progress_insp
+                "progress": new_progress_insp,
             }
-            
+
             try:
                 if node_type_insp == "GOAL":
-                    updates.update({
-                        "cycle_id": new_cycle_id_insp,
-                        "strategy_tags": [t.strip() for t in new_strat_tags_input.split(",") if t.strip()]
-                    })
+                    updates.update(
+                        {
+                            "cycle_id": new_cycle_id_insp,
+                            "strategy_tags": [
+                                t.strip()
+                                for t in new_strat_tags_input.split(",")
+                                if t.strip()
+                            ],
+                        }
+                    )
                     update_goal(node_id, actor_username=username, **updates)
                 elif node_type_insp == "OBJECTIVE":
                     update_objective(node_id, actor_username=username, **updates)
                 elif node_type_insp == "KEY_RESULT":
-                    updates.update({
-                        "target_value": new_target_insp,
-                        "current_value": new_curr_insp,
-                        "unit": new_unit_insp,
-                        "initiative_tags": [t.strip() for t in new_init_tags_input.split(",") if t.strip()]
-                    })
+                    updates.update(
+                        {
+                            "target_value": new_target_insp,
+                            "current_value": new_curr_insp,
+                            "unit": new_unit_insp,
+                            "initiative_tags": [
+                                t.strip()
+                                for t in new_init_tags_input.split(",")
+                                if t.strip()
+                            ],
+                        }
+                    )
                     update_key_result(node_id, actor_username=username, **updates)
                 elif node_type_insp == "TASK":
-                    updates.update({
-                        "assignee_id": new_assignee_id_insp
-                    })
+                    updates.update({"assignee_id": new_assignee_id_insp})
                     update_task(node_id, actor_username=username, **updates)
             except PermissionError as e:
                 st.error(str(e))
@@ -1840,39 +2099,53 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         st.write("### ⏱️ Time Tracking")
         col_t1, col_t2 = st.columns(2)
         with col_t1:
-             u_role = st.session_state.get("user_role", "member")
-             is_run = node.timer_started_at is not None
-             if is_run:
-                  start_t = node.timer_started_at
-                  # Calculate elapsed in minutes
-                  elap = int((ensure_utc(utc_now_naive()) - ensure_utc(start_t)).total_seconds() / 60)
-                  st.info(f"Timer Running: {elap}m")
-                  
-             # Permission check: enforced in CRUD ownership rules.
-             can_track = bool(username)
-             
-             if can_track:
-                  if is_run:
-                       c_a1, c_a2 = st.columns(2)
-                       if c_a1.button("Open Timer", icon=":material/timer:", key=f"open_t_{node_id}"):
-                           st.session_state.active_timer_node_id = node_id
-                           if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
-                           st.rerun()
-                       if c_a2.button("Stop", icon=":material/stop_circle:", key=f"stop_t_{node_id}"):
-                           # stop_timer accepts an optional summary; pass None here
-                           stop_timer(node_id, user_id=username)
-                           if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
-                           st.rerun()
-                  else:
-                       if st.button("Start Timer", icon=":material/play_circle:", key=f"start_t_{node_id}"):
-                           try:
-                               start_timer(node_id, username)
-                           except ValueError as e:
-                               st.error(str(e))
-                               return
-                           st.session_state.active_timer_node_id = node_id
-                           if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
-                           st.rerun()
+            u_role = st.session_state.get("user_role", "member")
+            is_run = node.timer_started_at is not None
+            if is_run:
+                start_t = node.timer_started_at
+                # Calculate elapsed in minutes
+                elap = int(
+                    (ensure_utc(utc_now_naive()) - ensure_utc(start_t)).total_seconds()
+                    / 60
+                )
+                st.info(f"Timer Running: {elap}m")
+
+            # Permission check: enforced in CRUD ownership rules.
+            can_track = bool(username)
+
+            if can_track:
+                if is_run:
+                    c_a1, c_a2 = st.columns(2)
+                    if c_a1.button(
+                        "Open Timer", icon=":material/timer:", key=f"open_t_{node_id}"
+                    ):
+                        st.session_state.active_timer_node_id = node_id
+                        if "active_inspector_id" in st.session_state:
+                            del st.session_state.active_inspector_id
+                        st.rerun()
+                    if c_a2.button(
+                        "Stop", icon=":material/stop_circle:", key=f"stop_t_{node_id}"
+                    ):
+                        # stop_timer accepts an optional summary; pass None here
+                        stop_timer(node_id, user_id=username)
+                        if "active_timer_node_id" in st.session_state:
+                            del st.session_state.active_timer_node_id
+                        st.rerun()
+                else:
+                    if st.button(
+                        "Start Timer",
+                        icon=":material/play_circle:",
+                        key=f"start_t_{node_id}",
+                    ):
+                        try:
+                            start_timer(node_id, username)
+                        except ValueError as e:
+                            st.error(str(e))
+                            return
+                        st.session_state.active_timer_node_id = node_id
+                        if "active_inspector_id" in st.session_state:
+                            del st.session_state.active_inspector_id
+                        st.rerun()
         with col_t2:
             tot = node.total_time_spent
             st.metric("Total Time", format_time(tot))
@@ -1880,18 +2153,26 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
     if node_type_insp == "TASK":
         st.markdown("---")
         st.write("### 📅 Schedule")
-        
+
         # Start Date
-        curr_sd = node.start_date.date() if isinstance(node.start_date, datetime) else None
-        
+        curr_sd = (
+            node.start_date.date() if isinstance(node.start_date, datetime) else None
+        )
+
         # Deadline (now normalized to DateTime in DB)
-        curr_d = node.deadline.date() if isinstance(getattr(node, "deadline", None), datetime) else None
-        
+        curr_d = (
+            node.deadline.date()
+            if isinstance(getattr(node, "deadline", None), datetime)
+            else None
+        )
+
         col_sch1, col_sch2 = st.columns(2)
         with col_sch1:
             new_sd = st.date_input("Start Date", value=curr_sd, key=f"sd_inp_{node_id}")
             if st.button("💾 Save Start Date", key=f"save_sd_{node_id}"):
-                new_sd_dt = datetime.combine(new_sd, datetime.min.time()) if new_sd else None
+                new_sd_dt = (
+                    datetime.combine(new_sd, datetime.min.time()) if new_sd else None
+                )
                 try:
                     update_task(node_id, start_date=new_sd_dt, actor_username=username)
                 except PermissionError as e:
@@ -1902,7 +2183,9 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         with col_sch2:
             new_d = st.date_input("Due Date", value=curr_d, key=f"dl_inp_{node_id}")
             if st.button("💾 Save Due Date", key=f"save_dl_{node_id}"):
-                new_dl_dt = datetime.combine(new_d, datetime.max.time()) if new_d else None
+                new_dl_dt = (
+                    datetime.combine(new_d, datetime.max.time()) if new_d else None
+                )
                 try:
                     update_task(node_id, deadline=new_dl_dt, actor_username=username)
                 except PermissionError as e:
@@ -1929,15 +2212,17 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             st.rerun()
 
         if has_deadline:
-             from src.utils.deadline_utils import get_deadline_status
-             # We need to adapt get_deadline_status if it expects dict?
-             # Let's hope it's flexible or we adapt it later.
-             # Actually, node is SQLModel here.
-             try:
-                 st_code, st_lbl, hlth = get_deadline_status(node)
-                 st.metric("Deadline Status", st_lbl)
-                 st.progress(hlth / 100)
-             except: pass
+            from src.utils.deadline_utils import get_deadline_status
+
+            # We need to adapt get_deadline_status if it expects dict?
+            # Let's hope it's flexible or we adapt it later.
+            # Actually, node is SQLModel here.
+            try:
+                st_code, st_lbl, hlth = get_deadline_status(node)
+                st.metric("Deadline Status", st_lbl)
+                st.progress(hlth / 100)
+            except:
+                pass
 
         if node_type_insp == "TASK":
             st.markdown("---")
@@ -1945,9 +2230,12 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             # Load work logs from DB inside a session to avoid detached instances
             from src.database import get_session_context
             from sqlmodel import select
+
             w_log = []
             with get_session_context() as session:
-                w_log = session.exec(select(WorkLog).where(WorkLog.task_id == node.id)).all()
+                w_log = session.exec(
+                    select(WorkLog).where(WorkLog.task_id == node.id)
+                ).all()
 
             # Show debug count and list logs
             st.caption(f"Work logs found: {len(w_log)}")
@@ -1956,9 +2244,15 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                 if st.button("Refresh Work History"):
                     st.rerun()
             else:
-                w_sorted = sorted(w_log, key=lambda x: x.end_time or datetime.min, reverse=True)
+                w_sorted = sorted(
+                    w_log, key=lambda x: x.end_time or datetime.min, reverse=True
+                )
                 for l in w_sorted:
-                    ended_at = l.end_time.strftime('%Y-%m-%d %H:%M') if l.end_time else "Running"
+                    ended_at = (
+                        l.end_time.strftime("%Y-%m-%d %H:%M")
+                        if l.end_time
+                        else "Running"
+                    )
                     dur_str = f"{round(l.duration_minutes, 1)}m"
                     sm = l.summary or "-"
 
@@ -1966,6 +2260,7 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                     col_l1.write(f"**{ended_at}** | {dur_str} | {sm}")
                     if col_l2.button("🗑️", key=f"del_log_{l.id}"):
                         from src.crud import delete_work_log
+
                         try:
                             delete_work_log(l.id, actor_username=username)
                         except PermissionError as e:
@@ -1974,7 +2269,9 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                         st.rerun()
     else:
         st.markdown("---")
-        st.info("Work logs are attached to tasks. Select a task in Focus Map to view its Work History.")
+        st.info(
+            "Work logs are attached to tasks. Select a task in Focus Map to view its Work History."
+        )
 
     if node_type_insp == "KEY_RESULT":
         st.markdown("---")
@@ -1983,13 +2280,16 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             with st.spinner("Analyzing..."):
                 from src.services.ai_service import analyze_node
                 from src.crud import update_key_result
+
                 res_ai = analyze_node(node_id, "KEY_RESULT")
-                
+
                 if "error" not in res_ai:
                     # Store full analysis dict; update_key_result will serialize
-                    update_key_result(node_id, gemini_analysis=res_ai, actor_username=username)
+                    update_key_result(
+                        node_id, gemini_analysis=res_ai, actor_username=username
+                    )
                     st.rerun()
-        
+
         analysis_raw = getattr(node, "gemini_analysis", None)
         if analysis_raw:
             # Parse stored JSON or accept dict. If JSON fails (old format), try literal_eval and normalize.
@@ -2000,12 +2300,18 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                 except Exception:
                     try:
                         import ast
+
                         tmp = ast.literal_eval(analysis_raw)
                         if isinstance(tmp, dict):
                             analysis_data = tmp
                             # Normalize storage to proper JSON
                             from src.crud import update_key_result
-                            update_key_result(node_id, gemini_analysis=analysis_data, actor_username=username)
+
+                            update_key_result(
+                                node_id,
+                                gemini_analysis=analysis_data,
+                                actor_username=username,
+                            )
                     except Exception:
                         analysis_data = None
             elif isinstance(analysis_raw, dict):
@@ -2013,24 +2319,28 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
 
             if analysis_data:
                 c_m1, c_m2, c_m3 = st.columns(3)
-                if analysis_data.get('efficiency_score') is not None:
-                    c_m1.metric("Efficiency", f"{analysis_data.get('efficiency_score')}%")
-                if analysis_data.get('effectiveness_score') is not None:
-                    c_m2.metric("Effectiveness", f"{analysis_data.get('effectiveness_score')}%")
-                if analysis_data.get('overall_score') is not None:
+                if analysis_data.get("efficiency_score") is not None:
+                    c_m1.metric(
+                        "Efficiency", f"{analysis_data.get('efficiency_score')}%"
+                    )
+                if analysis_data.get("effectiveness_score") is not None:
+                    c_m2.metric(
+                        "Effectiveness", f"{analysis_data.get('effectiveness_score')}%"
+                    )
+                if analysis_data.get("overall_score") is not None:
                     c_m3.metric("Overall", f"{analysis_data.get('overall_score')}%")
 
-                if analysis_data.get('summary'):
-                    st.info(analysis_data['summary'])
+                if analysis_data.get("summary"):
+                    st.info(analysis_data["summary"])
 
                 # Deadline warnings
-                warnings_list = analysis_data.get('deadline_warnings') or []
+                warnings_list = analysis_data.get("deadline_warnings") or []
                 for w in warnings_list:
                     st.warning(w)
 
                 # Gap & Quality
-                ga = analysis_data.get('gap_analysis')
-                qa = analysis_data.get('quality_assessment')
+                ga = analysis_data.get("gap_analysis")
+                qa = analysis_data.get("quality_assessment")
                 if ga or qa:
                     c_g, c_q = st.columns(2)
                     if ga:
@@ -2043,7 +2353,7 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                             st.write(qa)
 
                 # Proposed tasks
-                props = analysis_data.get('proposed_tasks') or []
+                props = analysis_data.get("proposed_tasks") or []
                 if props:
                     st.markdown("**Proposed Tasks**")
                     for t in props:
@@ -2056,10 +2366,16 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
     user_role_del = st.session_state.get("user_role")
     # Permissions based on SQLModel ownership
     can_delete = bool(username)
-    
+
     if can_delete:
         if st.button("🗑️ Delete Entity", type="primary", key=f"del_insp_{node_id}"):
-            from src.crud import delete_goal, delete_objective, delete_key_result, delete_task
+            from src.crud import (
+                delete_goal,
+                delete_objective,
+                delete_key_result,
+                delete_task,
+            )
+
             try:
                 if node_type_insp == "GOAL":
                     delete_goal(node_id, actor_username=username)
@@ -2073,7 +2389,9 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                 st.error(str(e))
                 return
             # Clear any cached UI data that may hold stale references
-            keys_to_clear = [k for k in st.session_state.keys() if k.startswith("okr_data_cache_")]
+            keys_to_clear = [
+                k for k in st.session_state.keys() if k.startswith("okr_data_cache_")
+            ]
             for k in keys_to_clear:
                 del st.session_state[k]
 
@@ -2086,6 +2404,7 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             if "active_inspector_id" in st.session_state:
                 del st.session_state.active_inspector_id
             st.rerun()
+
 
 def _normalize_node_type(raw_type: str) -> str:
     node_type = str(raw_type or "").upper()
@@ -2124,11 +2443,20 @@ def _parse_typed_ref(node_ref: str):
 
 def _children_for_node(node, node_type: str):
     if node_type == "GOAL":
-        return sorted(list(getattr(node, "objectives", []) or []), key=lambda item: (item.title or "").lower())
+        return sorted(
+            list(getattr(node, "objectives", []) or []),
+            key=lambda item: (item.title or "").lower(),
+        )
     if node_type == "OBJECTIVE":
-        return sorted(list(getattr(node, "key_results", []) or []), key=lambda item: (item.title or "").lower())
+        return sorted(
+            list(getattr(node, "key_results", []) or []),
+            key=lambda item: (item.title or "").lower(),
+        )
     if node_type == "KEY_RESULT":
-        return sorted(list(getattr(node, "tasks", []) or []), key=lambda item: (item.title or "").lower())
+        return sorted(
+            list(getattr(node, "tasks", []) or []),
+            key=lambda item: (item.title or "").lower(),
+        )
     return []
 
 
@@ -2141,7 +2469,9 @@ def _build_atlas_index(goals, users_map):
         node_ref = _typed_ref_for_node(node)
         title = (getattr(node, "title", None) or "Untitled").strip()
         progress = int(getattr(node, "progress", 0) or 0)
-        resolved_owner = owner_id if owner_id is not None else getattr(node, "owner_id", None)
+        resolved_owner = (
+            owner_id if owner_id is not None else getattr(node, "owner_id", None)
+        )
         next_path = list(path or [])
         next_path.append(node_ref)
         children = _children_for_node(node, node_type)
@@ -2412,7 +2742,11 @@ def _atlas_attention_kind(meta, index=None) -> str:
 
     children = list(meta.get("children") or [])
     if children and index is not None:
-        if any(_atlas_needs_attention(index[child_ref], index) for child_ref in children if child_ref in index):
+        if any(
+            _atlas_needs_attention(index[child_ref], index)
+            for child_ref in children
+            if child_ref in index
+        ):
             return "inherited"
 
     if progress < 40:
@@ -2421,7 +2755,12 @@ def _atlas_attention_kind(meta, index=None) -> str:
 
 
 def _atlas_needs_attention(meta, index=None) -> bool:
-    return _atlas_attention_kind(meta, index) in {"overdue", "risk", "inherited", "low_progress"}
+    return _atlas_attention_kind(meta, index) in {
+        "overdue",
+        "risk",
+        "inherited",
+        "low_progress",
+    }
 
 
 def _atlas_attention_reason(meta, index=None) -> str:
@@ -2433,7 +2772,9 @@ def _atlas_attention_reason(meta, index=None) -> str:
     return "On track"
 
 
-def _atlas_commit_target_minutes(preset_choice: str, custom_minutes: int | None = None) -> int:
+def _atlas_commit_target_minutes(
+    preset_choice: str, custom_minutes: int | None = None
+) -> int:
     preset = str(preset_choice or "25m")
     if preset == "50m":
         return 50
@@ -2444,7 +2785,9 @@ def _atlas_commit_target_minutes(preset_choice: str, custom_minutes: int | None 
     return 25
 
 
-def _atlas_sprint_run_key(task_ref: str | None, target_minutes: int, started_at_epoch) -> str | None:
+def _atlas_sprint_run_key(
+    task_ref: str | None, target_minutes: int, started_at_epoch
+) -> str | None:
     if not task_ref:
         return None
     try:
@@ -2480,7 +2823,9 @@ def _atlas_should_show_soft_reminder(
     return target > 0 and elapsed >= target
 
 
-def _atlas_should_emit_target_notification(sprint_key: str | None, emitted_key: str | None) -> bool:
+def _atlas_should_emit_target_notification(
+    sprint_key: str | None, emitted_key: str | None
+) -> bool:
     return bool(sprint_key and sprint_key != emitted_key)
 
 
@@ -2582,7 +2927,9 @@ def _atlas_point_value(point, keys):
     return None
 
 
-def _atlas_extract_clicked_ref(selected_point, point_refs=None, label_lookup=None) -> str | None:
+def _atlas_extract_clicked_ref(
+    selected_point, point_refs=None, label_lookup=None
+) -> str | None:
     if selected_point is None:
         return None
 
@@ -2665,7 +3012,9 @@ def _atlas_extract_clicked_ref_from_points(
         else:
             return None
         # Treemap point payloads may include multiple nodes across a path. Use deepest node.
-        return max(candidate_refs, key=lambda ref: int(index.get(ref, {}).get("depth", -1)))
+        return max(
+            candidate_refs, key=lambda ref: int(index.get(ref, {}).get("depth", -1))
+        )
 
     return candidate_refs[-1]
 
@@ -2907,17 +3256,21 @@ def render_atlas_workspace(username):
     scope_options = {"My OKRs": [actor_id]}
     if role_value == "manager":
         team_members = [
-            member for member in _cached_get_team_members(actor_id)
+            member
+            for member in _cached_get_team_members(actor_id)
             if bool(getattr(member, "is_active", True))
         ]
         if team_members:
-            scope_options["My Team"] = sorted(set([actor_id] + [member.id for member in team_members]))
+            scope_options["My Team"] = sorted(
+                set([actor_id] + [member.id for member in team_members])
+            )
             for member in team_members:
                 label = f"{member.display_name or member.username} (@{member.username})"
                 scope_options[label] = [member.id]
     elif role_value == "admin":
         all_users = [
-            member for member in _cached_get_all_users()
+            member
+            for member in _cached_get_all_users()
             if bool(getattr(member, "is_active", True))
         ]
         scope_options["All Users"] = None
@@ -3033,7 +3386,9 @@ def render_atlas_workspace(username):
 
     with st.container(border=True):
         st.markdown("<div class='atlas-luxe-strip'></div>", unsafe_allow_html=True)
-        st.markdown("<div class='atlas-kicker'>Focus Task</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='atlas-kicker'>Focus Task</div>", unsafe_allow_html=True
+        )
         st.markdown(
             "<div class='atlas-human-note'>Choose one task, set a sprint, and start before navigating the map.</div>",
             unsafe_allow_html=True,
@@ -3049,7 +3404,9 @@ def render_atlas_workspace(username):
             ai_scope = str(ai_suggested_state.get("scope") or "")
             if ai_ref in task_refs and ai_scope == str(selected_scope):
                 suggested_focus_ref = ai_ref
-                suggested_focus_reason = str(ai_suggested_state.get("reason") or "").strip() or None
+                suggested_focus_reason = (
+                    str(ai_suggested_state.get("reason") or "").strip() or None
+                )
                 suggested_focus_confidence = ai_suggested_state.get("confidence")
                 suggested_focus_is_ai = True
             elif ai_ref and ai_ref not in task_refs:
@@ -3058,13 +3415,16 @@ def render_atlas_workspace(username):
         if task_refs:
             if suggested_focus_ref is None:
                 actionable_refs = [
-                    ref for ref in task_refs
+                    ref
+                    for ref in task_refs
                     if int(index.get(ref, {}).get("progress", 0) or 0) < 100
                 ]
                 candidate_refs = actionable_refs or task_refs
                 ranked_refs = sorted(
                     candidate_refs,
-                    key=lambda ref: _atlas_suggested_next_score(index[ref], actor_id, index),
+                    key=lambda ref: _atlas_suggested_next_score(
+                        index[ref], actor_id, index
+                    ),
                 )
                 if ranked_refs:
                     suggested_focus_ref = ranked_refs[0]
@@ -3080,9 +3440,13 @@ def render_atlas_workspace(username):
                 ),
                 unsafe_allow_html=True,
             )
-            reason_text = suggested_focus_reason or _atlas_suggested_next_reason(suggested_meta, actor_id, index)
+            reason_text = suggested_focus_reason or _atlas_suggested_next_reason(
+                suggested_meta, actor_id, index
+            )
             if suggested_focus_confidence is not None:
-                reason_text = f"{reason_text} (AI confidence: {suggested_focus_confidence}%)"
+                reason_text = (
+                    f"{reason_text} (AI confidence: {suggested_focus_confidence}%)"
+                )
             suggested_cols[0].caption(reason_text)
             if suggested_cols[1].button(
                 "Use Suggested",
@@ -3097,7 +3461,9 @@ def render_atlas_workspace(username):
             picked_ref = st.selectbox(
                 "Choose Focus Task",
                 options=task_refs,
-                index=task_refs.index(focus_task_ref) if focus_task_ref in task_refs else 0,
+                index=task_refs.index(focus_task_ref)
+                if focus_task_ref in task_refs
+                else 0,
                 key="atlas_focus_task_picker",
                 format_func=lambda ref: (
                     f"{TYPE_ICONS.get('TASK', '')} {index[ref]['title']} ({index[ref]['owner_name']})"
@@ -3187,17 +3553,25 @@ def render_atlas_workspace(username):
                 elapsed_minutes = 0
                 try:
                     elapsed_minutes = int(
-                        (ensure_utc(utc_now_naive()) - ensure_utc(focus_task.timer_started_at)).total_seconds() // 60
+                        (
+                            ensure_utc(utc_now_naive())
+                            - ensure_utc(focus_task.timer_started_at)
+                        ).total_seconds()
+                        // 60
                     )
                 except Exception:
                     elapsed_minutes = 0
 
                 target_for_focus = 0
                 if st.session_state.get("atlas_sprint_task_ref") == focus_task_ref:
-                    target_for_focus = int(st.session_state.get("atlas_sprint_target_minutes") or 0)
+                    target_for_focus = int(
+                        st.session_state.get("atlas_sprint_target_minutes") or 0
+                    )
 
                 if target_for_focus > 0:
-                    sprint_ratio = min(1.0, max(0.0, elapsed_minutes / target_for_focus))
+                    sprint_ratio = min(
+                        1.0, max(0.0, elapsed_minutes / target_for_focus)
+                    )
                     spotlight_cols[0].progress(
                         sprint_ratio,
                         text=f"Sprint: {elapsed_minutes}m / {target_for_focus}m",
@@ -3210,14 +3584,18 @@ def render_atlas_workspace(username):
                     target_for_focus,
                     st.session_state.get("atlas_sprint_started_at_epoch"),
                 )
-                dismissed_key = st.session_state.get("atlas_sprint_reminder_dismissed_for")
+                dismissed_key = st.session_state.get(
+                    "atlas_sprint_reminder_dismissed_for"
+                )
                 if _atlas_should_show_soft_reminder(
                     elapsed_minutes=elapsed_minutes,
                     target_minutes=target_for_focus,
                     sprint_key=sprint_key,
                     dismissed_key=dismissed_key,
                 ):
-                    emitted_key = st.session_state.get("atlas_sprint_notification_sent_for")
+                    emitted_key = st.session_state.get(
+                        "atlas_sprint_notification_sent_for"
+                    )
                     if _atlas_should_emit_target_notification(sprint_key, emitted_key):
                         st.toast(
                             f"Sprint target reached: {target_for_focus}m on {focus_meta['title']}",
@@ -3227,7 +3605,9 @@ def render_atlas_workspace(username):
                             "Sprint target reached",
                             f"{focus_meta['title']} hit {target_for_focus}m. Stop now or keep running.",
                         )
-                        st.session_state["atlas_sprint_notification_sent_for"] = sprint_key
+                        st.session_state["atlas_sprint_notification_sent_for"] = (
+                            sprint_key
+                        )
                     overtime_minutes = max(0, elapsed_minutes - target_for_focus)
                     spotlight_cols[0].warning(
                         f"Sprint target reached ({target_for_focus}m). "
@@ -3247,7 +3627,9 @@ def render_atlas_workspace(username):
                         key=f"atlas_soft_reminder_keep_{focus_task_ref}",
                         use_container_width=True,
                     ):
-                        st.session_state["atlas_sprint_reminder_dismissed_for"] = sprint_key
+                        st.session_state["atlas_sprint_reminder_dismissed_for"] = (
+                            sprint_key
+                        )
                         st.rerun()
 
             action_row = st.columns([1.6, 2.2, 1.6], gap="small")
@@ -3276,9 +3658,13 @@ def render_atlas_workspace(username):
                     except ValueError as exc:
                         st.error(str(exc))
                     else:
-                        st.session_state["atlas_sprint_target_minutes"] = int(target_minutes)
+                        st.session_state["atlas_sprint_target_minutes"] = int(
+                            target_minutes
+                        )
                         st.session_state["atlas_sprint_task_ref"] = focus_task_ref
-                        st.session_state["atlas_sprint_started_at_epoch"] = float(time.time())
+                        st.session_state["atlas_sprint_started_at_epoch"] = float(
+                            time.time()
+                        )
                         if "atlas_sprint_reminder_dismissed_for" in st.session_state:
                             del st.session_state["atlas_sprint_reminder_dismissed_for"]
                         if "atlas_sprint_notification_sent_for" in st.session_state:
@@ -3295,19 +3681,25 @@ def render_atlas_workspace(username):
                     summary_ref = session_summary.get("task_ref")
                     summary_title = index.get(summary_ref, {}).get("title", "task")
                     summary_minutes = session_summary.get("minutes", 0)
-                    st.success(f"Session logged: {summary_minutes}m on {summary_title}.")
+                    st.success(
+                        f"Session logged: {summary_minutes}m on {summary_title}."
+                    )
                 else:
                     del st.session_state["atlas_last_session_summary"]
         else:
             st.info("Select a branch with tasks to start a focus sprint.")
 
     toolbar = st.columns([2.9, 1.1])
-    query = toolbar[0].text_input(
-        "Quick Jump",
-        value=st.session_state.get("atlas_jump_query", ""),
-        placeholder="Find any goal, objective, KR, or task",
-        key="atlas_jump_query",
-    ).strip()
+    query = (
+        toolbar[0]
+        .text_input(
+            "Quick Jump",
+            value=st.session_state.get("atlas_jump_query", ""),
+            placeholder="Find any goal, objective, KR, or task",
+            key="atlas_jump_query",
+        )
+        .strip()
+    )
     selected_scope = toolbar[1].selectbox(
         "Scope",
         options=scope_labels,
@@ -3315,7 +3707,9 @@ def render_atlas_workspace(username):
     )
 
     if query:
-        matches = [ref for ref, meta in index.items() if query.lower() in meta["title_l"]]
+        matches = [
+            ref for ref, meta in index.items() if query.lower() in meta["title_l"]
+        ]
         if matches:
             with st.expander(f"Jump Results ({len(matches)})", expanded=True):
                 for ref in matches[:12]:
@@ -3324,7 +3718,9 @@ def render_atlas_workspace(username):
                         f"{TYPE_ICONS.get(meta['type'], '')} "
                         f"{meta['title']} ({meta['type'].replace('_', ' ').title()})"
                     )
-                    if st.button(label, key=f"atlas_jump_{ref}", use_container_width=True):
+                    if st.button(
+                        label, key=f"atlas_jump_{ref}", use_container_width=True
+                    ):
                         st.session_state["atlas_selected_ref"] = ref
                         st.rerun()
 
@@ -3332,7 +3728,9 @@ def render_atlas_workspace(username):
 
     with focus_map_tab:
         with st.container(border=True):
-            st.markdown("<div class='atlas-kicker'>Focus Map</div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div class='atlas-kicker'>Focus Map</div>", unsafe_allow_html=True
+            )
             st.caption("Navigate hierarchy and pick your next move.")
 
             nav_labels = ["Home"]
@@ -3342,9 +3740,7 @@ def render_atlas_workspace(username):
                 )
                 if not node_type:
                     continue
-                nav_labels.append(
-                    f"{TYPE_ICONS.get(node_type, '')} {node_title}"
-                )
+                nav_labels.append(f"{TYPE_ICONS.get(node_type, '')} {node_title}")
             st.markdown(
                 f"<div class='atlas-nav-line'>{escape_html(' > '.join(nav_labels))}</div>",
                 unsafe_allow_html=True,
@@ -3354,7 +3750,9 @@ def render_atlas_workspace(username):
 
             with map_placeholder.container():
                 map_cols = st.columns([2.25, 1.05], gap="large")
-                map_cols[1].markdown("<div class='atlas-kicker'>Map Key</div>", unsafe_allow_html=True)
+                map_cols[1].markdown(
+                    "<div class='atlas-kicker'>Map Key</div>", unsafe_allow_html=True
+                )
                 map_cols[1].markdown(
                     (
                         "<div class='atlas-attn-legend'>"
@@ -3371,7 +3769,9 @@ def render_atlas_workspace(username):
                     unsafe_allow_html=True,
                 )
                 map_cols[1].markdown("**Create**")
-                if map_cols[1].button("Add Goal", key="atlas_add_goal_focus_map", use_container_width=True):
+                if map_cols[1].button(
+                    "Add Goal", key="atlas_add_goal_focus_map", use_container_width=True
+                ):
                     st.session_state["add_mode_parent"] = None
                     st.session_state["add_mode_type"] = "GOAL"
                     st.rerun()
@@ -3404,10 +3804,14 @@ def render_atlas_workspace(username):
                     else _atlas_descendant_refs(selected_ref, index, limit=400)
                 )
                 map_kr_refs = [
-                    ref for ref in map_refs if ref in index and index[ref].get("type") == "KEY_RESULT"
+                    ref
+                    for ref in map_refs
+                    if ref in index and index[ref].get("type") == "KEY_RESULT"
                 ]
                 map_task_refs = [
-                    ref for ref in map_refs if ref in index and index[ref].get("type") == "TASK"
+                    ref
+                    for ref in map_refs
+                    if ref in index and index[ref].get("type") == "TASK"
                 ]
 
                 map_cols[1].markdown("**AI**")
@@ -3424,8 +3828,14 @@ def render_atlas_workspace(username):
                     use_container_width=True,
                     disabled=not map_kr_refs,
                 ):
-                    from src.services.ai_service import analyze_node, suggest_critical_task
-                    from src.crud import update_key_result, recalculate_rollup_for_key_results
+                    from src.services.ai_service import (
+                        analyze_node,
+                        suggest_critical_task,
+                    )
+                    from src.crud import (
+                        update_key_result,
+                        recalculate_rollup_for_key_results,
+                    )
 
                     total_kr = len(map_kr_refs)
                     synced = 0
@@ -3459,7 +3869,13 @@ def render_atlas_workspace(username):
                                 if apply_ai_score_to_progress:
                                     ai_score = None
                                     try:
-                                        ai_score = max(0, min(100, int(float(result.get("overall_score")))))
+                                        ai_score = max(
+                                            0,
+                                            min(
+                                                100,
+                                                int(float(result.get("overall_score"))),
+                                            ),
+                                        )
                                     except Exception:
                                         ai_score = None
                                     if ai_score is not None:
@@ -3500,6 +3916,7 @@ def render_atlas_workspace(username):
                     progress_bar.empty()
 
                     if map_task_refs:
+
                         def _deadline_iso(deadline_raw):
                             if deadline_raw is None:
                                 return None
@@ -3508,7 +3925,9 @@ def render_atlas_workspace(username):
                                     return deadline_raw.isoformat()
                                 ts = float(deadline_raw)
                                 if ts > 1e10:
-                                    return datetime.fromtimestamp(ts / 1000.0).isoformat()
+                                    return datetime.fromtimestamp(
+                                        ts / 1000.0
+                                    ).isoformat()
                                 return datetime.fromtimestamp(ts).isoformat()
                             except Exception:
                                 try:
@@ -3518,7 +3937,9 @@ def render_atlas_workspace(username):
 
                         ranked_task_refs = sorted(
                             map_task_refs,
-                            key=lambda ref: _atlas_suggested_next_score(index[ref], actor_id, index),
+                            key=lambda ref: _atlas_suggested_next_score(
+                                index[ref], actor_id, index
+                            ),
                         )
                         task_candidates = []
                         for task_ref in ranked_task_refs[:80]:
@@ -3528,7 +3949,8 @@ def render_atlas_workspace(username):
                             parent_meta = index.get(parent_ref) if parent_ref else None
                             parent_ai_score = (
                                 _atlas_ai_overall_score(parent_meta)
-                                if parent_meta and parent_meta.get("type") == "KEY_RESULT"
+                                if parent_meta
+                                and parent_meta.get("type") == "KEY_RESULT"
                                 else None
                             )
                             task_path_titles = [
@@ -3542,12 +3964,18 @@ def render_atlas_workspace(username):
                                     "title": task_meta.get("title"),
                                     "status": _atlas_status_label(task_meta),
                                     "progress": int(task_meta.get("progress", 0) or 0),
-                                    "deadline": _deadline_iso(getattr(task_node, "deadline", None)),
+                                    "deadline": _deadline_iso(
+                                        getattr(task_node, "deadline", None)
+                                    ),
                                     "owner_name": task_meta.get("owner_name"),
                                     "path": " > ".join(task_path_titles),
-                                    "attention": _atlas_attention_reason(task_meta, index),
+                                    "attention": _atlas_attention_reason(
+                                        task_meta, index
+                                    ),
                                     "parent_kr_ai_score": parent_ai_score,
-                                    "local_priority_score": _atlas_suggested_next_score(task_meta, actor_id, index),
+                                    "local_priority_score": _atlas_suggested_next_score(
+                                        task_meta, actor_id, index
+                                    ),
                                 }
                             )
 
@@ -3571,9 +3999,13 @@ def render_atlas_workspace(username):
                                     "lens": str(map_lens),
                                     "at": float(time.time()),
                                 }
-                                st.session_state["atlas_ai_suggested_next"] = ai_suggested_payload
+                                st.session_state["atlas_ai_suggested_next"] = (
+                                    ai_suggested_payload
+                                )
                             else:
-                                ai_suggest_error = "AI returned a task outside this map scope."
+                                ai_suggest_error = (
+                                    "AI returned a task outside this map scope."
+                                )
                         else:
                             ai_suggest_error = (
                                 str(ai_pick.get("error"))
@@ -3590,9 +4022,15 @@ def render_atlas_workspace(username):
                         "apply_progress": bool(apply_ai_score_to_progress),
                         "applied_progress": int(applied_progress),
                         "missing_ai_score": int(missing_ai_score),
-                        "ai_suggested_ref": (ai_suggested_payload or {}).get("task_ref"),
-                        "ai_suggested_reason": (ai_suggested_payload or {}).get("reason"),
-                        "ai_suggested_confidence": (ai_suggested_payload or {}).get("confidence"),
+                        "ai_suggested_ref": (ai_suggested_payload or {}).get(
+                            "task_ref"
+                        ),
+                        "ai_suggested_reason": (ai_suggested_payload or {}).get(
+                            "reason"
+                        ),
+                        "ai_suggested_confidence": (ai_suggested_payload or {}).get(
+                            "confidence"
+                        ),
                         "ai_suggest_error": ai_suggest_error,
                         "at": float(time.time()),
                     }
@@ -3620,11 +4058,17 @@ def render_atlas_workspace(username):
                             )
                         failed_items = list(sync_report.get("failed") or [])
                         if failed_items:
-                            map_cols[1].warning("Some items failed:\n- " + "\n- ".join(failed_items))
+                            map_cols[1].warning(
+                                "Some items failed:\n- " + "\n- ".join(failed_items)
+                            )
                         ai_suggest_ref = str(sync_report.get("ai_suggested_ref") or "")
                         if ai_suggest_ref in index:
-                            ai_title = index[ai_suggest_ref].get("title", ai_suggest_ref)
-                            ai_reason = str(sync_report.get("ai_suggested_reason") or "").strip()
+                            ai_title = index[ai_suggest_ref].get(
+                                "title", ai_suggest_ref
+                            )
+                            ai_reason = str(
+                                sync_report.get("ai_suggested_reason") or ""
+                            ).strip()
                             ai_conf = sync_report.get("ai_suggested_confidence")
                             ai_line = f"AI suggested next: {ai_title}"
                             if ai_conf is not None:
@@ -3652,8 +4096,16 @@ def render_atlas_workspace(username):
                     chart_key = f"atlas_focus_treemap_{selected_ref}"
                     chart_events_key = f"{chart_key}_events"
                     trace = treemap.data[0] if treemap.data else None
-                    point_refs = [str(ref) for ref in (trace.ids or [])] if trace is not None else [str(ref) for ref in map_refs]
-                    point_labels = [str(lbl) for lbl in (trace.labels or [])] if trace is not None else []
+                    point_refs = (
+                        [str(ref) for ref in (trace.ids or [])]
+                        if trace is not None
+                        else [str(ref) for ref in map_refs]
+                    )
+                    point_labels = (
+                        [str(lbl) for lbl in (trace.labels or [])]
+                        if trace is not None
+                        else []
+                    )
                     label_lookup = {}
                     for idx, label in enumerate(point_labels):
                         if idx < len(point_refs):
@@ -3664,15 +4116,18 @@ def render_atlas_workspace(username):
                     if plotly_events is not None:
                         try:
                             with map_cols[0]:
-                                points = plotly_events(
-                                    treemap,
-                                    click_event=True,
-                                    select_event=False,
-                                    hover_event=False,
-                                    override_height=map_chart_height,
-                                    override_width="100%",
-                                    key=chart_events_key,
-                                ) or []
+                                points = (
+                                    plotly_events(
+                                        treemap,
+                                        click_event=True,
+                                        select_event=False,
+                                        hover_event=False,
+                                        override_height=map_chart_height,
+                                        override_width="100%",
+                                        key=chart_events_key,
+                                    )
+                                    or []
+                                )
                             rendered_with_events = True
                         except Exception:
                             points = []
@@ -3688,9 +4143,13 @@ def render_atlas_workspace(username):
                         )
                         points = _atlas_extract_selection_points(treemap_event)
                         if not points:
-                            points = _atlas_extract_selection_points(st.session_state.get(chart_key))
+                            points = _atlas_extract_selection_points(
+                                st.session_state.get(chart_key)
+                            )
                     elif not points:
-                        points = _atlas_extract_selection_points(st.session_state.get(chart_events_key))
+                        points = _atlas_extract_selection_points(
+                            st.session_state.get(chart_events_key)
+                        )
 
                     clicked_ref = _atlas_extract_clicked_ref_from_points(
                         points,
@@ -3709,7 +4168,9 @@ def render_atlas_workspace(username):
                         else:
                             branch_tasks = _collect_task_refs(clicked_ref, limit=200)
                             if branch_tasks:
-                                st.session_state["atlas_focus_task_ref"] = _suggest_focus_task(branch_tasks) or branch_tasks[0]
+                                st.session_state["atlas_focus_task_ref"] = (
+                                    _suggest_focus_task(branch_tasks) or branch_tasks[0]
+                                )
                         st.rerun()
                 else:
                     map_cols[0].info("No map data available.")
@@ -3718,58 +4179,72 @@ def render_atlas_workspace(username):
                     if map_lens == "Scope":
                         map_cols[1].info("No tasks available in current scope.")
                     else:
-                        map_cols[1].info("No tasks to choose focus from in this branch.")
+                        map_cols[1].info(
+                            "No tasks to choose focus from in this branch."
+                        )
 
     with inspector_tab:
         with st.container(border=True):
-            st.markdown("<div class='atlas-kicker'>Inspector</div>", unsafe_allow_html=True)
+            st.markdown(
+                "<div class='atlas-kicker'>Inspector</div>", unsafe_allow_html=True
+            )
             st.caption(f"Selected from map: {selected_meta['title']}")
             selected_type, selected_id = _parse_typed_ref(selected_ref)
             if not selected_type or selected_id is None:
                 st.info("Select a node to inspect.")
             else:
-                render_inspector_content(selected_id, selected_type, username, show_close=False)
+                render_inspector_content(
+                    selected_id, selected_type, username, show_close=False
+                )
+
 
 def render_card(node, username):
     node_id = node.id
     title = node.title
     progress = node.progress
-    
+
     # Identify type from SQLModel class or tablename
     node_type = node.__tablename__.upper()
-    if node_type == "KEY_RESULT": pass
-    elif node_type == "KEYRESULT": node_type = "KEY_RESULT"
-    
+    if node_type == "KEY_RESULT":
+        pass
+    elif node_type == "KEYRESULT":
+        node_type = "KEY_RESULT"
+
     # Check children based on relationships
     has_children = False
-    if node_type == "GOAL": has_children = len(node.objectives) > 0
-    elif node_type == "OBJECTIVE": has_children = len(node.key_results) > 0
-    elif node_type == "KEY_RESULT": has_children = len(node.tasks) > 0
-    
+    if node_type == "GOAL":
+        has_children = len(node.objectives) > 0
+    elif node_type == "OBJECTIVE":
+        has_children = len(node.key_results) > 0
+    elif node_type == "KEY_RESULT":
+        has_children = len(node.tasks) > 0
+
     is_leaf = node_type == "TASK"
-    
+
     from src.crud import start_timer, stop_timer
-    
+
     # CSS Frame
     with st.container(border=True):
         c1, c2, c3 = st.columns([3, 1.5, 1.5])
         with c1:
             # Clickable Title => Navigate
             label = f"{TYPE_ICONS.get(node_type, '')} {title}"
-            
+
             # Subtitle stats
-            stats = f"📊 {progress}% | {node_type.replace('_',' ').title()}"
+            stats = f"📊 {progress}% | {node_type.replace('_', ' ').title()}"
             if node_type == "TASK":
                 t_card = node.total_time_spent
                 stats += f" | ⏱️ {format_time(t_card)}"
                 # Add deadline indicator
                 if node.deadline:
                     from src.utils.deadline_utils import get_deadline_status
+
                     try:
                         _, status_label, _ = get_deadline_status(node)
                         stats += f" | {status_label}"
-                    except: pass
-            
+                    except:
+                        pass
+
             st.markdown(f"**{label}**")
             st.caption(stats)
 
@@ -3778,7 +4253,11 @@ def render_card(node, username):
                 raw_strats = getattr(node, "strategy_tags", "[]")
                 strat_tags = []
                 try:
-                    strat_tags = json.loads(raw_strats) if isinstance(raw_strats, str) else raw_strats
+                    strat_tags = (
+                        json.loads(raw_strats)
+                        if isinstance(raw_strats, str)
+                        else raw_strats
+                    )
                 except Exception:
                     pass
                 if strat_tags:
@@ -3790,13 +4269,17 @@ def render_card(node, username):
                         ]
                     )
                     st.markdown(tags_html, unsafe_allow_html=True)
-            
+
             # Show Initiative Tags for Key Results
             if node_type == "KEY_RESULT":
                 raw_inits = getattr(node, "initiative_tags", "[]")
                 init_tags = []
                 try:
-                    init_tags = json.loads(raw_inits) if isinstance(raw_inits, str) else raw_inits
+                    init_tags = (
+                        json.loads(raw_inits)
+                        if isinstance(raw_inits, str)
+                        else raw_inits
+                    )
                 except Exception:
                     pass
                 if init_tags:
@@ -3808,7 +4291,7 @@ def render_card(node, username):
                         ]
                     )
                     st.markdown(tags_html, unsafe_allow_html=True)
-            
+
             # Creator/Owner Tags
             user_role = st.session_state.get("user_role", "member")
             tags_row_html = ""
@@ -3819,64 +4302,88 @@ def render_card(node, username):
                 "font-size:0.75em;margin-right:4px;border:1px solid #e0e0e0;'>👤 "
                 f"{escape_html(creator_id)}</span>"
             )
-            
+
             if tags_row_html:
-                st.markdown(f"<div style='margin-top:4px;'>{tags_row_html}</div>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div style='margin-top:4px;'>{tags_row_html}</div>",
+                    unsafe_allow_html=True,
+                )
 
         with c2:
-             # Timer Controls (If Task)
-             if node_type == "TASK":
-                 if node.timer_started_at:
-                     start_ts_c = node.timer_started_at.timestamp() * 1000
-                     elapsed_c = int((time.time() * 1000 - start_ts_c) / 60000)
-                     if st.button(f"Running ({elapsed_c}m)", icon=":material/timer:", key=f"open_t_c_{node_id}"):
-                         st.session_state.active_timer_node_id = node_id
-                         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
-                         st.rerun()
-                 else:
-                     if st.button("Start Timer", icon=":material/play_arrow:", key=f"start_c_{node_id}"):
-                         try:
-                             start_timer(node_id, username)
-                         except ValueError as e:
-                             st.error(str(e))
-                             return
-                         st.session_state.active_timer_node_id = node_id
-                         if "active_inspector_id" in st.session_state: del st.session_state.active_inspector_id
-                         st.rerun()
-             
-             if st.button("Inspect", icon=":material/search:", key=f"inspect_{node_id}"):
-                 # Store typed reference to avoid id collisions across tables
-                 st.session_state.active_inspector_id = f"{node.__tablename__}_{node_id}"
-                 if "active_timer_node_id" in st.session_state: del st.session_state.active_timer_node_id
-                 st.rerun()
-             
-             # View Map button
-             if has_children:
-                  if st.button("Map", icon=":material/account_tree:", key=f"map_{node_id}"):
-                       from src.ui.dialogs import render_mindmap_dialog
-                       # Update mindmap dialog if it still expects data dict?
-                       # Assuming it handles node_id
-                       render_mindmap_dialog(node_id)
-                   
+            # Timer Controls (If Task)
+            if node_type == "TASK":
+                if node.timer_started_at:
+                    start_ts_c = node.timer_started_at.timestamp() * 1000
+                    elapsed_c = int((time.time() * 1000 - start_ts_c) / 60000)
+                    if st.button(
+                        f"Running ({elapsed_c}m)",
+                        icon=":material/timer:",
+                        key=f"open_t_c_{node_id}",
+                    ):
+                        st.session_state.active_timer_node_id = node_id
+                        if "active_inspector_id" in st.session_state:
+                            del st.session_state.active_inspector_id
+                        st.rerun()
+                else:
+                    if st.button(
+                        "Start Timer",
+                        icon=":material/play_arrow:",
+                        key=f"start_c_{node_id}",
+                    ):
+                        try:
+                            start_timer(node_id, username)
+                        except ValueError as e:
+                            st.error(str(e))
+                            return
+                        st.session_state.active_timer_node_id = node_id
+                        if "active_inspector_id" in st.session_state:
+                            del st.session_state.active_inspector_id
+                        st.rerun()
+
+            if st.button("Inspect", icon=":material/search:", key=f"inspect_{node_id}"):
+                # Store typed reference to avoid id collisions across tables
+                st.session_state.active_inspector_id = f"{node.__tablename__}_{node_id}"
+                if "active_timer_node_id" in st.session_state:
+                    del st.session_state.active_timer_node_id
+                st.rerun()
+
+            # View Map button
+            if has_children:
+                if st.button(
+                    "Map", icon=":material/account_tree:", key=f"map_{node_id}"
+                ):
+                    from src.ui.dialogs import render_mindmap_dialog
+
+                    # Update mindmap dialog if it still expects data dict?
+                    # Assuming it handles node_id
+                    render_mindmap_dialog(node_id)
+
         with c3:
             # Navigation Button ("Open")
             if not is_leaf:
-                if st.button("Open", icon=":material/arrow_forward:", key=f"nav_{node_id}"):
+                if st.button(
+                    "Open", icon=":material/arrow_forward:", key=f"nav_{node_id}"
+                ):
                     # Use typed node reference to avoid id collision across tables
                     navigate_to(f"{node.__tablename__}_{node_id}")
-            
+
             # AI Analysis Quick Button
             if node_type == "KEY_RESULT":
                 if st.button("AI", icon=":material/psychology:", key=f"ai_c_{node_id}"):
                     from src.services.ai_service import analyze_node
                     from src.crud import update_key_result
+
                     with st.spinner("🧠 Analyzing..."):
                         # analyze_node(id, type) now fetches its own data from SQL.
                         res_c = analyze_node(node_id, "KEY_RESULT")
                         if "error" not in res_c:
                             # analyze_node returns results directly as a dict now.
                             try:
-                                update_key_result(node_id, gemini_analysis=res_c, actor_username=username)
+                                update_key_result(
+                                    node_id,
+                                    gemini_analysis=res_c,
+                                    actor_username=username,
+                                )
                             except PermissionError as e:
                                 st.error(str(e))
                                 return
@@ -3884,19 +4391,20 @@ def render_card(node, username):
                         else:
                             st.error(res_c["error"])
 
+
 def render_level(username):
     if "active_inspector_id" in st.session_state:
         del st.session_state.active_inspector_id
     return render_atlas_workspace(username)
 
     # 'data' and 'root_ids' removed as we now fetch directly from SQL.
-    
+
     stack = st.session_state.nav_stack
     current_node = None
     level_name = "Goals"
     items = []
-    child_type = "GOAL" # Default for root
-    
+    child_type = "GOAL"  # Default for root
+
     # We need a session to fetch objects lazily
     # Ideally checking children access requires session if they are lazy loaded?
     # SQLModel relationships are lazy by default usually.
@@ -3941,28 +4449,31 @@ def render_level(username):
             # Root Level: Goals
             cycle_id = st.session_state.get("active_cycle_id")
             # Fetch goals with one level of deep loading for children counts
-            user_obj = session.exec(select(User).where(User.username == username)).first()
+            user_obj = session.exec(
+                select(User).where(User.username == username)
+            ).first()
             if user_obj:
                 items = session.exec(
                     select(Goal)
-                    .where(
-                        Goal.owner_id == user_obj.id,
-                        Goal.cycle_id == cycle_id
+                    .where(Goal.owner_id == user_obj.id, Goal.cycle_id == cycle_id)
+                    .options(
+                        selectinload(Goal.objectives).selectinload(
+                            Objective.key_results
+                        )
                     )
-                    .options(selectinload(Goal.objectives).selectinload(Objective.key_results))
                 ).all()
             level_name = "Goals"
-            child_type = "GOAL" 
+            child_type = "GOAL"
         else:
             parent_id = stack[-1]
             ntype, title = get_node_details(parent_id)
-            
+
             if not ntype:
                 st.error("Node not found")
                 st.session_state.nav_stack.pop()
                 st.rerun()
                 return
-            
+
             # Fetch current_node with children eager loaded
             # parent_id may be a typed string like 'objective_12' or an int id
             raw_id = parent_id
@@ -3974,7 +4485,13 @@ def render_level(username):
 
             if ntype == "GOAL":
                 current_node = session.exec(
-                    select(Goal).where(Goal.id == raw_id).options(selectinload(Goal.objectives).selectinload(Objective.key_results))
+                    select(Goal)
+                    .where(Goal.id == raw_id)
+                    .options(
+                        selectinload(Goal.objectives).selectinload(
+                            Objective.key_results
+                        )
+                    )
                 ).first()
                 if current_node:
                     items = current_node.objectives
@@ -3982,7 +4499,13 @@ def render_level(username):
                     child_type = "OBJECTIVE"
             elif ntype == "OBJECTIVE":
                 current_node = session.exec(
-                    select(Objective).where(Objective.id == raw_id).options(selectinload(Objective.key_results).selectinload(KeyResult.tasks))
+                    select(Objective)
+                    .where(Objective.id == raw_id)
+                    .options(
+                        selectinload(Objective.key_results).selectinload(
+                            KeyResult.tasks
+                        )
+                    )
                 ).first()
                 if current_node:
                     items = current_node.key_results
@@ -3990,7 +4513,11 @@ def render_level(username):
                     child_type = "KEY_RESULT"
             elif ntype in ["KEY_RESULT", "KEYRESULT"]:
                 current_node = session.exec(
-                    select(KeyResult).where(KeyResult.id == raw_id).options(selectinload(KeyResult.tasks), selectinload(KeyResult.check_ins))
+                    select(KeyResult)
+                    .where(KeyResult.id == raw_id)
+                    .options(
+                        selectinload(KeyResult.tasks), selectinload(KeyResult.check_ins)
+                    )
                 ).first()
                 if current_node:
                     items = current_node.tasks
@@ -3998,27 +4525,32 @@ def render_level(username):
                     child_type = "TASK"
             elif ntype == "TASK":
                 current_node = session.exec(
-                    select(Task).where(Task.id == raw_id).options(selectinload(Task.work_logs))
+                    select(Task)
+                    .where(Task.id == raw_id)
+                    .options(selectinload(Task.work_logs))
                 ).first()
                 items = []
                 level_name = "Details"
                 child_type = None
 
             if not current_node:
-                 st.session_state.nav_stack.pop()
-                 st.rerun()
-                 return
+                st.session_state.nav_stack.pop()
+                st.rerun()
+                return
 
         # Header
         render_breadcrumbs()
-        
+
         # Level Header & Add Button
         st.markdown(f"## {level_name}")
-        
+
         # Add Button Logic
         if child_type:
             col_add, _ = st.columns([1, 5])
-            if col_add.button(f"➕ Add {child_type.replace('_',' ').title()}", key=f"add_{child_type}"):
+            if col_add.button(
+                f"➕ Add {child_type.replace('_', ' ').title()}",
+                key=f"add_{child_type}",
+            ):
                 # Root level (Goal) has no parent_id on the stack
                 st.session_state["add_mode_parent"] = stack[-1] if stack else None
                 st.session_state["add_mode_type"] = child_type
@@ -4029,6 +4561,3 @@ def render_level(username):
         else:
             for item in items:
                 render_card(item, username)
-
-
-
