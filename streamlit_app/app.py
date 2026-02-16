@@ -233,27 +233,29 @@ def render_login():
         if st.button("Login", type="primary"):
             if username.strip() and password:
                 try:
-                    ensure_startup_ready()
-                except Exception as exc:
-                    error_log("Login bootstrap failed", exc)
-                    st.error(
-                        "Login is temporarily unavailable due to a database issue. "
-                        "Please try again shortly."
-                    )
-                    return
-                try:
                     auth = authenticate_user_detailed(
                         username.strip(),
                         password,
                         client_ip=_get_client_ip(),
                     )
                 except Exception as exc:
-                    error_log("Authentication failed unexpectedly", exc)
-                    st.error(
-                        "Login is temporarily unavailable due to a database issue. "
-                        "Please contact your administrator."
-                    )
-                    return
+                    # Fast path: auth first. If startup bootstrap wasn't ready yet,
+                    # run it once and retry auth.
+                    error_log("Authentication attempt failed before startup ready", exc)
+                    try:
+                        ensure_startup_ready()
+                        auth = authenticate_user_detailed(
+                            username.strip(),
+                            password,
+                            client_ip=_get_client_ip(),
+                        )
+                    except Exception as retry_exc:
+                        error_log("Authentication failed unexpectedly", retry_exc)
+                        st.error(
+                            "Login is temporarily unavailable due to a database issue. "
+                            "Please contact your administrator."
+                        )
+                        return
                 user = auth.get("user")
                 if user:
                     # Store user info in session
@@ -630,21 +632,18 @@ def main():
         render_login()
         return
 
-    try:
-        ensure_startup_ready()
-    except Exception as exc:
-        error_log("Database initialization failed", exc)
-        st.error(
-            "Database initialization failed. "
-            "Please verify Supabase URL/secrets and migration state."
-        )
-        st.code(str(exc))
-        return
-
     # Keep compatibility for any flow still checking this sentinel.
     st.session_state["_bootstrap_ready"] = True
 
-    runtime_bundle = _resolve_app_shell_runtime(int(st.session_state["user_id"]))
+    try:
+        runtime_bundle = _resolve_app_shell_runtime(int(st.session_state["user_id"]))
+    except Exception as exc:
+        error_log("Workspace runtime load failed", exc)
+        st.error(
+            "Workspace is temporarily unavailable due to a database issue. "
+            "Please retry shortly."
+        )
+        return
     current_user = runtime_bundle.get("user")
     if not current_user or not current_user.get("is_active"):
         _clear_user_session()

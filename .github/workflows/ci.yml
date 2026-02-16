@@ -35,25 +35,25 @@ jobs:
         run: |
           python -m ruff check \
             streamlit_app/src/crud.py \
-            streamlit_app/utils/deadline_utils.py \
+            streamlit_app/src/utils/deadline_utils.py \
             streamlit_app/scripts/perf_hotpaths.py \
-            test_deadline_utils.py \
-            test_performance_hotpaths.py \
+            tests/test_deadline_utils.py \
+            tests/test_performance_hotpaths.py \
             --select E9,F63,F7,F82
 
       - name: Format Check (Ruff)
         run: |
           python -m ruff format --check \
             streamlit_app/src/crud.py \
-            streamlit_app/utils/deadline_utils.py \
+            streamlit_app/src/utils/deadline_utils.py \
             streamlit_app/scripts/perf_hotpaths.py \
-            test_deadline_utils.py \
-            test_performance_hotpaths.py
+            tests/test_deadline_utils.py \
+            tests/test_performance_hotpaths.py
 
       - name: Type Check (Mypy)
         run: |
           python -m mypy --ignore-missing-imports \
-            streamlit_app/utils/deadline_utils.py \
+            streamlit_app/src/utils/deadline_utils.py \
             streamlit_app/scripts/perf_hotpaths.py
 
       - name: Test
