@@ -5,18 +5,22 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-env:
-  IMAGE: ghcr.io/${{ github.repository }}:latest
-
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Compute image tag (lowercase)
+        id: meta
+        run: |
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:latest" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -31,7 +35,7 @@ jobs:
           context: .
           file: deploy/docker/Dockerfile
           push: true
-          tags: ${{ env.IMAGE }}
+          tags: ${{ steps.meta.outputs.image }}
 
   deploy-compose:
     if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
@@ -48,5 +52,5 @@ jobs:
             set -e
             cd ${{ secrets.REMOTE_DEPLOY_DIR }}
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-            IMAGE=${{ env.IMAGE }} docker compose -f deploy/docker/docker-compose.yml pull
-            IMAGE=${{ env.IMAGE }} docker compose -f deploy/docker/docker-compose.yml up -d --build
+            IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml pull
+            IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml up -d --build

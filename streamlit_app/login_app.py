@@ -57,19 +57,29 @@ def render_login():
         if st.button("Login", type="primary"):
             if username.strip() and password:
                 try:
-                    ensure_startup_ready()
-                except Exception as exc:
-                    error_log("Login bootstrap failed", exc)
-                    st.error(
-                        "Login is temporarily unavailable due to a database issue. "
-                        "Please try again shortly."
+                    auth = authenticate_user_detailed(
+                        username.strip(),
+                        password,
+                        client_ip=_get_client_ip(),
                     )
-                    return
-                auth = authenticate_user_detailed(
-                    username.strip(),
-                    password,
-                    client_ip=_get_client_ip(),
-                )
+                except Exception as exc:
+                    # Fast path: auth first. If startup bootstrap wasn't ready yet,
+                    # run it once and retry auth.
+                    error_log("Authentication attempt failed before startup ready", exc)
+                    try:
+                        ensure_startup_ready()
+                        auth = authenticate_user_detailed(
+                            username.strip(),
+                            password,
+                            client_ip=_get_client_ip(),
+                        )
+                    except Exception as retry_exc:
+                        error_log("Authentication failed unexpectedly", retry_exc)
+                        st.error(
+                            "Login is temporarily unavailable due to a database issue. "
+                            "Please try again shortly."
+                        )
+                        return
                 user = auth.get("user")
                 if user:
                     # Store user info in session
@@ -143,15 +153,14 @@ def render_password_reset_gate():
 def main():
     if "user_id" in st.session_state:
         try:
-            ensure_startup_ready()
+            current_user = get_user_by_id(st.session_state["user_id"])
         except Exception as exc:
-            error_log("Login bootstrap failed", exc)
+            error_log("Session validation failed", exc)
             st.error(
-                "Database startup failed. Please verify Supabase connectivity and retry."
+                "Workspace is temporarily unavailable due to a database issue. "
+                "Please retry shortly."
             )
-            st.code(str(exc))
             return
-        current_user = get_user_by_id(st.session_state["user_id"])
         if not current_user or not current_user.is_active:
             _clear_user_session()
             st.error("Your session is no longer valid. Please log in again.")
