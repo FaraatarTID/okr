@@ -42,7 +42,7 @@ def test_app_shell_runtime_cache_hit_zero_queries(monkeypatch, tmp_path):
         admin = User(
             username="admin",
             password_hash=crud.hash_password("admin"),
-            must_change_password=False,
+            must_change_password=True,
             password_changed_at=now,
             display_name="Administrator",
             role=UserRole.ADMIN,
@@ -74,7 +74,6 @@ def test_app_shell_runtime_cache_hit_zero_queries(monkeypatch, tmp_path):
     app_module._cached_get_all_cycles.clear()
     app_module._cached_get_user_runtime_snapshot.clear()
     app_module._cached_get_active_weekly_plan_snapshot.clear()
-    app_module._cached_is_default_admin_password.clear()
 
     with _query_counter(engine) as first_qc:
         first = app_module._resolve_app_shell_runtime(user_id)
