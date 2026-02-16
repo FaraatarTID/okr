@@ -3903,11 +3903,18 @@ def render_atlas_workspace(username):
             map_placeholder = st.empty()
 
             with map_placeholder.container():
-                map_cols = st.columns([2.25, 1.05], gap="large")
-                map_cols[1].markdown(
+                if is_mobile_request:
+                    map_chart_area = st.container()
+                    map_sidebar_area = st.container()
+                else:
+                    map_cols = st.columns([2.25, 1.05], gap="large")
+                    map_chart_area = map_cols[0]
+                    map_sidebar_area = map_cols[1]
+
+                map_sidebar_area.markdown(
                     "<div class='atlas-kicker'>Map Key</div>", unsafe_allow_html=True
                 )
-                map_cols[1].markdown(
+                map_sidebar_area.markdown(
                     (
                         "<div class='atlas-attn-legend'>"
                         "<span class='atlas-map-chip atlas-map-needs'>Needs care</span>"
@@ -3922,15 +3929,15 @@ def render_atlas_workspace(username):
                     ),
                     unsafe_allow_html=True,
                 )
-                map_cols[1].markdown("**Create**")
-                if map_cols[1].button(
+                map_sidebar_area.markdown("**Create**")
+                if map_sidebar_area.button(
                     "Add Goal", key="atlas_add_goal_focus_map", use_container_width=True
                 ):
                     st.session_state["add_mode_parent"] = None
                     st.session_state["add_mode_type"] = "GOAL"
                     st.rerun()
                 child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
-                if child_type and map_cols[1].button(
+                if child_type and map_sidebar_area.button(
                     f"Add {child_type.replace('_', ' ').title()}",
                     key=f"atlas_add_child_map_{selected_ref}",
                     use_container_width=True,
@@ -3942,7 +3949,7 @@ def render_atlas_workspace(username):
                 map_lens_options = ["Scope", "Branch"]
                 if st.session_state.get("atlas_map_lens") not in map_lens_options:
                     st.session_state["atlas_map_lens"] = "Scope"
-                map_lens = st.segmented_control(
+                map_lens = map_sidebar_area.segmented_control(
                     "Map Lens",
                     options=map_lens_options,
                     key="atlas_map_lens",
@@ -3968,15 +3975,15 @@ def render_atlas_workspace(username):
                     if ref in index and index[ref].get("type") == "TASK"
                 ]
 
-                map_cols[1].markdown("**AI**")
+                map_sidebar_area.markdown("**AI**")
                 if "atlas_ai_apply_overall_to_progress" not in st.session_state:
                     st.session_state["atlas_ai_apply_overall_to_progress"] = False
-                apply_ai_score_to_progress = map_cols[1].toggle(
+                apply_ai_score_to_progress = map_sidebar_area.toggle(
                     "Apply AI overall score to KR progress",
                     key="atlas_ai_apply_overall_to_progress",
                     disabled=not map_kr_refs,
                 )
-                if map_cols[1].button(
+                if map_sidebar_area.button(
                     "AI Progress Sync",
                     key="atlas_ai_progress_sync_btn",
                     use_container_width=True,
@@ -3999,7 +4006,7 @@ def render_atlas_workspace(username):
                     failed = []
                     ai_suggest_error = None
                     ai_suggested_payload = None
-                    progress_bar = map_cols[1].progress(
+                    progress_bar = map_sidebar_area.progress(
                         0.0,
                         text=f"Syncing AI analysis for {total_kr} key result(s)...",
                     )
@@ -4205,14 +4212,14 @@ def render_atlas_workspace(username):
                             )
                             if missing > 0:
                                 msg += f" ({missing} had no usable AI score.)"
-                            map_cols[1].success(msg)
+                            map_sidebar_area.success(msg)
                         else:
-                            map_cols[1].success(
+                            map_sidebar_area.success(
                                 f"AI sync updated {synced}/{total} key result analysis records."
                             )
                         failed_items = list(sync_report.get("failed") or [])
                         if failed_items:
-                            map_cols[1].warning(
+                            map_sidebar_area.warning(
                                 "Some items failed:\n- " + "\n- ".join(failed_items)
                             )
                         ai_suggest_ref = str(sync_report.get("ai_suggested_ref") or "")
@@ -4227,11 +4234,11 @@ def render_atlas_workspace(username):
                             ai_line = f"AI suggested next: {ai_title}"
                             if ai_conf is not None:
                                 ai_line += f" (confidence: {ai_conf}%)"
-                            map_cols[1].info(ai_line)
+                            map_sidebar_area.info(ai_line)
                             if ai_reason:
-                                map_cols[1].caption(ai_reason)
+                                map_sidebar_area.caption(ai_reason)
                         elif sync_report.get("ai_suggest_error"):
-                            map_cols[1].warning(
+                            map_sidebar_area.warning(
                                 f"AI task suggestion skipped: {sync_report.get('ai_suggest_error')}"
                             )
                     else:
@@ -4269,7 +4276,7 @@ def render_atlas_workspace(username):
                     rendered_with_events = False
                     if plotly_events is not None:
                         try:
-                            with map_cols[0]:
+                            with map_chart_area:
                                 points = (
                                     plotly_events(
                                         treemap,
@@ -4287,7 +4294,7 @@ def render_atlas_workspace(username):
                             points = []
 
                     if not rendered_with_events:
-                        treemap_event = map_cols[0].plotly_chart(
+                        treemap_event = map_chart_area.plotly_chart(
                             treemap,
                             use_container_width=True,
                             config={"displayModeBar": False},
@@ -4327,13 +4334,13 @@ def render_atlas_workspace(username):
                                 )
                         st.rerun()
                 else:
-                    map_cols[0].info("No map data available.")
+                    map_chart_area.info("No map data available.")
 
                 if not map_task_refs:
                     if map_lens == "Scope":
-                        map_cols[1].info("No tasks available in current scope.")
+                        map_sidebar_area.info("No tasks available in current scope.")
                     else:
-                        map_cols[1].info(
+                        map_sidebar_area.info(
                             "No tasks to choose focus from in this branch."
                         )
 
