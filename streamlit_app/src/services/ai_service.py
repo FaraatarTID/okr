@@ -745,3 +745,140 @@ def generate_weekly_summary(username: str, start_date_str: str, end_date_str: st
         
     except Exception as e:
         return {"error": str(e)}
+
+
+def suggest_critical_task(task_candidates: List[Dict[str, Any]], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Ask Gemini to pick the single most critical task (urgent + important) from candidates.
+
+    Expected candidate shape:
+    {
+      "task_ref": "task_123",
+      "title": "...",
+      "status": "...",
+      "progress": 0-100,
+      "deadline": "ISO-8601 or null",
+      "owner_name": "...",
+      "path": "Goal > Objective > KR > Task",
+      "attention": "Needs care|On track|Complete",
+      "parent_kr_ai_score": 0-100 or null,
+      "local_priority_score": number
+    }
+    """
+    api_key = get_api_key()
+    if not api_key:
+        return {"error": "API Key not configured"}
+
+    if not GENAI_AVAILABLE:
+        return {"error": "google-generativeai not installed"}
+
+    normalized_candidates: List[Dict[str, Any]] = []
+    for raw in task_candidates or []:
+        if not isinstance(raw, dict):
+            continue
+        task_ref = str(raw.get("task_ref") or raw.get("ref") or "").strip()
+        title = str(raw.get("title") or "").strip()
+        if not task_ref or not title:
+            continue
+        normalized_candidates.append(
+            {
+                "task_ref": task_ref,
+                "title": title,
+                "status": str(raw.get("status") or ""),
+                "progress": raw.get("progress"),
+                "deadline": raw.get("deadline"),
+                "owner_name": str(raw.get("owner_name") or ""),
+                "path": str(raw.get("path") or ""),
+                "attention": str(raw.get("attention") or ""),
+                "parent_kr_ai_score": raw.get("parent_kr_ai_score"),
+                "local_priority_score": raw.get("local_priority_score"),
+            }
+        )
+
+    if not normalized_candidates:
+        return {"error": "No valid task candidates provided."}
+
+    if len(normalized_candidates) > 120:
+        normalized_candidates = normalized_candidates[:120]
+
+    context_obj = context if isinstance(context, dict) else {}
+
+    prompt = f"""
+    You are an elite execution coach.
+    Choose ONE task that should be worked on next (highest combined urgency + strategic importance).
+
+    Decision criteria:
+    - Deadline risk (overdue / near due date)
+    - Strategic impact (especially if parent KR health is weak)
+    - Progress state (stuck or low progress tasks are often more critical)
+    - Attention signals and local priority score
+    - Avoid already complete tasks unless no better option exists
+
+    CONTEXT:
+    {json.dumps(context_obj, ensure_ascii=False, indent=2)}
+
+    TASK CANDIDATES:
+    {json.dumps(normalized_candidates, ensure_ascii=False, indent=2)}
+
+    REQUIRED OUTPUT (JSON only):
+    {{
+      "task_ref": "<exact task_ref from candidates>",
+      "reason": "<short, concrete reason in 1-2 sentences>",
+      "confidence": <0-100>
+    }}
+
+    Return ONLY valid JSON.
+    """
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-flash-latest",
+            contents=prompt,
+            config={"response_mime_type": "application/json"},
+        )
+
+        if not response.text:
+            return {"error": "Gemini returned an empty response."}
+
+        raw_text = response.text.strip()
+        if raw_text.startswith("```json"):
+            raw_text = raw_text[7:]
+        if raw_text.startswith("```"):
+            raw_text = raw_text[3:]
+        if raw_text.endswith("```"):
+            raw_text = raw_text[:-3]
+
+        data = json.loads(raw_text)
+
+        selected_ref_raw = str(data.get("task_ref") or "").strip()
+        if not selected_ref_raw:
+            return {"error": "AI did not return a task_ref."}
+
+        by_ref = {item["task_ref"]: item for item in normalized_candidates}
+        by_ref_lower = {key.lower(): key for key in by_ref}
+
+        selected_ref = by_ref.get(selected_ref_raw)
+        if selected_ref is None:
+            canonical_ref = by_ref_lower.get(selected_ref_raw.lower())
+            selected_ref = by_ref.get(canonical_ref) if canonical_ref else None
+
+        if selected_ref is None:
+            return {"error": "AI returned task_ref outside candidate set."}
+
+        reason = str(data.get("reason") or "").strip()
+        confidence_val = data.get("confidence")
+        confidence = None
+        try:
+            if confidence_val is not None:
+                confidence = max(0, min(100, int(float(confidence_val))))
+        except Exception:
+            confidence = None
+
+        return {
+            "task_ref": selected_ref["task_ref"],
+            "reason": reason or "AI marked this as the most urgent and important next step.",
+            "confidence": confidence,
+        }
+    except Exception as exc:
+        return {"error": str(exc)}
