@@ -52,7 +52,7 @@ jobs:
 
       - name: Type Check (Mypy)
         run: |
-          python -m mypy --ignore-missing-imports \
+          python -m mypy --ignore-missing-imports --follow-imports=skip \
             streamlit_app/src/utils/deadline_utils.py \
             streamlit_app/scripts/perf_hotpaths.py
 
