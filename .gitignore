@@ -1,18 +1,25 @@
 # Python
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.venv/
 venv/
+env/
 .env
 
 # Streamlit
-.streamlit/secrets.toml
+.streamlit/
 secrets.toml
+streamlit_app/.deps_hash
+streamlit_app/.deps_installed
 
 # Data
-okr_data.json
-*.json
 *.db
-node_modules
+*.sqlite
+*.sqlite3
+*.json
+okr_data*.json
+node_modules/
 
 # Logs
 *.log
@@ -24,28 +31,11 @@ logs/
 log/
 **/logs/
 streamlit_app/run_app.log
-streamlit_app/run_app.log)
 
 # OS/editor
 .DS_Store
 .idea/
 .vscode/
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-env/
-
-# Databases and local data
-*.sqlite
-*.sqlite3
-*.db
-okr_data*.json
-
-# Streamlit
-.streamlit/
 
 # Android build outputs
 android/**/build/

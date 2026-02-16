@@ -1,16 +1,8 @@
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-import sys
 
 import pytest
 from sqlalchemy.exc import OperationalError
 from sqlmodel import SQLModel, select
-
-
-ROOT_DIR = Path(__file__).resolve().parent
-APP_DIR = ROOT_DIR / "streamlit_app"
-if str(APP_DIR) not in sys.path:
-    sys.path.insert(0, str(APP_DIR))
 
 
 @pytest.fixture()

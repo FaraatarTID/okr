@@ -1,12 +1,4 @@
-from pathlib import Path
 from types import SimpleNamespace
-import sys
-
-
-ROOT_DIR = Path(__file__).resolve().parent
-APP_DIR = ROOT_DIR / "streamlit_app"
-if str(APP_DIR) not in sys.path:
-    sys.path.insert(0, str(APP_DIR))
 
 
 from src.ui.components import (  # noqa: E402

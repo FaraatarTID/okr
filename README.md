@@ -316,18 +316,17 @@ streamlit run streamlit_app/app.py
 
 The codebase is organized modularly to separate concerns across the UI, business logic, and data layers:
 
-- **`app.py`**: The application entry point. Handles routing, session state initialization, and high-level page layout.
-- **`src/`**:
-  - **`ui/`**: Modularized frontend components.
-    - **`styles.py`**: Centralized CSS injections, font applications, and UI color/icon constants.
-    - **`components.py`**: Functional UI components like cards, navigation levels, and breadcrumbs.
-    - **`dialogs.py`**: Streamlit `@st.dialog` modal definitions for reports, timers, and management panels.
-  - **`services/`**: Core business services including AI analysis (Gemini) and PDF generation.
-  - **`models.py`**: Data models defined using SQLModel and Pydantic.
-  - **`crud.py`**: Specialized Create, Read, Update, and Delete operations for the OKR hierarchy.
-  - **`database.py`**: Supabase PostgreSQL configuration and session handling.
-- **`utils/`**: Utility modules for state management, deadline logic, and data storage.
-- **`assets/`**: Static assets and media.
+- **`streamlit_app/app.py`**: Main authenticated application entrypoint.
+- **`streamlit_app/login_app.py`**: Login-first launcher entrypoint used by `run_app.bat`.
+- **`streamlit_app/src/`**:
+  - **`ui/`**: Streamlit UI modules (`components.py`, `dialogs.py`, `visualizations.py`, `styles.py`).
+  - **`services/`**: Integrations and output services (AI, PDF, HTTP client).
+  - **`domain/`**: Focused business-rule modules (authorization, analytics).
+  - **`crud.py`**, **`models.py`**, **`database.py`**: Core app facade, data model, and persistence layer.
+- **`streamlit_app/utils/`**: Shared utility helpers used across app layers.
+- **`streamlit_app/alembic/`**: Database migration environment and versions.
+- **`tests/`**: Automated regression and performance-path tests.
+- **`docs/`**, **`deploy/`**, **`odoo_module/`**, **`android/`**: Ops docs and integration subprojects.
 
 ---
 
@@ -390,8 +389,8 @@ pre-commit install
 pre-commit run --all-files
 # Runs Documentation HQ link checks + targeted Ruff + targeted Mypy hooks
 python scripts/check_docs_hq_links.py
-python -m ruff check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py --select E9,F63,F7,F82
-python -m ruff format --check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py
+python -m ruff check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py tests/test_deadline_utils.py tests/test_performance_hotpaths.py --select E9,F63,F7,F82
+python -m ruff format --check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py tests/test_deadline_utils.py tests/test_performance_hotpaths.py
 python -m mypy --ignore-missing-imports streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py
 python -m pytest -q
 ```
