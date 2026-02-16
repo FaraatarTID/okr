@@ -2879,6 +2879,33 @@ def _atlas_fire_browser_notification(title: str, body: str):
     )
 
 
+def _atlas_is_mobile_request() -> bool:
+    """Best-effort mobile detection from Streamlit request headers."""
+    user_agent = ""
+    try:
+        context_obj = getattr(st, "context", None)
+        header_map = getattr(context_obj, "headers", None)
+        if header_map:
+            user_agent = str(
+                header_map.get("user-agent") or header_map.get("User-Agent") or ""
+            ).lower()
+    except Exception:
+        user_agent = ""
+
+    if not user_agent:
+        return False
+
+    mobile_tokens = (
+        "android",
+        "iphone",
+        "ipad",
+        "ipod",
+        "mobile",
+        "windows phone",
+    )
+    return any(token in user_agent for token in mobile_tokens)
+
+
 def _atlas_suggested_next_score(meta, actor_id: int, index=None):
     running = getattr(meta.get("node"), "timer_started_at", None) is not None
     attention_kind = _atlas_attention_kind(meta, index)
@@ -3224,7 +3251,7 @@ def _build_atlas_treemap(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(size=13, color="#1f2933"),
-        height=max(420, int(chart_height)),
+        height=max(240, int(chart_height)),
         clickmode="event+select",
     )
     return fig
@@ -3232,6 +3259,7 @@ def _build_atlas_treemap(
 
 def render_atlas_workspace(username):
     inject_atlas_styles()
+    is_mobile_request = _atlas_is_mobile_request()
 
     cycle_id = st.session_state.get("active_cycle_id")
     if not cycle_id:
@@ -4095,7 +4123,7 @@ def render_atlas_workspace(username):
                     else:
                         del st.session_state["atlas_ai_sync_report"]
 
-                map_chart_height = 500
+                map_chart_height = 250 if is_mobile_request else 500
                 treemap = _build_atlas_treemap(
                     map_refs,
                     index,
