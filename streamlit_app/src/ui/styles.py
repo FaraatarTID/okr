@@ -659,17 +659,14 @@ def inject_atlas_styles():
                 padding: 0.12rem 0.4rem !important;
             }
 
-            /* Force compact treemap height on narrow screens, regardless of server-side UA detection. */
-            [class*="st-key-atlas_focus_treemap_"] div[data-testid="stPlotlyChart"] .js-plotly-plot,
-            [class*="st-key-atlas_focus_treemap_"] div[data-testid="stPlotlyChart"] .plot-container,
-            [class*="st-key-atlas_focus_treemap_"] div[data-testid="stPlotlyChart"] .svg-container {
-                height: 180px !important;
-                min-height: 180px !important;
+            /* Remove extra whitespace under the map card on narrow screens. */
+            [class*="st-key-atlas_focus_treemap_"] {
+                margin-bottom: 0 !important;
+                padding-bottom: 0 !important;
             }
 
-            [class*="st-key-atlas_focus_treemap_"][class*="_events"] iframe {
-                height: 180px !important;
-                min-height: 180px !important;
+            [class*="st-key-atlas_focus_treemap_"] div[data-testid="stPlotlyChart"] {
+                margin-bottom: 0 !important;
             }
         }
 
