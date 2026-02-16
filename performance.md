@@ -49,12 +49,12 @@ Before app-shell cache optimization (baseline behavior):
 | Cache miss | 201.085 ms | 201.085 ms | 5 | 5 |
 | Cache hit | 198.266 ms | 203.632 ms | 4 | 4 |
 
-After app-shell cache optimization:
+After app-shell cache + admin-warning fast-path optimization:
 
 | Scenario | Median Total | P95 Total | Median Queries | P95 Queries |
 | --- | --- | --- | --- | --- |
-| Cache miss | 195.676 ms | 195.676 ms | 3 | 3 |
-| Cache hit | 0.113 ms | 0.131 ms | 0 | 0 |
+| Cache miss | 1.589 ms | 1.589 ms | 3 | 3 |
+| Cache hit | 0.123 ms | 0.146 ms | 0 | 0 |
 
 ## Login Page Bootstrap Baselines (Measured February 16, 2026)
 

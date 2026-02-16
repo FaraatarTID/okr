@@ -68,7 +68,7 @@ from src.crud import (
     # User Auth
     authenticate_user_detailed, get_all_users, create_user, update_user,
     reset_user_password, get_team_members,
-    get_user_by_id, verify_password
+    get_user_by_id
 )
 from src.models import UserRole
 
@@ -83,9 +83,6 @@ def _cached_get_user_runtime_snapshot(user_id: int):
     if not user:
         return None
     role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
-    default_admin_password = False
-    if role_value == UserRole.ADMIN.value and user.password_hash:
-        default_admin_password = _cached_is_default_admin_password(user.password_hash)
     return {
         "id": int(user.id),
         "username": user.username,
@@ -94,13 +91,7 @@ def _cached_get_user_runtime_snapshot(user_id: int):
         "manager_id": user.manager_id,
         "is_active": bool(user.is_active),
         "must_change_password": bool(user.must_change_password),
-        "default_admin_password": bool(default_admin_password),
     }
-
-
-@st.cache_data(ttl=120, show_spinner=False)
-def _cached_is_default_admin_password(password_hash: str) -> bool:
-    return verify_password("admin", str(password_hash or ""))
 
 
 def _weekly_plan_cache_bucket(now: datetime | None = None) -> str:
@@ -138,9 +129,9 @@ def _should_warn_default_admin_password(user_snapshot: dict | None) -> bool:
         return False
     if str(user_snapshot.get("role") or "").lower() != UserRole.ADMIN.value:
         return False
-    return bool(user_snapshot.get("must_change_password")) or bool(
-        user_snapshot.get("default_admin_password")
-    )
+    # Startup bootstrap (ensure_admin_exists) enforces must_change_password when
+    # default admin credentials are active, so this flag is sufficient here.
+    return bool(user_snapshot.get("must_change_password"))
 
 
 def _resolve_app_shell_runtime(user_id: int) -> dict:

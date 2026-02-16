@@ -89,7 +89,6 @@ def _clear_app_caches():
     app_module._cached_get_all_cycles.clear()
     app_module._cached_get_user_runtime_snapshot.clear()
     app_module._cached_get_active_weekly_plan_snapshot.clear()
-    app_module._cached_is_default_admin_password.clear()
 
 
 @contextmanager
