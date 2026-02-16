@@ -1,5 +1,7 @@
 # Performance Baselines
 
+Documentation HQ: [README](README.md)
+
 This document tracks performance baselines and query-budget guardrails for critical hot paths.
 
 ## Benchmark Method

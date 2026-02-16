@@ -15,7 +15,7 @@ from src.domain.authorization import (
 )
 from src.models import CheckIn, Goal, KeyResult, Objective, Task, User, WorkLog
 from src.utils.time_utils import ensure_utc, utc_now_naive
-from utils.deadline_utils import get_deadline_status
+from src.utils.deadline_utils import get_deadline_status
 
 
 def _get_latest_checkins_by_kr(session: Session, kr_ids: List[int]) -> dict:
@@ -434,3 +434,4 @@ def get_daily_work_trend(user_id: int, days: int = 7) -> dict:
             daily_hours[day] += log.duration_minutes / 60
 
     return daily_hours
+

@@ -323,7 +323,7 @@ The codebase is organized modularly to separate concerns across the UI, business
   - **`services/`**: Integrations and output services (AI, PDF, HTTP client).
   - **`domain/`**: Focused business-rule modules (authorization, analytics).
   - **`crud.py`**, **`models.py`**, **`database.py`**: Core app facade, data model, and persistence layer.
-- **`streamlit_app/utils/`**: Shared utility helpers used across app layers.
+- **`streamlit_app/src/utils/`**: Shared utility helpers used across app layers.
 - **`streamlit_app/alembic/`**: Database migration environment and versions.
 - **`tests/`**: Automated regression and performance-path tests.
 - **`docs/`**, **`deploy/`**, **`odoo_module/`**, **`android/`**: Ops docs and integration subprojects.
@@ -389,9 +389,9 @@ pre-commit install
 pre-commit run --all-files
 # Runs Documentation HQ link checks + targeted Ruff + targeted Mypy hooks
 python scripts/check_docs_hq_links.py
-python -m ruff check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py tests/test_deadline_utils.py tests/test_performance_hotpaths.py --select E9,F63,F7,F82
-python -m ruff format --check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py tests/test_deadline_utils.py tests/test_performance_hotpaths.py
-python -m mypy --ignore-missing-imports streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py
+python -m ruff check streamlit_app/src/crud.py streamlit_app/src/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py tests/test_deadline_utils.py tests/test_performance_hotpaths.py --select E9,F63,F7,F82
+python -m ruff format --check streamlit_app/src/crud.py streamlit_app/src/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py tests/test_deadline_utils.py tests/test_performance_hotpaths.py
+python -m mypy --ignore-missing-imports streamlit_app/src/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py
 python -m pytest -q
 ```
 
@@ -402,3 +402,4 @@ python streamlit_app/scripts/perf_hotpaths.py
 ```
 
 See `performance.md` for current baselines and budgets.
+

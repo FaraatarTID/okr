@@ -30,7 +30,7 @@ def test_sync_cleanup_uses_owner_id_for_goal_selection(isolated_db):
     from src.crud import create_user
     from src.database import get_session_context
     from src.models import Goal
-    from utils.sync import sync_data_to_db
+    from src.utils.sync import sync_data_to_db
 
     alice = create_user("alice", "alice-pass")
     bob = create_user("bob", "bob-pass")
@@ -64,7 +64,7 @@ def test_sync_new_goal_sets_owner_id_for_normalized_ownership(isolated_db):
     from src.crud import create_user
     from src.database import get_session_context
     from src.models import Goal
-    from utils.sync import sync_data_to_db
+    from src.utils.sync import sync_data_to_db
 
     alice = create_user("alice", "alice-pass")
 
@@ -87,3 +87,4 @@ def test_sync_new_goal_sets_owner_id_for_normalized_ownership(isolated_db):
         goal = session.exec(select(Goal).where(Goal.external_id == "goal_ext_1")).first()
         assert goal is not None
         assert goal.owner_id == alice.id
+

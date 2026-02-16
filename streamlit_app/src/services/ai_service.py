@@ -416,7 +416,7 @@ def analyze_node(node_id: int, node_type: str = "KEY_RESULT"):
         deadline_info = ""
         dl_val = getattr(child, "deadline", None)
         if dl_val:
-            from utils.deadline_utils import get_days_remaining
+            from src.utils.deadline_utils import get_days_remaining
             try:
                 dl_ms = None
                 d_date = None
@@ -882,3 +882,4 @@ def suggest_critical_task(task_candidates: List[Dict[str, Any]], context: Option
         }
     except Exception as exc:
         return {"error": str(exc)}
+
