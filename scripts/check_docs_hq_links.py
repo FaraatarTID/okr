@@ -30,7 +30,11 @@ def _tracked_markdown_files() -> list[Path]:
             rel = rel.strip()
             if not rel:
                 continue
-            files.append((ROOT / rel).resolve())
+            path = (ROOT / rel).resolve()
+            # Skip tracked docs that are currently deleted in the working tree.
+            # This keeps local checks stable before `git add -A`.
+            if path.exists():
+                files.append(path)
         return files
     except Exception:
         # Fallback if git is unavailable.
