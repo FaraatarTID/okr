@@ -3246,7 +3246,7 @@ def render_atlas_workspace(username):
                     else:
                         del st.session_state["atlas_ai_sync_report"]
 
-                map_chart_height = 700
+                map_chart_height = 620
                 treemap = _build_atlas_treemap(
                     map_refs,
                     index,
