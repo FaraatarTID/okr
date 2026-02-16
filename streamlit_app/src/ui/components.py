@@ -3548,6 +3548,17 @@ def render_atlas_workspace(username):
                 f"<div class='atlas-focus-entity'>{TYPE_ICONS.get('TASK', '')} {escape_html(focus_meta['title'])}</div>",
                 unsafe_allow_html=True,
             )
+            focus_description = (
+                str(getattr(focus_task, "description", "") or "").strip()
+            )
+            if focus_description:
+                focus_description_html = escape_html(focus_description).replace(
+                    "\n", "<br>"
+                )
+                st.markdown(
+                    f"<div class='atlas-focus-description'>{focus_description_html}</div>",
+                    unsafe_allow_html=True,
+                )
 
             spotlight_cols = st.columns([4.8, 1.8], gap="small")
             spotlight_cols[0].caption(f"Owned by {focus_meta['owner_name']}")
