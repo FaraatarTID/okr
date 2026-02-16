@@ -442,6 +442,27 @@ def inject_atlas_styles():
             box-shadow: 0 6px 14px rgba(15, 118, 110, 0.22);
         }
 
+        [class*="st-key-atlas_spotlight_start_"] button[data-testid="stBaseButton-primary"] {
+            background: linear-gradient(120deg, #0f766e 0%, #12a39a 55%, #18b5a8 100%) !important;
+            border-radius: 14px !important;
+            min-height: 3.1rem !important;
+            font-size: 1.02rem !important;
+            font-weight: 760 !important;
+            letter-spacing: 0.015em;
+            box-shadow: 0 10px 24px rgba(14, 116, 107, 0.28), 0 2px 4px rgba(8, 45, 42, 0.16) !important;
+            transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+        }
+
+        [class*="st-key-atlas_spotlight_start_"] button[data-testid="stBaseButton-primary"]:hover {
+            transform: translateY(-1px);
+            filter: saturate(1.03) brightness(1.02);
+            box-shadow: 0 14px 30px rgba(14, 116, 107, 0.34), 0 4px 8px rgba(8, 45, 42, 0.2) !important;
+        }
+
+        [class*="st-key-atlas_spotlight_start_"] button[data-testid="stBaseButton-primary"]:active {
+            transform: translateY(0);
+        }
+
         button[data-testid="stBaseButton-secondary"] {
             border-color: var(--atlas-border) !important;
             color: var(--atlas-ink) !important;

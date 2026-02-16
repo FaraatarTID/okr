@@ -3034,7 +3034,7 @@ def render_atlas_workspace(username):
                     st.rerun()
             else:
                 if spotlight_cols[1].button(
-                    f"Start {target_minutes}m Sprint",
+                    "Start",
                     key=f"atlas_spotlight_start_{focus_task_ref}",
                     type="primary",
                     disabled=not can_track_focus,
