@@ -112,7 +112,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Goal ownership is anchored on `goal.owner_id`.
 - Mutations require `actor_username` for goal-scoped entities.
 - DB constraints enforce progress ranges, non-negative durations, and single open work log per task.
-- Hot-path query budgets are tested in `test_performance_hotpaths.py` to prevent N+1 regressions.
+- Hot-path query budgets are tested in `tests/test_performance_hotpaths.py` to prevent N+1 regressions.
 
 ## Current Performance-Critical Paths
 

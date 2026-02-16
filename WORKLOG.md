@@ -60,8 +60,8 @@ For the same benchmark dataset above:
   - `get_hours_by_goal`: 1.26 ms median, 1 query
 - Test suite after changes: `45 passed in 48.21s`
 - New regression guards added:
-  - `test_performance_hotpaths.py` (behavior + query budgets)
-  - `test_deadline_utils.py` (deadline scoring compatibility)
+  - `tests/test_performance_hotpaths.py` (behavior + query budgets)
+  - `tests/test_deadline_utils.py` (deadline scoring compatibility)
 - Benchmark harness added: `streamlit_app/scripts/perf_hotpaths.py`
 - Delivery docs added: `ARCHITECTURE.md`, `performance.md`
 - Architecture simplification pass completed:

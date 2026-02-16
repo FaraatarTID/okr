@@ -29,14 +29,14 @@ repos:
 
       - id: ruff-check-targeted
         name: Ruff check (targeted)
-        entry: python -m ruff check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py --select E9,F63,F7,F82
+        entry: python -m ruff check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py tests/test_deadline_utils.py tests/test_performance_hotpaths.py --select E9,F63,F7,F82
         language: system
         pass_filenames: false
         always_run: true
 
       - id: ruff-format-check-targeted
         name: Ruff format check (targeted)
-        entry: python -m ruff format --check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py test_deadline_utils.py test_performance_hotpaths.py
+        entry: python -m ruff format --check streamlit_app/src/crud.py streamlit_app/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py tests/test_deadline_utils.py tests/test_performance_hotpaths.py
         language: system
         pass_filenames: false
         always_run: true

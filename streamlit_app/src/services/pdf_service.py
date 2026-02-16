@@ -1,8 +1,6 @@
 """
-Unified PDF Generator with Automatic Environment Detection
-Supports both PDFShift (cloud/deployed) and pdfkit (local Windows)
-
-Consolidated from services/pdf_report.py
+Unified PDF generator with automatic environment detection.
+Supports both PDFShift (cloud/deployed) and pdfkit (local Windows).
 """
 
 import os
