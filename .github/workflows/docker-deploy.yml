@@ -41,16 +41,34 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
     needs: build
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.SSH_HOST || secrets.DEPLOY_HOST || secrets.HOST }}
+      DEPLOY_USER: ${{ secrets.SSH_USER || secrets.DEPLOY_USER || secrets.USERNAME }}
+      DEPLOY_KEY: ${{ secrets.SSH_KEY || secrets.DEPLOY_KEY }}
+      DEPLOY_DIR: ${{ secrets.REMOTE_DEPLOY_DIR || secrets.DEPLOY_DIR }}
     steps:
+      - name: Validate deploy secrets
+        run: |
+          set -e
+          missing=""
+          [ -z "${DEPLOY_HOST}" ] && missing="${missing} DEPLOY_HOST(SSH_HOST/DEPLOY_HOST/HOST)"
+          [ -z "${DEPLOY_USER}" ] && missing="${missing} DEPLOY_USER(SSH_USER/DEPLOY_USER/USERNAME)"
+          [ -z "${DEPLOY_KEY}" ] && missing="${missing} DEPLOY_KEY(SSH_KEY/DEPLOY_KEY)"
+          [ -z "${DEPLOY_DIR}" ] && missing="${missing} DEPLOY_DIR(REMOTE_DEPLOY_DIR/DEPLOY_DIR)"
+          if [ -n "${missing}" ]; then
+            echo "::error::Missing required deploy secrets:${missing}"
+            exit 1
+          fi
+
       - name: Deploy to server via SSH (Docker Compose)
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_KEY }}
           script: |
             set -e
-            cd ${{ secrets.REMOTE_DEPLOY_DIR }}
+            cd ${{ env.DEPLOY_DIR }}
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
             IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml pull
             IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml up -d --build
