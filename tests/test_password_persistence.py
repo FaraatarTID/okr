@@ -1,10 +1,12 @@
 import pytest
+from sqlalchemy.exc import OperationalError
 from sqlmodel import SQLModel
 
 
 @pytest.fixture()
 def isolated_db(monkeypatch, tmp_path):
     import src.database as database
+    import src.models  # noqa: F401
 
     db_path = tmp_path / "okr_password_persistence.db"
     db_url = f"sqlite:///{db_path}"
@@ -71,3 +73,48 @@ def test_ensure_admin_exists_does_not_restore_default_password(isolated_db):
 
     assert authenticate_user_detailed("admin", "admin")["success"] is False
     assert authenticate_user_detailed("admin", new_password)["success"] is True
+
+
+def test_ensure_admin_exists_retries_transient_operational_error(monkeypatch):
+    import src.crud as crud
+
+    attempts = {"count": 0}
+
+    def _flaky_bootstrap():
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise OperationalError(
+                statement="select * from user",
+                params={},
+                orig=Exception("server closed the connection unexpectedly"),
+            )
+        return False
+
+    monkeypatch.setattr(crud, "_ensure_admin_exists_once", _flaky_bootstrap, raising=True)
+    monkeypatch.setattr(crud, "ADMIN_BOOTSTRAP_MAX_RETRIES", 2, raising=True)
+    monkeypatch.setattr(crud, "ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", 0.0, raising=True)
+
+    assert crud.ensure_admin_exists() is False
+    assert attempts["count"] == 2
+
+
+def test_ensure_admin_exists_does_not_retry_non_transient_operational_error(monkeypatch):
+    import src.crud as crud
+
+    attempts = {"count": 0}
+
+    def _failing_bootstrap():
+        attempts["count"] += 1
+        raise OperationalError(
+            statement="select * from user",
+            params={},
+            orig=Exception("password authentication failed for user"),
+        )
+
+    monkeypatch.setattr(crud, "_ensure_admin_exists_once", _failing_bootstrap, raising=True)
+    monkeypatch.setattr(crud, "ADMIN_BOOTSTRAP_MAX_RETRIES", 3, raising=True)
+    monkeypatch.setattr(crud, "ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", 0.0, raising=True)
+
+    with pytest.raises(OperationalError):
+        crud.ensure_admin_exists()
+    assert attempts["count"] == 1
