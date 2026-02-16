@@ -541,7 +541,16 @@ def main():
             )
             st.code(str(exc))
             return
-        ensure_admin_exists()
+        try:
+            ensure_admin_exists()
+        except Exception as exc:
+            error_log("Admin bootstrap failed", exc)
+            st.error(
+                "Database startup failed while ensuring admin account. "
+                "Please verify Supabase connectivity and retry."
+            )
+            st.code(str(exc))
+            return
         st.session_state["_bootstrap_ready"] = True
 
     if "user_id" not in st.session_state:
