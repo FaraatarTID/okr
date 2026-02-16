@@ -14,9 +14,9 @@ This document tracks performance baselines and query-budget guardrails for criti
 
 | Path | Median Time | P95 Time | Observed Queries | Query Budget |
 | --- | --- | --- | --- | --- |
-| `get_leadership_metrics` | 10.30 ms | 10.49 ms | 4 | 4 queries |
-| `get_krs_needing_checkin` | 1.18 ms | 1.19 ms | 1 | 2 queries |
-| `get_hours_by_goal` | 0.76 ms | 0.77 ms | 1 | 1 query |
+| `get_leadership_metrics` | 10.09 ms | 10.21 ms | 3 | 4 queries |
+| `get_krs_needing_checkin` | 1.17 ms | 1.18 ms | 1 | 2 queries |
+| `get_hours_by_goal` | 0.77 ms | 0.78 ms | 1 | 1 query |
 
 ## Regression Guard Tests
 
