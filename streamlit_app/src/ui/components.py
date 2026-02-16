@@ -3258,7 +3258,7 @@ def _build_atlas_treemap(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(size=13, color="#1f2933"),
-        height=max(180, int(chart_height)),
+        height=max(220, int(chart_height)),
         clickmode="event+select",
     )
     return fig
@@ -4237,7 +4237,7 @@ def render_atlas_workspace(username):
                     else:
                         del st.session_state["atlas_ai_sync_report"]
 
-                map_chart_height = 200 if is_mobile_request else 500
+                map_chart_height = 280 if is_mobile_request else 500
                 treemap = _build_atlas_treemap(
                     map_refs,
                     index,
