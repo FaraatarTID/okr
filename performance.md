@@ -37,16 +37,37 @@ After Atlas optimization:
 | Cache miss | 8.711 ms | 7.274 ms | 0.912 ms | 0.012 ms | 5 | 61,877 bytes |
 | Cache hit | 1.674 ms | 0.245 ms | 0.912 ms | 0.006 ms | 0 | 61,877 bytes |
 
+## Atlas App-Shell Rerun Baselines (Measured February 16, 2026)
+
+- Script: `streamlit_app/scripts/perf_app_rerun.py`
+- Scope: non-Atlas rerun work around `render_level -> render_atlas_workspace` in `streamlit_app/app.py`
+
+Before app-shell cache optimization (baseline behavior):
+
+| Scenario | Median Total | P95 Total | Median Queries | P95 Queries |
+| --- | --- | --- | --- | --- |
+| Cache miss | 201.085 ms | 201.085 ms | 5 | 5 |
+| Cache hit | 198.266 ms | 203.632 ms | 4 | 4 |
+
+After app-shell cache optimization:
+
+| Scenario | Median Total | P95 Total | Median Queries | P95 Queries |
+| --- | --- | --- | --- | --- |
+| Cache miss | 195.676 ms | 195.676 ms | 3 | 3 |
+| Cache hit | 0.113 ms | 0.131 ms | 0 | 0 |
+
 ## Regression Guard Tests
 
 - `tests/test_performance_hotpaths.py`
 - `tests/test_deadline_utils.py`
 - `tests/test_atlas_cache_performance.py`
+- `tests/test_app_rerun_cache_performance.py`
 
 Run locally:
 
 ```bash
 python streamlit_app/scripts/perf_hotpaths.py
 python streamlit_app/scripts/perf_atlas_rerun.py
+python streamlit_app/scripts/perf_app_rerun.py
 python -m pytest -q tests/test_performance_hotpaths.py
 ```
