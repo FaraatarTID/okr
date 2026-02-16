@@ -12,6 +12,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Database utilities
 from src.database import init_database
 from src.audit import error_log
+from src.utils.time_utils import utc_now_naive
 
 # One-time preflight: check PDF engine (after login to speed initial load)
 def _get_pdf_method() -> str:
@@ -74,6 +75,91 @@ from src.models import UserRole
 @st.cache_data(ttl=30, show_spinner=False)
 def _cached_get_all_cycles():
     return get_all_cycles()
+
+
+@st.cache_data(ttl=10, show_spinner=False)
+def _cached_get_user_runtime_snapshot(user_id: int):
+    user = get_user_by_id(int(user_id))
+    if not user:
+        return None
+    role_value = user.role.value if hasattr(user.role, "value") else str(user.role)
+    default_admin_password = False
+    if role_value == UserRole.ADMIN.value and user.password_hash:
+        default_admin_password = _cached_is_default_admin_password(user.password_hash)
+    return {
+        "id": int(user.id),
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": role_value,
+        "manager_id": user.manager_id,
+        "is_active": bool(user.is_active),
+        "must_change_password": bool(user.must_change_password),
+        "default_admin_password": bool(default_admin_password),
+    }
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _cached_is_default_admin_password(password_hash: str) -> bool:
+    return verify_password("admin", str(password_hash or ""))
+
+
+def _weekly_plan_cache_bucket(now: datetime | None = None) -> str:
+    point = now or utc_now_naive()
+    week_start = (point - timedelta(days=point.weekday())).date()
+    return week_start.isoformat()
+
+
+@st.cache_data(ttl=10, show_spinner=False)
+def _cached_get_active_weekly_plan_snapshot(user_id: int, week_bucket: str):
+    _ = week_bucket
+    from src.crud import get_active_weekly_plan
+
+    plan = get_active_weekly_plan(int(user_id))
+    if not plan:
+        return None
+    return {
+        "priority_1": plan.priority_1,
+        "priority_2": plan.priority_2,
+        "priority_3": plan.priority_3,
+    }
+
+
+def _get_active_weekly_plan_snapshot(
+    user_id: int, now: datetime | None = None
+):
+    return _cached_get_active_weekly_plan_snapshot(
+        int(user_id),
+        _weekly_plan_cache_bucket(now),
+    )
+
+
+def _should_warn_default_admin_password(user_snapshot: dict | None) -> bool:
+    if not user_snapshot:
+        return False
+    if str(user_snapshot.get("role") or "").lower() != UserRole.ADMIN.value:
+        return False
+    return bool(user_snapshot.get("must_change_password")) or bool(
+        user_snapshot.get("default_admin_password")
+    )
+
+
+def _resolve_app_shell_runtime(user_id: int) -> dict:
+    snapshot = _cached_get_user_runtime_snapshot(int(user_id))
+    if not snapshot:
+        return {
+            "user": None,
+            "cycles": [],
+            "weekly_plan": None,
+            "show_admin_default_password_warning": False,
+        }
+    return {
+        "user": snapshot,
+        "cycles": _cached_get_all_cycles(),
+        "weekly_plan": _get_active_weekly_plan_snapshot(int(user_id)),
+        "show_admin_default_password_warning": _should_warn_default_admin_password(
+            snapshot
+        ),
+    }
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -278,7 +364,7 @@ def render_password_reset_gate():
     st.error("Failed to update password.")
 
 
-def render_app(username):
+def render_app(username, runtime_bundle=None):
     _run_pdf_preflight()
 
     # Lazy imports to speed initial login page
@@ -298,6 +384,13 @@ def render_app(username):
     if "nav_stack" not in st.session_state:
         st.session_state.nav_stack = []
 
+    runtime_bundle = runtime_bundle or _resolve_app_shell_runtime(
+        int(st.session_state.get("user_id"))
+    )
+    current_user_snapshot = runtime_bundle.get("user")
+    cycles = runtime_bundle.get("cycles", [])
+    weekly_plan = runtime_bundle.get("weekly_plan")
+
     # Sidebar Header
     display_name = st.session_state.get("display_name", username)
     user_role = st.session_state.get("user_role", "member")
@@ -309,17 +402,14 @@ def render_app(username):
     
     # Admin Panel Button (Admin only)
     if st.session_state.get("user_role") == "admin":
-        admin_user = get_user_by_id(st.session_state.get("user_id"))
-        if admin_user and (admin_user.must_change_password or verify_password("admin", admin_user.password_hash)):
+        if runtime_bundle.get("show_admin_default_password_warning"):
             st.sidebar.warning("Default admin password is still active. Change it in Admin Panel.")
         if st.sidebar.button("🛠️ Admin Panel", use_container_width=True):
             st.session_state.active_report_mode = "Admin"
             st.rerun()
     
     st.sidebar.markdown("---")
-    
-    cycles = _cached_get_all_cycles()
-    
+
     # If no cycles exist, create a default one
     if not cycles:
         from datetime import datetime, timedelta
@@ -465,13 +555,7 @@ def render_app(username):
         st.rerun()
 
     # === WEEKLY FOCUS CARD ===
-    from src.crud import get_active_weekly_plan, get_user_by_username
-    from datetime import datetime
-    
-    current_user_obj = get_user_by_username(username)
-    if current_user_obj:
-        active_plan = get_active_weekly_plan(current_user_obj.id)
-        if active_plan:
+    if current_user_snapshot and weekly_plan:
             with st.container(border=True):
                 c_wc1, c_wc2 = st.columns([0.15, 0.85])
                 with c_wc1:
@@ -479,7 +563,15 @@ def render_app(username):
                     st.caption("Weekly Focus")
                 with c_wc2:
                     # Display priorities as pills or structured list
-                    priorities = [p for p in [active_plan.priority_1, active_plan.priority_2, active_plan.priority_3] if p]
+                    priorities = [
+                        p
+                        for p in [
+                            weekly_plan.get("priority_1"),
+                            weekly_plan.get("priority_2"),
+                            weekly_plan.get("priority_3"),
+                        ]
+                        if p
+                    ]
                     
                     if not priorities:
                         st.info("No priorities set for this week.")
@@ -557,18 +649,25 @@ def main():
         render_login()
         return
 
-    current_user = get_user_by_id(st.session_state["user_id"])
-    if not current_user or not current_user.is_active:
+    runtime_bundle = _resolve_app_shell_runtime(int(st.session_state["user_id"]))
+    current_user = runtime_bundle.get("user")
+    if not current_user or not current_user.get("is_active"):
         _clear_user_session()
         st.error("Your session is no longer valid. Please log in again.")
         return
 
-    st.session_state["must_change_password"] = bool(current_user.must_change_password)
+    st.session_state["username"] = current_user.get("username")
+    st.session_state["display_name"] = current_user.get("display_name")
+    st.session_state["user_role"] = current_user.get("role")
+    st.session_state["manager_id"] = current_user.get("manager_id")
+    st.session_state["must_change_password"] = bool(
+        current_user.get("must_change_password")
+    )
     if st.session_state.get("must_change_password"):
         render_password_reset_gate()
         return
 
-    render_app(st.session_state["username"])
+    render_app(st.session_state["username"], runtime_bundle=runtime_bundle)
 
 if __name__ == "__main__":
     main()
