@@ -2559,7 +2559,7 @@ def _build_atlas_treemap(
     selected_ref: str,
     focus_task_ref: str,
     selected_path_refs=None,
-    chart_height: int = 620,
+    chart_height: int = 500,
 ):
     ids = []
     labels = []
@@ -3296,7 +3296,7 @@ def render_atlas_workspace(username):
                     else:
                         del st.session_state["atlas_ai_sync_report"]
 
-                map_chart_height = 620
+                map_chart_height = 500
                 treemap = _build_atlas_treemap(
                     map_refs,
                     index,
