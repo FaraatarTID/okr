@@ -34,8 +34,8 @@ After Atlas optimization:
 
 | Scenario | Median Total | Snapshot | Render From Snapshot | Breadcrumb | Queries | Payload |
 | --- | --- | --- | --- | --- | --- | --- |
-| Cache miss | 8.711 ms | 7.274 ms | 0.912 ms | 0.012 ms | 5 | 61,877 bytes |
-| Cache hit | 1.674 ms | 0.245 ms | 0.912 ms | 0.006 ms | 0 | 61,877 bytes |
+| Cache miss | 8.913 ms | 7.258 ms | 0.915 ms | 0.013 ms | 4 | 61,877 bytes |
+| Cache hit | 1.722 ms | 0.241 ms | 0.915 ms | 0.006 ms | 0 | 61,877 bytes |
 
 ## Atlas App-Shell Rerun Baselines (Measured February 16, 2026)
 
@@ -77,6 +77,16 @@ After login-open + async prewarm optimization:
 | Login submit (after prewarm completion) | 0.003 ms | 0.004 ms | 0 | 0 |
 | Login submit (cached in process window) | 0.001 ms | 0.001 ms | 0 | 0 |
 
+## Login Submit -> Atlas Baselines (Measured February 16, 2026)
+
+- Script: `streamlit_app/scripts/perf_login_to_atlas.py`
+- Scope: login submit auth + first Atlas prep path (`authenticate_user_detailed` -> app-shell runtime prep -> Atlas runtime snapshot/index/nav)
+
+| Scenario | Median Total | P95 Total | Median Queries | P95 Queries | Median DB Time |
+| --- | --- | --- | --- | --- | --- |
+| Cold (first run after cache clear) | 221.385 ms | 221.385 ms | 11 | 11 | 1.613 ms |
+| Warm (same process, cached app-shell + Atlas) | 205.543 ms | 206.002 ms | 4 | 4 | 3.083 ms |
+
 ## Regression Guard Tests
 
 - `tests/test_performance_hotpaths.py`
@@ -92,5 +102,6 @@ python streamlit_app/scripts/perf_hotpaths.py
 python streamlit_app/scripts/perf_atlas_rerun.py
 python streamlit_app/scripts/perf_app_rerun.py
 python streamlit_app/scripts/perf_login_bootstrap.py
+python streamlit_app/scripts/perf_login_to_atlas.py
 python -m pytest -q tests/test_performance_hotpaths.py
 ```
