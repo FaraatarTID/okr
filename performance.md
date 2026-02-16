@@ -65,16 +65,17 @@ Before login-open optimization (old session-open behavior):
 
 | Scenario | Median Time | P95 Time | Median Queries | P95 Queries |
 | --- | --- | --- | --- | --- |
-| Login open (cold process) | 831.809 ms | 831.809 ms | 2 | 2 |
-| Login open (warm process) | 194.883 ms | 197.617 ms | 2 | 2 |
+| Login open (cold process) | 846.284 ms | 846.284 ms | 2 | 2 |
+| Login open (warm process) | 194.594 ms | 195.343 ms | 2 | 2 |
 
-After login-open optimization:
+After login-open + async prewarm optimization:
 
 | Scenario | Median Time | P95 Time | Median Queries | P95 Queries |
 | --- | --- | --- | --- | --- |
-| Login open | 0.000 ms | 0.000 ms | 0 | 0 |
-| Login submit (first in process window) | 194.154 ms | 194.154 ms | 2 | 2 |
-| Login submit (cached in process window) | 0.000 ms | 0.001 ms | 0 | 0 |
+| Login open | 0.001 ms | 0.008 ms | 0 | 0 |
+| Login submit (first without prewarm completion) | 194.453 ms | 194.453 ms | 2 | 2 |
+| Login submit (after prewarm completion) | 0.003 ms | 0.004 ms | 0 | 0 |
+| Login submit (cached in process window) | 0.001 ms | 0.001 ms | 0 | 0 |
 
 ## Regression Guard Tests
 

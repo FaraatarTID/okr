@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Database utilities
 from src.audit import error_log
-from src.bootstrap import ensure_startup_ready
+from src.bootstrap import ensure_startup_ready, prewarm_startup_ready_async
 from src.utils.time_utils import utc_now_naive
 
 # One-time preflight: check PDF engine (after login to speed initial load)
@@ -229,6 +229,10 @@ def _get_client_ip() -> str | None:
 def render_login():
     st.markdown("## 🔐 Login to OKR Tracker")
     st.info("👋 Welcome! Please enter your credentials to access your data.")
+    try:
+        prewarm_startup_ready_async()
+    except Exception as exc:
+        error_log("Login bootstrap prewarm scheduling failed", exc)
     
     col1, col2 = st.columns([1, 2])
     with col1:

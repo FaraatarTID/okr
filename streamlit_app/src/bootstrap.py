@@ -7,8 +7,8 @@ still re-running periodically for safety.
 
 import os
 import time
-from threading import Lock
-from typing import Any, Dict
+from threading import Lock, Thread, current_thread
+from typing import Any, Dict, Optional
 
 from src.crud import ensure_admin_exists
 from src.database import init_database
@@ -21,6 +21,15 @@ BOOTSTRAP_MIN_INTERVAL_SECONDS = max(
 _bootstrap_lock = Lock()
 _last_success_monotonic = 0.0
 _last_duration_ms = 0.0
+_prewarm_lock = Lock()
+_prewarm_thread: Optional[Thread] = None
+
+
+def _is_recent_success(now: Optional[float] = None) -> bool:
+    current = time.monotonic() if now is None else float(now)
+    return _last_success_monotonic > 0 and (
+        current - _last_success_monotonic
+    ) < BOOTSTRAP_MIN_INTERVAL_SECONDS
 
 
 def ensure_startup_ready(force: bool = False) -> Dict[str, Any]:
@@ -38,20 +47,12 @@ def ensure_startup_ready(force: bool = False) -> Dict[str, Any]:
     global _last_success_monotonic, _last_duration_ms
 
     now = time.monotonic()
-    if (
-        not force
-        and _last_success_monotonic > 0
-        and (now - _last_success_monotonic) < BOOTSTRAP_MIN_INTERVAL_SECONDS
-    ):
+    if not force and _is_recent_success(now):
         return {"ran": False, "cached": True, "duration_ms": _last_duration_ms}
 
     with _bootstrap_lock:
         now = time.monotonic()
-        if (
-            not force
-            and _last_success_monotonic > 0
-            and (now - _last_success_monotonic) < BOOTSTRAP_MIN_INTERVAL_SECONDS
-        ):
+        if not force and _is_recent_success(now):
             return {"ran": False, "cached": True, "duration_ms": _last_duration_ms}
 
         started = time.perf_counter()
@@ -62,9 +63,58 @@ def ensure_startup_ready(force: bool = False) -> Dict[str, Any]:
         return {"ran": True, "cached": False, "duration_ms": _last_duration_ms}
 
 
+def prewarm_startup_ready_async(force: bool = False) -> Dict[str, Any]:
+    """
+    Schedule non-blocking bootstrap prewarm.
+
+    Useful on login page render so login submit can hit cached readiness.
+    """
+    global _prewarm_thread
+
+    if not force and _is_recent_success():
+        return {"started": False, "cached": True, "inflight": False}
+
+    with _prewarm_lock:
+        if not force and _is_recent_success():
+            return {"started": False, "cached": True, "inflight": False}
+        if _prewarm_thread is not None and _prewarm_thread.is_alive():
+            return {"started": False, "cached": False, "inflight": True}
+
+        def _run():
+            try:
+                ensure_startup_ready(force=force)
+            except Exception:
+                # Background prewarm is best effort; submit path handles errors.
+                pass
+
+        _prewarm_thread = Thread(
+            target=_run,
+            name="okr-bootstrap-prewarm",
+            daemon=True,
+        )
+        _prewarm_thread.start()
+        return {"started": True, "cached": False, "inflight": True}
+
+
+def wait_for_startup_prewarm(timeout_seconds: float = 5.0) -> bool:
+    """Wait for in-flight prewarm completion. Returns True if completed."""
+    with _prewarm_lock:
+        thread = _prewarm_thread
+    if thread is None:
+        return True
+    thread.join(max(0.0, float(timeout_seconds)))
+    return not thread.is_alive()
+
+
 def reset_startup_bootstrap_state() -> None:
     """Test helper to clear process-level bootstrap state."""
-    global _last_success_monotonic, _last_duration_ms
+    global _last_success_monotonic, _last_duration_ms, _prewarm_thread
+    with _prewarm_lock:
+        thread = _prewarm_thread
+    if thread is not None and thread.is_alive() and thread is not current_thread():
+        thread.join(5.0)
+    with _prewarm_lock:
+        _prewarm_thread = None
     with _bootstrap_lock:
         _last_success_monotonic = 0.0
         _last_duration_ms = 0.0
