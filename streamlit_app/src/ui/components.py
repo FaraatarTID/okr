@@ -2906,6 +2906,13 @@ def _atlas_is_mobile_request() -> bool:
     return any(token in user_agent for token in mobile_tokens)
 
 
+def _atlas_clean_work_summary(summary: str | None) -> str | None:
+    if summary is None:
+        return None
+    cleaned = str(summary).strip()
+    return cleaned if cleaned else None
+
+
 def _atlas_suggested_next_score(meta, actor_id: int, index=None):
     running = getattr(meta.get("node"), "timer_started_at", None) is not None
     attention_kind = _atlas_attention_kind(meta, index)
@@ -3251,7 +3258,7 @@ def _build_atlas_treemap(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(size=13, color="#1f2933"),
-        height=max(240, int(chart_height)),
+        height=max(180, int(chart_height)),
         clickmode="event+select",
     )
     return fig
@@ -3519,6 +3526,13 @@ def render_atlas_workspace(username):
             focus_task = focus_meta["node"]
             focus_running = getattr(focus_task, "timer_started_at", None) is not None
             can_track_focus = _can_track_task(focus_meta)
+            stop_capture_key = "atlas_stop_capture_task_ref"
+            stop_draft_key = f"atlas_stop_summary_draft_{focus_task_ref}"
+            stop_composer_open = (
+                st.session_state.get(stop_capture_key) == focus_task_ref
+                and focus_running
+                and can_track_focus
+            )
 
             focus_path_labels = [
                 index[path_ref]["title"]
@@ -3570,12 +3584,18 @@ def render_atlas_workspace(username):
                 )
                 target_minutes = _atlas_commit_target_minutes("Custom", custom_minutes)
 
-            def _stop_focus_session():
-                worklog_local = stop_timer(focus_task.id, user_id=username)
+            def _stop_focus_session(summary: str | None = None):
+                cleaned_summary = _atlas_clean_work_summary(summary)
+                worklog_local = stop_timer(
+                    focus_task.id,
+                    summary=cleaned_summary,
+                    user_id=username,
+                )
                 if worklog_local:
                     st.session_state["atlas_last_session_summary"] = {
                         "task_ref": focus_task_ref,
                         "minutes": round(float(worklog_local.duration_minutes or 0), 1),
+                        "summary": cleaned_summary,
                         "at": time.time(),
                     }
                 for state_key in [
@@ -3584,6 +3604,8 @@ def render_atlas_workspace(username):
                     "atlas_sprint_started_at_epoch",
                     "atlas_sprint_reminder_dismissed_for",
                     "atlas_sprint_notification_sent_for",
+                    stop_capture_key,
+                    stop_draft_key,
                 ]:
                     if state_key in st.session_state:
                         del st.session_state[state_key]
@@ -3655,12 +3677,12 @@ def render_atlas_workspace(username):
                     )
                     reminder_cols = spotlight_cols[0].columns([1.2, 1.4, 2.0])
                     if reminder_cols[0].button(
-                        "Stop now",
+                        "Stop & Log",
                         key=f"atlas_soft_reminder_stop_{focus_task_ref}",
                         disabled=not can_track_focus,
                         use_container_width=True,
                     ):
-                        _stop_focus_session()
+                        st.session_state[stop_capture_key] = focus_task_ref
                         st.rerun()
                     if reminder_cols[1].button(
                         "Keep running",
@@ -3672,16 +3694,19 @@ def render_atlas_workspace(username):
                         )
                         st.rerun()
 
+            if not focus_running and st.session_state.get(stop_capture_key) == focus_task_ref:
+                del st.session_state[stop_capture_key]
+
             action_container = st.container()
             if focus_running:
-                if action_container.button(
-                    "Stop Session",
+                if (not stop_composer_open) and action_container.button(
+                    "Stop & Log",
                     key=f"atlas_spotlight_stop_{focus_task_ref}",
                     type="primary",
                     disabled=not can_track_focus,
                     use_container_width=True,
                 ):
-                    _stop_focus_session()
+                    st.session_state[stop_capture_key] = focus_task_ref
                     st.rerun()
             else:
                 if action_container.button(
@@ -3703,11 +3728,93 @@ def render_atlas_workspace(username):
                         st.session_state["atlas_sprint_started_at_epoch"] = float(
                             time.time()
                         )
+                        if stop_capture_key in st.session_state:
+                            del st.session_state[stop_capture_key]
                         if "atlas_sprint_reminder_dismissed_for" in st.session_state:
                             del st.session_state["atlas_sprint_reminder_dismissed_for"]
                         if "atlas_sprint_notification_sent_for" in st.session_state:
                             del st.session_state["atlas_sprint_notification_sent_for"]
                         st.rerun()
+
+            if stop_composer_open:
+                action_container.markdown(
+                    (
+                        "<div class='atlas-stop-composer'>"
+                        "<div class='atlas-stop-composer-title'>Log this sprint before you stop</div>"
+                        "<div class='atlas-stop-composer-hint'>"
+                        "Capture what moved forward, any blocker, and the next step."
+                        "</div>"
+                        "</div>"
+                    ),
+                    unsafe_allow_html=True,
+                )
+                stop_summary = action_container.text_area(
+                    "Work summary",
+                    key=stop_draft_key,
+                    label_visibility="collapsed",
+                    placeholder=(
+                        "e.g. Finished API error handling for objective check-ins; "
+                        "blocked by QA env config; next: validate edge cases and open PR."
+                    ),
+                    height=110,
+                    max_chars=500,
+                )
+                cleaned_stop_summary = _atlas_clean_work_summary(stop_summary)
+                if is_mobile_request:
+                    if action_container.button(
+                        "Save & Stop",
+                        key=f"atlas_stop_with_summary_{focus_task_ref}",
+                        type="primary",
+                        use_container_width=True,
+                        disabled=not bool(cleaned_stop_summary),
+                    ):
+                        _stop_focus_session(summary=stop_summary)
+                        st.rerun()
+                    if action_container.button(
+                        "Stop without summary",
+                        key=f"atlas_stop_without_summary_{focus_task_ref}",
+                        use_container_width=True,
+                    ):
+                        _stop_focus_session(summary=None)
+                        st.rerun()
+                    if action_container.button(
+                        "Cancel",
+                        key=f"atlas_stop_cancel_{focus_task_ref}",
+                        use_container_width=True,
+                    ):
+                        if stop_capture_key in st.session_state:
+                            del st.session_state[stop_capture_key]
+                        st.rerun()
+                else:
+                    composer_actions = action_container.columns([1.7, 1.55, 1.0], gap="small")
+                    if composer_actions[0].button(
+                        "Save & Stop",
+                        key=f"atlas_stop_with_summary_{focus_task_ref}",
+                        type="primary",
+                        use_container_width=True,
+                        disabled=not bool(cleaned_stop_summary),
+                    ):
+                        _stop_focus_session(summary=stop_summary)
+                        st.rerun()
+                    if composer_actions[1].button(
+                        "Stop without summary",
+                        key=f"atlas_stop_without_summary_{focus_task_ref}",
+                        use_container_width=True,
+                    ):
+                        _stop_focus_session(summary=None)
+                        st.rerun()
+                    if composer_actions[2].button(
+                        "Cancel",
+                        key=f"atlas_stop_cancel_{focus_task_ref}",
+                        use_container_width=True,
+                    ):
+                        if stop_capture_key in st.session_state:
+                            del st.session_state[stop_capture_key]
+                        st.rerun()
+                if not cleaned_stop_summary:
+                    action_container.caption(
+                        "Add a short summary, or use 'Stop without summary'."
+                    )
 
             if not can_track_focus:
                 action_container.caption(
@@ -3724,6 +3831,13 @@ def render_atlas_workspace(username):
                     st.success(
                         f"Session logged: {summary_minutes}m on {summary_title}."
                     )
+                    summary_text = _atlas_clean_work_summary(
+                        session_summary.get("summary")
+                    )
+                    if summary_text:
+                        if len(summary_text) > 180:
+                            summary_text = f"{summary_text[:177].rstrip()}..."
+                        st.caption(f"Summary: {summary_text}")
                 else:
                     del st.session_state["atlas_last_session_summary"]
         else:
@@ -4123,7 +4237,7 @@ def render_atlas_workspace(username):
                     else:
                         del st.session_state["atlas_ai_sync_report"]
 
-                map_chart_height = 250 if is_mobile_request else 500
+                map_chart_height = 200 if is_mobile_request else 500
                 treemap = _build_atlas_treemap(
                     map_refs,
                     index,

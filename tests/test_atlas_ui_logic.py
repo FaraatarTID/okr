@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from src.ui.components import (  # noqa: E402
     _atlas_attention_kind,
     _atlas_attention_reason,
+    _atlas_clean_work_summary,
     _build_atlas_treemap,
     _build_atlas_index_from_snapshot,
     _atlas_commit_target_minutes,
@@ -214,6 +215,13 @@ def test_soft_notification_emits_once_per_sprint_key():
     assert _atlas_should_emit_target_notification(sprint_key, emitted_key=None) is True
     assert _atlas_should_emit_target_notification(sprint_key, emitted_key=sprint_key) is False
     assert _atlas_should_emit_target_notification(None, emitted_key=None) is False
+
+
+def test_clean_work_summary_trims_and_normalizes_empty_values():
+    assert _atlas_clean_work_summary(None) is None
+    assert _atlas_clean_work_summary("") is None
+    assert _atlas_clean_work_summary("   ") is None
+    assert _atlas_clean_work_summary("  finished api retries  ") == "finished api retries"
 
 
 def test_suggested_next_prioritizes_running_then_attention_then_owner():

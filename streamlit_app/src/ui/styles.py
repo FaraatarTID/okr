@@ -282,6 +282,27 @@ def inject_atlas_styles():
             font-weight: 650;
         }
 
+        .atlas-stop-composer {
+            margin: 0.35rem 0 0.12rem;
+            border: 1px solid var(--atlas-border);
+            border-radius: 12px;
+            background: #fffcf5;
+            padding: 0.42rem 0.55rem;
+        }
+
+        .atlas-stop-composer-title {
+            color: #1f2933;
+            font-weight: 700;
+            font-size: 0.84rem;
+            margin-bottom: 0.1rem;
+        }
+
+        .atlas-stop-composer-hint {
+            color: #5a6674;
+            font-size: 0.77rem;
+            line-height: 1.35;
+        }
+
         .atlas-nextup-label {
             margin-top: 0.65rem;
             margin-bottom: 0.2rem;
@@ -524,6 +545,21 @@ def inject_atlas_styles():
             font-weight: 560 !important;
         }
 
+        [class*="st-key-atlas_stop_with_summary_"] button[data-testid="stBaseButton-primary"] {
+            min-height: 2.35rem !important;
+            border-radius: 12px !important;
+        }
+
+        [class*="st-key-atlas_stop_without_summary_"] button {
+            min-height: 2.35rem !important;
+            border-radius: 12px !important;
+        }
+
+        [class*="st-key-atlas_stop_cancel_"] button {
+            min-height: 2.35rem !important;
+            border-radius: 12px !important;
+        }
+
         @media (max-width: 900px) {
             .block-container {
                 padding-top: 0.45rem !important;
@@ -566,6 +602,19 @@ def inject_atlas_styles():
                 font-size: 0.78rem;
             }
 
+            .atlas-stop-composer {
+                margin: 0.24rem 0 0.08rem;
+                padding: 0.32rem 0.45rem;
+            }
+
+            .atlas-stop-composer-title {
+                font-size: 0.79rem;
+            }
+
+            .atlas-stop-composer-hint {
+                font-size: 0.72rem;
+            }
+
             .atlas-spotlight-path {
                 margin-top: 0.1rem;
                 margin-bottom: 0.06rem;
@@ -596,6 +645,18 @@ def inject_atlas_styles():
                 padding: 0.15rem 0.55rem !important;
                 line-height: 1.1 !important;
                 border-radius: 10px !important;
+            }
+
+            [class*="st-key-atlas_stop_with_summary_"] button[data-testid="stBaseButton-primary"] {
+                min-height: 2rem !important;
+                font-size: 0.78rem !important;
+            }
+
+            [class*="st-key-atlas_stop_without_summary_"] button,
+            [class*="st-key-atlas_stop_cancel_"] button {
+                min-height: 2rem !important;
+                font-size: 0.74rem !important;
+                padding: 0.12rem 0.4rem !important;
             }
         }
 
