@@ -10,13 +10,13 @@ This document tracks performance baselines and query-budget guardrails for criti
 - Environment: local benchmark run (representative developer machine)
 - Purpose: detect regressions in latency and SQL query count for critical analytics paths
 
-## Current Baselines
+## Current Baselines (Measured February 16, 2026)
 
-| Path | Median Time | Query Budget |
-| --- | --- | --- |
-| `get_leadership_metrics` | 31.60 ms | 4 queries |
-| `get_krs_needing_checkin` | 2.78 ms | 2 queries |
-| `get_hours_by_goal` | 1.26 ms | 1 query |
+| Path | Median Time | P95 Time | Observed Queries | Query Budget |
+| --- | --- | --- | --- | --- |
+| `get_leadership_metrics` | 10.30 ms | 10.49 ms | 4 | 4 queries |
+| `get_krs_needing_checkin` | 1.18 ms | 1.19 ms | 1 | 2 queries |
+| `get_hours_by_goal` | 0.76 ms | 0.77 ms | 1 | 1 query |
 
 ## Regression Guard Tests
 
