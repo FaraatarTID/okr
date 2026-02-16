@@ -29,6 +29,37 @@ Use this section as the single entry point for all project docs.
 - First deployment runbook: [docs/RUNBOOK.md](docs/RUNBOOK.md)
 
 ---
+
+## Deployment Modes (Important)
+
+Choose one mode:
+
+1. Streamlit Cloud (MVP/simple hosting)
+- No SSH deploy secrets are required.
+- App is deployed by Streamlit Cloud from this GitHub repository.
+- The SSH deploy workflow/job is expected to skip.
+
+2. Self-hosted Docker Compose (server/VM)
+- Use this for Nginx + Docker Compose + your own server.
+- If you enable GitHub Actions SSH deploy, set:
+  - `SSH_HOST`
+  - `SSH_USER`
+  - `SSH_KEY`
+  - `REMOTE_DEPLOY_DIR`
+- Supported fallback secret names in workflow:
+  - Host: `DEPLOY_HOST` or `HOST`
+  - User: `DEPLOY_USER` or `USERNAME`
+  - Key: `DEPLOY_KEY`
+  - Deploy dir: `DEPLOY_DIR`
+
+Where to set `SSH_KEY`:
+- GitHub repository -> `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`.
+- Add the private key content under `SSH_KEY` (or `DEPLOY_KEY`).
+
+Security note:
+- Never commit private keys or deploy secrets to the repository.
+
+---
 ## 🌟 Features Overview
 
 ### Core Functionality

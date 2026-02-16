@@ -11,6 +11,21 @@ This checklist matches `DEPLOYMENT.md` and is optimized for:
 
 Mark each item complete before go-live.
 
+Last updated: 2026-02-16
+
+Mode selection
+- If you are deploying on Streamlit Cloud, use section `A` and skip section `B`.
+- If you are deploying to your own server via Docker Compose, use section `B`.
+
+A. Streamlit Cloud checklist (MVP mode)
+- [ ] App is connected to this repository in Streamlit Cloud.
+- [ ] Runtime secrets are configured in Streamlit Cloud settings (not in git).
+- [ ] App starts and login works in Streamlit Cloud.
+- [ ] GitHub Actions SSH deploy step is skipped (expected when SSH secrets are not set).
+- [ ] You understand SSH secrets are only needed later for self-hosted server deploy.
+
+B. Self-hosted checklist (Docker Compose + Nginx + TLS)
+
 1. Prerequisites
 - [ ] Server is provisioned and reachable (SSH access).
 - [ ] Docker Engine and Docker Compose plugin are installed.
@@ -72,6 +87,15 @@ Mark each item complete before go-live.
 - [ ] Upgrade commands are documented for operators.
 - [ ] Previous stable image tag is recorded.
 - [ ] Rollback procedure is tested at least once.
+
+10. Optional GitHub Actions SSH Deploy
+- [ ] Repository secrets are set if SSH deploy is enabled:
+  - `SSH_HOST` (or `DEPLOY_HOST` / `HOST`)
+  - `SSH_USER` (or `DEPLOY_USER` / `USERNAME`)
+  - `SSH_KEY` (or `DEPLOY_KEY`)
+  - `REMOTE_DEPLOY_DIR` (or `DEPLOY_DIR`)
+- [ ] `SSH_KEY` is stored in GitHub repository -> `Settings` -> `Secrets and variables` -> `Actions`.
+- [ ] Private keys are never committed to the repository.
 
 Reference docs
 - `DEPLOYMENT.md`
