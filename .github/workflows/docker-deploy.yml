@@ -48,6 +48,7 @@ jobs:
       DEPLOY_DIR: ${{ secrets.REMOTE_DEPLOY_DIR || secrets.DEPLOY_DIR }}
     steps:
       - name: Validate deploy secrets
+        id: validate
         run: |
           set -e
           missing=""
@@ -56,11 +57,14 @@ jobs:
           [ -z "${DEPLOY_KEY}" ] && missing="${missing} DEPLOY_KEY(SSH_KEY/DEPLOY_KEY)"
           [ -z "${DEPLOY_DIR}" ] && missing="${missing} DEPLOY_DIR(REMOTE_DEPLOY_DIR/DEPLOY_DIR)"
           if [ -n "${missing}" ]; then
-            echo "::error::Missing required deploy secrets:${missing}"
-            exit 1
+            echo "::notice::Skipping SSH deploy (expected for Streamlit Cloud). Missing:${missing}"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy to server via SSH (Docker Compose)
+        if: steps.validate.outputs.ready == 'true'
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.DEPLOY_HOST }}
@@ -72,3 +76,7 @@ jobs:
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
             IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml pull
             IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml up -d --build
+
+      - name: Deploy skipped
+        if: steps.validate.outputs.ready != 'true'
+        run: echo "SSH deploy skipped; Streamlit Cloud deployment does not require this step."
