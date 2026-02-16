@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Database utilities
-from src.database import init_database
 from src.audit import error_log
+from src.bootstrap import ensure_startup_ready
 from src.utils.time_utils import utc_now_naive
 
 # One-time preflight: check PDF engine (after login to speed initial load)
@@ -67,7 +67,7 @@ from src.crud import (
     get_leadership_metrics, update_cycle, delete_cycle,
     # User Auth
     authenticate_user_detailed, get_all_users, create_user, update_user,
-    reset_user_password, get_team_members, ensure_admin_exists,
+    reset_user_password, get_team_members,
     get_user_by_id, verify_password
 )
 from src.models import UserRole
@@ -237,6 +237,15 @@ def render_login():
         
         if st.button("Login", type="primary"):
             if username.strip() and password:
+                try:
+                    ensure_startup_ready()
+                except Exception as exc:
+                    error_log("Login bootstrap failed", exc)
+                    st.error(
+                        "Login is temporarily unavailable due to a database issue. "
+                        "Please try again shortly."
+                    )
+                    return
                 try:
                     auth = authenticate_user_detailed(
                         username.strip(),
@@ -622,32 +631,23 @@ def render_app(username, runtime_bundle=None):
                 render_create_task_dialog(parent_id, username)
 
 def main():
-    if not st.session_state.get("_bootstrap_ready"):
-        try:
-            init_database()
-        except Exception as exc:
-            error_log("Database initialization failed", exc)
-            st.error(
-                "Database initialization failed. "
-                "Please verify Supabase URL/secrets and migration state."
-            )
-            st.code(str(exc))
-            return
-        try:
-            ensure_admin_exists()
-        except Exception as exc:
-            error_log("Admin bootstrap failed", exc)
-            st.error(
-                "Database startup failed while ensuring admin account. "
-                "Please verify Supabase connectivity and retry."
-            )
-            st.code(str(exc))
-            return
-        st.session_state["_bootstrap_ready"] = True
-
     if "user_id" not in st.session_state:
         render_login()
         return
+
+    try:
+        ensure_startup_ready()
+    except Exception as exc:
+        error_log("Database initialization failed", exc)
+        st.error(
+            "Database initialization failed. "
+            "Please verify Supabase URL/secrets and migration state."
+        )
+        st.code(str(exc))
+        return
+
+    # Keep compatibility for any flow still checking this sentinel.
+    st.session_state["_bootstrap_ready"] = True
 
     runtime_bundle = _resolve_app_shell_runtime(int(st.session_state["user_id"]))
     current_user = runtime_bundle.get("user")

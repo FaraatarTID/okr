@@ -56,12 +56,33 @@ After app-shell cache optimization:
 | Cache miss | 195.676 ms | 195.676 ms | 3 | 3 |
 | Cache hit | 0.113 ms | 0.131 ms | 0 | 0 |
 
+## Login Page Bootstrap Baselines (Measured February 16, 2026)
+
+- Script: `streamlit_app/scripts/perf_login_bootstrap.py`
+- Scope: login page open path and submit bootstrap path
+
+Before login-open optimization (old session-open behavior):
+
+| Scenario | Median Time | P95 Time | Median Queries | P95 Queries |
+| --- | --- | --- | --- | --- |
+| Login open (cold process) | 831.809 ms | 831.809 ms | 2 | 2 |
+| Login open (warm process) | 194.883 ms | 197.617 ms | 2 | 2 |
+
+After login-open optimization:
+
+| Scenario | Median Time | P95 Time | Median Queries | P95 Queries |
+| --- | --- | --- | --- | --- |
+| Login open | 0.000 ms | 0.000 ms | 0 | 0 |
+| Login submit (first in process window) | 194.154 ms | 194.154 ms | 2 | 2 |
+| Login submit (cached in process window) | 0.000 ms | 0.001 ms | 0 | 0 |
+
 ## Regression Guard Tests
 
 - `tests/test_performance_hotpaths.py`
 - `tests/test_deadline_utils.py`
 - `tests/test_atlas_cache_performance.py`
 - `tests/test_app_rerun_cache_performance.py`
+- `tests/test_startup_bootstrap.py`
 
 Run locally:
 
@@ -69,5 +90,6 @@ Run locally:
 python streamlit_app/scripts/perf_hotpaths.py
 python streamlit_app/scripts/perf_atlas_rerun.py
 python streamlit_app/scripts/perf_app_rerun.py
+python streamlit_app/scripts/perf_login_bootstrap.py
 python -m pytest -q tests/test_performance_hotpaths.py
 ```
