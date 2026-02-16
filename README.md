@@ -15,6 +15,7 @@ Use this section as the single entry point for all project docs.
 - Performance baselines and budgets: [performance.md](performance.md)
 - Engineering worklog: [WORKLOG.md](WORKLOG.md)
 - Persian non-admin role-aware user guide: [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
+- Persian administrator guide: [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md)
 
 ### Deployment and operations docs
 
