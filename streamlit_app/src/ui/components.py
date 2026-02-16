@@ -2721,22 +2721,10 @@ def render_atlas_workspace(username):
             label = f"{member.display_name or member.username} (@{member.username})"
             scope_options[label] = [member.id]
 
-    toolbar = st.columns([2.9, 1.1])
-    query = toolbar[0].text_input(
-        "Quick Jump",
-        value=st.session_state.get("atlas_jump_query", ""),
-        placeholder="Find any goal, objective, KR, or task",
-        key="atlas_jump_query",
-    ).strip()
-
     scope_labels = list(scope_options.keys())
     if st.session_state.get("atlas_scope_selector") not in scope_labels:
         st.session_state["atlas_scope_selector"] = scope_labels[0]
-    selected_scope = toolbar[1].selectbox(
-        "Scope",
-        options=scope_labels,
-        key="atlas_scope_selector",
-    )
+    selected_scope = st.session_state.get("atlas_scope_selector", scope_labels[0])
 
     owner_ids = scope_options.get(selected_scope)
     owner_ids_key = None if owner_ids is None else tuple(sorted(set(int(owner_id) for owner_id in owner_ids)))
@@ -2833,6 +2821,232 @@ def render_atlas_workspace(username):
         if focus_task_ref:
             st.session_state["atlas_focus_task_ref"] = focus_task_ref
 
+    with st.container(border=True):
+        st.markdown("<div class='atlas-luxe-strip'></div>", unsafe_allow_html=True)
+        st.markdown("<div class='atlas-kicker'>Focus Task</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='atlas-human-note'>Choose one task, set a sprint, and start before navigating the map.</div>",
+            unsafe_allow_html=True,
+        )
+
+        if focus_task_ref and task_refs:
+            picked_ref = st.selectbox(
+                "Choose Focus Task",
+                options=task_refs,
+                index=task_refs.index(focus_task_ref) if focus_task_ref in task_refs else 0,
+                key="atlas_focus_task_picker",
+                format_func=lambda ref: (
+                    f"{TYPE_ICONS.get('TASK', '')} {index[ref]['title']} ({index[ref]['owner_name']})"
+                ),
+            )
+            if picked_ref != focus_task_ref:
+                st.session_state["atlas_focus_task_ref"] = picked_ref
+                st.rerun()
+            focus_task_ref = picked_ref
+
+        if focus_task_ref and focus_task_ref in index:
+            focus_meta = index[focus_task_ref]
+            focus_task = focus_meta["node"]
+            focus_running = getattr(focus_task, "timer_started_at", None) is not None
+            can_track_focus = _can_track_task(focus_meta)
+
+            focus_path_labels = [
+                index[path_ref]["title"]
+                for path_ref in focus_meta["path"]
+                if path_ref in index
+            ]
+            focus_path = " > ".join(focus_path_labels)
+            st.markdown(
+                f"<div class='atlas-spotlight-path'>{escape_html(focus_path)}</div>",
+                unsafe_allow_html=True,
+            )
+            st.markdown(
+                f"<div class='atlas-focus-entity'>{TYPE_ICONS.get('TASK', '')} {escape_html(focus_meta['title'])}</div>",
+                unsafe_allow_html=True,
+            )
+
+            spotlight_cols = st.columns([4.8, 1.8], gap="large")
+            spotlight_cols[0].caption(f"Owned by {focus_meta['owner_name']}")
+            spotlight_cols[0].markdown(
+                f"<div class='atlas-chip-row'>{_atlas_attention_chip_html(focus_meta)}</div>",
+                unsafe_allow_html=True,
+            )
+
+            preset_options = ["25m", "50m", "Custom"]
+            if st.session_state.get("atlas_commit_preset") not in preset_options:
+                st.session_state["atlas_commit_preset"] = "25m"
+            preset_choice = spotlight_cols[1].segmented_control(
+                "Commit Preset",
+                options=preset_options,
+                key="atlas_commit_preset",
+                selection_mode="single",
+                label_visibility="collapsed",
+            )
+            if preset_choice not in preset_options:
+                preset_choice = "25m"
+
+            target_minutes = _atlas_commit_target_minutes(preset_choice)
+            if preset_choice == "Custom":
+                if "atlas_commit_custom_min" not in st.session_state:
+                    st.session_state["atlas_commit_custom_min"] = 35
+                custom_minutes = int(
+                    spotlight_cols[1].number_input(
+                        "Custom Sprint (min)",
+                        min_value=5,
+                        max_value=240,
+                        step=5,
+                        key="atlas_commit_custom_min",
+                    )
+                )
+                target_minutes = _atlas_commit_target_minutes("Custom", custom_minutes)
+
+            def _stop_focus_session():
+                worklog_local = stop_timer(focus_task.id, user_id=username)
+                if worklog_local:
+                    st.session_state["atlas_last_session_summary"] = {
+                        "task_ref": focus_task_ref,
+                        "minutes": round(float(worklog_local.duration_minutes or 0), 1),
+                        "at": time.time(),
+                    }
+                for state_key in [
+                    "atlas_sprint_target_minutes",
+                    "atlas_sprint_task_ref",
+                    "atlas_sprint_started_at_epoch",
+                    "atlas_sprint_reminder_dismissed_for",
+                    "atlas_sprint_notification_sent_for",
+                ]:
+                    if state_key in st.session_state:
+                        del st.session_state[state_key]
+                return worklog_local
+
+            if focus_running:
+                elapsed_minutes = 0
+                try:
+                    elapsed_minutes = int(
+                        (ensure_utc(utc_now_naive()) - ensure_utc(focus_task.timer_started_at)).total_seconds() // 60
+                    )
+                except Exception:
+                    elapsed_minutes = 0
+
+                target_for_focus = 0
+                if st.session_state.get("atlas_sprint_task_ref") == focus_task_ref:
+                    target_for_focus = int(st.session_state.get("atlas_sprint_target_minutes") or 0)
+
+                if target_for_focus > 0:
+                    sprint_ratio = min(1.0, max(0.0, elapsed_minutes / target_for_focus))
+                    spotlight_cols[0].progress(
+                        sprint_ratio,
+                        text=f"Sprint: {elapsed_minutes}m / {target_for_focus}m",
+                    )
+                else:
+                    spotlight_cols[0].caption(f"Running now: {elapsed_minutes}m")
+
+                sprint_key = _atlas_sprint_run_key(
+                    focus_task_ref if target_for_focus > 0 else None,
+                    target_for_focus,
+                    st.session_state.get("atlas_sprint_started_at_epoch"),
+                )
+                dismissed_key = st.session_state.get("atlas_sprint_reminder_dismissed_for")
+                if _atlas_should_show_soft_reminder(
+                    elapsed_minutes=elapsed_minutes,
+                    target_minutes=target_for_focus,
+                    sprint_key=sprint_key,
+                    dismissed_key=dismissed_key,
+                ):
+                    emitted_key = st.session_state.get("atlas_sprint_notification_sent_for")
+                    if _atlas_should_emit_target_notification(sprint_key, emitted_key):
+                        st.toast(
+                            f"Sprint target reached: {target_for_focus}m on {focus_meta['title']}",
+                            icon="⏱️",
+                        )
+                        _atlas_fire_browser_notification(
+                            "Sprint target reached",
+                            f"{focus_meta['title']} hit {target_for_focus}m. Stop now or keep running.",
+                        )
+                        st.session_state["atlas_sprint_notification_sent_for"] = sprint_key
+                    overtime_minutes = max(0, elapsed_minutes - target_for_focus)
+                    spotlight_cols[0].warning(
+                        f"Sprint target reached ({target_for_focus}m). "
+                        f"You are {overtime_minutes}m over target."
+                    )
+                    reminder_cols = spotlight_cols[0].columns([1.2, 1.4, 2.0])
+                    if reminder_cols[0].button(
+                        "Stop now",
+                        key=f"atlas_soft_reminder_stop_{focus_task_ref}",
+                        disabled=not can_track_focus,
+                        use_container_width=True,
+                    ):
+                        _stop_focus_session()
+                        st.rerun()
+                    if reminder_cols[1].button(
+                        "Keep running",
+                        key=f"atlas_soft_reminder_keep_{focus_task_ref}",
+                        use_container_width=True,
+                    ):
+                        st.session_state["atlas_sprint_reminder_dismissed_for"] = sprint_key
+                        st.rerun()
+
+            if focus_running:
+                if spotlight_cols[1].button(
+                    "Stop Session",
+                    key=f"atlas_spotlight_stop_{focus_task_ref}",
+                    type="primary",
+                    disabled=not can_track_focus,
+                    use_container_width=True,
+                ):
+                    _stop_focus_session()
+                    st.rerun()
+            else:
+                if spotlight_cols[1].button(
+                    f"Start {target_minutes}m Sprint",
+                    key=f"atlas_spotlight_start_{focus_task_ref}",
+                    type="primary",
+                    disabled=not can_track_focus,
+                    use_container_width=True,
+                ):
+                    try:
+                        start_timer(focus_task.id, username)
+                    except ValueError as exc:
+                        st.error(str(exc))
+                    else:
+                        st.session_state["atlas_sprint_target_minutes"] = int(target_minutes)
+                        st.session_state["atlas_sprint_task_ref"] = focus_task_ref
+                        st.session_state["atlas_sprint_started_at_epoch"] = float(time.time())
+                        if "atlas_sprint_reminder_dismissed_for" in st.session_state:
+                            del st.session_state["atlas_sprint_reminder_dismissed_for"]
+                        if "atlas_sprint_notification_sent_for" in st.session_state:
+                            del st.session_state["atlas_sprint_notification_sent_for"]
+                        st.rerun()
+
+            if not can_track_focus:
+                spotlight_cols[1].caption("Timer is available for the owner of this task.")
+
+            session_summary = st.session_state.get("atlas_last_session_summary")
+            if isinstance(session_summary, dict):
+                summary_age = float(time.time() - float(session_summary.get("at") or 0))
+                if summary_age <= 10:
+                    summary_ref = session_summary.get("task_ref")
+                    summary_title = index.get(summary_ref, {}).get("title", "task")
+                    summary_minutes = session_summary.get("minutes", 0)
+                    st.success(f"Session logged: {summary_minutes}m on {summary_title}.")
+                else:
+                    del st.session_state["atlas_last_session_summary"]
+        else:
+            st.info("Select a branch with tasks to start a focus sprint.")
+
+    toolbar = st.columns([2.9, 1.1])
+    query = toolbar[0].text_input(
+        "Quick Jump",
+        value=st.session_state.get("atlas_jump_query", ""),
+        placeholder="Find any goal, objective, KR, or task",
+        key="atlas_jump_query",
+    ).strip()
+    selected_scope = toolbar[1].selectbox(
+        "Scope",
+        options=scope_labels,
+        key="atlas_scope_selector",
+    )
+
     if query:
         matches = [ref for ref, meta in index.items() if query.lower() in meta["title_l"]]
         if matches:
@@ -2852,7 +3066,7 @@ def render_atlas_workspace(username):
     with focus_map_tab:
         with st.container(border=True):
             st.markdown("<div class='atlas-kicker'>Focus Map</div>", unsafe_allow_html=True)
-            st.caption("Your primary surface: pick focus, commit sprint, navigate the map.")
+            st.caption("Navigate hierarchy and pick your next move.")
 
             nav_labels = ["Home"] + [
                 f"{TYPE_ICONS.get(index[path_ref]['type'], '')} {index[path_ref]['title']}"
@@ -2865,208 +3079,6 @@ def render_atlas_workspace(username):
             )
 
             map_placeholder = st.empty()
-
-            if focus_task_ref and task_refs:
-                picked_ref = st.selectbox(
-                    "Focus Task",
-                    options=task_refs,
-                    index=task_refs.index(focus_task_ref) if focus_task_ref in task_refs else 0,
-                    key="atlas_focus_task_picker",
-                    format_func=lambda ref: f"{TYPE_ICONS.get('TASK', '')} {index[ref]['title']} ({index[ref]['owner_name']})",
-                )
-                if picked_ref != focus_task_ref:
-                    st.session_state["atlas_focus_task_ref"] = picked_ref
-                    st.rerun()
-                focus_task_ref = picked_ref
-
-            if focus_task_ref and focus_task_ref in index:
-                focus_meta = index[focus_task_ref]
-                focus_task = focus_meta["node"]
-                focus_running = getattr(focus_task, "timer_started_at", None) is not None
-                can_track_focus = _can_track_task(focus_meta)
-
-                preset_options = ["25m", "50m", "Custom"]
-                if st.session_state.get("atlas_commit_preset") not in preset_options:
-                    st.session_state["atlas_commit_preset"] = "25m"
-                preset_choice = st.segmented_control(
-                    "Commit Preset",
-                    options=preset_options,
-                    key="atlas_commit_preset",
-                    selection_mode="single",
-                    label_visibility="collapsed",
-                )
-                if preset_choice not in preset_options:
-                    preset_choice = "25m"
-
-                target_minutes = _atlas_commit_target_minutes(preset_choice)
-                if preset_choice == "Custom":
-                    if "atlas_commit_custom_min" not in st.session_state:
-                        st.session_state["atlas_commit_custom_min"] = 35
-                    custom_minutes = int(
-                        st.number_input(
-                            "Custom Sprint (min)",
-                            min_value=5,
-                            max_value=240,
-                            step=5,
-                            key="atlas_commit_custom_min",
-                        )
-                    )
-                    target_minutes = _atlas_commit_target_minutes("Custom", custom_minutes)
-
-                focus_path_labels = [
-                    index[path_ref]["title"]
-                    for path_ref in focus_meta["path"]
-                    if path_ref in index
-                ]
-                focus_path = " > ".join(focus_path_labels)
-                spotlight_cols = st.columns([4.8, 1.8])
-                spotlight_cols[0].markdown(
-                    f"<div class='atlas-spotlight-path'>{escape_html(focus_path)}</div>",
-                    unsafe_allow_html=True,
-                )
-                spotlight_cols[0].markdown(
-                    f"<div class='atlas-spotlight-title'>{TYPE_ICONS.get('TASK', '')} {escape_html(focus_meta['title'])}</div>",
-                    unsafe_allow_html=True,
-                )
-                spotlight_cols[0].caption(f"Owned by {focus_meta['owner_name']}")
-                spotlight_cols[0].markdown(
-                    f"<div class='atlas-chip-row'>{_atlas_attention_chip_html(focus_meta)}</div>",
-                    unsafe_allow_html=True,
-                )
-
-                def _stop_focus_session():
-                    worklog_local = stop_timer(focus_task.id, user_id=username)
-                    if worklog_local:
-                        st.session_state["atlas_last_session_summary"] = {
-                            "task_ref": focus_task_ref,
-                            "minutes": round(float(worklog_local.duration_minutes or 0), 1),
-                            "at": time.time(),
-                        }
-                    for state_key in [
-                        "atlas_sprint_target_minutes",
-                        "atlas_sprint_task_ref",
-                        "atlas_sprint_started_at_epoch",
-                        "atlas_sprint_reminder_dismissed_for",
-                        "atlas_sprint_notification_sent_for",
-                    ]:
-                        if state_key in st.session_state:
-                            del st.session_state[state_key]
-                    return worklog_local
-
-                if focus_running:
-                    elapsed_minutes = 0
-                    try:
-                        elapsed_minutes = int(
-                            (ensure_utc(utc_now_naive()) - ensure_utc(focus_task.timer_started_at)).total_seconds() // 60
-                        )
-                    except Exception:
-                        elapsed_minutes = 0
-
-                    target_for_focus = 0
-                    if st.session_state.get("atlas_sprint_task_ref") == focus_task_ref:
-                        target_for_focus = int(st.session_state.get("atlas_sprint_target_minutes") or 0)
-
-                    if target_for_focus > 0:
-                        sprint_ratio = min(1.0, max(0.0, elapsed_minutes / target_for_focus))
-                        spotlight_cols[0].progress(
-                            sprint_ratio,
-                            text=f"Sprint: {elapsed_minutes}m / {target_for_focus}m",
-                        )
-                    else:
-                        spotlight_cols[0].caption(f"Running now: {elapsed_minutes}m")
-
-                    sprint_key = _atlas_sprint_run_key(
-                        focus_task_ref if target_for_focus > 0 else None,
-                        target_for_focus,
-                        st.session_state.get("atlas_sprint_started_at_epoch"),
-                    )
-                    dismissed_key = st.session_state.get("atlas_sprint_reminder_dismissed_for")
-                    if _atlas_should_show_soft_reminder(
-                        elapsed_minutes=elapsed_minutes,
-                        target_minutes=target_for_focus,
-                        sprint_key=sprint_key,
-                        dismissed_key=dismissed_key,
-                    ):
-                        emitted_key = st.session_state.get("atlas_sprint_notification_sent_for")
-                        if _atlas_should_emit_target_notification(sprint_key, emitted_key):
-                            st.toast(
-                                f"Sprint target reached: {target_for_focus}m on {focus_meta['title']}",
-                                icon="⏱️",
-                            )
-                            _atlas_fire_browser_notification(
-                                "Sprint target reached",
-                                f"{focus_meta['title']} hit {target_for_focus}m. Stop now or keep running.",
-                            )
-                            st.session_state["atlas_sprint_notification_sent_for"] = sprint_key
-                        overtime_minutes = max(0, elapsed_minutes - target_for_focus)
-                        spotlight_cols[0].warning(
-                            f"Sprint target reached ({target_for_focus}m). "
-                            f"You are {overtime_minutes}m over target."
-                        )
-                        reminder_cols = spotlight_cols[0].columns([1.2, 1.4, 2.0])
-                        if reminder_cols[0].button(
-                            "Stop now",
-                            key=f"atlas_soft_reminder_stop_{focus_task_ref}",
-                            disabled=not can_track_focus,
-                            use_container_width=True,
-                        ):
-                            _stop_focus_session()
-                            st.rerun()
-                        if reminder_cols[1].button(
-                            "Keep running",
-                            key=f"atlas_soft_reminder_keep_{focus_task_ref}",
-                            use_container_width=True,
-                        ):
-                            st.session_state["atlas_sprint_reminder_dismissed_for"] = sprint_key
-                            st.rerun()
-
-                if focus_running:
-                    if spotlight_cols[1].button(
-                        "Stop Session",
-                        key=f"atlas_spotlight_stop_{focus_task_ref}",
-                        type="primary",
-                        disabled=not can_track_focus,
-                        use_container_width=True,
-                    ):
-                        _stop_focus_session()
-                        st.rerun()
-                else:
-                    if spotlight_cols[1].button(
-                        f"Start {target_minutes}m Sprint",
-                        key=f"atlas_spotlight_start_{focus_task_ref}",
-                        type="primary",
-                        disabled=not can_track_focus,
-                        use_container_width=True,
-                    ):
-                        try:
-                            start_timer(focus_task.id, username)
-                        except ValueError as exc:
-                            st.error(str(exc))
-                        else:
-                            st.session_state["atlas_sprint_target_minutes"] = int(target_minutes)
-                            st.session_state["atlas_sprint_task_ref"] = focus_task_ref
-                            st.session_state["atlas_sprint_started_at_epoch"] = float(time.time())
-                            if "atlas_sprint_reminder_dismissed_for" in st.session_state:
-                                del st.session_state["atlas_sprint_reminder_dismissed_for"]
-                            if "atlas_sprint_notification_sent_for" in st.session_state:
-                                del st.session_state["atlas_sprint_notification_sent_for"]
-                            st.rerun()
-
-                if not can_track_focus:
-                    spotlight_cols[1].caption("Timer is available for the owner of this task.")
-
-                session_summary = st.session_state.get("atlas_last_session_summary")
-                if isinstance(session_summary, dict):
-                    summary_age = float(time.time() - float(session_summary.get("at") or 0))
-                    if summary_age <= 10:
-                        summary_ref = session_summary.get("task_ref")
-                        summary_title = index.get(summary_ref, {}).get("title", "task")
-                        summary_minutes = session_summary.get("minutes", 0)
-                        st.success(f"Session logged: {summary_minutes}m on {summary_title}.")
-                    else:
-                        del st.session_state["atlas_last_session_summary"]
-            else:
-                st.info("Select a branch with tasks to start a focus sprint.")
 
             with map_placeholder.container():
                 map_cols = st.columns([2.25, 1.05], gap="large")
