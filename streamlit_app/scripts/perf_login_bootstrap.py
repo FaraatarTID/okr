@@ -3,7 +3,7 @@ Login bootstrap latency benchmark.
 
 Measures the effect of deferring and throttling startup bootstrap:
 - Old behavior on login page open: init_database + ensure_admin_exists every session
-- New behavior on login page open: no DB bootstrap before submit
+- New behavior on login page open: async prewarm kickoff (non-blocking)
 - New behavior on login submit: process-level cached bootstrap guard
 """
 
@@ -66,12 +66,41 @@ def _old_login_open_flow() -> None:
 
 
 def _new_login_open_flow() -> None:
-    # New behavior renders login UI without touching DB/bootstrap.
-    return
+    # New behavior starts bootstrap prewarm in background, non-blocking.
+    bootstrap.prewarm_startup_ready_async()
 
 
 def _new_login_submit_flow() -> None:
     bootstrap.ensure_startup_ready()
+
+
+def _bench_submit_after_prewarm(
+    engine,
+    runs: int,
+    prewarm_wait_seconds: float = 2.0,
+) -> Dict[str, float | int]:
+    totals: List[float] = []
+    queries: List[int] = []
+    for _ in range(runs):
+        bootstrap.reset_startup_bootstrap_state()
+        bootstrap.prewarm_startup_ready_async()
+        bootstrap.wait_for_startup_prewarm(prewarm_wait_seconds)
+
+        with _query_counter(engine) as qc:
+            started = time.perf_counter()
+            bootstrap.ensure_startup_ready()
+            totals.append((time.perf_counter() - started) * 1000.0)
+        queries.append(int(qc["count"]))
+
+    sorted_totals = sorted(totals)
+    sorted_queries = sorted(queries)
+    p95_idx = max(0, int(len(totals) * 0.95) - 1)
+    return {
+        "median_ms": round(statistics.median(totals), 3),
+        "p95_ms": round(sorted_totals[p95_idx], 3),
+        "median_queries": int(statistics.median(queries)),
+        "p95_queries": int(sorted_queries[p95_idx]),
+    }
 
 
 def _bench(
@@ -109,12 +138,21 @@ def main():
     # Warm old behavior still ran on every login-page session open.
     warm_old = _bench(engine, _old_login_open_flow, runs=8)
 
-    # New behavior: login page open does not touch DB/bootstrap.
+    # New behavior: login page open prewarm kickoff is non-blocking.
+    bootstrap.reset_startup_bootstrap_state()
     new_open = _bench(engine, _new_login_open_flow, runs=8)
 
-    # New behavior: first login submit runs bootstrap once per process window.
+    # New behavior: first login submit still pays bootstrap if not prewarmed yet.
     bootstrap.reset_startup_bootstrap_state()
     new_submit_first = _bench(engine, _new_login_submit_flow, runs=1)
+
+    # New behavior: submit after prewarm should be cached/near-zero.
+    new_submit_after_prewarm = _bench_submit_after_prewarm(engine, runs=8)
+
+    # Same-process repeated submits stay cached.
+    bootstrap.reset_startup_bootstrap_state()
+    bootstrap.prewarm_startup_ready_async()
+    bootstrap.wait_for_startup_prewarm(2.0)
     new_submit_cached = _bench(engine, _new_login_submit_flow, runs=8)
 
     result = {
@@ -122,6 +160,7 @@ def main():
         "old_login_open_warm": warm_old,
         "new_login_open": new_open,
         "new_login_submit_first": new_submit_first,
+        "new_login_submit_after_prewarm": new_submit_after_prewarm,
         "new_login_submit_cached": new_submit_cached,
     }
     print(json.dumps(result, indent=2))
