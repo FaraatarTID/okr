@@ -100,6 +100,24 @@ def apply_custom_fonts():
             padding-left: 3rem !important;
             padding-right: 3rem !important;
         }
+
+        @media (max-width: 900px) {
+            .block-container {
+                padding-top: 2rem !important;
+                padding-bottom: 1.25rem !important;
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .block-container {
+                padding-top: 0.5rem !important;
+                padding-bottom: 1rem !important;
+                padding-left: 0.7rem !important;
+                padding-right: 0.7rem !important;
+            }
+        }
         
         /* Ensure tooltips and other floating elements get it too if possible, 
            without breaking icons. */
@@ -228,6 +246,32 @@ def inject_atlas_styles():
             letter-spacing: 0.01em;
             color: var(--atlas-ink);
             margin: 0.15rem 0 0.65rem;
+        }
+
+        .atlas-suggested-line {
+            margin: 0.12rem 0 0.15rem;
+            color: var(--atlas-ink);
+            font-size: 1.02rem;
+            line-height: 1.32;
+            font-weight: 560;
+        }
+
+        .atlas-suggested-label {
+            font-weight: 760;
+        }
+
+        .atlas-suggested-reason {
+            margin: 0 0 0.45rem;
+            font-size: 0.86rem;
+            color: #6b7280;
+            line-height: 1.36;
+        }
+
+        .atlas-field-label {
+            margin: 0.2rem 0 0.15rem;
+            color: #1f2933;
+            font-size: 0.82rem;
+            font-weight: 650;
         }
 
         .atlas-nextup-label {
@@ -470,6 +514,81 @@ def inject_atlas_styles():
 
         button[data-testid="stBaseButton-secondary"] p {
             font-weight: 560 !important;
+        }
+
+        @media (max-width: 900px) {
+            div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type {
+                margin-top: 0 !important;
+            }
+
+            div[data-testid="stVerticalBlockBorderWrapper"] {
+                padding: 0.5rem 0.65rem !important;
+            }
+
+            .atlas-kicker {
+                font-size: 0.68rem;
+                margin-bottom: 0.15rem;
+                letter-spacing: 0.06em;
+            }
+
+            .atlas-human-note {
+                font-size: 0.83rem;
+                margin: 0.08rem 0 0.35rem;
+                line-height: 1.36;
+            }
+
+            .atlas-luxe-strip {
+                height: 3px;
+                margin-bottom: 0.42rem;
+            }
+
+            .atlas-suggested-line {
+                margin: 0.02rem 0 0.08rem;
+                font-size: 0.94rem;
+                line-height: 1.25;
+            }
+
+            .atlas-suggested-reason {
+                margin: 0 0 0.3rem;
+                font-size: 0.82rem;
+            }
+
+            .atlas-field-label {
+                margin: 0.14rem 0 0.08rem;
+                font-size: 0.78rem;
+            }
+
+            .atlas-spotlight-path {
+                margin-top: 0.1rem;
+                margin-bottom: 0.06rem;
+                font-size: 0.74rem;
+                letter-spacing: 0.01em;
+            }
+
+            .atlas-focus-entity {
+                font-size: 1.3rem;
+                margin: 0.05rem 0 0.36rem;
+                line-height: 1.2;
+            }
+
+            .atlas-chip-row {
+                margin: 0.06rem 0 0.1rem;
+                gap: 0.24rem;
+            }
+
+            .atlas-attn-chip,
+            .atlas-map-chip {
+                font-size: 0.66rem;
+                padding: 0.06rem 0.42rem;
+            }
+
+            [class*="st-key-atlas_top_suggest_focus_"] button {
+                min-height: 1.85rem !important;
+                font-size: 0.76rem !important;
+                padding: 0.15rem 0.55rem !important;
+                line-height: 1.1 !important;
+                border-radius: 10px !important;
+            }
         }
         </style>
         """,
