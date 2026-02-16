@@ -2,7 +2,7 @@ Documentation HQ: [README](README.md)
 
 Enterprise Deployment Guide (Step-by-Step, Beginner Friendly)
 
-Last updated: 2026-02-14
+Last updated: 2026-02-16
 
 This guide is for deploying the OKR app in a company environment where users access it through a corporate URL such as:
 - `https://okr.mycompany.com` (recommended)
@@ -49,6 +49,21 @@ Quick decision matrix
 3) Which platform?
 - Start with Docker Compose on one VM
 - Use Kubernetes only if your team already runs K8s operationally
+
+---
+
+Deployment modes (important)
+
+Use one of these modes:
+
+1) Streamlit Cloud (MVP/simple hosting)
+- No SSH deploy secrets are required.
+- The app is deployed by Streamlit Cloud from your GitHub repo.
+- In this mode, the GitHub Actions SSH deploy step is expected to skip.
+
+2) Docker Compose on your own server (enterprise/self-hosted)
+- SSH deploy secrets are required for the optional remote deploy step.
+- Use this when you want GitHub Actions to connect to your server and run `docker compose`.
 
 ---
 
@@ -341,14 +356,34 @@ Workflow file:
 
 What it can do:
 - Build and push image to GHCR on push to `main`/`master`
-- Optional remote deploy over SSH using:
-  - `SSH_HOST`
-  - `SSH_USER`
-  - `SSH_KEY`
-  - `REMOTE_DEPLOY_DIR`
+- Optional remote deploy over SSH (self-hosted mode only)
+
+Required secrets for SSH deploy (recommended names):
+- `SSH_HOST`
+- `SSH_USER`
+- `SSH_KEY`
+- `REMOTE_DEPLOY_DIR`
+
+Supported fallback secret names in this repo's workflow:
+- Host: `SSH_HOST` or `DEPLOY_HOST` or `HOST`
+- User: `SSH_USER` or `DEPLOY_USER` or `USERNAME`
+- Key: `SSH_KEY` or `DEPLOY_KEY`
+- Deploy dir: `REMOTE_DEPLOY_DIR` or `DEPLOY_DIR`
+
+Where to set `SSH_KEY`:
+- GitHub repository -> `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`
+- Name it `SSH_KEY` (or `DEPLOY_KEY` if you prefer fallback naming)
+- Paste the private key content for your deploy user (for example, `id_ed25519` private key)
+
+If you are using Streamlit Cloud and not SSH deploy:
+- Do not set SSH deploy secrets.
+- The SSH deploy job should be skipped automatically.
 
 Tip:
 - Use immutable image tags for controlled rollback.
+
+Security note:
+- Never commit private keys or any deploy secrets to the repository.
 
 ---
 
