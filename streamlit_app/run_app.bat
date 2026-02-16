@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal EnableExtensions EnableDelayedExpansion
 
 REM Change directory to the script's location
 cd /d "%~dp0"
@@ -42,18 +42,56 @@ if not exist "%PYEXE%" (
 )
 
 echo [INFO] Checking dependencies...
-set DEP_FLAG=%~dp0.deps_installed
-if not exist "%DEP_FLAG%" (
-    echo [INFO] Installing dependencies from requirements.txt...
-    %PYEXE% -m pip install -r requirements.txt
-    if %errorlevel% neq 0 (
+set "REQ_FILE=requirements.txt"
+set "DEP_HASH_FILE=%~dp0.deps_hash"
+set "NEED_INSTALL=0"
+set "CURR_HASH="
+set "STORED_HASH="
+
+if not exist "%REQ_FILE%" (
+    echo [ERROR] requirements.txt not found.
+    pause
+    exit /b 1
+)
+
+for /f "tokens=* delims=" %%H in ('certutil -hashfile "%REQ_FILE%" SHA256 ^| findstr /R /I "^[0-9A-F ][0-9A-F ]*$"') do (
+    set "CURR_HASH=%%H"
+)
+set "CURR_HASH=!CURR_HASH: =!"
+
+if not defined CURR_HASH (
+    echo [WARN] Could not compute requirements hash. Installing dependencies.
+    set "NEED_INSTALL=1"
+) else (
+    if exist "%DEP_HASH_FILE%" (
+        set /p STORED_HASH=<"%DEP_HASH_FILE%"
+    )
+
+    if /I "!CURR_HASH!"=="!STORED_HASH!" (
+        echo [INFO] requirements.txt unchanged. Verifying core packages...
+        %PYEXE% -c "import streamlit,sqlmodel,alembic,psycopg2" >nul 2>&1
+        if errorlevel 1 (
+            echo [INFO] Core dependency check failed. Reinstalling requirements...
+            set "NEED_INSTALL=1"
+        ) else (
+            echo [INFO] Dependencies are up to date.
+        )
+    ) else (
+        echo [INFO] requirements.txt changed. Installing/updating dependencies...
+        set "NEED_INSTALL=1"
+    )
+)
+
+if "!NEED_INSTALL!"=="1" (
+    %PYEXE% -m pip install -r "%REQ_FILE%"
+    if errorlevel 1 (
         echo [ERROR] Failed to install dependencies from requirements.txt.
         pause
         exit /b 1
     )
-    echo done > "%DEP_FLAG%"
-) else (
-    echo [INFO] Dependencies already installed.
+    if defined CURR_HASH (
+        > "%DEP_HASH_FILE%" echo !CURR_HASH!
+    )
 )
 
 echo.
