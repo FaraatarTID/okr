@@ -182,6 +182,14 @@ def inject_atlas_styles():
             --atlas-emerald: #0f766e;
         }
 
+        .block-container {
+            padding-top: 0.75rem !important;
+        }
+
+        div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type {
+            margin-top: 0 !important;
+        }
+
         .atlas-hero {
             border: 1px solid var(--atlas-border);
             border-radius: 16px;
@@ -517,8 +525,8 @@ def inject_atlas_styles():
         }
 
         @media (max-width: 900px) {
-            div[data-testid="stVerticalBlock"] > div[data-testid="stVerticalBlockBorderWrapper"]:first-of-type {
-                margin-top: 0 !important;
+            .block-container {
+                padding-top: 0.45rem !important;
             }
 
             div[data-testid="stVerticalBlockBorderWrapper"] {
@@ -588,6 +596,12 @@ def inject_atlas_styles():
                 padding: 0.15rem 0.55rem !important;
                 line-height: 1.1 !important;
                 border-radius: 10px !important;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .block-container {
+                padding-top: 0.3rem !important;
             }
         }
         </style>
