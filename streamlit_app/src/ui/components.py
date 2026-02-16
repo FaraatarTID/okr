@@ -2553,7 +2553,14 @@ def _atlas_scope_refs(roots, index, limit: int = 800):
     return refs
 
 
-def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, selected_path_refs=None):
+def _build_atlas_treemap(
+    refs,
+    index,
+    selected_ref: str,
+    focus_task_ref: str,
+    selected_path_refs=None,
+    chart_height: int = 620,
+):
     ids = []
     labels = []
     parents = []
@@ -2671,7 +2678,7 @@ def _build_atlas_treemap(refs, index, selected_ref: str, focus_task_ref: str, se
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(size=13, color="#1f2933"),
-        height=430,
+        height=max(420, int(chart_height)),
         clickmode="event+select",
     )
     return fig
@@ -3117,10 +3124,6 @@ def render_atlas_workspace(username):
                 ]
 
                 map_cols[1].markdown("**AI**")
-                sync_scope_label = "scope" if map_lens == "Scope" else "branch"
-                map_cols[1].caption(
-                    f"Run AI refresh for visible key results in this {sync_scope_label}."
-                )
                 if "atlas_ai_apply_overall_to_progress" not in st.session_state:
                     st.session_state["atlas_ai_apply_overall_to_progress"] = False
                 apply_ai_score_to_progress = map_cols[1].toggle(
@@ -3128,7 +3131,6 @@ def render_atlas_workspace(username):
                     key="atlas_ai_apply_overall_to_progress",
                     disabled=not map_kr_refs,
                 )
-                map_cols[1].caption("Progress is updated from AI overall score; current/target values are unchanged.")
                 if map_cols[1].button(
                     "AI Progress Sync",
                     key="atlas_ai_progress_sync_btn",
@@ -3244,12 +3246,14 @@ def render_atlas_workspace(username):
                     else:
                         del st.session_state["atlas_ai_sync_report"]
 
+                map_chart_height = 620
                 treemap = _build_atlas_treemap(
                     map_refs,
                     index,
                     selected_ref,
                     focus_task_ref,
                     selected_path_refs=selected_path_refs,
+                    chart_height=map_chart_height,
                 )
                 if treemap is not None:
                     chart_key = f"atlas_focus_treemap_{selected_ref}"
@@ -3272,7 +3276,7 @@ def render_atlas_workspace(username):
                                     click_event=True,
                                     select_event=False,
                                     hover_event=False,
-                                    override_height=430,
+                                    override_height=map_chart_height,
                                     override_width="100%",
                                     key=chart_events_key,
                                 ) or []
