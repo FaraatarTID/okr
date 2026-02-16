@@ -3069,7 +3069,7 @@ def render_atlas_workspace(username):
                 st.info("Select a branch with tasks to start a focus sprint.")
 
             with map_placeholder.container():
-                map_cols = st.columns([2.4, 1.2], gap="large")
+                map_cols = st.columns([1.85, 1.15], gap="large")
                 map_cols[1].markdown("<div class='atlas-kicker'>Map Key</div>", unsafe_allow_html=True)
                 map_cols[1].markdown(
                     (
@@ -3246,7 +3246,7 @@ def render_atlas_workspace(username):
                     else:
                         del st.session_state["atlas_ai_sync_report"]
 
-                map_chart_height = 620
+                map_chart_height = 760
                 treemap = _build_atlas_treemap(
                     map_refs,
                     index,
