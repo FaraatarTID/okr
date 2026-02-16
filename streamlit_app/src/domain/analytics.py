@@ -400,17 +400,41 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 )
             trace.mark("member_shape_ms")
 
+            latest_checkin_ranked = (
+                select(
+                    CheckIn.key_result_id.label("kr_id"),
+                    CheckIn.created_at.label("latest_created_at"),
+                    CheckIn.confidence_score.label("latest_confidence"),
+                    func.row_number()
+                    .over(
+                        partition_by=CheckIn.key_result_id,
+                        order_by=(CheckIn.created_at.desc(), CheckIn.id.desc()),
+                    )
+                    .label("rn"),
+                )
+                .subquery()
+            )
+
             kr_rows = session.exec(
                 select(
                     KeyResult.id,
                     KeyResult.title,
                     KeyResult.gemini_analysis,
                     User.username,
+                    latest_checkin_ranked.c.latest_created_at,
+                    latest_checkin_ranked.c.latest_confidence,
                 )
                 .select_from(KeyResult)
                 .join(Objective, KeyResult.objective_id == Objective.id)
                 .join(Goal, Objective.goal_id == Goal.id)
                 .join(User, Goal.owner_id == User.id)
+                .outerjoin(
+                    latest_checkin_ranked,
+                    and_(
+                        latest_checkin_ranked.c.kr_id == KeyResult.id,
+                        latest_checkin_ranked.c.rn == 1,
+                    ),
+                )
                 .where(Goal.cycle_id == cycle_id)
                 .where(Goal.owner_id.in_(selected_user_ids))
             ).all()
@@ -422,10 +446,6 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 payload["member_deadlines"] = member_deadlines
                 return payload
 
-            kr_ids = [kr_id for kr_id, _, _, _ in kr_rows if kr_id is not None]
-            latest_by_kr = _get_latest_checkin_snapshot_by_kr(session, kr_ids)
-            trace.mark("latest_checkin_query_ms")
-
             updated_count = 0
             total_confidence = 0
             conf_count = 0
@@ -436,13 +456,16 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
             seven_days_ago = now_utc - timedelta(days=7)
             ten_days_ago = now_utc - timedelta(days=10)
 
-            for kr_id, kr_title, gemini_analysis, owner in kr_rows:
-                latest = latest_by_kr.get(kr_id)
-                latest_exists = latest is not None
-                latest_created_at = latest[0] if latest_exists else None
-                latest_confidence = (
-                    int(latest[1]) if latest_exists and latest[1] is not None else 0
-                )
+            for (
+                _kr_id,
+                kr_title,
+                gemini_analysis,
+                owner,
+                latest_created_at,
+                latest_confidence_raw,
+            ) in kr_rows:
+                latest_exists = latest_created_at is not None
+                latest_confidence = int(latest_confidence_raw or 0)
 
                 analysis = None
                 if gemini_analysis:
