@@ -2856,12 +2856,10 @@ def render_atlas_workspace(username):
             suggested_cols[0].caption(
                 _atlas_suggested_next_reason(suggested_meta, actor_id, index)
             )
-            already_suggested = bool(focus_task_ref == suggested_focus_ref)
             if suggested_cols[1].button(
                 "Use Suggested",
                 key=f"atlas_top_suggest_focus_{suggested_focus_ref}",
                 use_container_width=True,
-                disabled=already_suggested,
             ):
                 st.session_state["atlas_focus_task_ref"] = suggested_focus_ref
                 st.session_state["atlas_selected_ref"] = suggested_focus_ref
