@@ -3022,7 +3022,7 @@ def render_atlas_workspace(username):
                         st.session_state["atlas_sprint_reminder_dismissed_for"] = sprint_key
                         st.rerun()
 
-            action_row = spotlight_cols[1].columns([1, 3, 1], gap="small")
+            action_row = st.columns([1.6, 2.2, 1.6], gap="small")
             action_col = action_row[1]
 
             if focus_running:
@@ -3058,7 +3058,7 @@ def render_atlas_workspace(username):
                         st.rerun()
 
             if not can_track_focus:
-                spotlight_cols[1].caption("Timer is available for the owner of this task.")
+                action_col.caption("Timer is available for the owner of this task.")
 
             session_summary = st.session_state.get("atlas_last_session_summary")
             if isinstance(session_summary, dict):
