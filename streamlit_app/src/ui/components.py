@@ -3431,12 +3431,15 @@ def render_atlas_workspace(username):
 
         if suggested_focus_ref and suggested_focus_ref in index:
             suggested_meta = index[suggested_focus_ref]
-            suggested_cols = st.columns([3.2, 1.2], gap="large")
-            suggested_cols[0].markdown(
+            suggested_label = (
+                "AI Suggested Next" if suggested_focus_is_ai else "Suggested Next"
+            )
+            st.markdown(
                 (
-                    f"**{'AI Suggested Next' if suggested_focus_is_ai else 'Suggested Next'}:** "
-                    f"{TYPE_ICONS.get('TASK', '')} "
-                    f"{escape_html(suggested_meta['title'])}"
+                    "<div class='atlas-suggested-line'>"
+                    f"<span class='atlas-suggested-label'>{escape_html(suggested_label)}:</span> "
+                    f"{TYPE_ICONS.get('TASK', '')} {escape_html(suggested_meta['title'])}"
+                    "</div>"
                 ),
                 unsafe_allow_html=True,
             )
@@ -3447,8 +3450,11 @@ def render_atlas_workspace(username):
                 reason_text = (
                     f"{reason_text} (AI confidence: {suggested_focus_confidence}%)"
                 )
-            suggested_cols[0].caption(reason_text)
-            if suggested_cols[1].button(
+            st.markdown(
+                f"<div class='atlas-suggested-reason'>{escape_html(reason_text)}</div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(
                 "Use Suggested",
                 key=f"atlas_top_suggest_focus_{suggested_focus_ref}",
                 use_container_width=True,
@@ -3458,6 +3464,10 @@ def render_atlas_workspace(username):
                 st.rerun()
 
         if focus_task_ref and task_refs:
+            st.markdown(
+                "<div class='atlas-field-label'>Choose Focus Task</div>",
+                unsafe_allow_html=True,
+            )
             picked_ref = st.selectbox(
                 "Choose Focus Task",
                 options=task_refs,
@@ -3465,6 +3475,7 @@ def render_atlas_workspace(username):
                 if focus_task_ref in task_refs
                 else 0,
                 key="atlas_focus_task_picker",
+                label_visibility="collapsed",
                 format_func=lambda ref: (
                     f"{TYPE_ICONS.get('TASK', '')} {index[ref]['title']} ({index[ref]['owner_name']})"
                 ),
@@ -3495,7 +3506,7 @@ def render_atlas_workspace(username):
                 unsafe_allow_html=True,
             )
 
-            spotlight_cols = st.columns([4.8, 1.8], gap="large")
+            spotlight_cols = st.columns([4.8, 1.8], gap="small")
             spotlight_cols[0].caption(f"Owned by {focus_meta['owner_name']}")
             spotlight_cols[0].markdown(
                 f"<div class='atlas-chip-row'>{_atlas_attention_chip_html(focus_meta)}</div>",
@@ -3632,11 +3643,9 @@ def render_atlas_workspace(username):
                         )
                         st.rerun()
 
-            action_row = st.columns([1.6, 2.2, 1.6], gap="small")
-            action_col = action_row[1]
-
+            action_container = st.container()
             if focus_running:
-                if action_col.button(
+                if action_container.button(
                     "Stop Session",
                     key=f"atlas_spotlight_stop_{focus_task_ref}",
                     type="primary",
@@ -3646,7 +3655,7 @@ def render_atlas_workspace(username):
                     _stop_focus_session()
                     st.rerun()
             else:
-                if action_col.button(
+                if action_container.button(
                     "Start",
                     key=f"atlas_spotlight_start_{focus_task_ref}",
                     type="primary",
@@ -3672,7 +3681,9 @@ def render_atlas_workspace(username):
                         st.rerun()
 
             if not can_track_focus:
-                action_col.caption("Timer is available for the owner of this task.")
+                action_container.caption(
+                    "Timer is available for the owner of this task."
+                )
 
             session_summary = st.session_state.get("atlas_last_session_summary")
             if isinstance(session_summary, dict):
@@ -3689,7 +3700,7 @@ def render_atlas_workspace(username):
         else:
             st.info("Select a branch with tasks to start a focus sprint.")
 
-    toolbar = st.columns([2.9, 1.1])
+    toolbar = st.columns([2.9, 1.1], gap="small")
     query = (
         toolbar[0]
         .text_input(
