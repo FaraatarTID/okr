@@ -521,7 +521,7 @@ def render_leadership_dashboard_content(username):
         st.markdown("---")
     
     # === AGGREGATE METRICS FROM SELECTED MEMBERS ===
-    from utils.deadline_utils import get_deadline_summary, get_deadline_status
+    from src.utils.deadline_utils import get_deadline_summary, get_deadline_status
     
     # === FETCH AGGREGATED METRICS ===
     metrics = _cached_get_leadership_metrics(selected_members, cycle_id)
@@ -1032,7 +1032,7 @@ def render_report_content(username, mode):
         # Get deadline status if available
         deadline_status = "—"
         if task.deadline:
-            from utils.deadline_utils import get_deadline_status
+            from src.utils.deadline_utils import get_deadline_status
             try:
                 _, status_label, _ = get_deadline_status(task)
                 deadline_status = status_label
@@ -1144,7 +1144,7 @@ def render_report_content(username, mode):
     # Deadline Health
     st.subheader("⚠️ Deadline Health")
     from src.crud import get_all_tasks_by_cycle
-    from utils.deadline_utils import get_deadline_status
+    from src.utils.deadline_utils import get_deadline_status
     cycle_id_dl = st.session_state.get("active_cycle_id")
     tasks_dl = _cached_get_all_tasks_by_cycle(cycle_id_dl)
     
@@ -1745,7 +1745,7 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             st.rerun()
 
         if has_deadline:
-             from utils.deadline_utils import get_deadline_status
+             from src.utils.deadline_utils import get_deadline_status
              # We need to adapt get_deadline_status if it expects dict?
              # Let's hope it's flexible or we adapt it later.
              # Actually, node is SQLModel here.
@@ -2149,7 +2149,7 @@ def _atlas_status_label(meta):
         deadline = getattr(node, "deadline", None)
         if deadline is not None:
             try:
-                from utils.deadline_utils import get_deadline_status
+                from src.utils.deadline_utils import get_deadline_status
 
                 _, status_label, _ = get_deadline_status(node)
                 return status_label
@@ -3549,7 +3549,7 @@ def render_card(node, username):
                 stats += f" | ⏱️ {format_time(t_card)}"
                 # Add deadline indicator
                 if node.deadline:
-                    from utils.deadline_utils import get_deadline_status
+                    from src.utils.deadline_utils import get_deadline_status
                     try:
                         _, status_label, _ = get_deadline_status(node)
                         stats += f" | {status_label}"
@@ -3814,5 +3814,6 @@ def render_level(username):
         else:
             for item in items:
                 render_card(item, username)
+
 
 

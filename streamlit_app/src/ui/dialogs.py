@@ -632,11 +632,12 @@ def render_weekly_ritual_dialog(username):
                     ai_key = f"ai_sugg_{kr.id}"
                     if st.button("✨ Get AI Estimate", key=f"btn_ai_{kr.id}"):
                         with st.spinner("Analyzing..."):
-                            from utils.storage import filter_nodes_by_cycle
                             from src.services.ai_service import analyze_node
-                            filtered = filter_nodes_by_cycle(data["nodes"], cycle_id)
-                            res = analyze_node(kr.external_id, filtered)
-                            if "error" not in res: st.session_state[ai_key] = res["analysis"]
+                            res = analyze_node(kr.id, "KEY_RESULT")
+                            if "error" not in res:
+                                st.session_state[ai_key] = res.get("analysis", {})
+                            else:
+                                st.error(res["error"])
                     
                     sugg = st.session_state.get(ai_key)
                     if sugg:
@@ -665,11 +666,6 @@ def render_weekly_ritual_dialog(username):
                             except PermissionError as e:
                                 st.error(str(e))
                                 return
-                            if kr.external_id in data["nodes"]:
-                                n = data["nodes"][kr.external_id]
-                                n["current_value"] = new_val_in
-                                if kr.target_value > 0: n["progress"] = int((new_val_in / kr.target_value) * 100)
-                                save_data(data, username)
                             if ai_key in st.session_state: del st.session_state[ai_key]
                             st.rerun()
                             

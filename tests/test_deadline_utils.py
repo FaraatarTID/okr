@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 
-from streamlit_app.utils.deadline_utils import (
+from src.utils.deadline_utils import (
     format_deadline_display,
     get_deadline_status,
     get_expected_progress,
@@ -67,3 +67,4 @@ def test_get_expected_progress_and_format_helpers_accept_datetime():
     rendered = format_deadline_display(deadline)
     assert isinstance(rendered, str)
     assert rendered
+

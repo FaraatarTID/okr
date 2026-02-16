@@ -101,7 +101,7 @@ def test_sync_data_to_db_rolls_back_on_failure(isolated_db, monkeypatch):
     from src.crud import create_user
     from src.database import get_session_context
     from src.models import Goal
-    from utils import sync as sync_module
+    from src.utils import sync as sync_module
 
     create_user("alice", "alice-pass")
 
@@ -481,3 +481,4 @@ def test_auth_throttle_state_table_is_created_by_migration(tmp_path):
     table_names = set(sa_inspect(engine).get_table_names())
     assert "auth_throttle_state" in table_names
     engine.dispose()
+

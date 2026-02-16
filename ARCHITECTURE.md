@@ -16,7 +16,7 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
   - `streamlit_app/src/domain/analytics.py` (hot-path analytics/reporting queries)
 - Persistence: `streamlit_app/src/database.py`, `streamlit_app/src/models.py`, Alembic migrations in `streamlit_app/alembic/`
 - External integrations: `streamlit_app/src/services/ai_service.py`, `streamlit_app/src/services/pdf_service.py`
-- Shared business helpers: `streamlit_app/utils/deadline_utils.py`
+- Shared business helpers: `streamlit_app/src/utils/deadline_utils.py`
 
 ## Module Boundaries
 
@@ -122,3 +122,4 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 These paths now have explicit query-count budgets and a reproducible benchmark script:
 - `streamlit_app/scripts/perf_hotpaths.py`
+
