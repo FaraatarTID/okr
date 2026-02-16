@@ -32,6 +32,7 @@ def format_time(minutes):
     return f"{h:02d}:{m:02d}"
 
 from sqlmodel import select, col
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn
 from src.crud import get_goal_tree, get_user_goals, get_session_context, get_user_by_username, get_work_logs_by_date_range, get_all_tasks_by_cycle
@@ -69,169 +70,334 @@ def _cached_get_work_logs_by_range(user_id, start_dt, end_dt):
     return get_work_logs_by_date_range(user_id, start_dt, end_dt)
 
 
+def _canonical_owner_ids_key(owner_ids):
+    if owner_ids is None:
+        return None
+    canonical = sorted(
+        {
+            int(owner_id)
+            for owner_id in owner_ids
+            if owner_id is not None
+        }
+    )
+    return tuple(canonical)
+
+
+def _atlas_extract_ai_snapshot_fields(raw_analysis):
+    ai_overall_score = None
+    ai_deadline_state = None
+
+    analysis = _atlas_parse_ai_analysis(raw_analysis)
+    if not isinstance(analysis, dict):
+        return ai_overall_score, ai_deadline_state
+
+    try:
+        score_raw = analysis.get("overall_score")
+        if score_raw is not None:
+            ai_overall_score = max(0, min(100, int(float(score_raw))))
+    except Exception:
+        ai_overall_score = None
+
+    warnings_list = analysis.get("deadline_warnings") or []
+    if isinstance(warnings_list, list) and warnings_list:
+        joined = " ".join(str(item) for item in warnings_list if item is not None).lower()
+        if "overdue" in joined:
+            ai_deadline_state = "overdue"
+        else:
+            ai_deadline_state = "risk"
+
+    return ai_overall_score, ai_deadline_state
+
+
 @st.cache_data(ttl=45, show_spinner=False)
-def _cached_get_atlas_scope_snapshot(cycle_id: int, owner_ids_key):
+def _cached_get_atlas_scope_snapshot(
+    cycle_id: int,
+    owner_ids_key,
+    include_analysis: bool = False,
+):
     """Cached, serialization-safe Atlas snapshot to reduce rerun DB latency."""
+    canonical_owner_ids_key = _canonical_owner_ids_key(owner_ids_key)
+
     with get_session_context() as session:
-        statement = (
-            select(Goal)
-            .where(Goal.cycle_id == cycle_id)
-            .options(
-                selectinload(Goal.objectives)
-                .selectinload(Objective.key_results)
-                .selectinload(KeyResult.tasks)
+        goal_stmt = (
+            select(
+                Goal.id,
+                Goal.title,
+                Goal.progress,
+                Goal.owner_id,
             )
-            .order_by(col(Goal.title))
+            .where(Goal.cycle_id == cycle_id)
+            .order_by(func.lower(Goal.title), Goal.id)
         )
-        if owner_ids_key is not None:
-            owner_ids = [int(owner_id) for owner_id in owner_ids_key]
+        if canonical_owner_ids_key is not None:
+            owner_ids = list(canonical_owner_ids_key)
             if not owner_ids:
                 return {"goals": [], "users_map": {}}
-            statement = statement.where(Goal.owner_id.in_(owner_ids))
-        goals = list(session.exec(statement).all())
+            goal_stmt = goal_stmt.where(Goal.owner_id.in_(owner_ids))
 
-        owner_ids_in_scope = sorted(
-            {
-                int(goal.owner_id)
-                for goal in goals
-                if goal.owner_id is not None
-            }
-        )
-        users_map = {}
-        if owner_ids_in_scope:
-            users = session.exec(
-                select(User)
-                .where(User.id.in_(owner_ids_in_scope))
-                .order_by(col(User.display_name), col(User.username))
-            ).all()
-            users_map = {
-                user.id: (user.display_name or user.username or "Unknown")
-                for user in users
-            }
+        goal_rows = list(session.exec(goal_stmt).all())
+        if not goal_rows:
+            return {"goals": [], "users_map": {}}
 
+        goal_ids = []
+        goal_payload_by_id = {}
         goals_payload = []
-        for goal in goals:
-            objectives_payload = []
-            for objective in sorted(
-                list(goal.objectives or []),
-                key=lambda item: (item.title or "").lower(),
-            ):
-                key_results_payload = []
-                for key_result in sorted(
-                    list(objective.key_results or []),
-                    key=lambda item: (item.title or "").lower(),
-                ):
-                    tasks_payload = []
-                    for task in sorted(
-                        list(key_result.tasks or []),
-                        key=lambda item: (item.title or "").lower(),
-                    ):
-                        tasks_payload.append(
-                            {
-                                "id": task.id,
-                                "title": task.title,
-                                "description": task.description,
-                                "progress": int(task.progress or 0),
-                                "deadline": task.deadline,
-                                "timer_started_at": task.timer_started_at,
-                                "status": str(getattr(task.status, "value", task.status)),
-                                "total_time_spent": int(task.total_time_spent or 0),
-                            }
-                        )
+        owner_ids_in_scope = set()
+        for goal_id, title, progress, owner_id in goal_rows:
+            if goal_id is None:
+                continue
+            goal_ids.append(int(goal_id))
+            owner_ids_in_scope.add(int(owner_id))
+            payload = {
+                "id": int(goal_id),
+                "title": title,
+                "progress": int(progress or 0),
+                "owner_id": int(owner_id),
+                "objectives": [],
+            }
+            goals_payload.append(payload)
+            goal_payload_by_id[int(goal_id)] = payload
 
-                    key_results_payload.append(
-                        {
-                            "id": key_result.id,
-                            "title": key_result.title,
-                            "description": key_result.description,
-                            "progress": int(key_result.progress or 0),
-                            "gemini_analysis": key_result.gemini_analysis,
-                            "tasks": tasks_payload,
-                        }
+        if not goal_ids:
+            return {"goals": [], "users_map": {}}
+
+        objective_rows = list(
+            session.exec(
+                select(
+                    Objective.id,
+                    Objective.goal_id,
+                    Objective.title,
+                    Objective.progress,
+                )
+                .where(Objective.goal_id.in_(goal_ids))
+                .order_by(Objective.goal_id, func.lower(Objective.title), Objective.id)
+            ).all()
+        )
+
+        objective_payload_by_id = {}
+        objective_ids = []
+        for objective_id, goal_id, title, progress in objective_rows:
+            if objective_id is None or goal_id is None:
+                continue
+            objective_ids.append(int(objective_id))
+            payload = {
+                "id": int(objective_id),
+                "title": title,
+                "progress": int(progress or 0),
+                "key_results": [],
+            }
+            objective_payload_by_id[int(objective_id)] = payload
+            goal_payload = goal_payload_by_id.get(int(goal_id))
+            if goal_payload is not None:
+                goal_payload["objectives"].append(payload)
+
+        key_result_payload_by_id = {}
+        key_result_ids = []
+        if objective_ids:
+            key_result_rows = list(
+                session.exec(
+                    select(
+                        KeyResult.id,
+                        KeyResult.objective_id,
+                        KeyResult.title,
+                        KeyResult.progress,
+                        KeyResult.gemini_analysis,
                     )
+                    .where(KeyResult.objective_id.in_(objective_ids))
+                    .order_by(
+                        KeyResult.objective_id,
+                        func.lower(KeyResult.title),
+                        KeyResult.id,
+                    )
+                ).all()
+            )
+            for (
+                key_result_id,
+                objective_id,
+                title,
+                progress,
+                gemini_analysis,
+            ) in key_result_rows:
+                if key_result_id is None or objective_id is None:
+                    continue
+                key_result_ids.append(int(key_result_id))
+                ai_overall_score, ai_deadline_state = _atlas_extract_ai_snapshot_fields(
+                    gemini_analysis
+                )
+                payload = {
+                    "id": int(key_result_id),
+                    "title": title,
+                    "progress": int(progress or 0),
+                    "ai_overall_score": ai_overall_score,
+                    "ai_deadline_state": ai_deadline_state,
+                    "tasks": [],
+                }
+                if include_analysis:
+                    payload["gemini_analysis"] = gemini_analysis
+                key_result_payload_by_id[int(key_result_id)] = payload
+                objective_payload = objective_payload_by_id.get(int(objective_id))
+                if objective_payload is not None:
+                    objective_payload["key_results"].append(payload)
 
-                objectives_payload.append(
+        if key_result_ids:
+            task_rows = list(
+                session.exec(
+                    select(
+                        Task.id,
+                        Task.key_result_id,
+                        Task.title,
+                        Task.progress,
+                        Task.deadline,
+                        Task.timer_started_at,
+                        Task.status,
+                        Task.total_time_spent,
+                    )
+                    .where(Task.key_result_id.in_(key_result_ids))
+                    .order_by(Task.key_result_id, func.lower(Task.title), Task.id)
+                ).all()
+            )
+            for (
+                task_id,
+                key_result_id,
+                title,
+                progress,
+                deadline,
+                timer_started_at,
+                status,
+                total_time_spent,
+            ) in task_rows:
+                if task_id is None or key_result_id is None:
+                    continue
+                key_result_payload = key_result_payload_by_id.get(int(key_result_id))
+                if key_result_payload is None:
+                    continue
+                key_result_payload["tasks"].append(
                     {
-                        "id": objective.id,
-                        "title": objective.title,
-                        "description": objective.description,
-                        "progress": int(objective.progress or 0),
-                        "key_results": key_results_payload,
+                        "id": int(task_id),
+                        "title": title,
+                        "progress": int(progress or 0),
+                        "deadline": deadline,
+                        "timer_started_at": timer_started_at,
+                        "status": str(getattr(status, "value", status)),
+                        "total_time_spent": int(total_time_spent or 0),
                     }
                 )
 
-            goals_payload.append(
-                {
-                    "id": goal.id,
-                    "title": goal.title,
-                    "description": goal.description,
-                    "progress": int(goal.progress or 0),
-                    "owner_id": goal.owner_id,
-                    "objectives": objectives_payload,
-                }
+        users_map = {}
+        if owner_ids_in_scope:
+            users = list(
+                session.exec(
+                    select(User.id, User.display_name, User.username)
+                    .where(User.id.in_(sorted(owner_ids_in_scope)))
+                    .order_by(col(User.display_name), col(User.username))
+                ).all()
             )
+            users_map = {
+                int(user_id): (display_name or username or "Unknown")
+                for user_id, display_name, username in users
+                if user_id is not None
+            }
 
         return {"goals": goals_payload, "users_map": users_map}
 
-def get_node_details(node_id):
-    """Helper to get title and type for a node ID from DB."""
-    # This is tricky because ID doesn't imply type in standard SQL.
-    # But our IDs are integers. We might need a unified lookup or pass type.
-    # For now, let's assume we can deduce or search.
-    # Actually, the navigation stack should probably store (id, type) or we search.
-    # Searching all tables is inefficient.
-    # Hack: Try to find in loaded tree? 
-    # Better: Update navigation to push objects or (id, type).
-    # For this refactor, let's implement a 'smart' fetch or just iterate tables.
+
+@st.cache_data(ttl=45, show_spinner=False)
+def _cached_get_atlas_scope_runtime(
+    cycle_id: int,
+    owner_ids_key,
+    include_analysis: bool = False,
+):
+    snapshot = _cached_get_atlas_scope_snapshot(
+        cycle_id,
+        owner_ids_key,
+        include_analysis=include_analysis,
+    )
+    users_map = snapshot.get("users_map", {})
+    index, roots = _build_atlas_index_from_snapshot(snapshot.get("goals", []), users_map)
+    node_lookup = _atlas_build_node_lookup(index)
+    return {
+        "snapshot": snapshot,
+        "index": index,
+        "roots": roots,
+        "node_lookup": node_lookup,
+    }
+
+def _atlas_build_node_lookup(index: dict) -> dict:
+    return {
+        str(ref): {
+            "type": str(meta.get("type") or ""),
+            "title": str(meta.get("title") or "Unknown"),
+        }
+        for ref, meta in (index or {}).items()
+    }
+
+
+def _atlas_get_node_details_from_lookup(node_id, node_lookup=None):
+    lookup = node_lookup
+    if lookup is None:
+        candidate = st.session_state.get("atlas_node_lookup")
+        lookup = candidate if isinstance(candidate, dict) else {}
+    if not isinstance(lookup, dict):
+        return None, None
+
+    hit = lookup.get(str(node_id))
+    if not isinstance(hit, dict):
+        return None, None
+    node_type = str(hit.get("type") or "").upper() or None
+    title = str(hit.get("title") or "Unknown")
+    return node_type, title
+
+
+def get_node_details(node_id, node_lookup=None):
+    """Resolve node details with O(1) Atlas lookup first, DB fallback for legacy paths."""
+    lookup_type, lookup_title = _atlas_get_node_details_from_lookup(node_id, node_lookup)
+    if lookup_type:
+        return lookup_type, lookup_title
+
     from src.crud import get_session_context
-    from sqlmodel import select
-    
+
     with get_session_context() as session:
-        # If node_id is a typed reference like 'objective_12', parse it to avoid
-        # ambiguity between tables that may have overlapping numeric ids.
+        # Legacy fallback for typed refs outside Atlas lookup.
         if isinstance(node_id, str) and "_" in node_id:
-            parts = node_id.split("_")
-            # support multi-part table names like 'key_result_12'
-            tab = "_".join(parts[:-1]).lower()
+            node_type, node_id_int = _parse_typed_ref(node_id)
+            if node_id_int is None:
+                return None, "Unknown"
+            if node_type == "GOAL":
+                row = session.get(Goal, node_id_int)
+                if row:
+                    return "GOAL", row.title
+            elif node_type == "OBJECTIVE":
+                row = session.get(Objective, node_id_int)
+                if row:
+                    return "OBJECTIVE", row.title
+            elif node_type == "KEY_RESULT":
+                row = session.get(KeyResult, node_id_int)
+                if row:
+                    return "KEY_RESULT", row.title
+            elif node_type == "TASK":
+                row = session.get(Task, node_id_int)
+                if row:
+                    return "TASK", row.title
+            return None, "Unknown"
+
+        # Legacy fallback for ambiguous numeric IDs.
+        try:
+            raw_id = int(node_id)
+        except Exception:
+            return None, "Unknown"
+
+        for model, label in (
+            (Goal, "GOAL"),
+            (Objective, "OBJECTIVE"),
+            (KeyResult, "KEY_RESULT"),
+            (Task, "TASK"),
+        ):
             try:
-                nid = int(parts[-1])
+                row = session.get(model, raw_id)
+                if row:
+                    return label, row.title
             except Exception:
-                nid = None
-
-            if tab == "goal" and nid is not None:
-                g = session.get(Goal, nid)
-                if g: return "GOAL", g.title
-            if tab == "objective" and nid is not None:
-                o = session.get(Objective, nid)
-                if o: return "OBJECTIVE", o.title
-            if tab in ("key_result", "keyresult") and nid is not None:
-                k = session.get(KeyResult, nid)
-                if k: return "KEY_RESULT", k.title
-            if tab == "task" and nid is not None:
-                t = session.get(Task, nid)
-                if t: return "TASK", t.title
-
-        # Fallback: try numeric id lookups in order (may be ambiguous if ids overlap)
-        try:
-            g = session.get(Goal, node_id)
-            if g: return "GOAL", g.title
-        except Exception:
-            pass
-        try:
-            o = session.get(Objective, node_id)
-            if o: return "OBJECTIVE", o.title
-        except Exception:
-            pass
-        try:
-            k = session.get(KeyResult, node_id)
-            if k: return "KEY_RESULT", k.title
-        except Exception:
-            pass
-        try:
-            t = session.get(Task, node_id)
-            if t: return "TASK", t.title
-        except Exception:
-            pass
+                continue
     return None, "Unknown"
 
 def build_graph_from_node(root_obj):
@@ -296,18 +462,35 @@ def navigate_back_to(index):
         st.session_state.nav_stack = st.session_state.nav_stack[:index+1]
         st.rerun()
 
-def render_breadcrumbs():
-    """Render clickable breadcrumbs using pills directly from DB."""
+
+def _atlas_breadcrumb_labels(nav_stack, node_lookup):
+    labels = ["🏠 Home"]
+    for node_ref in list(nav_stack or []):
+        node_type, title = _atlas_get_node_details_from_lookup(
+            node_ref, node_lookup=node_lookup
+        )
+        if not node_type:
+            labels.append(f"Unknown: {title or node_ref}")
+            continue
+        labels.append(f"{node_type.replace('_', ' ').title()}: {title}")
+    return labels
+
+
+def render_breadcrumbs(node_lookup=None):
+    """Render clickable breadcrumbs using typed refs and Atlas in-memory lookup."""
     stack = st.session_state.nav_stack
     options = ["HOME"] + stack
-    
+
     def get_label(opt):
-        if opt == "HOME": return "🏠 Home"
-        ntype, title = get_node_details(opt)
+        if opt == "HOME":
+            return "🏠 Home"
+        ntype, title = get_node_details(opt, node_lookup=node_lookup)
+        if not ntype:
+            return f"Unknown: {title}"
         return f"{ntype.replace('_',' ').title()}: {title}"
-        
+
     current_selection = stack[-1] if stack else "HOME"
-    
+
     selected = st.pills(
         "Navigation",
         options=options,
@@ -316,7 +499,7 @@ def render_breadcrumbs():
         format_func=get_label,
         key="nav_pills"
     )
-    
+
     if selected != current_selection:
         if selected == "HOME":
             st.session_state.nav_stack = []
@@ -325,7 +508,8 @@ def render_breadcrumbs():
             try:
                 idx = stack.index(selected)
                 navigate_back_to(idx)
-            except ValueError: pass
+            except ValueError:
+                pass
 
 def get_ancestor_objective(node_id):
     """Find ancestor Objective using DB."""
@@ -2049,6 +2233,8 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
             timer_started_at=payload.get("timer_started_at"),
             status=payload.get("status"),
             total_time_spent=int(payload.get("total_time_spent", 0) or 0),
+            ai_overall_score=payload.get("ai_overall_score"),
+            ai_deadline_state=payload.get("ai_deadline_state"),
             gemini_analysis=payload.get("gemini_analysis"),
         )
 
@@ -2110,6 +2296,12 @@ def _atlas_parse_ai_analysis(raw_analysis):
 
 def _atlas_ai_overall_score(meta):
     node = meta.get("node")
+    precomputed = getattr(node, "ai_overall_score", None)
+    if precomputed is not None:
+        try:
+            return max(0, min(100, int(float(precomputed))))
+        except Exception:
+            pass
     analysis = _atlas_parse_ai_analysis(getattr(node, "gemini_analysis", None))
     if not analysis:
         return None
@@ -2122,6 +2314,11 @@ def _atlas_ai_overall_score(meta):
 
 def _atlas_ai_deadline_warnings(meta):
     node = meta.get("node")
+    precomputed_state = str(getattr(node, "ai_deadline_state", "") or "").lower()
+    if precomputed_state == "overdue":
+        return ["Potentially overdue"]
+    if precomputed_state == "risk":
+        return ["At risk"]
     analysis = _atlas_parse_ai_analysis(getattr(node, "gemini_analysis", None))
     if not analysis:
         return []
@@ -2692,13 +2889,20 @@ def render_atlas_workspace(username):
         st.info("Select a cycle to load the OKR workspace.")
         return
 
-    with get_session_context() as session:
-        actor = session.exec(select(User).where(User.username == username)).first()
-        if not actor:
-            st.error("User context is unavailable.")
-            return
-        actor_id = actor.id
-        role_value = str(getattr(actor.role, "value", actor.role))
+    actor_id = st.session_state.get("user_id")
+    try:
+        actor_id = int(actor_id) if actor_id is not None else None
+    except Exception:
+        actor_id = None
+    role_value = str(st.session_state.get("user_role") or "").strip().lower()
+    if actor_id is None or not role_value:
+        with get_session_context() as session:
+            actor = session.exec(select(User).where(User.username == username)).first()
+            if not actor:
+                st.error("User context is unavailable.")
+                return
+            actor_id = actor.id
+            role_value = str(getattr(actor.role, "value", actor.role)).strip().lower()
 
     scope_options = {"My OKRs": [actor_id]}
     if role_value == "manager":
@@ -2727,10 +2931,16 @@ def render_atlas_workspace(username):
     selected_scope = st.session_state.get("atlas_scope_selector", scope_labels[0])
 
     owner_ids = scope_options.get(selected_scope)
-    owner_ids_key = None if owner_ids is None else tuple(sorted(set(int(owner_id) for owner_id in owner_ids)))
-    atlas_snapshot = _cached_get_atlas_scope_snapshot(int(cycle_id), owner_ids_key)
-    users_map = atlas_snapshot.get("users_map", {})
-    index, roots = _build_atlas_index_from_snapshot(atlas_snapshot.get("goals", []), users_map)
+    owner_ids_key = _canonical_owner_ids_key(owner_ids)
+    atlas_runtime = _cached_get_atlas_scope_runtime(
+        int(cycle_id),
+        owner_ids_key,
+        include_analysis=False,
+    )
+    index = atlas_runtime.get("index", {})
+    roots = list(atlas_runtime.get("roots") or [])
+    node_lookup = atlas_runtime.get("node_lookup") or {}
+    st.session_state["atlas_node_lookup"] = node_lookup
     if not roots:
         st.info("No goals found for this cycle and scope.")
         if st.button("Create Goal", key="atlas_create_goal_empty", type="primary"):
@@ -3125,11 +3335,16 @@ def render_atlas_workspace(username):
             st.markdown("<div class='atlas-kicker'>Focus Map</div>", unsafe_allow_html=True)
             st.caption("Navigate hierarchy and pick your next move.")
 
-            nav_labels = ["Home"] + [
-                f"{TYPE_ICONS.get(index[path_ref]['type'], '')} {index[path_ref]['title']}"
-                for path_ref in selected_meta["path"]
-                if path_ref in index
-            ]
+            nav_labels = ["Home"]
+            for path_ref in selected_meta["path"]:
+                node_type, node_title = _atlas_get_node_details_from_lookup(
+                    path_ref, node_lookup=node_lookup
+                )
+                if not node_type:
+                    continue
+                nav_labels.append(
+                    f"{TYPE_ICONS.get(node_type, '')} {node_title}"
+                )
             st.markdown(
                 f"<div class='atlas-nav-line'>{escape_html(' > '.join(nav_labels))}</div>",
                 unsafe_allow_html=True,
