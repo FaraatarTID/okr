@@ -3022,8 +3022,11 @@ def render_atlas_workspace(username):
                         st.session_state["atlas_sprint_reminder_dismissed_for"] = sprint_key
                         st.rerun()
 
+            action_row = spotlight_cols[1].columns([1, 3, 1], gap="small")
+            action_col = action_row[1]
+
             if focus_running:
-                if spotlight_cols[1].button(
+                if action_col.button(
                     "Stop Session",
                     key=f"atlas_spotlight_stop_{focus_task_ref}",
                     type="primary",
@@ -3033,7 +3036,7 @@ def render_atlas_workspace(username):
                     _stop_focus_session()
                     st.rerun()
             else:
-                if spotlight_cols[1].button(
+                if action_col.button(
                     "Start",
                     key=f"atlas_spotlight_start_{focus_task_ref}",
                     type="primary",
