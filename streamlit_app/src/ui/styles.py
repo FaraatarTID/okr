@@ -256,6 +256,13 @@ def inject_atlas_styles():
             margin: 0.15rem 0 0.65rem;
         }
 
+        .atlas-focus-description {
+            color: #4f5d6f;
+            font-size: 0.9rem;
+            line-height: 1.42;
+            margin: -0.32rem 0 0.45rem;
+        }
+
         .atlas-suggested-line {
             margin: 0.12rem 0 0.15rem;
             color: var(--atlas-ink);
@@ -626,6 +633,12 @@ def inject_atlas_styles():
                 font-size: 1.3rem;
                 margin: 0.05rem 0 0.36rem;
                 line-height: 1.2;
+            }
+
+            .atlas-focus-description {
+                font-size: 0.8rem;
+                line-height: 1.34;
+                margin: -0.16rem 0 0.25rem;
             }
 
             .atlas-chip-row {
