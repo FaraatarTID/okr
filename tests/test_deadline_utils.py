@@ -67,4 +67,3 @@ def test_get_expected_progress_and_format_helpers_accept_datetime():
     rendered = format_deadline_display(deadline)
     assert isinstance(rendered, str)
     assert rendered
-

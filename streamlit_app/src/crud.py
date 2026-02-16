@@ -78,9 +78,7 @@ AUTH_USER_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_USER_MAX_ATTEMPTS", "5")))
 AUTH_IP_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_IP_WINDOW_SECONDS", "300")))
 AUTH_IP_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_IP_MAX_ATTEMPTS", "20")))
 AUTH_LOCKOUT_SECONDS = max(1, int(os.getenv("AUTH_LOCKOUT_SECONDS", "900")))
-ADMIN_BOOTSTRAP_MAX_RETRIES = max(
-    1, int(os.getenv("ADMIN_BOOTSTRAP_MAX_RETRIES", "3"))
-)
+ADMIN_BOOTSTRAP_MAX_RETRIES = max(1, int(os.getenv("ADMIN_BOOTSTRAP_MAX_RETRIES", "3")))
 ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS = max(
     0.0, float(os.getenv("ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", "0.4"))
 )
@@ -1931,7 +1929,9 @@ def recalculate_rollup_for_key_results(key_result_ids: List[int]) -> None:
     """
     Recalculate Objective/Goal progress rollups for affected key results.
     """
-    unique_ids = sorted({int(kr_id) for kr_id in (key_result_ids or []) if kr_id is not None})
+    unique_ids = sorted(
+        {int(kr_id) for kr_id in (key_result_ids or []) if kr_id is not None}
+    )
     if not unique_ids:
         return
 
@@ -1947,8 +1947,14 @@ def recalculate_rollup_for_key_results(key_result_ids: List[int]) -> None:
             objective = session.get(Objective, objective_id)
             if not objective:
                 continue
-            total_kr = sum(int(getattr(kr, "progress", 0) or 0) for kr in objective.key_results)
-            objective.progress = int(total_kr / len(objective.key_results)) if objective.key_results else 0
+            total_kr = sum(
+                int(getattr(kr, "progress", 0) or 0) for kr in objective.key_results
+            )
+            objective.progress = (
+                int(total_kr / len(objective.key_results))
+                if objective.key_results
+                else 0
+            )
             session.add(objective)
             if objective.goal_id is not None:
                 goal_ids.add(int(objective.goal_id))
@@ -1957,8 +1963,12 @@ def recalculate_rollup_for_key_results(key_result_ids: List[int]) -> None:
             goal = session.get(Goal, goal_id)
             if not goal:
                 continue
-            total_obj = sum(int(getattr(obj, "progress", 0) or 0) for obj in goal.objectives)
-            goal.progress = int(total_obj / len(goal.objectives)) if goal.objectives else 0
+            total_obj = sum(
+                int(getattr(obj, "progress", 0) or 0) for obj in goal.objectives
+            )
+            goal.progress = (
+                int(total_obj / len(goal.objectives)) if goal.objectives else 0
+            )
             session.add(goal)
 
         session.commit()
