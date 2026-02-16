@@ -2829,6 +2829,44 @@ def render_atlas_workspace(username):
             unsafe_allow_html=True,
         )
 
+        suggested_focus_ref = None
+        if task_refs:
+            actionable_refs = [
+                ref for ref in task_refs
+                if int(index.get(ref, {}).get("progress", 0) or 0) < 100
+            ]
+            candidate_refs = actionable_refs or task_refs
+            ranked_refs = sorted(
+                candidate_refs,
+                key=lambda ref: _atlas_suggested_next_score(index[ref], actor_id, index),
+            )
+            if ranked_refs:
+                suggested_focus_ref = ranked_refs[0]
+
+        if suggested_focus_ref and suggested_focus_ref in index:
+            suggested_meta = index[suggested_focus_ref]
+            suggested_cols = st.columns([3.2, 1.2], gap="large")
+            suggested_cols[0].markdown(
+                (
+                    f"**Suggested Next:** {TYPE_ICONS.get('TASK', '')} "
+                    f"{escape_html(suggested_meta['title'])}"
+                ),
+                unsafe_allow_html=True,
+            )
+            suggested_cols[0].caption(
+                _atlas_suggested_next_reason(suggested_meta, actor_id, index)
+            )
+            already_suggested = bool(focus_task_ref == suggested_focus_ref)
+            if suggested_cols[1].button(
+                "Use Suggested",
+                key=f"atlas_top_suggest_focus_{suggested_focus_ref}",
+                use_container_width=True,
+                disabled=already_suggested,
+            ):
+                st.session_state["atlas_focus_task_ref"] = suggested_focus_ref
+                st.session_state["atlas_selected_ref"] = suggested_focus_ref
+                st.rerun()
+
         if focus_task_ref and task_refs:
             picked_ref = st.selectbox(
                 "Choose Focus Task",
@@ -3337,30 +3375,7 @@ def render_atlas_workspace(username):
                     ref for ref in map_refs
                     if ref in index and index[ref]["type"] == "TASK"
                 ]
-                if map_task_refs:
-                    actionable_refs = [
-                        ref for ref in map_task_refs
-                        if int(index[ref].get("progress", 0) or 0) < 100
-                    ]
-                    candidate_refs = actionable_refs or map_task_refs
-                    ranked_focus_refs = sorted(
-                        candidate_refs,
-                        key=lambda ref: _atlas_suggested_next_score(index[ref], actor_id, index),
-                    )
-                    map_cols[1].markdown("**Suggested Next**")
-                    for ref in ranked_focus_refs[:6]:
-                        meta = index[ref]
-                        button_label = f"{TYPE_ICONS.get('TASK', '')} {meta['title']}"
-                        if map_cols[1].button(button_label, key=f"atlas_map_focus_{ref}", use_container_width=True):
-                            st.session_state["atlas_focus_task_ref"] = ref
-                            st.session_state["atlas_selected_ref"] = ref
-                            st.rerun()
-                        map_cols[1].markdown(
-                            f"<div class='atlas-chip-row'>{_atlas_attention_chip_html(meta)}</div>",
-                            unsafe_allow_html=True,
-                        )
-                        map_cols[1].caption(_atlas_suggested_next_reason(meta, actor_id, index))
-                else:
+                if not map_task_refs:
                     if map_lens == "Scope":
                         map_cols[1].info("No tasks available in current scope.")
                     else:
