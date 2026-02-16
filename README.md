@@ -28,10 +28,6 @@ Use this section as the single entry point for all project docs.
 - Troubleshooting guide: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - First deployment runbook: [docs/RUNBOOK.md](docs/RUNBOOK.md)
 
-### Subproject docs
-
-- Odoo module documentation: [odoo_module/okr_tracker/README.md](odoo_module/okr_tracker/README.md)
-
 ---
 ## 🌟 Features Overview
 
@@ -326,7 +322,7 @@ The codebase is organized modularly to separate concerns across the UI, business
 - **`streamlit_app/src/utils/`**: Shared utility helpers used across app layers.
 - **`streamlit_app/alembic/`**: Database migration environment and versions.
 - **`tests/`**: Automated regression and performance-path tests.
-- **`docs/`**, **`deploy/`**, **`odoo_module/`**, **`android/`**: Ops docs and integration subprojects.
+- **`docs/`**, **`deploy/`**: Operations and deployment assets.
 
 ---
 
