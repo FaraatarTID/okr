@@ -131,7 +131,8 @@ The current implementation does not guarantee:
 - a separate global AI control center outside Atlas/Dashboard surfaces.
 
 Deployment policy control:
-- Set `ALLOW_EXTERNAL_AI=false` (or `OKR_ALLOW_EXTERNAL_AI=false`) to hard-disable outbound Gemini calls.
+- Set `ALLOW_EXTERNAL_AI=false` (or `OKR_ALLOW_EXTERNAL_AI=false`) to hard-disable outbound AI calls.
+- Set `AI_PROVIDER=openai_compatible` with `AI_BASE_URL` + `AI_MODEL` to route AI to local/self-hosted OpenAI-compatible runtimes (for example Ollama, LM Studio, vLLM gateways).
 
 ## 7. Practical Prompt Patterns
 

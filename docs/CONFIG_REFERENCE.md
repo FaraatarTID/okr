@@ -42,15 +42,32 @@ PDF generation
 AI integration
 
 - Streamlit secrets keys:
-  - GEMINI_API_KEY: required for AI analysis and coaching features
+  - AI_PROVIDER: `gemini` (default) or `openai_compatible`
   - ALLOW_EXTERNAL_AI: optional policy gate (`true`/`false`); default `true`
+  - GEMINI_API_KEY: required when `AI_PROVIDER=gemini`
+  - GEMINI_MODEL: optional override (default: `gemini-flash-latest`)
+  - AI_BASE_URL: required when `AI_PROVIDER=openai_compatible`
+  - AI_MODEL: required when `AI_PROVIDER=openai_compatible`
+  - AI_API_KEY: optional token for OpenAI-compatible gateways
 - Environment fallback:
+  - AI_PROVIDER
+  - OKR_AI_PROVIDER
   - GEMINI_API_KEY
   - VITE_GEMINI_API_KEY
+  - GEMINI_MODEL
+  - AI_BASE_URL
+  - OPENAI_BASE_URL
+  - OLLAMA_BASE_URL
+  - AI_MODEL
+  - OPENAI_MODEL
+  - OLLAMA_MODEL
+  - AI_API_KEY
+  - OPENAI_API_KEY
   - ALLOW_EXTERNAL_AI
   - OKR_ALLOW_EXTERNAL_AI
 - Behavior:
-  - If `ALLOW_EXTERNAL_AI=false`, outbound Gemini calls are blocked even if an API key exists.
+  - If `ALLOW_EXTERNAL_AI=false`, outbound AI calls are blocked regardless of provider.
+  - `AI_PROVIDER=openai_compatible` uses Chat Completions-style APIs, so self-hosted models can be used without Gemini.
   - Runtime preflight reports this policy as an informational status.
 
 Runtime preflight policy
@@ -66,10 +83,13 @@ Recommended deployment profiles
 
 - Streamlit Cloud:
   - PDF_METHOD=pdfshift
+  - AI_PROVIDER=gemini (or your approved hosted gateway via `openai_compatible`)
   - pdfshift_api_key must be present
   - OKR_STRICT_RUNTIME_PREFLIGHT=1 (recommended)
 - Self-hosted server (Docker/VM):
   - PDF_METHOD=pdfkit (or pdfshift if desired)
+  - AI_PROVIDER=openai_compatible for local/self-hosted LLM routing
+  - If openai_compatible: set AI_BASE_URL and AI_MODEL
   - If pdfkit: wkhtmltopdf must be installed and reachable
   - OKR_STRICT_RUNTIME_PREFLIGHT=1 (recommended)
 

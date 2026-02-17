@@ -26,7 +26,7 @@ Documentation HQ: [README](../README.md)
 ## ۲. سطوح کنترلی ادمین
 
 سطوح اصلی مدیریت در UI:
-- دیالوگ `Admin Panel`: مدیریت کاربران، ریست رمز، و عملیات چرخه.
+- دیالوگ `Admin Panel`: مدیریت کاربران، ریست رمز، عملیات چرخه، و بررسی `AI Health`.
 - `Atlas Workspace`: انتخاب scope بر اساس نقش (`All Users` برای ادمین)، Focus Map و Inspector.
 - `Strategic Dashboard`: شاخص‌های تجمیعی و نمایش ریسک تیم.
 
@@ -170,11 +170,13 @@ Definition of done برای کیفیت پایش مدیر:
 ## ۱۰. Secrets و پیکربندی Runtime
 
 برای پایداری تولید:
-1. `GEMINI_API_KEY` را فقط در Streamlit secrets یا env امن نگه دارید و هرگز داخل repository قرار ندهید.
+1. اطلاعات محرمانه AI را فقط در Streamlit secrets یا env امن نگه دارید و هرگز داخل repository قرار ندهید.
+2. `AI_PROVIDER` را صریح تنظیم کنید (`gemini` یا `openai_compatible`) و از مسیر `Admin Panel -> AI Health` یا دستور `python streamlit_app/scripts/ai_provider_health_check.py` وضعیت را بررسی کنید.
+3. اگر Gemini استفاده می‌کنید، `GEMINI_API_KEY` را تنظیم کنید.
 2. برای خروجی PDF:
    - اجرای local/server: `pdfkit` + `wkhtmltopdf`.
    - اجرای Streamlit Cloud: کلید PDFShift از secrets.
-3. در هر محیط فقط یک مسیر deployment/pdf را فعال نگه دارید (از ترکیب همزمان pipelineها پرهیز کنید).
-4. حالت fail-fast اختیاری: با `OKR_STRICT_RUNTIME_PREFLIGHT=1` در صورت خطای بحرانی پیکربندی PDF، startup برنامه متوقف می‌شود.
+4. در هر محیط فقط یک مسیر deployment/pdf را فعال نگه دارید (از ترکیب همزمان pipelineها پرهیز کنید).
+5. حالت fail-fast اختیاری: با `OKR_STRICT_RUNTIME_PREFLIGHT=1` در صورت خطای بحرانی پیکربندی PDF، startup برنامه متوقف می‌شود.
 
 

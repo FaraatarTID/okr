@@ -30,6 +30,8 @@ Runbook: first deployment
 - Confirm runtime preflight has no critical errors
 - Verify one PDF export succeeds in the selected provider mode
 - Verify one AI action succeeds (or document AI as intentionally disabled)
+- Run AI provider health check:
+  - `python streamlit_app/scripts/ai_provider_health_check.py`
 
 6) Enable optional integrations
 - Add secrets.toml for PDFShift or Gemini if required
