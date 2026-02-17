@@ -115,7 +115,7 @@ def _run_pdf_preflight():
     except Exception:
         pass
 
-    from src.services.ai_service import get_api_key
+    from src.services.ai_service import get_api_key, is_external_ai_allowed
 
     report = evaluate_runtime_preflight(
         pdf_method=pdf_method,
@@ -124,6 +124,7 @@ def _run_pdf_preflight():
         has_pdfkit_module=has_pdfkit_module,
         has_wkhtmltopdf=_detect_wkhtmltopdf(),
         gemini_api_key=get_api_key(),
+        external_ai_allowed=is_external_ai_allowed(),
     )
     for msg in report.errors:
         st.error(f"Runtime preflight: {msg}")

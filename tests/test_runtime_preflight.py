@@ -73,3 +73,17 @@ def test_valid_cloud_profile_is_clean():
         gemini_api_key="valid-key",
     )
     assert report.ok
+
+
+def test_external_ai_policy_disables_key_requirement():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfkit",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=False,
+        has_pdfkit_module=True,
+        has_wkhtmltopdf=True,
+        gemini_api_key=None,
+        external_ai_allowed=False,
+    )
+    assert not any("Gemini API key is not configured" in msg for msg in report.warnings)
+    assert any("External AI calls are disabled by policy" in msg for msg in report.infos)

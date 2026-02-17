@@ -130,6 +130,9 @@ The current implementation does not guarantee:
 - automatic execution of proposed tasks,
 - a separate global AI control center outside Atlas/Dashboard surfaces.
 
+Deployment policy control:
+- Set `ALLOW_EXTERNAL_AI=false` (or `OKR_ALLOW_EXTERNAL_AI=false`) to hard-disable outbound Gemini calls.
+
 ## 7. Practical Prompt Patterns
 
 Use short, constrained prompts in Inspector analysis flows:

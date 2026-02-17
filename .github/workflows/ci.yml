@@ -31,6 +31,12 @@ jobs:
           pip install -r streamlit_app/requirements.txt
           pip install ruff mypy pytest
 
+      - name: Security Scan (pip-audit)
+        continue-on-error: true
+        run: |
+          python -m pip install pip-audit
+          python -m pip_audit -r streamlit_app/requirements.txt --progress-spinner off
+
       - name: Lint (Ruff)
         run: |
           python -m ruff check \
