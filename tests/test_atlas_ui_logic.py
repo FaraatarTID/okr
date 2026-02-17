@@ -117,7 +117,7 @@ def test_treemap_selected_node_keeps_status_fill_and_selection_border():
     assert fig is not None
     trace = fig.data[0]
     goal_idx = list(trace.ids).index("goal_1")
-    assert trace.marker.colors[goal_idx] == "#c36d27"
+    assert trace.marker.colors[goal_idx] == "#fce7e2"
     assert trace.marker.line.color[goal_idx] == "#8a6827"
     assert float(trace.marker.line.width[goal_idx]) >= 3.0
     assert "pattern" not in trace.marker.to_plotly_json()

@@ -330,7 +330,11 @@ def analyze_objective(objective: Objective,
 # These work with JSON node dictionaries used in app.py
 # =============================================================================
 
-def analyze_node(node_id: int, node_type: str = "KEY_RESULT"):
+def analyze_node(
+    node_id: int,
+    node_type: Optional[str] = "KEY_RESULT",
+    actor_username: Optional[str] = None,
+):
     """
     Analyze a node (typically a Key Result) by fetching its data directly from SQL.
     Replaced legacy dictionary-based version for better performance and consistency.
@@ -345,16 +349,19 @@ def analyze_node(node_id: int, node_type: str = "KEY_RESULT"):
     if not GENAI_AVAILABLE:
         return {"error": "google-generativeai not installed"}
 
-    # Fetch node with all relationships for context
-    node = get_node(node_id, node_type)
+    node_type_upper = str(node_type or "KEY_RESULT").upper()
+
+    # Fetch node with all relationships for context (RBAC-aware when actor is provided)
+    try:
+        node = get_node(node_id, node_type_upper, actor_username=actor_username)
+    except PermissionError as exc:
+        return {"error": str(exc)}
     if not node:
-        return {"error": f"Node {node_id} ({node_type}) not found"}
+        return {"error": f"Node {node_id} ({node_type_upper}) not found"}
 
     # Identify children and context
     # Usually we analyze Key Results (children = Tasks) or Objectives (children = KRs)
     children = []
-    node_type_upper = node_type.upper()
-    
     if node_type_upper == "GOAL":
         children = node.objectives
     elif node_type_upper == "OBJECTIVE":

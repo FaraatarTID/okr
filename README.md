@@ -19,6 +19,10 @@ Use this section as the single entry point for all project docs.
 - **User Guide (Fa)**: [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
 - **Admin Guide (En)**: [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)
 - **Admin Guide (Fa)**: [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md)
+- **Manager Playbook (En)**: [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md)
+- **Manager Playbook (Fa)**: [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md)
+- **OKR Lifecycle (En)**: [docs/OKR_LIFECYCLE_GUIDE.md](docs/OKR_LIFECYCLE_GUIDE.md)
+- **OKR Lifecycle (Fa)**: [docs/OKR_LIFECYCLE_GUIDE_FA.md](docs/OKR_LIFECYCLE_GUIDE_FA.md)
 
 ### 🛠️ Ops & Infrastructure
 

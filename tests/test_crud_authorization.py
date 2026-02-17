@@ -276,3 +276,108 @@ def test_update_task_can_clear_start_date(isolated_db):
     cleared = update_task(task.id, start_date=None, actor_username="alice")
     assert cleared is not None
     assert cleared.start_date is None
+
+
+def test_alignment_mutations_require_authorization(isolated_db):
+    from src.crud import (
+        create_alignment,
+        create_cycle,
+        create_goal,
+        create_objective,
+        create_user,
+        delete_alignment,
+    )
+    from src.models import UserRole
+
+    manager = create_user("manager_align", "mgr-pass", role=UserRole.MANAGER)
+    create_user("member_align", "member-pass", manager_id=manager.id)
+    create_user("outsider_align", "outsider-pass")
+    cycle = create_cycle(
+        "Q9",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+    )
+
+    member_goal = create_goal(
+        "member_align", title="member goal", cycle_id=cycle.id, actor_username="member_align"
+    )
+    member_obj_a = create_objective(member_goal.id, "member obj a", actor_username="member_align")
+    member_obj_b = create_objective(member_goal.id, "member obj b", actor_username="member_align")
+
+    outsider_goal = create_goal(
+        "outsider_align",
+        title="outsider goal",
+        cycle_id=cycle.id,
+        actor_username="outsider_align",
+    )
+    outsider_obj = create_objective(
+        outsider_goal.id, "outsider obj", actor_username="outsider_align"
+    )
+
+    edge = create_alignment(
+        parent_id=member_obj_a.id,
+        child_id=member_obj_b.id,
+        actor_username="manager_align",
+    )
+    assert edge is not None
+
+    with pytest.raises(PermissionError):
+        create_alignment(
+            parent_id=member_obj_a.id,
+            child_id=outsider_obj.id,
+            actor_username="manager_align",
+        )
+
+    with pytest.raises(PermissionError):
+        delete_alignment(edge.id, actor_username="outsider_align")
+
+    delete_alignment(edge.id, actor_username="manager_align")
+
+
+def test_get_node_enforces_read_scope_when_actor_is_provided(isolated_db):
+    from src.crud import (
+        create_cycle,
+        create_goal,
+        create_key_result,
+        create_objective,
+        create_task,
+        create_user,
+        get_node,
+    )
+    from src.models import UserRole
+
+    manager = create_user("manager_read", "mgr-pass", role=UserRole.MANAGER)
+    create_user("member_read", "member-pass", manager_id=manager.id)
+    create_user("outsider_read", "outsider-pass")
+    cycle = create_cycle(
+        "Q10",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+    )
+
+    member_goal = create_goal(
+        "member_read", title="member goal", cycle_id=cycle.id, actor_username="member_read"
+    )
+    member_obj = create_objective(member_goal.id, "member obj", actor_username="member_read")
+    member_kr = create_key_result(member_obj.id, "member kr", actor_username="member_read")
+    member_task = create_task(member_kr.id, "member task", actor_username="member_read")
+
+    outsider_goal = create_goal(
+        "outsider_read",
+        title="outsider goal",
+        cycle_id=cycle.id,
+        actor_username="outsider_read",
+    )
+
+    assert get_node(member_goal.id, "GOAL", actor_username="manager_read") is not None
+    assert get_node(member_task.id, "TASK", actor_username="manager_read") is not None
+    assert get_node(member_task.id, "TASK", actor_username="member_read") is not None
+
+    with pytest.raises(PermissionError):
+        get_node(outsider_goal.id, "GOAL", actor_username="manager_read")
+
+    with pytest.raises(PermissionError):
+        get_node(member_goal.id, "GOAL", actor_username="outsider_read")
+
+    with pytest.raises(PermissionError):
+        get_node(member_goal.id, "GOAL", actor_username="ghost_user")

@@ -9,7 +9,6 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
   - Primary hierarchy UX: Atlas focus-first workspace (`Focus Map` + `Inspector`)
-  - Compatibility UX: Classic drill-down cards with breadcrumb navigation
 - Domain/data operations: `streamlit_app/src/crud.py`
 - Extracted domain modules:
   - `streamlit_app/src/domain/authorization.py` (ownership/RBAC predicates + authorizers)
@@ -127,6 +126,8 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 - Mutating actions call `_authorize_goal_mutation`.
 - Owner, manager-of-owner, and admin paths are enforced before changes are committed.
+- Read-sensitive node retrieval can be actor-scoped via `get_node(..., actor_username=...)`.
+- AI node analysis (`analyze_node`) can use this actor-scoped read path before prompt context assembly.
 
 ## Invariants and Guardrails
 

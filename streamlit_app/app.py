@@ -416,7 +416,7 @@ def render_app(username, runtime_bundle=None):
 
     # Lazy imports to speed initial login page
     from src.ui.styles import apply_custom_fonts, inject_dialog_styles
-    from src.ui.components import render_level, navigate_to, navigate_back_to
+    from src.ui.components import render_level
     from src.ui.dialogs import (
         render_weekly_report_dialog,
         render_daily_report_dialog,
