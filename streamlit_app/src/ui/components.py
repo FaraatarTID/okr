@@ -49,6 +49,19 @@ from src.crud import (
 )
 from src.utils.time_utils import ensure_utc, utc_now_naive
 
+# Phase 4 Imports
+from src.domain.analysis import (
+    calculate_burnout_risk,
+    detect_strategy_gaps,
+    aggregate_achievements,
+)
+from src.domain.reporting import (
+    generate_achievement_portfolio,
+    format_portfolio_as_markdown,
+)
+from src.services.ai_service import generate_predictive_outlook
+from src.services.pdf_service import generate_achievement_portfolio_pdf
+
 
 # Cache helpers for heavy queries/aggregations
 @st.cache_data(ttl=60, show_spinner=False)
@@ -5474,6 +5487,126 @@ def render_card(node, username):
                             st.rerun()
                         else:
                             st.error(res_c["error"])
+
+
+def render_strategy_pulse_content(username):
+    """
+    Phase 4: Strategic insights dashboard tab.
+    Displays burnout risk, strategy gaps, and predictive outlook.
+    """
+    cycle_id = st.session_state.get("active_cycle_id")
+    if not cycle_id:
+        st.warning("Please select a cycle to view strategic insights.")
+        return
+
+    user_obj = get_user_by_username(username)
+    if not user_obj:
+        st.error("User not found.")
+        return
+
+    st.markdown("### 🧠 Strategy Pulse")
+    st.caption("Advanced insights into execution health and strategic alignment.")
+
+    col1, col2 = st.columns([1, 1])
+
+    # --- BURNOUT RISK ---
+    with col1:
+        st.markdown("#### ⚖️ Workload & Burnout")
+        with st.spinner("Calculating focus intensity..."):
+            burnout = calculate_burnout_risk(user_obj.id, days=14)
+
+        risk_label = burnout.get("risk_label", "Healthy")
+        risk_score = burnout.get("risk_score", 0)
+        
+        color = "#2e7d32" if risk_label == "Healthy" else "#f57f17" if risk_label == "Elevated" else "#e65100" if risk_label == "High" else "#c62828"
+        
+        st.markdown(f"""
+            <div style="padding: 20px; border-radius: 10px; background: {color}11; border: 1px solid {color}33;">
+                <h2 style="color: {color}; margin: 0;">{risk_label}</h2>
+                <p style="margin: 5px 0; color: #666;">Burnout Risk Score: <strong>{risk_score}/100</strong></p>
+                <div style="margin-top: 10px;">
+                    <span style="font-size: 13px; margin-right: 15px;">⏱️ Avg Daily: <strong>{burnout.get('avg_daily_minutes', 0)}m</strong></span>
+                    <span style="font-size: 13px;">✅ 14d Output: <strong>{burnout.get('completed_tasks', 0)} tasks</strong></span>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if risk_score > 50:
+            st.warning("⚠️ High effort detected relative to output velocity. Consider task pruning or workload redistribution.")
+
+    # --- STRATEGY GAPS ---
+    with col2:
+        st.markdown("#### 🧭 Ghost Goals & Gaps")
+        with st.spinner("Scanning for alignment gaps..."):
+            gaps = detect_strategy_gaps(cycle_id, user_ids=[user_obj.id])
+        
+        if not gaps:
+            st.success("🎯 All active objectives show healthy task activity.")
+        else:
+            for gap in gaps:
+                with st.expander(f"⚠️ {gap['title']}", expanded=True):
+                    st.write(gap["issue"])
+                    st.caption(f"Progress: {gap['progress']}% | Tasks: {gap['task_count']}")
+
+    st.markdown("---")
+
+    # --- PREDICTIVE OUTLOOK ---
+    st.markdown("#### 🔮 AI Predictive Outlook")
+    if st.button("✨ Generate Strategic Forecast", type="primary"):
+        with st.spinner("Gemini is synthesizing insights..."):
+            outlook = generate_predictive_outlook(
+                user_id=user_obj.id,
+                cycle_id=cycle_id,
+                burnout_data=burnout,
+                strategy_gaps=gaps
+            )
+            if "error" in outlook:
+                st.error(outlook["error"])
+            else:
+                st.session_state.strategy_outlook = outlook
+
+    outlook = st.session_state.get("strategy_outlook")
+    if outlook:
+        with st.container(border=True):
+            st.markdown(f"**Confidence:** {outlook.get('confidence_level', 'N/A')}")
+            st.markdown(outlook.get("outlook_markdown", "No forecast generated."))
+            
+            with st.expander("🛠️ Risk Mitigation Steps"):
+                for step in outlook.get("mitigation_steps", []):
+                    st.markdown(f"- {step}")
+
+    st.markdown("---")
+
+    # --- ACHIEVEMENT PORTFOLIO ---
+    st.markdown("#### 🏆 Achievement Portfolio")
+    col_port1, col_port2 = st.columns([2, 1])
+    with col_port1:
+        st.caption("Generate a professional summary of high-impact contributions for this cycle.")
+    
+    with col_port2:
+        if st.button("📄 Prepare Portfolio PDF", use_container_width=True):
+            with st.spinner("Aggregating achievements..."):
+                portfolio = generate_achievement_portfolio(
+                    user_id=user_obj.id,
+                    cycle_id=cycle_id,
+                    user_display_name=user_obj.display_name or user_obj.username
+                )
+                pdf_bytes = generate_achievement_portfolio_pdf(portfolio)
+                if pdf_bytes:
+                    st.session_state.portfolio_pdf = pdf_bytes.getvalue()
+                    st.session_state.portfolio_filename = f"Portfolio_{username}_{datetime.now().strftime('%Y%m%d')}.pdf"
+                    st.success("Portfolio ready!")
+                else:
+                    st.error("Failed to generate PDF. Check PDF engine configuration.")
+
+    if "portfolio_pdf" in st.session_state:
+        st.download_button(
+            label="📥 Download Achievement Portfolio",
+            data=st.session_state.portfolio_pdf,
+            file_name=st.session_state.portfolio_filename,
+            mime="application/pdf",
+            use_container_width=True
+        )
 
 
 def render_level(username):

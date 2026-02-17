@@ -883,3 +883,92 @@ def suggest_critical_task(task_candidates: List[Dict[str, Any]], context: Option
     except Exception as exc:
         return {"error": str(exc)}
 
+
+def generate_predictive_outlook(
+    burnout_data: dict,
+    strategy_gaps: list,
+    cycle_title: str = "Current Cycle",
+) -> Dict[str, Any]:
+    """
+    Ask Gemini to generate a strategic "Predictive Outlook" for a user based
+    on their burnout risk snapshot and any strategy gaps in their cycle.
+
+    Returns a JSON dict with:
+      - outlook_summary: 2-3 sentence narrative
+      - risk_mitigation: list of actionable recommendations
+      - strategic_pivots: list of suggested priority shifts
+      - confidence_level: 0-100
+    """
+    api_key = get_api_key()
+    if not api_key:
+        return {"error": "API Key not configured"}
+    if not GENAI_AVAILABLE:
+        return {"error": "google-generativeai not installed"}
+
+    gap_summaries = []
+    for g in strategy_gaps[:5]:
+        gap_summaries.append(
+            f"- {g.get('title', '?')}: {g.get('gap_type', '?')} "
+            f"(severity {g.get('severity', 0)}, progress {g.get('progress', 0)}%)"
+        )
+
+    prompt = f"""
+    You are a strategic OKR advisor. Based on the data below, produce a
+    "Predictive Outlook" for the user's quarter.
+
+    CYCLE: "{cycle_title}"
+
+    BURNOUT RISK SNAPSHOT:
+    - Risk Score: {burnout_data.get('risk_score', 0)} / 100
+    - Risk Label: {burnout_data.get('risk_label', 'Unknown')}
+    - Avg Daily Focus: {burnout_data.get('avg_daily_minutes', 0)} minutes
+    - Tasks Completed (14d): {burnout_data.get('completed_tasks', 0)}
+    - Work Days Active: {burnout_data.get('work_days', 0)}
+
+    STRATEGY GAPS (top objectives at risk):
+    {chr(10).join(gap_summaries) if gap_summaries else "None detected."}
+
+    ---
+    PRODUCE (JSON only):
+    {{
+        "outlook_summary": "<2-3 sentence strategic narrative>",
+        "risk_mitigation": ["<actionable recommendation 1>", ...],
+        "strategic_pivots": ["<priority shift suggestion 1>", ...],
+        "confidence_level": <0-100>
+    }}
+
+    IMPORTANT: Match the language of the cycle title. Return ONLY valid JSON.
+    """
+
+    try:
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model="gemini-flash-latest",
+            contents=prompt,
+            config={"response_mime_type": "application/json"},
+        )
+
+        if not response.text:
+            return {"error": "Gemini returned an empty response."}
+
+        raw_text = response.text.strip()
+        if raw_text.startswith("```"):
+            lines = raw_text.splitlines()
+            if lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines[-1].startswith("```"):
+                lines = lines[:-1]
+            raw_text = "\n".join(lines).strip()
+
+        data = json.loads(raw_text)
+
+        return {
+            "outlook_summary": data.get("outlook_summary", ""),
+            "risk_mitigation": data.get("risk_mitigation", []),
+            "strategic_pivots": data.get("strategic_pivots", []),
+            "confidence_level": data.get("confidence_level", 50),
+            "generated_at": utc_now().isoformat(),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+

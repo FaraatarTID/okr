@@ -361,16 +361,19 @@ In a volatile environment, your OKRs may need to change mid-quarter.
 2. **Step 2: The Strategic Pivot**: Open the **Inspector** for the outdated Objective. Click **Edit** and update the `description` with the new strategic context.
 3. **Step 3: AI Re-Alignment**: Click the **Magic Wand** -> **Refine**. The AI will now re-scan your entire 90-day plan and suggest a "Pivot Path" that keeps your momentum high despite the change in direction.
 
-### B) The Progress Gap Analysis (Burnout Prevention)
+### B) Strategic Insights & Execution Health (Phase 4)
 
-Execution isn't just about moving fast; it's about sustainable velocity.
+The platform provides advanced signals to help managers and members identify execution risks before they become failures.
 
-1. **The Trend Check**: Every Sunday, open the **Inspector** for your primary Objective. Look at the **Trend Chart**.
-2. **The Warning Sign**: If your `total_time_spent` is increasing while your `Effectiveness Score` is decreasing, you are in the **Burnout Zone**.
-3. **The Step-by-Step Recovery**:
-   - Manually "Freeze" (Archival) 2 sub-tasks.
-   - Use the **Focus Map** to isolate only the 3% of tasks that move the needle.
-   - Communicate this data to your manager using the **Leadership Dashboard** to justify a scope reduction.
+1.  **Burnout Risk Indicator**: Located in the **Leadership Insights > Strategy Pulse** tab. It calculates your focus intensity (WorkLog hours) relative to your task velocity.
+    - **Healthy**: Balanced workload and output.
+    - **Elevated/High**: High effort but stagnant output. The system will suggest workload redistribution.
+2.  **Strategy Gap Analysis (Ghost Goals)**: Automatically identifies active objectives that have stalled progress or zero task activity over the last 14 days.
+3.  **AI Predictive Outlook**: Uses Gemini to synthesize burnout and gap data into a strategic forecast. It provides confidence levels and specific risk mitigation steps.
+4.  **Achievement Portfolio**: Generate a professional summary of your high-impact contributions (tasks linked to high-scoring Key Results). You can export this as a professional PDF for performance reviews.
+
+- Use the **Focus Map** to isolate only the 3% of tasks that move the needle.
+- Communicate this data to your manager using the **Leadership Dashboard** to justify a scope reduction.
 
 ### C) Data-Driven Professional Confidence
 

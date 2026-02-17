@@ -12,7 +12,8 @@ from src.models import (
     MetricType, 
     Cycle, 
     User, 
-    UserRole
+    UserRole,
+    LifecycleState,
 )
 
 # Explicitly import domain functions
@@ -140,14 +141,15 @@ def test_full_hierarchy_aggregation(session):
     session.commit()
     
     # Obj 1: Unweighted (default)
-    obj1 = Objective(title="O1", goal_id=goal.id, weight=1.0)
+    obj1 = Objective(title="O1", goal_id=goal.id, weight=1.0, state=LifecycleState.ACTIVE)
     session.add(obj1)
     session.commit()
     session.refresh(obj1)
     
     kr1 = KeyResult(
         title="KR1", objective_id=obj1.id, 
-        start_value=0, target_value=100, current_value=0
+        start_value=0, target_value=100, current_value=0,
+        state=LifecycleState.ACTIVE,
     )
     session.add(kr1)
     session.commit()
@@ -171,7 +173,7 @@ def test_full_hierarchy_aggregation(session):
     # Add second objective with weight. 
     # Create KR for it to drive progress properly via rollup, or set progress manually if logic allows.
     # Logic in calculate_goal_progress reads obj.progress directly.
-    obj2 = Objective(title="O2", goal_id=goal.id, weight=3.0, progress=100)
+    obj2 = Objective(title="O2", goal_id=goal.id, weight=3.0, progress=100, state=LifecycleState.ACTIVE)
     session.add(obj2)
     session.commit()
     session.refresh(obj2)
