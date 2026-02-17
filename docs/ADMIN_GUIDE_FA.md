@@ -1,4 +1,4 @@
-# راهنمای مدیر سیستم (Admin): نگهبان اجرا (Literal Alignment)
+# راهنمای مدیر سیستم (Admin): نگهبان اجرا
 
 Documentation HQ: [README](../README.md)
 

@@ -1,4 +1,4 @@
-# System Administrator Guide: The Execution Guardian (Literal Alignment)
+# System Administrator Guide: The Execution Guardian
 
 Documentation HQ: [README](../README.md)
 
