@@ -4,7 +4,7 @@ A powerful Streamlit application for managing Objectives and Key Results (OKRs),
 
 ---
 
-## 🏛️ Documentation HQ
+## Documentation HQ
 
 Use this section as the single entry point for all project docs.
 
