@@ -21,8 +21,14 @@ Runtime preflight shows configuration errors
 - If strict mode is enabled (`OKR_STRICT_RUNTIME_PREFLIGHT=1`), app startup will stop on critical preflight errors until fixed.
 
 AI features unavailable
-- Verify `GEMINI_API_KEY` is set in Streamlit secrets or environment variables.
-- Check if key is placeholder-like (for example `your-api-key`).
+- Run provider check: `python streamlit_app/scripts/ai_provider_health_check.py --json`
+- If using Gemini:
+  - Verify `AI_PROVIDER=gemini`
+  - Verify `GEMINI_API_KEY` is set and not placeholder-like
+- If using self-hosted/local provider:
+  - Verify `AI_PROVIDER=openai_compatible`
+  - Verify `AI_BASE_URL` and `AI_MODEL` are set
+  - Verify endpoint is reachable from app runtime
 
 Migrations fail
 - Ensure the configured DB is reachable from the host/pod

@@ -26,7 +26,7 @@ Mutation guardrail:
 ## 2. Admin Control Surfaces
 
 Primary admin surfaces in UI:
-- `Admin Panel` dialog: user administration, resets, cycle management tasks.
+- `Admin Panel` dialog: user administration, resets, cycle management tasks, and `AI Health` checks.
 - `Atlas Workspace`: role-aware scope selection (`All Users` for admin), Focus Map, Inspector.
 - `Strategic Dashboard`: aggregate team metrics and risk surfacing.
 
@@ -170,9 +170,11 @@ Timing note:
 ## 10. Secrets and Runtime Configuration
 
 For production stability:
-1. Keep `GEMINI_API_KEY` in Streamlit secrets or secure environment variables, never in repository files.
+1. Keep AI credentials in Streamlit secrets or secure environment variables, never in repository files.
+2. Set `AI_PROVIDER` explicitly (`gemini` or `openai_compatible`) and verify via `Admin Panel -> AI Health` or `python streamlit_app/scripts/ai_provider_health_check.py`.
+3. If using Gemini, set `GEMINI_API_KEY`.
 2. For PDF export:
    - local/server runtime: use `pdfkit` + `wkhtmltopdf`.
    - Streamlit Cloud runtime: use PDFShift API key from secrets.
-3. Keep one deployment mode active per environment (avoid mixed PDF pipelines in the same runtime).
-4. Optional fail-fast mode: set `OKR_STRICT_RUNTIME_PREFLIGHT=1` to stop app startup when runtime preflight detects critical PDF misconfiguration.
+4. Keep one deployment mode active per environment (avoid mixed PDF pipelines in the same runtime).
+5. Optional fail-fast mode: set `OKR_STRICT_RUNTIME_PREFLIGHT=1` to stop app startup when runtime preflight detects critical PDF misconfiguration.

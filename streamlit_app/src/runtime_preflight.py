@@ -33,6 +33,9 @@ def evaluate_runtime_preflight(
     has_wkhtmltopdf: bool,
     gemini_api_key: Optional[str],
     external_ai_allowed: bool = True,
+    ai_provider: str = "gemini",
+    ai_provider_ready: Optional[bool] = None,
+    ai_provider_message: Optional[str] = None,
 ) -> RuntimePreflightReport:
     """Evaluate runtime safety constraints for PDF and AI integrations."""
     report = RuntimePreflightReport()
@@ -76,6 +79,27 @@ def evaluate_runtime_preflight(
             report.infos.append(
                 "Gemini API key is set but ignored while external AI is disabled."
             )
+        return report
+
+    provider = str(ai_provider or "gemini").strip().lower()
+    if ai_provider_ready is False:
+        report.warnings.append(
+            ai_provider_message
+            or f"AI provider '{provider}' is not fully configured; AI features will be disabled."
+        )
+        return report
+
+    if ai_provider_message and ai_provider_ready is True:
+        report.infos.append(ai_provider_message)
+
+    if provider == "openai_compatible":
+        report.infos.append("AI provider is openai_compatible.")
+        return report
+
+    if provider not in {"gemini", ""}:
+        report.warnings.append(
+            f"Unsupported AI provider '{provider}'; AI features may be unavailable."
+        )
         return report
 
     if not key:

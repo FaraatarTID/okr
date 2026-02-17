@@ -1,20 +1,19 @@
 """
 AI Service for OKR Application.
-Context-aware Gemini analysis with aggregated data preprocessing.
+Context-aware AI analysis with aggregated data preprocessing.
 """
 import os
 import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from dotenv import load_dotenv
-import streamlit as st
 from src.utils.time_utils import utc_now
 
-try:
-    from google import genai
-    GENAI_AVAILABLE = True
-except ImportError:
-    GENAI_AVAILABLE = False
+from src.services.ai_provider import (
+    generate_json as generate_ai_json,
+    get_gemini_api_key,
+    is_external_ai_allowed as provider_external_ai_allowed,
+)
 
 from src.models import Objective, KeyResult, Task, TaskStatus, AnalysisContext
 
@@ -22,58 +21,22 @@ from src.models import Objective, KeyResult, Task, TaskStatus, AnalysisContext
 _parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 load_dotenv(os.path.join(_parent_dir, ".env"))
 
-_TRUE_VALUES = {"1", "true", "yes", "on"}
-
-
-def _get_config_value(keys: List[str]) -> Optional[str]:
-    """Read config from Streamlit secrets (root/app) with env fallback."""
-    try:
-        app_cfg = st.secrets.get("app", {})
-        for key in keys:
-            if key in st.secrets:
-                value = st.secrets.get(key)
-                if value is not None:
-                    return str(value)
-            if hasattr(app_cfg, "get"):
-                value = app_cfg.get(key)
-                if value is not None:
-                    return str(value)
-    except Exception:
-        pass
-
-    for key in keys:
-        value = os.getenv(key)
-        if value is not None:
-            return value
-    return None
-
-
 def is_external_ai_allowed() -> bool:
-    """
-    Feature policy toggle for outbound AI calls.
-    Defaults to enabled to preserve existing behavior.
-    """
-    raw = _get_config_value(["ALLOW_EXTERNAL_AI", "OKR_ALLOW_EXTERNAL_AI"])
-    if raw is None:
-        return True
-    return str(raw).strip().lower() in _TRUE_VALUES
-
-
-def _ai_policy_blocked_error() -> Optional[Dict[str, str]]:
-    if is_external_ai_allowed():
-        return None
-    return {
-        "error": (
-            "External AI calls are disabled by policy "
-            "(set ALLOW_EXTERNAL_AI=true to enable)."
-        )
-    }
+    """Backward-compatible export used by runtime preflight."""
+    return provider_external_ai_allowed()
 
 
 def get_api_key() -> Optional[str]:
-    """Get Gemini API key from secrets or environment."""
-    value = _get_config_value(["GEMINI_API_KEY", "VITE_GEMINI_API_KEY"])
-    return str(value).strip() if value is not None else None
+    """Backward-compatible export for existing runtime checks."""
+    return get_gemini_api_key()
+
+
+def _run_ai_json_prompt(prompt: str) -> Dict[str, Any]:
+    """Invoke configured AI provider and normalize error shape."""
+    response = generate_ai_json(prompt)
+    if isinstance(response, dict):
+        return response
+    return {"error": "AI provider returned non-dict response."}
 
 
 
@@ -81,7 +44,7 @@ def build_analysis_context(objective: Objective,
                            key_results: List[KeyResult],
                            tasks: List[Task]) -> AnalysisContext:
     """
-    Preprocess and aggregate data before calling Gemini.
+    Preprocess and aggregate data before calling configured AI provider.
     This reduces token usage and provides cleaner context.
     """
     completed_tasks = sum(1 for t in tasks if t.status == TaskStatus.DONE)
@@ -110,17 +73,6 @@ def analyze_efficiency_effectiveness(
     - effectiveness_score (0-100)
     - advice_list (list of recommendations)
     """
-    policy_error = _ai_policy_blocked_error()
-    if policy_error:
-        return policy_error
-
-    if not GENAI_AVAILABLE:
-        return {"error": "google-genai package not installed"}
-    
-    api_key = get_api_key()
-    if not api_key:
-        return {"error": "API Key not configured"}
-    
     # Aggregate task data
     total_estimated = sum(t.estimated_minutes for t in tasks)
     total_spent = sum(t.total_time_spent for t in tasks)
@@ -130,29 +82,13 @@ def analyze_efficiency_effectiveness(
     # Build task details for context
     tasks_context = []
     for t in tasks:
-        tasks_context.append({
-            "title": t.title,
-            "status": t.status.value,
-            "estimated_min": t.estimated_minutes,
-            "spent_min": t.total_time_spent,
-            "start_date": t.start_date.isoformat() if t.start_date else None,
-            "deadline": t.deadline # milliseconds or datetime? Model has int usually, checking... Task model has 'deadline'? 
-            # In models.py Task has 'deadline' via NodeBase? Yes. NodeBase has deadline: int (timestamp).
-            # Let's convert to ISO for AI readability.
-        })
-        # Wait, I need to check if Task has 'deadline' on the object in this scope. 
-        # Yes, Task inherits NodeBase.
-    
-    # Correction: loops above used t.deadline? No, they didn't use it.
-    # Let's re-write the loop properly.
-    
-    for t in tasks:
         d_iso = None
         if t.deadline:
-             try:
-                 d_iso = datetime.fromtimestamp(t.deadline / 1000).isoformat()
-             except: pass
-             
+            try:
+                d_iso = datetime.fromtimestamp(t.deadline / 1000).isoformat()
+            except Exception:
+                d_iso = None
+
         tasks_context.append({
             "title": t.title,
             "status": t.status.value,
@@ -161,24 +97,6 @@ def analyze_efficiency_effectiveness(
             "start_date": t.start_date.isoformat() if t.start_date else None,
             "deadline": d_iso
         })
-    
-    context = {
-        "key_result": {
-            "title": key_result.title,
-            "description": key_result.description or "",
-            "target_value": key_result.target_value,
-            "current_value": key_result.current_value,
-            "unit": key_result.unit or "%"
-        },
-        "metrics": {
-            "total_tasks": len(tasks),
-            "completed_tasks": completed_count,
-            "in_progress_tasks": in_progress_count,
-            "total_estimated_minutes": total_estimated,
-            "total_spent_minutes": total_spent
-        },
-        "tasks": tasks_context
-    }
     
     prompt = f"""
     You are an expert OKR Analyst. Analyze the following Key Result data.
@@ -226,45 +144,19 @@ def analyze_efficiency_effectiveness(
     Return ONLY valid JSON.
     """
 
-    try:
-        client = genai.Client(api_key=api_key)
-        
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json"
-            }
-        )
-        
-        if not response.text:
-            return {"error": "Gemini returned an empty response"}
-        
-        # Clean response
-        raw_text = response.text.strip()
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
-        if raw_text.startswith("```"):
-            raw_text = raw_text[3:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
-        
-        data = json.loads(raw_text)
-        
-        return {
-            "efficiency_score": data.get("efficiency_score", 0),
-            "effectiveness_score": data.get("effectiveness_score", 0),
-            "overall_score": data.get("overall_score", 0),
-            "advice_list": data.get("advice_list", []),
-            "gap_analysis": data.get("gap_analysis", ""),
-            "summary": data.get("summary", ""),
-            "analyzed_at": utc_now().isoformat()
-        }
-        
-    except json.JSONDecodeError as e:
-        return {"error": f"Failed to parse Gemini response: {str(e)}"}
-    except Exception as e:
-        return {"error": str(e)}
+    data = _run_ai_json_prompt(prompt)
+    if "error" in data:
+        return {"error": data.get("error")}
+
+    return {
+        "efficiency_score": data.get("efficiency_score", 0),
+        "effectiveness_score": data.get("effectiveness_score", 0),
+        "overall_score": data.get("overall_score", 0),
+        "advice_list": data.get("advice_list", []),
+        "gap_analysis": data.get("gap_analysis", ""),
+        "summary": data.get("summary", ""),
+        "analyzed_at": utc_now().isoformat()
+    }
 
 
 def analyze_objective(objective: Objective,
@@ -274,17 +166,6 @@ def analyze_objective(objective: Objective,
     Comprehensive analysis of an Objective including all its Key Results.
     Aggregates context as specified in the implementation plan.
     """
-    policy_error = _ai_policy_blocked_error()
-    if policy_error:
-        return policy_error
-
-    if not GENAI_AVAILABLE:
-        return {"error": "google-genai package not installed"}
-    
-    api_key = get_api_key()
-    if not api_key:
-        return {"error": "API Key not configured"}
-    
     # Build aggregated context
     context = build_analysis_context(objective, key_results, all_tasks)
     
@@ -341,37 +222,18 @@ def analyze_objective(objective: Objective,
     Return ONLY valid JSON.
     """
 
-    try:
-        client = genai.Client(api_key=api_key)
-        
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=prompt,
-            config={"response_mime_type": "application/json"}
-        )
-        
-        if not response.text:
-            return {"error": "Empty response from Gemini"}
-        
-        raw_text = response.text.strip()
-        if raw_text.startswith("```"):
-            raw_text = raw_text.split("```")[1]
-            if raw_text.startswith("json"):
-                raw_text = raw_text[4:]
-        
-        data = json.loads(raw_text)
-        
-        return {
-            "efficiency_score": data.get("efficiency_score", 0),
-            "effectiveness_score": data.get("effectiveness_score", 0),
-            "advice_list": data.get("advice_list", []),
-            "risk_factors": data.get("risk_factors", []),
-            "summary": data.get("summary", ""),
-            "analyzed_at": utc_now().isoformat()
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
+    data = _run_ai_json_prompt(prompt)
+    if "error" in data:
+        return {"error": data.get("error")}
+
+    return {
+        "efficiency_score": data.get("efficiency_score", 0),
+        "effectiveness_score": data.get("effectiveness_score", 0),
+        "advice_list": data.get("advice_list", []),
+        "risk_factors": data.get("risk_factors", []),
+        "summary": data.get("summary", ""),
+        "analyzed_at": utc_now().isoformat()
+    }
 
 
 # =============================================================================
@@ -389,18 +251,6 @@ def analyze_node(
     Replaced legacy dictionary-based version for better performance and consistency.
     """
     from src.crud import get_node
-    from src.models import Task, KeyResult, Objective, Goal
-
-    policy_error = _ai_policy_blocked_error()
-    if policy_error:
-        return policy_error
-    
-    api_key = get_api_key()
-    if not api_key:
-        return {"error": "API Key not configured"}
-
-    if not GENAI_AVAILABLE:
-        return {"error": "google-genai package not installed"}
 
     node_type_upper = str(node_type or "KEY_RESULT").upper()
 
@@ -466,7 +316,11 @@ def analyze_node(
                         .where(WorkLog.task_id == child.id)
                         .order_by(WorkLog.start_time.desc())
                     ).all()[:5]
-                summaries = [l.summary for l in recent_logs if getattr(l, 'summary', None)]
+                summaries = [
+                    log_row.summary
+                    for log_row in recent_logs
+                    if getattr(log_row, "summary", None)
+                ]
                 if summaries:
                     work_summ_text = "\n  Recent Work: " + "; ".join(summaries)
             except Exception:
@@ -565,40 +419,21 @@ def analyze_node(
     Match the language of the title. Return ONLY valid JSON.
     """
 
-    try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=prompt,
-            config={"response_mime_type": "application/json"}
-        )
-        
-        if not response.text:
-            return {"error": "Gemini returned an empty response."}
-        
-        raw_text = response.text.strip()
-        # Basic cleanup of markdown markers if any
-        if raw_text.startswith("```"):
-            lines = raw_text.splitlines()
-            if lines[0].startswith("```"): lines = lines[1:]
-            if lines[-1].startswith("```"): lines = lines[:-1]
-            raw_text = "\n".join(lines).strip()
-            
-        data = json.loads(raw_text)
-        
-        return {
-            "efficiency_score": data.get("efficiency_score", 0),
-            "effectiveness_score": data.get("effectiveness_score", 0),
-            "overall_score": data.get("overall_score", 0),
-            "deadline_warnings": data.get("deadline_warnings", []),
-            "gap_analysis": data.get("gap_analysis", ""),
-            "quality_assessment": data.get("quality_assessment", ""),
-            "proposed_tasks": data.get("proposed_tasks", []),
-            "summary": data.get("summary", ""),
-            "analyzed_at": utc_now().isoformat()
-        }
-    except Exception as e:
-        return {"error": str(e)}
+    data = _run_ai_json_prompt(prompt)
+    if "error" in data:
+        return {"error": data.get("error")}
+
+    return {
+        "efficiency_score": data.get("efficiency_score", 0),
+        "effectiveness_score": data.get("effectiveness_score", 0),
+        "overall_score": data.get("overall_score", 0),
+        "deadline_warnings": data.get("deadline_warnings", []),
+        "gap_analysis": data.get("gap_analysis", ""),
+        "quality_assessment": data.get("quality_assessment", ""),
+        "proposed_tasks": data.get("proposed_tasks", []),
+        "summary": data.get("summary", ""),
+        "analyzed_at": utc_now().isoformat()
+    }
 
 
 def analyze_team_health(team_data: dict) -> dict:
@@ -615,17 +450,6 @@ def analyze_team_health(team_data: dict) -> dict:
     Returns:
         Coaching insights with scores and recommendations
     """
-    policy_error = _ai_policy_blocked_error()
-    if policy_error:
-        return policy_error
-
-    api_key = get_api_key()
-    if not api_key:
-        return {"error": "API Key not configured"}
-    
-    if not GENAI_AVAILABLE:
-        return {"error": "google-genai package not installed"}
-    
     prompt = f"""
     You are an elite Executive OKR Coach and Team Performance Advisor.
     Your mission: Analyze this team's data and provide strategic coaching to the manager.
@@ -689,35 +513,11 @@ def analyze_team_health(team_data: dict) -> dict:
     Detect language from the data and respond in the SAME language.
     Return ONLY valid JSON.
     """
-    
-    try:
-        client = genai.Client(api_key=api_key)
-        
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json"
-            }
-        )
-        
-        if not response.text:
-            return {"error": "Gemini returned an empty response."}
-        
-        # Clean response
-        raw_text = response.text.strip()
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
-        if raw_text.startswith("```"):
-            raw_text = raw_text[3:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
-        
-        data = json.loads(raw_text)
-        return {"coaching": data}
-        
-    except Exception as e:
-        return {"error": str(e)}
+
+    data = _run_ai_json_prompt(prompt)
+    if "error" in data:
+        return {"error": data.get("error")}
+    return {"coaching": data}
 
 
 def generate_weekly_summary(username: str, start_date_str: str, end_date_str: str, stats: dict) -> dict:
@@ -739,17 +539,6 @@ def generate_weekly_summary(username: str, start_date_str: str, end_date_str: st
     Returns:
         JSON with 'summary_markdown', 'highlights', 'focus_analysis'
     """
-    policy_error = _ai_policy_blocked_error()
-    if policy_error:
-        return policy_error
-
-    api_key = get_api_key()
-    if not api_key:
-        return {"error": "API Key not configured"}
-    
-    if not GENAI_AVAILABLE:
-        return {"error": "google-genai package not installed"}
-        
     prompt = f"""
     You are an Executive Assistant drafting a Weekly Work Report for {username}.
     Period: {start_date_str} to {end_date_str}
@@ -785,39 +574,13 @@ def generate_weekly_summary(username: str, start_date_str: str, end_date_str: st
     Detect language from the work logs and write the summary in the SAME language.
     Return ONLY valid JSON.
     """
-    
-    try:
-        client = genai.Client(api_key=api_key)
-        
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=prompt,
-            config={
-                "response_mime_type": "application/json"
-            }
-        )
-        
-        if not response.text:
-            return {"error": "Gemini returned an empty response."}
-            
-        # Clean response
-        raw_text = response.text.strip()
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
-        if raw_text.startswith("```"):
-            raw_text = raw_text[3:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
-            
-        return json.loads(raw_text)
-        
-    except Exception as e:
-        return {"error": str(e)}
+
+    return _run_ai_json_prompt(prompt)
 
 
 def suggest_critical_task(task_candidates: List[Dict[str, Any]], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Ask Gemini to pick the single most critical task (urgent + important) from candidates.
+    Ask configured AI provider to pick the single most critical task.
 
     Expected candidate shape:
     {
@@ -833,17 +596,6 @@ def suggest_critical_task(task_candidates: List[Dict[str, Any]], context: Option
       "local_priority_score": number
     }
     """
-    policy_error = _ai_policy_blocked_error()
-    if policy_error:
-        return policy_error
-
-    api_key = get_api_key()
-    if not api_key:
-        return {"error": "API Key not configured"}
-
-    if not GENAI_AVAILABLE:
-        return {"error": "google-genai package not installed"}
-
     normalized_candidates: List[Dict[str, Any]] = []
     for raw in task_candidates or []:
         if not isinstance(raw, dict):
@@ -902,58 +654,39 @@ def suggest_critical_task(task_candidates: List[Dict[str, Any]], context: Option
     Return ONLY valid JSON.
     """
 
+    data = _run_ai_json_prompt(prompt)
+    if "error" in data:
+        return {"error": data.get("error")}
+
+    selected_ref_raw = str(data.get("task_ref") or "").strip()
+    if not selected_ref_raw:
+        return {"error": "AI did not return a task_ref."}
+
+    by_ref = {item["task_ref"]: item for item in normalized_candidates}
+    by_ref_lower = {key.lower(): key for key in by_ref}
+
+    selected_ref = by_ref.get(selected_ref_raw)
+    if selected_ref is None:
+        canonical_ref = by_ref_lower.get(selected_ref_raw.lower())
+        selected_ref = by_ref.get(canonical_ref) if canonical_ref else None
+
+    if selected_ref is None:
+        return {"error": "AI returned task_ref outside candidate set."}
+
+    reason = str(data.get("reason") or "").strip()
+    confidence_val = data.get("confidence")
+    confidence = None
     try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=prompt,
-            config={"response_mime_type": "application/json"},
-        )
-
-        if not response.text:
-            return {"error": "Gemini returned an empty response."}
-
-        raw_text = response.text.strip()
-        if raw_text.startswith("```json"):
-            raw_text = raw_text[7:]
-        if raw_text.startswith("```"):
-            raw_text = raw_text[3:]
-        if raw_text.endswith("```"):
-            raw_text = raw_text[:-3]
-
-        data = json.loads(raw_text)
-
-        selected_ref_raw = str(data.get("task_ref") or "").strip()
-        if not selected_ref_raw:
-            return {"error": "AI did not return a task_ref."}
-
-        by_ref = {item["task_ref"]: item for item in normalized_candidates}
-        by_ref_lower = {key.lower(): key for key in by_ref}
-
-        selected_ref = by_ref.get(selected_ref_raw)
-        if selected_ref is None:
-            canonical_ref = by_ref_lower.get(selected_ref_raw.lower())
-            selected_ref = by_ref.get(canonical_ref) if canonical_ref else None
-
-        if selected_ref is None:
-            return {"error": "AI returned task_ref outside candidate set."}
-
-        reason = str(data.get("reason") or "").strip()
-        confidence_val = data.get("confidence")
+        if confidence_val is not None:
+            confidence = max(0, min(100, int(float(confidence_val))))
+    except Exception:
         confidence = None
-        try:
-            if confidence_val is not None:
-                confidence = max(0, min(100, int(float(confidence_val))))
-        except Exception:
-            confidence = None
 
-        return {
-            "task_ref": selected_ref["task_ref"],
-            "reason": reason or "AI marked this as the most urgent and important next step.",
-            "confidence": confidence,
-        }
-    except Exception as exc:
-        return {"error": str(exc)}
+    return {
+        "task_ref": selected_ref["task_ref"],
+        "reason": reason or "AI marked this as the most urgent and important next step.",
+        "confidence": confidence,
+    }
 
 
 def generate_predictive_outlook(
@@ -962,7 +695,7 @@ def generate_predictive_outlook(
     cycle_title: str = "Current Cycle",
 ) -> Dict[str, Any]:
     """
-    Ask Gemini to generate a strategic "Predictive Outlook" for a user based
+    Ask configured AI provider to generate a strategic "Predictive Outlook" based
     on their burnout risk snapshot and any strategy gaps in their cycle.
 
     Returns a JSON dict with:
@@ -971,16 +704,6 @@ def generate_predictive_outlook(
       - strategic_pivots: list of suggested priority shifts
       - confidence_level: 0-100
     """
-    policy_error = _ai_policy_blocked_error()
-    if policy_error:
-        return policy_error
-
-    api_key = get_api_key()
-    if not api_key:
-        return {"error": "API Key not configured"}
-    if not GENAI_AVAILABLE:
-        return {"error": "google-genai package not installed"}
-
     gap_summaries = []
     for g in strategy_gaps[:5]:
         gap_summaries.append(
@@ -1016,35 +739,15 @@ def generate_predictive_outlook(
     IMPORTANT: Match the language of the cycle title. Return ONLY valid JSON.
     """
 
-    try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-flash-latest",
-            contents=prompt,
-            config={"response_mime_type": "application/json"},
-        )
+    data = _run_ai_json_prompt(prompt)
+    if "error" in data:
+        return {"error": data.get("error")}
 
-        if not response.text:
-            return {"error": "Gemini returned an empty response."}
-
-        raw_text = response.text.strip()
-        if raw_text.startswith("```"):
-            lines = raw_text.splitlines()
-            if lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines[-1].startswith("```"):
-                lines = lines[:-1]
-            raw_text = "\n".join(lines).strip()
-
-        data = json.loads(raw_text)
-
-        return {
-            "outlook_summary": data.get("outlook_summary", ""),
-            "risk_mitigation": data.get("risk_mitigation", []),
-            "strategic_pivots": data.get("strategic_pivots", []),
-            "confidence_level": data.get("confidence_level", 50),
-            "generated_at": utc_now().isoformat(),
-        }
-    except Exception as e:
-        return {"error": str(e)}
+    return {
+        "outlook_summary": data.get("outlook_summary", ""),
+        "risk_mitigation": data.get("risk_mitigation", []),
+        "strategic_pivots": data.get("strategic_pivots", []),
+        "confidence_level": data.get("confidence_level", 50),
+        "generated_at": utc_now().isoformat(),
+    }
 

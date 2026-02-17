@@ -13,6 +13,10 @@ Monitoring
 - Uptime check: GET /
 - Reverse proxy logs (Nginx) for access and errors
 - Container logs for app messages
+- AI provider check:
+  - Run `python streamlit_app/scripts/ai_provider_health_check.py`
+  - Config-only validation: `python streamlit_app/scripts/ai_provider_health_check.py --no-probe`
+  - JSON output for automation: `python streamlit_app/scripts/ai_provider_health_check.py --json`
 
 Upgrades
 - Compose: pull new image, up -d --build
@@ -21,7 +25,8 @@ Upgrades
 Secrets management
 - Store DB credentials and API keys in secrets (not in repo)
 - Rotate credentials periodically
-- For AI features, keep `GEMINI_API_KEY` only in secrets/env (never in git)
+- For AI features, keep provider credentials only in secrets/env (never in git)
+- Set `AI_PROVIDER` explicitly (`gemini` or `openai_compatible`)
 - Set PDF provider mode explicitly with `PDF_METHOD` and matching dependencies/keys
 - Recommended in production: `OKR_STRICT_RUNTIME_PREFLIGHT=1`
 
