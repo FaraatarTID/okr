@@ -686,7 +686,11 @@ def render_weekly_ritual_dialog(username):
                     if st.button("✨ Get AI Estimate", key=f"btn_ai_{kr.id}"):
                         with st.spinner("Analyzing..."):
                             from src.services.ai_service import analyze_node
-                            res = analyze_node(kr.id, "KEY_RESULT")
+                            res = analyze_node(
+                                kr.id,
+                                "KEY_RESULT",
+                                actor_username=username,
+                            )
                             if "error" not in res:
                                 st.session_state[ai_key] = res.get("analysis", {})
                             else:
@@ -1224,9 +1228,10 @@ def render_timeline_dialog(username: str):
     Fetches latest data from SQL to ensure accuracy.
     """
     from src.database import get_session_context
-    from src.models import Task, User, TaskStatus
+    from src.models import Task, User, Goal, Objective, KeyResult
     from src.crud import get_user_by_username
-    from sqlmodel import select, or_
+    from sqlmodel import select
+    from sqlalchemy.orm import selectinload
     from src.ui.visualizations import render_gantt_chart
     
     # CSS: Style Custom Close Button (Same as RetroBox)
@@ -1249,27 +1254,62 @@ def render_timeline_dialog(username: str):
         st.rerun()
     
     cycle_id = st.session_state.get("active_cycle_id")
-    role = st.session_state.get("user_role", "member")
+    role = str(st.session_state.get("user_role", "member")).strip().lower()
+
+    if not cycle_id:
+        st.warning("Please select an active cycle to view timeline data.")
+        return
+
+    current_user = get_user_by_username(username)
+    if not current_user:
+        st.error("User not found.")
+        return
     
     with get_session_context() as session:
         # Fetch Users map for assignee resolution
         users = session.exec(select(User)).all()
         users_map = {u.id: u for u in users} 
         
-        # Direct DB Fetch (Bypass data dict to ensure freshness and visibility)
-        stmt = select(Task)
+        # Cycle-scoped fetch (strictly bounded to active cycle)
+        stmt = (
+            select(Task)
+            .join(KeyResult, KeyResult.id == Task.key_result_id)
+            .join(Objective, Objective.id == KeyResult.objective_id)
+            .join(Goal, Goal.id == Objective.goal_id)
+            .where(Goal.cycle_id == int(cycle_id))
+            .options(
+                selectinload(Task.key_result)
+                .selectinload(KeyResult.objective)
+                .selectinload(Objective.goal)
+            )
+        )
         all_tasks = session.exec(stmt).unique().all()
-        
-        # Filter visible tasks (Simple role check for Member)
+
+        # Role-aware visibility filter
+        visible_owner_ids = {current_user.id}
+        if role == "manager":
+            team_members = session.exec(select(User).where(User.manager_id == current_user.id)).all()
+            visible_owner_ids.update(member.id for member in team_members)
+        elif role == "admin":
+            # Admin can see all cycle tasks
+            visible_owner_ids = None
+
         visible_tasks = []
         for t in all_tasks:
-            # If member, only show assigned or created (?)
-            # For now, show all to ensure visibility, filter later if critical.
-            # User wants to see tasks.
-            visible_tasks.append(t)
+            goal_owner_id = None
+            if t.key_result and t.key_result.objective and t.key_result.objective.goal:
+                goal_owner_id = t.key_result.objective.goal.owner_id
+            assignee_id = getattr(t, "assignee_id", None)
+
+            if visible_owner_ids is None:
+                visible_tasks.append(t)
+                continue
+
+            if (goal_owner_id in visible_owner_ids) or (assignee_id in visible_owner_ids):
+                visible_tasks.append(t)
             
         if not visible_tasks:
-             st.info("No tasks found in the database.")
+             st.info("No tasks found for this cycle and visibility scope.")
              return
 
         render_gantt_chart(visible_tasks, role, username, users_map)

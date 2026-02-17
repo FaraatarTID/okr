@@ -1,97 +1,72 @@
 # OKR Lifecycle Guide
+Documentation HQ: [README](../README.md)
 
-This document outlines the lifecycle of Objectives and Key Results (OKRs) in the Faraatar OKR system. The lifecycle ensures that OKRs follow a structured path from ideation to completion.
+This guide reflects the lifecycle logic currently implemented in `streamlit_app/src/models.py`, `streamlit_app/src/domain/lifecycle.py`, and `streamlit_app/src/crud.py`.
 
-## 🔄 The Lifecycle States
+## 1. Lifecycle States
 
-Each OKR node (Objective or Key Result) moves through four distinct states.
+Objectives and Key Results use four states:
+- `DRAFT`
+- `ACTIVE`
+- `GRADING`
+- `ARCHIVED`
 
-### 1. 📝 DRAFT
+State intent:
+- `DRAFT`: planning state; excluded from progress rollups.
+- `ACTIVE`: normal execution and tracking state.
+- `GRADING`: end-of-cycle review/reflection state.
+- `ARCHIVED`: closed historical state (can be re-activated if needed).
 
-- **Purpose**: Initial planning and brainstorming phase.
-- **Behavior**: Progress is not yet "official." Draft OKRs are visually distinct (Grey pulse in Atlas).
-- **Best Practice**: Use this state while you are still negotiating targets or defining the scope with your team.
+## 2. Allowed Transitions
 
-### 2. 🚀 ACTIVE
+Current transition map:
+- `DRAFT -> ACTIVE`
+- `ACTIVE -> GRADING` or `ACTIVE -> DRAFT`
+- `GRADING -> ARCHIVED` or `GRADING -> ACTIVE`
+- `ARCHIVED -> ACTIVE`
 
-- **Purpose**: Implementation phase where progress is actively tracked.
-- **Behavior**: These OKRs represent the current commitments for the cycle. Progress updates affect health scores and analytics.
-- **Constraint**: An Objective **cannot** be activated unless it has at least one Key Result defined.
+Transition validation is enforced in lifecycle logic.
 
-### 3. ⚖️ GRADING
+## 3. Key Enforcement Rules
 
-- **Purpose**: End-of-cycle review and scoring adjustment.
-- **Behavior**: Nodes in this state are flagged for attention (Orange/Risk) to remind owners to perform a **Final Reflection**.
-- **Activities**: Owners should review the final achievement, adjust scores if necessary, and write their learning insights in the "Final Reflection" field.
+- Objective cannot transition to `ACTIVE` unless it has at least one KR.
+- Changing Objective state cascades the same state to child KRs.
+- `DRAFT` objectives/KRs are excluded from objective/goal rollups.
 
-### 4. 📁 ARCHIVED
+## 4. Alignment Graph (Objective-to-Objective)
 
-- **Purpose**: Historical record.
-- **Behavior**: OKRs are closed and read-only. They are moved to a neutral "On Track" visual state to signify completion.
-- **Recovery**: If a mistake was made, nodes can be moved back to ACTIVE from ARCHIVED.
+Beyond Goal->Objective->KR hierarchy, objectives can be linked with alignment edges.
 
----
+Behavior:
+- Links are directional.
+- Cycle-creating links are blocked.
+- You manage links in Objective Inspector under `Organizational Alignment`.
+- Creating/removing links requires mutation authorization on involved objective goals.
 
-## 🌊 Cascade Logic
+## 5. Scoring Modes and Rollups
 
-To maintain consistency and reduce manual overhead, the system implements **State Cascading**:
+Objective scoring modes:
+- `UNWEIGHTED`: all KRs contribute equally.
+- `WEIGHTED`: KR weights affect objective score.
 
-- When you change the state of an **Objective**, all its child **Key Results** are automatically updated to the same state.
-- **DRAFT Exclusion**: Important! Nodes in the `DRAFT` state are **excluded** from all progress rollups. Your Goal progress will not change until the Objectives are moved to `ACTIVE`.
+KR score inputs:
+- `start_value`, `current_value`, `target_value`, `metric_type`.
 
----
+Goal rollup:
+- derived from objective progress (with objective weights).
 
-## 🔗 Organizational Alignment (DAG Overlay)
+## 6. Where to Manage Lifecycle in UI
 
-Beyond the parent-child hierarchy (Goal -> Objective -> KR), the system supports **Cross-Team Alignment**. This allows Objectives to support or relate to each other horizontally or vertically across different goals.
+In Inspector:
+- `Lifecycle & Closing`: set state + final reflection.
+- Objective inspector: manage alignment links and scoring mode.
+- KR inspector: manage KR weight and metric fields.
 
-### Vertical & Horizontal Links
+## 7. Final Reflection Guidance
 
-In the Objective Inspector, you can manage these relationships:
+Use `Final Reflection` on Objective/KR for:
+- outcome summary,
+- key blockers,
+- decisions for next cycle.
 
-- **Supports (Parent)**: This objective contributes to the success of a higher-level or peer objective.
-- **Supported by (Child)**: Other objectives contribute to this one.
-
-### 🛡️ Directed Acyclic Graph (DAG) Enforcement
-
-To prevent illogical "circular dependencies" (e.g., A supports B, B supports C, and C supports A), the system uses a **DAG Enforcement Engine**.
-
-- Any link that would create a cycle is **automatically blocked**.
-- This ensures a clear, traceable path of accountability throughout the organization.
-
----
-
-## 🎯 Scoring & Progress Modes
-
-Objectives support two distinct modes of progress calculation, configurable in the Inspector:
-
-### 1. Unweighted (Default)
-
-- **Logic**: All Key Results contribute equally to the Objective's progress.
-- **Use Case**: When every KR is of equal tactical importance.
-
-### 2. Weighted
-
-- **Logic**: Each Key Result is assigned a `Weight` (e.g., 2.0 vs 1.0). Progress is calculated as a weighted average.
-- **Use Case**: When specific metrics (e.g., "Revenue") are significantly more important than others (e.g., "Documentation").
-
----
-
-## 💡 How to Manage These Features
-
-1.  **Change State**: Use the "Lifecycle & Closing" section in the Inspector.
-2.  **Add Alignment**: Use the "Organizational Alignment" section in the Objective Inspector to link to other objectives.
-3.  **Set Weights**: In the KR section of the Inspector, adjust the "Weight" slider.
-4.  **Set Score Mode**: In the Objective section of the Inspector, toggle between "Weighted" and "Unweighted".
-
----
-
-## 📝 Final Reflection
-
-When moving a node to `GRADING` or `ARCHIVED`, use the **Final Reflection** field to document:
-
-- What went well?
-- What obstacles were encountered?
-- What are the key learnings for the next cycle?
-
-This data is preserved as organizational memory and is indexed by the AI for future strategic analysis.
+This keeps end-of-cycle reasoning auditable for future planning.

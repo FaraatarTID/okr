@@ -1,356 +1,177 @@
-# System Administrator Guide: The Execution Guardian
-
+# System Administrator Guide
 Documentation HQ: [README](../README.md)
 
-This guide provides authoritative technical instructions for system administrators, strictly aligned with the `RBAC` models, `Cycle` management, and `AI Progress Sync` logic defined in the codebase.
-
----
-
-## 1. Professional Role & Permission Model
-
-The system enforces a strict **Role-Based Access Control (RBAC)** architecture as defined in `models.py`.
-
-### A) User Roles & Scopes
-
-1. **Admin (`UserRole.ADMIN`)**: Full vertical visibility. Can access the `Admin Panel`, manage `User` accounts, and override any `Goal` or `Cycle`.
-2. **Manager (`UserRole.MANAGER`)**: Visibility into the `Team` dashboard for their direct reports (`manager_id` linkage). Can manage assigned OKRs.
-3. **Member (`UserRole.MEMBER`)**: Execution focus. Limited to seeing/editing their own OKRs and those shared within their hierarchy.
-
-### B) Governance Expectations
-
-- **Naming Enforcement**: Ensure clear, quantitative naming for `Key Results` to optimize the semantic processing of the AI service.
-- **Hierarchy Integrity**: Every `Task` (leaf) must be correctly linked to a `Key Result` (branch) to ensure progress rolls up accurately to the `Objective` (root).
-
----
-
-## 2. Technical Administration: Quarterly Lifecycle
-
-Admin actions are critical for the initialization and archival of 90-day cycles.
-
-### Phase 1: Cycle Initialization (Weeks -2 to 0)
-
-1. **Create Cycle**: Use the `Manage Cycles` dialog to create a new `Cycle` entry. Define the `start_date` and `end_date`.
-2. **Setup Drafts**: Begin planning objectives. New OKRs default to `DRAFT` state and do not affect scoring until activated.
-3. **Identity Linkage**: Ensure every new `User` is linked to a `manager_id` and `team_id`. Without this link, the `get_leadership_metrics` query will not aggregate their effort correctly.
-4. **Activation**: Move validated objectives to `ACTIVE` state to begin tracking progress.
-
-### Phase 2: Core Oversight (Weeks 1-12)
-
-1. **The Leadership Dashboard**: Use the **Strategic Dashboard** (invoking `get_leadership_metrics`) to monitor organization-wide progress, risk, and confidence scores.
-2. **Progress Reconciliation**: If percentage roll-ups appear stale, invoke the **AI Progress Sync** (or `rebuild_calculation_tree`) to clear the cache and force a fresh rollup from the task table.
-3. **Status Audit**: Scan for "Needs care" nodes. Use the `User Management` panel to assist managers whose teams are significantly lagging behind the expected `Cycle` timeline.
-
-### Phase 3: Archive & Transition (Week 13)
-
-1. **Grading Phase**: Move Objectives to `GRADING` state. This prompts owners to provide a **Final Reflection** and review their actual achievements vs. targets.
-2. **Archival**: Move completed nodes to `ARCHIVED`. These become read-only historical records.
-3. **Cycle Deactivation**: Once the quarter ends, set the `active_cycle_id` to inactive.
-4. **Historical Data Sync**: Perform a final database export to ensure 90 days of execution history are securely preserved.
-
----
-
-## 3. Crisis Response & Technical Sync
-
-### Handling "Red" Dashboards
-
-A red dashboard indicates that nodes have fallen into the `Needs care` classification (Progress < 40% or Overdue).
-
-- **Step 3**: Review the `WorkLog` entries to see if effort has been logged but not yet results.
-
----
-
-## 4. Governance: Precision Scoring & Alignment Graph
-
-As the Execution Guardian, you are responsible for the mathematical integrity of the OKR map.
-
-### A) The Precision Scorer (0.00 - 1.00)
-
-The system uses a semantic scoring band for `Effectiveness Scores` (stored in `KeyResult.gemini_analysis`):
-
-- **0.0 - 0.3 (Failure/Pivot)**: Effort is not aligned with the outcome. Intervention required.
-- **0.3 - 0.7 (Partial Success)**: Progressive movement.
-- **0.7 - 1.0 (Elite Achievement)**: High-impact work that directly moves the metric.
-
-### B) Alignment DAG (Acyclicity)
-
-The organization is mapped as a **Directed Acyclic Graph (DAG)**.
-
-- **Enforcement**: The system uses `src/domain/alignment.py` to prevent any alignment links (A supports B, B supports A) that create circular logic.
-- **Troubleshooting**: If a user cannot link two objectives, check the **Alignment Graph** for pre-existing paths that might be blocked by the cycle detection logic.
-
-### C) Scoring Modes (Weighted Architecture)
-
-Admins should audit that high-stakes objectives use the **Weighted Mode**.
-
-- Verify that Weights (multiplier `1.0`, `2.0`, etc.) are balanced.
-- Example: If a single KR has a weight of `5.0` while others have `1.0`, that KR effectively controls 50%+ of the Objective progress. Monitor for "Impact Skewing."
-
----
-
-## 5. Disaster Recovery & Security Ethics
-
-### A) Backup Protocols
-
-- **Primary Persistence**: Data is stored in Supabase PostgreSQL (`database.py`).
-- **Export Discipline**: Regularly use the "Export Database" feature to maintain an off-site copy of the current `Cycle`.
-
-### B) Oversight Ethics
-
-- **Support-First Protocol**: Access levels are designed for unblocking teams (identifying `Needs care` nodes), not for micro-surveillance.
-- **Data Privacy**: Administrative access must respect the Zero-Trust architecture, only accessing `inspector` logs during troubleshooting or strategic health audits.
-
----
-
-## 5. Technical Troubleshooting FAQ
-
-### Q: "Rollup values don't match child progress."
-
-**Answer**: This is usually a caching issue. Use the **AI Progress Sync** in the Admin panel to force a reconciliation of the `Goal` and `KeyResult` tables with the latest `Task` status.
-
-### Q: "User role changes not taking effect."
-
-**Answer**: User session state is cached in Streamlit. Instruct the user to perform a hard refresh (`Ctrl + F5`) to pull the updated `UserRole` from the DB.
-
-### Q: "Cycle timelines are overlapping."
-
-**Answer**: Check the `start_date` and `end_date` in the `Cycle` model. The system allows multiple active cycles, but ensure the UI default `active_cycle_id` is points to the current quarter.
-
----
-
-## _The backbone of organizational integrity. Built for the Execution Guardian._
-
-## 6. The Governance Mentor: Scaling & Stewardship
-
-### A) The Governance Audit Checklist (Weekly Routine)
-
-As an Admin, your goal is to ensure the `Cycle` remains healthy. Run this 10-minute audit every week:
-
-1. **Orphan Objective Identification**: Search the **Atlas Map** for Objectives with 0% progress. Open them in the **Inspector** to verify if they have child Key Results.
-2. **Ghost Node Cleanup**: Use the **Strategic Dashboard** to find tasks with 0 `total_time_spent` that have been open for >14 days. Suggest that the owner either archives them or commits a sprint.
-3. **Identity Verification**: Ensure every new user has an assigned `manager_id`. Without this, the **Team Momentum Matrix** will have missing data points.
-
-### B) Team Momentum Matrix: "Effort vs. Impact"
-
-Use the **Strategic Dashboard** (driven by `get_leadership_metrics`) to categorize team health:
-
-| Momentum Type      | Indicator                               | Admin Intervention                                                                         |
-| :----------------- | :-------------------------------------- | :----------------------------------------------------------------------------------------- |
-| **High Velocity**  | High `total_time_spent` + High Progress | None. Use these as a "Success Case" for other departments.                                 |
-| **Busy-Work Trap** | High `total_time_spent` + Low Progress  | Review their **Effectiveness Scores**. They may be working on unaligned tasks.             |
-| **The Stall**      | Low `total_time_spent` + Low Progress   | Technical/Auth blocker check. Verify if they are using the **Commit Spotlight** correctly. |
-
-## 7. The Philosophy of Stewardship
-
-### A) The Garden Caretaker Framing
-
-As a System Administrator, you are not a "Police Officer"; you are a **Garden Caretaker**.
-
-- **The Soil**: The database and server configuration.
-- **The Branches**: The departmental Objectives and Key Results.
-- **Your Tool**: The **Strategic Dashboard** (Your "Bird's Eye View").
-  Your goal is to ensure the soil is healthy (backups) and that no branches are withering due to lack of attention (low engagement).
-
-### B) The Ethics of Oversight
-
-Managing an OKR system is a high-trust activity.
-
-- **Zero-Trust Technicals**: The `RBAC` models ensure that sensitive notes remain private. However, as an Admin, you have the "Master Key."
-- **Psychological Safety**: Use your oversight power to find teams in trouble, not to punish individuals. If a team's **Effectiveness Score** is low, approach with: _"The system signals a tactical bottleneck. How can we re-align resources?"_ rather than _"Why is your score low?"_
-
----
-
-## 8. Enterprise-Scale Governance & Standards
-
-### A) Global Naming Standards
-
-To prevent the "Atlas Map" from becoming a swamp of confusing labels, enforce these standards:
-
-- **Objectives**: Must start with an active verb (e.g., "Revolutionize," "Expand," "Stabilize").
-- **Key Results**: Must contain a quantitative metric (e.g., "15% increase," "0% downtime").
-- **Tags**: Use department prefixes (e.g., `TECH_`, `HR_`, `SALES_`) for easy filtering in the **Leadership Dashboard**.
-
-### B) The "Scrum of Scrums" Protocol
-
-The **Strategic Dashboard** serves as your organizational pulses. Run a weekly "Pulse Check":
-
-1. **Identify Red Flags**: Filter the map for **Needs care**.
-2. **Confidence Audit**: Look for users with `confidence_score` < 3/10. These are the "silent crises."
-3. **Capacity Rebalancing**: If a manager has 20+ active nodes, their team is likely suffering from "Strategic Drift." Suggest moving objectives to the next `Cycle`.
-
----
-
-## 9. Quarterly Governance Lifecycle (The Master Schedule)
-
-### Phase 1: Pre-Quarter Preparation (Initialization)
-
-- **Cycle Setup**: Define the new 90-day `Cycle`.
-- **User-Manager Audit**: Ensure every new hire is assigned a `Manager`. An orphan user produces data that is invisible to the relevant dashboards.
-- **Seed-Vault Backup**: Perform a manual export of the current `okr_database.db` and store it off-site before the new cycle begins.
-
-### Phase 2: Active Quarter Stewardship (Maintenance)
-
-- **The Friday Audit**: Every Friday, check the **Global Sync Status**. Ensure manual AI Progress Sync is running smoothly.
-- **Ghost Node Detection**: Scan for objectives with zero children (Tasks). An objective without tasks is a "ghost" that provides no progress data.
-- **Resource Rehearsal**: Ensure all `Admin` users know how to use the **Inspector** to manually correct status errors if a manager is unavailable.
-
-### Phase 3: The End-Quarter "Clean Slate"
-
-- **Closing the Cycle**: Run the **Curator's Audit**. Ensure all `Complete` nodes are celebrated in the final report.
-- **Carry-Over Protocol**: Move incomplete but still relevant Objectives to the next cycle. Ensure the `current_value` is preserved.
-- **Archive Verification**: Verify that finished cycles are archived correctly to maintain high performance in the Atlas visualization.
-
----
-
-## 10. Disaster Recovery & Crisis Management
-
-### A) Handling the "Red Dashboard"
-
-If the organization's dashboard is >40% Red:
-
-1. **Pivot to Stability**: Recommend a "Pause Week" where teams stop creating new tasks and only focus on completing current ones.
-2. **Global AI Sync**: Trigger a manual "Refresh All" to ensure the data is not simply stale.
-3. **Manager Alignment**: Call a meeting with the Managers of the red departments to investigate systemic hurdles (resource loss, market shifts).
-
-### B) System Recovery Rehearsal
-
-Don't wait for a crash. Every 30 days:
-
-- Verify the `km_backups/` directory has fresh snapshots.
-- Practice an "Import DB" action on a staging environment.
-- Check the **Integrity Logs** for any `Access Denied` spikes that might indicate a configuration error in the `RBAC` definitions.
-
----
-
-_The Guardian of the Organization. Precision stewardship through technical excellence._
-
-### C) Scaling Strategies: handling Growth
-
-As your organization grows from 10 to 100+ users:
-
-1. **Cycle Fragmentation**: Instead of one global cycle, create Department-specific cycles (e.g., `Engineering-Q1`, `Sales-Q1`) to keep the **Atlas Map** from becoming visually over-saturated.
-2. **Manager Decentralization**: Shift the first-line audit responsibility to users with the `UserRole.MANAGER` role. Training them to use the **Team Filter** in the dashboard reduces Admin bottleneck.
-3. **Bulk Cleanup**: Periodically use the **AI Progress Sync** across all active cycles to ensure the organization's aggregate success score is technically accurate.
-
-### D) Pro-Tips for System Stewardship
-
-- **The "Single Source of Truth"**: Always defer to the `WorkLog` density as the ultimate proof of execution. If a manager claims progress but logs are empty, use the **Strategic Dashboard** to show the data discrepancy.
-- **Role Audits**: Once per month, scan the User Management panel to ensure no "Member" role should actually be a "Manager" based on their team growth.
-- **The "Clean Slate" Mentor**: In Week 13, guide managers through the archival of incomplete nodes. This ensures the next cycle starts with high semantic clarity for the AI.
-
----
-
-## 11. Agile Enterprise Masterclass: Higher-Level Stewardship
-
-As an Admin, you are the **Chief Scrum Master** of the organization. Your role is to remove systemic impediments that prevent teams from achieving their OKRs.
-
-### A) Managing Organizational Impediments (Step-by-Step)
-
-An impediment is any red node that stays red for >14 days despite "Rescue Plans."
-
-1. **Step 1: Identify the Root**: Open the **Strategic Dashboard**. Filter by `Needs care`.
-2. **Step 2: Capacity Audit**: Select the parent objective. Use the **Inspector** to check if the `estimated_minutes` of the children tasks exceeds the team's weekly capacity (e.g., >2400 mins/person).
-3. **Step 3: The Administrative Pivot**: If the backlog is overloaded, manually move 30% of the tasks to the "Icebox" (TODO for next cycle). This instantly lowers the team's cognitive load and restores focus.
-
-### B) Data-Driven Capacity Planning (Masterclass)
-
-Use the system's "Odometer" logic to prevent burnout.
-
-1. **Ratio Analysis**: Compare `total_time_spent` vs. `Progress %` in the dashboard.
-   - _High Time / Low Progress_: Indicates heavy impediments. Step in to re-align resources.
-   - _Low Time / High Progress_: Indicates "Sandbagging" (targets set too low). Suggest increasing the `target_value` for the next cycle.
-2. **Predictive Balancing**: If the AI summary predicts a completion date _after_ the cycle ends, use the **Inspector** to decrease the scope or increase the team size assigned to that objective.
-
-### C) The "Quarterly Backlog Grooming" Protocol
-
-In Week 12, perform a global grooming session:
-
-1. **Pruning**: Delete any tasks that have 0 minutes logged and are no longer strategically relevant. This ensures the AI's "Predicted Next" algorithm stays clean.
-2. **Normalization**: Ensure all `current_value` metrics across all departments use similar scales (e.g., 0-100) to ensure the **Momentum Matrix** is visually coherent.
-
----
-
-_The Agile Guardian. Scaling organizational velocity through precision stewardship._
-
----
-
-## 12. Leadership Dashboard Masterclass & Error Recovery
-
-This section documents the technical workflows for high-level organizational oversight and system correction.
-
-### A) The Leadership Dashboard: Deep Audit (Step-by-Step)
-
-Use the **Strategic Dashboard** to perform "Precision Mentorship" for your managers.
-
-1. **The Team Filter (Isolation Logic)**:
-   - _Technical Step_: Open the Dashboard and select a specific `Manager` from the dropdown.
-   - _Audit_: Look at their team's **Distribution Chart**. If >50% of their nodes are yellow, the team is likely "Busy but not Moving."
-2. **Global AI Progress Sync**:
-   - _The Workflow_: If you notice a department's metrics are "Lagging" behind their actual work logs, click the **Global Refresh** button in the Admin Panel.
-   - _Technical Outcome_: This triggers a batch iterate of all `KeyResults` in the active cycle, forcing the AI to re-read the latest `WorkLogs` and recalibrate the completion percentages.
-
-### B) The "Error Recovery" Playbook (Step-by-Step)
-
-Mistakes in the database can cause "Data Pollution" in your dashboards. Use these steps for surgical correction.
-
-1. **Graceful Deletion of a Node**:
-   - _Scenario_: A user accidentally created an objective with 10 duplicate tasks.
-   - _The Step_: Select the objective in the **Atlas Workspace**, open the **Inspector**, and click **Delete**.
-   - _Warning_: Deleting a parent node will recursively delete all children `Tasks`. Always verify the `Node ID` before clicking confirm.
-2. **Historical WorkLog Correction**:
-   - _Scenario_: A user logged 800 minutes instead of 80.
-   - _The Step_: Open the **WorkLog History** for that specific Task. Click the **Edit** icon (Pencil) on the erroneous entry.
-   - _The Fix_: Manually change the `duration` value and click **Save**. The dashboard health color will update on the next rerun.
-
-### C) Technical Alignment Verification
-
-To ensure the organization is technically healthy, perform this "Integrity Run" every 30 days:
-
-1. **Empty Description Audit**: Use the **Inspector** to scan for Objectives with empty `description` fields.
-2. **The "Description" Requirement**: The AI uses the description as the primary context for the **Suggested Next** list. An empty description lowers the AI's "Context Score" by 40%.
-3. **The Fix**: Mandate that all managers provide at least 2 sentences of tactical context for every `Objective` they create.
-
----
-
-_The Expert Guardian. Command the data. Master the system._
-
----
-
-## 13. Master’s Playbook: System Resilience & Enterprise Troubleshooting
-
-This final section transforms the Admin from a system maintainer into a **Guardian of Organizational Continuity**. It focuses on the technical resilience needed to protect the organization's strategic data.
-
-### A) The System Resilience Protocol (Step-by-Step)
-
-Data loss is the ultimate organizational impediment. Follow this protocol to ensure 100% uptime.
-
-1. **Disaster Recovery Rehearsal**:
-   - **Step 1**: Go to the Admin Panel and trigger a **Database Backup**.
-   - **Step 2**: Download the `.db` file.
-   - **Step 3 (The Rehearsal)**: Once every 90 days, create a "Sandbox Cycle." Upload the backup file to this cycle to verify that all nodes, work logs, and AI scores are restored correctly.
-2. **Security Hygiene Audit**:
-   - **The Step**: Every 30 days, filter the User Management list by `UserRole.ADMIN`.
-   - **Expert Check**: If a user no longer needs administrative access, downgrade them to `MANAGER` immediately. This prevents "Privilege Creep" and protects the integrity of the Global AI Sync.
-
-### B) Enterprise-Scale Troubleshooting (High-Stakes)
-
-When the system behaves unexpectedly at scale, use these high-precision correction steps.
-
-1. **Resolving "Zombie Syncs"**:
-   - **Scenario**: A user reports that their progress bar hasn't moved despite numerous work logs.
-   - **The Fix**: Open the **Strategic Dashboard**. Click the **Global AI Progress Sync**. If the sync hangs, check the server logs for "Vector Store Connection Timeout." Restart the server only after ensuring a backup is complete.
-2. **Orphaned Task Recovery**:
-   - **Scenario**: A task exists in the database but isn't visible in the Atlas Map (usually due to a deleted parent Objective).
-   - **The Step**: Use the **WorkLog History** search. Locate the `Task ID`. Open the **Inspector** for that ID and manually re-assign it to an active `Key Result` to restore map visibility.
-
-### C) The "Master Guardian" Mindset
-
-- **Audit the Auditors**: Use the **Leadership Dashboard** to verify that managers are performing their Weekly Rituals. If ritual density is <70%, the organization's OKR health is entering the "Red Zone" regardless of actual work.
-- **Continuous Alignment**: Every 90 days, initiate the **Clean Slate Protocol**. This is your most powerful tool for maintaining the "Semantic Clarity" of the organization’s long-term vision.
-
----
-
-_The Master Guardian. Protecting continuity. Ensuring strategic truth._
-
----
-
-_Command with precision. Scale with clarity._
+This guide is aligned with current behavior in the codebase (`streamlit_app/app.py`, `streamlit_app/src/ui/*`, `streamlit_app/src/crud.py`, `streamlit_app/src/domain/*`).
+
+## 1. RBAC and Mutation Rules
+
+User roles:
+- `admin`: full organization visibility, user/cycle administration, broad edit rights.
+- `manager`: visibility and mutation scope for direct-report hierarchies, plus weekly team monitoring, coaching, and ritual discipline.
+- `member`: own-scope execution and updates.
+
+Direct-report vs same-team (important distinction):
+- `direct-report`: the node owner directly reports to the manager (`owner.manager_id == manager.id`).
+- `same-team`: the node owner shares `team_id` with the manager but may report to another manager.
+- Why this split exists: team-level situational awareness needs broader visibility, but write authority should stay with accountable line management.
+- Current manager policy:
+  - `READ`: own + direct-report + same-team.
+  - `UPDATE/DELETE`: own + direct-report only (`manager-of-owner`).
+
+Mutation guardrail:
+- Goal-scoped write operations pass authorization checks (`_authorize_goal_mutation`).
+- Objective alignment writes (`create_alignment` / `delete_alignment`) are authorized before commit.
+- AI/Inspector node retrieval can use actor-scoped read checks (`get_node(..., actor_username=...)`) to enforce `READ` permissions.
+
+## 2. Admin Control Surfaces
+
+Primary admin surfaces in UI:
+- `Admin Panel` dialog: user administration, resets, cycle management tasks.
+- `Atlas Workspace`: role-aware scope selection (`All Users` for admin), Focus Map, Inspector.
+- `Strategic Dashboard`: aggregate team metrics and risk surfacing.
+
+### Atlas as Admin Cockpit
+
+Inside Focus Map sidebar (admin scope), you can run:
+- `AI Progress Sync`
+- `Preview mode (no writes)`
+- `Apply AI overall score to KR progress`
+- `Max KR progress delta`
+- `Allow progress decreases`
+- `Undo Last AI Progress Apply` (time-limited)
+
+Use this cockpit for controlled sync and correction, not blind bulk updates.
+
+## 3. Lifecycle and Rollup Rules You Must Enforce
+
+For Objectives and KRs:
+- States: `DRAFT`, `ACTIVE`, `GRADING`, `ARCHIVED`.
+- Objective activation requires at least one KR.
+- Objective state changes cascade to child KRs.
+- `DRAFT` items are excluded from score rollups.
+
+Scoring model:
+- KR score derives from `start_value`, `current_value`, `target_value`, `metric_type`.
+- Objective score mode can be `UNWEIGHTED` or `WEIGHTED`.
+- Goal rollup uses objective progress/weights.
+
+## 4. Weekly Operating Routine (Admin)
+
+1. Confirm correct active cycle and user assignments.
+2. Open Strategic Dashboard and review:
+   - `Data Hygiene`
+   - `Avg Confidence`
+   - `At-Risk KRs`
+   - `Overdue Tasks`
+   - `At Risk Tasks`
+3. Review `At-Risk Key Results` and `Overdue Tasks` lists.
+4. Use Atlas scope + branch lens to identify exact correction points.
+5. Run `AI Progress Sync` only when analysis refresh is needed, preferably in preview first.
+6. In `Leadership Insights -> Strategy Pulse`, review burnout/gap signals and drive manager coaching or workload rebalance actions.
+
+### Dummy Manager Team-Monitoring Runbook (Step-by-Step)
+
+Use this when validating manager-role behavior in sandbox/UAT with dummy accounts.
+
+For the full manager operating model (visibility, privilege matrix, report timing, and UAT script), use:
+- [Manager Playbook](MANAGER_PLAYBOOK.md)
+
+Setup prerequisites (admin):
+1. Create a dummy manager user with role `manager` and an assigned `team_id`.
+2. Create 3-5 dummy members and set each `manager_id` to that dummy manager.
+3. Ensure an active cycle exists and each dummy member has at least one Goal -> Objective -> KR.
+4. Move Objectives/KRs from `DRAFT` to `ACTIVE` so they are visible in monitoring rollups.
+
+Weekly monitoring procedure (dummy manager):
+1. Baseline (start of week): open `Leadership Insights -> Execution`, filter to the manager's team, record `Data Hygiene`, `Avg Confidence`, `At-Risk KRs`, `Overdue Tasks`, `At Risk Tasks`.
+2. Mid-week control: review `At-Risk Key Results` and `Overdue Tasks`; open affected nodes in Atlas (`Branch` lens) and correct ownership, deadlines, or KR metric fields where required.
+3. Ritual governance (end of week): verify every direct report completes `Weekly Ritual` (Step 2 KR check-ins + Step 3 weekly plan). Treat `RetroBox` as review-only evidence, not an update flow.
+4. Strategic risk pass: open `Strategy Pulse`, review burnout + ghost-goal gaps, then generate AI forecast and mitigation actions.
+5. Coaching and escalation: convert high-risk items into explicit team actions (owner + due date + expected metric effect); escalate systemic blockers to admin.
+6. Evidence closure: export `Weekly Report` and keep one shareable summary artifact for the weekly manager review.
+
+Role boundaries for dummy managers:
+1. Allowed scope: direct-report hierarchy and assigned team context.
+2. Not allowed: cross-team/global edits reserved for `admin`.
+
+Definition of done (for manager monitoring quality):
+1. Ritual completion rate for direct reports is 100% weekly.
+2. No ACTIVE KR remains without fresh check-in beyond policy threshold.
+3. Every high-risk KR has a named owner, mitigation action, and follow-up date.
+
+## 5. Ritual, Retro, and Reporting Governance
+
+Process distinction:
+- `Weekly Ritual` is the KR update workflow (check-ins + weekly plan).
+- `Retrospective` text is captured in Ritual step 1.
+- `RetroBox` is for viewing saved retrospectives (personal/team), not KR check-ins.
+
+Report timing:
+- `Daily Report`: today window.
+- `Weekly Report`: last 7 days window.
+- Both are work-log based and exportable (PDF/HTML fallback).
+
+## 6. Incident Playbooks
+
+### A) KR looks stale or inconsistent
+1. Open KR in Inspector; verify `start/current/target` values and metric type.
+2. Confirm recent check-ins exist (Weekly Ritual step 2).
+3. If needed, update KR manually, then re-open dashboard to verify rollup.
+
+### B) Wrong hierarchy or assignment
+1. Open Task in Inspector.
+2. Correct assignee/schedule fields.
+3. If parent linkage is wrong, move/recreate under correct KR using Atlas actions.
+
+### C) Team risk spike (many overdue/at-risk tasks)
+1. Use dashboard lists to isolate owners and areas.
+2. Use branch lens in Atlas to focus one objective tree at a time.
+3. Ask managers to complete Weekly Ritual and raise confidence-quality comments.
+
+## 7. Known Limits (Important)
+
+Current UI does not provide:
+- a dedicated `Global Sync Status` or `Refresh All` page,
+- a work-log pencil-edit workflow (delete/re-log is the available correction path),
+- KR updates from RetroBox (RetroBox is view-only).
+
+Current timeline note:
+- Project Timeline is now strictly cycle-bounded (`active_cycle_id`) and role-filtered for visibility (member/manager/admin scopes).
+
+## 8. Quick Audit Checklist
+
+1. RBAC correctness (admin/manager/member scopes).
+2. Active cycle correctness and overlap sanity.
+3. DRAFT items moved to ACTIVE when execution starts.
+4. Weekly Ritual adoption for KR check-ins.
+5. Dashboard risk trends reviewed and acted on.
+6. AI sync used with preview-first discipline.
+
+## 9. Admin Tool Process and Timing Matrix
+
+Timing note:
+- Cadence below is recommended governance rhythm. The application does not enforce fixed weekdays.
+
+| Tool / Feature | Primary Owner | Process | Recommended Timing | Frequency | Expected Output |
+|---|---|---|---|---|---|
+| Admin Panel | Admin | Manage users, reset passwords, perform admin controls. | Onboarding/offboarding and incident response windows. | Ad hoc. | Access hygiene and operational continuity. |
+| Manage Cycles | Admin | Create/activate/deactivate cycles and confirm active period. | Pre-quarter setup and quarter close transition. | Quarterly (or when needed). | Correct cycle boundaries and active scope. |
+| Strategic Dashboard | Admin / Manager | Review KPI cards, at-risk KR list, overdue tasks, team distribution. | Weekly governance review; mid-week on risk spikes. | Weekly + event-driven. | Ranked intervention plan. |
+| Strategy Pulse (Leadership Insights tab) | Admin / Manager | Review burnout risk, strategy gaps, predictive outlook, and achievement portfolio artifacts to guide intervention/coaching. | After reviewing Strategic Dashboard execution metrics. | Weekly + on risk spikes. | Proactive capacity decisions and leadership coaching plan. |
+| Team Filter (Dashboard) | Admin / Manager | Isolate members/teams to identify root-cause patterns. | During dashboard review. | Every review session. | Targeted coaching and accountability. |
+| Atlas Inspector (Data Correction) | Admin / Manager | Correct KR metrics, lifecycle states, assignments, and deadlines. | Right after anomaly detection. | Ad hoc (often weekly). | Clean, defensible operational data. |
+| AI Progress Sync (Atlas) | Admin / Manager | Run preview, apply bounded update, verify result, use undo if needed. | After analysis refresh or before executive check-in. | Weekly or as needed. | Controlled organization-wide analysis/progress consistency. |
+| AI Team Coach (Dashboard) | Admin / Manager | Generate coaching guidance from aggregate team metrics. | After dashboard metrics review. | Weekly. | Actionable coaching priorities and quick wins. |
+| Weekly Ritual Compliance Review | Manager / Admin | Verify teams complete Ritual and update KR check-ins. | End-of-week governance cycle. | Weekly. | Reliable check-in cadence and better forecast quality. |
+| RetroBox (Team Retros) | Manager / Admin | Review team retrospectives and identify systemic blockers. | Post-Ritual team review. | Weekly. | Documented improvement loop and impediment list. |
+| Weekly Report (Team/Owner context) | Admin / Manager | Use report outputs for evidence in reviews and escalations. | End of week, after Ritual. | Weekly. | Shared factual summary artifacts. |
+| Project Timeline | Admin / Manager | Validate schedule pressure and deadline clustering by task. | Sprint planning and incident triage. | 1-2 times per week. | Deadline risk visibility for capacity decisions. |
+
+## 10. Secrets and Runtime Configuration
+
+For production stability:
+1. Keep `GEMINI_API_KEY` in Streamlit secrets or secure environment variables, never in repository files.
+2. For PDF export:
+   - local/server runtime: use `pdfkit` + `wkhtmltopdf`.
+   - Streamlit Cloud runtime: use PDFShift API key from secrets.
+3. Keep one deployment mode active per environment (avoid mixed PDF pipelines in the same runtime).

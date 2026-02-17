@@ -107,10 +107,10 @@ def _cached_get_work_logs_by_range(user_id, start_dt, end_dt):
 
 
 @st.cache_data(ttl=45, show_spinner=False)
-def _cached_get_node(node_id, node_type):
+def _cached_get_node(node_id, node_type, actor_username=None):
     from src.crud import get_node
 
-    return get_node(node_id, node_type)
+    return get_node(node_id, node_type, actor_username=actor_username)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -444,7 +444,7 @@ def _atlas_get_node_details_from_lookup(node_id, node_lookup=None):
 
 
 def get_node_details(node_id, node_lookup=None):
-    """Resolve node details with O(1) Atlas lookup first, DB fallback for legacy paths."""
+    """Resolve node details with O(1) Atlas lookup first, DB fallback on cache miss."""
     lookup_type, lookup_title = _atlas_get_node_details_from_lookup(
         node_id, node_lookup
     )
@@ -454,7 +454,7 @@ def get_node_details(node_id, node_lookup=None):
     from src.crud import get_session_context
 
     with get_session_context() as session:
-        # Legacy fallback for typed refs outside Atlas lookup.
+        # Fallback for typed refs outside Atlas lookup.
         if isinstance(node_id, str) and "_" in node_id:
             node_type, node_id_int = _parse_typed_ref(node_id)
             if node_id_int is None:
@@ -477,7 +477,7 @@ def get_node_details(node_id, node_lookup=None):
                     return "TASK", row.title
             return None, "Unknown"
 
-        # Legacy fallback for ambiguous numeric IDs.
+        # Fallback for ambiguous numeric IDs.
         try:
             raw_id = int(node_id)
         except Exception:
@@ -547,136 +547,6 @@ def build_graph_from_node(root_obj):
 
     traverse(root_obj)
     return nodes_list, edges_list
-
-
-def navigate_to(node_id):
-    """Push node to stack."""
-    if "nav_stack" in st.session_state:
-        st.session_state.nav_stack.append(node_id)
-        st.rerun()
-
-
-def navigate_back_to(index):
-    """Pop stack to specific index."""
-    if "nav_stack" in st.session_state:
-        st.session_state.nav_stack = st.session_state.nav_stack[: index + 1]
-        st.rerun()
-
-
-def _atlas_breadcrumb_labels(nav_stack, node_lookup):
-    labels = ["🏠 Home"]
-    for node_ref in list(nav_stack or []):
-        node_type, title = _atlas_get_node_details_from_lookup(
-            node_ref, node_lookup=node_lookup
-        )
-        if not node_type:
-            labels.append(f"Unknown: {title or node_ref}")
-            continue
-        labels.append(f"{node_type.replace('_', ' ').title()}: {title}")
-    return labels
-
-
-def render_breadcrumbs(node_lookup=None):
-    """Render clickable breadcrumbs using typed refs and Atlas in-memory lookup."""
-    stack = st.session_state.nav_stack
-    options = ["HOME"] + stack
-
-    def get_label(opt):
-        if opt == "HOME":
-            return "🏠 Home"
-        ntype, title = get_node_details(opt, node_lookup=node_lookup)
-        if not ntype:
-            return f"Unknown: {title}"
-        return f"{ntype.replace('_', ' ').title()}: {title}"
-
-    current_selection = stack[-1] if stack else "HOME"
-
-    selected = st.pills(
-        "Navigation",
-        options=options,
-        selection_mode="single",
-        default=current_selection,
-        format_func=get_label,
-        key="nav_pills",
-    )
-
-    if selected != current_selection:
-        if selected == "HOME":
-            st.session_state.nav_stack = []
-            st.rerun()
-        else:
-            try:
-                idx = stack.index(selected)
-                navigate_back_to(idx)
-            except ValueError:
-                pass
-
-
-def get_ancestor_objective(node_id):
-    """Find ancestor Objective using DB."""
-    # This requires traversing up DB relationships.
-    # Since we don't have parent pointers loaded easily without a session...
-    # We might need to fetch the task, then KR, then Obj.
-    # optimizing: Assume 4-level
-    _, title = get_node_details(
-        node_id
-    )  # Just a placeholder if we don't do full lookup
-    return "Unknown Objective"  # TODO: Implement DB upward traversal
-
-
-def get_ancestor_key_result(node_id):
-    return "Unknown KR"  # TODO: Implement DB upward traversal
-
-
-def resolve_owner_username(node) -> str:
-    """Resolve and map the owner's username to User.display_name via the ancestor Goal.
-    Falls back to username, then 'Unknown'.
-    """
-    from src.crud import get_session_context
-
-    try:
-        goal_obj = None
-        # Direct goal
-        if hasattr(node, "__tablename__") and node.__tablename__ == "goal":
-            goal_obj = node
-        # Loaded relationships first
-        elif hasattr(node, "goal") and node.goal is not None:
-            goal_obj = node.goal
-        elif hasattr(node, "objective") and node.objective is not None:
-            if getattr(node.objective, "goal", None):
-                goal_obj = node.objective.goal
-        elif hasattr(node, "key_result") and node.key_result is not None:
-            kr = node.key_result
-            if getattr(kr, "objective", None) and getattr(kr.objective, "goal", None):
-                goal_obj = kr.objective.goal
-
-        # If goal not loaded, fetch via IDs
-        if goal_obj is None:
-            with get_session_context() as session:
-                if isinstance(node, Task):
-                    kr = session.get(KeyResult, node.key_result_id)
-                    if kr:
-                        obj = session.get(Objective, kr.objective_id)
-                        if obj:
-                            goal_obj = session.get(Goal, obj.goal_id)
-                elif isinstance(node, KeyResult):
-                    obj = session.get(Objective, node.objective_id)
-                    if obj:
-                        goal_obj = session.get(Goal, obj.goal_id)
-                elif isinstance(node, Objective):
-                    goal_obj = session.get(Goal, node.goal_id)
-
-        # Map to display name from owner_id.
-        if goal_obj is not None:
-            with get_session_context() as session:
-                owner_uid = getattr(goal_obj, "owner_id", None)
-                if owner_uid:
-                    u = session.get(User, owner_uid)
-                    if u and (u.display_name or u.username):
-                        return u.display_name or u.username
-    except Exception:
-        pass
-    return "Unknown"
 
 
 def render_timer_content(node_id, username):
@@ -1880,7 +1750,9 @@ def render_report_content(username, mode):
                         from src.crud import update_key_result
 
                         res_kr = analyze_node(
-                            kr_item.id, None
+                            kr_item.id,
+                            "KEY_RESULT",
+                            actor_username=username,
                         )  # analyze_node now fetches from DB
                         if "error" in res_kr:
                             st.error(res_kr["error"])
@@ -1937,7 +1809,7 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
     )
 
     # Fetch node (cached to prevent rerun DB bottleneck)
-    node = _cached_get_node(node_id, node_type)
+    node = _cached_get_node(node_id, node_type, actor_username=username)
     if not node:
         st.error(f"Node {node_id} ({node_type}) not found")
         if st.button("Close", key=f"close_error_{node_id}"):
@@ -2493,7 +2365,9 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                 from src.services.ai_service import analyze_node
                 from src.crud import update_key_result
 
-                res_ai = analyze_node(node_id, "KEY_RESULT")
+                res_ai = analyze_node(
+                    node_id, "KEY_RESULT", actor_username=username
+                )
 
                 if "error" not in res_ai:
                     # Store full analysis dict; update_key_result will serialize
@@ -2956,6 +2830,26 @@ def _atlas_health_state(meta, index=None, _visited_refs=None, _memo=None):
                     status_label = "In progress"
 
     elif node_type == "KEY_RESULT":
+        # Respect AI deadline warnings when available; these are explicit risk signals.
+        ai_warnings = [str(w).lower() for w in _atlas_ai_deadline_warnings(meta)]
+        if ai_warnings:
+            if any("overdue" in warning for warning in ai_warnings):
+                return {
+                    "kind": "overdue",
+                    "reason": "Needs care",
+                    "status_label": "Overdue (AI)",
+                    "source": "ai_deadline_warning",
+                    "needs_attention": True,
+                }
+            if any("risk" in warning for warning in ai_warnings):
+                return {
+                    "kind": "risk",
+                    "reason": "Needs care",
+                    "status_label": "At risk (AI)",
+                    "source": "ai_deadline_warning",
+                    "needs_attention": True,
+                }
+
         # Calculate normalized score
         score = calculate_kr_score(
             current=getattr(node, "current_value", 0.0),
@@ -4763,7 +4657,11 @@ def render_atlas_workspace(username):
                             continue
 
                         try:
-                            result = analyze_node(int(kr_id), "KEY_RESULT")
+                            result = analyze_node(
+                                int(kr_id),
+                                "KEY_RESULT",
+                                actor_username=username,
+                            )
                             if isinstance(result, dict) and "error" not in result:
                                 current_progress = int(
                                     kr_meta.get("progress", 0) or 0
@@ -5295,200 +5193,6 @@ def render_atlas_workspace(username):
                 )
 
 
-def render_card(node, username):
-    node_id = node.id
-    title = node.title
-    progress = node.progress
-
-    # Identify type from SQLModel class or tablename
-    node_type = node.__tablename__.upper()
-    if node_type == "KEY_RESULT":
-        pass
-    elif node_type == "KEYRESULT":
-        node_type = "KEY_RESULT"
-
-    # Check children based on relationships
-    has_children = False
-    if node_type == "GOAL":
-        has_children = len(node.objectives) > 0
-    elif node_type == "OBJECTIVE":
-        has_children = len(node.key_results) > 0
-    elif node_type == "KEY_RESULT":
-        has_children = len(node.tasks) > 0
-
-    is_leaf = node_type == "TASK"
-
-    from src.crud import start_timer, stop_timer
-
-    # CSS Frame
-    with st.container(border=True):
-        c1, c2, c3 = st.columns([3, 1.5, 1.5])
-        with c1:
-            # Clickable Title => Navigate
-            label = f"{TYPE_ICONS.get(node_type, '')} {title}"
-
-            # Subtitle stats
-            stats = f"📊 {progress}% | {node_type.replace('_', ' ').title()}"
-            if node_type == "TASK":
-                t_card = node.total_time_spent
-                stats += f" | ⏱️ {format_time(t_card)}"
-                # Add deadline indicator
-                if node.deadline:
-                    from src.utils.deadline_utils import get_deadline_status
-
-                    try:
-                        _, status_label, _ = get_deadline_status(node)
-                        stats += f" | {status_label}"
-                    except:
-                        pass
-
-            st.markdown(f"**{label}**")
-            st.caption(stats)
-
-            # Show Strategy Tags for Goals
-            if node_type == "GOAL":
-                raw_strats = getattr(node, "strategy_tags", "[]")
-                strat_tags = []
-                try:
-                    strat_tags = (
-                        json.loads(raw_strats)
-                        if isinstance(raw_strats, str)
-                        else raw_strats
-                    )
-                except Exception:
-                    pass
-                if strat_tags:
-                    tags_html = " ".join(
-                        [
-                            "<span style='background-color:#1E88E5;color:white;padding:2px 8px;border-radius:10px;"
-                            f"font-size:0.75em;margin-right:4px;'>♟️ {escape_html(t)}</span>"
-                            for t in strat_tags
-                        ]
-                    )
-                    st.markdown(tags_html, unsafe_allow_html=True)
-
-            # Show Initiative Tags for Key Results
-            if node_type == "KEY_RESULT":
-                raw_inits = getattr(node, "initiative_tags", "[]")
-                init_tags = []
-                try:
-                    init_tags = (
-                        json.loads(raw_inits)
-                        if isinstance(raw_inits, str)
-                        else raw_inits
-                    )
-                except Exception:
-                    pass
-                if init_tags:
-                    tags_html = " ".join(
-                        [
-                            "<span style='background-color:#8E24AA;color:white;padding:2px 8px;border-radius:10px;"
-                            f"font-size:0.75em;margin-right:4px;'>⚡ {escape_html(t)}</span>"
-                            for t in init_tags
-                        ]
-                    )
-                    st.markdown(tags_html, unsafe_allow_html=True)
-
-            # Creator/Owner Tags
-            user_role = st.session_state.get("user_role", "member")
-            tags_row_html = ""
-            # Resolve owner username from node or its ancestor goal
-            creator_id = resolve_owner_username(node)
-            tags_row_html += (
-                "<span style='background-color:#F5F5F5;color:#616161;padding:2px 8px;border-radius:10px;"
-                "font-size:0.75em;margin-right:4px;border:1px solid #e0e0e0;'>👤 "
-                f"{escape_html(creator_id)}</span>"
-            )
-
-            if tags_row_html:
-                st.markdown(
-                    f"<div style='margin-top:4px;'>{tags_row_html}</div>",
-                    unsafe_allow_html=True,
-                )
-
-        with c2:
-            # Timer Controls (If Task)
-            if node_type == "TASK":
-                if node.timer_started_at:
-                    start_ts_c = node.timer_started_at.timestamp() * 1000
-                    elapsed_c = int((time.time() * 1000 - start_ts_c) / 60000)
-                    if st.button(
-                        f"Running ({elapsed_c}m)",
-                        icon=":material/timer:",
-                        key=f"open_t_c_{node_id}",
-                    ):
-                        st.session_state.active_timer_node_id = node_id
-                        if "active_inspector_id" in st.session_state:
-                            del st.session_state.active_inspector_id
-                        st.rerun()
-                else:
-                    if st.button(
-                        "Start Timer",
-                        icon=":material/play_arrow:",
-                        key=f"start_c_{node_id}",
-                    ):
-                        try:
-                            start_timer(node_id, username)
-                        except ValueError as e:
-                            st.error(str(e))
-                            return
-                        st.session_state.active_timer_node_id = node_id
-                        if "active_inspector_id" in st.session_state:
-                            del st.session_state.active_inspector_id
-                        st.rerun()
-
-            if st.button("Inspect", icon=":material/search:", key=f"inspect_{node_id}"):
-                # Store typed reference to avoid id collisions across tables
-                st.session_state.active_inspector_id = f"{node.__tablename__}_{node_id}"
-                if "active_timer_node_id" in st.session_state:
-                    del st.session_state.active_timer_node_id
-                st.rerun()
-
-            # View Map button
-            if has_children:
-                if st.button(
-                    "Map", icon=":material/account_tree:", key=f"map_{node_id}"
-                ):
-                    from src.ui.dialogs import render_mindmap_dialog
-
-                    # Update mindmap dialog if it still expects data dict?
-                    # Assuming it handles node_id
-                    render_mindmap_dialog(node_id)
-
-        with c3:
-            # Navigation Button ("Open")
-            if not is_leaf:
-                if st.button(
-                    "Open", icon=":material/arrow_forward:", key=f"nav_{node_id}"
-                ):
-                    # Use typed node reference to avoid id collision across tables
-                    navigate_to(f"{node.__tablename__}_{node_id}")
-
-            # AI Analysis Quick Button
-            if node_type == "KEY_RESULT":
-                if st.button("AI", icon=":material/psychology:", key=f"ai_c_{node_id}"):
-                    from src.services.ai_service import analyze_node
-                    from src.crud import update_key_result
-
-                    with st.spinner("🧠 Analyzing..."):
-                        # analyze_node(id, type) now fetches its own data from SQL.
-                        res_c = analyze_node(node_id, "KEY_RESULT")
-                        if "error" not in res_c:
-                            # analyze_node returns results directly as a dict now.
-                            try:
-                                update_key_result(
-                                    node_id,
-                                    gemini_analysis=res_c,
-                                    actor_username=username,
-                                )
-                            except PermissionError as e:
-                                st.error(str(e))
-                                return
-                            st.rerun()
-                        else:
-                            st.error(res_c["error"])
-
-
 def render_strategy_pulse_content(username):
     """
     Phase 4: Strategic insights dashboard tab.
@@ -5545,8 +5249,12 @@ def render_strategy_pulse_content(username):
         else:
             for gap in gaps:
                 with st.expander(f"⚠️ {gap['title']}", expanded=True):
-                    st.write(gap["issue"])
-                    st.caption(f"Progress: {gap['progress']}% | Tasks: {gap['task_count']}")
+                    st.write(gap.get("detail", "No additional detail provided."))
+                    st.caption(
+                        f"Progress: {gap.get('progress', 0)}% | "
+                        f"Type: {gap.get('gap_type', 'N/A')} | "
+                        f"Severity: {gap.get('severity', 'N/A')}"
+                    )
 
     st.markdown("---")
 
@@ -5555,10 +5263,9 @@ def render_strategy_pulse_content(username):
     if st.button("✨ Generate Strategic Forecast", type="primary"):
         with st.spinner("Gemini is synthesizing insights..."):
             outlook = generate_predictive_outlook(
-                user_id=user_obj.id,
-                cycle_id=cycle_id,
                 burnout_data=burnout,
-                strategy_gaps=gaps
+                strategy_gaps=gaps,
+                cycle_title=f"Cycle {cycle_id}",
             )
             if "error" in outlook:
                 st.error(outlook["error"])
@@ -5569,11 +5276,21 @@ def render_strategy_pulse_content(username):
     if outlook:
         with st.container(border=True):
             st.markdown(f"**Confidence:** {outlook.get('confidence_level', 'N/A')}")
-            st.markdown(outlook.get("outlook_markdown", "No forecast generated."))
+            st.markdown(
+                outlook.get("outlook_markdown")
+                or outlook.get("outlook_summary")
+                or "No forecast generated."
+            )
             
             with st.expander("🛠️ Risk Mitigation Steps"):
-                for step in outlook.get("mitigation_steps", []):
+                for step in (outlook.get("mitigation_steps") or outlook.get("risk_mitigation") or []):
                     st.markdown(f"- {step}")
+
+            pivots = outlook.get("strategic_pivots") or []
+            if pivots:
+                with st.expander("🔀 Strategic Pivots"):
+                    for pivot in pivots:
+                        st.markdown(f"- {pivot}")
 
     st.markdown("---")
 

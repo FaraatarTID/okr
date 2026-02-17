@@ -50,10 +50,14 @@ def render_gantt_chart(tasks: List[Task], current_user_role: str, current_userna
             
         # Determine Assignee Display
         assignee_label = "Unassigned"
-        if current_user_role == "member":
-             assignee_label = current_username
-        else:
-             assignee_label = "Unassigned"
+        assignee_id = getattr(t, "assignee_id", None)
+        if assignee_id and users_map and assignee_id in users_map:
+            assignee_obj = users_map[assignee_id]
+            assignee_label = (
+                getattr(assignee_obj, "display_name", None)
+                or getattr(assignee_obj, "username", None)
+                or f"User {assignee_id}"
+            )
         
         # Color Mapping
         status_color_map = {

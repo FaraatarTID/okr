@@ -313,6 +313,11 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 username: (display_name or username)
                 for _, username, display_name in user_rows
             }
+            user_id_to_username = {
+                user_id: username
+                for user_id, username, _ in user_rows
+                if user_id is not None
+            }
             for uname in selected_usernames:
                 member_display_map.setdefault(uname, uname)
 
@@ -330,7 +335,7 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
 
             task_rows = session.exec(
                 select(
-                    User.username,
+                    Goal.owner_id,
                     Task.progress,
                     Task.deadline,
                     Task.created_at,
@@ -346,8 +351,11 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
             trace.mark("task_query_ms")
 
             now_ms = int(datetime.now().timestamp() * 1000)
-            for owner, progress_value, deadline, created_at in task_rows:
-                stats = member_stats.get(owner)
+            for owner_id, progress_value, deadline, created_at in task_rows:
+                owner_username = user_id_to_username.get(owner_id)
+                if not owner_username:
+                    continue
+                stats = member_stats.get(owner_username)
                 if stats is None:
                     continue
 

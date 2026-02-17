@@ -135,7 +135,6 @@ def test_atlas_snapshot_excludes_analysis_blob_by_default(isolated_db):
 
 def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db):
     from src.ui.components import (
-        _atlas_breadcrumb_labels,
         _cached_get_atlas_scope_runtime,
         _canonical_owner_ids_key,
         get_node_details,
@@ -168,9 +167,12 @@ def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db):
             include_analysis=False,
         )
         lookup_hit = runtime_hit.get("node_lookup", {})
-        _atlas_breadcrumb_labels(nav_stack, lookup_hit)
+        path_titles = []
         for node_ref in nav_stack:
-            get_node_details(node_ref, node_lookup=lookup_hit)
+            _, node_title = get_node_details(node_ref, node_lookup=lookup_hit)
+            if node_title:
+                path_titles.append(node_title)
+        assert path_titles
 
     query_count = _count_queries(isolated_db, _cache_hit_navigation_work)
     assert query_count == 0

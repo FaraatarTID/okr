@@ -35,7 +35,14 @@ def _build_okr_tree(
     tasks_per_kr: int = 1,
     goal_title: str | None = None,
 ):
-    from src.crud import create_goal, create_key_result, create_objective, create_task
+    from src.crud import (
+        create_goal,
+        create_key_result,
+        create_objective,
+        create_task,
+        update_objective,
+    )
+    from src.models import LifecycleState
 
     goal = create_goal(
         username,
@@ -63,6 +70,13 @@ def _build_okr_tree(
                     kr.id, f"{username} task {idx}-{task_idx}", actor_username=username
                 )
             )
+
+    # Hotpath analytics query active/graded nodes only; activate the objective tree.
+    update_objective(
+        objective.id,
+        state=LifecycleState.ACTIVE,
+        actor_username=username,
+    )
 
     return goal, objective, key_results, tasks
 

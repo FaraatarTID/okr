@@ -221,12 +221,6 @@ def get_user_goals(username: str, cycle_id: int):
         return results
 
 
-def get_goal_tree(username: str):
-    """Fetch full tree (Legacy support helper if needed)."""
-    # Not needed if we traverse proactively
-    pass
-
-
 def get_user_by_id(user_id: int) -> Optional[User]:
     """Get a user by ID."""
     with get_session_context() as session:
@@ -1388,6 +1382,12 @@ def create_alignment(
         if not parent or not child:
             raise ValueError("Target objectives not found.")
 
+        parent_goal = _get_goal_for_objective(session, parent_id)
+        child_goal = _get_goal_for_objective(session, child_id)
+        _authorize_goal_mutation(session, parent_goal, actor_username)
+        if child_goal and parent_goal and child_goal.id != parent_goal.id:
+            _authorize_goal_mutation(session, child_goal, actor_username)
+
         if check_for_cycle(session, parent_id, child_id):
             raise ValueError("Adding this alignment would create a circular dependency.")
 
@@ -1429,6 +1429,11 @@ def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
     with get_session_context() as session:
         edge = session.get(AlignmentEdge, edge_id)
         if edge:
+            parent_goal = _get_goal_for_objective(session, edge.parent_id)
+            child_goal = _get_goal_for_objective(session, edge.child_id)
+            _authorize_goal_mutation(session, parent_goal, actor_username)
+            if child_goal and parent_goal and child_goal.id != parent_goal.id:
+                _authorize_goal_mutation(session, child_goal, actor_username)
             session.delete(edge)
             session.commit()
             audit_log("delete", "alignment_edge", details={"edge_id": edge_id})
@@ -1618,10 +1623,28 @@ def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
         return False
 
 
-def get_node(node_id: int, node_type: str):
+def _resolve_goal_for_node(
+    session: Session, node_id: int, node_type_upper: str
+) -> Optional[Goal]:
+    """Resolve ancestor goal for a node type/id pair."""
+    if node_type_upper == "GOAL":
+        return session.get(Goal, node_id)
+    if node_type_upper == "OBJECTIVE":
+        return _get_goal_for_objective(session, node_id)
+    if node_type_upper in {"KEY_RESULT", "KEYRESULT"}:
+        return _get_goal_for_key_result(session, node_id)
+    if node_type_upper == "TASK":
+        return _get_goal_for_task(session, node_id)
+    return None
+
+
+def get_node(
+    node_id: int, node_type: str, actor_username: Optional[str] = None
+):
     """Fetch a node by ID and Type string (GOAL, OBJECTIVE, KEY_RESULT, TASK)."""
     with get_session_context() as session:
-        nt = node_type.upper()
+        nt = str(node_type or "KEY_RESULT").upper()
+        node = None
         if nt == "GOAL":
             statement = (
                 select(Goal)
@@ -1630,8 +1653,8 @@ def get_node(node_id: int, node_type: str):
                     selectinload(Goal.objectives).selectinload(Objective.key_results)
                 )
             )
-            return session.exec(statement).first()
-        if nt == "OBJECTIVE":
+            node = session.exec(statement).first()
+        elif nt == "OBJECTIVE":
             statement = (
                 select(Objective)
                 .where(Objective.id == node_id)
@@ -1639,8 +1662,8 @@ def get_node(node_id: int, node_type: str):
                     selectinload(Objective.key_results).selectinload(KeyResult.tasks)
                 )
             )
-            return session.exec(statement).first()
-        if nt == "KEY_RESULT" or nt == "KEYRESULT":
+            node = session.exec(statement).first()
+        elif nt == "KEY_RESULT" or nt == "KEYRESULT":
             statement = (
                 select(KeyResult)
                 .where(KeyResult.id == node_id)
@@ -1648,14 +1671,32 @@ def get_node(node_id: int, node_type: str):
                     selectinload(KeyResult.tasks), selectinload(KeyResult.check_ins)
                 )
             )
-            return session.exec(statement).first()
-        if nt == "TASK":
+            node = session.exec(statement).first()
+        elif nt == "TASK":
             statement = (
                 select(Task)
                 .where(Task.id == node_id)
                 .options(selectinload(Task.work_logs))
             )
-            return session.exec(statement).first()
+            node = session.exec(statement).first()
+
+        if node and actor_username:
+            from src.domain.permissions import Action, check_permission
+
+            actor = session.exec(
+                select(User).where(User.username == actor_username)
+            ).first()
+            if not actor or not actor.is_active:
+                raise PermissionError("Actor is not authorized")
+
+            goal = _resolve_goal_for_node(session, node_id, nt)
+            if goal is None:
+                raise ValueError("Target goal not found")
+
+            if not check_permission(actor, Action.READ, goal, session):
+                raise PermissionError("Insufficient permissions to read this node")
+
+        return node
     return None
 
 
