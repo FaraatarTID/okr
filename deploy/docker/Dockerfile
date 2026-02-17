@@ -27,7 +27,7 @@ COPY streamlit_app/ /app/streamlit_app/
 
 # Install Python deps
 RUN python -m pip install --upgrade pip \
-    && pip install -r /app/streamlit_app/requirements.txt
+    && pip install --require-hashes -r /app/streamlit_app/requirements.txt
 
 # Create non-root user
 RUN useradd -m -u 10001 appuser \

@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache-dependency-path: |
+            streamlit_app/requirements.txt
+            streamlit_app/requirements-dev.txt
 
       - name: Docs HQ Link Check
         run: python scripts/check_docs_hq_links.py
@@ -28,13 +31,10 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r streamlit_app/requirements.txt
-          pip install ruff mypy pytest
+          pip install --require-hashes -r streamlit_app/requirements-dev.txt
 
       - name: Security Scan (pip-audit)
-        continue-on-error: true
         run: |
-          python -m pip install pip-audit
           python -m pip_audit -r streamlit_app/requirements.txt --progress-spinner off
 
       - name: Lint (Ruff)
