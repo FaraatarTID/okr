@@ -110,14 +110,8 @@ def calculate_goal_progress(session: Session, goal_id: int) -> int:
         session.add(goal)
         session.flush()
 
-    new_progress = max(0, min(100, new_progress))
-
-    if goal.progress != new_progress:
-        goal.progress = new_progress
-        session.add(goal)
-        session.flush()
-
     return new_progress
+
 
 
 def refresh_hierarchy_progress(session: Session, node_id: int, node_type: str) -> None:

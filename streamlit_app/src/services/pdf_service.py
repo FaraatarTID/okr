@@ -582,3 +582,141 @@ def get_pdf_generator_info():
     
     return info
 
+
+def generate_achievement_portfolio_pdf(portfolio: dict, direction: str = "RTL"):
+    """
+    Generate a professional Achievement Portfolio PDF.
+
+    Args:
+        portfolio: Dict from reporting.generate_achievement_portfolio()
+        direction: 'RTL' or 'LTR'
+
+    Returns: BytesIO object containing the PDF, or None on failure.
+    """
+    align = "right" if direction == "RTL" else "left"
+    dir_attr = direction.lower()
+
+    user_name = _escape(portfolio.get("user", "Team Member"))
+    generated_at = _escape(portfolio.get("generated_at", ""))
+    summary = _escape(portfolio.get("summary_text", ""))
+    total_achievements = portfolio.get("total_achievements", 0)
+    total_hours = portfolio.get("total_high_impact_hours", 0)
+
+    # Font embedding
+    font_path = None
+    possible_paths = [
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Vazirmatn-Regular.ttf"),
+        os.path.join(os.path.dirname(__file__), "assets", "fonts", "Vazirmatn-Regular.ttf"),
+    ]
+    for path in possible_paths:
+        if os.path.exists(path):
+            font_path = path
+            break
+    font_base64 = get_base64_font(font_path) if font_path else ""
+
+    html = f"""
+<!DOCTYPE html>
+<html dir="{dir_attr}">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @font-face {{
+            font-family: 'Vazirmatn';
+            src: url('data:font/ttf;base64,{font_base64}') format('truetype');
+        }}
+        body {{
+            font-family: 'Vazirmatn', 'Segoe UI', Tahoma, sans-serif;
+            font-size: 13px; color: #333; direction: {dir_attr};
+            text-align: {align}; padding: 1.5cm; line-height: 1.5;
+        }}
+        h1 {{ color: #1f2933; font-size: 22px; border-bottom: 3px solid #0f766e; padding-bottom: 8px; }}
+        h2 {{ color: #34495e; font-size: 16px; margin-top: 24px; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 12px; }}
+        th {{ background: #f0f7f5; color: #1f2933; padding: 10px 8px; border-bottom: 2px solid #d2d2d2; text-align: {align}; font-size: 11px; }}
+        td {{ padding: 8px; border-bottom: 1px solid #eee; text-align: {align}; }}
+        tr:nth-child(even) {{ background: #fafafa; }}
+        .summary-box {{ background: linear-gradient(135deg, #0f766e, #12a39a); color: #fff; padding: 16px 20px; border-radius: 10px; margin: 16px 0; font-size: 14px; }}
+        .kpi {{ display: inline-block; padding: 8px 16px; margin: 4px; background: #f0f7f5; border-radius: 8px; font-weight: 700; font-size: 13px; }}
+        .health-badge {{ display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; }}
+        .risk-healthy {{ background: #e8f5e9; color: #2e7d32; }}
+        .risk-elevated {{ background: #fff8e1; color: #f57f17; }}
+        .risk-high {{ background: #fff3e0; color: #e65100; }}
+        .risk-critical {{ background: #ffebee; color: #c62828; }}
+    </style>
+</head>
+<body>
+    <h1>Achievement Portfolio — {user_name}</h1>
+    <p style="color: #888; font-size: 11px;">Generated: {generated_at}</p>
+
+    <div class="summary-box">{summary}</div>
+
+    <div>
+        <span class="kpi">Contributions: {total_achievements}</span>
+        <span class="kpi">High-Impact Hours: {total_hours}h</span>
+    </div>
+"""
+
+    # Achievements table
+    achievements = portfolio.get("achievements", [])
+    if achievements:
+        html += """
+    <h2>High-Impact Contributions</h2>
+    <table>
+        <thead><tr>
+            <th>Task</th><th>Key Result</th><th>Objective</th><th>Score</th><th>Time</th>
+        </tr></thead>
+        <tbody>
+"""
+        for a in achievements:
+            time_h = round(a.get("time_spent", 0) / 60, 1)
+            html += f"""
+            <tr>
+                <td><strong>{_escape(a.get('task_title', ''))}</strong></td>
+                <td>{_escape(a.get('kr_title', ''))}</td>
+                <td>{_escape(a.get('objective_title', ''))}</td>
+                <td>{a.get('kr_score', 0):.2f} ({_escape(a.get('kr_score_label', ''))})</td>
+                <td>{time_h}h</td>
+            </tr>
+"""
+        html += """
+        </tbody>
+    </table>
+"""
+
+    # Health snapshot
+    burnout = portfolio.get("burnout_snapshot", {})
+    if burnout:
+        risk_label = burnout.get("risk_label", "Unknown")
+        risk_class = {
+            "Healthy": "risk-healthy",
+            "Elevated": "risk-elevated",
+            "High": "risk-high",
+            "Critical": "risk-critical",
+        }.get(risk_label, "risk-healthy")
+
+        html += f"""
+    <h2>Health Snapshot</h2>
+    <p>
+        Burnout Risk: <span class="health-badge {risk_class}">{_escape(risk_label)} ({burnout.get('risk_score', 0)})</span>
+        &nbsp; Avg Daily Focus: <strong>{burnout.get('avg_daily_minutes', 0)} min</strong>
+        &nbsp; Tasks Completed (14d): <strong>{burnout.get('completed_tasks', 0)}</strong>
+    </p>
+"""
+
+    html += """
+    <hr style="margin-top: 30px; border: none; border-top: 1px solid #ddd;">
+    <p style="color: #aaa; font-size: 10px;">Generated by the OKR Strategy Engine.</p>
+</body>
+</html>
+"""
+
+    # Generate PDF using existing infrastructure
+    is_deployed = is_deployed_environment()
+    if is_deployed:
+        if not PDFSHIFT_AVAILABLE:
+            return None
+        return generate_pdf_with_pdfshift(html)
+    else:
+        if not PDFKIT_AVAILABLE:
+            return None
+        return generate_pdf_with_pdfkit(html)

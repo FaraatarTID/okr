@@ -285,6 +285,23 @@ Use the AI as a continuous watchdog for the organization’s health.
 
 ---
 
+## 13. Predictive Strategic Outlook (Phase 4)
+
+Uses Gemini to synthesize execution data, burnout risks, and strategy gaps into a 30-day forecast.
+
+- **How to trigger**: Open **Leadership Insights > Strategy Pulse** tab and click **✨ Generate Strategic Forecast**.
+- **Output**: Strategic advice, risk mitigation steps, and confidence ratings.
+- **Why it matters**: It moves the system from "Reporting what happened" to "Predicting what will happen if trends continue."
+
+## 14. Achievement Portfolio Intelligence (Phase 4)
+
+Analyzes task completion against KR effectiveness to filter high-impact contributions.
+
+- **Capability**: Identifies work that "truly moved the needle" based on actual numeric KR impact.
+- **Export**: Generates a professional branded PDF portfolio via the **Strategy Pulse** tab for performance reviews or leadership reporting.
+
+---
+
 _The Master Strategist. Defending the truth. Auditing the future._
 
 ---

@@ -163,13 +163,6 @@ def render_create_objective_dialog(parent_id):
                 st.success("Objective created!")
                 if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
                 st.rerun()
-                
-                if btn_col2.form_submit_button("🗑️ Delete", type="secondary"):
-                    if delete_cycle(c.id):
-                        st.success("Cycle deleted!")
-                        st.rerun()
-                    else:
-                        st.error("Cannot delete cycle. Please remove its Goals first to avoid data loss.")
 
 @st.dialog("Create New Key Result", width="medium")
 def render_create_kr_dialog(parent_id):
@@ -251,7 +244,6 @@ def render_create_kr_dialog(parent_id):
                 st.success("Key Result created!")
                 if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
                 st.rerun()
-    render_timer_content(node_id, None, username)
 @st.dialog("⏱️ Timer", width="small")
 def render_timer_dialog(node_id, username):
     """Dialog wrapper for task timer content."""
@@ -280,7 +272,14 @@ def render_leadership_dashboard_dialog(username):
             del st.session_state.active_report_mode
         st.rerun()
     
-    render_leadership_dashboard_content(username)
+    render_leadership_dashboard_content_func = render_leadership_dashboard_content
+    from src.ui.components import render_strategy_pulse_content
+
+    tab_exec, tab_strat = st.tabs(["🚀 Execution", "🧠 Strategy Pulse"])
+    with tab_exec:
+        render_leadership_dashboard_content_func(username)
+    with tab_strat:
+        render_strategy_pulse_content(username)
 
 @st.dialog("👑 Admin Panel", width="large")
 def render_admin_panel_dialog():
