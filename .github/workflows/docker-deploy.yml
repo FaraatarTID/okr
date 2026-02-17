@@ -65,7 +65,7 @@ jobs:
 
       - name: Deploy to server via SSH (Docker Compose)
         if: steps.validate.outputs.ready == 'true'
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
