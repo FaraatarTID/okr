@@ -1329,17 +1329,25 @@ def update_objective(
             )
             # [Lifecycle Logic] Enforce state machine rules
             if "state" in updates:
-                from src.domain.lifecycle import validate_transition, cascade_state_change
+                from src.domain.lifecycle import (
+                    validate_transition,
+                    cascade_state_change,
+                )
+
                 new_state = updates["state"]
-                
+
                 # Robustness check: Transition to ACTIVE requires children
                 if new_state == LifecycleState.ACTIVE:
                     if not item.key_results:
-                         raise ValueError("Cannot activate an Objective without at least one Key Result.")
+                        raise ValueError(
+                            "Cannot activate an Objective without at least one Key Result."
+                        )
 
                 if not validate_transition(item.state, new_state):
-                    raise ValueError(f"Invalid state transition from {item.state} to {new_state}")
-                
+                    raise ValueError(
+                        f"Invalid state transition from {item.state} to {new_state}"
+                    )
+
                 # Cascade to KRs
                 kr_state = cascade_state_change(new_state)
                 for kr in item.key_results:
@@ -1389,7 +1397,9 @@ def create_alignment(
             _authorize_goal_mutation(session, child_goal, actor_username)
 
         if check_for_cycle(session, parent_id, child_id):
-            raise ValueError("Adding this alignment would create a circular dependency.")
+            raise ValueError(
+                "Adding this alignment would create a circular dependency."
+            )
 
         # Check if already exists
         existing = session.exec(
@@ -1457,23 +1467,32 @@ def update_key_result(
             # [Lifecycle Logic] Enforce state machine rules
             if "state" in updates:
                 from src.domain.lifecycle import validate_transition
+
                 new_state = updates["state"]
                 if not validate_transition(item.state, new_state):
-                    raise ValueError(f"Invalid state transition from {item.state} to {new_state}")
+                    raise ValueError(
+                        f"Invalid state transition from {item.state} to {new_state}"
+                    )
 
-            # [Sync Logic] If progress is updated but current_value is NOT, 
+            # [Sync Logic] If progress is updated but current_value is NOT,
             # we must back-fill current_value to keep scoring engine consistent.
             if "progress" in updates and "current_value" not in updates:
                 prog = int(updates["progress"])
-                m_type = updates.get("metric_type", getattr(item, "metric_type", "NUMERIC"))
-                start = float(updates.get("start_value", getattr(item, "start_value", 0.0)))
-                target = float(updates.get("target_value", getattr(item, "target_value", 100.0)))
-                
+                m_type = updates.get(
+                    "metric_type", getattr(item, "metric_type", "NUMERIC")
+                )
+                start = float(
+                    updates.get("start_value", getattr(item, "start_value", 0.0))
+                )
+                target = float(
+                    updates.get("target_value", getattr(item, "target_value", 100.0))
+                )
+
                 if m_type == "PERCENT":
                     updates["current_value"] = float(prog)
                 elif m_type == "BOOLEAN":
                     updates["current_value"] = 1.0 if prog >= 100 else 0.0
-                else: # NUMERIC
+                else:  # NUMERIC
                     # Interpolate
                     delta = target - start
                     updates["current_value"] = start + (delta * (prog / 100.0))
@@ -1638,9 +1657,7 @@ def _resolve_goal_for_node(
     return None
 
 
-def get_node(
-    node_id: int, node_type: str, actor_username: Optional[str] = None
-):
+def get_node(node_id: int, node_type: str, actor_username: Optional[str] = None):
     """Fetch a node by ID and Type string (GOAL, OBJECTIVE, KEY_RESULT, TASK)."""
     with get_session_context() as session:
         nt = str(node_type or "KEY_RESULT").upper()
