@@ -30,8 +30,9 @@ Admin actions are critical for the initialization and archival of 90-day cycles.
 ### Phase 1: Cycle Initialization (Weeks -2 to 0)
 
 1. **Create Cycle**: Use the `Manage Cycles` dialog to create a new `Cycle` entry. Define the `start_date` and `end_date`.
-2. **Identity Linkage**: Ensure every new `User` is linked to a `manager_id` and `team_id`. Without this link, the `get_leadership_metrics` query will not aggregate their effort correctly.
-3. **Database Preflight**: Verify connection health to the Supabase PostgreSQL layer before the cycle launch.
+2. **Setup Drafts**: Begin planning objectives. New OKRs default to `DRAFT` state and do not affect scoring until activated.
+3. **Identity Linkage**: Ensure every new `User` is linked to a `manager_id` and `team_id`. Without this link, the `get_leadership_metrics` query will not aggregate their effort correctly.
+4. **Activation**: Move validated objectives to `ACTIVE` state to begin tracking progress.
 
 ### Phase 2: Core Oversight (Weeks 1-12)
 
@@ -41,9 +42,10 @@ Admin actions are critical for the initialization and archival of 90-day cycles.
 
 ### Phase 3: Archive & Transition (Week 13)
 
-1. **Cycle Deactivation**: Once the quarter ends, set the `active_cycle_id` to inactive.
-2. **Stale Task Cleanup**: Identify tasks with zero `total_time_spent` or those older than 21 days for archival.
-3. **Historical Data Sync**: Perform a final database export to ensure 90 days of execution history are securely preserved.
+1. **Grading Phase**: Move Objectives to `GRADING` state. This prompts owners to provide a **Final Reflection** and review their actual achievements vs. targets.
+2. **Archival**: Move completed nodes to `ARCHIVED`. These become read-only historical records.
+3. **Cycle Deactivation**: Once the quarter ends, set the `active_cycle_id` to inactive.
+4. **Historical Data Sync**: Perform a final database export to ensure 90 days of execution history are securely preserved.
 
 ---
 
@@ -53,13 +55,39 @@ Admin actions are critical for the initialization and archival of 90-day cycles.
 
 A red dashboard indicates that nodes have fallen into the `Needs care` classification (Progress < 40% or Overdue).
 
-- **Step 1**: Check the **AI Progress Sync**. Ensure the calculated percentages reflect the most recent database commits.
-- **Step 2**: Use the **Strategic Dashboard** to identify the specific `owner_id` or `team_id` responsible for the lag.
 - **Step 3**: Review the `WorkLog` entries to see if effort has been logged but not yet results.
 
 ---
 
-## 4. Disaster Recovery & Security Ethics
+## 4. Governance: Precision Scoring & Alignment Graph
+
+As the Execution Guardian, you are responsible for the mathematical integrity of the OKR map.
+
+### A) The Precision Scorer (0.00 - 1.00)
+
+The system uses a semantic scoring band for `Effectiveness Scores` (stored in `KeyResult.gemini_analysis`):
+
+- **0.0 - 0.3 (Failure/Pivot)**: Effort is not aligned with the outcome. Intervention required.
+- **0.3 - 0.7 (Partial Success)**: Progressive movement.
+- **0.7 - 1.0 (Elite Achievement)**: High-impact work that directly moves the metric.
+
+### B) Alignment DAG (Acyclicity)
+
+The organization is mapped as a **Directed Acyclic Graph (DAG)**.
+
+- **Enforcement**: The system uses `src/domain/alignment.py` to prevent any alignment links (A supports B, B supports A) that create circular logic.
+- **Troubleshooting**: If a user cannot link two objectives, check the **Alignment Graph** for pre-existing paths that might be blocked by the cycle detection logic.
+
+### C) Scoring Modes (Weighted Architecture)
+
+Admins should audit that high-stakes objectives use the **Weighted Mode**.
+
+- Verify that Weights (multiplier `1.0`, `2.0`, etc.) are balanced.
+- Example: If a single KR has a weight of `5.0` while others have `1.0`, that KR effectively controls 50%+ of the Objective progress. Monitor for "Impact Skewing."
+
+---
+
+## 5. Disaster Recovery & Security Ethics
 
 ### A) Backup Protocols
 

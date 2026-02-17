@@ -1,4 +1,4 @@
-# User Guide: The Master Anthology 
+# User Guide: The Master Anthology
 
 Documentation HQ: [README](../README.md)
 
@@ -105,11 +105,41 @@ Mastering a 13-week `Cycle` requires using the following tools in sequence:
 - 🟡 **Warning**: Progress or deadline risk detected.
 - 🔴 **Needs care**: Critical risk or high lag.
 - 🔵 **Complete**: Task or Goal is finished.
-- ⚪ **Pending**: Status is `TODO`.
+- ⚪ **Pending / Draft**: The node is not yet active.
+
+### 🔄 The Lifecycle Filter
+
+In the platform, nodes move through a formal lifecycle: `DRAFT` -> `ACTIVE` -> `GRADING` -> `ARCHIVED`.
+
+- **Instruction**: Nodes in the **DRAFT** state are ignored by the progress rollup engine. You must move your objectives to **ACTIVE** for your work to contribute to the Goal or Cycle total.
 
 ---
 
-## 6. Common Scenarios (Technical Rescue)
+## 6. Organizational Alignment (Cross-Goal Dependencies)
+
+While the default view for OKRs is a tree, the organization is often a web. The Platform supports **Vertical and Horizontal Alignment** via the Alignment Graph.
+
+### High-Foresight Linkage
+
+Within the Objective Inspector, you can manage "Supports" links:
+
+- **Vertical Alignment**: Your objective supports a high-level organizational Goal or another Objective.
+- **Horizontal Alignment**: Your objective relates to a peer department's objective.
+
+### Directional Accountability
+
+The system ensures all links are one-way and acyclic. You can visualize these dependencies to see exactly who is relying on your success, and whose success you are built upon.
+
+---
+
+## 7. Precision Scoring & Weighted Rollups
+
+Not all Key Results are created equal. The platform provides two scoring modes for Objectives:
+
+- **Unweighted (Standard)**: Every KR contributes equally to the 100% progress goal.
+- **Weighted (Advanced)**: You assign a specific **Weight** (multiplier) to each KR. An "Objective Weight" of 2.0 makes that KR twice as important as a 1.0 weight for the parent's progress.
+
+---
 
 ### "Why is my KR progress at 0%?"
 

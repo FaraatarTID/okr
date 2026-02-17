@@ -1,6 +1,6 @@
 
 import pytest
-from src.models import User, UserRole, Goal, Objective, KeyResult
+from src.models import User, UserRole, Goal, Objective, KeyResult, ScoreMode, LifecycleState
 from src.domain.progress import refresh_hierarchy_progress, calculate_objective_progress, calculate_goal_progress
 from datetime import datetime
 
@@ -42,6 +42,10 @@ def test_rollup_calculation(isolated_db):
     # Create 2 KRs with equal weights (default 1.0)
     kr1 = create_key_result(objective.id, "KR 1", target_value=100, actor_username="alice")
     kr2 = create_key_result(objective.id, "KR 2", target_value=100, actor_username="alice")
+    
+    # Activate objective (Required for progress rollups to count)
+    from src.crud import update_objective
+    update_objective(objective.id, state=LifecycleState.ACTIVE, actor_username="alice")
     
     # Initial state: 0 progress
     with get_session_context() as session:
@@ -91,13 +95,23 @@ def test_weighted_rollup(isolated_db):
     kr1 = create_key_result(obj.id, "KR 1", target_value=100, actor_username="bob")
     kr2 = create_key_result(obj.id, "KR 2", target_value=100, actor_username="bob")
 
+    # Activate objective
+    from src.crud import update_objective
+    update_objective(obj.id, state=LifecycleState.ACTIVE, actor_username="bob")
+
     with get_session_context() as session:
         k1 = session.get(KeyResult, kr1.id)
         k2 = session.get(KeyResult, kr2.id)
         k1.weight = 1.0
         k2.weight = 3.0
+        
+        # Set Objective to WEIGHTED mode
+        o = session.get(Objective, obj.id)
+        o.score_mode = ScoreMode.WEIGHTED
+        
         session.add(k1)
         session.add(k2)
+        session.add(o)
         session.commit()
 
     # KR1 -> 100% (Weight 1) -> Contribution 100 * 1 = 100

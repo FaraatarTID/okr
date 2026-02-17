@@ -17,7 +17,7 @@ from src.domain.authorization import (
     _goal_owner_predicate_by_user_id,
     _goal_owner_predicate_by_username,
 )
-from src.models import CheckIn, Goal, KeyResult, Objective, Task, User, WorkLog
+from src.models import CheckIn, Goal, KeyResult, Objective, Task, User, WorkLog, LifecycleState
 from src.utils.time_utils import ensure_utc, utc_now_naive
 
 
@@ -239,6 +239,7 @@ def get_krs_needing_checkin(
                 .outerjoin(latest_subq, latest_subq.c.kr_id == KeyResult.id)
                 .where(Goal.cycle_id == cycle_id)
                 .where(_goal_owner_predicate_by_username(user_id))
+                .where(KeyResult.state == LifecycleState.ACTIVE)
                 .where(
                     or_(
                         latest_subq.c.latest_created_at.is_(None),
@@ -338,9 +339,9 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 .join(KeyResult, Task.key_result_id == KeyResult.id)
                 .join(Objective, KeyResult.objective_id == Objective.id)
                 .join(Goal, Objective.goal_id == Goal.id)
-                .join(User, Goal.owner_id == User.id)
                 .where(Goal.cycle_id == cycle_id)
                 .where(Goal.owner_id.in_(selected_user_ids))
+                .where(Objective.state.in_([LifecycleState.ACTIVE, LifecycleState.GRADING]))
             ).all()
             trace.mark("task_query_ms")
 
@@ -437,6 +438,7 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 )
                 .where(Goal.cycle_id == cycle_id)
                 .where(Goal.owner_id.in_(selected_user_ids))
+                .where(Objective.state.in_([LifecycleState.ACTIVE, LifecycleState.GRADING]))
             ).all()
             trace.mark("kr_query_ms")
 

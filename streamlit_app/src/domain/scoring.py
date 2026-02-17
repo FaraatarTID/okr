@@ -61,14 +61,25 @@ def calculate_objective_score(
 
 
 def calculate_goal_score(
-    objective_scores: List[float]
+    objective_scores: List[float],
+    weights: Optional[List[float]] = None
 ) -> float:
     """
-    Calculate goal score by averaging objective scores.
+    Calculate goal score by aggregating objective scores.
+    Supports weighted average if weights are provided.
     """
     if not objective_scores:
         return 0.0
-    return sum(objective_scores) / len(objective_scores)
+    
+    if not weights or len(weights) != len(objective_scores):
+        return sum(objective_scores) / len(objective_scores)
+
+    total_weight = sum(weights)
+    if total_weight < 1e-9:
+        return sum(objective_scores) / len(objective_scores)
+
+    weighted_sum = sum(s * w for s, w in zip(objective_scores, weights))
+    return weighted_sum / total_weight
 
 
 def get_score_color_band(score: float) -> str:
