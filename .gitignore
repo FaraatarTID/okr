@@ -27,6 +27,9 @@ node_modules/
 **/*.log
 **/*.out
 **/*.err
+debug_models.txt
+pytest_output.txt
+tests_output.txt
 logs/
 log/
 **/logs/

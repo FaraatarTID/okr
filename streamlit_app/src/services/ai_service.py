@@ -22,17 +22,58 @@ from src.models import Objective, KeyResult, Task, TaskStatus, AnalysisContext
 _parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 load_dotenv(os.path.join(_parent_dir, ".env"))
 
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _get_config_value(keys: List[str]) -> Optional[str]:
+    """Read config from Streamlit secrets (root/app) with env fallback."""
+    try:
+        app_cfg = st.secrets.get("app", {})
+        for key in keys:
+            if key in st.secrets:
+                value = st.secrets.get(key)
+                if value is not None:
+                    return str(value)
+            if hasattr(app_cfg, "get"):
+                value = app_cfg.get(key)
+                if value is not None:
+                    return str(value)
+    except Exception:
+        pass
+
+    for key in keys:
+        value = os.getenv(key)
+        if value is not None:
+            return value
+    return None
+
+
+def is_external_ai_allowed() -> bool:
+    """
+    Feature policy toggle for outbound AI calls.
+    Defaults to enabled to preserve existing behavior.
+    """
+    raw = _get_config_value(["ALLOW_EXTERNAL_AI", "OKR_ALLOW_EXTERNAL_AI"])
+    if raw is None:
+        return True
+    return str(raw).strip().lower() in _TRUE_VALUES
+
+
+def _ai_policy_blocked_error() -> Optional[Dict[str, str]]:
+    if is_external_ai_allowed():
+        return None
+    return {
+        "error": (
+            "External AI calls are disabled by policy "
+            "(set ALLOW_EXTERNAL_AI=true to enable)."
+        )
+    }
+
 
 def get_api_key() -> Optional[str]:
     """Get Gemini API key from secrets or environment."""
-    # Try Streamlit secrets first (with error handling)
-    try:
-        if hasattr(st, 'secrets') and "GEMINI_API_KEY" in st.secrets:
-            return st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        pass  # Secrets not configured, fall back to env
-    
-    return os.getenv("VITE_GEMINI_API_KEY") or os.getenv("GEMINI_API_KEY")
+    value = _get_config_value(["GEMINI_API_KEY", "VITE_GEMINI_API_KEY"])
+    return str(value).strip() if value is not None else None
 
 
 
@@ -69,8 +110,12 @@ def analyze_efficiency_effectiveness(
     - effectiveness_score (0-100)
     - advice_list (list of recommendations)
     """
+    policy_error = _ai_policy_blocked_error()
+    if policy_error:
+        return policy_error
+
     if not GENAI_AVAILABLE:
-        return {"error": "google-generativeai not installed"}
+        return {"error": "google-genai package not installed"}
     
     api_key = get_api_key()
     if not api_key:
@@ -229,8 +274,12 @@ def analyze_objective(objective: Objective,
     Comprehensive analysis of an Objective including all its Key Results.
     Aggregates context as specified in the implementation plan.
     """
+    policy_error = _ai_policy_blocked_error()
+    if policy_error:
+        return policy_error
+
     if not GENAI_AVAILABLE:
-        return {"error": "google-generativeai not installed"}
+        return {"error": "google-genai package not installed"}
     
     api_key = get_api_key()
     if not api_key:
@@ -341,13 +390,17 @@ def analyze_node(
     """
     from src.crud import get_node
     from src.models import Task, KeyResult, Objective, Goal
+
+    policy_error = _ai_policy_blocked_error()
+    if policy_error:
+        return policy_error
     
     api_key = get_api_key()
     if not api_key:
         return {"error": "API Key not configured"}
 
     if not GENAI_AVAILABLE:
-        return {"error": "google-generativeai not installed"}
+        return {"error": "google-genai package not installed"}
 
     node_type_upper = str(node_type or "KEY_RESULT").upper()
 
@@ -562,12 +615,16 @@ def analyze_team_health(team_data: dict) -> dict:
     Returns:
         Coaching insights with scores and recommendations
     """
+    policy_error = _ai_policy_blocked_error()
+    if policy_error:
+        return policy_error
+
     api_key = get_api_key()
     if not api_key:
         return {"error": "API Key not configured"}
     
     if not GENAI_AVAILABLE:
-        return {"error": "google-generativeai not installed"}
+        return {"error": "google-genai package not installed"}
     
     prompt = f"""
     You are an elite Executive OKR Coach and Team Performance Advisor.
@@ -682,12 +739,16 @@ def generate_weekly_summary(username: str, start_date_str: str, end_date_str: st
     Returns:
         JSON with 'summary_markdown', 'highlights', 'focus_analysis'
     """
+    policy_error = _ai_policy_blocked_error()
+    if policy_error:
+        return policy_error
+
     api_key = get_api_key()
     if not api_key:
         return {"error": "API Key not configured"}
     
     if not GENAI_AVAILABLE:
-        return {"error": "google-generativeai not installed"}
+        return {"error": "google-genai package not installed"}
         
     prompt = f"""
     You are an Executive Assistant drafting a Weekly Work Report for {username}.
@@ -772,12 +833,16 @@ def suggest_critical_task(task_candidates: List[Dict[str, Any]], context: Option
       "local_priority_score": number
     }
     """
+    policy_error = _ai_policy_blocked_error()
+    if policy_error:
+        return policy_error
+
     api_key = get_api_key()
     if not api_key:
         return {"error": "API Key not configured"}
 
     if not GENAI_AVAILABLE:
-        return {"error": "google-generativeai not installed"}
+        return {"error": "google-genai package not installed"}
 
     normalized_candidates: List[Dict[str, Any]] = []
     for raw in task_candidates or []:
@@ -906,11 +971,15 @@ def generate_predictive_outlook(
       - strategic_pivots: list of suggested priority shifts
       - confidence_level: 0-100
     """
+    policy_error = _ai_policy_blocked_error()
+    if policy_error:
+        return policy_error
+
     api_key = get_api_key()
     if not api_key:
         return {"error": "API Key not configured"}
     if not GENAI_AVAILABLE:
-        return {"error": "google-generativeai not installed"}
+        return {"error": "google-genai package not installed"}
 
     gap_summaries = []
     for g in strategy_gaps[:5]:

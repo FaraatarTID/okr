@@ -32,6 +32,7 @@ def evaluate_runtime_preflight(
     has_pdfkit_module: bool,
     has_wkhtmltopdf: bool,
     gemini_api_key: Optional[str],
+    external_ai_allowed: bool = True,
 ) -> RuntimePreflightReport:
     """Evaluate runtime safety constraints for PDF and AI integrations."""
     report = RuntimePreflightReport()
@@ -67,18 +68,29 @@ def evaluate_runtime_preflight(
             )
 
     key = str(gemini_api_key or "").strip()
+    if not external_ai_allowed:
+        report.infos.append(
+            "External AI calls are disabled by policy (ALLOW_EXTERNAL_AI=false)."
+        )
+        if key:
+            report.infos.append(
+                "Gemini API key is set but ignored while external AI is disabled."
+            )
+        return report
+
     if not key:
         report.warnings.append(
             "Gemini API key is not configured; AI features will be disabled."
         )
-    else:
-        low = key.lower()
-        if any(
-            token in low
-            for token in ["your-api-key", "replace-me", "changeme", "<api-key>"]
-        ):
-            report.warnings.append(
-                "Gemini API key looks like a placeholder; AI calls may fail."
-            )
+        return report
+
+    low = key.lower()
+    if any(
+        token in low
+        for token in ["your-api-key", "replace-me", "changeme", "<api-key>"]
+    ):
+        report.warnings.append(
+            "Gemini API key looks like a placeholder; AI calls may fail."
+        )
 
     return report

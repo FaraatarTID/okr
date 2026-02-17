@@ -11,6 +11,7 @@ Use this section as the single entry point for all project docs.
 ### 📘 Core Guides
 
 - **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **License**: [LICENSE](LICENSE)
 - **Deployment Guide**: [DEPLOYMENT.md](DEPLOYMENT.md)
 - **Performance Budget**: [performance.md](performance.md)
 - **AI Features (En)**: [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md)
@@ -334,6 +335,7 @@ pip install -r streamlit_app/requirements.txt
 # 4. Configure secrets (optional - for AI features)
 # Create streamlit_app/.streamlit/secrets.toml:
 # GEMINI_API_KEY = "your-api-key"
+# ALLOW_EXTERNAL_AI = true  # set false to disable outbound AI calls
 # [database]
 # url = "postgresql+psycopg2://user:pass@host:5432/okr"
 

@@ -43,9 +43,15 @@ AI integration
 
 - Streamlit secrets keys:
   - GEMINI_API_KEY: required for AI analysis and coaching features
+  - ALLOW_EXTERNAL_AI: optional policy gate (`true`/`false`); default `true`
 - Environment fallback:
   - GEMINI_API_KEY
   - VITE_GEMINI_API_KEY
+  - ALLOW_EXTERNAL_AI
+  - OKR_ALLOW_EXTERNAL_AI
+- Behavior:
+  - If `ALLOW_EXTERNAL_AI=false`, outbound Gemini calls are blocked even if an API key exists.
+  - Runtime preflight reports this policy as an informational status.
 
 Runtime preflight policy
 
