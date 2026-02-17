@@ -343,11 +343,13 @@ def _cached_get_atlas_scope_runtime(
         snapshot.get("goals", []), users_map
     )
     node_lookup = _atlas_build_node_lookup(index)
+    health_index = _atlas_health_index(index)
     return {
         "snapshot": snapshot,
         "index": index,
         "roots": roots,
         "node_lookup": node_lookup,
+        "health_index": health_index,
     }
 
 
@@ -2613,117 +2615,284 @@ def _atlas_ai_deadline_warnings(meta):
     return cleaned
 
 
-def _atlas_status_label(meta):
+def _atlas_health_state(meta, index=None, _visited_refs=None, _memo=None):
+    """
+    Canonical Atlas health engine for map/inspector status surfaces.
+
+    Returns:
+      {
+        "kind": "done|overdue|risk|inherited|low_progress|on_track",
+        "reason": "Complete|Needs care|On track",
+        "status_label": <human label>,
+        "source": "ai_deadline_warning|ai_overall_score|deadline_status|task_status|inherited_rollup|progress|status_label",
+        "needs_attention": bool,
+      }
+    """
+    meta_ref = meta.get("ref")
+    if _memo is not None and meta_ref and meta_ref in _memo:
+        return _memo[meta_ref]
+
     progress = int(meta.get("progress", 0) or 0)
     node_type = meta.get("type")
     node = meta.get("node")
+
+    status_label = None
+    source = "progress"
 
     if node_type == "TASK":
         task_status = str(
             getattr(getattr(node, "status", None), "value", getattr(node, "status", ""))
         ).lower()
         if task_status == "done":
-            return "Done"
-        if task_status == "in_progress" and progress <= 0:
-            return "In progress"
+            status_label = "Done"
+            source = "task_status"
+        elif task_status == "in_progress" and progress <= 0:
+            status_label = "In progress"
+            source = "task_status"
+        else:
+            deadline = getattr(node, "deadline", None)
+            if deadline is not None:
+                try:
+                    from src.utils.deadline_utils import get_deadline_status
 
-        deadline = getattr(node, "deadline", None)
-        if deadline is not None:
-            try:
-                from src.utils.deadline_utils import get_deadline_status
+                    _, status_label, _ = get_deadline_status(node)
+                    source = "deadline_status"
+                except Exception:
+                    status_label = None
+            if not status_label:
+                if progress >= 100:
+                    status_label = "Done"
+                elif progress <= 0:
+                    status_label = "Not started"
+                else:
+                    status_label = "In progress"
 
-                _, status_label, _ = get_deadline_status(node)
-                return status_label
-            except Exception:
-                pass
+    elif node_type == "KEY_RESULT":
+        ai_warnings = _atlas_ai_deadline_warnings(meta)
+        if ai_warnings:
+            joined = " ".join(ai_warnings).lower()
+            if "overdue" in joined:
+                status_label = "Overdue (AI)"
+                kind = "overdue"
+            else:
+                status_label = "At risk (AI)"
+                kind = "risk"
+            return {
+                "kind": kind,
+                "reason": "Needs care",
+                "status_label": status_label,
+                "source": "ai_deadline_warning",
+                "needs_attention": True,
+            }
+
+        ai_score = _atlas_ai_overall_score(meta)
+        if ai_score is not None:
+            if ai_score >= 100:
+                kind = "done"
+                status_label = "Complete (AI)"
+                reason = "Complete"
+            elif ai_score < 40:
+                kind = "low_progress"
+                status_label = "Needs attention (AI)"
+                reason = "Needs care"
+            elif ai_score < 60:
+                kind = "risk"
+                status_label = "In progress (AI)"
+                reason = "Needs care"
+            else:
+                kind = "on_track"
+                status_label = "In progress (AI)"
+                reason = "On track"
+            return {
+                "kind": kind,
+                "reason": reason,
+                "status_label": status_label,
+                "source": "ai_overall_score",
+                "needs_attention": kind
+                in {"overdue", "risk", "inherited", "low_progress"},
+            }
+
+    if status_label is None:
         if progress >= 100:
-            return "Done"
-        if progress <= 0:
-            return "Not started"
-        return "In progress"
-
-    if node_type == "KEY_RESULT":
-        ai_warnings = _atlas_ai_deadline_warnings(meta)
-        if ai_warnings:
-            joined = " ".join(ai_warnings).lower()
-            if "overdue" in joined:
-                return "Overdue (AI)"
-            return "At risk (AI)"
-        ai_score = _atlas_ai_overall_score(meta)
-        if ai_score is not None:
-            if ai_score >= 100:
-                return "Complete (AI)"
-            if ai_score < 40:
-                return "Needs attention (AI)"
-            return "In progress (AI)"
+            status_label = "Done"
+        elif progress < 40:
+            status_label = "Needs attention"
+        else:
+            status_label = "In progress"
 
     if progress >= 100:
-        return "Done"
-    if progress < 40:
-        return "Needs attention"
-    return "In progress"
+        kind = "done"
+    else:
+        status_lower = str(status_label).lower()
+        if "done" in status_lower or "complete" in status_lower:
+            kind = "done"
+            if source == "progress":
+                source = "status_label"
+        elif "overdue" in status_lower:
+            kind = "overdue"
+            if source == "progress":
+                source = "status_label"
+        elif "risk" in status_lower:
+            kind = "risk"
+            if source == "progress":
+                source = "status_label"
+        else:
+            kind = None
+
+    if kind is None and index is not None:
+        visited_refs = set(_visited_refs or [])
+        meta_ref = meta.get("ref")
+        if meta_ref:
+            visited_refs.add(meta_ref)
+        child_refs = list(meta.get("children") or [])
+        for child_ref in child_refs:
+            if child_ref in visited_refs:
+                continue
+            child_meta = index.get(child_ref)
+            if not child_meta:
+                continue
+            child_health = _atlas_health_state(
+                child_meta,
+                index=index,
+                _visited_refs=visited_refs,
+                _memo=_memo,
+            )
+            if child_health.get("needs_attention"):
+                kind = "inherited"
+                source = "inherited_rollup"
+                break
+
+    if kind is None:
+        kind = "low_progress" if progress < 40 else "on_track"
+
+    if kind == "done":
+        reason = "Complete"
+    elif kind in {"overdue", "risk", "inherited", "low_progress"}:
+        reason = "Needs care"
+    else:
+        reason = "On track"
+
+    result = {
+        "kind": kind,
+        "reason": reason,
+        "status_label": status_label,
+        "source": source,
+        "needs_attention": kind in {"overdue", "risk", "inherited", "low_progress"},
+    }
+    if _memo is not None and meta_ref:
+        _memo[meta_ref] = result
+    return result
 
 
-def _atlas_attention_kind(meta, index=None) -> str:
-    progress = int(meta.get("progress", 0) or 0)
-    if meta.get("type") == "KEY_RESULT":
-        ai_warnings = _atlas_ai_deadline_warnings(meta)
-        if ai_warnings:
-            joined = " ".join(ai_warnings).lower()
-            if "overdue" in joined:
-                return "overdue"
-            return "risk"
-        ai_score = _atlas_ai_overall_score(meta)
-        if ai_score is not None:
-            if ai_score >= 100:
-                return "done"
-            if ai_score < 40:
-                return "low_progress"
-            if ai_score < 60:
-                return "risk"
-            return "on_track"
-
-    if progress >= 100:
-        return "done"
-
-    status = _atlas_status_label(meta).lower()
-    if "done" in status or "complete" in status:
-        return "done"
-    if "overdue" in status:
-        return "overdue"
-    if "risk" in status:
-        return "risk"
-
-    children = list(meta.get("children") or [])
-    if children and index is not None:
-        if any(
-            _atlas_needs_attention(index[child_ref], index)
-            for child_ref in children
-            if child_ref in index
-        ):
-            return "inherited"
-
-    if progress < 40:
-        return "low_progress"
-    return "on_track"
+def _atlas_health_index(index):
+    if not isinstance(index, dict) or not index:
+        return {}
+    memo = {}
+    health_by_ref = {}
+    for ref, meta in index.items():
+        if not isinstance(meta, dict):
+            continue
+        health_by_ref[ref] = _atlas_health_state(meta, index=index, _memo=memo)
+    return health_by_ref
 
 
-def _atlas_needs_attention(meta, index=None) -> bool:
-    return _atlas_attention_kind(meta, index) in {
-        "overdue",
-        "risk",
-        "inherited",
-        "low_progress",
+def _atlas_health_fill_color(health, progress: int) -> str:
+    kind = str((health or {}).get("kind") or "")
+    if kind in {"overdue", "risk", "inherited", "low_progress"}:
+        return "#c36d27"
+    if kind == "done" or int(progress or 0) >= 100:
+        return "#b5becb"
+    return "#e5d6bb"
+
+
+def _atlas_health_source_explanation(source: str | None) -> str:
+    source_key = str(source or "").strip().lower()
+    mapping = {
+        "ai_deadline_warning": "AI detected deadline risk signals.",
+        "ai_overall_score": "AI overall score drove this assessment.",
+        "deadline_status": "Task deadline timing drove this assessment.",
+        "task_status": "Task workflow status drove this assessment.",
+        "inherited_rollup": "Inherited from child items that need care.",
+        "progress": "Progress threshold rules drove this assessment.",
+        "status_label": "Status label rules drove this assessment.",
+    }
+    return mapping.get(source_key, "Health rules drove this assessment.")
+
+
+def _atlas_ai_progress_decision(
+    current_progress,
+    ai_score,
+    max_delta: int = 25,
+    allow_decrease: bool = False,
+):
+    """Policy gate for applying AI score to KR progress."""
+    try:
+        current_val = max(0, min(100, int(float(current_progress))))
+    except Exception:
+        current_val = 0
+    try:
+        if ai_score is None:
+            raise ValueError("missing_ai_score")
+        proposed_val = max(0, min(100, int(float(ai_score))))
+    except Exception:
+        return {
+            "action": "skip",
+            "reason": "missing_ai_score",
+            "current_progress": current_val,
+            "proposed_progress": None,
+            "delta": None,
+        }
+
+    delta = int(proposed_val - current_val)
+    bounded_delta = max(0, min(100, int(max_delta or 0)))
+
+    if delta == 0:
+        return {
+            "action": "skip",
+            "reason": "no_change",
+            "current_progress": current_val,
+            "proposed_progress": proposed_val,
+            "delta": 0,
+        }
+    if delta < 0 and not bool(allow_decrease):
+        return {
+            "action": "skip",
+            "reason": "decrease_blocked",
+            "current_progress": current_val,
+            "proposed_progress": proposed_val,
+            "delta": delta,
+        }
+    if abs(delta) > bounded_delta:
+        return {
+            "action": "skip",
+            "reason": "delta_cap",
+            "current_progress": current_val,
+            "proposed_progress": proposed_val,
+            "delta": delta,
+        }
+    return {
+        "action": "apply",
+        "reason": "within_policy",
+        "current_progress": current_val,
+        "proposed_progress": proposed_val,
+        "delta": delta,
     }
 
 
+def _atlas_status_label(meta, index=None):
+    return _atlas_health_state(meta, index=index).get("status_label", "In progress")
+
+
+def _atlas_attention_kind(meta, index=None) -> str:
+    return str(_atlas_health_state(meta, index=index).get("kind") or "on_track")
+
+
+def _atlas_needs_attention(meta, index=None) -> bool:
+    return bool(_atlas_health_state(meta, index=index).get("needs_attention"))
+
+
 def _atlas_attention_reason(meta, index=None) -> str:
-    kind = _atlas_attention_kind(meta, index)
-    if kind == "done":
-        return "Complete"
-    if kind in {"overdue", "risk", "inherited", "low_progress"}:
-        return "Needs care"
-    return "On track"
+    return str(_atlas_health_state(meta, index=index).get("reason") or "On track")
 
 
 def _atlas_commit_target_minutes(
@@ -2867,9 +3036,11 @@ def _atlas_clean_work_summary(summary: str | None) -> str | None:
     return cleaned if cleaned else None
 
 
-def _atlas_suggested_next_score(meta, actor_id: int, index=None):
+def _atlas_suggested_next_score(meta, actor_id: int, index=None, health=None):
     running = getattr(meta.get("node"), "timer_started_at", None) is not None
-    attention_kind = _atlas_attention_kind(meta, index)
+    if health is None:
+        health = _atlas_health_state(meta, index=index)
+    attention_kind = str((health or {}).get("kind") or "on_track")
     attention_rank = {
         "overdue": 0,
         "risk": 1,
@@ -2889,10 +3060,12 @@ def _atlas_suggested_next_score(meta, actor_id: int, index=None):
     )
 
 
-def _atlas_suggested_next_reason(meta, actor_id: int, index=None) -> str:
+def _atlas_suggested_next_reason(meta, actor_id: int, index=None, health=None) -> str:
     if getattr(meta.get("node"), "timer_started_at", None) is not None:
         return "Already running"
-    attention_kind = _atlas_attention_kind(meta, index)
+    if health is None:
+        health = _atlas_health_state(meta, index=index)
+    attention_kind = str((health or {}).get("kind") or "on_track")
     if attention_kind in {"overdue", "risk", "low_progress", "inherited"}:
         return "Needs care"
     if int(meta.get("progress", 0) or 0) >= 100:
@@ -3028,13 +3201,15 @@ def _atlas_extract_selection_points(event_payload):
     return list(points or [])
 
 
-def _atlas_task_rollup(task_refs, index):
+def _atlas_task_rollup(task_refs, index, health_index=None):
     rollup = {
         "total": 0,
         "running": 0,
         "attention": 0,
         "done": 0,
     }
+    if health_index is None:
+        health_index = _atlas_health_index(index)
 
     for ref in task_refs:
         meta = index.get(ref)
@@ -3049,10 +3224,57 @@ def _atlas_task_rollup(task_refs, index):
         progress = int(meta.get("progress", 0) or 0)
         if progress >= 100:
             rollup["done"] += 1
-        if _atlas_needs_attention(meta):
+        health = health_index.get(ref)
+        if health is None:
+            health = _atlas_health_state(meta, index=index)
+        if bool(health.get("needs_attention")):
             rollup["attention"] += 1
 
     return rollup
+
+
+def _atlas_health_debug_rows(refs, index, health_index=None, limit: int = 80):
+    rows = []
+    kind_rank = {
+        "overdue": 0,
+        "risk": 1,
+        "low_progress": 2,
+        "inherited": 2,
+        "on_track": 3,
+        "done": 4,
+    }
+    resolved_health = health_index or {}
+
+    for ref in refs:
+        meta = index.get(ref)
+        if not meta:
+            continue
+        health = resolved_health.get(ref)
+        if health is None:
+            health = _atlas_health_state(meta, index=index)
+        kind = str(health.get("kind") or "on_track")
+        rows.append(
+            {
+                "Ref": str(ref),
+                "Type": str(meta.get("type") or ""),
+                "Title": str(meta.get("title") or "Untitled"),
+                "Kind": kind,
+                "Reason": str(health.get("reason") or "On track"),
+                "Status": str(health.get("status_label") or "In progress"),
+                "Source": str(health.get("source") or "progress"),
+                "Progress": int(meta.get("progress", 0) or 0),
+                "NeedsAttention": bool(health.get("needs_attention")),
+                "_rank": int(kind_rank.get(kind, 5)),
+            }
+        )
+
+    rows.sort(key=lambda item: (item["_rank"], item["Progress"], item["Title"].lower()))
+    cleaned = []
+    for item in rows[: max(1, int(limit or 80))]:
+        clean_item = dict(item)
+        clean_item.pop("_rank", None)
+        cleaned.append(clean_item)
+    return cleaned
 
 
 def _atlas_descendant_refs(root_ref: str, index, limit: int = 350):
@@ -3094,6 +3316,7 @@ def _build_atlas_treemap(
     focus_task_ref: str,
     selected_path_refs=None,
     chart_height: int = 500,
+    health_index=None,
 ):
     ids = []
     labels = []
@@ -3103,6 +3326,7 @@ def _build_atlas_treemap(
     line_colors = []
     line_widths = []
     custom = []
+    local_health_memo = {}
 
     path_refs = set(selected_path_refs or [])
 
@@ -3116,20 +3340,23 @@ def _build_atlas_treemap(
         parent_ref = meta.get("parent") if meta.get("parent") in refs else ""
         progress = int(meta.get("progress", 0) or 0)
         node_type = meta.get("type")
-        status = _atlas_status_label(meta)
-        attention_kind = _atlas_attention_kind(meta, index)
+        health = (
+            (health_index or {}).get(ref)
+            if isinstance(health_index, dict)
+            else None
+        )
+        if health is None:
+            health = _atlas_health_state(meta, index=index, _memo=local_health_memo)
+        status = str(health.get("status_label") or "In progress")
+        attention_reason = str(health.get("reason") or "On track")
+        source_explanation = _atlas_health_source_explanation(health.get("source"))
 
         if node_type == "TASK":
             value = max(1, 100 - progress)
         else:
             value = max(2, len(meta.get("children", [])) * 6)
 
-        if attention_kind in {"overdue", "risk", "low_progress", "inherited"}:
-            fill = "#c36d27"
-        elif progress >= 100:
-            fill = "#b5becb"
-        else:
-            fill = "#e5d6bb"
+        fill = _atlas_health_fill_color(health, progress)
 
         line_color = "#f5ede0"
         line_width = 1.4
@@ -3155,8 +3382,9 @@ def _build_atlas_treemap(
                 ref,
                 (
                     f"{node_type.replace('_', ' ').title()} | {status} | {progress}%"
-                    f" | {_atlas_attention_reason(meta, index)}"
+                    f" | {attention_reason}"
                 ),
+                source_explanation,
             ]
         )
 
@@ -3176,7 +3404,10 @@ def _build_atlas_treemap(
             ),
             textinfo="label",
             customdata=custom,
-            hovertemplate="<b>%{label}</b><br>%{customdata[1]}<extra></extra>",
+            hovertemplate=(
+                "<b>%{label}</b><br>%{customdata[1]}"
+                "<br>Why: %{customdata[2]}<extra></extra>"
+            ),
             tiling=dict(pad=4),
             pathbar=dict(visible=False),
         )
@@ -3256,6 +3487,9 @@ def render_atlas_workspace(username):
     index = atlas_runtime.get("index", {})
     roots = list(atlas_runtime.get("roots") or [])
     node_lookup = atlas_runtime.get("node_lookup") or {}
+    health_index = atlas_runtime.get("health_index")
+    if not isinstance(health_index, dict):
+        health_index = _atlas_health_index(index)
     st.session_state["atlas_node_lookup"] = node_lookup
     if not roots:
         st.info("No goals found for this cycle and scope.")
@@ -3311,10 +3545,13 @@ def render_atlas_workspace(username):
                 running_refs.append(ref)
                 continue
             progress = int(meta.get("progress", 0) or 0)
-            status = _atlas_status_label(meta).lower()
-            if "overdue" in status:
+            health = health_index.get(ref)
+            if health is None:
+                health = _atlas_health_state(meta, index=index)
+            kind = str(health.get("kind") or "on_track")
+            if kind == "overdue":
                 bucket = 0
-            elif "risk" in status or progress < 40:
+            elif kind in {"risk", "low_progress", "inherited"}:
                 bucket = 1
             elif progress >= 100:
                 bucket = 3
@@ -3332,8 +3569,12 @@ def render_atlas_workspace(username):
         return bool(task_meta and task_meta.get("owner_id") == actor_id)
 
     def _atlas_attention_chip_html(meta) -> str:
-        kind = _atlas_attention_kind(meta, index)
-        reason = _atlas_attention_reason(meta, index)
+        meta_ref = str(meta.get("ref") or "")
+        health = health_index.get(meta_ref) if meta_ref else None
+        if health is None:
+            health = _atlas_health_state(meta, index=index)
+        kind = str(health.get("kind") or "on_track")
+        reason = str(health.get("reason") or "On track")
         return f"<span class='atlas-attn-chip atlas-attn-{kind}'>{escape_html(reason)}</span>"
 
     from src.crud import start_timer, stop_timer
@@ -3386,7 +3627,10 @@ def render_atlas_workspace(username):
                 ranked_refs = sorted(
                     candidate_refs,
                     key=lambda ref: _atlas_suggested_next_score(
-                        index[ref], actor_id, index
+                        index[ref],
+                        actor_id,
+                        index,
+                        health=health_index.get(ref),
                     ),
                 )
                 if ranked_refs:
@@ -3416,7 +3660,10 @@ def render_atlas_workspace(username):
                 unsafe_allow_html=True,
             )
             reason_text = suggested_focus_reason or _atlas_suggested_next_reason(
-                suggested_meta, actor_id, index
+                suggested_meta,
+                actor_id,
+                index,
+                health=health_index.get(suggested_focus_ref),
             )
             if suggested_focus_confidence is not None:
                 reason_text = (
@@ -3452,6 +3699,9 @@ def render_atlas_workspace(username):
         if focus_task_ref and focus_task_ref in index:
             focus_meta = index[focus_task_ref]
             focus_task = focus_meta["node"]
+            focus_health = health_index.get(focus_task_ref)
+            if focus_health is None:
+                focus_health = _atlas_health_state(focus_meta, index=index)
             focus_running = getattr(focus_task, "timer_started_at", None) is not None
             can_track_focus = _can_track_task(focus_meta)
             stop_capture_key = "atlas_stop_capture_task_ref"
@@ -3497,6 +3747,9 @@ def render_atlas_workspace(username):
             spotlight_cols[0].markdown(
                 f"<div class='atlas-chip-row'>{_atlas_attention_chip_html(focus_meta)}</div>",
                 unsafe_allow_html=True,
+            )
+            spotlight_cols[0].caption(
+                f"Why this status: {_atlas_health_source_explanation(focus_health.get('source'))}"
             )
 
             preset_options = ["25m", "50m", "Custom"]
@@ -3917,6 +4170,29 @@ def render_atlas_workspace(username):
                     for ref in map_refs
                     if ref in index and index[ref].get("type") == "TASK"
                 ]
+                show_health_debug = False
+                if role_value == "admin":
+                    show_health_debug = map_sidebar_area.toggle(
+                        "Show Health Debug",
+                        key="atlas_show_health_debug",
+                        value=False,
+                    )
+                elif "atlas_show_health_debug" in st.session_state:
+                    st.session_state["atlas_show_health_debug"] = False
+                if show_health_debug:
+                    debug_rows = _atlas_health_debug_rows(
+                        map_refs,
+                        index,
+                        health_index=health_index,
+                        limit=120,
+                    )
+                    if debug_rows:
+                        map_sidebar_area.dataframe(
+                            debug_rows,
+                            use_container_width=True,
+                            hide_index=True,
+                            height=260,
+                        )
 
                 map_sidebar_area.markdown("**AI**")
                 if "atlas_ai_apply_overall_to_progress" not in st.session_state:
@@ -3926,6 +4202,98 @@ def render_atlas_workspace(username):
                     key="atlas_ai_apply_overall_to_progress",
                     disabled=not map_kr_refs,
                 )
+                if "atlas_ai_sync_preview_mode" not in st.session_state:
+                    st.session_state["atlas_ai_sync_preview_mode"] = False
+                preview_ai_sync = map_sidebar_area.toggle(
+                    "Preview mode (no writes)",
+                    key="atlas_ai_sync_preview_mode",
+                    disabled=not map_kr_refs,
+                )
+
+                if "atlas_ai_progress_max_delta" not in st.session_state:
+                    st.session_state["atlas_ai_progress_max_delta"] = 25
+                if "atlas_ai_progress_allow_decrease" not in st.session_state:
+                    st.session_state["atlas_ai_progress_allow_decrease"] = False
+
+                max_progress_delta = int(
+                    st.session_state.get("atlas_ai_progress_max_delta") or 25
+                )
+                allow_progress_decrease = bool(
+                    st.session_state.get("atlas_ai_progress_allow_decrease", False)
+                )
+                if apply_ai_score_to_progress:
+                    max_progress_delta = int(
+                        map_sidebar_area.slider(
+                            "Max KR progress delta",
+                            min_value=5,
+                            max_value=100,
+                            step=5,
+                            value=max_progress_delta,
+                            key="atlas_ai_progress_max_delta",
+                        )
+                    )
+                    allow_progress_decrease = map_sidebar_area.toggle(
+                        "Allow progress decreases",
+                        key="atlas_ai_progress_allow_decrease",
+                        value=allow_progress_decrease,
+                    )
+
+                undo_payload = st.session_state.get("atlas_ai_progress_undo")
+                if isinstance(undo_payload, dict):
+                    undo_items = list(undo_payload.get("items") or [])
+                    if undo_items:
+                        undo_age_seconds = float(
+                            time.time() - float(undo_payload.get("at") or 0)
+                        )
+                        if undo_age_seconds <= 1800:
+                            if map_sidebar_area.button(
+                                "Undo Last AI Progress Apply",
+                                key="atlas_ai_progress_undo_btn",
+                                use_container_width=True,
+                            ):
+                                from src.crud import (
+                                    update_key_result,
+                                    recalculate_rollup_for_key_results,
+                                )
+
+                                restored = 0
+                                undo_failed = []
+                                rollback_kr_ids = []
+                                for item in undo_items:
+                                    kr_id = item.get("kr_id")
+                                    previous_progress = item.get("previous_progress")
+                                    kr_title = item.get("title") or f"KR {kr_id}"
+                                    if kr_id is None or previous_progress is None:
+                                        continue
+                                    try:
+                                        update_key_result(
+                                            int(kr_id),
+                                            progress=int(previous_progress),
+                                            actor_username=username,
+                                        )
+                                        rollback_kr_ids.append(int(kr_id))
+                                        restored += 1
+                                    except Exception as exc:
+                                        undo_failed.append(f"{kr_title}: {exc}")
+                                if rollback_kr_ids:
+                                    try:
+                                        recalculate_rollup_for_key_results(
+                                            rollback_kr_ids
+                                        )
+                                    except Exception as exc:
+                                        undo_failed.append(
+                                            f"Rollup refresh failed: {exc}"
+                                        )
+                                st.session_state["atlas_ai_undo_report"] = {
+                                    "restored": restored,
+                                    "failed": undo_failed[:6],
+                                    "at": float(time.time()),
+                                }
+                                st.session_state.pop("atlas_ai_progress_undo", None)
+                                st.rerun()
+                        else:
+                            st.session_state.pop("atlas_ai_progress_undo", None)
+
                 if map_sidebar_area.button(
                     "AI Progress Sync",
                     key="atlas_ai_progress_sync_btn",
@@ -3944,8 +4312,14 @@ def render_atlas_workspace(username):
                     total_kr = len(map_kr_refs)
                     synced = 0
                     applied_progress = 0
+                    planned_progress = 0
                     missing_ai_score = 0
+                    skipped_delta_cap = 0
+                    skipped_decrease = 0
+                    unchanged_progress = 0
                     rollup_kr_ids = []
+                    progress_undo_items = []
+                    trace_rows = []
                     failed = []
                     ai_suggest_error = None
                     ai_suggested_payload = None
@@ -3969,31 +4343,101 @@ def render_atlas_workspace(username):
                         try:
                             result = analyze_node(int(kr_id), "KEY_RESULT")
                             if isinstance(result, dict) and "error" not in result:
-                                updates = {"gemini_analysis": result}
-                                if apply_ai_score_to_progress:
-                                    ai_score = None
+                                current_progress = int(
+                                    kr_meta.get("progress", 0) or 0
+                                )
+                                decision = _atlas_ai_progress_decision(
+                                    current_progress,
+                                    result.get("overall_score"),
+                                    max_delta=max_progress_delta,
+                                    allow_decrease=allow_progress_decrease,
+                                )
+                                action = "analysis_only"
+                                detail_reason = "analysis_refreshed"
+                                ai_score_raw = result.get("overall_score")
+                                ai_score_val = None
+                                if ai_score_raw is not None:
                                     try:
-                                        ai_score = max(
+                                        ai_score_val = max(
                                             0,
-                                            min(
-                                                100,
-                                                int(float(result.get("overall_score"))),
-                                            ),
+                                            min(100, int(float(ai_score_raw))),
                                         )
                                     except Exception:
-                                        ai_score = None
-                                    if ai_score is not None:
-                                        updates["progress"] = ai_score
+                                        ai_score_val = None
+                                if apply_ai_score_to_progress:
+                                    if decision["action"] == "apply":
+                                        if preview_ai_sync:
+                                            action = "would_update"
+                                            planned_progress += 1
+                                        else:
+                                            action = "progress_update"
+                                        detail_reason = str(
+                                            decision.get("reason") or "within_policy"
+                                        )
+                                    else:
+                                        reason = str(
+                                            decision.get("reason")
+                                            or "policy_blocked"
+                                        )
+                                        detail_reason = reason
+                                        if reason == "missing_ai_score":
+                                            missing_ai_score += 1
+                                        elif reason == "delta_cap":
+                                            skipped_delta_cap += 1
+                                        elif reason == "decrease_blocked":
+                                            skipped_decrease += 1
+                                        elif reason == "no_change":
+                                            unchanged_progress += 1
+                                        action = "progress_skipped"
+                                proposed_progress = decision.get("proposed_progress")
+                                trace_rows.append(
+                                    {
+                                        "KR": str(kr_title),
+                                        "Current": int(
+                                            decision.get("current_progress") or 0
+                                        ),
+                                        "AI Score": ai_score_val,
+                                        "Proposed": (
+                                            int(proposed_progress)
+                                            if proposed_progress is not None
+                                            else None
+                                        ),
+                                        "Delta": decision.get("delta"),
+                                        "Action": action,
+                                        "Reason": detail_reason,
+                                    }
+                                )
+
+                                if preview_ai_sync:
+                                    synced += 1
+                                else:
+                                    updates = {"gemini_analysis": result}
+                                    if (
+                                        apply_ai_score_to_progress
+                                        and decision["action"] == "apply"
+                                        and proposed_progress is not None
+                                    ):
+                                        updates["progress"] = int(proposed_progress)
                                         applied_progress += 1
                                         rollup_kr_ids.append(int(kr_id))
-                                    else:
-                                        missing_ai_score += 1
-                                update_key_result(
-                                    int(kr_id),
-                                    **updates,
-                                    actor_username=username,
-                                )
-                                synced += 1
+                                        progress_undo_items.append(
+                                            {
+                                                "kr_id": int(kr_id),
+                                                "title": str(kr_title),
+                                                "previous_progress": int(
+                                                    decision.get("current_progress")
+                                                    or 0
+                                                ),
+                                                "new_progress": int(proposed_progress),
+                                            }
+                                        )
+
+                                    update_key_result(
+                                        int(kr_id),
+                                        **updates,
+                                        actor_username=username,
+                                    )
+                                    synced += 1
                             else:
                                 err_msg = (
                                     str(result.get("error"))
@@ -4011,7 +4455,11 @@ def render_atlas_workspace(username):
                             text=f"Syncing {idx}/{total_kr}",
                         )
 
-                    if apply_ai_score_to_progress and rollup_kr_ids:
+                    if (
+                        not preview_ai_sync
+                        and apply_ai_score_to_progress
+                        and rollup_kr_ids
+                    ):
                         try:
                             recalculate_rollup_for_key_results(rollup_kr_ids)
                         except Exception as exc:
@@ -4042,13 +4490,19 @@ def render_atlas_workspace(username):
                         ranked_task_refs = sorted(
                             map_task_refs,
                             key=lambda ref: _atlas_suggested_next_score(
-                                index[ref], actor_id, index
+                                index[ref],
+                                actor_id,
+                                index,
+                                health=health_index.get(ref),
                             ),
                         )
                         task_candidates = []
                         for task_ref in ranked_task_refs[:80]:
                             task_meta = index.get(task_ref, {})
                             task_node = task_meta.get("node")
+                            task_health = health_index.get(task_ref)
+                            if task_health is None:
+                                task_health = _atlas_health_state(task_meta, index=index)
                             parent_ref = task_meta.get("parent")
                             parent_meta = index.get(parent_ref) if parent_ref else None
                             parent_ai_score = (
@@ -4066,19 +4520,25 @@ def render_atlas_workspace(username):
                                 {
                                     "task_ref": task_ref,
                                     "title": task_meta.get("title"),
-                                    "status": _atlas_status_label(task_meta),
+                                    "status": str(
+                                        task_health.get("status_label")
+                                        or "In progress"
+                                    ),
                                     "progress": int(task_meta.get("progress", 0) or 0),
                                     "deadline": _deadline_iso(
                                         getattr(task_node, "deadline", None)
                                     ),
                                     "owner_name": task_meta.get("owner_name"),
                                     "path": " > ".join(task_path_titles),
-                                    "attention": _atlas_attention_reason(
-                                        task_meta, index
+                                    "attention": str(
+                                        task_health.get("reason") or "On track"
                                     ),
                                     "parent_kr_ai_score": parent_ai_score,
                                     "local_priority_score": _atlas_suggested_next_score(
-                                        task_meta, actor_id, index
+                                        task_meta,
+                                        actor_id,
+                                        index,
+                                        health=task_health,
                                     ),
                                 }
                             )
@@ -4119,13 +4579,31 @@ def render_atlas_workspace(username):
                     else:
                         st.session_state.pop("atlas_ai_suggested_next", None)
 
+                    if (
+                        not preview_ai_sync
+                        and apply_ai_score_to_progress
+                        and progress_undo_items
+                    ):
+                        st.session_state["atlas_ai_progress_undo"] = {
+                            "items": progress_undo_items,
+                            "at": float(time.time()),
+                        }
+
                     st.session_state["atlas_ai_sync_report"] = {
                         "synced": synced,
                         "failed": failed[:6],
                         "total": total_kr,
+                        "preview_mode": bool(preview_ai_sync),
                         "apply_progress": bool(apply_ai_score_to_progress),
+                        "planned_progress": int(planned_progress),
                         "applied_progress": int(applied_progress),
                         "missing_ai_score": int(missing_ai_score),
+                        "skipped_delta_cap": int(skipped_delta_cap),
+                        "skipped_decrease": int(skipped_decrease),
+                        "unchanged_progress": int(unchanged_progress),
+                        "max_progress_delta": int(max_progress_delta),
+                        "allow_progress_decrease": bool(allow_progress_decrease),
+                        "trace_rows": trace_rows[:80],
                         "ai_suggested_ref": (ai_suggested_payload or {}).get(
                             "task_ref"
                         ),
@@ -4143,18 +4621,76 @@ def render_atlas_workspace(username):
                 sync_report = st.session_state.get("atlas_ai_sync_report")
                 if isinstance(sync_report, dict):
                     sync_age = float(time.time() - float(sync_report.get("at") or 0))
-                    if sync_age <= 20:
+                    if sync_age <= 45:
                         synced = int(sync_report.get("synced") or 0)
                         total = int(sync_report.get("total") or 0)
-                        if bool(sync_report.get("apply_progress")):
+                        preview_mode = bool(sync_report.get("preview_mode"))
+                        if preview_mode:
+                            analyzed_msg = (
+                                f"AI preview analyzed {synced}/{total} key results. "
+                                "No updates were written."
+                            )
+                            if bool(sync_report.get("apply_progress")):
+                                planned = int(sync_report.get("planned_progress") or 0)
+                                missing = int(sync_report.get("missing_ai_score") or 0)
+                                skipped_delta = int(
+                                    sync_report.get("skipped_delta_cap") or 0
+                                )
+                                skipped_down = int(
+                                    sync_report.get("skipped_decrease") or 0
+                                )
+                                unchanged = int(
+                                    sync_report.get("unchanged_progress") or 0
+                                )
+                                delta_cap = int(
+                                    sync_report.get("max_progress_delta") or 0
+                                )
+                                analyzed_msg += (
+                                    f" Planned updates: {planned}. Progress policy: max delta {delta_cap}%"
+                                )
+                                if not bool(
+                                    sync_report.get("allow_progress_decrease")
+                                ):
+                                    analyzed_msg += ", decreases blocked."
+                                else:
+                                    analyzed_msg += ", decreases allowed."
+                                if missing > 0:
+                                    analyzed_msg += f" ({missing} missing AI score.)"
+                                if skipped_delta > 0:
+                                    analyzed_msg += (
+                                        f" ({skipped_delta} blocked by delta cap.)"
+                                    )
+                                if skipped_down > 0:
+                                    analyzed_msg += (
+                                        f" ({skipped_down} blocked because decreases are off.)"
+                                    )
+                                if unchanged > 0:
+                                    analyzed_msg += f" ({unchanged} unchanged.)"
+                            map_sidebar_area.info(analyzed_msg)
+                        elif bool(sync_report.get("apply_progress")):
                             applied = int(sync_report.get("applied_progress") or 0)
                             missing = int(sync_report.get("missing_ai_score") or 0)
+                            skipped_delta = int(
+                                sync_report.get("skipped_delta_cap") or 0
+                            )
+                            skipped_down = int(
+                                sync_report.get("skipped_decrease") or 0
+                            )
+                            unchanged = int(sync_report.get("unchanged_progress") or 0)
                             msg = (
                                 f"AI sync updated analysis on {synced}/{total} KRs "
                                 f"and applied progress on {applied}."
                             )
                             if missing > 0:
                                 msg += f" ({missing} had no usable AI score.)"
+                            if skipped_delta > 0:
+                                msg += f" ({skipped_delta} blocked by delta cap.)"
+                            if skipped_down > 0:
+                                msg += (
+                                    f" ({skipped_down} blocked because decreases are off.)"
+                                )
+                            if unchanged > 0:
+                                msg += f" ({unchanged} unchanged.)"
                             map_sidebar_area.success(msg)
                         else:
                             map_sidebar_area.success(
@@ -4184,8 +4720,36 @@ def render_atlas_workspace(username):
                             map_sidebar_area.warning(
                                 f"AI task suggestion skipped: {sync_report.get('ai_suggest_error')}"
                             )
+                        trace_rows = list(sync_report.get("trace_rows") or [])
+                        if trace_rows:
+                            with map_sidebar_area.expander(
+                                "Last AI Sync Details", expanded=False
+                            ):
+                                st.dataframe(
+                                    trace_rows,
+                                    use_container_width=True,
+                                    hide_index=True,
+                                    height=240,
+                                )
                     else:
                         del st.session_state["atlas_ai_sync_report"]
+
+                undo_report = st.session_state.get("atlas_ai_undo_report")
+                if isinstance(undo_report, dict):
+                    undo_age = float(time.time() - float(undo_report.get("at") or 0))
+                    if undo_age <= 20:
+                        restored = int(undo_report.get("restored") or 0)
+                        map_sidebar_area.success(
+                            f"Rollback restored progress on {restored} key result(s)."
+                        )
+                        undo_failed = list(undo_report.get("failed") or [])
+                        if undo_failed:
+                            map_sidebar_area.warning(
+                                "Some rollback items failed:\n- "
+                                + "\n- ".join(undo_failed)
+                            )
+                    else:
+                        st.session_state.pop("atlas_ai_undo_report", None)
 
                 map_chart_height = 280 if is_mobile_request else 500
                 treemap = _build_atlas_treemap(
@@ -4195,6 +4759,7 @@ def render_atlas_workspace(username):
                     focus_task_ref,
                     selected_path_refs=selected_path_refs,
                     chart_height=map_chart_height,
+                    health_index=health_index,
                 )
                 if treemap is not None:
                     chart_key = f"atlas_focus_treemap_{selected_ref}"
@@ -4293,6 +4858,12 @@ def render_atlas_workspace(username):
                 "<div class='atlas-kicker'>Inspector</div>", unsafe_allow_html=True
             )
             st.caption(f"Selected from map: {selected_meta['title']}")
+            selected_health = health_index.get(selected_ref)
+            if selected_health is None:
+                selected_health = _atlas_health_state(selected_meta, index=index)
+            st.caption(
+                f"Status rationale: {_atlas_health_source_explanation(selected_health.get('source'))}"
+            )
             selected_type, selected_id = _parse_typed_ref(selected_ref)
             if not selected_type or selected_id is None:
                 st.info("Select a node to inspect.")

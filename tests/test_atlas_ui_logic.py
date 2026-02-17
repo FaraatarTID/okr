@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from src.ui.components import (  # noqa: E402
     _atlas_attention_kind,
     _atlas_attention_reason,
+    _atlas_ai_progress_decision,
     _atlas_clean_work_summary,
     _build_atlas_treemap,
     _build_atlas_index_from_snapshot,
@@ -11,8 +12,15 @@ from src.ui.components import (  # noqa: E402
     _atlas_extract_clicked_ref,
     _atlas_extract_clicked_ref_from_points,
     _atlas_extract_selection_points,
+    _atlas_health_debug_rows,
+    _atlas_health_state,
+    _atlas_health_index,
+    _atlas_health_fill_color,
+    _atlas_health_source_explanation,
     _atlas_needs_attention,
     _atlas_scope_refs,
+    _atlas_status_label,
+    _atlas_task_rollup,
     _atlas_should_emit_target_notification,
     _atlas_should_show_soft_reminder,
     _atlas_sprint_run_key,
@@ -113,6 +121,8 @@ def test_treemap_selected_node_keeps_status_fill_and_selection_border():
     assert trace.marker.line.color[goal_idx] == "#8a6827"
     assert float(trace.marker.line.width[goal_idx]) >= 3.0
     assert "pattern" not in trace.marker.to_plotly_json()
+    assert "Why: %{customdata[2]}" in str(trace.hovertemplate)
+    assert len(str(trace.customdata[goal_idx][2]).strip()) > 8
 
 
 def test_needs_attention_for_incomplete_task_below_threshold():
@@ -137,6 +147,96 @@ def test_attention_kind_and_reason_for_done_task():
     assert _atlas_attention_reason(meta) == "Complete"
 
 
+def test_kr_ai_risk_health_state_takes_precedence_for_map_indicators():
+    meta = {
+        "type": "KEY_RESULT",
+        "progress": 85,
+        "children": [],
+        "node": SimpleNamespace(ai_deadline_state="risk", gemini_analysis=None),
+    }
+    assert _atlas_status_label(meta) == "At risk (AI)"
+    assert _atlas_attention_kind(meta) == "risk"
+    assert _atlas_attention_reason(meta) == "Needs care"
+    assert _atlas_health_state(meta).get("source") == "ai_deadline_warning"
+
+
+def test_health_fill_color_matches_map_legend_states():
+    assert _atlas_health_fill_color({"kind": "overdue"}, progress=10) == "#c36d27"
+    assert _atlas_health_fill_color({"kind": "risk"}, progress=55) == "#c36d27"
+    assert _atlas_health_fill_color({"kind": "inherited"}, progress=80) == "#c36d27"
+    assert _atlas_health_fill_color({"kind": "low_progress"}, progress=5) == "#c36d27"
+    assert _atlas_health_fill_color({"kind": "done"}, progress=60) == "#b5becb"
+    assert _atlas_health_fill_color({"kind": "on_track"}, progress=70) == "#e5d6bb"
+
+
+def test_health_source_explanation_is_human_readable():
+    assert _atlas_health_source_explanation("ai_deadline_warning").startswith("AI")
+    assert "child" in _atlas_health_source_explanation("inherited_rollup").lower()
+    assert "progress" in _atlas_health_source_explanation("progress").lower()
+    assert _atlas_health_source_explanation("unknown_source").endswith("assessment.")
+
+
+def test_ai_progress_decision_applies_when_within_delta_policy():
+    decision = _atlas_ai_progress_decision(
+        current_progress=40,
+        ai_score=55,
+        max_delta=20,
+        allow_decrease=False,
+    )
+    assert decision["action"] == "apply"
+    assert decision["reason"] == "within_policy"
+    assert decision["delta"] == 15
+    assert decision["proposed_progress"] == 55
+
+
+def test_ai_progress_decision_skips_when_score_missing():
+    decision = _atlas_ai_progress_decision(
+        current_progress=40,
+        ai_score=None,
+        max_delta=20,
+        allow_decrease=False,
+    )
+    assert decision["action"] == "skip"
+    assert decision["reason"] == "missing_ai_score"
+    assert decision["proposed_progress"] is None
+
+
+def test_ai_progress_decision_skips_blocked_decrease():
+    decision = _atlas_ai_progress_decision(
+        current_progress=60,
+        ai_score=40,
+        max_delta=30,
+        allow_decrease=False,
+    )
+    assert decision["action"] == "skip"
+    assert decision["reason"] == "decrease_blocked"
+    assert decision["delta"] == -20
+
+
+def test_ai_progress_decision_skips_large_delta():
+    decision = _atlas_ai_progress_decision(
+        current_progress=20,
+        ai_score=80,
+        max_delta=25,
+        allow_decrease=True,
+    )
+    assert decision["action"] == "skip"
+    assert decision["reason"] == "delta_cap"
+    assert decision["delta"] == 60
+
+
+def test_ai_progress_decision_skips_no_change():
+    decision = _atlas_ai_progress_decision(
+        current_progress=65,
+        ai_score=65,
+        max_delta=25,
+        allow_decrease=False,
+    )
+    assert decision["action"] == "skip"
+    assert decision["reason"] == "no_change"
+    assert decision["delta"] == 0
+
+
 def test_attention_kind_for_parent_is_inherited_when_child_needs_attention():
     index = {
         "objective_1": {
@@ -149,6 +249,39 @@ def test_attention_kind_for_parent_is_inherited_when_child_needs_attention():
     }
     assert _atlas_attention_kind(index["objective_1"], index=index) == "inherited"
     assert _atlas_attention_reason(index["objective_1"], index=index) == "Needs care"
+
+
+def test_health_index_derives_inherited_and_leaf_states():
+    index = {
+        "goal_1": {
+            "ref": "goal_1",
+            "type": "GOAL",
+            "progress": 80,
+            "children": ["objective_1"],
+            "node": None,
+        },
+        "objective_1": {
+            "ref": "objective_1",
+            "type": "OBJECTIVE",
+            "progress": 85,
+            "children": ["task_1"],
+            "node": None,
+        },
+        "task_1": {
+            "ref": "task_1",
+            "type": "TASK",
+            "progress": 20,
+            "children": [],
+            "node": SimpleNamespace(deadline=None),
+        },
+    }
+    health = _atlas_health_index(index)
+    assert health["task_1"]["kind"] == "low_progress"
+    assert health["task_1"]["source"] == "progress"
+    assert health["objective_1"]["kind"] == "inherited"
+    assert health["objective_1"]["source"] == "inherited_rollup"
+    assert health["goal_1"]["kind"] == "inherited"
+    assert health["goal_1"]["source"] == "inherited_rollup"
 
 
 def test_parent_inherits_attention_from_descendant_when_index_provided():
@@ -184,6 +317,92 @@ def test_scope_refs_flattens_all_roots_without_duplicates():
     assert "goal_2" in refs
     assert "task_shared" in refs
     assert refs.count("task_shared") == 1
+
+
+def test_task_rollup_uses_provided_health_index():
+    index = {
+        "task_1": {
+            "type": "TASK",
+            "progress": 10,
+            "children": [],
+            "node": SimpleNamespace(deadline=None, timer_started_at=None),
+        },
+        "task_2": {
+            "type": "TASK",
+            "progress": 100,
+            "children": [],
+            "node": SimpleNamespace(deadline=None, timer_started_at=object()),
+        },
+    }
+    health_index = {
+        "task_1": {
+            "kind": "on_track",
+            "reason": "On track",
+            "status_label": "In progress",
+            "needs_attention": False,
+        },
+        "task_2": {
+            "kind": "done",
+            "reason": "Complete",
+            "status_label": "Done",
+            "needs_attention": False,
+        },
+    }
+    rollup = _atlas_task_rollup(["task_1", "task_2"], index, health_index=health_index)
+    assert rollup["total"] == 2
+    assert rollup["running"] == 1
+    assert rollup["done"] == 1
+    assert rollup["attention"] == 0
+
+
+def test_health_debug_rows_prioritize_attention_and_strip_internal_rank():
+    index = {
+        "task_1": {
+            "ref": "task_1",
+            "type": "TASK",
+            "title": "Needs Care",
+            "progress": 15,
+            "children": [],
+            "node": SimpleNamespace(deadline=None),
+        },
+        "task_2": {
+            "ref": "task_2",
+            "type": "TASK",
+            "title": "Done",
+            "progress": 100,
+            "children": [],
+            "node": SimpleNamespace(deadline=None),
+        },
+    }
+    health_index = {
+        "task_1": {
+            "kind": "low_progress",
+            "reason": "Needs care",
+            "status_label": "In progress",
+            "source": "progress",
+            "needs_attention": True,
+        },
+        "task_2": {
+            "kind": "done",
+            "reason": "Complete",
+            "status_label": "Done",
+            "source": "task_status",
+            "needs_attention": False,
+        },
+    }
+    rows = _atlas_health_debug_rows(
+        ["task_2", "task_1"],
+        index,
+        health_index=health_index,
+        limit=10,
+    )
+    assert len(rows) == 2
+    assert rows[0]["Ref"] == "task_1"
+    assert rows[0]["NeedsAttention"] is True
+    assert rows[0]["Source"] == "progress"
+    assert rows[1]["Ref"] == "task_2"
+    assert rows[1]["Source"] == "task_status"
+    assert "_rank" not in rows[0]
 
 
 def test_commit_target_minutes_normalizes_presets_and_bounds():
