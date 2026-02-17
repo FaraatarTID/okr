@@ -35,7 +35,11 @@ from src.domain import analytics as domain_analytics
 from src.domain import authorization as domain_auth
 from src.audit import audit_log
 from src.utils.cache_utils import clear_cache_safe
-from src.domain.progress import refresh_hierarchy_progress, calculate_objective_progress, calculate_goal_progress
+from src.domain.progress import (
+    refresh_hierarchy_progress,
+    calculate_objective_progress,
+    calculate_goal_progress,
+)
 import bcrypt
 
 
@@ -826,7 +830,7 @@ def create_check_in(
             if kr.target_value > 0:
                 kr.progress = int((value / kr.target_value) * 100)
             session.add(kr)
-        
+
         # Recalculate hierarchy
         refresh_hierarchy_progress(session, kr_id, "KEY_RESULT")
 
@@ -1094,7 +1098,9 @@ def create_objective(
         if not goal:
             raise ValueError(f"Goal {goal_id} not found")
         _authorize_goal_mutation(session, goal, actor_username)
-        actor = session.exec(select(User).where(User.username == actor_username)).first()
+        actor = session.exec(
+            select(User).where(User.username == actor_username)
+        ).first()
 
         existing = session.exec(
             select(Objective).where(Objective.goal_id == goal_id)
@@ -1144,7 +1150,9 @@ def create_key_result(
             raise ValueError(f"Objective {objective_id} not found")
         goal = session.get(Goal, objective.goal_id)
         _authorize_goal_mutation(session, goal, actor_username)
-        actor = session.exec(select(User).where(User.username == actor_username)).first()
+        actor = session.exec(
+            select(User).where(User.username == actor_username)
+        ).first()
 
         existing = session.exec(
             select(KeyResult).where(KeyResult.objective_id == objective_id)
@@ -1200,7 +1208,9 @@ def create_task(
             raise ValueError("estimated_minutes must be >= 0")
         goal = _get_goal_for_key_result(session, key_result_id)
         _authorize_goal_mutation(session, goal, actor_username)
-        actor = session.exec(select(User).where(User.username == actor_username)).first()
+        actor = session.exec(
+            select(User).where(User.username == actor_username)
+        ).first()
 
         existing = session.exec(
             select(Task).where(Task.key_result_id == key_result_id)
@@ -1318,7 +1328,7 @@ def update_objective(
             if actor_username:
                 item.updated_by = actor_username
             session.add(item)
-            
+
             # Recalculate hierarchy
             refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
 
@@ -1357,7 +1367,7 @@ def update_key_result(
             if actor_username:
                 item.updated_by = actor_username
             session.add(item)
-            
+
             # Recalculate hierarchy
             refresh_hierarchy_progress(session, key_result_id, "KEY_RESULT")
 
@@ -2302,6 +2312,7 @@ def get_sql_id_by_external(external_id: str, model_class) -> Optional[int]:
 # TEAM OPERATIONS
 # ============================================================================
 
+
 def create_team(name: str, description: Optional[str] = None) -> Team:
     """Create a new team."""
     with get_session_context() as session:
@@ -2344,7 +2355,9 @@ def update_team(team_id: int, **updates) -> Optional[Team]:
         try:
             session.commit()
             session.refresh(team)
-            audit_log("update_team", "team", details={"id": team_id, "updates": updates})
+            audit_log(
+                "update_team", "team", details={"id": team_id, "updates": updates}
+            )
             return team
         except IntegrityError:
             session.rollback()
@@ -2362,7 +2375,9 @@ def delete_team(team_id: int) -> bool:
         # Since we are in a new session, lazy loading might work if bound, but robust way is direct query
         member_check = session.exec(select(User).where(User.team_id == team_id)).first()
         if member_check:
-            raise ValueError("Cannot delete team with assigned members. Reassign them first.")
+            raise ValueError(
+                "Cannot delete team with assigned members. Reassign them first."
+            )
 
         session.delete(team)
         session.commit()
