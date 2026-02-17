@@ -28,12 +28,14 @@ from src.models import (
     WeeklyPlan,
     Retrospective,
     AuthThrottleState,
+    Team,
 )
 from src.database import get_session_context
 from src.domain import analytics as domain_analytics
 from src.domain import authorization as domain_auth
 from src.audit import audit_log
 from src.utils.cache_utils import clear_cache_safe
+from src.domain.progress import refresh_hierarchy_progress, calculate_objective_progress, calculate_goal_progress
 import bcrypt
 
 
@@ -824,6 +826,9 @@ def create_check_in(
             if kr.target_value > 0:
                 kr.progress = int((value / kr.target_value) * 100)
             session.add(kr)
+        
+        # Recalculate hierarchy
+        refresh_hierarchy_progress(session, kr_id, "KEY_RESULT")
 
         session.commit()
         session.refresh(check_in)
@@ -1052,12 +1057,15 @@ def create_goal(
 
         goal = Goal(
             owner_id=owner_id,
+            team_id=actor.team_id,
             title=title,
             description=description,
             cycle_id=cycle_id,
             external_id=external_id,
             created_at=created_at or utc_now_naive(),
             strategy_tags=strategy_tags,
+            created_by=actor.username,
+            updated_by=actor.username,
         )
         session.add(goal)
         session.commit()
@@ -1086,6 +1094,7 @@ def create_objective(
         if not goal:
             raise ValueError(f"Goal {goal_id} not found")
         _authorize_goal_mutation(session, goal, actor_username)
+        actor = session.exec(select(User).where(User.username == actor_username)).first()
 
         existing = session.exec(
             select(Objective).where(Objective.goal_id == goal_id)
@@ -1096,10 +1105,14 @@ def create_objective(
 
         objective = Objective(
             goal_id=goal_id,
+            owner_id=actor.id,
+            team_id=actor.team_id,
             title=title,
             description=description,
             external_id=external_id,
             created_at=created_at or utc_now_naive(),
+            created_by=actor.username,
+            updated_by=actor.username,
         )
         session.add(objective)
         session.commit()
@@ -1131,6 +1144,7 @@ def create_key_result(
             raise ValueError(f"Objective {objective_id} not found")
         goal = session.get(Goal, objective.goal_id)
         _authorize_goal_mutation(session, goal, actor_username)
+        actor = session.exec(select(User).where(User.username == actor_username)).first()
 
         existing = session.exec(
             select(KeyResult).where(KeyResult.objective_id == objective_id)
@@ -1141,6 +1155,8 @@ def create_key_result(
 
         key_result = KeyResult(
             objective_id=objective_id,
+            owner_id=actor.id,
+            team_id=actor.team_id,
             title=title,
             description=description,
             target_value=target_value,
@@ -1148,6 +1164,8 @@ def create_key_result(
             external_id=external_id,
             created_at=created_at or utc_now_naive(),
             initiative_tags=initiative_tags,
+            created_by=actor.username,
+            updated_by=actor.username,
         )
         session.add(key_result)
         session.commit()
@@ -1182,6 +1200,7 @@ def create_task(
             raise ValueError("estimated_minutes must be >= 0")
         goal = _get_goal_for_key_result(session, key_result_id)
         _authorize_goal_mutation(session, goal, actor_username)
+        actor = session.exec(select(User).where(User.username == actor_username)).first()
 
         existing = session.exec(
             select(Task).where(Task.key_result_id == key_result_id)
@@ -1192,6 +1211,8 @@ def create_task(
 
         task = Task(
             key_result_id=key_result_id,
+            owner_id=actor.id,
+            team_id=actor.team_id,
             title=title,
             description=description,
             estimated_minutes=estimated_minutes,
@@ -1200,6 +1221,8 @@ def create_task(
             start_date=start_date,
             deadline=deadline,
             assignee_id=assignee_id,
+            created_by=actor.username,
+            updated_by=actor.username,
         )
         session.add(task)
         session.commit()
@@ -1239,6 +1262,8 @@ def update_goal(
                 if hasattr(goal, key):
                     setattr(goal, key, value)
             goal.updated_at = utc_now_naive()
+            if actor_username:
+                goal.updated_by = actor_username
             session.add(goal)
             session.commit()
             session.refresh(goal)
@@ -1290,7 +1315,13 @@ def update_objective(
                 if hasattr(item, key):
                     setattr(item, key, value)
             item.updated_at = utc_now_naive()
+            if actor_username:
+                item.updated_by = actor_username
             session.add(item)
+            
+            # Recalculate hierarchy
+            refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
+
             session.commit()
             session.refresh(item)
             clear_cache_safe()
@@ -1323,7 +1354,13 @@ def update_key_result(
                 if hasattr(item, key):
                     setattr(item, key, value)
             item.updated_at = utc_now_naive()
+            if actor_username:
+                item.updated_by = actor_username
             session.add(item)
+            
+            # Recalculate hierarchy
+            refresh_hierarchy_progress(session, key_result_id, "KEY_RESULT")
+
             session.commit()
             session.refresh(item)
             clear_cache_safe()
@@ -1370,6 +1407,8 @@ def update_task(
             task.progress = 100
 
         task.updated_at = utc_now_naive()
+        if actor_username:
+            task.updated_by = actor_username
         session.add(task)
         session.commit()
         session.refresh(task)
@@ -1436,6 +1475,12 @@ def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
             session.delete(item)
             session.commit()
             audit_log("delete", "key_result", details={"key_result_id": kr_id})
+
+            # Recalculate hierarchy (manual chain)
+            objective_id = item.objective_id
+            calculate_objective_progress(session, objective_id)
+            refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
+
             clear_cache_safe()
             return True
         return False
@@ -2251,3 +2296,75 @@ def get_sql_id_by_external(external_id: str, model_class) -> Optional[int]:
         statement = select(model_class).where(model_class.external_id == external_id)
         result = session.exec(statement).first()
         return result.id if result else None
+
+
+# ============================================================================
+# TEAM OPERATIONS
+# ============================================================================
+
+def create_team(name: str, description: Optional[str] = None) -> Team:
+    """Create a new team."""
+    with get_session_context() as session:
+        team = Team(name=name, description=description)
+        session.add(team)
+        try:
+            session.commit()
+            session.refresh(team)
+            audit_log("create_team", "team", details={"name": name, "id": team.id})
+            return team
+        except IntegrityError:
+            session.rollback()
+            raise ValueError(f"Team with name '{name}' already exists.")
+
+
+def get_all_teams() -> List[Team]:
+    """Retrieve all teams."""
+    with get_session_context() as session:
+        return session.exec(select(Team)).all()
+
+
+def get_team_by_id(team_id: int) -> Optional[Team]:
+    """Retrieve a team by ID."""
+    with get_session_context() as session:
+        return session.get(Team, team_id)
+
+
+def update_team(team_id: int, **updates) -> Optional[Team]:
+    """Update team details."""
+    with get_session_context() as session:
+        team = session.get(Team, team_id)
+        if not team:
+            return None
+
+        for key, value in updates.items():
+            if hasattr(team, key):
+                setattr(team, key, value)
+
+        session.add(team)
+        try:
+            session.commit()
+            session.refresh(team)
+            audit_log("update_team", "team", details={"id": team_id, "updates": updates})
+            return team
+        except IntegrityError:
+            session.rollback()
+            raise ValueError("Update failed, likely duplicate name.")
+
+
+def delete_team(team_id: int) -> bool:
+    """Delete a team. Fails if it has members."""
+    with get_session_context() as session:
+        team = session.get(Team, team_id)
+        if not team:
+            return False
+
+        # Check for members - need to load relationship or query User
+        # Since we are in a new session, lazy loading might work if bound, but robust way is direct query
+        member_check = session.exec(select(User).where(User.team_id == team_id)).first()
+        if member_check:
+            raise ValueError("Cannot delete team with assigned members. Reassign them first.")
+
+        session.delete(team)
+        session.commit()
+        audit_log("delete_team", "team", details={"id": team_id})
+        return True

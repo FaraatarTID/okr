@@ -20,7 +20,8 @@ from src.crud import (
     get_krs_needing_checkin, create_check_in, create_weekly_plan,
     create_retrospective, get_user_retrospectives, get_team_retrospectives,
     create_goal, create_objective, create_key_result
-    , get_work_logs_by_date_range
+    , get_work_logs_by_date_range,
+    create_team, get_all_teams, update_team, delete_team
 )
 from src.models import UserRole
 
@@ -309,7 +310,7 @@ def render_admin_panel_dialog():
         st.error("🚫 Access Denied. Admin privileges required.")
         return
     
-    tab1, tab2, tab3, tab4 = st.tabs(["👥 User List", "➕ Create User", "🗄️ DB Backup", "🔑 Reset Password"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["👥 User List", "➕ Create User", "🏢 Teams", "🗄️ DB Backup", "🔑 Reset Password"])
     
     with tab1:
         users = get_all_users()
@@ -343,6 +344,11 @@ def render_admin_panel_dialog():
         manager_options = {u.display_name: u.id for u in managers}
         new_manager = st.selectbox("Assigned Manager", options=["None"] + list(manager_options.keys()), key="new_manager")
         
+        # Team assignment
+        teams = get_all_teams()
+        team_options = {t.name: t.id for t in teams}
+        new_team = st.selectbox("Assign Team", options=["None"] + list(team_options.keys()), key="new_team_select")
+        
         if st.button("Create User", type="primary"):
             if new_username and new_password:
                 try:
@@ -353,6 +359,7 @@ def render_admin_panel_dialog():
                         role=UserRole(new_role),
                         display_name=new_display or new_username,
                         manager_id=manager_id_val,
+                        team_id=team_options.get(new_team) if new_team != "None" else None,
                         must_change_password=require_pw_change,
                     )
                     st.success(f"User '{new_username}' created successfully!")
@@ -363,6 +370,53 @@ def render_admin_panel_dialog():
                 st.error("Username and Password are required.")
 
     with tab3:
+        st.markdown("#### Team Management")
+        
+        # Create Team
+        with st.form("create_team_form"):
+            col_t1, col_t2 = st.columns([3, 1])
+            new_team_name = col_t1.text_input("New Team Name")
+            if col_t2.form_submit_button("➕ Create"):
+                if new_team_name:
+                    try:
+                        create_team(new_team_name)
+                        st.success(f"Team '{new_team_name}' created!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+        
+        st.markdown("---")
+        
+        # List Teams
+        teams_list = get_all_teams()
+        if not teams_list:
+            st.info("No teams defined.")
+        else:
+            for team in teams_list:
+                with st.expander(f"🏢 {team.name}"):
+                    # Rename
+                    new_name = st.text_input("Name", value=team.name, key=f"team_name_{team.id}")
+                    if st.button("Update Name", key=f"upd_team_{team.id}"):
+                         update_team(team.id, name=new_name)
+                         st.rerun()
+
+                    # Members
+                    st.markdown("**Members:**")
+                    # Simple filter to show members
+                    team_members = [u for u in get_all_users() if u.team_id == team.id]
+                    if team_members:
+                        for tm in team_members:
+                            st.text(f"- {tm.display_name} ({tm.username})")
+                    else:
+                        st.caption("No members assigned.")
+                    
+                    if st.button("🗑️ Delete Team", key=f"del_team_{team.id}"):
+                        try:
+                            delete_team(team.id)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(str(e))
+    with tab4:
         from src.database import (
             BACKUP_FORMAT_VERSION,
             export_database_backup,
@@ -449,7 +503,7 @@ def render_admin_panel_dialog():
                 except Exception as exc:
                     st.error(f"Backup import failed: {exc}")
     
-    with tab4:
+    with tab5:
         st.markdown("#### Reset Password")
         user_list_reset = get_all_users()
         user_options_reset = {u.display_name: u.id for u in user_list_reset}

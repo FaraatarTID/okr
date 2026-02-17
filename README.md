@@ -4,26 +4,35 @@ A powerful Streamlit application for managing Objectives and Key Results (OKRs),
 
 ---
 
-## Documentation HQ
+## 🏛️ Documentation HQ
 
 Use this section as the single entry point for all project docs.
 
-### Core docs
+### 📘 Core Guides
 
-- Architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
-- Enterprise deployment guide: [DEPLOYMENT.md](DEPLOYMENT.md)
-- Performance baselines and budgets: [performance.md](performance.md)
-- Engineering worklog: [WORKLOG.md](WORKLOG.md)
-- Persian non-admin role-aware user guide: [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
-- Persian administrator guide: [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md)
+- **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Deployment Guide**: [DEPLOYMENT.md](DEPLOYMENT.md)
+- **Performance Budget**: [performance.md](performance.md)
+- **AI Features (En)**: [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md)
+- **AI Features (Fa)**: [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md)
+- **User Guide (En)**: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
+- **User Guide (Fa)**: [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
+- **Admin Guide (En)**: [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)
+- **Admin Guide (Fa)**: [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md)
 
-### Deployment and operations docs
+### 🛠️ Ops & Infrastructure
 
-- Configuration reference: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
-- Deployment checklist: [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
-- Docker Compose guide: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
-- Kubernetes guide: [docs/KUBERNETES.md](docs/KUBERNETES.md)
-- Reverse proxy guide: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
+- **Config Reference**: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
+- **Deployment Checklist**: [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
+- **Docker Compose**: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
+- **Kubernetes**: [docs/KUBERNETES.md](docs/KUBERNETES.md)
+- **Reverse Proxy**: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
+- **Operations**: [docs/OPERATIONS.md](docs/OPERATIONS.md)
+- **Troubleshooting**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- **First-Run Runbook**: [docs/RUNBOOK.md](docs/RUNBOOK.md)
+
+---
+
 - Operations guide: [docs/OPERATIONS.md](docs/OPERATIONS.md)
 - Troubleshooting guide: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - First deployment runbook: [docs/RUNBOOK.md](docs/RUNBOOK.md)
@@ -35,11 +44,13 @@ Use this section as the single entry point for all project docs.
 Choose one mode:
 
 1. Streamlit Cloud (MVP/simple hosting)
+
 - No SSH deploy secrets are required.
 - App is deployed by Streamlit Cloud from this GitHub repository.
 - The SSH deploy workflow/job is expected to skip.
 
 2. Self-hosted Docker Compose (server/VM)
+
 - Use this for Nginx + Docker Compose + your own server.
 - If you enable GitHub Actions SSH deploy, set:
   - `SSH_HOST`
@@ -53,13 +64,16 @@ Choose one mode:
   - Deploy dir: `DEPLOY_DIR`
 
 Where to set `SSH_KEY`:
+
 - GitHub repository -> `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`.
 - Add the private key content under `SSH_KEY` (or `DEPLOY_KEY`).
 
 Security note:
+
 - Never commit private keys or deploy secrets to the repository.
 
 ---
+
 ## 🌟 Features Overview
 
 ### Core Functionality
@@ -327,15 +341,15 @@ streamlit run streamlit_app/app.py
 
 ## 📂 Architecture
 
-| Component | Technology                                                             |
-| --------- | ---------------------------------------------------------------------- |
-| Frontend  | Streamlit + Plotly + streamlit-agraph                                  |
-| Styling   | Vanilla CSS + Vazirmatn font                                           |
-| Auth      | bcrypt password hashing                                                |
-| Database  | SQLModel + Supabase PostgreSQL                                           |
-| Storage   | Supabase PostgreSQL (single source of truth)                             |
-| AI        | Google Gemini API                                                      |
-| PDF       | pdfkit (local) / PDFShift (cloud)                                      |
+| Component | Technology                                   |
+| --------- | -------------------------------------------- |
+| Frontend  | Streamlit + Plotly + streamlit-agraph        |
+| Styling   | Vanilla CSS + Vazirmatn font                 |
+| Auth      | bcrypt password hashing                      |
+| Database  | SQLModel + Supabase PostgreSQL               |
+| Storage   | Supabase PostgreSQL (single source of truth) |
+| AI        | Google Gemini API                            |
+| PDF       | pdfkit (local) / PDFShift (cloud)            |
 
 ---
 
@@ -429,4 +443,3 @@ python streamlit_app/scripts/perf_hotpaths.py
 ```
 
 See `performance.md` for current baselines and budgets.
-

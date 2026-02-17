@@ -53,6 +53,9 @@ def _can_manage_owner(session: Session, actor: User, owner_id: Optional[int]) ->
     return False
 
 
+from src.domain.permissions import Action, check_permission
+
+
 def _authorize_goal_mutation(
     session: Session, goal: Optional[Goal], actor_username: Optional[str]
 ) -> None:
@@ -66,7 +69,13 @@ def _authorize_goal_mutation(
     if not actor or not actor.is_active:
         raise PermissionError("Actor is not authorized")
 
-    if not _can_manage_goal(session, actor, goal):
+    # Use centralized permission checker
+    # Mutations map to UPDATE on the goal in the current simple model
+    # (since editing children is effectively editing goal scope)
+    # or should we be specific?
+    # For now, existing logic was "can_manage_goal". 
+    # check_permission(actor, Action.UPDATE, goal) aligns with this.
+    if not check_permission(actor, Action.UPDATE, goal, session):
         raise PermissionError("Insufficient permissions for this goal")
 
 

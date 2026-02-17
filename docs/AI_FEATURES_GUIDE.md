@@ -1,148 +1,109 @@
-# Atlas AI Features Guide (English)
+# AI Features Guide: Mastering the Intelligence Layer
 
 Documentation HQ: [README](../README.md)
 
-This guide explains how to use Atlas AI features correctly so results are reliable and actionable.
+This guide explains the AI capabilities embedded in the OKR application and how to use them effectively. The system uses advanced Large Language Models (LLMs) to act as an analyst, coach, and assistant.
 
 ---
 
-## 1) Why this guide matters
+## 1. Core AI Features
 
-AI is powerful here, but output quality depends on operation quality.
+### 🔍 Key Result Analyst (Efficiency vs. Effectiveness)
 
-If you run AI features with clear scope, safe controls, and a review step, you get:
-- better prioritization
-- fewer false jumps in progress
-- more trust in map indicators (`Needs care`, `On track`, `Complete`)
+**What it does:**
+Instead of just showing a progress bar, the AI analyzes _how_ you are achieving it. It looks at your Tasks, Time Spent, and Estimates.
 
-If you skip those controls, output quality drops.
+**The Scores:**
 
----
+- **Efficiency Score (Time)**: measures how well you stick to your time estimates.
+  - _Low Score?_ You might be underestimating tasks or getting distracted.
+- **Effectiveness Score (Impact)**: measures if your completed tasks are actually driving the Key Result progress.
+  - _Low Score?_ You are finishing tasks, but the KR isn't moving. You might be working on the wrong things.
 
-## 2) AI capabilities in Atlas
+**How to use:**
 
-1. `AI Strategic Analysis` on Key Results:
-- Generates KR-level analysis (scores, warnings, suggestions).
+1. Open any **Key Result**.
+2. Click the **"Analyze"** or **"Magic"** button.
+3. Review the **Advice List** for specific actions to improve.
 
-2. `AI Progress Sync` in Atlas map sidebar:
-- Refreshes AI analysis for KRs in current map scope.
-- Can also update KR progress from AI overall score (optional and controlled).
+### 🧠 Strategic Objective Review
 
-3. `AI Suggested Next`:
-- Recommends one next critical task from in-scope candidates.
+**What it does:**
+This is a high-level strategic audit. It looks at an Objective and all its contained Key Results and Tasks to answer: _"Is this strategy sound?"_
 
-4. Health explainability:
-- Map hover includes `Why: ...`.
-- Focus and Inspector show status rationale text.
+**Outputs:**
 
-5. Admin-only diagnostics:
-- `Show Health Debug` exposes the rule source and health state table.
+- **Risk Assessment**: Identifies if the defined KRs are sufficient to meet the Objective.
+- **Scope Gap**: Warns if you simply don't have enough tasks planned to hit the targets.
 
----
+### 👨‍🏫 Team Performance Coach (For Managers)
 
-## 3) What determines map health indicators
+**What it does:**
+Acts as a virtual Chief of Staff for managers. It aggregates data from all team members to find patterns humans might miss.
 
-Map labels (`Needs care`, `On track`, `Complete`) are rule-driven and explainable:
+**Dimensions Analyzed:**
 
-1. For `KEY_RESULT`:
-- AI deadline warnings have highest priority.
-- AI overall score is next.
-- Then standard status/progress rules.
+1. **Productivity Pulse**: Is the team accelerating or slowing down?
+2. **Deadline Discipline**: Are tasks consistently overdue?
+3. **Burnout Risk**: Is work distributed unevenly?
 
-2. For `TASK` and non-KR nodes:
-- Task workflow/deadline/progress rules.
-- Parent nodes can inherit `Needs care` from children.
+**How to use:**
 
-Use the rationale text to validate why a node got its status.
+- Navigate to the **Leadership Dashboard**.
+- The AI Coach will provide a "Health Grade" (A-F) and 3 top priorities for you to focus on this week.
 
----
+### 📝 Smart Weekly Summary
 
-## 4) AI Progress Sync: safest operating flow
+**What it does:**
+Drafts your "Weekly Report" for you. It reads through all your completed tasks, work logs, and check-ins to write a professional narrative.
 
-Recommended sequence every time:
+**Why use it:**
 
-1. Set map scope/lens first.
-2. Enable `Apply AI overall score to KR progress` only if you want KR progress changes.
-3. Turn on `Preview mode (no writes)` first.
-4. Set `Max KR progress delta` (start conservative, e.g. `15-25`).
-5. Keep `Allow progress decreases` off unless you intentionally want downward corrections.
-6. Run `AI Progress Sync`.
-7. Review `Last AI Sync Details`.
-8. If output looks correct, rerun with preview off.
+- Saves time on administrative reporting.
+- Ensures you don't forget to mention small but important wins.
+- **Context Aware**: It detects the language of your tasks (English or Persian) and writes the summary in the same language.
 
----
+### 🎯 AI Suggested Next (Prioritization)
 
-## 5) Control panel semantics (important)
+**What it does:**
+When you don't know what to do next, the AI picks the single most "Critical" task based on:
 
-1. `Preview mode (no writes)`:
-- Runs full analysis and decisions.
-- Does not write analysis/progress to DB.
-
-2. `Max KR progress delta`:
-- Limits allowed progress change per KR in one run.
-- Large jumps are blocked and reported.
-
-3. `Allow progress decreases`:
-- If off, any AI proposal lower than current progress is blocked.
-
-4. `Undo Last AI Progress Apply`:
-- Reverts last applied KR progress batch (time-limited window).
-- Use immediately if a run applied undesired changes.
-
-5. `Last AI Sync Details` table:
-- Shows `Current`, `AI Score`, `Proposed`, `Delta`, `Action`, `Reason`.
-- This is your operational audit trail for each run.
+- Urgency (Deadlines)
+- Importance (Parent KR priority)
+- Momentum (Recent work)
 
 ---
 
-## 6) Role-based best practice
+## 2. Best Practices for Best Results
 
-1. Member:
-- Use AI to choose focus, not to bypass task-level judgment.
+The AI is only as smart as the data you give it. Follow these rules to get "Hallucination-Free" high-quality advice:
 
-2. Manager:
-- Use preview-first policy before cross-team progress updates.
-- Review blocked/skipped reasons before rerun.
+### ✅ Do: Write Contextual Titles
 
-3. Admin:
-- Define a default policy for your org (delta cap, decrease policy, cadence).
-- Keep `Show Health Debug` for diagnostics only.
+- **Bad:** "Fix bug"
+- **Good:** "Fix race condition in progress rollup logic"
+  _Why? The AI needs to understand the complexity to judge efficiency._
 
----
+### ✅ Do: Use Estimates
 
-## 7) Common mistakes to avoid
+- Always set `Estimated Minutes` on tasks.
+- The AI uses this to calculate your **Efficiency Score**.
+- If you don't estimate, the AI assumes "0 estimation" and your efficiency score will be inaccurate.
 
-1. Running with broad scope + apply-on without preview.
-2. Setting very high delta caps without review.
-3. Treating AI suggestion as mandatory instead of decision support.
-4. Ignoring blocked/skipped reasons in sync details.
+### ✅ Do: Update Progress Regularly
 
----
+- Don't wait until Friday to update everything.
+- Real-time updates help the **Suggested Next** engine give you relevant recommendations.
 
-## 8) Quick cadence recommendation
+### ❌ Don't: Leave "orphaned" tasks
 
-1. Daily:
-- Use `AI Suggested Next` for focus selection.
-
-2. Mid-week:
-- Run preview sync for correction.
-
-3. End of week:
-- Run final sync with controlled apply policy, then review reports/retro.
+- Ensure every task is linked to a Key Result.
+- Orphaned tasks confuse the Strategic Review agent.
 
 ---
 
-## 9) Troubleshooting
+## 3. Privacy & Security
 
-1. AI output missing:
-- Verify Gemini API key and service availability.
-- Narrow scope and retry.
-
-2. Unexpected progress outcomes:
-- Check `Last AI Sync Details` reasons.
-- Use undo if needed, then rerun with stricter policy.
-
-3. Health label seems wrong:
-- Read `Why this status` / `Status rationale`.
-- Admin can open `Show Health Debug` for source-level verification.
-
+- **Data Safety**: We use enterprise-grade APIs. Your data is processed for analysis and then discarded; it is not used to train public models.
+- **Human in the Loop**: AI suggestions are just _suggestions_. You always have the final say within the system.
+- **Transparency**: Every AI insight comes with a "Why?" or detailed breakdown. We don't do "Black Box" magic.
