@@ -91,6 +91,30 @@ def _cached_get_work_logs_by_range(user_id, start_dt, end_dt):
     return get_work_logs_by_date_range(user_id, start_dt, end_dt)
 
 
+@st.cache_data(ttl=45, show_spinner=False)
+def _cached_get_node(node_id, node_type):
+    from src.crud import get_node
+
+    return get_node(node_id, node_type)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _cached_get_user_by_id(user_id):
+    from src.crud import get_user_by_id
+
+    return get_user_by_id(user_id)
+
+
+@st.cache_data(ttl=45, show_spinner=False)
+def _cached_get_work_logs(task_id):
+    from src.database import get_session_context
+    from sqlmodel import select
+    from src.models import WorkLog
+
+    with get_session_context() as session:
+        return session.exec(select(WorkLog).where(WorkLog.task_id == task_id)).all()
+
+
 def _canonical_owner_ids_key(owner_ids):
     if owner_ids is None:
         return None
@@ -290,6 +314,7 @@ def _cached_get_atlas_scope_snapshot(
                         Task.timer_started_at,
                         Task.status,
                         Task.total_time_spent,
+                        Task.assignee_id,
                     )
                     .where(Task.key_result_id.in_(key_result_ids))
                     .order_by(Task.key_result_id, func.lower(Task.title), Task.id)
@@ -305,6 +330,7 @@ def _cached_get_atlas_scope_snapshot(
                 timer_started_at,
                 status,
                 total_time_spent,
+                assignee_id,
             ) in task_rows:
                 if task_id is None or key_result_id is None:
                     continue
@@ -321,6 +347,7 @@ def _cached_get_atlas_scope_snapshot(
                         "timer_started_at": timer_started_at,
                         "status": str(getattr(status, "value", status)),
                         "total_time_spent": int(total_time_spent or 0),
+                        "assignee_id": int(assignee_id) if assignee_id is not None else None,
                     }
                 )
 
@@ -1829,7 +1856,6 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
     node_type: GOAL, OBJECTIVE, KEY_RESULT, or TASK
     """
     from src.crud import (
-        get_node,
         update_goal,
         update_objective,
         update_key_result,
@@ -1840,9 +1866,6 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         delete_task,
         delete_work_log,
         get_all_cycles,
-        get_all_users,
-        get_team_members,
-        get_user_by_id,
     )
     from src.models import Goal, Objective, KeyResult, Task, WorkLog
 
@@ -1862,8 +1885,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         unsafe_allow_html=True,
     )
 
-    # Fetch node from DB
-    node = get_node(node_id, node_type)
+    # Fetch node (cached to prevent rerun DB bottleneck)
+    node = _cached_get_node(node_id, node_type)
     if not node:
         st.error(f"Node {node_id} ({node_type}) not found")
         if st.button("Close", key=f"close_error_{node_id}"):
@@ -1912,11 +1935,11 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             if user_role_insp in ["admin", "manager"]:
                 potential_assignees = []
                 if user_role_insp == "admin":
-                    potential_assignees = get_all_users()
+                    potential_assignees = _cached_get_all_users()
                 elif user_role_insp == "manager":
                     manager_id_insp = st.session_state.get("user_id")
-                    manager_obj = get_user_by_id(manager_id_insp)
-                    potential_assignees = get_team_members(manager_id_insp)
+                    manager_obj = _cached_get_user_by_id(manager_id_insp)
+                    potential_assignees = _cached_get_team_members(manager_id_insp)
                     if manager_obj:
                         potential_assignees.append(manager_obj)
 
@@ -2181,15 +2204,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         if node_type_insp == "TASK":
             st.markdown("---")
             st.markdown("### 📜 Work History")
-            # Load work logs from DB inside a session to avoid detached instances
-            from src.database import get_session_context
-            from sqlmodel import select
-
-            w_log = []
-            with get_session_context() as session:
-                w_log = session.exec(
-                    select(WorkLog).where(WorkLog.task_id == node.id)
-                ).all()
+            # Load work logs (cached)
+            w_log = _cached_get_work_logs(node.id)
 
             # Show debug count and list logs
             st.caption(f"Work logs found: {len(w_log)}")
@@ -3439,13 +3455,8 @@ def render_atlas_workspace(username):
         actor_id = None
     role_value = str(st.session_state.get("user_role") or "").strip().lower()
     if actor_id is None or not role_value:
-        with get_session_context() as session:
-            actor = session.exec(select(User).where(User.username == username)).first()
-            if not actor:
-                st.error("User context is unavailable.")
-                return
-            actor_id = actor.id
-            role_value = str(getattr(actor.role, "value", actor.role)).strip().lower()
+        st.error("User context is unavailable. Please log in again.")
+        return
 
     scope_options = {"My OKRs": [actor_id]}
     if role_value == "manager":
@@ -5071,168 +5082,3 @@ def render_level(username):
     if "active_inspector_id" in st.session_state:
         del st.session_state.active_inspector_id
     return render_atlas_workspace(username)
-
-    # 'data' and 'root_ids' removed as we now fetch directly from SQL.
-
-    stack = st.session_state.nav_stack
-    current_node = None
-    level_name = "Goals"
-    items = []
-    child_type = "GOAL"  # Default for root
-
-    # We need a session to fetch objects lazily
-    # Ideally checking children access requires session if they are lazy loaded?
-    # SQLModel relationships are lazy by default usually.
-    # We should open a session.
-    with get_session_context() as session:
-        # Normalize nav_stack entries to typed refs (e.g., "objective_12") to avoid id collisions
-        for idx, entry in enumerate(list(stack)):
-            if isinstance(entry, str) and "_" in entry:
-                continue
-            try:
-                nid = int(entry)
-            except Exception:
-                # remove invalid entries
-                try:
-                    stack.pop(idx)
-                except Exception:
-                    pass
-                continue
-
-            # Try to resolve the numeric id to a specific table in order
-            resolved = None
-            g = session.get(Goal, nid)
-            if g:
-                resolved = f"goal_{nid}"
-            else:
-                o = session.get(Objective, nid)
-                if o:
-                    resolved = f"objective_{nid}"
-                else:
-                    k = session.get(KeyResult, nid)
-                    if k:
-                        resolved = f"key_result_{nid}"
-                    else:
-                        t = session.get(Task, nid)
-                        if t:
-                            resolved = f"task_{nid}"
-
-            if resolved:
-                stack[idx] = resolved
-
-        if not stack:
-            # Root Level: Goals
-            cycle_id = st.session_state.get("active_cycle_id")
-            # Fetch goals with one level of deep loading for children counts
-            user_obj = session.exec(
-                select(User).where(User.username == username)
-            ).first()
-            if user_obj:
-                items = session.exec(
-                    select(Goal)
-                    .where(Goal.owner_id == user_obj.id, Goal.cycle_id == cycle_id)
-                    .options(
-                        selectinload(Goal.objectives).selectinload(
-                            Objective.key_results
-                        )
-                    )
-                ).all()
-            level_name = "Goals"
-            child_type = "GOAL"
-        else:
-            parent_id = stack[-1]
-            ntype, title = get_node_details(parent_id)
-
-            if not ntype:
-                st.error("Node not found")
-                st.session_state.nav_stack.pop()
-                st.rerun()
-                return
-
-            # Fetch current_node with children eager loaded
-            # parent_id may be a typed string like 'objective_12' or an int id
-            raw_id = parent_id
-            if isinstance(parent_id, str) and "_" in parent_id:
-                try:
-                    raw_id = int(parent_id.split("_")[-1])
-                except Exception:
-                    raw_id = parent_id
-
-            if ntype == "GOAL":
-                current_node = session.exec(
-                    select(Goal)
-                    .where(Goal.id == raw_id)
-                    .options(
-                        selectinload(Goal.objectives).selectinload(
-                            Objective.key_results
-                        )
-                    )
-                ).first()
-                if current_node:
-                    items = current_node.objectives
-                    level_name = "Objectives"
-                    child_type = "OBJECTIVE"
-            elif ntype == "OBJECTIVE":
-                current_node = session.exec(
-                    select(Objective)
-                    .where(Objective.id == raw_id)
-                    .options(
-                        selectinload(Objective.key_results).selectinload(
-                            KeyResult.tasks
-                        )
-                    )
-                ).first()
-                if current_node:
-                    items = current_node.key_results
-                    level_name = "Key Results"
-                    child_type = "KEY_RESULT"
-            elif ntype in ["KEY_RESULT", "KEYRESULT"]:
-                current_node = session.exec(
-                    select(KeyResult)
-                    .where(KeyResult.id == raw_id)
-                    .options(
-                        selectinload(KeyResult.tasks), selectinload(KeyResult.check_ins)
-                    )
-                ).first()
-                if current_node:
-                    items = current_node.tasks
-                    level_name = "Tasks"
-                    child_type = "TASK"
-            elif ntype == "TASK":
-                current_node = session.exec(
-                    select(Task)
-                    .where(Task.id == raw_id)
-                    .options(selectinload(Task.work_logs))
-                ).first()
-                items = []
-                level_name = "Details"
-                child_type = None
-
-            if not current_node:
-                st.session_state.nav_stack.pop()
-                st.rerun()
-                return
-
-        # Header
-        render_breadcrumbs()
-
-        # Level Header & Add Button
-        st.markdown(f"## {level_name}")
-
-        # Add Button Logic
-        if child_type:
-            col_add, _ = st.columns([1, 5])
-            if col_add.button(
-                f"➕ Add {child_type.replace('_', ' ').title()}",
-                key=f"add_{child_type}",
-            ):
-                # Root level (Goal) has no parent_id on the stack
-                st.session_state["add_mode_parent"] = stack[-1] if stack else None
-                st.session_state["add_mode_type"] = child_type
-                st.rerun()
-
-        if not items:
-            st.info(f"No {level_name} found.")
-        else:
-            for item in items:
-                render_card(item, username)
