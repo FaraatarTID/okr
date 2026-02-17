@@ -330,17 +330,23 @@ venv\Scripts\activate  # Windows
 source venv/bin/activate  # Linux/Mac
 
 # 3. Install dependencies
-pip install -r streamlit_app/requirements.txt
+pip install --require-hashes -r streamlit_app/requirements.txt
 
 # 4. Configure secrets (optional - for AI features)
 # Create streamlit_app/.streamlit/secrets.toml:
-# GEMINI_API_KEY = "your-api-key"
 # ALLOW_EXTERNAL_AI = true  # set false to disable outbound AI calls
+# AI_PROVIDER = "gemini"  # or "openai_compatible"
+# GEMINI_API_KEY = "your-api-key"  # required for gemini provider
+# AI_BASE_URL = "http://localhost:11434"  # required for openai_compatible provider
+# AI_MODEL = "llama3.1"  # required for openai_compatible provider
 # [database]
 # url = "postgresql+psycopg2://user:pass@host:5432/okr"
 
 # 5. Run the app
 streamlit run streamlit_app/app.py
+
+# Optional: verify AI provider configuration/connectivity
+python streamlit_app/scripts/ai_provider_health_check.py
 ```
 
 ---
@@ -354,7 +360,7 @@ streamlit run streamlit_app/app.py
 | Auth      | bcrypt password hashing                      |
 | Database  | SQLModel + Supabase PostgreSQL               |
 | Storage   | Supabase PostgreSQL (single source of truth) |
-| AI        | Google Gemini API                            |
+| AI        | Provider abstraction (Gemini or OpenAI-compatible local/self-hosted) |
 | PDF       | pdfkit (local) / PDFShift (cloud)            |
 
 ---
@@ -425,9 +431,17 @@ _Built for excellence in strategic alignment and execution tracking._
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r streamlit_app/requirements.txt
-pip install ruff mypy pre-commit
+pip install --require-hashes -r streamlit_app/requirements-dev.txt
+pip install pre-commit
 pre-commit install
+```
+
+### Refresh lock files
+
+```bash
+python -m pip install --upgrade pip pip-tools
+python -m piptools compile streamlit_app/requirements.in --resolver=backtracking --generate-hashes --strip-extras --pip-args="--python-version 3.11" --output-file streamlit_app/requirements.txt
+python -m piptools compile streamlit_app/requirements-dev.in --resolver=backtracking --generate-hashes --strip-extras --pip-args="--python-version 3.11" --output-file streamlit_app/requirements-dev.txt
 ```
 
 ### Verify quality locally
