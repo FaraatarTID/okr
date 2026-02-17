@@ -175,3 +175,4 @@ For production stability:
    - local/server runtime: use `pdfkit` + `wkhtmltopdf`.
    - Streamlit Cloud runtime: use PDFShift API key from secrets.
 3. Keep one deployment mode active per environment (avoid mixed PDF pipelines in the same runtime).
+4. Optional fail-fast mode: set `OKR_STRICT_RUNTIME_PREFLIGHT=1` to stop app startup when runtime preflight detects critical PDF misconfiguration.

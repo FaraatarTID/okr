@@ -56,6 +56,13 @@ jobs:
             streamlit_app/src/utils/deadline_utils.py \
             streamlit_app/scripts/perf_hotpaths.py
 
+      - name: RBAC Regression Gate
+        run: |
+          python -m pytest -q \
+            tests/test_crud_authorization.py \
+            tests/test_rbac_permissions.py \
+            tests/test_alignment_dag.py
+
       - name: Test
         run: |
           set -o pipefail

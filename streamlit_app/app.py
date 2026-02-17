@@ -16,6 +16,7 @@ from src.bootstrap import (
     prewarm_startup_ready_async,
     should_run_startup_recovery,
 )
+from src.runtime_preflight import evaluate_runtime_preflight
 from src.utils.time_utils import utc_now_naive
 
 
@@ -47,31 +48,91 @@ def _get_pdf_method() -> str:
     return "pdfkit"
 
 
+def _is_streamlit_cloud_runtime() -> bool:
+    return bool(os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD"))
+
+
+def _has_pdfshift_api_key() -> bool:
+    try:
+        app_cfg = st.secrets.get("app", {})
+        if (
+            "pdfshift_api_key" in st.secrets
+            or "PDFSHIFT_API_KEY" in st.secrets
+            or (hasattr(app_cfg, "get") and app_cfg.get("pdfshift_api_key"))
+            or (hasattr(app_cfg, "get") and app_cfg.get("PDFSHIFT_API_KEY"))
+        ):
+            return True
+    except Exception:
+        pass
+    return bool(os.getenv("PDFSHIFT_API_KEY", "").strip())
+
+
+def _detect_wkhtmltopdf() -> bool:
+    try:
+        import shutil
+
+        wkhtml = shutil.which("wkhtmltopdf")
+        if wkhtml:
+            return True
+        common_paths = [
+            r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe",
+            r"C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe",
+        ]
+        return any(os.path.exists(path) for path in common_paths)
+    except Exception:
+        return False
+
+
+def _runtime_preflight_strict_mode() -> bool:
+    # Default is non-strict to preserve backward compatibility across environments.
+    raw = str(os.getenv("OKR_STRICT_RUNTIME_PREFLIGHT", "")).strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        app_cfg = st.secrets.get("app", {})
+        secret_raw = str(
+            st.secrets.get(
+                "OKR_STRICT_RUNTIME_PREFLIGHT",
+                app_cfg.get("OKR_STRICT_RUNTIME_PREFLIGHT", ""),
+            )
+        ).strip().lower()
+        return secret_raw in {"1", "true", "yes", "on"}
+    except Exception:
+        return False
+
+
 def _run_pdf_preflight():
     if st.session_state.get("preflight_done"):
         return
-    if _get_pdf_method() == "pdfshift":
-        st.session_state["preflight_done"] = True
-        return
-    try:
-        import shutil
-        import pdfkit  # noqa: F401
 
-        wkhtml = shutil.which("wkhtmltopdf")
-        if not wkhtml:
-            # Also check common Windows install paths
-            common_paths = [
-                r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe",
-                r"C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe",
-            ]
-            wkhtml = next((p for p in common_paths if os.path.exists(p)), None)
-        if not wkhtml:
-            st.info(
-                "wkhtmltopdf not detected in PATH. PDF export will fall back to HTML. Install from https://wkhtmltopdf.org/downloads.html or set PATH."
-            )
+    pdf_method = _get_pdf_method()
+    has_pdfshift_key = _has_pdfshift_api_key()
+    is_cloud = _is_streamlit_cloud_runtime()
+    has_pdfkit_module = False
+    try:
+        import pdfkit  # noqa: F401
+        has_pdfkit_module = True
     except Exception:
         pass
+
+    from src.services.ai_service import get_api_key
+
+    report = evaluate_runtime_preflight(
+        pdf_method=pdf_method,
+        is_streamlit_cloud=is_cloud,
+        has_pdfshift_key=has_pdfshift_key,
+        has_pdfkit_module=has_pdfkit_module,
+        has_wkhtmltopdf=_detect_wkhtmltopdf(),
+        gemini_api_key=get_api_key(),
+    )
+    for msg in report.errors:
+        st.error(f"Runtime preflight: {msg}")
+    for msg in report.warnings:
+        st.warning(f"Runtime preflight: {msg}")
+
     st.session_state["preflight_done"] = True
+    if report.errors and _runtime_preflight_strict_mode():
+        st.stop()
 
 
 from src.crud import (

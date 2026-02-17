@@ -175,5 +175,6 @@ Definition of done برای کیفیت پایش مدیر:
    - اجرای local/server: `pdfkit` + `wkhtmltopdf`.
    - اجرای Streamlit Cloud: کلید PDFShift از secrets.
 3. در هر محیط فقط یک مسیر deployment/pdf را فعال نگه دارید (از ترکیب همزمان pipelineها پرهیز کنید).
+4. حالت fail-fast اختیاری: با `OKR_STRICT_RUNTIME_PREFLIGHT=1` در صورت خطای بحرانی پیکربندی PDF، startup برنامه متوقف می‌شود.
 
 
