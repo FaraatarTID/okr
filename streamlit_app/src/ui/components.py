@@ -36,7 +36,8 @@ def format_time(minutes):
 from sqlmodel import select
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
-from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn
+from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn, MetricType, ScoreMode
+from src.domain.scoring import calculate_kr_score, get_score_color_band, get_score_label
 from src.crud import (
     get_goal_tree,
     get_user_goals,
@@ -226,6 +227,8 @@ def _cached_get_atlas_scope_snapshot(
                     Objective.title,
                     Objective.description,
                     Objective.progress,
+                    Objective.score_mode,
+                    Objective.weight,
                 )
                 .where(Objective.goal_id.in_(goal_ids))
                 .order_by(Objective.goal_id, func.lower(Objective.title), Objective.id)
@@ -234,7 +237,7 @@ def _cached_get_atlas_scope_snapshot(
 
         objective_payload_by_id = {}
         objective_ids = []
-        for objective_id, goal_id, title, description, progress in objective_rows:
+        for objective_id, goal_id, title, description, progress, score_mode, weight in objective_rows:
             if objective_id is None or goal_id is None:
                 continue
             objective_ids.append(int(objective_id))
@@ -243,6 +246,8 @@ def _cached_get_atlas_scope_snapshot(
                 "title": title,
                 "description": description or "",
                 "progress": int(progress or 0),
+                "score_mode": score_mode,
+                "weight": weight,
                 "key_results": [],
             }
             objective_payload_by_id[int(objective_id)] = payload
@@ -262,6 +267,12 @@ def _cached_get_atlas_scope_snapshot(
                         KeyResult.description,
                         KeyResult.progress,
                         KeyResult.gemini_analysis,
+                        KeyResult.start_value,
+                        KeyResult.target_value,
+                        KeyResult.current_value,
+                        KeyResult.metric_type,
+                        KeyResult.weight,
+                        KeyResult.unit,
                     )
                     .where(KeyResult.objective_id.in_(objective_ids))
                     .order_by(
@@ -278,6 +289,12 @@ def _cached_get_atlas_scope_snapshot(
                 description,
                 progress,
                 gemini_analysis,
+                start_value,
+                target_value,
+                current_value,
+                metric_type,
+                weight,
+                unit,
             ) in key_result_rows:
                 if key_result_id is None or objective_id is None:
                     continue
@@ -292,6 +309,12 @@ def _cached_get_atlas_scope_snapshot(
                     "progress": int(progress or 0),
                     "ai_overall_score": ai_overall_score,
                     "ai_deadline_state": ai_deadline_state,
+                    "start_value": start_value,
+                    "target_value": target_value,
+                    "current_value": current_value,
+                    "metric_type": metric_type,
+                    "weight": weight,
+                    "unit": unit,
                     "tasks": [],
                 }
                 if include_analysis:
@@ -1717,7 +1740,7 @@ def render_report_content(username, mode):
             # Header Row
             h1, h2, h3, h4, h5, h6 = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
             h1.markdown("**Key Result**")
-            h2.markdown("**Progress**", help="Calculated from child tasks")
+            h2.markdown("**Status**", help="Current normalized score")
             h3.markdown("**Efficiency**", help="Completeness of work scope vs required")
             h4.markdown("**Effectiveness**", help="Quality of strategy and methods")
             h5.markdown("**Fulfillment**", help="Overall Score")
@@ -1740,7 +1763,21 @@ def render_report_content(username, mode):
                 )
 
                 c1_kr.markdown(f"{kr_title_text}")
-                c2_kr.markdown(f"{kr_item.progress}%")
+                
+                # Calculate score and color band
+                kr_score = calculate_kr_score(
+                    current=kr_item.current_value,
+                    target=kr_item.target_value,
+                    start=kr_item.start_value,
+                    metric_type=kr_item.metric_type
+                )
+                score_label = get_score_label(kr_score)
+                band_class = get_score_color_band(kr_score)
+                
+                c2_kr.markdown(
+                    f"<span class='atlas-attn-chip {band_class}'>{kr_score:.2f} ({score_label})</span>",
+                    unsafe_allow_html=True
+                )
 
                 # Placeholders for dynamic updates
                 p_eff = c3_kr.empty()
@@ -1992,6 +2029,48 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             )
             new_type_insp = node_type_insp
 
+        # OBJECTIVE Specific Score Mode and Weight
+        new_score_mode = getattr(node, "score_mode", ScoreMode.UNWEIGHTED)
+        new_obj_weight_insp = getattr(node, "weight", 1.0)
+        if node_type_insp == "OBJECTIVE":
+            st.markdown("---")
+            st.caption("🎯 Objective Scoring & Weight")
+            oc1, oc2 = st.columns(2)
+            new_obj_weight_insp = oc1.number_input(
+                "Weight", value=float(new_obj_weight_insp), min_value=0.0, step=0.1, key=f"obj_weight_{node_id}"
+            )
+            mode_options = [m.value for m in ScoreMode]
+            curr_mode = getattr(node, "score_mode", ScoreMode.UNWEIGHTED).value
+            new_mode_val = oc2.selectbox(
+                "Score Mode",
+                options=mode_options,
+                index=mode_options.index(curr_mode),
+                key=f"score_mode_{node_id}"
+            )
+            new_score_mode = ScoreMode(new_mode_val)
+            
+            # Calculate and show current score if possible
+            if hasattr(node, "key_results") and node.key_results:
+                from src.domain.scoring import calculate_objective_score
+                kr_scores = []
+                kr_weights = []
+                for kr in node.key_results:
+                    s = calculate_kr_score(kr.current_value, kr.target_value, kr.start_value, kr.metric_type)
+                    kr_scores.append(s)
+                    kr_weights.append(kr.weight)
+                
+                obj_score = calculate_objective_score(
+                    kr_scores, 
+                    kr_weights if new_score_mode == ScoreMode.WEIGHTED else None,
+                    weighted=(new_score_mode == ScoreMode.WEIGHTED)
+                )
+                score_label = get_score_label(obj_score)
+                band_class = get_score_color_band(obj_score)
+                st.markdown(
+                    f"**Current Score:** <span class='atlas-attn-chip {band_class}'>{obj_score:.2f} ({score_label})</span>",
+                    unsafe_allow_html=True
+                )
+
         # GOAL Specific Cycle Assignment and Tags
         new_cycle_id_insp = getattr(node, "cycle_id", None)
         new_strat_tags_input = ""
@@ -2044,7 +2123,10 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         if node_type_insp == "KEY_RESULT":
             st.markdown("---")
             st.caption("📈 Progress Metrics")
-            mc1_in, mc2_in, mc3_in = st.columns(3)
+            mc0_in, mc1_in, mc2_in, mc3_in = st.columns(4)
+            new_start_insp = mc0_in.number_input(
+                "Start Value", value=float(getattr(node, "start_value", 0.0)), key=f"start_{node_id}"
+            )
             new_target_insp = mc1_in.number_input(
                 "Target Value", value=float(new_target_insp), key=f"target_{node_id}"
             )
@@ -2053,6 +2135,20 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             )
             new_unit_insp = mc3_in.text_input(
                 "Unit", value=new_unit_insp, key=f"unit_{node_id}"
+            )
+
+            # Calculate and show current score
+            curr_score = calculate_kr_score(
+                current=new_curr_insp,
+                target=new_target_insp,
+                start=new_start_insp,
+                metric_type=getattr(node, "metric_type", MetricType.NUMERIC)
+            )
+            score_label = get_score_label(curr_score)
+            band_class = get_score_color_band(curr_score)
+            st.markdown(
+                f"**Current Score:** <span class='atlas-attn-chip {band_class}'>{curr_score:.2f} ({score_label})</span>",
+                unsafe_allow_html=True
             )
 
             if new_target_insp > 0:
@@ -2079,6 +2175,22 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                 key=f"init_tags_{node_id}",
             )
 
+            st.markdown("---")
+            st.caption("⚖️ KR Weight & Metric Type")
+            w_col1, w_col2 = st.columns(2)
+            new_weight_insp = w_col1.number_input(
+                "Weight", value=float(getattr(node, "weight", 1.0)), min_value=0.0, step=0.1, key=f"weight_{node_id}"
+            )
+            metric_type_options = [mt.value for mt in MetricType]
+            curr_metric_type = getattr(node, "metric_type", MetricType.NUMERIC).value
+            new_metric_type_val = w_col2.selectbox(
+                "Metric Type",
+                options=metric_type_options,
+                index=metric_type_options.index(curr_metric_type),
+                key=f"metric_type_{node_id}"
+            )
+            new_metric_type = MetricType(new_metric_type_val)
+
         user_role_perm = st.session_state.get("user_role")
         can_save_insp = bool(username)
 
@@ -2103,13 +2215,20 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                     )
                     update_goal(node_id, actor_username=username, **updates)
                 elif node_type_insp == "OBJECTIVE":
+                    updates.update({
+                        "score_mode": new_score_mode,
+                        "weight": new_obj_weight_insp
+                    })
                     update_objective(node_id, actor_username=username, **updates)
                 elif node_type_insp == "KEY_RESULT":
                     updates.update(
                         {
+                            "start_value": new_start_insp,
                             "target_value": new_target_insp,
                             "current_value": new_curr_insp,
                             "unit": new_unit_insp,
+                            "metric_type": new_metric_type,
+                            "weight": new_weight_insp,
                             "initiative_tags": [
                                 t.strip()
                                 for t in new_init_tags_input.split(",")
@@ -2537,6 +2656,14 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
             ai_overall_score=payload.get("ai_overall_score"),
             ai_deadline_state=payload.get("ai_deadline_state"),
             gemini_analysis=payload.get("gemini_analysis"),
+            # Scoring fields
+            start_value=payload.get("start_value", 0.0),
+            target_value=payload.get("target_value", 100.0),
+            current_value=payload.get("current_value", 0.0),
+            metric_type=payload.get("metric_type", "NUMERIC"),
+            score_mode=payload.get("score_mode", "UNWEIGHTED"),
+            weight=payload.get("weight", 1.0),
+            unit=payload.get("unit"),
         )
 
         index[node_ref] = {
@@ -2684,48 +2811,62 @@ def _atlas_health_state(meta, index=None, _visited_refs=None, _memo=None):
                     status_label = "In progress"
 
     elif node_type == "KEY_RESULT":
-        ai_warnings = _atlas_ai_deadline_warnings(meta)
-        if ai_warnings:
-            joined = " ".join(ai_warnings).lower()
-            if "overdue" in joined:
-                status_label = "Overdue (AI)"
+        # Calculate normalized score
+        score = calculate_kr_score(
+            current=getattr(node, "current_value", 0.0),
+            target=getattr(node, "target_value", 100.0),
+            start=getattr(node, "start_value", 0.0),
+            metric_type=getattr(node, "metric_type", "numeric")
+        )
+        score_label = get_score_label(score)
+        
+        if score <= 0.3:
+            kind = "overdue" # Mapping to red
+        elif score <= 0.7:
+            kind = "risk" # Mapping to yellow
+        elif score <= 0.9:
+            kind = "on_track" # Mapping to green
+        else:
+            kind = "done" # Mapping to blue/superstar
+            
+        return {
+            "kind": kind,
+            "reason": score_label,
+            "status_label": f"Score: {score:.2f} ({score_label})",
+            "source": "normalized_score",
+            "needs_attention": kind in {"overdue", "risk"},
+        }
+    elif node_type == "OBJECTIVE":
+        # Aggregate KR scores
+        if hasattr(node, "key_results") and node.key_results:
+            kr_scores = [
+                calculate_kr_score(kr.current_value, kr.target_value, kr.start_value, kr.metric_type)
+                for kr in node.key_results
+            ]
+            kr_weights = [kr.weight for kr in node.key_results]
+            from src.domain.scoring import calculate_objective_score
+            obj_score = calculate_objective_score(
+                kr_scores, 
+                kr_weights if getattr(node, "score_mode", None) == ScoreMode.WEIGHTED else None,
+                weighted=(getattr(node, "score_mode", None) == ScoreMode.WEIGHTED)
+            )
+            score_label = get_score_label(obj_score)
+            
+            if obj_score <= 0.3:
                 kind = "overdue"
-            else:
-                status_label = "At risk (AI)"
+            elif obj_score <= 0.7:
                 kind = "risk"
-            return {
-                "kind": kind,
-                "reason": "Needs care",
-                "status_label": status_label,
-                "source": "ai_deadline_warning",
-                "needs_attention": True,
-            }
-
-        ai_score = _atlas_ai_overall_score(meta)
-        if ai_score is not None:
-            if ai_score >= 100:
-                kind = "done"
-                status_label = "Complete (AI)"
-                reason = "Complete"
-            elif ai_score < 40:
-                kind = "low_progress"
-                status_label = "Needs attention (AI)"
-                reason = "Needs care"
-            elif ai_score < 60:
-                kind = "risk"
-                status_label = "In progress (AI)"
-                reason = "Needs care"
-            else:
+            elif obj_score <= 0.9:
                 kind = "on_track"
-                status_label = "In progress (AI)"
-                reason = "On track"
+            else:
+                kind = "done"
+
             return {
                 "kind": kind,
-                "reason": reason,
-                "status_label": status_label,
-                "source": "ai_overall_score",
-                "needs_attention": kind
-                in {"overdue", "risk", "inherited", "low_progress"},
+                "reason": score_label,
+                "status_label": f"Score: {obj_score:.2f} ({score_label})",
+                "source": "normalized_score",
+                "needs_attention": kind in {"overdue", "risk"},
             }
 
     if status_label is None:
@@ -2812,8 +2953,74 @@ def _atlas_health_index(index):
     return health_by_ref
 
 
-def _atlas_health_fill_color(health, progress: int) -> str:
+def _atlas_health_fill_color(health, progress: int, meta=None) -> str:
     kind = str((health or {}).get("kind") or "")
+    
+    # Check if we can use the score band for OKRs
+    if meta and meta.get("type") in ["GOAL", "OBJECTIVE", "KEY_RESULT"]:
+        node = meta.get("node")
+        if meta.get("type") == "KEY_RESULT":
+            score = calculate_kr_score(
+                getattr(node, "current_value", 0.0),
+                getattr(node, "target_value", 100.0),
+                getattr(node, "start_value", 0.0),
+                getattr(node, "metric_type", "NUMERIC")
+            )
+        elif meta.get("type") == "OBJECTIVE":
+            score = 0.0
+            krs = getattr(node, 'key_results', [])
+            if krs:
+                from src.domain.scoring import calculate_objective_score
+                kr_scores = [
+                    calculate_kr_score(
+                        getattr(kr, "current_value", 0.0),
+                        getattr(kr, "target_value", 100.0),
+                        getattr(kr, "start_value", 0.0),
+                        getattr(kr, "metric_type", "NUMERIC")
+                    )
+                    for kr in krs
+                ]
+                kr_weights = [getattr(kr, "weight", 1.0) for kr in krs]
+                score = calculate_objective_score(
+                    kr_scores, 
+                    kr_weights if getattr(node, "score_mode", None) == "WEIGHTED" else None,
+                    weighted=(getattr(node, "score_mode", None) == "WEIGHTED")
+                )
+        else: # GOAL
+            from src.domain.scoring import calculate_objective_score
+            score = 0.0
+            objectives = getattr(node, 'objectives', [])
+            obj_scores = []
+            for obj in objectives:
+                krs = getattr(obj, 'key_results', [])
+                if krs:
+                    kr_scores = [
+                        calculate_kr_score(
+                            getattr(kr, "current_value", 0.0),
+                            getattr(kr, "target_value", 100.0),
+                            getattr(kr, "start_value", 0.0),
+                            getattr(kr, "metric_type", "NUMERIC")
+                        )
+                        for kr in krs
+                    ]
+                    kr_weights = [getattr(kr, "weight", 1.0) for kr in krs]
+                    obj_scores.append(calculate_objective_score(
+                        kr_scores,
+                        kr_weights if getattr(obj, "score_mode", None) == "WEIGHTED" else None,
+                        weighted=(getattr(obj, "score_mode", None) == "WEIGHTED")
+                    ))
+            if obj_scores:
+                score = sum(obj_scores) / len(obj_scores)
+        
+        band = get_score_color_band(score)
+        mapping = {
+            "atlas-score-band-red": "#fce7e2",
+            "atlas-score-band-yellow": "#fff1de",
+            "atlas-score-band-green": "#e8f8f3",
+            "atlas-score-band-blue": "#e0f2fe"
+        }
+        return mapping.get(band, "#e5d6bb")
+
     if kind in {"overdue", "risk", "inherited", "low_progress"}:
         return "#c36d27"
     if kind == "done" or int(progress or 0) >= 100:
@@ -3363,8 +3570,46 @@ def _build_atlas_treemap(
         )
         if health is None:
             health = _atlas_health_state(meta, index=index, _memo=local_health_memo)
+        
         status = str(health.get("status_label") or "In progress")
-        attention_reason = str(health.get("reason") or "On track")
+        
+        # For KRs and Objectives, try to show the score in hover
+        if node_type in ["KEY_RESULT", "OBJECTIVE"]:
+            node_obj = meta.get("node")
+            if node_type == "KEY_RESULT":
+                score = calculate_kr_score(
+                    getattr(node_obj, "current_value", 0.0),
+                    getattr(node_obj, "target_value", 100.0),
+                    getattr(node_obj, "start_value", 0.0),
+                    getattr(node_obj, "metric_type", "NUMERIC")
+                )
+            else:
+                obj_score = 0.0
+                krs = getattr(node_obj, 'key_results', [])
+                if krs:
+                    from src.domain.scoring import calculate_objective_score
+                    kr_scores = [
+                        calculate_kr_score(
+                            getattr(kr, "current_value", 0.0),
+                            getattr(kr, "target_value", 100.0),
+                            getattr(kr, "start_value", 0.0),
+                            getattr(kr, "metric_type", "NUMERIC")
+                        )
+                        for kr in krs
+                    ]
+                    kr_weights = [getattr(kr, "weight", 1.0) for kr in krs]
+                    obj_score = calculate_objective_score(
+                        kr_scores, 
+                        kr_weights if getattr(node_obj, "score_mode", None) == "WEIGHTED" else None,
+                        weighted=(getattr(node_obj, "score_mode", None) == "WEIGHTED")
+                    )
+                score = obj_score
+            
+            score_label = get_score_label(score)
+            status = f"Score: {score:.2f} ({score_label})"
+            attention_reason = score_label
+        else:
+            attention_reason = str(health.get("reason") or "On track")
         source_explanation = _atlas_health_source_explanation(health.get("source"))
 
         if node_type == "TASK":
@@ -3372,7 +3617,7 @@ def _build_atlas_treemap(
         else:
             value = max(2, len(meta.get("children", [])) * 6)
 
-        fill = _atlas_health_fill_color(health, progress)
+        fill = _atlas_health_fill_color(health, progress, meta=meta)
 
         line_color = "#f5ede0"
         line_width = 1.4
@@ -4123,7 +4368,15 @@ def render_atlas_workspace(username):
                 )
                 map_sidebar_area.markdown(
                     (
-                        "<div class='atlas-attn-legend'>"
+                        "<div style='margin-bottom: 0.3rem;'><st-caption><b>Performance (OKR)</b></st-caption></div>"
+                        "<div class='atlas-attn-legend' style='margin-bottom: 0.8rem;'>"
+                        "<span class='atlas-map-chip atlas-score-band-red'>0.0 - 0.3 Missed</span>"
+                        "<span class='atlas-map-chip atlas-score-band-yellow'>0.4 - 0.6 At Risk</span>"
+                        "<span class='atlas-map-chip atlas-score-band-green'>0.7 - 0.9 On Track</span>"
+                        "<span class='atlas-map-chip atlas-score-band-blue'>1.0 superstar</span>"
+                        "</div>"
+                        "<div style='margin-bottom: 0.3rem;'><st-caption><b>Health (Tasks)</b></st-caption></div>"
+                        "<div class='atlas-attn-legend' style='margin-bottom: 0.8rem;'>"
                         "<span class='atlas-map-chip atlas-map-needs'>Needs care</span>"
                         "<span class='atlas-map-chip atlas-map-ontrack'>On track</span>"
                         "<span class='atlas-map-chip atlas-map-done'>Complete</span>"
