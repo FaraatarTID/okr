@@ -4,17 +4,15 @@ Handles weighted rollups from KeyResult -> Objective -> Goal.
 """
 from typing import Optional, List
 from sqlmodel import Session, select
-from src.models import Goal, Objective, KeyResult
+from src.models import Goal, Objective, KeyResult, ScoreMode
+from src.domain.scoring import calculate_kr_score, calculate_objective_score
 
 
 def calculate_objective_progress(session: Session, objective_id: int) -> int:
     """
-    Calculate and update objective progress based on weighted KeyResults.
-    Returns the new progress value.
+    Calculate and update objective progress based on underlying KeyResults.
+    Uses the new re:Work scoring logic.
     """
-    # Acquire lock on Objective to prevent concurrent rollups from overwriting each other
-    # This prevents the "lost update" problem where two sibling KRs update simultaneously.
-    # Note: SQLite may ignore with_for_update or lock the whole DB, which is fine for tests.
     query = select(Objective).where(Objective.id == objective_id).with_for_update()
     objective = session.exec(query).first()
     
@@ -28,22 +26,38 @@ def calculate_objective_progress(session: Session, objective_id: int) -> int:
     if not krs:
         return 0
 
-    total_weight = sum(kr.weight for kr in krs)
-    if total_weight <= 0:
-        # Fallback to simple average if weights are zero/missing
-        avg = sum(kr.progress for kr in krs) / len(krs)
-        new_progress = int(round(avg))
-    else:
-        weighted_sum = sum(kr.progress * kr.weight for kr in krs)
-        new_progress = int(round(weighted_sum / total_weight))
+    # First, make sure all KR progress values are updated from their scores
+    kr_scores = []
+    kr_weights = []
+    for kr in krs:
+        score = calculate_kr_score(
+            current=kr.current_value,
+            target=kr.target_value,
+            start=kr.start_value,
+            metric_type=kr.metric_type
+        )
+        new_kr_progress = int(round(score * 100))
+        if kr.progress != new_kr_progress:
+            kr.progress = new_kr_progress
+            session.add(kr)
+        
+        kr_scores.append(score)
+        kr_weights.append(kr.weight)
 
-    # Clamp
+    # Calculate objective score
+    is_weighted = objective.score_mode == ScoreMode.WEIGHTED
+    obj_score = calculate_objective_score(
+        kr_scores=kr_scores,
+        weights=kr_weights,
+        weighted=is_weighted
+    )
+    
+    new_progress = int(round(obj_score * 100))
     new_progress = max(0, min(100, new_progress))
 
     if objective.progress != new_progress:
         objective.progress = new_progress
         session.add(objective)
-        # Flush to make change visible within transaction
         session.flush()
 
     return new_progress

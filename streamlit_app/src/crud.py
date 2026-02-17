@@ -56,6 +56,8 @@ _ALLOWED_OBJECTIVE_UPDATE_FIELDS = {
     "title",
     "description",
     "progress",
+    "score_mode",
+    "weight",
     "is_expanded",
     "deadline",
 }
@@ -63,9 +65,12 @@ _ALLOWED_KEY_RESULT_UPDATE_FIELDS = {
     "title",
     "description",
     "progress",
+    "start_value",
     "target_value",
     "current_value",
+    "metric_type",
     "unit",
+    "weight",
     "initiative_tags",
     "gemini_analysis",
     "is_expanded",
@@ -1351,6 +1356,24 @@ def update_key_result(
             _validate_update_fields(
                 "key_result", updates, _ALLOWED_KEY_RESULT_UPDATE_FIELDS
             )
+
+            # [Sync Logic] If progress is updated but current_value is NOT, 
+            # we must back-fill current_value to keep scoring engine consistent.
+            if "progress" in updates and "current_value" not in updates:
+                prog = int(updates["progress"])
+                m_type = updates.get("metric_type", getattr(item, "metric_type", "NUMERIC"))
+                start = float(updates.get("start_value", getattr(item, "start_value", 0.0)))
+                target = float(updates.get("target_value", getattr(item, "target_value", 100.0)))
+                
+                if m_type == "PERCENT":
+                    updates["current_value"] = float(prog)
+                elif m_type == "BOOLEAN":
+                    updates["current_value"] = 1.0 if prog >= 100 else 0.0
+                else: # NUMERIC
+                    # Interpolate
+                    delta = target - start
+                    updates["current_value"] = start + (delta * (prog / 100.0))
+
             for key, value in updates.items():
                 if (
                     key == "gemini_analysis"

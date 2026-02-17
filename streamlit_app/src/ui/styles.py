@@ -462,22 +462,29 @@ def inject_atlas_styles():
             color: #5f3f9f;
         }
 
-        .atlas-attn-on_track {
+        /* re:Work Scoring Bands */
+        .atlas-score-band-red {
+            background: #fce7e2;
+            border-color: #e7b7ac;
+            color: #8f2717;
+        }
+        .atlas-score-band-yellow {
+            background: #fff1de;
+            border-color: #f0cca0;
+            color: #8b4a0f;
+        }
+        .atlas-score-band-green {
             background: #e8f8f3;
-            border-color: #b8ddd1;
-            color: #17665f;
+            border-color: #b3e2d1;
+            color: #0d765e;
+        }
+        .atlas-score-band-blue {
+            background: #e0f2fe;
+            border-color: #bae6fd;
+            color: #0369a1;
         }
 
-        .atlas-attn-done {
-            background: #eef2f7;
-            border-color: #cdd6e1;
-            color: #4f5c70;
-        }
-
-        .atlas-candidate-meta {
-            font-size: 0.76rem;
-            color: var(--atlas-muted);
-            margin: 0.18rem 0 0;
+        .atlas-attn-on_track {
         }
 
         .atlas-tree-leaf-marker {

@@ -9,9 +9,9 @@ from sqlalchemy.orm import relationship
 
 # We can't easily clear the registry here without side effects.
 # Instead, the fully qualified names + extend_existing MUST be enough.
-from typing import Optional, List
 from datetime import datetime
 from enum import Enum
+from typing import Optional, List, Union
 from src.utils.time_utils import utc_now_naive
 
 
@@ -28,6 +28,19 @@ class UserRole(str, Enum):
     ADMIN = "admin"      # Can manage users and see all data
     MANAGER = "manager"  # Can see team data and manage their assigned OKRs
     MEMBER = "member"    # Can only see/edit their own OKRs
+
+
+class MetricType(str, Enum):
+    """Metric types for Key Results."""
+    BOOLEAN = "BOOLEAN"
+    NUMERIC = "NUMERIC"
+    PERCENT = "PERCENT"
+
+
+class ScoreMode(str, Enum):
+    """How an objective's score is calculated from its KRs."""
+    UNWEIGHTED = "UNWEIGHTED"
+    WEIGHTED = "WEIGHTED"
 
 
 class Team(SQLModel, table=True):
@@ -197,6 +210,7 @@ class Objective(NodeBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     goal_id: int = Field(foreign_key="goal.id", index=True)
     weight: float = Field(default=1.0)
+    score_mode: ScoreMode = Field(default=ScoreMode.UNWEIGHTED)
     
     # Relationships
     goal: Optional[Goal] = Relationship(
@@ -225,9 +239,11 @@ class KeyResult(NodeBase, table=True):
     objective_id: int = Field(foreign_key="objective.id", index=True)
     
     # KR-specific fields
+    start_value: float = Field(default=0.0)
     target_value: float = Field(default=100.0)
     current_value: float = Field(default=0.0)
     unit: Optional[str] = None  # e.g., "%", "count", "hours"
+    metric_type: MetricType = Field(default=MetricType.NUMERIC)
     initiative_tags: Optional[str] = Field(default="[]")
     weight: float = Field(default=1.0)
     
