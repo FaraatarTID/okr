@@ -1,4 +1,4 @@
-# AI Features Guide: The Strategic Intelligence Anthology 
+# AI Features Guide: The Strategic Intelligence Anthology
 
 Documentation HQ: [README](../README.md)
 
@@ -44,12 +44,15 @@ Located in the **Top Header**, this tool uses the `get_suggested_next` logic in 
   3. Ownership and actionability.
   4. Current progress levels.
 
-### C) Effectiveness Scoring (Value Validation)
+### C) Effectiveness Scoring (Precision Banding)
 
 Stored in the `KeyResult.gemini_analysis` field.
 
 - **Capability**: After a `WorkLog` session is completed via the **Commit Spotlight**, the AI evaluates the description of the work against the parent goal's strategic intent.
-- **Signal**: Provides a 1-10 score to help users refine their focus on high-impact tasks.
+- **Metric**: Scores are mapped to a precision band:
+  - **0.0 - 0.3**: Failure/Mismatch ( Effort did not move the needle).
+  - **0.7 - 1.0**: Success/Impact (Effort directly contributed to KR metrics).
+- **Lifecycle Awareness**: The AI Progress Sync strictly **skips** nodes in the `DRAFT` state. This prevents work-in-progress from polluting the organizational intelligence layer.
 
 ---
 

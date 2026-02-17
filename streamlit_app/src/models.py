@@ -43,6 +43,19 @@ class ScoreMode(str, Enum):
     WEIGHTED = "WEIGHTED"
 
 
+class LifecycleState(str, Enum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    GRADING = "GRADING"
+    ARCHIVED = "ARCHIVED"
+
+
+class AlignmentType(str, Enum):
+    """How one objective relates to another."""
+    SUPPORTS = "SUPPORTS"      # Vertical alignment (e.g., Team Obj -> Org Obj)
+    CONTRIBUTES = "CONTRIBUTES" # Horizontal alignment (e.g., Peer Obj -> Peer Obj)
+
+
 class Team(SQLModel, table=True):
     """Team definition for grouping users and ownership."""
     __tablename__ = "team"
@@ -212,6 +225,10 @@ class Objective(NodeBase, table=True):
     weight: float = Field(default=1.0)
     score_mode: ScoreMode = Field(default=ScoreMode.UNWEIGHTED)
     
+    # Phase 2: Lifecycle
+    state: LifecycleState = Field(default=LifecycleState.DRAFT)
+    final_reflection: Optional[str] = Field(default=None)
+
     # Relationships
     goal: Optional[Goal] = Relationship(
         sa_relationship=relationship(lambda: Goal, back_populates="objectives")
@@ -250,6 +267,10 @@ class KeyResult(NodeBase, table=True):
     # AI Analysis cache
     gemini_analysis: Optional[str] = None  # JSON string of analysis results
     analysis_updated_at: Optional[datetime] = None
+    
+    # Phase 2: Lifecycle
+    state: LifecycleState = Field(default=LifecycleState.DRAFT)
+    final_reflection: Optional[str] = Field(default=None)
     
     # Relationships
     objective: Optional[Objective] = Relationship(
@@ -388,6 +409,22 @@ class CheckIn(SQLModel, table=True):
     key_result: Optional["KeyResult"] = Relationship(
         sa_relationship=relationship(lambda: KeyResult, back_populates="check_ins")
     )
+
+
+class AlignmentEdge(SQLModel, table=True):
+    """Directed link representing organizational alignment between Objectives."""
+    __tablename__ = "alignment_edge"
+    __table_args__ = (
+        Index("ix_alignment_parent_child", "parent_id", "child_id", unique=True),
+        {"extend_existing": True},
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    parent_id: int = Field(foreign_key="objective.id", index=True)
+    child_id: int = Field(foreign_key="objective.id", index=True)
+    alignment_type: AlignmentType = Field(default=AlignmentType.SUPPORTS)
+    created_at: datetime = Field(default_factory=utc_now_naive)
+    created_by: Optional[str] = None
 
 
 # ============================================================================

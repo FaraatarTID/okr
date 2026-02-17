@@ -4,26 +4,34 @@ Handles weighted rollups from KeyResult -> Objective -> Goal.
 """
 from typing import Optional, List
 from sqlmodel import Session, select
-from src.models import Goal, Objective, KeyResult, ScoreMode
-from src.domain.scoring import calculate_kr_score, calculate_objective_score
+from src.models import Goal, Objective, KeyResult, ScoreMode, LifecycleState
+from src.domain.scoring import calculate_kr_score, calculate_objective_score, calculate_goal_score
 
 
 def calculate_objective_progress(session: Session, objective_id: int) -> int:
     """
     Calculate and update objective progress based on underlying KeyResults.
     Uses the new re:Work scoring logic.
+    Excludes DRAFT KeyResults.
     """
-    query = select(Objective).where(Objective.id == objective_id).with_for_update()
+    query = select(Objective).where(Objective.id == objective_id)
+    if session.bind.dialect.name != "sqlite":
+        query = query.with_for_update()
     objective = session.exec(query).first()
     
     if not objective:
         return 0
 
     krs = session.exec(
-        select(KeyResult).where(KeyResult.objective_id == objective_id)
+        select(KeyResult)
+        .where(KeyResult.objective_id == objective_id)
+        .where(KeyResult.state != LifecycleState.DRAFT)
     ).all()
 
     if not krs:
+        objective.progress = 0
+        session.add(objective)
+        session.flush()
         return 0
 
     # First, make sure all KR progress values are updated from their scores
@@ -68,26 +76,39 @@ def calculate_goal_progress(session: Session, goal_id: int) -> int:
     Calculate and update goal progress based on weighted Objectives.
     Returns the new progress value.
     """
-    query = select(Goal).where(Goal.id == goal_id).with_for_update()
+    query = select(Goal).where(Goal.id == goal_id)
+    if session.bind.dialect.name != "sqlite":
+        query = query.with_for_update()
     goal = session.exec(query).first()
     
     if not goal:
         return 0
 
     objectives = session.exec(
-        select(Objective).where(Objective.goal_id == goal_id)
+        select(Objective)
+        .where(Objective.goal_id == goal_id)
+        .where(Objective.state != LifecycleState.DRAFT)
     ).all()
 
     if not objectives:
+        goal.progress = 0
+        session.add(goal)
+        session.flush()
         return 0
 
-    total_weight = sum(obj.weight for obj in objectives)
-    if total_weight <= 0:
-        avg = sum(obj.progress for obj in objectives) / len(objectives)
-        new_progress = int(round(avg))
-    else:
-        weighted_sum = sum(obj.progress * obj.weight for obj in objectives)
-        new_progress = int(round(weighted_sum / total_weight))
+    # Convert Objective progress (0-100) back to score (0.0-1.0)
+    # We use .progress because Objective doesn't have a persisted score field yet.
+    obj_scores = [obj.progress / 100.0 for obj in objectives]
+    obj_weights = [obj.weight for obj in objectives]
+
+    goal_score = calculate_goal_score(obj_scores, weights=obj_weights)
+    new_progress = int(round(goal_score * 100))
+    new_progress = max(0, min(100, new_progress))
+
+    if goal.progress != new_progress:
+        goal.progress = new_progress
+        session.add(goal)
+        session.flush()
 
     new_progress = max(0, min(100, new_progress))
 

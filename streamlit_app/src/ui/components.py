@@ -36,7 +36,8 @@ def format_time(minutes):
 from sqlmodel import select
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
-from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn, MetricType, ScoreMode
+from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn, MetricType, ScoreMode, LifecycleState
+from src.domain.lifecycle import get_allowed_transitions, get_state_color, STATE_HINTS, STATE_ICONS
 from src.domain.scoring import calculate_kr_score, get_score_color_band, get_score_label
 from src.crud import (
     get_goal_tree,
@@ -2191,6 +2192,111 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             )
             new_metric_type = MetricType(new_metric_type_val)
 
+        # Phase 2: Lifecycle State & Reflection
+        new_state = getattr(node, "state", LifecycleState.DRAFT)
+        new_reflection = getattr(node, "final_reflection", "")
+        if node_type_insp in ["OBJECTIVE", "KEY_RESULT"]:
+            st.markdown("---")
+            st.caption("🔄 Lifecycle & Closing")
+            s_col1, s_col2 = st.columns(2)
+            
+            curr_state = getattr(node, "state", LifecycleState.DRAFT)
+            allowed_next = get_allowed_transitions(curr_state)
+            # Add current state to options so it shows as selected
+            options = [curr_state] + [s for s in allowed_next if s != curr_state]
+            
+            # Label map with icons
+            label_map = {s.value: f"{STATE_ICONS.get(s, '')} {s.value.title()}" for s in options}
+            
+            new_state_val = s_col1.selectbox(
+                "Lifecycle State",
+                options=[s.value for s in options],
+                format_func=lambda x: label_map.get(x, x),
+                index=0,
+                key=f"state_sel_{node_id}",
+                help="Transition rules are enforced. Draft -> Active -> Grading -> Archived."
+            )
+            new_state = LifecycleState(new_state_val)
+            
+            # Show hint
+            st.info(f"💡 **{new_state.value.title()}**: {STATE_HINTS.get(new_state, '')}")
+            
+            # Show cascade warning
+            if node_type_insp == "OBJECTIVE" and new_state != curr_state:
+                st.warning(f"⚠️ Changing this Objective to **{new_state.value.title()}** will also update all its Key Results.")
+            
+            new_reflection = st.text_area(
+                "Final Reflection",
+                value=new_reflection or "",
+                placeholder="What did we learn? Why did we (or didn't we) achieve this?",
+                key=f"reflection_{node_id}"
+            )
+
+        # Phase 3: Alignment Graph (Vertical/Horizontal Links)
+        if node_type_insp == "OBJECTIVE":
+            st.markdown("---")
+            st.caption("🔗 Organizational Alignment")
+            
+            from src.domain.alignment import get_alignment_neighbors
+            from src.crud import create_alignment, delete_alignment
+            
+            with get_session_context() as session:
+                parents, children = get_alignment_neighbors(session, node_id)
+                
+            # Render existing alignments
+            if parents:
+                st.write("**Supports (Parents):**")
+                for p in parents:
+                    p_col1, p_col2 = st.columns([0.8, 0.2])
+                    p_col1.write(f"⬆️ {p.title}")
+                    # Find edge ID to delete
+                    with get_session_context() as session:
+                        edge = session.exec(select(AlignmentEdge).where(AlignmentEdge.parent_id == p.id).where(AlignmentEdge.child_id == node_id)).first()
+                        if edge and p_col2.button("🗑️", key=f"del_align_p_{edge.id}"):
+                            delete_alignment(edge.id, actor_username=username)
+                            st.rerun()
+
+            if children:
+                st.write("**Supported by (Children):**")
+                for c in children:
+                    c_col1, c_col2 = st.columns([0.8, 0.2])
+                    c_col1.write(f"⬇️ {c.title}")
+                    with get_session_context() as session:
+                        edge = session.exec(select(AlignmentEdge).where(AlignmentEdge.parent_id == node_id).where(AlignmentEdge.child_id == c.id)).first()
+                        if edge and c_col2.button("🗑️", key=f"del_align_c_{edge.id}"):
+                            delete_alignment(edge.id, actor_username=username)
+                            st.rerun()
+            
+            if not parents and not children:
+                st.info("No active alignments. This objective is currently isolated.")
+
+            # Add new alignment
+            with st.expander("➕ Add Alignment Link"):
+                # Fetch all objectives (except self)
+                with get_session_context() as session:
+                    # Limit to objectives in same cycle for now or keep global? Keep global for cross-cycle alignment if desired.
+                    all_objs = session.exec(select(Objective).where(Objective.id != node_id)).all()
+                
+                if all_objs:
+                    obj_options = {f"{o.title} (@{o.created_by or 'system'})": o.id for o in all_objs}
+                    selected_obj_label = st.selectbox("Select Objective", options=list(obj_options.keys()), key=f"align_sel_{node_id}")
+                    target_id = obj_options.get(selected_obj_label)
+                    
+                    align_type_sel = st.radio("Relationship", ["This objective SUPPORTS the target", "The target SUPPORTS this objective"], key=f"align_type_{node_id}")
+                    
+                    if st.button("🔗 Link Objectives", key=f"link_btn_{node_id}", use_container_width=True):
+                        try:
+                            if align_type_sel == "This objective SUPPORTS the target":
+                                create_alignment(parent_id=target_id, child_id=node_id, actor_username=username)
+                            else:
+                                create_alignment(parent_id=node_id, child_id=target_id, actor_username=username)
+                            st.success("Alignment linked!")
+                            st.rerun()
+                        except ValueError as e:
+                            st.error(str(e))
+                else:
+                    st.write("No other objectives available to link.")
+
         user_role_perm = st.session_state.get("user_role")
         can_save_insp = bool(username)
 
@@ -2217,7 +2323,9 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                 elif node_type_insp == "OBJECTIVE":
                     updates.update({
                         "score_mode": new_score_mode,
-                        "weight": new_obj_weight_insp
+                        "weight": new_obj_weight_insp,
+                        "state": new_state,
+                        "final_reflection": new_reflection,
                     })
                     update_objective(node_id, actor_username=username, **updates)
                 elif node_type_insp == "KEY_RESULT":
@@ -2229,6 +2337,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                             "unit": new_unit_insp,
                             "metric_type": new_metric_type,
                             "weight": new_weight_insp,
+                            "state": new_state,
+                            "final_reflection": new_reflection,
                             "initiative_tags": [
                                 t.strip()
                                 for t in new_init_tags_input.split(",")
@@ -2778,9 +2888,31 @@ def _atlas_health_state(meta, index=None, _visited_refs=None, _memo=None):
     progress = int(meta.get("progress", 0) or 0)
     node_type = meta.get("type")
     node = meta.get("node")
+    state = getattr(node, "state", LifecycleState.ACTIVE)
 
     status_label = None
     source = "progress"
+
+    # [Lifecycle Logic] If node is not Active, that pulse/state takes precedence
+    if state != LifecycleState.ACTIVE:
+        icon = STATE_ICONS.get(state, "")
+        status_label = f"{icon} {state.value.title()}" if icon else state.value.title()
+        source = "status_label"
+        kind = "inherited" # DRAFT, GRADING, ARCHIVED are neutral-ish or procedural
+        if state == LifecycleState.DRAFT:
+            kind = "inherited"
+        elif state == LifecycleState.GRADING:
+            kind = "risk" # Needs attention/completion
+        elif state == LifecycleState.ARCHIVED:
+            kind = "on_track" # Done/Closed
+
+        return {
+            "kind": kind,
+            "reason": status_label,
+            "status_label": status_label,
+            "source": source,
+            "needs_attention": state == LifecycleState.GRADING,
+        }
 
     if node_type == "TASK":
         task_status = str(
@@ -3674,11 +3806,11 @@ def _build_atlas_treemap(
         )
     )
     fig.update_layout(
-        margin=dict(l=4, r=4, t=6, b=4),
+        margin=dict(l=8, r=8, t=10, b=28),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(size=13, color="#1f2933"),
-        height=max(220, int(chart_height)),
+        height=int(chart_height),
         clickmode="event+select",
     )
     return fig
@@ -4604,6 +4736,19 @@ def render_atlas_workspace(username):
                             )
                             continue
 
+                        # Alignment: Skip DRAFT nodes during bulk sync
+                        if kr_meta.get("state") == "DRAFT":
+                            progress_bar.progress(
+                                idx / total_kr,
+                                text=f"Skipping {idx}/{total_kr} (DRAFT)",
+                            )
+                            trace_rows.append({
+                                "node": kr_title,
+                                "action": "skipped",
+                                "reason": "draft_state"
+                            })
+                            continue
+
                         try:
                             result = analyze_node(int(kr_id), "KEY_RESULT")
                             if isinstance(result, dict) and "error" not in result:
@@ -5055,7 +5200,7 @@ def render_atlas_workspace(username):
                                         click_event=True,
                                         select_event=False,
                                         hover_event=False,
-                                        override_height=map_chart_height,
+                                        override_height=map_chart_height + 12,
                                         override_width="100%",
                                         key=chart_events_key,
                                     )

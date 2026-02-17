@@ -29,6 +29,9 @@ from src.models import (
     Retrospective,
     AuthThrottleState,
     Team,
+    LifecycleState,
+    AlignmentEdge,
+    AlignmentType,
 )
 from src.database import get_session_context
 from src.domain import analytics as domain_analytics
@@ -60,6 +63,8 @@ _ALLOWED_OBJECTIVE_UPDATE_FIELDS = {
     "weight",
     "is_expanded",
     "deadline",
+    "state",
+    "final_reflection",
 }
 _ALLOWED_KEY_RESULT_UPDATE_FIELDS = {
     "title",
@@ -75,6 +80,8 @@ _ALLOWED_KEY_RESULT_UPDATE_FIELDS = {
     "gemini_analysis",
     "is_expanded",
     "deadline",
+    "state",
+    "final_reflection",
 }
 _ALLOWED_TASK_UPDATE_KWARGS = {
     "description",
@@ -1326,6 +1333,28 @@ def update_objective(
             _validate_update_fields(
                 "objective", updates, _ALLOWED_OBJECTIVE_UPDATE_FIELDS
             )
+            # [Lifecycle Logic] Enforce state machine rules
+            if "state" in updates:
+                from src.domain.lifecycle import validate_transition, cascade_state_change
+                new_state = updates["state"]
+                
+                # Robustness check: Transition to ACTIVE requires children
+                if new_state == LifecycleState.ACTIVE:
+                    if not item.key_results:
+                         raise ValueError("Cannot activate an Objective without at least one Key Result.")
+
+                if not validate_transition(item.state, new_state):
+                    raise ValueError(f"Invalid state transition from {item.state} to {new_state}")
+                
+                # Cascade to KRs
+                kr_state = cascade_state_change(new_state)
+                for kr in item.key_results:
+                    kr.state = kr_state
+                    kr.updated_at = utc_now_naive()
+                    if actor_username:
+                        kr.updated_by = actor_username
+                    session.add(kr)
+
             for key, value in updates.items():
                 if hasattr(item, key):
                     setattr(item, key, value)
@@ -1334,13 +1363,76 @@ def update_objective(
                 item.updated_by = actor_username
             session.add(item)
 
-            # Recalculate hierarchy
+            # Recalculate hierarchy: Objective itself first, then parent Goal
+            calculate_objective_progress(session, objective_id)
             refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
 
             session.commit()
             session.refresh(item)
             clear_cache_safe()
         return item
+
+
+def create_alignment(
+    parent_id: int,
+    child_id: int,
+    alignment_type: str = "SUPPORTS",
+    actor_username: Optional[str] = None,
+) -> AlignmentEdge:
+    """Create a link between objectives with cycle detection."""
+    from src.domain.alignment import check_for_cycle
+
+    with get_session_context() as session:
+        parent = session.get(Objective, parent_id)
+        child = session.get(Objective, child_id)
+        if not parent or not child:
+            raise ValueError("Target objectives not found.")
+
+        if check_for_cycle(session, parent_id, child_id):
+            raise ValueError("Adding this alignment would create a circular dependency.")
+
+        # Check if already exists
+        existing = session.exec(
+            select(AlignmentEdge)
+            .where(AlignmentEdge.parent_id == parent_id)
+            .where(AlignmentEdge.child_id == child_id)
+        ).first()
+        if existing:
+            return existing
+
+        edge = AlignmentEdge(
+            parent_id=parent_id,
+            child_id=child_id,
+            alignment_type=alignment_type,
+            created_by=actor_username,
+            created_at=utc_now_naive(),
+        )
+        session.add(edge)
+        session.commit()
+        session.refresh(edge)
+
+        audit_log(
+            "create",
+            "alignment_edge",
+            details={
+                "edge_id": edge.id,
+                "parent_id": parent_id,
+                "child_id": child_id,
+            },
+        )
+        clear_cache_safe()
+        return edge
+
+
+def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
+    """Remove an alignment link."""
+    with get_session_context() as session:
+        edge = session.get(AlignmentEdge, edge_id)
+        if edge:
+            session.delete(edge)
+            session.commit()
+            audit_log("delete", "alignment_edge", details={"edge_id": edge_id})
+            clear_cache_safe()
 
 
 def update_key_result(
@@ -1356,6 +1448,13 @@ def update_key_result(
             _validate_update_fields(
                 "key_result", updates, _ALLOWED_KEY_RESULT_UPDATE_FIELDS
             )
+
+            # [Lifecycle Logic] Enforce state machine rules
+            if "state" in updates:
+                from src.domain.lifecycle import validate_transition
+                new_state = updates["state"]
+                if not validate_transition(item.state, new_state):
+                    raise ValueError(f"Invalid state transition from {item.state} to {new_state}")
 
             # [Sync Logic] If progress is updated but current_value is NOT, 
             # we must back-fill current_value to keep scoring engine consistent.
