@@ -420,22 +420,6 @@ def inject_atlas_styles():
             border-color: #b9914a;
         }
 
-        .atlas-map-hatch {
-            width: 0.72rem;
-            height: 0.72rem;
-            border-radius: 0.15rem;
-            display: inline-block;
-            border: 1px solid #8a6827;
-            background-color: #f7eddb;
-            background-image: repeating-linear-gradient(
-                135deg,
-                rgba(47, 38, 18, 0.95) 0px,
-                rgba(47, 38, 18, 0.95) 1.2px,
-                transparent 1.2px,
-                transparent 3.2px
-            );
-        }
-
         .atlas-map-needs {
             background: #c36d27;
             border-color: #ad5f20;

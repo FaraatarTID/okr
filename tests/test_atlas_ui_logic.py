@@ -42,19 +42,19 @@ def test_build_atlas_index_from_snapshot_preserves_hierarchy_and_owner():
                 {
                     "id": 2,
                     "title": "O",
-                    "description": "",
+                    "description": "Objective desc",
                     "progress": 20,
                     "key_results": [
                         {
                             "id": 3,
                             "title": "K",
-                            "description": "",
+                            "description": "KR desc",
                             "progress": 30,
                             "tasks": [
                                 {
                                     "id": 4,
                                     "title": "T",
-                                    "description": "",
+                                    "description": "Task desc",
                                     "progress": 40,
                                     "deadline": None,
                                     "timer_started_at": None,
@@ -73,9 +73,10 @@ def test_build_atlas_index_from_snapshot_preserves_hierarchy_and_owner():
     assert "task_4" in index
     assert index["task_4"]["path"] == ["goal_1", "objective_2", "key_result_3", "task_4"]
     assert index["task_4"]["owner_name"] == "Owner"
+    assert index["task_4"]["description"] == "Task desc"
 
 
-def test_treemap_selected_node_uses_hatch_pattern_without_changing_status_fill():
+def test_treemap_selected_node_keeps_status_fill_and_selection_border():
     index = {
         "goal_1": {
             "ref": "goal_1",
@@ -108,11 +109,10 @@ def test_treemap_selected_node_uses_hatch_pattern_without_changing_status_fill()
     assert fig is not None
     trace = fig.data[0]
     goal_idx = list(trace.ids).index("goal_1")
-    task_idx = list(trace.ids).index("task_2")
-    assert trace.marker.pattern.shape[goal_idx] == "x"
-    assert trace.marker.pattern.shape[task_idx] == ""
     assert trace.marker.colors[goal_idx] == "#c36d27"
-    assert str(trace.labels[goal_idx]).startswith("▧ ")
+    assert trace.marker.line.color[goal_idx] == "#8a6827"
+    assert float(trace.marker.line.width[goal_idx]) >= 3.0
+    assert "pattern" not in trace.marker.to_plotly_json()
 
 
 def test_needs_attention_for_incomplete_task_below_threshold():

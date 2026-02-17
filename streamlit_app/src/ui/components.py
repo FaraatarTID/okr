@@ -139,14 +139,15 @@ def _cached_get_atlas_scope_snapshot(
 
     with get_session_context() as session:
         goal_stmt = (
-            select(
-                Goal.id,
-                Goal.title,
-                Goal.progress,
-                Goal.owner_id,
-                User.display_name,
-                User.username,
-            )
+                select(
+                    Goal.id,
+                    Goal.title,
+                    Goal.description,
+                    Goal.progress,
+                    Goal.owner_id,
+                    User.display_name,
+                    User.username,
+                )
             .join(User, User.id == Goal.owner_id)
             .where(Goal.cycle_id == cycle_id)
             .order_by(func.lower(Goal.title), Goal.id)
@@ -168,6 +169,7 @@ def _cached_get_atlas_scope_snapshot(
         for (
             goal_id,
             title,
+            description,
             progress,
             owner_id,
             owner_display_name,
@@ -181,6 +183,7 @@ def _cached_get_atlas_scope_snapshot(
             payload = {
                 "id": int(goal_id),
                 "title": title,
+                "description": description or "",
                 "progress": int(progress or 0),
                 "owner_id": owner_id_int,
                 "objectives": [],
@@ -197,6 +200,7 @@ def _cached_get_atlas_scope_snapshot(
                     Objective.id,
                     Objective.goal_id,
                     Objective.title,
+                    Objective.description,
                     Objective.progress,
                 )
                 .where(Objective.goal_id.in_(goal_ids))
@@ -206,13 +210,14 @@ def _cached_get_atlas_scope_snapshot(
 
         objective_payload_by_id = {}
         objective_ids = []
-        for objective_id, goal_id, title, progress in objective_rows:
+        for objective_id, goal_id, title, description, progress in objective_rows:
             if objective_id is None or goal_id is None:
                 continue
             objective_ids.append(int(objective_id))
             payload = {
                 "id": int(objective_id),
                 "title": title,
+                "description": description or "",
                 "progress": int(progress or 0),
                 "key_results": [],
             }
@@ -230,6 +235,7 @@ def _cached_get_atlas_scope_snapshot(
                         KeyResult.id,
                         KeyResult.objective_id,
                         KeyResult.title,
+                        KeyResult.description,
                         KeyResult.progress,
                         KeyResult.gemini_analysis,
                     )
@@ -245,6 +251,7 @@ def _cached_get_atlas_scope_snapshot(
                 key_result_id,
                 objective_id,
                 title,
+                description,
                 progress,
                 gemini_analysis,
             ) in key_result_rows:
@@ -257,6 +264,7 @@ def _cached_get_atlas_scope_snapshot(
                 payload = {
                     "id": int(key_result_id),
                     "title": title,
+                    "description": description or "",
                     "progress": int(progress or 0),
                     "ai_overall_score": ai_overall_score,
                     "ai_deadline_state": ai_deadline_state,
@@ -276,6 +284,7 @@ def _cached_get_atlas_scope_snapshot(
                         Task.id,
                         Task.key_result_id,
                         Task.title,
+                        Task.description,
                         Task.progress,
                         Task.deadline,
                         Task.timer_started_at,
@@ -290,6 +299,7 @@ def _cached_get_atlas_scope_snapshot(
                 task_id,
                 key_result_id,
                 title,
+                description,
                 progress,
                 deadline,
                 timer_started_at,
@@ -305,6 +315,7 @@ def _cached_get_atlas_scope_snapshot(
                     {
                         "id": int(task_id),
                         "title": title,
+                        "description": description or "",
                         "progress": int(progress or 0),
                         "deadline": deadline,
                         "timer_started_at": timer_started_at,
@@ -1825,9 +1836,6 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
         delete_objective,
         delete_key_result,
         delete_task,
-        start_timer,
-        stop_timer,
-        get_total_time,
         delete_work_log,
         get_all_cycles,
         get_all_users,
@@ -2093,62 +2101,6 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                 return
             st.success("Saved!")
             st.rerun()
-
-    if node_type_insp == "TASK":
-        st.markdown("---")
-        st.write("### ⏱️ Time Tracking")
-        col_t1, col_t2 = st.columns(2)
-        with col_t1:
-            u_role = st.session_state.get("user_role", "member")
-            is_run = node.timer_started_at is not None
-            if is_run:
-                start_t = node.timer_started_at
-                # Calculate elapsed in minutes
-                elap = int(
-                    (ensure_utc(utc_now_naive()) - ensure_utc(start_t)).total_seconds()
-                    / 60
-                )
-                st.info(f"Timer Running: {elap}m")
-
-            # Permission check: enforced in CRUD ownership rules.
-            can_track = bool(username)
-
-            if can_track:
-                if is_run:
-                    c_a1, c_a2 = st.columns(2)
-                    if c_a1.button(
-                        "Open Timer", icon=":material/timer:", key=f"open_t_{node_id}"
-                    ):
-                        st.session_state.active_timer_node_id = node_id
-                        if "active_inspector_id" in st.session_state:
-                            del st.session_state.active_inspector_id
-                        st.rerun()
-                    if c_a2.button(
-                        "Stop", icon=":material/stop_circle:", key=f"stop_t_{node_id}"
-                    ):
-                        # stop_timer accepts an optional summary; pass None here
-                        stop_timer(node_id, user_id=username)
-                        if "active_timer_node_id" in st.session_state:
-                            del st.session_state.active_timer_node_id
-                        st.rerun()
-                else:
-                    if st.button(
-                        "Start Timer",
-                        icon=":material/play_circle:",
-                        key=f"start_t_{node_id}",
-                    ):
-                        try:
-                            start_timer(node_id, username)
-                        except ValueError as e:
-                            st.error(str(e))
-                            return
-                        st.session_state.active_timer_node_id = node_id
-                        if "active_inspector_id" in st.session_state:
-                            del st.session_state.active_inspector_id
-                        st.rerun()
-        with col_t2:
-            tot = node.total_time_spent
-            st.metric("Total Time", format_time(tot))
 
     if node_type_insp == "TASK":
         st.markdown("---")
@@ -2484,6 +2436,7 @@ def _build_atlas_index(goals, users_map):
             "type": node_type,
             "title": title,
             "title_l": title.lower(),
+            "description": (getattr(node, "description", None) or "").strip(),
             "progress": progress,
             "depth": len(next_path) - 1,
             "parent": parent_ref,
@@ -2575,6 +2528,7 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
             "type": node_type,
             "title": title,
             "title_l": title.lower(),
+            "description": (payload.get("description") or "").strip(),
             "progress": progress,
             "depth": len(next_path) - 1,
             "parent": parent_ref,
@@ -3148,10 +3102,6 @@ def _build_atlas_treemap(
     fill_colors = []
     line_colors = []
     line_widths = []
-    pattern_shapes = []
-    pattern_fgcolors = []
-    pattern_sizes = []
-    pattern_solidities = []
     custom = []
 
     path_refs = set(selected_path_refs or [])
@@ -3193,29 +3143,13 @@ def _build_atlas_treemap(
             line_color = "#0d9488"
             line_width = 3.6
 
-        pattern_shape = ""
-        pattern_fg = "#8a6827"
-        pattern_size = 7
-        pattern_solidity = 0.0
-        if ref == selected_ref:
-            # Hatch the selected navigation node so selection stands out without changing base fill color.
-            pattern_shape = "x"
-            pattern_fg = "#2f2612"
-            pattern_size = 7
-            pattern_solidity = 0.46
-
         ids.append(ref)
-        selected_prefix = "▧ " if ref == selected_ref else ""
-        labels.append(f"{selected_prefix}{TYPE_ICONS.get(node_type, '')} {title}")
+        labels.append(f"{TYPE_ICONS.get(node_type, '')} {title}")
         parents.append(parent_ref)
         values.append(value)
         fill_colors.append(fill)
         line_colors.append(line_color)
         line_widths.append(line_width)
-        pattern_shapes.append(pattern_shape)
-        pattern_fgcolors.append(pattern_fg)
-        pattern_sizes.append(pattern_size)
-        pattern_solidities.append(pattern_solidity)
         custom.append(
             [
                 ref,
@@ -3239,12 +3173,6 @@ def _build_atlas_treemap(
             marker=dict(
                 colors=fill_colors,
                 line=dict(color=line_colors, width=line_widths),
-                pattern=dict(
-                    shape=pattern_shapes,
-                    fgcolor=pattern_fgcolors,
-                    size=pattern_sizes,
-                    solidity=pattern_solidities,
-                ),
             ),
             textinfo="label",
             customdata=custom,
@@ -3549,7 +3477,11 @@ def render_atlas_workspace(username):
                 unsafe_allow_html=True,
             )
             focus_description = (
-                str(getattr(focus_task, "description", "") or "").strip()
+                str(
+                    focus_meta.get("description")
+                    or getattr(focus_task, "description", "")
+                    or ""
+                ).strip()
             )
             if focus_description:
                 focus_description_html = escape_html(focus_description).replace(
@@ -3934,7 +3866,7 @@ def render_atlas_workspace(username):
                         "</div>"
                         "<div class='atlas-map-state-legend'>"
                         "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-focus'></span>Focused task</span>"
-                        "<span class='atlas-map-state-item'><span class='atlas-map-hatch'></span>Selected node (hatch / ▧)</span>"
+                        "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-selected'></span>Selected node</span>"
                         "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-path'></span>Path context</span>"
                         "</div>"
                     ),
