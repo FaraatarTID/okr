@@ -9,6 +9,20 @@ Blank page or reconnecting loop
 PDF export fails
 - If using pdfkit: wkhtmltopdf must be installed (already in container)
 - If using PDFShift: set pdfshift_api_key in secrets
+- Ensure `PDF_METHOD` matches runtime:
+  - Streamlit Cloud -> `pdfshift`
+  - Self-hosted -> `pdfkit` (or `pdfshift` by policy)
+
+Runtime preflight shows configuration errors
+- If preflight says `PDF_METHOD=pdfshift but PDFShift API key is missing`:
+  - Add `pdfshift_api_key` (or switch method to `pdfkit` in self-hosted runtime)
+- If preflight says `Streamlit Cloud runtime detected with PDF_METHOD=pdfkit`:
+  - Change `PDF_METHOD` to `pdfshift`
+- If strict mode is enabled (`OKR_STRICT_RUNTIME_PREFLIGHT=1`), app startup will stop on critical preflight errors until fixed.
+
+AI features unavailable
+- Verify `GEMINI_API_KEY` is set in Streamlit secrets or environment variables.
+- Check if key is placeholder-like (for example `your-api-key`).
 
 Migrations fail
 - Ensure the configured DB is reachable from the host/pod

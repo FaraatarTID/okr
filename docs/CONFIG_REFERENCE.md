@@ -39,6 +39,41 @@ PDF generation
   - pdfshift_api_key: required if using pdfshift
 - System dependency for pdfkit: wkhtmltopdf (already installed in the container)
 
+AI integration
+
+- Streamlit secrets keys:
+  - GEMINI_API_KEY: required for AI analysis and coaching features
+- Environment fallback:
+  - GEMINI_API_KEY
+  - VITE_GEMINI_API_KEY
+
+Runtime preflight policy
+
+- Optional strict mode:
+  - OKR_STRICT_RUNTIME_PREFLIGHT=1
+- Behavior:
+  - Runtime validates PDF provider mode and key/dependency presence.
+  - If strict mode is enabled, critical preflight errors stop app startup.
+  - Non-critical issues (for example missing wkhtmltopdf in pdfkit mode) are surfaced as warnings.
+
+Recommended deployment profiles
+
+- Streamlit Cloud:
+  - PDF_METHOD=pdfshift
+  - pdfshift_api_key must be present
+  - OKR_STRICT_RUNTIME_PREFLIGHT=1 (recommended)
+- Self-hosted server (Docker/VM):
+  - PDF_METHOD=pdfkit (or pdfshift if desired)
+  - If pdfkit: wkhtmltopdf must be installed and reachable
+  - OKR_STRICT_RUNTIME_PREFLIGHT=1 (recommended)
+
+Release governance (CI)
+
+- Branches should require passing CI checks before merge:
+  - Docs HQ link check
+  - RBAC regression gate
+  - Full pytest suite
+
 Admin bootstrap
 
 - On first run (empty DB), a default admin user is created:

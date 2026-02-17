@@ -13,6 +13,11 @@ Runbook: first deployment
 - Provide OKR_DATABASE_URL for Supabase PostgreSQL (required)
 - Decide hosting scheme: subdomain vs subpath
 - Configure reverse proxy with TLS and websocket support
+- Configure PDF mode explicitly:
+  - Streamlit Cloud: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
+  - Self-hosted server: `PDF_METHOD=pdfkit` + installed `wkhtmltopdf` (or use pdfshift by policy)
+- Configure `GEMINI_API_KEY` if AI features are enabled
+- Enable strict runtime checks in production: `OKR_STRICT_RUNTIME_PREFLIGHT=1`
 
 4) Start services
 - Compose: start app
@@ -22,6 +27,9 @@ Runbook: first deployment
 - Health check: GET /
 - Login as admin/admin and change password
 - Create your first cycle and users
+- Confirm runtime preflight has no critical errors
+- Verify one PDF export succeeds in the selected provider mode
+- Verify one AI action succeeds (or document AI as intentionally disabled)
 
 6) Enable optional integrations
 - Add secrets.toml for PDFShift or Gemini if required
@@ -30,3 +38,10 @@ Runbook: first deployment
 - Automated DB backups
 - Uptime checks on the proxy endpoint
 - Log retention for proxy and app
+
+8) Protect release flow
+- Enable branch protection on main branch
+- Require passing CI checks before merge:
+  - Docs HQ Link Check
+  - RBAC Regression Gate
+  - Full tests

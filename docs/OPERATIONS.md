@@ -21,6 +21,9 @@ Upgrades
 Secrets management
 - Store DB credentials and API keys in secrets (not in repo)
 - Rotate credentials periodically
+- For AI features, keep `GEMINI_API_KEY` only in secrets/env (never in git)
+- Set PDF provider mode explicitly with `PDF_METHOD` and matching dependencies/keys
+- Recommended in production: `OKR_STRICT_RUNTIME_PREFLIGHT=1`
 
 Security hardening
 - TLS everywhere
@@ -32,3 +35,17 @@ Security hardening
 Incident response
 - Take snapshots before risky changes
 - Know rollback steps for Compose and K8s
+
+Runtime preflight checks
+- On startup, validate that PDF mode and dependencies/keys are coherent.
+- If strict mode is enabled and preflight reports errors, treat startup block as configuration incident (not app defect).
+- Resolve by fixing provider mismatch:
+  - Cloud: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
+  - Self-hosted + pdfkit: ensure `wkhtmltopdf` is present
+
+Release governance
+- Protect main branch with required CI checks.
+- Required checks:
+  - Docs HQ link checker
+  - RBAC regression gate
+  - Full pytest suite

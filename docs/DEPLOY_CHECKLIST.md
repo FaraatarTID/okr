@@ -20,6 +20,10 @@ Mode selection
 A. Streamlit Cloud checklist (MVP mode)
 - [ ] App is connected to this repository in Streamlit Cloud.
 - [ ] Runtime secrets are configured in Streamlit Cloud settings (not in git).
+- [ ] `PDF_METHOD=pdfshift` is configured.
+- [ ] `pdfshift_api_key` is configured.
+- [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` is configured (recommended for production).
+- [ ] `GEMINI_API_KEY` is configured (or AI is intentionally disabled and accepted).
 - [ ] App starts and login works in Streamlit Cloud.
 - [ ] GitHub Actions SSH deploy step is skipped (expected when SSH secrets are not set).
 - [ ] You understand SSH secrets are only needed later for self-hosted server deploy.
@@ -41,6 +45,11 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] `OKR_DATABASE_URL` is set in `.env` and points to Supabase (`*.supabase.com`).
 - [ ] `BASE_URL_PATH` is empty for subdomain deployment.
 - [ ] Optional integrations secrets are prepared in `deploy/secrets/secrets.toml`.
+- [ ] `PDF_METHOD` is explicitly set for the environment (`pdfkit` for local/server, `pdfshift` for cloud-like routing).
+- [ ] If `PDF_METHOD=pdfshift`, `pdfshift_api_key` is present in secrets.
+- [ ] If `PDF_METHOD=pdfkit`, `wkhtmltopdf` is installed and reachable.
+- [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` is set (recommended for production).
+- [ ] `GEMINI_API_KEY` is set (or AI-disable decision is documented).
 
 3. App Launch
 - [ ] App is started with `docker compose -f deploy/docker/docker-compose.yml up -d --build`.
@@ -74,6 +83,7 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] Reports render.
 - [ ] No browser reconnect loops.
 - [ ] RBAC works for admin/manager/member.
+- [ ] Runtime preflight shows no critical configuration errors.
 
 8. Security And Operations
 - [ ] Public access is limited to ports `80/443`.
@@ -82,6 +92,7 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] Logs are collected (Nginx + container).
 - [ ] Uptime monitoring is enabled for `https://okr.mycompany.com`.
 - [ ] Credential rotation process is documented.
+- [ ] Secrets are only in secret manager/Streamlit secrets (never committed).
 
 9. Upgrade And Rollback Readiness
 - [ ] Upgrade commands are documented for operators.
@@ -96,6 +107,14 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
   - `REMOTE_DEPLOY_DIR` (or `DEPLOY_DIR`)
 - [ ] `SSH_KEY` is stored in GitHub repository -> `Settings` -> `Secrets and variables` -> `Actions`.
 - [ ] Private keys are never committed to the repository.
+
+11. Git governance (recommended)
+- [ ] Branch protection is enabled on main branch.
+- [ ] CI must pass before merge.
+- [ ] Required CI checks include:
+  - Docs HQ Link Check
+  - RBAC Regression Gate
+  - Full Test job
 
 Reference docs
 - `DEPLOYMENT.md`
