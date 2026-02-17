@@ -11,6 +11,7 @@ def _utc_now_naive() -> datetime:
 @pytest.fixture()
 def isolated_db(monkeypatch, tmp_path):
     import src.database as database
+    import src.models  # Register models
 
     db_path = tmp_path / "okr_auth_test.db"
     db_url = f"sqlite:///{db_path}"

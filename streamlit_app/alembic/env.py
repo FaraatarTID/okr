@@ -66,8 +66,20 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # Override sqlalchemy.url with the one from src.database or env vars
+    # This ensures consistency with the app's connection logic
+    from src.database import _get_database_url
+    
+    section = config.get_section(config.config_ini_section, {})
+    try:
+        url = _get_database_url()
+        section["sqlalchemy.url"] = url
+    except Exception:
+        # If we can't resolve it (e.g. no env var), hopefully it's in ini
+        pass
+
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
+        section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )

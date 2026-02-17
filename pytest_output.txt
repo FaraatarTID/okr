@@ -1,0 +1,251 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.1, pluggy-1.6.0 -- C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Faraatar-TID_Apps\okr
+plugins: anyio-4.11.0, mock-3.15.1, timeout-2.4.0
+collecting ... collected 1 item
+
+tests/test_rbac_permissions.py::test_rbac_matrix FAILED                  [100%]
+
+================================== FAILURES ===================================
+______________________________ test_rbac_matrix _______________________________
+
+self = <sqlalchemy.orm.relationships.JoinCondition object at 0x0000028868E29220>
+
+    def _determine_joins(self) -> None:
+        """Determine the 'primaryjoin' and 'secondaryjoin' attributes,
+        if not passed to the constructor already.
+    
+        This is based on analysis of the foreign key relationships
+        between the parent and target mapped selectables.
+    
+        """
+        if self.secondaryjoin is not None and self.secondary is None:
+            raise sa_exc.ArgumentError(
+                "Property %s specified with secondary "
+                "join condition but "
+                "no secondary argument" % self.prop
+            )
+    
+        # find a join between the given mapper's mapped table and
+        # the given table. will try the mapper's local table first
+        # for more specificity, then if not found will try the more
+        # general mapped table, which in the case of inheritance is
+        # a join.
+        try:
+            consider_as_foreign_keys = self.consider_as_foreign_keys or None
+            if self.secondary is not None:
+                if self.secondaryjoin is None:
+                    self.secondaryjoin = join_condition(
+                        self.child_persist_selectable,
+                        self.secondary,
+                        a_subset=self.child_local_selectable,
+                        consider_as_foreign_keys=consider_as_foreign_keys,
+                    )
+                if self.primaryjoin_initial is None:
+                    self.primaryjoin = join_condition(
+                        self.parent_persist_selectable,
+                        self.secondary,
+                        a_subset=self.parent_local_selectable,
+                        consider_as_foreign_keys=consider_as_foreign_keys,
+                    )
+                else:
+                    self.primaryjoin = self.primaryjoin_initial
+            else:
+                if self.primaryjoin_initial is None:
+>                   self.primaryjoin = join_condition(
+                        self.parent_persist_selectable,
+                        self.child_persist_selectable,
+                        a_subset=self.parent_local_selectable,
+                        consider_as_foreign_keys=consider_as_foreign_keys,
+                    )
+
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\relationships.py:2434: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\util.py:121: in join_condition
+    return Join._join_condition(
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\selectable.py:1441: in _join_condition
+    cls._joincond_trim_constraints(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'sqlalchemy.sql.selectable.Join'>
+a = Table('task', MetaData(), Column('title', AutoString(), table=<task>, nullable=False), Column('description', AutoStrin...ted_at', DateTime(), table=<task>), Column('assignee_id', Integer(), ForeignKey('user.id'), table=<task>), schema=None)
+b = Table('user', MetaData(), Column('id', Integer(), table=<user>, primary_key=True, nullable=False), Column('username', ...), Column('is_active', Boolean(), table=<user>, nullable=False, default=ScalarElementColumnDefault(True)), schema=None)
+constraints = defaultdict(<class 'list'>, {ForeignKeyConstraint(<sqlalchemy.sql.base.ReadOnlyColumnCollection object at 0x0000028869...le=<user>, primary_key=True, nullable=False), Column('assignee_id', Integer(), ForeignKey('user.id'), table=<task>))]})
+consider_as_foreign_keys = None
+
+    @classmethod
+    def _joincond_trim_constraints(
+        cls,
+        a: FromClause,
+        b: FromClause,
+        constraints: Dict[Any, Any],
+        consider_as_foreign_keys: Optional[Any],
+    ) -> None:
+        # more than one constraint matched.  narrow down the list
+        # to include just those FKCs that match exactly to
+        # "consider_as_foreign_keys".
+        if consider_as_foreign_keys:
+            for const in list(constraints):
+                if {f.parent for f in const.elements} != set(
+                    consider_as_foreign_keys
+                ):
+                    del constraints[const]
+    
+        # if still multiple constraints, but
+        # they all refer to the exact same end result, use it.
+        if len(constraints) > 1:
+            dedupe = {tuple(crit) for crit in constraints.values()}
+            if len(dedupe) == 1:
+                key = list(constraints)[0]
+                constraints = {key: constraints[key]}
+    
+        if len(constraints) != 1:
+>           raise exc.AmbiguousForeignKeysError(
+                "Can't determine join between '%s' and '%s'; "
+                "tables have more than one foreign key "
+                "constraint relationship between them. "
+                "Please specify the 'onclause' of this "
+                "join explicitly." % (a.description, b.description)
+            )
+E           sqlalchemy.exc.AmbiguousForeignKeysError: Can't determine join between 'task' and 'user'; tables have more than one foreign key constraint relationship between them. Please specify the 'onclause' of this join explicitly.
+
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\sql\selectable.py:1586: AmbiguousForeignKeysError
+
+The above exception was the direct cause of the following exception:
+
+    def test_rbac_matrix():
+        # Setup users
+>       admin = User(id=1, username="admin", role=UserRole.ADMIN, is_active=True)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\test_rbac_permissions.py:8: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+<string>:4: in __init__
+    ???
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\state.py:591: in _initialize_instance
+    manager.dispatch.init(self, args, kwargs)
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\event\attr.py:515: in __call__
+    fn(*args, **kw)
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\mapper.py:4419: in _event_on_init
+    instrumenting_mapper._check_configure()
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\mapper.py:2410: in _check_configure
+    _configure_registries({self.registry}, cascade=True)
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\mapper.py:4227: in _configure_registries
+    _do_configure_registries(registries, cascade)
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\mapper.py:4268: in _do_configure_registries
+    mapper._post_configure_properties()
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\mapper.py:2427: in _post_configure_properties
+    prop.init()
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\interfaces.py:595: in init
+    self.do_init()
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\relationships.py:1657: in do_init
+    self._setup_join_conditions()
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\relationships.py:1895: in _setup_join_conditions
+    self._join_condition = jc = JoinCondition(
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\relationships.py:2321: in __init__
+    self._determine_joins()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <sqlalchemy.orm.relationships.JoinCondition object at 0x0000028868E29220>
+
+    def _determine_joins(self) -> None:
+        """Determine the 'primaryjoin' and 'secondaryjoin' attributes,
+        if not passed to the constructor already.
+    
+        This is based on analysis of the foreign key relationships
+        between the parent and target mapped selectables.
+    
+        """
+        if self.secondaryjoin is not None and self.secondary is None:
+            raise sa_exc.ArgumentError(
+                "Property %s specified with secondary "
+                "join condition but "
+                "no secondary argument" % self.prop
+            )
+    
+        # find a join between the given mapper's mapped table and
+        # the given table. will try the mapper's local table first
+        # for more specificity, then if not found will try the more
+        # general mapped table, which in the case of inheritance is
+        # a join.
+        try:
+            consider_as_foreign_keys = self.consider_as_foreign_keys or None
+            if self.secondary is not None:
+                if self.secondaryjoin is None:
+                    self.secondaryjoin = join_condition(
+                        self.child_persist_selectable,
+                        self.secondary,
+                        a_subset=self.child_local_selectable,
+                        consider_as_foreign_keys=consider_as_foreign_keys,
+                    )
+                if self.primaryjoin_initial is None:
+                    self.primaryjoin = join_condition(
+                        self.parent_persist_selectable,
+                        self.secondary,
+                        a_subset=self.parent_local_selectable,
+                        consider_as_foreign_keys=consider_as_foreign_keys,
+                    )
+                else:
+                    self.primaryjoin = self.primaryjoin_initial
+            else:
+                if self.primaryjoin_initial is None:
+                    self.primaryjoin = join_condition(
+                        self.parent_persist_selectable,
+                        self.child_persist_selectable,
+                        a_subset=self.parent_local_selectable,
+                        consider_as_foreign_keys=consider_as_foreign_keys,
+                    )
+                else:
+                    self.primaryjoin = self.primaryjoin_initial
+        except sa_exc.NoForeignKeysError as nfe:
+            if self.secondary is not None:
+                raise sa_exc.NoForeignKeysError(
+                    "Could not determine join "
+                    "condition between parent/child tables on "
+                    "relationship %s - there are no foreign keys "
+                    "linking these tables via secondary table '%s'.  "
+                    "Ensure that referencing columns are associated "
+                    "with a ForeignKey or ForeignKeyConstraint, or "
+                    "specify 'primaryjoin' and 'secondaryjoin' "
+                    "expressions." % (self.prop, self.secondary)
+                ) from nfe
+            else:
+                raise sa_exc.NoForeignKeysError(
+                    "Could not determine join "
+                    "condition between parent/child tables on "
+                    "relationship %s - there are no foreign keys "
+                    "linking these tables.  "
+                    "Ensure that referencing columns are associated "
+                    "with a ForeignKey or ForeignKeyConstraint, or "
+                    "specify a 'primaryjoin' expression." % self.prop
+                ) from nfe
+        except sa_exc.AmbiguousForeignKeysError as afe:
+            if self.secondary is not None:
+                raise sa_exc.AmbiguousForeignKeysError(
+                    "Could not determine join "
+                    "condition between parent/child tables on "
+                    "relationship %s - there are multiple foreign key "
+                    "paths linking the tables via secondary table '%s'.  "
+                    "Specify the 'foreign_keys' "
+                    "argument, providing a list of those columns which "
+                    "should be counted as containing a foreign key "
+                    "reference from the secondary table to each of the "
+                    "parent and child tables." % (self.prop, self.secondary)
+                ) from afe
+            else:
+>               raise sa_exc.AmbiguousForeignKeysError(
+                    "Could not determine join "
+                    "condition between parent/child tables on "
+                    "relationship %s - there are multiple foreign key "
+                    "paths linking the tables.  Specify the "
+                    "'foreign_keys' argument, providing a list of those "
+                    "columns which should be counted as containing a "
+                    "foreign key reference to the parent table." % self.prop
+                ) from afe
+E               sqlalchemy.exc.AmbiguousForeignKeysError: Could not determine join condition between parent/child tables on relationship Task.assignee - there are multiple foreign key paths linking the tables.  Specify the 'foreign_keys' argument, providing a list of those columns which should be counted as containing a foreign key reference to the parent table.
+
+C:\Users\Mirshekari\AppData\Local\Programs\Python\Python313\Lib\site-packages\sqlalchemy\orm\relationships.py:2478: AmbiguousForeignKeysError
+=========================== short test summary info ===========================
+FAILED tests/test_rbac_permissions.py::test_rbac_matrix - sqlalchemy.exc.AmbiguousForeignKeysError: Could not determine join condition between parent/child tables on relationship Task.assignee - there are multiple foreign key paths linking the tables.  Specify the 'foreign_keys' argument, providing a list of those columns which should be counted as containing a foreign key reference to the parent table.
+============================== 1 failed in 0.67s ==============================

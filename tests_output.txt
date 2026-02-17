@@ -1,0 +1,9 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-9.0.1, pluggy-1.6.0
+rootdir: C:\Faraatar-TID_Apps\okr
+plugins: anyio-4.11.0, mock-3.15.1, timeout-2.4.0
+collected 8 items
+
+tests\test_crud_authorization.py ........                                [100%]
+
+============================== 8 passed in 5.11s ==============================

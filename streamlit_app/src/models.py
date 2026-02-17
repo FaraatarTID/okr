@@ -30,6 +30,20 @@ class UserRole(str, Enum):
     MEMBER = "member"    # Can only see/edit their own OKRs
 
 
+class Team(SQLModel, table=True):
+    """Team definition for grouping users and ownership."""
+    __tablename__ = "team"
+    __table_args__ = {"extend_existing": True}
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)
+    description: Optional[str] = None
+    created_at: datetime = Field(default_factory=utc_now_naive)
+
+    # Relationships
+    members: List["User"] = Relationship(back_populates="team")
+
+
 class User(SQLModel, table=True):
     """User account for authentication and authorization."""
     __tablename__ = "user"
@@ -46,8 +60,12 @@ class User(SQLModel, table=True):
     display_name: Optional[str] = None
     role: UserRole = Field(default=UserRole.MEMBER)
     manager_id: Optional[int] = Field(default=None, foreign_key="user.id")
+    team_id: Optional[int] = Field(default=None, foreign_key="team.id", index=True)
     created_at: datetime = Field(default_factory=utc_now_naive)
     is_active: bool = Field(default=True)
+
+    # Relationships
+    team: Optional[Team] = Relationship(back_populates="members")
 
 
 class AuthThrottleState(SQLModel, table=True):
@@ -81,6 +99,13 @@ class NodeBase(SQLModel):
     progress: int = Field(default=0, ge=0, le=100)
     created_at: datetime = Field(default_factory=utc_now_naive)
     updated_at: Optional[datetime] = None
+    
+    # Ownership and Audit
+    owner_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    team_id: Optional[int] = Field(default=None, foreign_key="team.id", index=True)
+    created_by: Optional[str] = None
+    updated_by: Optional[str] = None
+
     is_expanded: bool = Field(default=True)
     external_id: Optional[str] = Field(default=None, index=True)
     # Normalize to DateTime (previously int ms). Alembic migration updates existing columns.
@@ -171,6 +196,7 @@ class Objective(NodeBase, table=True):
     
     id: Optional[int] = Field(default=None, primary_key=True)
     goal_id: int = Field(foreign_key="goal.id", index=True)
+    weight: float = Field(default=1.0)
     
     # Relationships
     goal: Optional[Goal] = Relationship(
@@ -203,6 +229,7 @@ class KeyResult(NodeBase, table=True):
     current_value: float = Field(default=0.0)
     unit: Optional[str] = None  # e.g., "%", "count", "hours"
     initiative_tags: Optional[str] = Field(default="[]")
+    weight: float = Field(default=1.0)
     
     # AI Analysis cache
     gemini_analysis: Optional[str] = None  # JSON string of analysis results
@@ -260,7 +287,9 @@ class Task(NodeBase, table=True):
     key_result: Optional[KeyResult] = Relationship(
         sa_relationship=relationship(lambda: KeyResult, back_populates="tasks")
     )
-    assignee: Optional["User"] = Relationship(sa_relationship=relationship(lambda: User))
+    assignee: Optional["User"] = Relationship(
+        sa_relationship=relationship(lambda: User, foreign_keys="[Task.assignee_id]")
+    )
     work_logs: List["WorkLog"] = Relationship(
         sa_relationship=relationship(
             lambda: WorkLog,
