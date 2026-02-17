@@ -1,4 +1,4 @@
-# AI Features Guide: The Strategic Intelligence Anthology (Literal Alignment)
+# AI Features Guide: The Strategic Intelligence Anthology 
 
 Documentation HQ: [README](../README.md)
 

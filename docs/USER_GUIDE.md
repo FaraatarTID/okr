@@ -1,4 +1,4 @@
-# User Guide: The Master Anthology (Literal Alignment)
+# User Guide: The Master Anthology 
 
 Documentation HQ: [README](../README.md)
 

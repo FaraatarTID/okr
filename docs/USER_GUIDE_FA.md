@@ -1,4 +1,4 @@
-# راهنمای کاربر: فرهنگ‌نامه اجرای مبتنی بر کد (Literal Alignment)
+# راهنمای کاربر: فرهنگ‌نامه اجرا
 
 Documentation HQ: [README](../README.md)
 
