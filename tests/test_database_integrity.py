@@ -26,6 +26,7 @@ def isolated_db(monkeypatch, tmp_path):
     monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
     monkeypatch.setattr(database, "_engine", engine, raising=False)
 
+    import src.models as models  # noqa: F401
     SQLModel.metadata.create_all(engine)
     try:
         yield
