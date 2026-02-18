@@ -1,4 +1,4 @@
-# OKR Tracker 🚀
+﻿# OKR Tracker ðŸš€
 
 A powerful Streamlit application for managing Objectives and Key Results (OKRs), featuring multi-user support, role-based access, AI-driven strategic analysis, and deadline tracking.
 
@@ -8,7 +8,7 @@ A powerful Streamlit application for managing Objectives and Key Results (OKRs),
 
 Use this section as the single entry point for all project docs.
 
-### 📘 Core Guides
+### ðŸ“˜ Core Guides
 
 - **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
 - **License**: [LICENSE](LICENSE)
@@ -25,10 +25,11 @@ Use this section as the single entry point for all project docs.
 - **OKR Lifecycle (En)**: [docs/OKR_LIFECYCLE_GUIDE.md](docs/OKR_LIFECYCLE_GUIDE.md)
 - **OKR Lifecycle (Fa)**: [docs/OKR_LIFECYCLE_GUIDE_FA.md](docs/OKR_LIFECYCLE_GUIDE_FA.md)
 
-### 🛠️ Ops & Infrastructure
+### ðŸ› ï¸ Ops & Infrastructure
 
 - **Config Reference**: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 - **Deployment Checklist**: [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
+- **Internal Deployment Checklist**: [docs/INTERNAL_DEPLOYMENT_CHECKLIST.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST.md)
 - **Docker Compose**: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
 - **Kubernetes**: [docs/KUBERNETES.md](docs/KUBERNETES.md)
 - **Reverse Proxy**: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
@@ -78,8 +79,25 @@ Security note:
 - Never commit private keys or deploy secrets to the repository.
 
 ---
+## AI Analysis Privacy and Policy
 
-## 🌟 Features Overview
+AI Strategic Coach is optional and can be configured to use:
+- Google Gemini (default, requires `GEMINI_API_KEY`)
+- OpenAI-compatible endpoints (`AI_PROVIDER="openai_compatible"` with `AI_BASE_URL` and `AI_MODEL`)
+
+All outbound AI calls are opt-in and can be fully disabled with:
+- `ALLOW_EXTERNAL_AI=false`
+
+When AI is enabled, relevant OKR content is sent to the selected AI provider, including:
+- titles and descriptions
+- progress and deadlines
+- user-entered reflections/work-log summaries
+
+Before enabling AI in production, confirm the selected provider and data flow comply with your company privacy, data-classification, and acceptable-use policies.
+
+---
+
+## ðŸŒŸ Features Overview
 
 ### Core Functionality
 
@@ -87,25 +105,25 @@ Security note:
 | ----------------------- | ---------------------------------------------------------- |
 | **Multi-User System**   | Secure authentication with bcrypt password hashing         |
 | **Role-Based Access**   | Admin, Manager, and Member roles with distinct permissions |
-| **4-Level Hierarchy**   | Goal → Objective → Key Result → Task                       |
+| **4-Level Hierarchy**   | Goal â†’ Objective â†’ Key Result â†’ Task                       |
 | **Time Tracking**       | Built-in timer with work session logging                   |
-| **Deadline Management** | Set due dates with health status indicators (🟢🟡🔴)       |
-| **AI Analysis**         | Google Gemini integration for strategic evaluation         |
+| **Deadline Management** | Set due dates with health status indicators (ðŸŸ¢ðŸŸ¡ðŸ”´)       |
+| **AI Analysis**         | Provider abstraction (Gemini or OpenAI-compatible endpoint) |
 | **PDF Reports**         | Export daily/weekly work summaries                         |
 | **RTL Support**         | Full Persian/Arabic layout support with Vazirmatn font     |
 
 ### Hierarchy Structure
 
 ```
-🏁 Goal (with ♟️ Strategy Tags)
-└── 🎯 Objective
-    └── 📊 Key Result (with ⚡ Initiative Tags)
-        └── 📋 Task (with ⏱️ Timer & 📅 Deadline)
+ðŸ Goal (with â™Ÿï¸ Strategy Tags)
+â””â”€â”€ ðŸŽ¯ Objective
+    â””â”€â”€ ðŸ“Š Key Result (with âš¡ Initiative Tags)
+        â””â”€â”€ ðŸ“‹ Task (with â±ï¸ Timer & ðŸ“… Deadline)
 ```
 
 ---
 
-## 📖 User Guide
+## ðŸ“– User Guide
 
 ### Getting Started
 
@@ -130,24 +148,24 @@ Use the cycle selector in the sidebar to choose your active OKR period (e.g., "Q
 
 #### Add a Goal
 
-1. From the home view, click **➕ Add Goal**
+1. From the home view, click **âž• Add Goal**
 2. Enter title and description
 3. Assign Strategy Tags (e.g., "Growth", "Efficiency")
 
 #### Add an Objective
 
-1. Open a Goal and click **➕ Add Objective**
+1. Open a Goal and click **âž• Add Objective**
 2. Objectives define _what_ you want to achieve
 
 #### Add a Key Result
 
-1. Open an Objective and click **➕ Add Key Result**
+1. Open an Objective and click **âž• Add Key Result**
 2. Set **Target Value** and **Unit** (e.g., "100", "%")
 3. Add Initiative Tags for categorization
 
 #### Add a Task
 
-1. Open a Key Result and click **➕ Add Task**
+1. Open a Key Result and click **âž• Add Task**
 2. Tasks are actionable items with:
    - Progress tracking (0-100%)
    - Time tracking with built-in timer
@@ -155,7 +173,7 @@ Use the cycle selector in the sidebar to choose your active OKR period (e.g., "Q
 
 ---
 
-### ⏱️ Time Tracking
+### â±ï¸ Time Tracking
 
 **For Members Only**
 
@@ -167,42 +185,42 @@ Use the cycle selector in the sidebar to choose your active OKR period (e.g., "Q
 
 ---
 
-### 📅 Deadline Management
+### ðŸ“… Deadline Management
 
 #### Setting a Deadline
 
 1. Open Task Inspector (click **Inspect** on task card)
-2. Scroll to **📅 Deadline** section
+2. Scroll to **ðŸ“… Deadline** section
 3. Select a due date and click **Save Deadline**
 
 #### Deadline Status Indicators
 
 | Status    | Icon | Meaning                                 |
 | --------- | ---- | --------------------------------------- |
-| Completed | ✅   | Task is 100% done                       |
-| On Track  | 🟢   | Progress matches expected pace          |
-| At Risk   | 🟡   | Behind schedule but deadline not passed |
-| Overdue   | 🔴   | Deadline passed, not complete           |
+| Completed | âœ…   | Task is 100% done                       |
+| On Track  | ðŸŸ¢   | Progress matches expected pace          |
+| At Risk   | ðŸŸ¡   | Behind schedule but deadline not passed |
+| Overdue   | ðŸ”´   | Deadline passed, not complete           |
 
 #### Deadline Health Score
 
 The system calculates expected progress based on time elapsed:
 
 ```
-Expected Progress = (Days Elapsed / Total Days) × 100%
+Expected Progress = (Days Elapsed / Total Days) Ã— 100%
 ```
 
 If actual progress < expected, the task is flagged "At Risk".
 
 ---
 
-### 🧠 AI Strategic Analysis
+### ðŸ§  AI Strategic Analysis
 
 **Available on Key Results**
 
 1. Open a Key Result and click **Inspect**
-2. Scroll to **🧠 AI Strategic Analysis**
-3. Click **✨ Run Analysis**
+2. Scroll to **ðŸ§  AI Strategic Analysis**
+3. Click **âœ¨ Run Analysis**
 
 #### What AI Analyzes
 
@@ -218,11 +236,11 @@ Click **Add** next to any proposed task to create it directly.
 
 ---
 
-### 🧭 Strategic Health Dashboard
+### ðŸ§­ Strategic Health Dashboard
 
 **For Admin/Manager**
 
-Access via the **🧭** button in sidebar.
+Access via the **ðŸ§­** button in sidebar.
 
 #### Dashboard Features
 
@@ -240,18 +258,18 @@ Access via the **🧭** button in sidebar.
 
 | Quadrant           | Meaning                              |
 | ------------------ | ------------------------------------ |
-| 🌟 High Performers | High efficiency + High effectiveness |
-| ⚠️ Busy Work       | High efficiency + Low effectiveness  |
-| 🤔 Strategy Gap    | Low efficiency + High effectiveness  |
-| ❌ Disconnected    | Low efficiency + Low effectiveness   |
+| ðŸŒŸ High Performers | High efficiency + High effectiveness |
+| âš ï¸ Busy Work       | High efficiency + Low effectiveness  |
+| ðŸ¤” Strategy Gap    | Low efficiency + High effectiveness  |
+| âŒ Disconnected    | Low efficiency + Low effectiveness   |
 
 ---
 
-### 🧠 AI Team Coach
+### ðŸ§  AI Team Coach
 
 **For Admin/Manager** - Available in the Dashboard
 
-Click **✨ Get Coaching Tips** to receive AI-powered insights:
+Click **âœ¨ Get Coaching Tips** to receive AI-powered insights:
 
 #### What You Get
 
@@ -275,7 +293,7 @@ The AI analyzes your team's data including:
 
 ---
 
-### 📄 Reports
+### ðŸ“„ Reports
 
 Access via **Daily Report** or **Weekly Report** buttons.
 
@@ -288,29 +306,29 @@ Access via **Daily Report** or **Weekly Report** buttons.
 
 #### PDF Export
 
-Click **📄 Export as PDF** to generate a formatted report.
+Click **ðŸ“„ Export as PDF** to generate a formatted report.
 
 ---
 
-## 🔒 Role Permissions
+## ðŸ”’ Role Permissions
 
 | Feature                 |  Admin   | Manager  |       Member        |
 | ----------------------- | :------: | :------: | :-----------------: |
-| Manage Users & Cycles   |    ✅    |    ❌    |         ❌          |
-| View All Teams          |    ✅    |    ❌    |         ❌          |
-| Team Dashboard          |    ✅    |    ✅    |         ❌          |
-| AI Team Coach           |    ✅    |    ✅    |         ❌          |
-| Create Goals/Objectives |    ✅    |    ✅    |         ❌          |
-| Create Tasks            |    ✅    |    ✅    |         ✅          |
-| Use Timer               | ✅ (Own) | ✅ (Own) | ✅ (Own + Assigned) |
-| Edit Own Items          |    ✅    |    ✅    |         ✅          |
-| Edit Others' Items      |    ❌    |    ❌    |         ❌          |
+| Manage Users & Cycles   |    âœ…    |    âŒ    |         âŒ          |
+| View All Teams          |    âœ…    |    âŒ    |         âŒ          |
+| Team Dashboard          |    âœ…    |    âœ…    |         âŒ          |
+| AI Team Coach           |    âœ…    |    âœ…    |         âŒ          |
+| Create Goals/Objectives |    âœ…    |    âœ…    |         âŒ          |
+| Create Tasks            |    âœ…    |    âœ…    |         âœ…          |
+| Use Timer               | âœ… (Own) | âœ… (Own) | âœ… (Own + Assigned) |
+| Edit Own Items          |    âœ…    |    âœ…    |         âœ…          |
+| Edit Others' Items      |    âŒ    |    âŒ    |         âŒ          |
 
 > **Note**: Only the **Owner** (creator) can edit/delete an item.
 
 ---
 
-## 🛠️ Installation
+## ðŸ› ï¸ Installation
 
 ### Prerequisites
 
@@ -351,7 +369,7 @@ python streamlit_app/scripts/ai_provider_health_check.py
 
 ---
 
-## 📂 Architecture
+## ðŸ“‚ Architecture
 
 | Component | Technology                                   |
 | --------- | -------------------------------------------- |
@@ -365,7 +383,7 @@ python streamlit_app/scripts/ai_provider_health_check.py
 
 ---
 
-## 🏗️ Project Structure
+## ðŸ—ï¸ Project Structure
 
 The codebase is organized modularly to separate concerns across the UI, business logic, and data layers:
 
@@ -383,9 +401,9 @@ The codebase is organized modularly to separate concerns across the UI, business
 
 ---
 
-## 🆕 Recent Updates
+## ðŸ†• Recent Updates
 
-### 🤝 Unified Collaboration
+### ðŸ¤ Unified Collaboration
 
 - **Task Assignment**: Managers can assign tasks to specific team members.
 - **Shared Inbox**: Members have a dedicated "Assigned by Manager" inbox for incoming tasks.
@@ -407,7 +425,7 @@ The codebase is organized modularly to separate concerns across the UI, business
 ### Deadline Feature
 
 - Set deadlines on tasks with date picker
-- Automatic health status calculation (🟢🟡🔴)
+- Automatic health status calculation (ðŸŸ¢ðŸŸ¡ðŸ”´)
 - Deadline warnings in AI analysis
 - Dashboard metrics for overdue/at-risk tasks
 
@@ -463,3 +481,4 @@ python streamlit_app/scripts/perf_hotpaths.py
 ```
 
 See `performance.md` for current baselines and budgets.
+
