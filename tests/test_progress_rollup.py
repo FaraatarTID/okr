@@ -1,6 +1,6 @@
 
 import pytest
-from src.models import User, UserRole, Goal, Objective, KeyResult, ScoreMode, LifecycleState
+from src.models import User, UserRole, Goal, Objective, KeyResult, ScoreMode, LifecycleState, VariationType
 from src.domain.progress import refresh_hierarchy_progress, calculate_objective_progress, calculate_goal_progress
 from datetime import datetime
 
@@ -56,7 +56,7 @@ def test_rollup_calculation(isolated_db):
 
     # Act: Update KR1 to 50%
     # Using check-in (which triggers rollup)
-    create_check_in(kr1.id, value=50, confidence=5, comment="Check-in 1", actor_username="alice")
+    create_check_in(kr1.id, value=50, confidence=5, comment="Check-in 1", actor_username="alice", variation_type=VariationType.COMMON_CAUSE)
     
     # Assert: Objective should be (50 + 0) / 2 = 25%
     with get_session_context() as session:
@@ -67,7 +67,7 @@ def test_rollup_calculation(isolated_db):
         assert g.progress == 25
 
     # Act: Update KR2 to 100%
-    create_check_in(kr2.id, value=100, confidence=5, comment="Check-in 2", actor_username="alice")
+    create_check_in(kr2.id, value=100, confidence=5, comment="Check-in 2", actor_username="alice", variation_type=VariationType.COMMON_CAUSE)
 
     # Assert: (50 + 100) / 2 = 75%
     with get_session_context() as session:
@@ -115,7 +115,7 @@ def test_weighted_rollup(isolated_db):
         session.commit()
 
     # KR1 -> 100% (Weight 1) -> Contribution 100 * 1 = 100
-    create_check_in(kr1.id, value=100, confidence=5, comment="Check-in W1", actor_username="bob")
+    create_check_in(kr1.id, value=100, confidence=5, comment="Check-in W1", actor_username="bob", variation_type=VariationType.COMMON_CAUSE)
     
     # KR2 -> 0% (Weight 3) -> Contribution 0 * 3 = 0
     # Total Weight = 4. Weighted Sum = 100. Average = 100/4 = 25%.
@@ -127,7 +127,7 @@ def test_weighted_rollup(isolated_db):
     # KR2 -> 50% (Weight 3) -> Contribution 50 * 3 = 150.
     # Total Weighted Sum = 100 + 150 = 250.
     # Average = 250 / 4 = 62.5 -> 62 or 63. Round usually to nearest even or up. Python round(62.5) -> 62.
-    create_check_in(kr2.id, value=50, confidence=5, comment="Check-in W2", actor_username="bob")
+    create_check_in(kr2.id, value=50, confidence=5, comment="Check-in W2", actor_username="bob", variation_type=VariationType.COMMON_CAUSE)
     
     with get_session_context() as session:
         o = session.get(Objective, obj.id)
