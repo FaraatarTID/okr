@@ -40,8 +40,66 @@ You can update KRs manually in two ways:
 Important:
 - `get_krs_needing_checkin` lists ACTIVE KRs with stale/missing check-ins.
 - DRAFT objectives/KRs are excluded from rollups.
+- **Every check-in now requires variation classification** (see Learning Loop below).
 
-## 3. Weekly Ritual vs Retrospective (Clearly Distinguished)
+## 3. Learning Loop: Variation Classification & Experiments
+
+The Learning Loop transforms weekly check-ins from passive reporting into active system improvement.
+
+### 3.1 Variation Classification
+
+Every KR check-in requires classifying the metric change:
+
+| Type | Meaning | When to Use |
+|------|---------|-------------|
+| **Common Cause** | Normal system behavior | Regular fluctuations within expected range |
+| **Special Cause** | Exceptional event | One-time events, outages, external factors |
+
+**Common Cause flow:**
+- Optionally link to an active experiment (if testing a change)
+- If no experiment exists, you can create one inline
+
+**Special Cause flow:**
+- Must provide a note (min 5 characters) explaining the exceptional event
+- Cannot link to experiments (special causes are not controlled tests)
+
+### 3.2 Experiment Lifecycle
+
+Experiments are first-class artifacts linked to Key Results:
+
+| Status | Description |
+|--------|-------------|
+| `PLANNED` | Experiment defined but not started |
+| `RUNNING` | Experiment in progress |
+| `DECIDED` | Experiment concluded with a decision |
+
+Decisions:
+| Decision | Meaning |
+|----------|---------|
+| `ADOPT` | Keep the change permanently |
+| `REVERT` | Roll back the change |
+| `ITERATE` | Modify and retry |
+| `UNKNOWN` | Inconclusive results |
+
+### 3.3 Experiment Review in Weekly Ritual
+
+**Step 1 (Review Week):**
+- Shows experiments that ended this week OR are still RUNNING
+- For each experiment, record decision and rationale
+- Decision updates both `RetroExperimentOutcome` AND closes the experiment (status → DECIDED)
+
+**Step 2 (Update KRs):**
+- Classify variation type for each check-in
+- Link to active experiment (if Common Cause)
+
+### 3.4 Creating Experiments
+
+From KR check-in (Common Cause flow):
+1. Click "Start New Experiment"
+2. Fill: hypothesis ("If we do X, then Y will happen"), change description, expected direction/effect
+3. Submit creates experiment and sets status to RUNNING
+
+## 4. Weekly Ritual vs Retrospective (Clearly Distinguished)
 
 Weekly Ritual (`active_report_mode = "Ritual"`) is a 3-step guided flow:
 1. Review Week: work-log recap, optional AI summary, and retrospective text input.
