@@ -32,6 +32,12 @@ from src.models import (
     LifecycleState,
     AlignmentEdge,
     AlignmentType,
+    VariationType,
+    ExperimentStatus,
+    ExperimentDecision,
+    ExpectedEffectDirection,
+    Experiment,
+    RetroExperimentOutcome,
 )
 from src.database import get_session_context
 from src.domain import analytics as domain_analytics
@@ -89,6 +95,17 @@ _ALLOWED_TASK_UPDATE_KWARGS = {
     "deadline",
     "assignee_id",
     "is_expanded",
+}
+_ALLOWED_EXPERIMENT_UPDATE_FIELDS = {
+    "hypothesis",
+    "change_description",
+    "start_at",
+    "end_at",
+    "status",
+    "decision",
+    "decision_rationale",
+    "expected_effect_direction",
+    "expected_effect_size",
 }
 _UNSET = object()
 AUTH_USER_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_USER_WINDOW_SECONDS", "300")))
@@ -813,12 +830,45 @@ def create_check_in(
     value: float,
     confidence: int,
     comment: str,
-    actor_username: Optional[str] = None,
+    actor_username: str,
+    variation_type: Optional[VariationType] = None,
+    special_cause_note: Optional[str] = None,
+    experiment_id: Optional[int] = None,
 ) -> CheckIn:
-    """Create a new check-in and update the KR's current value."""
+    """Create a new check-in with learning loop fields."""
     with get_session_context() as session:
         goal = _get_goal_for_key_result(session, kr_id)
         _authorize_goal_mutation(session, goal, actor_username)
+
+        # === ENFORCEMENT: variation_type is required for new check-ins ===
+        if variation_type is None:
+            raise ValueError(
+                "variation_type is required for new check-ins. "
+                "Classify as COMMON_CAUSE or SPECIAL_CAUSE."
+            )
+
+        # === LEARNING LOOP VALIDATION ===
+        if variation_type == VariationType.SPECIAL_CAUSE:
+            # Special cause: require meaningful note, clear experiment linkage
+            if not special_cause_note or len(special_cause_note.strip()) < 5:
+                raise ValueError(
+                    "Special cause variation requires a note (at least 5 characters)"
+                )
+            experiment_id = None  # Special causes don't link to experiments
+            special_cause_note = special_cause_note.strip()
+        elif variation_type == VariationType.COMMON_CAUSE:
+            # Common cause: clear special_cause_note
+            special_cause_note = None
+            
+            # Validate experiment belongs to this KR if provided
+            if experiment_id is not None:
+                experiment = session.get(Experiment, experiment_id)
+                if not experiment:
+                    raise ValueError(f"Experiment {experiment_id} not found")
+                if experiment.key_result_id != kr_id:
+                    raise ValueError(
+                        f"Experiment {experiment_id} does not belong to KR {kr_id}"
+                    )
 
         # Create CheckIn
         check_in = CheckIn(
@@ -826,18 +876,21 @@ def create_check_in(
             value=value,
             confidence_score=confidence,
             comment=comment,
+            variation_type=variation_type,
+            special_cause_note=special_cause_note,
+            experiment_id=experiment_id,
         )
         session.add(check_in)
 
-        # Update KeyResult
+        # Update KeyResult current_value
+        # NOTE: Do NOT manually set kr.progress here - refresh_hierarchy_progress
+        # will calculate it correctly via calculate_kr_score for all metric types
         kr = session.get(KeyResult, kr_id)
         if kr:
             kr.current_value = value
-            if kr.target_value > 0:
-                kr.progress = int((value / kr.target_value) * 100)
             session.add(kr)
 
-        # Recalculate hierarchy
+        # Recalculate hierarchy (this correctly updates KR progress via scoring)
         refresh_hierarchy_progress(session, kr_id, "KEY_RESULT")
 
         session.commit()
@@ -846,7 +899,13 @@ def create_check_in(
             "create",
             "check_in",
             actor=actor_username,
-            details={"kr_id": kr_id, "value": value, "confidence": confidence},
+            details={
+                "kr_id": kr_id,
+                "value": value,
+                "confidence": confidence,
+                "variation_type": variation_type.value if variation_type else None,
+                "experiment_id": experiment_id,
+            },
         )
         clear_cache_safe()
         return check_in
@@ -871,6 +930,137 @@ def get_krs_needing_checkin(
     user_id: str, cycle_id: int, days_threshold: int = 7
 ) -> List[KeyResult]:
     return domain_analytics.get_krs_needing_checkin(user_id, cycle_id, days_threshold)
+
+
+# ============================================================================
+# EXPERIMENT OPERATIONS (Learning Loop)
+# ============================================================================
+
+
+def create_experiment(
+    key_result_id: int,
+    cycle_id: int,
+    hypothesis: str,
+    change_description: str,
+    actor_username: str,
+    start_at: Optional[datetime] = None,
+    expected_effect_direction: Optional[ExpectedEffectDirection] = None,
+    expected_effect_size: Optional[float] = None,
+) -> Experiment:
+    """Create a new experiment for a KR with authorization and cycle validation."""
+    with get_session_context() as session:
+        goal = _get_goal_for_key_result(session, key_result_id)
+        _authorize_goal_mutation(session, goal, actor_username)
+        
+        # Validate cycle_id matches the KR's goal cycle
+        if goal.cycle_id != cycle_id:
+            raise ValueError(
+                f"Experiment cycle_id ({cycle_id}) must match goal's cycle ({goal.cycle_id})"
+            )
+        
+        experiment = Experiment(
+            key_result_id=key_result_id,
+            cycle_id=cycle_id,
+            created_by=actor_username,
+            hypothesis=hypothesis,
+            change_description=change_description,
+            start_at=start_at or utc_now_naive(),
+            expected_effect_direction=expected_effect_direction,
+            expected_effect_size=expected_effect_size,
+            status=ExperimentStatus.PLANNED,
+        )
+        session.add(experiment)
+        session.commit()
+        session.refresh(experiment)
+        audit_log(
+            "create", "experiment", actor=actor_username,
+            details={"experiment_id": experiment.id, "kr_id": key_result_id, "cycle_id": cycle_id}
+        )
+        clear_cache_safe()
+        return experiment
+
+
+def list_experiments_for_kr(
+    key_result_id: int,
+    actor_username: str,
+) -> List[Experiment]:
+    """List all experiments for a KR. Enforces goal-scoped read access."""
+    with get_session_context() as session:
+        goal = _get_goal_for_key_result(session, key_result_id)
+        domain_auth._authorize_goal_scoped_access(session, goal, actor_username)
+        
+        statement = (
+            select(Experiment)
+            .where(Experiment.key_result_id == key_result_id)
+            .order_by(col(Experiment.created_at).desc())
+        )
+        return list(session.exec(statement).all())
+
+
+def get_active_experiments_for_kr(
+    key_result_id: int,
+    actor_username: str,
+) -> List[Experiment]:
+    """Get RUNNING experiments for a KR. Enforces goal-scoped read access."""
+    with get_session_context() as session:
+        goal = _get_goal_for_key_result(session, key_result_id)
+        domain_auth._authorize_goal_scoped_access(session, goal, actor_username)
+        
+        statement = (
+            select(Experiment)
+            .where(Experiment.key_result_id == key_result_id)
+            .where(Experiment.status == ExperimentStatus.RUNNING)
+            .order_by(col(Experiment.created_at).desc())
+        )
+        return list(session.exec(statement).all())
+
+
+def update_experiment(
+    experiment_id: int,
+    actor_username: str,
+    **updates
+) -> Optional[Experiment]:
+    """Update experiment fields with authorization."""
+    with get_session_context() as session:
+        experiment = session.get(Experiment, experiment_id)
+        if not experiment:
+            return None
+        
+        goal = _get_goal_for_key_result(session, experiment.key_result_id)
+        _authorize_goal_mutation(session, goal, actor_username)
+        
+        _validate_update_fields("experiment", updates, _ALLOWED_EXPERIMENT_UPDATE_FIELDS)
+        
+        for key, value in updates.items():
+            if hasattr(experiment, key):
+                setattr(experiment, key, value)
+        
+        session.add(experiment)
+        session.commit()
+        session.refresh(experiment)
+        audit_log(
+            "update", "experiment", actor=actor_username,
+            details={"experiment_id": experiment_id, "fields": list(updates.keys())}
+        )
+        clear_cache_safe()
+        return experiment
+
+
+def close_experiment(
+    experiment_id: int,
+    decision: ExperimentDecision,
+    rationale: str,
+    actor_username: str,
+) -> Optional[Experiment]:
+    """Close an experiment with a decision."""
+    return update_experiment(
+        experiment_id,
+        actor_username=actor_username,
+        status=ExperimentStatus.DECIDED,
+        decision=decision,
+        decision_rationale=rationale,
+        end_at=utc_now_naive(),
+    )
 
 
 # ============================================================================
@@ -2344,6 +2534,68 @@ def get_team_retrospectives(
             stmt = stmt.where(Retrospective.cycle_id == cycle_id)
         stmt = stmt.order_by(col(Retrospective.week_start_date).desc())
         return list(session.exec(stmt).all())
+
+
+def upsert_retro_experiment_outcome(
+    retrospective_id: int,
+    experiment_id: int,
+    decision: ExperimentDecision,
+    rationale: Optional[str],
+    actor_username: str,
+) -> RetroExperimentOutcome:
+    """
+    Attach or update experiment outcome to retro.
+    Only retro owner can modify. Handles concurrent upserts.
+    """
+    with get_session_context() as session:
+        retro = session.get(Retrospective, retrospective_id)
+        if not retro:
+            raise ValueError(f"Retrospective {retrospective_id} not found")
+        
+        # Authorization: only retro owner can attach outcomes
+        actor = session.exec(
+            select(User).where(User.username == actor_username)
+        ).first()
+        if not actor:
+            raise PermissionError("Actor not found")
+        
+        if retro.user_id != actor.id:
+            raise PermissionError("Only the retrospective owner can attach experiment outcomes")
+        
+        # Validate experiment exists
+        experiment = session.get(Experiment, experiment_id)
+        if not experiment:
+            raise ValueError(f"Experiment {experiment_id} not found")
+        
+        # Attempt upsert with race condition handling
+        try:
+            # Try insert first
+            outcome = RetroExperimentOutcome(
+                retrospective_id=retrospective_id,
+                experiment_id=experiment_id,
+                decision=decision,
+                rationale=rationale,
+            )
+            session.add(outcome)
+            session.commit()
+            session.refresh(outcome)
+            return outcome
+        except IntegrityError:
+            # Unique constraint violated - re-select and update
+            session.rollback()
+            existing = session.exec(
+                select(RetroExperimentOutcome)
+                .where(RetroExperimentOutcome.retrospective_id == retrospective_id)
+                .where(RetroExperimentOutcome.experiment_id == experiment_id)
+            ).first()
+            if existing:
+                existing.decision = decision
+                existing.rationale = rationale
+                session.add(existing)
+                session.commit()
+                session.refresh(existing)
+                return existing
+            raise  # Re-raise if we can't find it after constraint error
 
 
 def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dict:

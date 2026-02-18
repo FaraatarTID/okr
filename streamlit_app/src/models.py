@@ -56,6 +56,33 @@ class AlignmentType(str, Enum):
     CONTRIBUTES = "CONTRIBUTES" # Horizontal alignment (e.g., Peer Obj -> Peer Obj)
 
 
+class VariationType(str, Enum):
+    """Classification of variation in check-in data for learning loop."""
+    COMMON_CAUSE = "COMMON_CAUSE"
+    SPECIAL_CAUSE = "SPECIAL_CAUSE"
+
+
+class ExperimentStatus(str, Enum):
+    """Lifecycle status for experiments."""
+    PLANNED = "PLANNED"
+    RUNNING = "RUNNING"
+    DECIDED = "DECIDED"
+
+
+class ExperimentDecision(str, Enum):
+    """Decision outcome for a completed experiment."""
+    ADOPT = "ADOPT"
+    REVERT = "REVERT"
+    ITERATE = "ITERATE"
+    UNKNOWN = "UNKNOWN"
+
+
+class ExpectedEffectDirection(str, Enum):
+    """Expected direction of experiment effect on KR metric."""
+    UP = "UP"
+    DOWN = "DOWN"
+
+
 class Team(SQLModel, table=True):
     """Team definition for grouping users and ownership."""
     __tablename__ = "team"
@@ -394,6 +421,7 @@ class CheckIn(SQLModel, table=True):
     __table_args__ = (
         CheckConstraint("confidence_score >= 0 AND confidence_score <= 10", name="ck_check_in_confidence_range"),
         Index("ix_check_in_kr_created", "key_result_id", "created_at"),
+        Index("ix_check_in_kr_var_created", "key_result_id", "variation_type", "created_at"),
         {"extend_existing": True},
     )
     
@@ -405,10 +433,56 @@ class CheckIn(SQLModel, table=True):
     comment: Optional[str] = None
     created_at: datetime = Field(default_factory=utc_now_naive)
     
-    # Relationships
+    # Learning loop fields (null default for backward compatibility)
+    variation_type: Optional[VariationType] = Field(default=None)
+    special_cause_note: Optional[str] = None
+    experiment_id: Optional[int] = Field(default=None, foreign_key="experiment.id")
+    
+    # Relationships (minimal - no Experiment relationship to avoid eager loads)
     key_result: Optional["KeyResult"] = Relationship(
         sa_relationship=relationship(lambda: KeyResult, back_populates="check_ins")
     )
+
+
+class Experiment(SQLModel, table=True):
+    """System change experiment linked to a Key Result for learning loop."""
+    __tablename__ = "experiment"
+    __table_args__ = (
+        Index("ix_experiment_kr_status", "key_result_id", "status"),
+        Index("ix_experiment_cycle_status", "cycle_id", "status"),
+        {"extend_existing": True}
+    )
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key_result_id: int = Field(foreign_key="key_result.id", index=True)
+    cycle_id: int = Field(foreign_key="cycle.id", index=True)  # Non-null, cycle-scoped
+    created_by: str  # Username, consistent with existing pattern
+    hypothesis: str
+    change_description: str
+    start_at: datetime = Field(default_factory=utc_now_naive)
+    end_at: Optional[datetime] = None
+    status: ExperimentStatus = Field(default=ExperimentStatus.PLANNED)
+    decision: Optional[ExperimentDecision] = None
+    decision_rationale: Optional[str] = None
+    expected_effect_direction: Optional[ExpectedEffectDirection] = None
+    expected_effect_size: Optional[float] = None
+    created_at: datetime = Field(default_factory=utc_now_naive)
+
+
+class RetroExperimentOutcome(SQLModel, table=True):
+    """Links retrospective to experiment decision for institutional learning."""
+    __tablename__ = "retro_experiment_outcome"
+    __table_args__ = (
+        Index("ux_retro_experiment", "retrospective_id", "experiment_id", unique=True),
+        {"extend_existing": True}
+    )
+    
+    id: Optional[int] = Field(default=None, primary_key=True)
+    retrospective_id: int = Field(foreign_key="retrospective.id", index=True)
+    experiment_id: int = Field(foreign_key="experiment.id", index=True)
+    decision: ExperimentDecision
+    rationale: Optional[str] = None
+    created_at: datetime = Field(default_factory=utc_now_naive)
 
 
 class AlignmentEdge(SQLModel, table=True):

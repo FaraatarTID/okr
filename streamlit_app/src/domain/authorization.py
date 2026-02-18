@@ -79,6 +79,23 @@ def _authorize_goal_mutation(
         raise PermissionError("Insufficient permissions for this goal")
 
 
+def _authorize_goal_scoped_access(
+    session: Session, goal: Optional[Goal], actor_username: Optional[str]
+) -> None:
+    """
+    Enforce access to goal-scoped data (experiments, check-ins, etc.).
+    
+    Currently implements goal-scoped access where read equals mutation scope:
+    - Goal owner can access
+    - Manager of goal owner can access  
+    - Admins can access
+    
+    If broader read visibility is needed in the future, implement a separate
+    _authorize_goal_read with relaxed rules without modifying this function.
+    """
+    _authorize_goal_mutation(session, goal, actor_username)
+
+
 def _get_goal_for_objective(session: Session, objective_id: int) -> Optional[Goal]:
     statement = select(Goal).join(Objective).where(Objective.id == objective_id)
     return session.exec(statement).first()
