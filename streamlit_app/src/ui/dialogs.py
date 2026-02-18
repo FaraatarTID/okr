@@ -22,9 +22,10 @@ from src.crud import (
     create_retrospective, get_user_retrospectives, get_team_retrospectives,
     create_goal, create_objective, create_key_result
     , get_work_logs_by_date_range,
-    create_team, get_all_teams, update_team, delete_team
+    create_team, get_all_teams, update_team, delete_team,
+    create_experiment, get_active_experiments_for_kr, update_experiment,
 )
-from src.models import UserRole
+from src.models import UserRole, VariationType, ExperimentStatus, ExpectedEffectDirection
 
 # Cache helpers for dialog-heavy queries
 @st.cache_data(ttl=60, show_spinner=False)
@@ -775,6 +776,112 @@ def render_weekly_ritual_dialog(username):
                             st.session_state[f"val_{kr.id}"] = float(sugg['suggested_current_value'])
                             st.rerun()
 
+                    # === LEARNING LOOP: Variation Classification ===
+                    st.markdown("---")
+                    st.markdown("**🔬 Variation Classification**")
+                    st.caption("Every check-in must classify what type of variation explains this result.")
+                    
+                    var_type_key = f"var_type_{kr.id}"
+                    exp_cache_key = f"active_exps_{kr.id}"
+                    
+                    if var_type_key not in st.session_state:
+                        st.session_state[var_type_key] = "Common Cause"
+                    
+                    variation = st.radio(
+                        "What type of variation?",
+                        ["Common Cause", "Special Cause"],
+                        key=var_type_key,
+                        horizontal=True,
+                        help="Common cause = system behavior we can experiment on. Special cause = exceptional one-time event."
+                    )
+                    
+                    experiment_id_to_link = None
+                    special_cause_text = None
+                    
+                    if variation == "Special Cause":
+                        st.info("📍 Special causes are exceptional events. Describe what happened.")
+                        special_cause_text = st.text_input(
+                            "Special cause note (required, min 5 chars)",
+                            placeholder="e.g., Customer outage, team member emergency",
+                            key=f"special_note_{kr.id}",
+                            max_chars=200,
+                        )
+                    else:
+                        st.info("🔬 Common causes reflect system behavior. Link to an active experiment if one exists.")
+                        
+                        # Cache experiments for this dialog session
+                        if exp_cache_key not in st.session_state:
+                            try:
+                                st.session_state[exp_cache_key] = get_active_experiments_for_kr(
+                                    kr.id, actor_username=username
+                                )
+                            except PermissionError:
+                                st.session_state[exp_cache_key] = []
+                        
+                        active_exps = st.session_state.get(exp_cache_key, [])
+                        
+                        if active_exps:
+                            exp_options = {"None (no experiment this week)": None}
+                            for e in active_exps:
+                                status_bad = "🟢" if e.status == ExperimentStatus.RUNNING else "⚪"
+                                label = f"{status_bad} {e.hypothesis[:50]}{'...' if len(e.hypothesis) > 50 else ''}"
+                                exp_options[label] = e.id
+                            
+                            selected_exp_label = st.selectbox(
+                                "Link to active experiment",
+                                options=list(exp_options.keys()),
+                                key=f"exp_select_{kr.id}",
+                            )
+                            experiment_id_to_link = exp_options.get(selected_exp_label)
+                        else:
+                            st.warning("No active experiments for this KR.")
+                            
+                            # Inline "Start Experiment" toggle
+                            show_exp_form_key = f"show_exp_form_{kr.id}"
+                            if st.button("🔬 Start New Experiment", key=f"btn_new_exp_{kr.id}"):
+                                st.session_state[show_exp_form_key] = True
+                            
+                            if st.session_state.get(show_exp_form_key):
+                                with st.form(f"new_exp_form_{kr.id}"):
+                                    st.markdown("**New Experiment**")
+                                    new_hyp = st.text_input("Hypothesis *", placeholder="If we do X, then Y will improve")
+                                    new_change = st.text_area("Change Description *", placeholder="What specific change will we make?")
+                                    
+                                    c_dir, c_size = st.columns(2)
+                                    with c_dir:
+                                        exp_dir = st.selectbox("Expected Direction", ["UP", "DOWN"])
+                                    with c_size:
+                                        exp_size = st.number_input("Expected Effect Size", min_value=0.0, value=10.0, step=5.0)
+                                    
+                                    if st.form_submit_button("Create & Start Experiment"):
+                                        if new_hyp and new_change:
+                                            try:
+                                                new_exp = create_experiment(
+                                                    key_result_id=kr.id,
+                                                    cycle_id=cycle_id,
+                                                    hypothesis=new_hyp,
+                                                    change_description=new_change,
+                                                    actor_username=username,
+                                                    expected_effect_direction=ExpectedEffectDirection(exp_dir),
+                                                    expected_effect_size=exp_size,
+                                                )
+                                                # Immediately set to RUNNING
+                                                update_experiment(new_exp.id, actor_username=username, status=ExperimentStatus.RUNNING)
+                                                
+                                                # Clear cache
+                                                if exp_cache_key in st.session_state:
+                                                    del st.session_state[exp_cache_key]
+                                                del st.session_state[show_exp_form_key]
+                                                st.success("Experiment created and running!")
+                                                st.rerun()
+                                            except PermissionError as e:
+                                                st.error(str(e))
+                                            except ValueError as e:
+                                                st.error(str(e))
+                                        else:
+                                            st.error("Hypothesis and change description are required.")
+
+                    st.markdown("---")
                     with st.form(f"checkin_form_{kr.id}"):
                         c1, c2 = st.columns(2)
                         with c1:
@@ -791,11 +898,21 @@ def render_weekly_ritual_dialog(username):
                                     conf,
                                     comment,
                                     actor_username=username,
+                                    variation_type=VariationType.COMMON_CAUSE if variation == "Common Cause" else VariationType.SPECIAL_CAUSE,
+                                    special_cause_note=special_cause_text,
+                                    experiment_id=experiment_id_to_link,
                                 )
                             except PermissionError as e:
                                 st.error(str(e))
                                 return
+                            except ValueError as e:
+                                st.error(str(e))
+                                return
                             if ai_key in st.session_state: del st.session_state[ai_key]
+                            # Clear experiment cache on successful check-in
+                            if exp_cache_key in st.session_state:
+                                del st.session_state[exp_cache_key]
+                            st.success("Check-in recorded!")
                             st.rerun()
                             
         col_nav_2 = st.columns(2)
