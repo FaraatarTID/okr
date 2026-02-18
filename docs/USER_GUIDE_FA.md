@@ -3,6 +3,8 @@ Documentation HQ: [README](../README.md)
 
 این راهنما رفتار واقعی فعلی سامانه را بر اساس کد (`streamlit_app/app.py`، `streamlit_app/src/ui/*`، `streamlit_app/src/crud.py`) توضیح می‌دهد.
 
+راهنمای canonical مربوط به Learning Loop (دو‌زبانه EN+FA با headingهای همگام): [`docs/learning-loop.md`](learning-loop.md).
+
 ## ۱. اطلس به عنوان Cockpit اجرایی
 
 محیط اصلی اجرا در برنامه، Atlas (`render_atlas_workspace`) است و سه بخش اصلی دارد:

@@ -3,6 +3,8 @@ Documentation HQ: [README](../README.md)
 
 This guide describes the current behavior implemented in the codebase (`streamlit_app/app.py`, `streamlit_app/src/ui/*`, `streamlit_app/src/crud.py`).
 
+Learning Loop canonical guide (EN+FA, synced headings): [`docs/learning-loop.md`](learning-loop.md).
+
 ## 1. Atlas Workspace as Your Cockpit
 
 The main execution workspace is Atlas (`render_atlas_workspace`), composed of:

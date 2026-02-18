@@ -10,7 +10,9 @@ Use this section as the single entry point for all project docs.
 
 ### ðŸ“˜ Core Guides
 
-- **Architecture**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Architecture (Learning Loop Contract, EN+FA)**: [docs/architecture.md](docs/architecture.md)
+- **Learning Loop Workflow (EN+FA)**: [docs/learning-loop.md](docs/learning-loop.md)
+- **Architecture (Full System)**: [ARCHITECTURE.md](ARCHITECTURE.md)
 - **License**: [LICENSE](LICENSE)
 - **Deployment Guide**: [DEPLOYMENT.md](DEPLOYMENT.md)
 - **Performance Budget**: [performance.md](performance.md)
