@@ -285,7 +285,8 @@ Returns experiments that:
 **On Submit:**
 1. Retro content saved via `create_retrospective()`
 2. For each experiment with a decision selected:
-   - Call `upsert_retro_experiment_outcome()`
+   - Call `upsert_retro_experiment_outcome()` to record outcome in retro
+   - Call `close_experiment()` to update Experiment record (status → DECIDED, decision, rationale, end_at)
    - Exceptions caught per-experiment (won't fail retro save)
    - Warning shown if outcome save fails
 
@@ -551,6 +552,22 @@ def list_experiments_for_retro_window(
 **Raises:**
 - `PermissionError`: Per-experiment if actor lacks access (caught internally, experiment excluded from results)
 
+### close_experiment
+
+```python
+def close_experiment(
+    experiment_id: int,
+    decision: ExperimentDecision,
+    rationale: str,
+    actor_username: str,
+) -> Optional[Experiment]
+```
+
+**Description:** Closes an experiment by setting status to DECIDED, recording the decision and rationale, and setting `end_at` to current time.
+
+**Raises:**
+- `PermissionError`: If actor lacks goal mutation scope
+
 ---
 
 ## Appendix B: Enum Values Quick Reference
@@ -561,3 +578,69 @@ def list_experiments_for_retro_window(
 | `ExperimentStatus` | `PLANNED`, `RUNNING`, `DECIDED` |
 | `ExperimentDecision` | `ADOPT`, `REVERT`, `ITERATE`, `UNKNOWN` |
 | `ExpectedEffectDirection` | `UP`, `DOWN` |
+
+---
+latest update:
+
+## Summary of Changes
+
+### 1. New CRUD Function (`crud.py`)
+```python
+def list_experiments_for_retro_window(
+    cycle_id, window_start, window_end, actor_username
+) -> List[Experiment]
+```
+- Returns experiments that ended in the week window OR are still RUNNING
+- Enforces goal-scoped access per experiment
+- Experiments without access are silently excluded
+
+### 2. Weekly Ritual Step 1 (`dialogs.py`)
+Added "🔬 Experiments Reviewed This Week" section:
+- Lists experiments from `list_experiments_for_retro_window()`
+- For each: status badge, hypothesis, decision dropdown, rationale input
+- On submit:
+  - Calls `upsert_retro_experiment_outcome()` to record outcome linked to retro
+  - Calls `close_experiment()` to update Experiment record (status → DECIDED)
+- Exceptions caught per-experiment (won't fail retro save)
+
+### 3. Updated Imports
+Added to `dialogs.py`:
+- `list_experiments_for_retro_window`
+- `upsert_retro_experiment_outcome`
+- `close_experiment`
+- `ExperimentDecision`
+
+### 4. Technical Report Updated
+- Section 5.3: Retro experiment review UI documentation
+- Appendix A: New `list_experiments_for_retro_window` API reference
+
+### Complete Learning Loop Flow
+
+```
+Weekly Ritual Step 1                    Weekly Ritual Step 2
+       │                                       │
+       │  Write retro content                  │  Update KRs with variation_type
+       │  Review experiments                   │  Link to experiments
+       │  Record decisions                     │
+       ▼                                       ▼
+┌─────────────────┐                    ┌─────────────────┐
+│ Retrospective   │                    │ CheckIn         │
+│ (content)       │                    │ (variation_type)│
+└────────┬────────┘                    │ (experiment_id) │
+         │                             └────────┬────────┘
+         │                                      │
+         ▼                                      │
+┌─────────────────────────┐                     │
+│ RetroExperimentOutcome  │                     │
+│ (decision, rationale)   │                     │
+└────────┬────────────────┘                     │
+         │                                      │
+         │ close_experiment()                   │
+         ▼                                      ▼
+┌─────────────────────────────────────────────────┐
+│ Experiment                                      │
+│ status=DECIDED, decision, decision_rationale    │
+└─────────────────────────────────────────────────┘
+```
+
+**Note:** The retro UI calls both `upsert_retro_experiment_outcome()` (to record the outcome linked to the retro) and `close_experiment()` (to update the Experiment record itself). This ensures the learning loop is complete: the decision is captured for institutional memory AND the experiment's status is updated to DECIDED.
