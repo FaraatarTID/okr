@@ -1,4 +1,5 @@
 # Learning Loop Implementation Report
+Documentation HQ: [README](../README.md)
 
 Canonical docs for ongoing usage and maintenance:
 - Operator workflow (EN+FA): [`docs/learning-loop.md`](learning-loop.md)
