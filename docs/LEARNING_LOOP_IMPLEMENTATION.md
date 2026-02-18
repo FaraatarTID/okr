@@ -1,5 +1,11 @@
 # Learning Loop Implementation Report
 
+Canonical docs for ongoing usage and maintenance:
+- Operator workflow (EN+FA): [`docs/learning-loop.md`](learning-loop.md)
+- Developer contract (EN+FA): [`docs/architecture.md`](architecture.md)
+
+This file is kept as an implementation history report.
+
 **Date:** 2026-02-18  
 **Status:** Implemented  
 **Version:** 1.0.0  

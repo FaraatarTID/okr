@@ -2,6 +2,8 @@
 
 Documentation HQ: [README](README.md)
 
+Learning Loop specific architecture contract (EN+FA, canonical): [docs/architecture.md](docs/architecture.md)
+
 ## System Overview
 
 This repository is a Streamlit-based OKR product with a SQLModel persistence layer on Supabase PostgreSQL.
