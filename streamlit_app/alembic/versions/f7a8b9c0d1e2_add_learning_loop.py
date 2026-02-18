@@ -70,23 +70,32 @@ def upgrade() -> None:
             batch_op.create_index('ix_retro_experiment_outcome_experiment_id', ['experiment_id'], unique=False)
             batch_op.create_index('ux_retro_experiment', ['retrospective_id', 'experiment_id'], unique=True)
 
-    # Add learning loop columns to check_in table
-    check_in_columns = {col['name'] for col in inspector.get_columns('check_in')}
-    
-    with op.batch_alter_table('check_in', schema=None) as batch_op:
-        if 'variation_type' not in check_in_columns:
-            batch_op.add_column(sa.Column('variation_type', sa.String(), nullable=True))
-        if 'special_cause_note' not in check_in_columns:
-            batch_op.add_column(sa.Column('special_cause_note', sa.String(), nullable=True))
-        if 'experiment_id' not in check_in_columns:
-            batch_op.add_column(sa.Column('experiment_id', sa.Integer(), nullable=True))
-            batch_op.create_foreign_key('fk_check_in_experiment', 'experiment', ['experiment_id'], ['id'])
-        
-        # Add index for variation type queries
-        try:
-            batch_op.create_index('ix_check_in_kr_var_created', ['key_result_id', 'variation_type', 'created_at'], unique=False)
-        except Exception:
-            pass  # Index may already exist
+    # Add learning loop columns/index to check_in table when present.
+    # Some upgrade paths stamp forward from legacy snapshots where check_in is absent.
+    inspector = sa.inspect(bind)
+    existing_tables = set(inspector.get_table_names())
+    if 'check_in' in existing_tables:
+        check_in_columns = {col['name'] for col in inspector.get_columns('check_in')}
+        check_in_indexes = {
+            idx.get('name') for idx in inspector.get_indexes('check_in') if idx.get('name')
+        }
+
+        with op.batch_alter_table('check_in', schema=None) as batch_op:
+            if 'variation_type' not in check_in_columns:
+                batch_op.add_column(sa.Column('variation_type', sa.String(), nullable=True))
+            if 'special_cause_note' not in check_in_columns:
+                batch_op.add_column(sa.Column('special_cause_note', sa.String(), nullable=True))
+            if 'experiment_id' not in check_in_columns:
+                batch_op.add_column(sa.Column('experiment_id', sa.Integer(), nullable=True))
+                batch_op.create_foreign_key(
+                    'fk_check_in_experiment', 'experiment', ['experiment_id'], ['id']
+                )
+            if 'ix_check_in_kr_var_created' not in check_in_indexes:
+                batch_op.create_index(
+                    'ix_check_in_kr_var_created',
+                    ['key_result_id', 'variation_type', 'created_at'],
+                    unique=False,
+                )
 
 
 def downgrade() -> None:
