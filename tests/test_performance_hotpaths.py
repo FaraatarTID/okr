@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import event
 from sqlmodel import SQLModel, select
+from src.models import VariationType
 
 
 def _utc_now_naive() -> datetime:
@@ -117,10 +118,10 @@ def test_get_krs_needing_checkin_returns_stale_and_missing_only(isolated_db):
     _, _, krs, _ = _build_okr_tree("alice", cycle.id, kr_count=3, tasks_per_kr=1)
 
     fresh = create_check_in(
-        krs[0].id, value=50, confidence=7, comment="fresh", actor_username="alice"
+        krs[0].id, value=50, confidence=7, comment="fresh", actor_username="alice", variation_type=VariationType.COMMON_CAUSE
     )
     stale = create_check_in(
-        krs[1].id, value=25, confidence=5, comment="stale", actor_username="alice"
+        krs[1].id, value=25, confidence=5, comment="stale", actor_username="alice", variation_type=VariationType.COMMON_CAUSE
     )
 
     with get_session_context() as session:
@@ -229,10 +230,10 @@ def test_get_leadership_metrics_reports_deadline_buckets_and_hygiene(isolated_db
             session.add(row)
 
     fresh = create_check_in(
-        krs[0].id, value=40, confidence=8, comment="fresh", actor_username="alice"
+        krs[0].id, value=40, confidence=8, comment="fresh", actor_username="alice", variation_type=VariationType.COMMON_CAUSE
     )
     stale = create_check_in(
-        krs[1].id, value=20, confidence=5, comment="stale", actor_username="alice"
+        krs[1].id, value=20, confidence=5, comment="stale", actor_username="alice", variation_type=VariationType.COMMON_CAUSE
     )
     with get_session_context() as session:
         fresh_row = session.get(CheckIn, fresh.id)
@@ -310,6 +311,7 @@ def test_hotpath_query_budgets_guard_against_n_plus_one(isolated_db):
             confidence=4 + (idx % 6),
             comment="perf",
             actor_username=actor,
+            variation_type=VariationType.COMMON_CAUSE,
         )
         with get_session_context() as session:
             row = session.get(CheckIn, ci.id)

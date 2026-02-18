@@ -24,8 +24,9 @@ from src.crud import (
     , get_work_logs_by_date_range,
     create_team, get_all_teams, update_team, delete_team,
     create_experiment, get_active_experiments_for_kr, update_experiment,
+    list_experiments_for_retro_window, upsert_retro_experiment_outcome,
 )
-from src.models import UserRole, VariationType, ExperimentStatus, ExpectedEffectDirection
+from src.models import UserRole, VariationType, ExperimentStatus, ExpectedEffectDirection, ExperimentDecision
 
 # Cache helpers for dialog-heavy queries
 @st.cache_data(ttl=60, show_spinner=False)
@@ -728,17 +729,87 @@ def render_weekly_ritual_dialog(username):
         default_retro = existing_retro.content if existing_retro else ""
         retro_input = st.text_area("Your Thoughts", value=default_retro, height=150, key="retro_input_area")
         
+        # === EXPERIMENTS REVIEWED THIS WEEK ===
+        st.markdown("---")
+        st.markdown("#### 🔬 Experiments Reviewed This Week")
+        st.caption("Record decisions for experiments that concluded or are still running.")
+        
+        window_end = start_date + timedelta(days=7)
+        exp_review_key = f"retro_exps_{cycle_id}_{start_date.isoformat()}"
+        
+        if exp_review_key not in st.session_state:
+            try:
+                st.session_state[exp_review_key] = list_experiments_for_retro_window(
+                    cycle_id=cycle_id,
+                    window_start=start_date,
+                    window_end=window_end,
+                    actor_username=username,
+                )
+            except PermissionError:
+                st.session_state[exp_review_key] = []
+        
+        review_experiments = st.session_state.get(exp_review_key, [])
+        
+        if review_experiments:
+            for exp in review_experiments:
+                status_bad = {"PLANNED": "⚪", "RUNNING": "🟢", "DECIDED": "🔵"}.get(exp.status.value, "⚪")
+                with st.container(border=True):
+                    st.markdown(f"**{status_bad} {exp.hypothesis[:60]}{'...' if len(exp.hypothesis) > 60 else ''}**")
+                    st.caption(f"Status: {exp.status.value} | Created: {exp.created_at.strftime('%Y-%m-%d')}")
+                    
+                    dec_key = f"retro_dec_{exp.id}"
+                    rat_key = f"retro_rat_{exp.id}"
+                    
+                    c_dec, c_rat = st.columns([1, 2])
+                    with c_dec:
+                        decision = st.selectbox(
+                            "Decision",
+                            options=["", "ADOPT", "REVERT", "ITERATE", "UNKNOWN"],
+                            key=dec_key,
+                            label_visibility="collapsed",
+                        )
+                    with c_rat:
+                        rationale = st.text_input(
+                            "Rationale (optional)",
+                            key=rat_key,
+                            label_visibility="collapsed",
+                            placeholder="Why this decision?",
+                        )
+        else:
+            st.info("No experiments to review this week.")
+        
         col_r1, col_r2 = st.columns([1, 4])
         if col_r1.button("Next: Update KRs ➡️", type="primary"):
             # Save Retrospective
+            saved_retro = None
             if retro_input and current_user_obj:
-                create_retrospective(
+                saved_retro = create_retrospective(
                     user_id=current_user_obj.id,
                     cycle_id=cycle_id,
                     week_start_date=start_date,
                     content=retro_input
                 )
                 st.toast("Retrospective Saved!")
+            
+            # Save experiment outcomes (don't fail retro if one outcome fails)
+            if saved_retro and review_experiments:
+                for exp in review_experiments:
+                    dec_key = f"retro_dec_{exp.id}"
+                    rat_key = f"retro_rat_{exp.id}"
+                    decision_val = st.session_state.get(dec_key, "")
+                    rationale_val = st.session_state.get(rat_key, "")
+                    
+                    if decision_val:
+                        try:
+                            upsert_retro_experiment_outcome(
+                                retrospective_id=saved_retro.id,
+                                experiment_id=exp.id,
+                                decision=ExperimentDecision(decision_val),
+                                rationale=rationale_val if rationale_val else None,
+                                actor_username=username,
+                            )
+                        except Exception as e:
+                            st.warning(f"Could not save outcome for experiment {exp.id}: {e}")
             
             st.session_state.ritual_step = 2
             st.rerun()

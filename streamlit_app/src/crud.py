@@ -1063,6 +1063,40 @@ def close_experiment(
     )
 
 
+def list_experiments_for_retro_window(
+    cycle_id: int,
+    window_start: datetime,
+    window_end: datetime,
+    actor_username: str,
+) -> List[Experiment]:
+    """
+    List experiments for retro review within a week window.
+    Returns experiments that ended in the window OR are still running.
+    Enforces goal-scoped access per experiment.
+    """
+    with get_session_context() as session:
+        stmt = (
+            select(Experiment)
+            .where(Experiment.cycle_id == cycle_id)
+            .where(
+                ((Experiment.end_at >= window_start) & (Experiment.end_at < window_end))
+                | (Experiment.status == ExperimentStatus.RUNNING)
+            )
+            .order_by(col(Experiment.created_at).desc())
+        )
+        exps = list(session.exec(stmt).all())
+
+        allowed = []
+        for e in exps:
+            try:
+                goal = _get_goal_for_key_result(session, e.key_result_id)
+                domain_auth._authorize_goal_scoped_access(session, goal, actor_username)
+                allowed.append(e)
+            except PermissionError:
+                pass
+        return allowed
+
+
 # ============================================================================
 # CYCLE OPERATIONS
 # ============================================================================
