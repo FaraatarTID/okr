@@ -25,6 +25,7 @@ from src.crud import (
     create_team, get_all_teams, update_team, delete_team,
     create_experiment, get_active_experiments_for_kr, update_experiment,
     list_experiments_for_retro_window, upsert_retro_experiment_outcome,
+    close_experiment,
 )
 from src.models import UserRole, VariationType, ExperimentStatus, ExpectedEffectDirection, ExperimentDecision
 
@@ -801,13 +802,21 @@ def render_weekly_ritual_dialog(username):
                     
                     if decision_val:
                         try:
+                            dec_enum = ExperimentDecision(decision_val)
                             upsert_retro_experiment_outcome(
                                 retrospective_id=saved_retro.id,
                                 experiment_id=exp.id,
-                                decision=ExperimentDecision(decision_val),
+                                decision=dec_enum,
                                 rationale=rationale_val if rationale_val else None,
                                 actor_username=username,
                             )
+                            if exp.status != ExperimentStatus.DECIDED:
+                                close_experiment(
+                                    experiment_id=exp.id,
+                                    decision=dec_enum,
+                                    rationale=rationale_val if rationale_val else "",
+                                    actor_username=username,
+                                )
                         except Exception as e:
                             st.warning(f"Could not save outcome for experiment {exp.id}: {e}")
             
