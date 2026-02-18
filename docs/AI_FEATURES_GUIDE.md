@@ -134,7 +134,23 @@ Deployment policy control:
 - Set `ALLOW_EXTERNAL_AI=false` (or `OKR_ALLOW_EXTERNAL_AI=false`) to hard-disable outbound AI calls.
 - Set `AI_PROVIDER=openai_compatible` with `AI_BASE_URL` + `AI_MODEL` to route AI to local/self-hosted OpenAI-compatible runtimes (for example Ollama, LM Studio, vLLM gateways).
 
-## 7. Practical Prompt Patterns
+## 7. AI Data and Privacy Notice
+
+AI features are optional and provider-driven:
+- `AI_PROVIDER=gemini` uses Google Gemini (`GEMINI_API_KEY` required).
+- `AI_PROVIDER=openai_compatible` routes to any OpenAI-compatible endpoint using `AI_BASE_URL` + `AI_MODEL` (optional `AI_API_KEY`).
+
+Hard-disable policy:
+- Set `ALLOW_EXTERNAL_AI=false` (or `OKR_ALLOW_EXTERNAL_AI=false`) to block all outbound AI calls.
+
+When AI is enabled, relevant OKR content can be sent to the configured provider, including:
+- titles and descriptions
+- progress and deadlines
+- work-log summaries/reflections used for analysis
+
+Before enabling AI in production, confirm provider/data-flow compliance with your company privacy and data-classification policies.
+
+## 8. Practical Prompt Patterns
 
 Use short, constrained prompts in Inspector analysis flows:
 - "What is the main blocker to this KR reaching target?"

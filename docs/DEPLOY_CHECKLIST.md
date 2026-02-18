@@ -123,3 +123,4 @@ Reference docs
 - `docs/REVERSE_PROXY.md`
 - `docs/OPERATIONS.md`
 - `docs/TROUBLESHOOTING.md`
+- `docs/INTERNAL_DEPLOYMENT_CHECKLIST.md`
