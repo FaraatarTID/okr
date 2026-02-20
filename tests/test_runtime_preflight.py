@@ -92,3 +92,59 @@ def test_provider_not_ready_warns():
         ai_provider_message="AI provider 'openai_compatible' missing required config: AI_BASE_URL, AI_MODEL.",
     )
     assert any("missing required config" in msg for msg in report.warnings)
+
+
+def test_backend_proxy_missing_url_is_error_in_production():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="",
+        runtime_env="production",
+    )
+    assert any("OKR_BACKEND_PROXY_MUTATIONS=true" in msg for msg in report.errors)
+
+
+def test_backend_proxy_missing_url_is_warning_in_development():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="",
+        runtime_env="development",
+    )
+    assert any("OKR_BACKEND_PROXY_MUTATIONS=true" in msg for msg in report.warnings)
+
+
+def test_production_backend_requires_signing_secret():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="http://backend-api:8100",
+        backend_service_token="token",
+        backend_signing_secret="",
+        runtime_env="production",
+    )
+    assert any("OKR_BACKEND_SIGNING_SECRET" in msg for msg in report.errors)
+
+
+def test_production_disallows_local_backend_fallback():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_api_url="http://backend-api:8100",
+        backend_service_token="token",
+        backend_signing_secret="secret",
+        allow_local_backend_fallback=True,
+        runtime_env="production",
+    )
+    assert any("OKR_ALLOW_LOCAL_BACKEND_FALLBACK" in msg for msg in report.errors)

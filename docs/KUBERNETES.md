@@ -36,7 +36,9 @@ Recommended backend K8s additions
 - Shared environment/Secret values across app + backend:
   - `OKR_DATABASE_URL`
   - `OKR_BACKEND_SERVICE_TOKEN`
+  - `OKR_BACKEND_SIGNING_SECRET`
   - `OKR_BACKEND_PROXY_MUTATIONS=true` (on `okr` workload)
+  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=false` (recommended production default)
   - `PDF_METHOD=pdfshift`, `PDFSHIFT_API_KEY`
   - AI policy/provider values (`ALLOW_EXTERNAL_AI`, `AI_PROVIDER`, provider credentials)
 - Optional HorizontalPodAutoscaler for app and backend API after baseline load testing.

@@ -14,7 +14,7 @@ Database
   - OKR_DATABASE_URL (recommended)
   - DATABASE_URL (optional alias)
   - Example:
-    - `postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
+    - `postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
 - Streamlit secrets:
   - [database]
     - url: full connection string
@@ -23,14 +23,18 @@ Database
   - URL must start with `postgresql+psycopg2://`
   - Host must include `*.pooler.supabase.com` (or `*.pooler.supabase.co`)
   - Port must be `6543` (transaction pooler) unless explicitly overridden
+  - Runtime DSN must use a least-privilege DB user (not `postgres`) unless break-glass override is set
   - Optional exception flags:
     - `OKR_ALLOW_SUPABASE_SESSION_POOLER=1` (allow port 5432 on pooler host)
     - `OKR_ALLOW_SUPABASE_DIRECT_CONNECTION=1` (allow non-pooler host)
-  - Pool sizing controls:
-    - `OKR_DB_POOL_SIZE` (default: `5`)
-    - `OKR_DB_MAX_OVERFLOW` (default: `5`)
-    - `OKR_DB_POOL_TIMEOUT` (default: `30`)
-    - `OKR_DB_POOL_RECYCLE` (default: `1800`)
+    - `OKR_ALLOW_SUPABASE_SUPERUSER=1` (temporary break-glass allowance for `postgres` user)
+  - Pooling controls:
+    - `OKR_DB_USE_NULL_POOL` (default: `1`, recommended for Supabase PgBouncer transaction mode)
+    - If `OKR_DB_USE_NULL_POOL=0`, app-side SQLAlchemy pool sizing controls apply:
+      - `OKR_DB_POOL_SIZE` (default: `5`)
+      - `OKR_DB_MAX_OVERFLOW` (default: `5`)
+      - `OKR_DB_POOL_TIMEOUT` (default: `30`)
+      - `OKR_DB_POOL_RECYCLE` (default: `1800`)
 
 Streamlit server
 
@@ -92,6 +96,7 @@ Runtime preflight policy
   - Set `OKR_STRICT_RUNTIME_PREFLIGHT=0` only for temporary troubleshooting.
 - Behavior:
   - Runtime validates PDF provider mode and key presence.
+  - Runtime also validates backend production-safety wiring (backend URL/token/signing secret and local-fallback policy) when relevant.
   - In strict mode, critical preflight errors stop app startup.
   - Provider configuration issues are surfaced as warnings/errors depending on severity.
 
@@ -100,19 +105,31 @@ Backend API (recommended for scale)
 - Streamlit-to-backend routing:
   - `OKR_BACKEND_API_URL` (e.g. `http://backend-api:8100`)
   - `OKR_BACKEND_SERVICE_TOKEN` (shared token for service-to-service auth)
+  - `OKR_BACKEND_SIGNING_SECRET` (shared HMAC signing secret for signed internal requests)
   - `OKR_BACKEND_DEFAULT_ACTOR` (fallback actor for system-initiated AI requests; default: `system`)
   - `OKR_BACKEND_PROXY_MUTATIONS` (default: `true`; routes Goal/Objective/KR/Task writes through backend API when backend URL is set)
+  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (default: `false`; emergency non-production fallback only)
 - Backend API runtime:
   - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
   - `OKR_BACKEND_PORT` (default: `8100`)
   - `OKR_BACKEND_ENFORCE_TOKEN` (default: `true`)
+  - `OKR_BACKEND_ENFORCE_REQUEST_SIGNING` (default: `true` in production envs, otherwise `false`)
+  - `OKR_BACKEND_REQUEST_SIGNING_WINDOW_SECONDS` (default: `300`)
   - `OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS` (default: `60`)
   - `OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS` (default: `120`)
+  - Job quota controls:
+    - `OKR_BACKEND_JOB_USER_WINDOW_SECONDS` (default: `60`)
+    - `OKR_BACKEND_JOB_USER_MAX_REQUESTS` (default: `8`)
+    - `OKR_BACKEND_JOB_USER_DAILY_MAX_REQUESTS` (default: `200`)
+    - `OKR_BACKEND_JOB_TEAM_WINDOW_SECONDS` (default: `60`)
+    - `OKR_BACKEND_JOB_TEAM_MAX_REQUESTS` (default: `60`)
+    - `OKR_BACKEND_JOB_TEAM_DAILY_MAX_REQUESTS` (default: `1200`)
 - Backend worker runtime:
   - `OKR_BACKEND_WORKER_POLL_SECONDS` (default: `2`)
 - Notes:
   - With `OKR_BACKEND_API_URL` set, node mutations (Goal/Objective/KR/Task), timer operations, and heavy AI/PDF workflows can run through backend services.
-  - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API while preserving transient local fallback if backend transport fails.
+  - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API.
+  - If backend transport fails, production default is fail-closed unless `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` is explicitly set.
   - Without it, the app runs in direct mode (legacy behavior).
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.
   - Current MVP still serves most read-heavy hierarchy traversal directly via Streamlit + SQLModel.
@@ -120,6 +137,7 @@ Backend API (recommended for scale)
 Recommended deployment profiles
 
 - Streamlit Cloud:
+  - MVP/demo only (not recommended for confidential internal company data)
   - PDF_METHOD=pdfshift
   - AI_PROVIDER=gemini (or your approved hosted gateway via `openai_compatible`)
   - pdfshift_api_key must be present

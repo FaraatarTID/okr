@@ -97,11 +97,12 @@ Browser
 ```
 
 Key technical points:
-- With `OKR_BACKEND_API_URL` configured, Goal/Objective/KR/Task mutations and timer flows route through `backend-api` (with transient-error local fallback).
+- With `OKR_BACKEND_API_URL` configured, Goal/Objective/KR/Task mutations and timer flows route through `backend-api`.
+- Backend write/timer/job paths fail closed by default if backend is unavailable. Optional emergency fallback is opt-in via `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` (non-production only).
 - Read-heavy hierarchy traversal still executes in-process via Streamlit + SQLModel in the current MVP.
 - AI-heavy and PDF-heavy flows route via backend job services.
 - Only supported PDF binary engine is `pdfshift` (`PDF_METHOD=pdfshift`).
-- For internal production, keep `backend-api` private and prefer `ALLOW_EXTERNAL_AI=false` unless approved.
+- For internal production, keep `backend-api` private, enable signed internal requests (`OKR_BACKEND_SIGNING_SECRET`), and prefer `ALLOW_EXTERNAL_AI=false` unless approved.
 
 ---
 ## AI Analysis Privacy and Policy
@@ -383,7 +384,7 @@ pip install --require-hashes -r streamlit_app/requirements.txt
 # AI_BASE_URL = "http://localhost:11434"  # required for openai_compatible provider
 # AI_MODEL = "llama3.1"  # required for openai_compatible provider
 # [database]
-# url = "postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"
+# url = "postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"
 
 # 5. Run the app
 streamlit run streamlit_app/app.py
@@ -405,7 +406,7 @@ python streamlit_app/scripts/ai_provider_health_check.py
 | Database  | SQLModel + Supabase PostgreSQL               |
 | Storage   | Supabase PostgreSQL (single source of truth) |
 | AI        | Provider abstraction (Gemini or OpenAI-compatible local/self-hosted) |
-| PDF       | PDFShift API (with HTML export fallback)     |
+| PDF       | PDFShift API (HTML export fallback only; no local PDF engine) |
 
 ---
 

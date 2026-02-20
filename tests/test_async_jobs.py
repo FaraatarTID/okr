@@ -93,3 +93,51 @@ def test_cancel_pending_job_marks_cancelled(isolated_db):
     assert cancelled is not None
     assert str(cancelled.status.value) == "cancelled"
     assert bool(cancelled.cancel_requested) is True
+
+
+def test_enqueue_job_with_same_idempotency_key_reuses_existing_job(isolated_db):
+    from backend_app.jobs import enqueue_job
+
+    first = enqueue_job(
+        kind="ai.generate_json",
+        payload={"prompt": "one"},
+        actor_username="alice",
+        max_attempts=2,
+        idempotency_key="idem-1",
+    )
+    second = enqueue_job(
+        kind="ai.generate_json",
+        payload={"prompt": "two"},
+        actor_username="alice",
+        max_attempts=2,
+        idempotency_key="idem-1",
+    )
+    assert first.id == second.id
+
+
+def test_enqueue_job_captures_actor_team_id_when_available(isolated_db):
+    from backend_app.jobs import enqueue_job
+    from src.database import get_session_context
+    from src.models import Team, User, UserRole
+
+    with get_session_context() as session:
+        team = Team(name="Platform")
+        session.add(team)
+        session.commit()
+        session.refresh(team)
+        user = User(
+            username="alice",
+            password_hash="hash",
+            role=UserRole.MEMBER,
+            team_id=team.id,
+        )
+        session.add(user)
+        session.commit()
+
+    job = enqueue_job(
+        kind="pdf.weekly",
+        payload={"report_items": []},
+        actor_username="alice",
+        max_attempts=1,
+    )
+    assert int(job.team_id or 0) == int(team.id or 0)

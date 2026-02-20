@@ -57,11 +57,11 @@ Deployment modes (important)
 
 Use one of these modes:
 
-1) Streamlit Cloud (MVP/simple hosting)
+1) Streamlit Cloud (MVP/demo hosting only)
 - No SSH deploy secrets are required.
 - The app is deployed by Streamlit Cloud from your GitHub repo.
 - In this mode, the GitHub Actions SSH deploy step is expected to skip.
-- For confidential internal data, prefer self-hosted deployment instead of Streamlit Cloud.
+- For confidential internal data or multi-user alpha, do not use Streamlit Cloud.
 
 2) Docker Compose on your own server (enterprise/self-hosted)
 - SSH deploy is disabled by default. Set `ENABLE_SSH_DEPLOY=true` (repo secret or variable) before adding SSH deploy secrets.
@@ -86,7 +86,7 @@ Step 0: Collect required values
 Prepare these values first:
 - `APP_DOMAIN`: for example `okr.mycompany.com`
 - `SERVER_IP`: public/private server IP
-- `OKR_DATABASE_URL`: example `postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
+- `OKR_DATABASE_URL`: example `postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
 - `CONTACT_EMAIL`: certificate contact email
 
 Step 1: Prepare the Linux host (Ubuntu example)
@@ -136,9 +136,11 @@ Edit `deploy/docker/.env` and set at minimum:
 PORT=8501
 HOST_PORT=8501
 BASE_URL_PATH=
-OKR_DATABASE_URL=postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
+OKR_DATABASE_URL=postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
 OKR_BACKEND_API_URL=http://backend-api:8100
 OKR_BACKEND_SERVICE_TOKEN=CHANGE_ME_STRONG_SHARED_TOKEN
+OKR_BACKEND_SIGNING_SECRET=CHANGE_ME_STRONG_SIGNING_KEY
+OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true
 OKR_BACKEND_PROXY_MUTATIONS=true
 PDF_METHOD=pdfshift
 PDFSHIFT_API_KEY=CHANGE_ME_PDFSHIFT_KEY
@@ -153,6 +155,7 @@ Notes:
 - Keep `BASE_URL_PATH` empty for subdomain hosting.
 - For subpath hosting (`/okr`), set `BASE_URL_PATH=okr`.
 - Keep `OKR_BACKEND_PROXY_MUTATIONS=true` so Goal/Objective/KR/Task writes route via backend API.
+- Keep `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` unset/false in production (fail-closed behavior).
 
 Step 4: Configure optional secrets (PDF/API integrations)
 
@@ -349,6 +352,7 @@ Security hardening checklist
 - Keep only ports 80/443 exposed publicly.
 - Block direct public access to `8501`.
 - Keep backend API port (`8100`) private (default bind: `127.0.0.1`).
+- Use signed internal requests (`OKR_BACKEND_SIGNING_SECRET`) and keep enforcement enabled.
 - Keep secrets in `deploy/secrets/secrets.toml` or platform secret manager.
 - Do not commit secrets to git.
 - Rotate DB/API credentials periodically.

@@ -157,6 +157,16 @@ class AsyncJob(SQLModel, table=True):
     __table_args__ = (
         Index("ix_async_job_status_created", "status", "created_at"),
         Index("ix_async_job_actor_created", "actor_username", "created_at"),
+        Index("ix_async_job_team_created", "team_id", "created_at"),
+        Index(
+            "ux_async_job_actor_kind_idempotency",
+            "actor_username",
+            "kind",
+            "idempotency_key",
+            unique=True,
+            sqlite_where=text("idempotency_key IS NOT NULL"),
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
         {"extend_existing": True},
     )
 
@@ -164,6 +174,8 @@ class AsyncJob(SQLModel, table=True):
     kind: str = Field(index=True)
     status: AsyncJobStatus = Field(default=AsyncJobStatus.PENDING, index=True)
     actor_username: Optional[str] = Field(default=None, index=True)
+    team_id: Optional[int] = Field(default=None, foreign_key="team.id", index=True)
+    idempotency_key: Optional[str] = Field(default=None, index=True)
     payload_json: str
     result_json: Optional[str] = None
     error_text: Optional[str] = None

@@ -44,13 +44,16 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] `deploy/docker/.env` exists (copied from `deploy/docker/.env.example`).
 - [ ] Optional shortcut used if applicable: `deploy/docker/.env.mycompany.example`.
 - [ ] `OKR_DATABASE_URL` is set in `.env` and points to Supabase transaction pooler (`*.pooler.supabase.com:6543`).
+- [ ] `OKR_DATABASE_URL` uses a least-privilege DB user (not `postgres`) for runtime operations.
 - [ ] `BASE_URL_PATH` is empty for subdomain deployment.
 - [ ] Optional integrations secrets are prepared in `deploy/secrets/secrets.toml`.
 - [ ] `PDF_METHOD` is explicitly set to `pdfshift`.
 - [ ] If `PDF_METHOD=pdfshift`, `pdfshift_api_key` is present in secrets.
 - [ ] `OKR_BACKEND_API_URL` is set (default: `http://backend-api:8100`).
 - [ ] `OKR_BACKEND_SERVICE_TOKEN` is set to a strong shared secret.
+- [ ] `OKR_BACKEND_SIGNING_SECRET` is set and matches across `okr` and `backend-api`.
 - [ ] `OKR_BACKEND_PROXY_MUTATIONS=true` is set (recommended for backend-owned writes).
+- [ ] `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` is unset/false in production.
 - [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` is set (recommended for production).
 - [ ] `GEMINI_API_KEY` is set (or AI-disable decision is documented).
 

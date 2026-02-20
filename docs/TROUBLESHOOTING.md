@@ -36,8 +36,9 @@ CRUD save/update/delete errors in UI
   - Verify `OKR_BACKEND_API_URL` resolves from `okr`
   - Verify `backend-api` is healthy (`/healthz`)
   - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between services
+  - If request signing is enabled, verify `OKR_BACKEND_SIGNING_SECRET` matches between `okr` and `backend-api`
   - Check backend logs for 403/400 details (permission or validation failures)
-- For emergency isolation, set `OKR_BACKEND_PROXY_MUTATIONS=false` to use local mutation path temporarily.
+- If backend is temporarily unstable and you must use local emergency mode in a non-production environment, set `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`.
 
 Migrations fail
 - Ensure the configured DB is reachable from the host/pod

@@ -18,7 +18,9 @@ Runbook: first deployment
 - Configure backend routing:
   - `OKR_BACKEND_API_URL` (default in compose: `http://backend-api:8100`)
   - `OKR_BACKEND_SERVICE_TOKEN` (strong shared secret)
+  - `OKR_BACKEND_SIGNING_SECRET` (recommended; signed internal requests)
   - `OKR_BACKEND_PROXY_MUTATIONS=true` (recommended)
+  - keep `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` unset/false in production
 - Configure `GEMINI_API_KEY` if AI features are enabled
 - Enable strict runtime checks in production: `OKR_STRICT_RUNTIME_PREFLIGHT=1`
 
