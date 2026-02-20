@@ -52,7 +52,7 @@ jobs:
         id: validate
         run: |
           set -e
-          if [ "${ENABLE_SSH_DEPLOY}" != "true" ]; then
+          if [ "${ENABLE_SSH_DEPLOY,,}" != "true" ]; then
             echo "::notice::Skipping SSH deploy because ENABLE_SSH_DEPLOY is not true."
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
