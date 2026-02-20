@@ -68,7 +68,8 @@ def _get_config_value(keys: Sequence[str]) -> Optional[str]:
 def is_external_ai_allowed() -> bool:
     raw = _get_config_value(["ALLOW_EXTERNAL_AI", "OKR_ALLOW_EXTERNAL_AI"])
     if raw is None:
-        return True
+        # Secure-by-default: outbound AI calls remain disabled unless explicitly enabled.
+        return False
     return str(raw).strip().lower() in _TRUE_VALUES
 
 

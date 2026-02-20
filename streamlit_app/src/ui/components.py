@@ -1510,7 +1510,7 @@ def render_report_content(username, mode):
                 key="report_pdf_download",
             )
         else:
-            # Fallback: export HTML if PDF engine (wkhtmltopdf/PDFShift) isn't available
+            # Fallback: export HTML if PDFShift isn't available.
             fallback_html = generate_pdf_html(
                 report_items,
                 objective_stats,
@@ -1523,7 +1523,7 @@ def render_report_content(username, mode):
                 achievements=achievements,
             )
             st.info(
-                "PDF engine not available (wkhtmltopdf/PDFShift). Download the HTML report instead."
+                "PDF engine not available (PDFShift). Download the HTML report instead."
             )
             st.download_button(
                 label="📄 Export as HTML",

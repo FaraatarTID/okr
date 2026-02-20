@@ -883,11 +883,6 @@ pathspec==1.0.4 \
     --hash=sha256:0210e2ae8a21a9137c0d470578cb0e595af87edaa6ebf12ff176f14a02e0e645 \
     --hash=sha256:fb6ae2fd4e7c921a165808a552060e722767cfa526f99ca5156ed2ce45a5c723
     # via mypy
-pdfkit==1.0.0 \
-    --hash=sha256:992f821e1e18fc8a0e701ecae24b51a2d598296a180caee0a24c0af181da02a9 \
-    --hash=sha256:a7a4ca0d978e44fa8310c4909f087052430a6e8e0b1dd7ceef657f139789f96f \
-    --hash=sha256:cc122e5aed594198ff7aaa566f2950d2163763576ab891c161bb1f6c630f5a8e
-    # via -r streamlit_app/requirements.in
 pillow==12.1.1 \
     --hash=sha256:02f84dfad02693676692746df05b89cf25597560db2857363a208e393429f5e9 \
     --hash=sha256:0330d233c1a0ead844fc097a7d16c0abff4c12e856c0b325f231820fee1f39da \

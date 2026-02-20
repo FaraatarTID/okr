@@ -14,8 +14,7 @@ Runbook: first deployment
 - Decide hosting scheme: subdomain vs subpath
 - Configure reverse proxy with TLS and websocket support
 - Configure PDF mode explicitly:
-  - Streamlit Cloud: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
-  - Self-hosted server: `PDF_METHOD=pdfkit` + installed `wkhtmltopdf` (or use pdfshift by policy)
+  - All runtimes: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
 - Configure `GEMINI_API_KEY` if AI features are enabled
 - Enable strict runtime checks in production: `OKR_STRICT_RUNTIME_PREFLIGHT=1`
 

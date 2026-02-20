@@ -1,10 +1,9 @@
 """
-Unified PDF generator with automatic environment detection.
-Supports both PDFShift (cloud/deployed) and pdfkit (local Windows).
+Unified PDF generator in secure mode.
+Only PDFShift is supported for binary PDF rendering.
 """
 
 import os
-import sys
 import platform
 import datetime
 import base64
@@ -13,19 +12,12 @@ from io import BytesIO
 import streamlit as st
 from src.services.http_client import post_json_with_retry
 
-# Try importing both libraries
+# Try importing optional PDFShift dependency.
 PDFSHIFT_AVAILABLE = False
-PDFKIT_AVAILABLE = False
 
 try:
     import requests
     PDFSHIFT_AVAILABLE = True
-except ImportError:
-    pass
-
-try:
-    import pdfkit
-    PDFKIT_AVAILABLE = True
 except ImportError:
     pass
 
@@ -38,40 +30,22 @@ def _escape(value):
 
 def is_deployed_environment():
     """
-    Detect if running in a deployed/cloud environment (Streamlit Cloud)
-    Returns True if deployed, False if local
+    Resolve whether PDF binary generation is enabled in secure mode.
+    Returns True only when PDF_METHOD resolves to `pdfshift`.
     """
-    # PRIORITY 0: Check for manual override in secrets
     try:
-       import streamlit as st
-       if 'PDF_METHOD' in st.secrets:
-           method = str(st.secrets['PDF_METHOD']).lower()
-           if method == 'pdfkit':
-               print("SECRETS: Forcing pdfkit (Local)")
-               return False
-           elif method == 'pdfshift':
-               print("SECRETS: Forcing PDFShift (Cloud)")
-               return True
-    except Exception as e:
-       pass  # If secrets not available, continue to other detection methods
-       
-    # Check for Streamlit Cloud specific environment variables
-    if os.getenv('STREAMLIT_SHARING_MODE') or os.getenv('IS_STREAMLIT_CLOUD'):
-        return True
-    
-    # Check if pdfshift API key is configured (indicates deployed environment)
-    try:
-        if 'pdfshift_api_key' in st.secrets:
-            return True
-    except:
+        app_cfg = st.secrets.get("app", {})
+        method = str(st.secrets.get("PDF_METHOD", "")).strip().lower()
+        if not method and hasattr(app_cfg, "get"):
+            method = str(app_cfg.get("PDF_METHOD", app_cfg.get("pdf_method", ""))).strip().lower()
+        if method == "shiftpdf":
+            method = "pdfshift"
+        if method:
+            return method == "pdfshift"
+    except Exception:
         pass
-    
-    # Check if running on Windows (likely local development)
-    if platform.system() == 'Windows':
-        return False
-    
-    # Default to deployed if uncertain and pdfshift is available
-    return PDFSHIFT_AVAILABLE and not PDFKIT_AVAILABLE
+
+    return True
 
 
 def get_base64_font(font_path):
@@ -455,10 +429,28 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
 
 def generate_pdf_with_pdfshift(html):
     """
-    Generate PDF using PDFShift API (for cloud/deployed environments)
+    Generate PDF using PDFShift API (secure mode).
     """
     try:
-        pdfshift_api_key = st.secrets["pdfshift_api_key"]
+        pdfshift_api_key = ""
+        try:
+            app_cfg = st.secrets.get("app", {})
+            pdfshift_api_key = str(
+                st.secrets.get(
+                    "pdfshift_api_key",
+                    st.secrets.get(
+                        "PDFSHIFT_API_KEY",
+                        app_cfg.get("pdfshift_api_key", app_cfg.get("PDFSHIFT_API_KEY", "")),
+                    ),
+                )
+            ).strip()
+        except Exception:
+            pass
+        if not pdfshift_api_key:
+            pdfshift_api_key = str(os.getenv("PDFSHIFT_API_KEY", "")).strip()
+        if not pdfshift_api_key:
+            st.error("PDFShift API key is missing. PDF export is unavailable in secure mode.")
+            return None
         
         response = post_json_with_retry(
             "https://api.pdfshift.io/v3/convert/pdf",
@@ -487,60 +479,16 @@ def generate_pdf_with_pdfshift(html):
         return None
 
 
-def generate_pdf_with_pdfkit(html):
-    """
-    Generate PDF using pdfkit (for local Windows environments)
-    """
-    try:
-        # Configure pdfkit for Windows
-        if platform.system() == 'Windows':
-            # Common wkhtmltopdf installation paths on Windows
-            possible_paths = [
-                r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe',
-                r'C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe',
-                r'wkhtmltopdf'  # If in PATH
-            ]
-            
-            config = None
-            for path in possible_paths:
-                if os.path.exists(path):
-                    config = pdfkit.configuration(wkhtmltopdf=path)
-                    break
-            
-            if not config:
-                st.error("wkhtmltopdf not found. Please install it from: https://wkhtmltopdf.org/downloads.html")
-                return None
-        else:
-            config = None  # Linux/Mac should have it in PATH
-        
-        # Generate PDF
-        options = {
-            'page-size': 'A4',
-            'orientation': 'Landscape',
-            'encoding': 'UTF-8',
-            'no-outline': None,
-            'enable-local-file-access': None
-        }
-        
-        pdf_bytes = pdfkit.from_string(html, False, options=options, configuration=config)
-        return BytesIO(pdf_bytes)
-        
-    except Exception as e:
-        print(f"pdfkit Exception: {e}")
-        st.error(f"pdfkit failed: {str(e)}")
-        return None
-
-
 def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, 
                           direction="RTL", title="Weekly Work Report", time_label="Last 7 Days",
                           report_summary=None, achievements=None):
     """
-    Main PDF generation function with automatic environment detection
+    Main PDF generation function.
     
     Returns: BytesIO object containing the PDF data, or None if generation fails
     """
     
-    # Detect environment
+    # Detect configured method (secure mode supports PDFShift only).
     is_deployed = is_deployed_environment()
     
     # Generate HTML (common for both methods)
@@ -550,20 +498,15 @@ def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_re
         report_summary, achievements
     )
     
-    # Choose appropriate PDF generation method
-    if is_deployed:
-        print("Using PDFShift (Cloud Environment)")
-        if not PDFSHIFT_AVAILABLE:
-            st.error("PDFShift not available. Please install: pip install requests")
-            return None
-        return generate_pdf_with_pdfshift(html)
-    else:
-        print("Using pdfkit (Local Environment)")
-        if not PDFKIT_AVAILABLE:
-            st.error("pdfkit not available. Please install: pip install pdfkit")
-            st.info("Also install wkhtmltopdf from: https://wkhtmltopdf.org/downloads.html")
-            return None
-        return generate_pdf_with_pdfkit(html)
+    if not is_deployed:
+        st.error("Unsupported PDF_METHOD. Secure mode supports only PDFShift or HTML fallback.")
+        return None
+
+    print("Using PDFShift (Secure Mode)")
+    if not PDFSHIFT_AVAILABLE:
+        st.error("PDFShift runtime dependency is missing. Install `requests`.")
+        return None
+    return generate_pdf_with_pdfshift(html)
 
 
 def get_pdf_generator_info():
@@ -573,10 +516,9 @@ def get_pdf_generator_info():
     is_deployed = is_deployed_environment()
     
     info = {
-        'environment': 'Deployed/Cloud' if is_deployed else 'Local',
-        'method': 'PDFShift API' if is_deployed else 'pdfkit (wkhtmltopdf)',
+        'environment': 'Secure mode (PDFShift)' if is_deployed else 'Unsupported PDF method',
+        'method': 'PDFShift API (secure-only)',
         'pdfshift_available': PDFSHIFT_AVAILABLE,
-        'pdfkit_available': PDFKIT_AVAILABLE,
         'platform': platform.system()
     }
     
@@ -710,13 +652,8 @@ def generate_achievement_portfolio_pdf(portfolio: dict, direction: str = "RTL"):
 </html>
 """
 
-    # Generate PDF using existing infrastructure
+    # Generate PDF using secure-mode infrastructure.
     is_deployed = is_deployed_environment()
-    if is_deployed:
-        if not PDFSHIFT_AVAILABLE:
-            return None
-        return generate_pdf_with_pdfshift(html)
-    else:
-        if not PDFKIT_AVAILABLE:
-            return None
-        return generate_pdf_with_pdfkit(html)
+    if not is_deployed or not PDFSHIFT_AVAILABLE:
+        return None
+    return generate_pdf_with_pdfshift(html)

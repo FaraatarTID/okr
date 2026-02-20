@@ -62,7 +62,7 @@ Use one of these modes:
 - In this mode, the GitHub Actions SSH deploy step is expected to skip.
 
 2) Docker Compose on your own server (enterprise/self-hosted)
-- SSH deploy secrets are required for the optional remote deploy step.
+- SSH deploy is disabled by default. Set `ENABLE_SSH_DEPLOY=true` (repo secret or variable) before adding SSH deploy secrets.
 - Use this when you want GitHub Actions to connect to your server and run `docker compose`.
 
 ---
@@ -356,9 +356,10 @@ Workflow file:
 
 What it can do:
 - Build and push image to GHCR on push to `main`/`master`
-- Optional remote deploy over SSH (self-hosted mode only)
+- Optional remote deploy over SSH (self-hosted mode only, opt-in via `ENABLE_SSH_DEPLOY=true`)
 
 Required secrets for SSH deploy (recommended names):
+- `ENABLE_SSH_DEPLOY` = `true`
 - `SSH_HOST`
 - `SSH_USER`
 - `SSH_KEY`
@@ -376,6 +377,7 @@ Where to set `SSH_KEY`:
 - Paste the private key content for your deploy user (for example, `id_ed25519` private key)
 
 If you are using Streamlit Cloud and not SSH deploy:
+- Keep `ENABLE_SSH_DEPLOY` unset (or `false`).
 - Do not set SSH deploy secrets.
 - The SSH deploy job should be skipped automatically.
 

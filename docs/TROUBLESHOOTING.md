@@ -7,16 +7,13 @@ Blank page or reconnecting loop
 - Verify BASE_URL_PATH is set when using subpath hosting
 
 PDF export fails
-- If using pdfkit: wkhtmltopdf must be installed (already in container)
 - If using PDFShift: set pdfshift_api_key in secrets
-- Ensure `PDF_METHOD` matches runtime:
-  - Streamlit Cloud -> `pdfshift`
-  - Self-hosted -> `pdfkit` (or `pdfshift` by policy)
+- Ensure `PDF_METHOD=pdfshift`
 
 Runtime preflight shows configuration errors
 - If preflight says `PDF_METHOD=pdfshift but PDFShift API key is missing`:
-  - Add `pdfshift_api_key` (or switch method to `pdfkit` in self-hosted runtime)
-- If preflight says `Streamlit Cloud runtime detected with PDF_METHOD=pdfkit`:
+  - Add `pdfshift_api_key`
+- If preflight says unsupported `PDF_METHOD`:
   - Change `PDF_METHOD` to `pdfshift`
 - If strict mode is enabled (`OKR_STRICT_RUNTIME_PREFLIGHT=1`), app startup will stop on critical preflight errors until fixed.
 

@@ -60,7 +60,7 @@ Choose one mode:
 2. Self-hosted Docker Compose (server/VM)
 
 - Use this for Nginx + Docker Compose + your own server.
-- If you enable GitHub Actions SSH deploy, set:
+- SSH deploy in GitHub Actions is disabled by default. To enable it, set `ENABLE_SSH_DEPLOY=true` and then configure:
   - `SSH_HOST`
   - `SSH_USER`
   - `SSH_KEY`
@@ -71,7 +71,7 @@ Choose one mode:
   - Key: `DEPLOY_KEY`
   - Deploy dir: `DEPLOY_DIR`
 
-Where to set `SSH_KEY`:
+Where to set `SSH_KEY` (only when `ENABLE_SSH_DEPLOY=true`):
 
 - GitHub repository -> `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`.
 - Add the private key content under `SSH_KEY` (or `DEPLOY_KEY`).
@@ -87,8 +87,8 @@ AI Strategic Coach is optional and can be configured to use:
 - Google Gemini (default, requires `GEMINI_API_KEY`)
 - OpenAI-compatible endpoints (`AI_PROVIDER="openai_compatible"` with `AI_BASE_URL` and `AI_MODEL`)
 
-All outbound AI calls are opt-in and can be fully disabled with:
-- `ALLOW_EXTERNAL_AI=false`
+Outbound AI calls are disabled by default and can be enabled only with:
+- `ALLOW_EXTERNAL_AI=true`
 
 When AI is enabled, relevant OKR content is sent to the selected AI provider, including:
 - titles and descriptions
@@ -324,9 +324,9 @@ Click **ðŸ“„ Export as PDF** to generate a formatted report.
 | Create Tasks            |    âœ…    |    âœ…    |         âœ…          |
 | Use Timer               | âœ… (Own) | âœ… (Own) | âœ… (Own + Assigned) |
 | Edit Own Items          |    âœ…    |    âœ…    |         âœ…          |
-| Edit Others' Items      |    âŒ    |    âŒ    |         âŒ          |
+| Edit Others' Items      |    âœ…    | âœ… (Direct Reports) |         âŒ          |
 
-> **Note**: Only the **Owner** (creator) can edit/delete an item.
+> **Note**: Admins have global CRUD. Managers can edit/delete direct reports' items.
 
 ---
 
@@ -335,7 +335,6 @@ Click **ðŸ“„ Export as PDF** to generate a formatted report.
 ### Prerequisites
 
 - Python 3.9+
-- wkhtmltopdf (for PDF export) - [Download](https://wkhtmltopdf.org/downloads.html)
 
 ### Setup
 
@@ -354,7 +353,7 @@ pip install --require-hashes -r streamlit_app/requirements.txt
 
 # 4. Configure secrets (optional - for AI features)
 # Create streamlit_app/.streamlit/secrets.toml:
-# ALLOW_EXTERNAL_AI = true  # set false to disable outbound AI calls
+# ALLOW_EXTERNAL_AI = false  # secure default; set true only if policy-approved
 # AI_PROVIDER = "gemini"  # or "openai_compatible"
 # GEMINI_API_KEY = "your-api-key"  # required for gemini provider
 # AI_BASE_URL = "http://localhost:11434"  # required for openai_compatible provider
@@ -381,7 +380,7 @@ python streamlit_app/scripts/ai_provider_health_check.py
 | Database  | SQLModel + Supabase PostgreSQL               |
 | Storage   | Supabase PostgreSQL (single source of truth) |
 | AI        | Provider abstraction (Gemini or OpenAI-compatible local/self-hosted) |
-| PDF       | pdfkit (local) / PDFShift (cloud)            |
+| PDF       | PDFShift API (with HTML export fallback)     |
 
 ---
 

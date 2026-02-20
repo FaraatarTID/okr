@@ -42,6 +42,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     env:
+      ENABLE_SSH_DEPLOY: ${{ secrets.ENABLE_SSH_DEPLOY || vars.ENABLE_SSH_DEPLOY || 'false' }}
       DEPLOY_HOST: ${{ secrets.SSH_HOST || secrets.DEPLOY_HOST || secrets.HOST }}
       DEPLOY_USER: ${{ secrets.SSH_USER || secrets.DEPLOY_USER || secrets.USERNAME }}
       DEPLOY_KEY: ${{ secrets.SSH_KEY || secrets.DEPLOY_KEY }}
@@ -51,13 +52,18 @@ jobs:
         id: validate
         run: |
           set -e
+          if [ "${ENABLE_SSH_DEPLOY}" != "true" ]; then
+            echo "::notice::Skipping SSH deploy because ENABLE_SSH_DEPLOY is not true."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           missing=""
           [ -z "${DEPLOY_HOST}" ] && missing="${missing} DEPLOY_HOST(SSH_HOST/DEPLOY_HOST/HOST)"
           [ -z "${DEPLOY_USER}" ] && missing="${missing} DEPLOY_USER(SSH_USER/DEPLOY_USER/USERNAME)"
           [ -z "${DEPLOY_KEY}" ] && missing="${missing} DEPLOY_KEY(SSH_KEY/DEPLOY_KEY)"
           [ -z "${DEPLOY_DIR}" ] && missing="${missing} DEPLOY_DIR(REMOTE_DEPLOY_DIR/DEPLOY_DIR)"
           if [ -n "${missing}" ]; then
-            echo "::notice::Skipping SSH deploy (expected for Streamlit Cloud). Missing:${missing}"
+            echo "::notice::Skipping SSH deploy. Missing:${missing}"
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -79,4 +85,4 @@ jobs:
 
       - name: Deploy skipped
         if: steps.validate.outputs.ready != 'true'
-        run: echo "SSH deploy skipped; Streamlit Cloud deployment does not require this step."
+        run: echo "SSH deploy skipped; set ENABLE_SSH_DEPLOY=true and required deploy secrets to enable it."

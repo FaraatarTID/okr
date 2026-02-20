@@ -29,8 +29,6 @@ def evaluate_runtime_preflight(
     pdf_method: str,
     is_streamlit_cloud: bool,
     has_pdfshift_key: bool,
-    has_pdfkit_module: bool,
-    has_wkhtmltopdf: bool,
     gemini_api_key: Optional[str],
     external_ai_allowed: bool = True,
     ai_provider: str = "gemini",
@@ -41,34 +39,18 @@ def evaluate_runtime_preflight(
     report = RuntimePreflightReport()
     method = _normalize_pdf_method(pdf_method)
 
-    if method not in {"pdfshift", "pdfkit"}:
+    if method not in {"pdfshift"}:
         report.errors.append(
-            "Unsupported PDF_METHOD. Use one of: pdfshift, pdfkit."
+            "Unsupported PDF_METHOD. Use: pdfshift. Local pdfkit/wkhtmltopdf mode was removed for security hardening."
         )
         return report
 
-    if method == "pdfshift":
-        if not has_pdfshift_key:
-            report.errors.append(
-                "PDF_METHOD=pdfshift but PDFShift API key is missing."
-            )
-        else:
-            report.infos.append("PDF provider is PDFShift (cloud-safe mode).")
-
-    if method == "pdfkit":
-        if is_streamlit_cloud:
-            report.errors.append(
-                "Streamlit Cloud runtime detected with PDF_METHOD=pdfkit. "
-                "Use PDF_METHOD=pdfshift for cloud deployments."
-            )
-        if not has_pdfkit_module:
-            report.warnings.append(
-                "pdfkit package is not installed; PDF export will fall back to HTML."
-            )
-        if not has_wkhtmltopdf:
-            report.warnings.append(
-                "wkhtmltopdf is not available; PDF export will fall back to HTML."
-            )
+    if not has_pdfshift_key:
+        report.errors.append(
+            "PDF_METHOD=pdfshift but PDFShift API key is missing."
+        )
+    else:
+        report.infos.append("PDF provider is PDFShift (secure mode).")
 
     key = str(gemini_api_key or "").strip()
     if not external_ai_allowed:

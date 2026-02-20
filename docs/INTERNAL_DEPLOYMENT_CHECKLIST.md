@@ -7,7 +7,7 @@ Use this checklist for company-internal pilot rollout sign-off.
 Phase 1: Preparation
 - [ ] Copy `deploy/secrets/secrets.toml.example` to runtime `secrets.toml` and populate internal values only.
 - [ ] Select AI provider (`openai_compatible` recommended for internal gateways, or `gemini` if approved).
-- [ ] Set `ALLOW_EXTERNAL_AI=false` if AI must be disabled by policy.
+- [ ] Keep `ALLOW_EXTERNAL_AI=false` unless outbound AI is explicitly approved.
 - [ ] Review `DEPLOYMENT.md` and `docs/CONFIG_REFERENCE.md`.
 
 Phase 2: Infrastructure
