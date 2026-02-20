@@ -12,6 +12,19 @@ services:
       - BASE_URL_PATH=${BASE_URL_PATH:-}
       - STREAMLIT_SERVER_HEADLESS=true
       - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL is required}
+      - OKR_BACKEND_API_URL=${OKR_BACKEND_API_URL:-http://backend-api:8100}
+      - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:-}
+      - OKR_BACKEND_DEFAULT_ACTOR=${OKR_BACKEND_DEFAULT_ACTOR:-system}
+      - PDF_METHOD=${PDF_METHOD:-pdfshift}
+      - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
+      - ALLOW_EXTERNAL_AI=${ALLOW_EXTERNAL_AI:-false}
+      - AI_PROVIDER=${AI_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - OKR_STRICT_RUNTIME_PREFLIGHT=${OKR_STRICT_RUNTIME_PREFLIGHT:-true}
       - AUTH_USER_WINDOW_SECONDS=${AUTH_USER_WINDOW_SECONDS:-300}
       - AUTH_USER_MAX_ATTEMPTS=${AUTH_USER_MAX_ATTEMPTS:-5}
       - AUTH_IP_WINDOW_SECONDS=${AUTH_IP_WINDOW_SECONDS:-300}
@@ -22,4 +35,56 @@ services:
     #   - ../secrets/secrets.toml:/app/streamlit_app/.streamlit/secrets.toml:ro
     ports:
       - "${HOST_PORT:-8501}:${PORT:-8501}"
+    depends_on:
+      - backend-api
+      - backend-worker
+    restart: unless-stopped
+
+  backend-api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: okr-backend-api
+    image: ${IMAGE:-okr-streamlit:local}
+    environment:
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL is required}
+      - OKR_BACKEND_HOST=0.0.0.0
+      - OKR_BACKEND_PORT=${OKR_BACKEND_PORT:-8100}
+      - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:-}
+      - OKR_BACKEND_ENFORCE_TOKEN=${OKR_BACKEND_ENFORCE_TOKEN:-true}
+      - ALLOW_EXTERNAL_AI=${ALLOW_EXTERNAL_AI:-false}
+      - AI_PROVIDER=${AI_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - PDF_METHOD=${PDF_METHOD:-pdfshift}
+      - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
+    command: ["python", "-m", "backend_app.run_api"]
+    ports:
+      - "${OKR_BACKEND_BIND_ADDRESS:-127.0.0.1}:${OKR_BACKEND_HOST_PORT:-8100}:${OKR_BACKEND_PORT:-8100}"
+    restart: unless-stopped
+
+  backend-worker:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: okr-backend-worker
+    image: ${IMAGE:-okr-streamlit:local}
+    environment:
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL is required}
+      - OKR_BACKEND_WORKER_POLL_SECONDS=${OKR_BACKEND_WORKER_POLL_SECONDS:-2}
+      - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:-}
+      - OKR_BACKEND_ENFORCE_TOKEN=${OKR_BACKEND_ENFORCE_TOKEN:-true}
+      - ALLOW_EXTERNAL_AI=${ALLOW_EXTERNAL_AI:-false}
+      - AI_PROVIDER=${AI_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
+      - AI_BASE_URL=${AI_BASE_URL:-}
+      - AI_MODEL=${AI_MODEL:-}
+      - AI_API_KEY=${AI_API_KEY:-}
+      - PDF_METHOD=${PDF_METHOD:-pdfshift}
+      - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
+    command: ["python", "-m", "backend_app.worker"]
     restart: unless-stopped

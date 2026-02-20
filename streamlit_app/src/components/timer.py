@@ -1,6 +1,7 @@
 """
 Timer Component for OKR Application.
-Uses st.fragment for isolated refresh without full page reload.
+Deprecated: this module is retained for compatibility, but periodic
+fragment reruns are disabled to avoid accidental high-frequency polling.
 """
 import streamlit as st
 from datetime import datetime
@@ -41,7 +42,7 @@ except AttributeError:
     _fragment_decorator = lambda run_every=None: lambda fn: fn
 
 
-@_fragment_decorator(run_every=1)
+@_fragment_decorator(run_every=None)
 def render_timer_display(
     task_id: int,
     task_title: str,

@@ -15,20 +15,25 @@ Runbook: first deployment
 - Configure reverse proxy with TLS and websocket support
 - Configure PDF mode explicitly:
   - All runtimes: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
+- Configure backend routing:
+  - `OKR_BACKEND_API_URL` (default in compose: `http://backend-api:8100`)
+  - `OKR_BACKEND_SERVICE_TOKEN` (strong shared secret)
 - Configure `GEMINI_API_KEY` if AI features are enabled
 - Enable strict runtime checks in production: `OKR_STRICT_RUNTIME_PREFLIGHT=1`
 
 4) Start services
-- Compose: start app
+- Compose: start `okr`, `backend-api`, and `backend-worker`
 - K8s: apply manifests
 
 5) Post-deploy checks
 - Health check: GET /
+- Backend health check: GET /healthz on backend-api
 - Login as admin/admin and change password
 - Create your first cycle and users
 - Confirm runtime preflight has no critical errors
 - Verify one PDF export succeeds in the selected provider mode
 - Verify one AI action succeeds (or document AI as intentionally disabled)
+- Verify async job path works end-to-end (submit AI/PDF action and confirm worker completion)
 - Run AI provider health check:
   - `python streamlit_app/scripts/ai_provider_health_check.py`
 

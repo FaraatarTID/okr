@@ -13,6 +13,14 @@ AI در این بخش‌ها استفاده می‌شود:
 - `Leadership Insights -> Execution` (بخش `AI Team Coach` برای مدیر/ادمین).
 - `Leadership Insights -> Strategy Pulse` (burnout، شکاف استراتژی، پیش‌بینی AI، کارنامه دستاورد PDF).
 
+## ۱.۱ مسیر اجرای Runtime
+
+درخواست‌های AI می‌توانند در دو حالت اجرا شوند:
+- حالت مستقیم: Streamlit در همان پروسه provider را صدا می‌زند.
+- حالت backend-assisted (پیشنهادی): Streamlit درخواست `ai.generate_json` را به `backend-api` می‌فرستد و `backend-worker` آن را async اجرا می‌کند.
+
+این تفکیک باعث کاهش فشار روی rerunهای Streamlit و پایداری بهتر در عملیات سنگین AI می‌شود.
+
 ## ۲. قابلیت‌های پیاده‌سازی‌شده AI
 
 ### الف) تحلیل گره (Magic Wand / Run Analysis)

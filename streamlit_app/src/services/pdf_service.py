@@ -7,8 +7,10 @@ import os
 import platform
 import datetime
 import base64
+from functools import lru_cache
 from html import escape as html_escape
 from io import BytesIO
+from pathlib import Path
 import streamlit as st
 from src.services.http_client import post_json_with_retry
 
@@ -28,22 +30,94 @@ def _escape(value):
     return html_escape(str(value), quote=True)
 
 
+@lru_cache(maxsize=1)
+def _load_file_secrets() -> dict:
+    """Best-effort secrets loader for non-Streamlit runtimes (backend worker/api)."""
+    try:
+        import tomllib
+    except Exception:
+        return {}
+
+    candidates = []
+    env_path = str(os.getenv("STREAMLIT_SECRETS_PATH", "")).strip()
+    if env_path:
+        candidates.append(Path(env_path))
+
+    streamlit_root = Path(__file__).resolve().parents[2]
+    candidates.extend(
+        [
+            streamlit_root / ".streamlit" / "secrets.toml",
+            Path.cwd() / ".streamlit" / "secrets.toml",
+            Path.cwd() / "streamlit_app" / ".streamlit" / "secrets.toml",
+            Path("/app/streamlit_app/.streamlit/secrets.toml"),
+        ]
+    )
+
+    for candidate in candidates:
+        try:
+            if not candidate.exists():
+                continue
+            with candidate.open("rb") as fh:
+                data = tomllib.load(fh)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            continue
+    return {}
+
+
+def _get_secret_value(*keys: str) -> str:
+    key_list = [str(k) for k in keys if str(k).strip()]
+    if not key_list:
+        return ""
+
+    try:
+        app_cfg = st.secrets.get("app", {})
+        for key in key_list:
+            if key in st.secrets:
+                value = st.secrets.get(key)
+                if value not in (None, ""):
+                    return str(value).strip()
+            if hasattr(app_cfg, "get"):
+                value = app_cfg.get(key)
+                if value not in (None, ""):
+                    return str(value).strip()
+    except Exception:
+        pass
+
+    file_secrets = _load_file_secrets()
+    app_cfg = file_secrets.get("app", {}) if isinstance(file_secrets, dict) else {}
+    for key in key_list:
+        value = file_secrets.get(key) if isinstance(file_secrets, dict) else None
+        if value not in (None, ""):
+            return str(value).strip()
+        if isinstance(app_cfg, dict):
+            value = app_cfg.get(key)
+            if value not in (None, ""):
+                return str(value).strip()
+    return ""
+
+
+def _resolve_pdfshift_api_key() -> str:
+    key = _get_secret_value(
+        "pdfshift_api_key",
+        "PDFSHIFT_API_KEY",
+    )
+    if key:
+        return key
+    return str(os.getenv("PDFSHIFT_API_KEY", "")).strip()
+
+
 def is_deployed_environment():
     """
     Resolve whether PDF binary generation is enabled in secure mode.
     Returns True only when PDF_METHOD resolves to `pdfshift`.
     """
-    try:
-        app_cfg = st.secrets.get("app", {})
-        method = str(st.secrets.get("PDF_METHOD", "")).strip().lower()
-        if not method and hasattr(app_cfg, "get"):
-            method = str(app_cfg.get("PDF_METHOD", app_cfg.get("pdf_method", ""))).strip().lower()
-        if method == "shiftpdf":
-            method = "pdfshift"
-        if method:
-            return method == "pdfshift"
-    except Exception:
-        pass
+    method = _get_secret_value("PDF_METHOD", "pdf_method").lower()
+    if method == "shiftpdf":
+        method = "pdfshift"
+    if method:
+        return method == "pdfshift"
 
     method = str(os.getenv("PDF_METHOD", os.getenv("OKR_PDF_METHOD", ""))).strip().lower()
     if method == "shiftpdf":
@@ -196,14 +270,9 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
 """
     # Executive Summary Section
     if report_summary:
-        # Convert markdown to HTML; if 'markdown' lib is missing, use a simple fallback
-        summary_text = report_summary.get("summary_markdown", "")
-        try:
-            import markdown as _md
-            summary_html = _md.markdown(summary_text)
-        except Exception:
-            # Fallback: basic newline to <br> conversion
-            summary_html = summary_text.replace('\n', '<br>')
+        # Treat summary text as untrusted input and render as escaped plain text.
+        summary_text = str(report_summary.get("summary_markdown", "") or "")
+        summary_html = _escape(summary_text).replace("\n", "<br>")
         highlights = report_summary.get("highlights", [])
         
         html += f"""
@@ -437,27 +506,22 @@ def generate_pdf_with_pdfshift(html):
     """
     Generate PDF using PDFShift API (secure mode).
     """
+    pdf_bytes = generate_pdf_with_pdfshift_bytes(html)
+    if pdf_bytes is None:
+        st.error("PDFShift failed. PDF export is unavailable.")
+        return None
+    return BytesIO(pdf_bytes)
+
+
+def generate_pdf_with_pdfshift_bytes(html, *, api_key: str = ""):
+    """
+    Backend-safe PDFShift execution that returns raw PDF bytes.
+    """
     try:
-        pdfshift_api_key = ""
-        try:
-            app_cfg = st.secrets.get("app", {})
-            pdfshift_api_key = str(
-                st.secrets.get(
-                    "pdfshift_api_key",
-                    st.secrets.get(
-                        "PDFSHIFT_API_KEY",
-                        app_cfg.get("pdfshift_api_key", app_cfg.get("PDFSHIFT_API_KEY", "")),
-                    ),
-                )
-            ).strip()
-        except Exception:
-            pass
+        pdfshift_api_key = str(api_key or "").strip() or _resolve_pdfshift_api_key()
         if not pdfshift_api_key:
-            pdfshift_api_key = str(os.getenv("PDFSHIFT_API_KEY", "")).strip()
-        if not pdfshift_api_key:
-            st.error("PDFShift API key is missing. PDF export is unavailable in secure mode.")
             return None
-        
+
         response = post_json_with_retry(
             "https://api.pdfshift.io/v3/convert/pdf",
             headers={"X-API-Key": pdfshift_api_key},
@@ -471,17 +535,14 @@ def generate_pdf_with_pdfshift(html):
             timeout=(5.0, 60.0),
             retries=2,
         )
-        
+
         if response.status_code == 200:
-            return BytesIO(response.content)
-        else:
-            print(f"PDFShift API Error: {response.status_code} - {response.text}")
-            st.error(f"PDFShift Error: {response.status_code}")
-            return None
-            
+            return response.content
+        print(f"PDFShift API Error: {response.status_code} - {response.text}")
+        return None
+
     except Exception as e:
         print(f"PDFShift Exception: {e}")
-        st.error(f"PDFShift failed: {str(e)}")
         return None
 
 

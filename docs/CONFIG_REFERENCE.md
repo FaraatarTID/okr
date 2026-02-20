@@ -46,6 +46,13 @@ PDF generation
 - Streamlit secrets keys:
   - PDF_METHOD: pdfshift
   - pdfshift_api_key: required for PDF binary export
+- Environment fallback:
+  - PDF_METHOD
+  - OKR_PDF_METHOD
+  - PDFSHIFT_API_KEY
+- Behavior:
+  - `pdfshift` is the only supported PDF runtime mode.
+  - If PDFShift is unavailable/misconfigured, UI falls back to HTML export (no local PDF engine fallback).
 
 AI integration
 
@@ -80,12 +87,33 @@ AI integration
 
 Runtime preflight policy
 
-- Optional strict mode:
-  - OKR_STRICT_RUNTIME_PREFLIGHT=1
+- Strict mode default:
+  - `OKR_STRICT_RUNTIME_PREFLIGHT` is enabled by default.
+  - Set `OKR_STRICT_RUNTIME_PREFLIGHT=0` only for temporary troubleshooting.
 - Behavior:
   - Runtime validates PDF provider mode and key presence.
-  - If strict mode is enabled, critical preflight errors stop app startup.
+  - In strict mode, critical preflight errors stop app startup.
   - Provider configuration issues are surfaced as warnings/errors depending on severity.
+
+Backend API (recommended for scale)
+
+- Streamlit-to-backend routing:
+  - `OKR_BACKEND_API_URL` (e.g. `http://backend-api:8100`)
+  - `OKR_BACKEND_SERVICE_TOKEN` (shared token for service-to-service auth)
+  - `OKR_BACKEND_DEFAULT_ACTOR` (fallback actor for system-initiated AI requests; default: `system`)
+- Backend API runtime:
+  - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
+  - `OKR_BACKEND_PORT` (default: `8100`)
+  - `OKR_BACKEND_ENFORCE_TOKEN` (default: `true`)
+  - `OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS` (default: `60`)
+  - `OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS` (default: `120`)
+- Backend worker runtime:
+  - `OKR_BACKEND_WORKER_POLL_SECONDS` (default: `2`)
+- Notes:
+  - With `OKR_BACKEND_API_URL` set, timer operations and heavy AI/PDF workflows can run through the backend job system.
+  - Without it, the app runs in direct mode (legacy behavior).
+  - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.
+  - Current MVP still performs core hierarchy CRUD directly via Streamlit + SQLModel; backend API covers timer + async heavy flows.
 
 Recommended deployment profiles
 
@@ -93,12 +121,14 @@ Recommended deployment profiles
   - PDF_METHOD=pdfshift
   - AI_PROVIDER=gemini (or your approved hosted gateway via `openai_compatible`)
   - pdfshift_api_key must be present
-  - OKR_STRICT_RUNTIME_PREFLIGHT=1 (recommended)
+  - OKR_STRICT_RUNTIME_PREFLIGHT defaults to strict (recommended)
 - Self-hosted server (Docker/VM):
   - PDF_METHOD=pdfshift
   - AI_PROVIDER=openai_compatible for local/self-hosted LLM routing
   - If openai_compatible: set AI_BASE_URL and AI_MODEL
-  - OKR_STRICT_RUNTIME_PREFLIGHT=1 (recommended)
+  - Deploy `okr`, `backend-api`, and `backend-worker` services together
+  - OKR_STRICT_RUNTIME_PREFLIGHT defaults to strict (recommended)
+  - Recommended for confidential internal company data.
 
 Release governance (CI)
 

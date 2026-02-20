@@ -13,6 +13,14 @@ AI is used in these places:
 - `Leadership Insights -> Execution` (`AI Team Coach`, manager/admin).
 - `Leadership Insights -> Strategy Pulse` (burnout, strategy gaps, predictive outlook, achievement portfolio PDF).
 
+## 1.1 Runtime Execution Path
+
+AI requests can execute in two modes:
+- Direct mode: Streamlit calls provider client in-process.
+- Backend-assisted mode (recommended): Streamlit submits `ai.generate_json` jobs to `backend-api`, then `backend-worker` executes provider calls asynchronously.
+
+This separation reduces Streamlit request pressure for heavy AI flows and gives a durable job status model.
+
 ## 2. Implemented AI Capabilities
 
 ### A) Node Analysis (Magic Wand / Run Analysis)

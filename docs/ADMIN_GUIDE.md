@@ -42,6 +42,19 @@ Inside Focus Map sidebar (admin scope), you can run:
 
 Use this cockpit for controlled sync and correction, not blind bulk updates.
 
+### Runtime Architecture for Admin Operators
+
+Current recommended deployment topology:
+- `okr` (Streamlit UI/session workflow shell)
+- `backend-api` (internal timer + job control plane)
+- `backend-worker` (async execution for AI/PDF jobs)
+- shared Supabase PostgreSQL database
+
+Key wiring:
+- `OKR_BACKEND_API_URL` from `okr` -> `backend-api`
+- `OKR_BACKEND_SERVICE_TOKEN` must match across caller and backend API
+- backend API should remain private/internal, not internet-exposed
+
 ## 3. Lifecycle and Rollup Rules You Must Enforce
 
 For Objectives and KRs:
@@ -109,7 +122,7 @@ Process distinction:
 Report timing:
 - `Daily Report`: today window.
 - `Weekly Report`: last 7 days window.
-- Both are work-log based and exportable (PDF/HTML fallback).
+- Both are work-log based and exportable (`pdfshift` PDF path with HTML fallback).
 
 ## 6. Incident Playbooks
 

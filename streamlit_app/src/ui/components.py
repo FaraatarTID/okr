@@ -551,8 +551,9 @@ def build_graph_from_node(root_obj):
 
 def render_timer_content(node_id, username):
     # 'data' argument is deprecated but kept for signature compatibility during refactor
-    from src.crud import stop_timer, get_session_context
+    from src.database import get_session_context
     from src.models import Task
+    from src.services.timer_service import stop_timer
 
     with get_session_context() as session:
         node = session.get(Task, node_id)
@@ -602,7 +603,7 @@ def render_timer_content(node_id, username):
             )
 
             if c2.button("✋ Stop & Log", type="primary", use_container_width=True):
-                # Call CRUD stop_timer directly
+                # Timer service routes to backend API when enabled, local CRUD otherwise.
                 wl = stop_timer(node_id, summary=summary, user_id=username)
                 if wl:
                     # Fetch latest work logs and show confirmation
@@ -1068,9 +1069,12 @@ def render_leadership_dashboard_content(username):
         coaching = st.session_state.get("last_coaching")
         if coaching:
             # Health Score Header
-            health_score = coaching.get("overall_health_score", 0)
-            grade = coaching.get("health_grade", "?")
-            headline = coaching.get("headline", "")
+            try:
+                health_score = int(float(coaching.get("overall_health_score", 0)))
+            except Exception:
+                health_score = 0
+            grade = str(coaching.get("health_grade", "?"))[:1].upper() or "?"
+            headline = escape_html(str(coaching.get("headline", "")))
 
             # Color based on grade
             grade_colors = {
@@ -1080,7 +1084,8 @@ def render_leadership_dashboard_content(username):
                 "D": "#FF9800",
                 "F": "#F44336",
             }
-            grade_color = grade_colors.get(grade, "#9E9E9E")
+            grade_display = grade if grade in grade_colors else "?"
+            grade_color = grade_colors.get(grade_display, "#9E9E9E")
 
             # Score Card
             st.markdown(
@@ -1092,7 +1097,7 @@ def render_leadership_dashboard_content(username):
                         margin: 10px 0;">
                 <div style="display: flex; align-items: center; gap: 20px;">
                     <div style="text-align: center;">
-                        <div style="font-size: 48px; font-weight: bold; color: {grade_color};">{grade}</div>
+                        <div style="font-size: 48px; font-weight: bold; color: {grade_color};">{grade_display}</div>
                         <div style="font-size: 14px; color: #666;">Grade</div>
                     </div>
                     <div style="flex: 1;">
@@ -1462,6 +1467,9 @@ def render_report_content(username, mode):
     # PDF Export (Moved to Top)
     try:
         from src.services.pdf_service import generate_weekly_pdf_v2, generate_pdf_html
+        from src.services.backend_client import is_backend_enabled
+        from src.services.job_service import run_job_and_wait
+        import base64
         import json
 
         # Generate PDF
@@ -1487,22 +1495,51 @@ def render_report_content(username, mode):
         # Determine Title
         pdf_title = "Daily Work Report" if mode == "Daily" else "Weekly Work Report"
 
-        pdf_buffer = generate_weekly_pdf_v2(
-            report_items,
-            objective_stats,
-            format_time(total),
-            pdf_krs,
-            st.session_state.report_direction,
-            title=pdf_title,
-            time_label=period_label,
-            report_summary=st.session_state.get("report_summary"),  # Pass AI summary
-            achievements=achievements,  # Pass achievements list
-        )
+        pdf_bytes = None
+        if is_backend_enabled():
+            job_result = run_job_and_wait(
+                kind="pdf.weekly",
+                payload={
+                    "report_items": report_items,
+                    "objective_stats": objective_stats,
+                    "total_time_str": format_time(total),
+                    "key_results": pdf_krs,
+                    "direction": st.session_state.report_direction,
+                    "title": pdf_title,
+                    "time_label": period_label,
+                    "report_summary": st.session_state.get("report_summary"),
+                    "achievements": achievements,
+                    "filename": f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
+                },
+                actor_username=username,
+                timeout_seconds=120,
+                poll_seconds=1.0,
+            )
+            if "error" in job_result:
+                st.warning(f"Backend PDF job failed: {job_result['error']}")
+            else:
+                encoded_pdf = str(job_result.get("content_b64") or "").strip()
+                if encoded_pdf:
+                    pdf_bytes = base64.b64decode(encoded_pdf)
+        else:
+            pdf_buffer = generate_weekly_pdf_v2(
+                report_items,
+                objective_stats,
+                format_time(total),
+                pdf_krs,
+                st.session_state.report_direction,
+                title=pdf_title,
+                time_label=period_label,
+                report_summary=st.session_state.get("report_summary"),
+                achievements=achievements,
+            )
+            if pdf_buffer:
+                pdf_bytes = pdf_buffer.getvalue()
 
-        if pdf_buffer:
+        if pdf_bytes:
             st.download_button(
                 label="📄 Export as PDF",
-                data=pdf_buffer,
+                data=pdf_bytes,
                 file_name=f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
                 mime="application/pdf",
                 key="report_pdf_download",
@@ -3870,7 +3907,7 @@ def render_atlas_workspace(username):
         reason = str(health.get("reason") or "On track")
         return f"<span class='atlas-attn-chip atlas-attn-{kind}'>{escape_html(reason)}</span>"
 
-    from src.crud import start_timer, stop_timer
+    from src.services.timer_service import start_timer, stop_timer
 
     task_refs = _collect_task_refs(selected_ref)
     suggested_task_ref = _suggest_focus_task(task_refs)

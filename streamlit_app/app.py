@@ -75,8 +75,10 @@ def _has_pdfshift_api_key() -> bool:
 
 
 def _runtime_preflight_strict_mode() -> bool:
-    # Default is non-strict to preserve backward compatibility across environments.
+    # Security-first default: runtime preflight is strict unless explicitly disabled.
     raw = str(os.getenv("OKR_STRICT_RUNTIME_PREFLIGHT", "")).strip().lower()
+    if raw in {"0", "false", "no", "off"}:
+        return False
     if raw in {"1", "true", "yes", "on"}:
         return True
     try:
@@ -87,9 +89,13 @@ def _runtime_preflight_strict_mode() -> bool:
                 app_cfg.get("OKR_STRICT_RUNTIME_PREFLIGHT", ""),
             )
         ).strip().lower()
+        if secret_raw in {"0", "false", "no", "off"}:
+            return False
+        if not secret_raw:
+            return True
         return secret_raw in {"1", "true", "yes", "on"}
     except Exception:
-        return False
+        return True
 
 
 def _run_pdf_preflight():

@@ -19,6 +19,26 @@ Manifests
 - Ingress: [deploy/k8s/ingress.yaml](../deploy/k8s/ingress.yaml)
   - Set host and TLS secret
 
+Current scope of provided manifests (important)
+
+- The checked-in Kubernetes manifests currently deploy the Streamlit app service (`okr-streamlit`) only.
+- For full backend-assisted architecture parity with Docker Compose, add internal services for:
+  - `backend-api` (FastAPI)
+  - `backend-worker` (job processor)
+- Streamlit should then use `OKR_BACKEND_API_URL` pointing to the cluster-internal backend API Service.
+- Keep backend API Service internal (`ClusterIP`) and avoid public ingress exposure.
+
+Recommended backend K8s additions
+
+- Deployment + Service for `backend-api`.
+- Deployment for `backend-worker`.
+- Shared environment/Secret values across app + backend:
+  - `OKR_DATABASE_URL`
+  - `OKR_BACKEND_SERVICE_TOKEN`
+  - `PDF_METHOD=pdfshift`, `PDFSHIFT_API_KEY`
+  - AI policy/provider values (`ALLOW_EXTERNAL_AI`, `AI_PROVIDER`, provider credentials)
+- Optional HorizontalPodAutoscaler for app and backend API after baseline load testing.
+
 Subpath hosting
 
 - Use a path-based rule and set BASE_URL_PATH in the Deployment env
@@ -38,6 +58,7 @@ Monitoring & logs
 
 - Use kubectl logs for pod logs; ingress logs for HTTP
 - Health check: GET /
+- Backend health (when deployed): GET /healthz on backend-api Service
 
 Backups
 
