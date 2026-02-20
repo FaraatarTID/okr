@@ -34,7 +34,7 @@ def _get_pdf_method() -> str:
         # Accept common typo to keep deployments resilient.
         if method == "shiftpdf":
             method = "pdfshift"
-        if method == "pdfshift":
+        if method:
             return method
         if (
             "pdfshift_api_key" in st.secrets
@@ -45,6 +45,13 @@ def _get_pdf_method() -> str:
             return "pdfshift"
     except Exception:
         pass
+    method = str(
+        os.getenv("PDF_METHOD", os.getenv("OKR_PDF_METHOD", ""))
+    ).strip().lower()
+    if method == "shiftpdf":
+        method = "pdfshift"
+    if method:
+        return method
     return "pdfshift"
 
 

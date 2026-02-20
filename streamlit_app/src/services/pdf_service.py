@@ -45,6 +45,12 @@ def is_deployed_environment():
     except Exception:
         pass
 
+    method = str(os.getenv("PDF_METHOD", os.getenv("OKR_PDF_METHOD", ""))).strip().lower()
+    if method == "shiftpdf":
+        method = "pdfshift"
+    if method:
+        return method == "pdfshift"
+
     return True
 
 
