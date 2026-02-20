@@ -97,7 +97,7 @@ Browser
 ```
 
 Key technical points:
-- With `OKR_BACKEND_API_URL` configured, Goal/Objective/KR/Task mutations and timer flows route through `backend-api`.
+- With `OKR_BACKEND_API_URL` configured, all frontend mutation flows route through `backend-api` (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, and work-log deletes).
 - Backend write/timer/job paths fail closed by default if backend is unavailable. Optional emergency fallback is opt-in via `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` (non-production only).
 - Read-heavy hierarchy traversal still executes in-process via Streamlit + SQLModel in the current MVP.
 - AI-heavy and PDF-heavy flows route via backend job services.
@@ -423,7 +423,7 @@ The codebase is organized modularly to separate concerns across the UI, business
   - **`crud.py`**, **`models.py`**, **`database.py`**: Core app facade, data model, and persistence layer.
 - **`streamlit_app/src/utils/`**: Shared utility helpers used across app layers.
 - **`streamlit_app/alembic/`**: Database migration environment and versions.
-- **`backend_app/`**: Internal backend API + async worker for timer/job execution.
+- **`backend_app/`**: Internal backend API + async worker for secured mutation routing and timer/job execution.
 - **`tests/`**: Automated regression and performance-path tests.
 - **`docs/`**, **`deploy/`**: Operations and deployment assets.
 

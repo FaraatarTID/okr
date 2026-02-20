@@ -87,7 +87,7 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 7. Functional Smoke Tests
 - [ ] Login/logout works.
 - [ ] Create Goal > Objective > KR > Task works.
-- [ ] Goal/Objective/KR/Task updates and deletes work while backend API is enabled.
+- [ ] Frontend mutation flows work while backend API is enabled (node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments).
 - [ ] Timer start/stop works.
 - [ ] Reports render.
 - [ ] No browser reconnect loops.

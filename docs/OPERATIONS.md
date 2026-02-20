@@ -52,8 +52,8 @@ Runtime preflight checks
   - All runtimes: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
 
 Architecture note
-- Current MVP uses hybrid execution: read-heavy traversal remains in Streamlit, while backend services own node mutations, timer APIs, and async heavy jobs when `OKR_BACKEND_API_URL` is configured.
-- Keep `OKR_BACKEND_PROXY_MUTATIONS=1` in internal deployments so Goal/Objective/KR/Task writes route through backend API by default.
+- Current MVP uses hybrid execution: read-heavy traversal remains in Streamlit, while backend services own frontend mutation APIs, timer APIs, and async heavy jobs when `OKR_BACKEND_API_URL` is configured.
+- Keep `OKR_BACKEND_PROXY_MUTATIONS=1` in internal deployments so frontend write flows route through backend API by default (node CRUD, users/cycles/teams, Learning Loop writes, alignments, work-log deletes).
 - Keep `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` unset/false in production so backend failures fail closed.
 
 Release governance

@@ -225,10 +225,36 @@ def create_user(
     role: UserRole = UserRole.MEMBER,
     display_name: str = None,
     manager_id: int = None,
+    team_id: int = None,
     must_change_password: bool = False,
+    actor_username: Optional[str] = None,
 ) -> User:
     """Create a new user with hashed password."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import create_user as backend_create_user
+
+        backend_result = backend_create_user(
+            username=username,
+            password=password,
+            role=role,
+            display_name=display_name,
+            manager_id=manager_id,
+            team_id=team_id,
+            must_change_password=must_change_password,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return SimpleNamespace(**backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
+        if actor_username:
+            _require_admin_actor(session, actor_username)
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         user = User(
             username=username,
             password_hash=hash_password(password),
@@ -237,11 +263,21 @@ def create_user(
             display_name=display_name or username,
             role=role,
             manager_id=manager_id,
+            team_id=team_id,
         )
         session.add(user)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError as exc:
+            session.rollback()
+            raise ValueError(f"Could not create user '{username}'.") from exc
         session.refresh(user)
-        audit_log("create", "user", actor=username, details={"role": role.value})
+        audit_log(
+            "create",
+            "user",
+            actor=actor_username or username,
+            details={"role": role.value, "target_user_id": user.id},
+        )
         clear_cache_safe()
         return user
 
@@ -314,6 +350,37 @@ def get_user_by_id(user_id: int) -> Optional[User]:
     """Get a user by ID."""
     with get_session_context() as session:
         return session.get(User, user_id)
+
+
+def _require_actor_user(session: Session, actor_username: Optional[str]) -> User:
+    actor_name = str(actor_username or "").strip()
+    if not actor_name:
+        raise PermissionError("Actor username is required for this operation")
+    actor = session.exec(select(User).where(User.username == actor_name)).first()
+    if not actor or not actor.is_active:
+        raise PermissionError("Actor is not authorized")
+    return actor
+
+
+def _require_admin_actor(session: Session, actor_username: Optional[str]) -> User:
+    actor = _require_actor_user(session, actor_username)
+    if actor.role != UserRole.ADMIN:
+        raise PermissionError("Admin privileges are required for this operation")
+    return actor
+
+
+def _authorize_self_or_admin(
+    session: Session,
+    *,
+    actor_username: Optional[str],
+    target_user_id: int,
+) -> User:
+    actor = _require_actor_user(session, actor_username)
+    if actor.role == UserRole.ADMIN:
+        return actor
+    if int(actor.id or 0) == int(target_user_id):
+        return actor
+    raise PermissionError("Only the user or an admin can perform this operation")
 
 
 def _normalize_throttle_username(username: str) -> str:
@@ -763,36 +830,101 @@ def update_user(
     display_name: str = None,
     role: UserRole = None,
     manager_id: int = None,
+    team_id: int = None,
     is_active: bool = None,
+    actor_username: Optional[str] = None,
 ) -> Optional[User]:
     """Update user details (not password)."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import update_user as backend_update_user
+
+        backend_result = backend_update_user(
+            user_id=user_id,
+            display_name=display_name,
+            role=role,
+            manager_id=manager_id,
+            team_id=team_id,
+            is_active=is_active,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return SimpleNamespace(**backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
+        if actor_username:
+            _require_admin_actor(session, actor_username)
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         user = session.get(User, user_id)
         if not user:
             return None
         if display_name is not None:
             user.display_name = display_name
         if role is not None:
+            if not isinstance(role, UserRole):
+                role = UserRole(str(role))
             user.role = role
         if manager_id is not None:
+            if int(manager_id) == int(user_id):
+                raise ValueError("User cannot be their own manager.")
             user.manager_id = manager_id
+        if team_id is not None:
+            user.team_id = team_id
         if is_active is not None:
             user.is_active = is_active
         session.add(user)
         session.commit()
         session.refresh(user)
-        audit_log("update", "user", actor=user.username, details={"user_id": user_id})
+        audit_log(
+            "update",
+            "user",
+            actor=actor_username or user.username,
+            details={"user_id": user_id},
+        )
         clear_cache_safe()
         return user
 
 
 def reset_user_password(
-    user_id: int, new_password: str, require_change: bool = False
+    user_id: int,
+    new_password: str,
+    require_change: bool = False,
+    actor_username: Optional[str] = None,
 ) -> bool:
     """Reset a user's password."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import (
+            reset_user_password as backend_reset_user_password,
+        )
+
+        backend_result = backend_reset_user_password(
+            user_id=user_id,
+            new_password=new_password,
+            require_change=require_change,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return bool(backend_result.get("reset", True))
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     username = None
     try:
         with get_session_context() as session:
+            if actor_username:
+                _authorize_self_or_admin(
+                    session,
+                    actor_username=actor_username,
+                    target_user_id=int(user_id),
+                )
+            elif _backend_mutation_proxy_enabled():
+                raise PermissionError("Actor username is required for this operation")
+
             user = session.get(User, user_id)
             if not user:
                 return False
@@ -817,16 +949,18 @@ def reset_user_password(
         audit_log(
             "reset_password",
             "user",
-            actor=username,
+            actor=actor_username or username,
             details={"user_id": user_id, "verified": True},
         )
         clear_cache_safe()
         return True
+    except PermissionError:
+        raise
     except Exception as exc:
         audit_log(
             "reset_password_failed",
             "user",
-            actor=username,
+            actor=actor_username or username,
             details={"user_id": user_id, "error": str(exc)},
         )
         return False
@@ -908,6 +1042,26 @@ def create_check_in(
     experiment_id: Optional[int] = None,
 ) -> CheckIn:
     """Create a new check-in with learning loop fields."""
+    if _backend_mutation_proxy_enabled():
+        actor_name = str(actor_username or "").strip()
+        if not actor_name:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import create_check_in as backend_create_check_in
+
+        backend_result = backend_create_check_in(
+            kr_id=kr_id,
+            value=value,
+            confidence=confidence,
+            comment=comment,
+            actor_username=actor_name,
+            variation_type=variation_type,
+            special_cause_note=special_cause_note,
+            experiment_id=experiment_id,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
         goal = _get_goal_for_key_result(session, kr_id)
         _authorize_goal_mutation(session, goal, actor_username)
@@ -1020,6 +1174,26 @@ def create_experiment(
     expected_effect_size: Optional[float] = None,
 ) -> Experiment:
     """Create a new experiment for a KR with authorization and cycle validation."""
+    if _backend_mutation_proxy_enabled():
+        actor_name = str(actor_username or "").strip()
+        if not actor_name:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import create_experiment as backend_create_experiment
+
+        backend_result = backend_create_experiment(
+            key_result_id=key_result_id,
+            cycle_id=cycle_id,
+            hypothesis=hypothesis,
+            change_description=change_description,
+            actor_username=actor_name,
+            start_at=start_at,
+            expected_effect_direction=expected_effect_direction,
+            expected_effect_size=expected_effect_size,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
         goal = _get_goal_for_key_result(session, key_result_id)
         _authorize_goal_mutation(session, goal, actor_username)
@@ -1093,6 +1267,21 @@ def update_experiment(
     **updates
 ) -> Optional[Experiment]:
     """Update experiment fields with authorization."""
+    if _backend_mutation_proxy_enabled():
+        actor_name = str(actor_username or "").strip()
+        if not actor_name:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import update_experiment as backend_update_experiment
+
+        backend_result = backend_update_experiment(
+            experiment_id=experiment_id,
+            updates=dict(updates or {}),
+            actor_username=actor_name,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
         experiment = session.get(Experiment, experiment_id)
         if not experiment:
@@ -1125,6 +1314,22 @@ def close_experiment(
     actor_username: str,
 ) -> Optional[Experiment]:
     """Close an experiment with a decision."""
+    if _backend_mutation_proxy_enabled():
+        actor_name = str(actor_username or "").strip()
+        if not actor_name:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import close_experiment as backend_close_experiment
+
+        backend_result = backend_close_experiment(
+            experiment_id=experiment_id,
+            decision=decision,
+            rationale=rationale,
+            actor_username=actor_name,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     return update_experiment(
         experiment_id,
         actor_username=actor_username,
@@ -1175,17 +1380,50 @@ def list_experiments_for_retro_window(
 
 
 def create_cycle(
-    title: str, start_date: datetime, end_date: datetime, is_active: bool = True
+    title: str,
+    start_date: datetime,
+    end_date: datetime,
+    is_active: bool = True,
+    actor_username: Optional[str] = None,
 ) -> Cycle:
     """Create a new OKR cycle."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import create_cycle as backend_create_cycle
+
+        backend_result = backend_create_cycle(
+            title=title,
+            start_date=start_date,
+            end_date=end_date,
+            is_active=is_active,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
+    if start_date >= end_date:
+        raise ValueError("Cycle start_date must be before end_date.")
+
     with get_session_context() as session:
+        if actor_username:
+            _require_admin_actor(session, actor_username)
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         cycle = Cycle(
             title=title, start_date=start_date, end_date=end_date, is_active=is_active
         )
         session.add(cycle)
         session.commit()
         session.refresh(cycle)
-        audit_log("create", "cycle", details={"cycle_id": cycle.id, "title": title})
+        audit_log(
+            "create",
+            "cycle",
+            actor=actor_username,
+            details={"cycle_id": cycle.id, "title": title},
+        )
         clear_cache_safe()
         return cycle
 
@@ -1209,10 +1447,40 @@ def get_all_cycles() -> List[Cycle]:
 
 
 def update_cycle(
-    cycle_id: int, title: str, start_date: datetime, end_date: datetime, is_active: bool
+    cycle_id: int,
+    title: str,
+    start_date: datetime,
+    end_date: datetime,
+    is_active: bool,
+    actor_username: Optional[str] = None,
 ) -> Optional[Cycle]:
     """Update an existing cycle."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import update_cycle as backend_update_cycle
+
+        backend_result = backend_update_cycle(
+            cycle_id=cycle_id,
+            title=title,
+            start_date=start_date,
+            end_date=end_date,
+            is_active=is_active,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
+    if start_date >= end_date:
+        raise ValueError("Cycle start_date must be before end_date.")
+
     with get_session_context() as session:
+        if actor_username:
+            _require_admin_actor(session, actor_username)
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         cycle = session.get(Cycle, cycle_id)
         if not cycle:
             return None
@@ -1225,14 +1493,37 @@ def update_cycle(
         session.add(cycle)
         session.commit()
         session.refresh(cycle)
-        audit_log("update", "cycle", details={"cycle_id": cycle_id, "title": title})
+        audit_log(
+            "update",
+            "cycle",
+            actor=actor_username,
+            details={"cycle_id": cycle_id, "title": title},
+        )
         clear_cache_safe()
         return cycle
 
 
-def delete_cycle(cycle_id: int) -> bool:
+def delete_cycle(cycle_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a cycle. Returns False if cycle has goals."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import delete_cycle as backend_delete_cycle
+
+        backend_result = backend_delete_cycle(
+            cycle_id=cycle_id,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return bool(backend_result.get("deleted", True))
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
+        if actor_username:
+            _require_admin_actor(session, actor_username)
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         cycle = session.get(Cycle, cycle_id)
         if not cycle:
             return False
@@ -1241,11 +1532,11 @@ def delete_cycle(cycle_id: int) -> bool:
         # Use a query to be safe
         goals = session.exec(select(Goal).where(Goal.cycle_id == cycle_id)).all()
         if goals:
-            return False
+            raise ValueError("Cannot delete cycle with existing goals.")
 
         session.delete(cycle)
         session.commit()
-        audit_log("delete", "cycle", details={"cycle_id": cycle_id})
+        audit_log("delete", "cycle", actor=actor_username, details={"cycle_id": cycle_id})
         clear_cache_safe()
         return True
 
@@ -1789,6 +2080,21 @@ def create_alignment(
     actor_username: Optional[str] = None,
 ) -> AlignmentEdge:
     """Create a link between objectives with cycle detection."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import create_alignment as backend_create_alignment
+
+        backend_result = backend_create_alignment(
+            parent_id=parent_id,
+            child_id=child_id,
+            alignment_type=alignment_type,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     from src.domain.alignment import check_for_cycle
 
     with get_session_context() as session:
@@ -1843,6 +2149,19 @@ def create_alignment(
 
 def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
     """Remove an alignment link."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import delete_alignment as backend_delete_alignment
+
+        backend_result = backend_delete_alignment(
+            edge_id=edge_id,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return bool(backend_result.get("deleted", True))
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
         edge = session.get(AlignmentEdge, edge_id)
         if edge:
@@ -1855,6 +2174,8 @@ def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
             session.commit()
             audit_log("delete", "alignment_edge", details={"edge_id": edge_id})
             clear_cache_safe()
+            return True
+    return False
 
 
 def update_key_result(
@@ -2548,6 +2869,19 @@ def get_work_log_by_start_time(task_id: int, start_time: datetime) -> Optional[W
 
 def delete_work_log(log_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a work log and update the task's total_time_spent."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import delete_work_log as backend_delete_work_log
+
+        backend_result = backend_delete_work_log(
+            work_log_id=log_id,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return bool(backend_result.get("deleted", True))
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
         work_log = session.get(WorkLog, log_id)
         if work_log:
@@ -2721,9 +3055,43 @@ def create_weekly_plan(
     p1: str,
     p2: str = None,
     p3: str = None,
+    actor_username: Optional[str] = None,
 ) -> WeeklyPlan:
     """Create a new weekly plan."""
+    if _backend_mutation_proxy_enabled():
+        actor_name = str(actor_username or "").strip()
+        if not actor_name:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import create_weekly_plan as backend_create_weekly_plan
+
+        backend_result = backend_create_weekly_plan(
+            user_id=user_id,
+            start_date=start_date,
+            end_date=end_date,
+            p1=p1,
+            p2=p2,
+            p3=p3,
+            actor_username=actor_name,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
+    if not str(p1 or "").strip():
+        raise ValueError("Priority #1 is required.")
+    if start_date >= end_date:
+        raise ValueError("Week start_date must be before end_date.")
+
     with get_session_context() as session:
+        if actor_username:
+            _authorize_self_or_admin(
+                session,
+                actor_username=actor_username,
+                target_user_id=int(user_id),
+            )
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         # Check if plan exists for this week start date
         statement = (
             select(WeeklyPlan)
@@ -2787,9 +3155,42 @@ def create_retrospective(
     week_start_date: datetime,
     content: str,
     sentiment: str = None,
+    actor_username: Optional[str] = None,
 ) -> Retrospective:
     """Create a new retrospective entry."""
+    if _backend_mutation_proxy_enabled():
+        actor_name = str(actor_username or "").strip()
+        if not actor_name:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import (
+            create_retrospective as backend_create_retrospective,
+        )
+
+        backend_result = backend_create_retrospective(
+            user_id=user_id,
+            cycle_id=cycle_id,
+            week_start_date=week_start_date,
+            content=content,
+            sentiment=sentiment,
+            actor_username=actor_name,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
+    if not str(content or "").strip():
+        raise ValueError("Retrospective content is required.")
+
     with get_session_context() as session:
+        if actor_username:
+            _authorize_self_or_admin(
+                session,
+                actor_username=actor_username,
+                target_user_id=int(user_id),
+            )
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         # Check if exists for this week? Optional: Enforce one per week per user
         statement = (
             select(Retrospective)
@@ -2856,6 +3257,25 @@ def upsert_retro_experiment_outcome(
     Attach or update experiment outcome to retro.
     Only retro owner can modify. Handles concurrent upserts.
     """
+    if _backend_mutation_proxy_enabled():
+        actor_name = str(actor_username or "").strip()
+        if not actor_name:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import (
+            upsert_retro_experiment_outcome as backend_upsert_retro_experiment_outcome,
+        )
+
+        backend_result = backend_upsert_retro_experiment_outcome(
+            retrospective_id=retrospective_id,
+            experiment_id=experiment_id,
+            decision=decision,
+            rationale=rationale,
+            actor_username=actor_name,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
         retro = session.get(Retrospective, retrospective_id)
         if not retro:
@@ -3054,15 +3474,46 @@ def get_sql_id_by_external(external_id: str, model_class) -> Optional[int]:
 # ============================================================================
 
 
-def create_team(name: str, description: Optional[str] = None) -> Team:
+def create_team(
+    name: str,
+    description: Optional[str] = None,
+    actor_username: Optional[str] = None,
+) -> Team:
     """Create a new team."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import create_team as backend_create_team
+
+        backend_result = backend_create_team(
+            name=name,
+            description=description,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
+    if not str(name or "").strip():
+        raise ValueError("Team name is required.")
+
     with get_session_context() as session:
+        if actor_username:
+            _require_admin_actor(session, actor_username)
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         team = Team(name=name, description=description)
         session.add(team)
         try:
             session.commit()
             session.refresh(team)
-            audit_log("create_team", "team", details={"name": name, "id": team.id})
+            audit_log(
+                "create_team",
+                "team",
+                actor=actor_username,
+                details={"name": name, "id": team.id},
+            )
             return team
         except IntegrityError:
             session.rollback()
@@ -3081,9 +3532,33 @@ def get_team_by_id(team_id: int) -> Optional[Team]:
         return session.get(Team, team_id)
 
 
-def update_team(team_id: int, **updates) -> Optional[Team]:
+def update_team(
+    team_id: int,
+    actor_username: Optional[str] = None,
+    **updates,
+) -> Optional[Team]:
     """Update team details."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import update_team as backend_update_team
+
+        backend_result = backend_update_team(
+            team_id=team_id,
+            actor_username=actor_username,
+            name=updates.get("name"),
+            description=updates.get("description"),
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
+        if actor_username:
+            _require_admin_actor(session, actor_username)
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         team = session.get(Team, team_id)
         if not team:
             return None
@@ -3097,7 +3572,10 @@ def update_team(team_id: int, **updates) -> Optional[Team]:
             session.commit()
             session.refresh(team)
             audit_log(
-                "update_team", "team", details={"id": team_id, "updates": updates}
+                "update_team",
+                "team",
+                actor=actor_username,
+                details={"id": team_id, "updates": updates},
             )
             return team
         except IntegrityError:
@@ -3105,9 +3583,27 @@ def update_team(team_id: int, **updates) -> Optional[Team]:
             raise ValueError("Update failed, likely duplicate name.")
 
 
-def delete_team(team_id: int) -> bool:
+def delete_team(team_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a team. Fails if it has members."""
+    if _backend_mutation_proxy_enabled():
+        if not actor_username:
+            raise PermissionError("Actor username is required for this operation")
+        from src.services.backend_client import delete_team as backend_delete_team
+
+        backend_result = backend_delete_team(
+            team_id=team_id,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return bool(backend_result.get("deleted", True))
+        _enforce_backend_mutation_failure_policy(backend_result)
+
     with get_session_context() as session:
+        if actor_username:
+            _require_admin_actor(session, actor_username)
+        elif _backend_mutation_proxy_enabled():
+            raise PermissionError("Actor username is required for this operation")
+
         team = session.get(Team, team_id)
         if not team:
             return False
@@ -3122,5 +3618,5 @@ def delete_team(team_id: int) -> bool:
 
         session.delete(team)
         session.commit()
-        audit_log("delete_team", "team", details={"id": team_id})
+        audit_log("delete_team", "team", actor=actor_username, details={"id": team_id})
         return True

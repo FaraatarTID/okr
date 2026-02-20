@@ -17,7 +17,7 @@ Scope (Accepted Findings)
 
 Target Architecture (Post-Remediation)
 - `streamlit_app` is a UI client for reads and user interactions.
-- `backend_api` is the only mutation authority for Goals/Objectives/KRs/Tasks, timer actions, and async jobs.
+- `backend_api` is the only mutation authority for frontend write flows (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes) and async jobs.
 - `backend_worker` executes heavy AI/PDF jobs from queue.
 - PostgreSQL access uses least-privilege app role via Supabase transaction pooler (`:6543`).
 - Internal calls use token auth now, with request signing and private network policy hardening.
@@ -40,7 +40,7 @@ Workstream B: Single Mutation Authority (F2, F4)
 Owner: Backend + Streamlit
 Priority: P0
 Tasks
-- Remove local mutation fallback for Goal/Objective/KR/Task/timer paths in production mode.
+- Remove local mutation fallback for frontend mutation paths in production mode.
 - Gate any emergency local fallback behind explicit non-production flag.
 - Make backend availability a startup requirement for production profile.
 - Ensure Streamlit Cloud mode is documented as non-production/demo only.

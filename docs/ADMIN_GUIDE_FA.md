@@ -53,12 +53,12 @@ Documentation HQ: [README](../README.md)
 نکات wiring:
 - `OKR_BACKEND_API_URL` از `okr` به `backend-api`
 - `OKR_BACKEND_SERVICE_TOKEN` باید بین caller و backend-api یکسان باشد
-- `OKR_BACKEND_PROXY_MUTATIONS=true` باعث می‌شود نوشتن Goal/Objective/KR/Task از مسیر backend API (`/v1/nodes/*`) انجام شود
+- `OKR_BACKEND_PROXY_MUTATIONS=true` باعث می‌شود جریان‌های نوشتنی فرانت‌اند (نودها، تایمر، کاربران/چرخه‌ها/تیم‌ها، و تغییرات Learning Loop) از مسیر backend API انجام شوند
 - پورت backend-api باید داخلی/خصوصی بماند و عمومی expose نشود
 
 رفتار فنی فعلی:
 - مسیرهای read-heavy هنوز در خود Streamlit اجرا می‌شوند (`Streamlit -> src/crud.py -> DB`).
-- مسیرهای نوشتنی نودها و timer از backend API عبور می‌کنند؛ در Production رفتار پیش‌فرض fail-closed است و fallback محلی فقط با `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` فعال می‌شود.
+- مسیرهای نوشتنی فرانت‌اند (نودها، timer، مدیریت کاربران/چرخه‌ها/تیم‌ها، Learning Loop و alignment) از backend API عبور می‌کنند؛ در Production رفتار پیش‌فرض fail-closed است و fallback محلی فقط با `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` فعال می‌شود.
 - عملیات سنگین AI/PDF به‌صورت async توسط `backend-worker` و جدول `async_job` اجرا می‌شود.
 
 ## ۳. قواعد چرخه‌حیات و Rollup که باید رعایت شوند

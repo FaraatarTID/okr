@@ -107,7 +107,7 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_SERVICE_TOKEN` (shared token for service-to-service auth)
   - `OKR_BACKEND_SIGNING_SECRET` (shared HMAC signing secret for signed internal requests)
   - `OKR_BACKEND_DEFAULT_ACTOR` (fallback actor for system-initiated AI requests; default: `system`)
-  - `OKR_BACKEND_PROXY_MUTATIONS` (default: `true`; routes Goal/Objective/KR/Task writes through backend API when backend URL is set)
+  - `OKR_BACKEND_PROXY_MUTATIONS` (default: `true`; routes frontend mutation writes through backend API when backend URL is set)
   - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (default: `false`; emergency non-production fallback only)
 - Backend API runtime:
   - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
@@ -127,7 +127,7 @@ Backend API (recommended for scale)
 - Backend worker runtime:
   - `OKR_BACKEND_WORKER_POLL_SECONDS` (default: `2`)
 - Notes:
-  - With `OKR_BACKEND_API_URL` set, node mutations (Goal/Objective/KR/Task), timer operations, and heavy AI/PDF workflows can run through backend services.
+  - With `OKR_BACKEND_API_URL` set, frontend write flows (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes) and heavy AI/PDF workflows run through backend services.
   - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API.
   - If backend transport fails, production default is fail-closed unless `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` is explicitly set.
   - Without it, the app runs in direct mode (legacy behavior).

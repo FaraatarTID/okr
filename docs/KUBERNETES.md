@@ -26,7 +26,7 @@ Current scope of provided manifests (important)
   - `backend-api` (FastAPI)
   - `backend-worker` (job processor)
 - Streamlit should then use `OKR_BACKEND_API_URL` pointing to the cluster-internal backend API Service.
-- Set `OKR_BACKEND_PROXY_MUTATIONS=true` on the `okr` Deployment to route node writes through backend API.
+- Set `OKR_BACKEND_PROXY_MUTATIONS=true` on the `okr` Deployment to route frontend write flows through backend API.
 - Keep backend API Service internal (`ClusterIP`) and avoid public ingress exposure.
 
 Recommended backend K8s additions

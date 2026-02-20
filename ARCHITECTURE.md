@@ -40,10 +40,10 @@ Primary data/control flow in backend-assisted mode:
 - Streamlit handles page rendering, state, and role-aware UX.
 
 2. Synchronous domain mutations:
-- Preferred (backend URL configured): Streamlit -> `backend-api` (`/v1/nodes/*`) -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
+- Preferred (backend URL configured): Streamlit -> `backend-api` mutation endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
 - Default production behavior (backend unavailable): fail closed with explicit user-facing error; no implicit local mutation fallback.
 - Optional emergency fallback (non-production only): set `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`.
-- Scope: Goal/Objective/KeyResult/Task create/update/delete and timer start/stop.
+- Scope (frontend write paths): Goal/Objective/KeyResult/Task CRUD, timer start/stop, user/cycle/team admin mutations, Learning Loop mutations (check-ins/experiments/retrospectives/weekly plans/outcomes), alignment mutations, and work-log deletes.
 
 3. Synchronous read/query paths:
 - Streamlit -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
@@ -227,12 +227,13 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 
 - Streamlit rerun model still governs UI interaction cost and concurrency.
 - Read-heavy hierarchy paths remain in-process from Streamlit to DB (not yet fully API-decoupled).
-- Mutation paths route through backend API with `OKR_BACKEND_API_URL` (`OKR_BACKEND_PROXY_MUTATIONS=true` by default in internal deployments).
+- Frontend mutation paths route through backend API with `OKR_BACKEND_API_URL` (`OKR_BACKEND_PROXY_MUTATIONS=true` by default in internal deployments).
+- Admin backup import/export in the Streamlit UI still performs direct DB operations and should remain restricted to trusted admin-only environments.
 - Kubernetes manifests in `deploy/k8s/` currently model the Streamlit service; backend API/worker manifests must be added for full backend-assisted parity.
 
 ## Recommended Next Refactor Boundary
 
 To move toward higher-concurrency internal production:
-- Move all hierarchy writes behind backend API contracts.
+- Keep all frontend writes behind backend API contracts (now implemented) and remove/replace remaining direct DB admin operations.
 - Keep Streamlit as presentation/workflow shell.
-- Preserve SQLModel domain logic but execute mutation policies in backend API layer.
+- Preserve SQLModel domain logic but continue moving read/query APIs behind backend services for true three-tier isolation.

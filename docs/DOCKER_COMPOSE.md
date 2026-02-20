@@ -4,12 +4,12 @@ Docker Compose deployment
 
 Stack services
 - `okr` (Streamlit UI)
-- `backend-api` (internal FastAPI service for node mutations, timer, and jobs)
+- `backend-api` (internal FastAPI service for secured frontend mutations, timer, and jobs)
 - `backend-worker` (async worker for AI/PDF jobs)
 
 Service interaction
 - `okr` sends authenticated backend calls using `OKR_BACKEND_SERVICE_TOKEN`.
-- With `OKR_BACKEND_PROXY_MUTATIONS=true` (default), Goal/Objective/KR/Task writes route via `backend-api`.
+- With `OKR_BACKEND_PROXY_MUTATIONS=true` (default), frontend write flows route via `backend-api` (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes).
 - `backend-api` persists async jobs in primary DB (`async_job` table).
 - `backend-worker` executes queued job kinds (`ai.generate_json`, `pdf.weekly`).
 - Backend write/timer/job paths fail closed by default if backend is unavailable.

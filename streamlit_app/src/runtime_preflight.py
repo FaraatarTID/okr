@@ -62,6 +62,16 @@ def evaluate_runtime_preflight(
     env_name = str(runtime_env or "development").strip().lower()
     is_production = env_name in {"prod", "production"}
 
+    if is_production and not backend_proxy_mutations:
+        report.errors.append(
+            "Production requires OKR_BACKEND_PROXY_MUTATIONS=true."
+        )
+
+    if is_production and not backend_url:
+        report.errors.append(
+            "Production requires OKR_BACKEND_API_URL for backend-owned mutations."
+        )
+
     if backend_proxy_mutations and not backend_url:
         message = (
             "OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set."

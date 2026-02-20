@@ -13,10 +13,11 @@ This document covers only Learning Loop architecture:
 - migration and documentation sync rules.
 
 ### Runtime Placement (Current System)
-Learning Loop logic executes in the main application domain layer:
-- read/write path: Streamlit UI -> `src/crud.py` -> Supabase PostgreSQL.
-- it is not currently offloaded to `backend-worker` async jobs.
-- backend jobs are used for heavy AI/PDF workflows, not for check-in/experiment mutations.
+Learning Loop logic executes in the shared domain layer (`src/crud.py`) with backend-assisted mutation routing:
+- read path: Streamlit UI -> `src/crud.py` -> Supabase PostgreSQL.
+- write path (when backend mode is enabled): Streamlit UI -> `backend-api` -> `src/crud.py` -> Supabase PostgreSQL.
+- production default is fail-closed on backend transport failures; local mutation fallback is non-production only (`OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`).
+- `backend-worker` remains reserved for heavy AI/PDF async jobs, not check-in/experiment/retro mutations.
 
 ### Schema Contract
 Learning Loop depends on exactly 3 tables/contracts:

@@ -1,11 +1,11 @@
-"""Internal backend API for timer ops, async jobs, and node mutations."""
+"""Internal backend API for secured mutations, timers, and async jobs."""
 
 from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
@@ -13,6 +13,19 @@ from backend_app.job_limits import enforce_job_submit_limits
 from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job
 from backend_app.path_setup import ensure_streamlit_app_on_path
 from backend_app.schemas import (
+    AlignmentCreateRequest,
+    AlignmentDeleteResponse,
+    AlignmentMutationView,
+    CheckInCreateRequest,
+    CheckInMutationView,
+    CycleCreateRequest,
+    CycleDeleteResponse,
+    CycleMutationView,
+    CycleUpdateRequest,
+    ExperimentCloseRequest,
+    ExperimentCreateRequest,
+    ExperimentMutationView,
+    ExperimentUpdateRequest,
     JobCancelResponse,
     GoalCreateRequest,
     JobSubmitRequest,
@@ -22,32 +35,78 @@ from backend_app.schemas import (
     NodeMutationView,
     NodeUpdateRequest,
     ObjectiveCreateRequest,
+    RetroExperimentOutcomeUpsertRequest,
+    RetroExperimentOutcomeView,
+    RetrospectiveCreateRequest,
+    RetrospectiveMutationView,
     TaskCreateRequest,
+    TeamCreateRequest,
+    TeamDeleteResponse,
+    TeamMutationView,
+    TeamUpdateRequest,
     TimerStartRequest,
     TimerStopRequest,
+    UserCreateRequest,
+    UserMutationView,
+    UserPasswordResetRequest,
+    UserPasswordResetResponse,
+    UserUpdateRequest,
+    WeeklyPlanCreateRequest,
+    WeeklyPlanMutationView,
+    WorkLogDeleteResponse,
 )
 from backend_app.security import require_service_access, resolve_actor_username
 
 ensure_streamlit_app_on_path()
 
 from src.crud import (
+    close_experiment,
+    create_alignment,
+    create_check_in,
+    create_cycle,
+    create_experiment,
     create_goal,
     create_key_result,
     create_objective,
+    create_retrospective,
     create_task,
+    create_team,
+    create_user,
+    create_weekly_plan,
+    delete_alignment,
+    delete_cycle,
     delete_goal,
     delete_key_result,
     delete_objective,
     delete_task,
+    delete_team,
+    delete_work_log,
+    reset_user_password,
     start_timer,
     stop_timer,
+    update_cycle,
     update_goal,
     update_key_result,
+    update_experiment,
     update_objective,
     update_task,
+    update_team,
+    update_user,
+    upsert_retro_experiment_outcome,
 )
 from src.database import init_database
-from src.models import LifecycleState, MetricType, ScoreMode, TaskStatus
+from src.models import (
+    AlignmentType,
+    ExperimentDecision,
+    ExperimentStatus,
+    ExpectedEffectDirection,
+    LifecycleState,
+    MetricType,
+    ScoreMode,
+    TaskStatus,
+    UserRole,
+    VariationType,
+)
 
 
 @asynccontextmanager
@@ -187,6 +246,127 @@ def _node_view_from_obj(node_type: str, node) -> NodeMutationView:
     )
 
 
+def _enum_value(value: Any) -> Any:
+    if hasattr(value, "value"):
+        return getattr(value, "value")
+    return value
+
+
+def _user_view_from_obj(user) -> UserMutationView:
+    return UserMutationView(
+        id=int(getattr(user, "id")),
+        username=str(getattr(user, "username", "") or ""),
+        display_name=getattr(user, "display_name", None),
+        role=str(_enum_value(getattr(user, "role", UserRole.MEMBER))).lower(),  # type: ignore[arg-type]
+        manager_id=getattr(user, "manager_id", None),
+        team_id=getattr(user, "team_id", None),
+        is_active=bool(getattr(user, "is_active", True)),
+        must_change_password=bool(getattr(user, "must_change_password", False)),
+    )
+
+
+def _cycle_view_from_obj(cycle) -> CycleMutationView:
+    return CycleMutationView(
+        id=int(getattr(cycle, "id")),
+        title=str(getattr(cycle, "title", "") or ""),
+        start_date=getattr(cycle, "start_date"),
+        end_date=getattr(cycle, "end_date"),
+        is_active=bool(getattr(cycle, "is_active", True)),
+    )
+
+
+def _team_view_from_obj(team) -> TeamMutationView:
+    return TeamMutationView(
+        id=int(getattr(team, "id")),
+        name=str(getattr(team, "name", "") or ""),
+        description=getattr(team, "description", None),
+        created_at=getattr(team, "created_at", None),
+    )
+
+
+def _check_in_view_from_obj(check_in) -> CheckInMutationView:
+    return CheckInMutationView(
+        id=int(getattr(check_in, "id")),
+        key_result_id=int(getattr(check_in, "key_result_id")),
+        value=float(getattr(check_in, "value")),
+        confidence_score=int(getattr(check_in, "confidence_score")),
+        comment=getattr(check_in, "comment", None),
+        variation_type=_enum_value(getattr(check_in, "variation_type", None)),
+        special_cause_note=getattr(check_in, "special_cause_note", None),
+        experiment_id=getattr(check_in, "experiment_id", None),
+        created_at=getattr(check_in, "created_at", None),
+    )
+
+
+def _experiment_view_from_obj(experiment) -> ExperimentMutationView:
+    return ExperimentMutationView(
+        id=int(getattr(experiment, "id")),
+        key_result_id=int(getattr(experiment, "key_result_id")),
+        cycle_id=int(getattr(experiment, "cycle_id")),
+        created_by=str(getattr(experiment, "created_by", "") or ""),
+        hypothesis=str(getattr(experiment, "hypothesis", "") or ""),
+        change_description=str(getattr(experiment, "change_description", "") or ""),
+        start_at=getattr(experiment, "start_at", None),
+        end_at=getattr(experiment, "end_at", None),
+        status=_enum_value(getattr(experiment, "status", ExperimentStatus.PLANNED)),
+        decision=_enum_value(getattr(experiment, "decision", None)),
+        decision_rationale=getattr(experiment, "decision_rationale", None),
+        expected_effect_direction=_enum_value(
+            getattr(experiment, "expected_effect_direction", None)
+        ),
+        expected_effect_size=getattr(experiment, "expected_effect_size", None),
+        created_at=getattr(experiment, "created_at", None),
+    )
+
+
+def _retrospective_view_from_obj(retro) -> RetrospectiveMutationView:
+    return RetrospectiveMutationView(
+        id=int(getattr(retro, "id")),
+        user_id=int(getattr(retro, "user_id")),
+        cycle_id=getattr(retro, "cycle_id", None),
+        week_start_date=getattr(retro, "week_start_date"),
+        content=str(getattr(retro, "content", "") or ""),
+        sentiment=getattr(retro, "sentiment", None),
+        created_at=getattr(retro, "created_at", None),
+    )
+
+
+def _retro_outcome_view_from_obj(outcome) -> RetroExperimentOutcomeView:
+    return RetroExperimentOutcomeView(
+        id=int(getattr(outcome, "id")),
+        retrospective_id=int(getattr(outcome, "retrospective_id")),
+        experiment_id=int(getattr(outcome, "experiment_id")),
+        decision=_enum_value(getattr(outcome, "decision", ExperimentDecision.UNKNOWN)),
+        rationale=getattr(outcome, "rationale", None),
+        created_at=getattr(outcome, "created_at", None),
+    )
+
+
+def _weekly_plan_view_from_obj(plan) -> WeeklyPlanMutationView:
+    return WeeklyPlanMutationView(
+        id=int(getattr(plan, "id")),
+        user_id=int(getattr(plan, "user_id")),
+        week_start_date=getattr(plan, "week_start_date"),
+        week_end_date=getattr(plan, "week_end_date"),
+        priority_1=str(getattr(plan, "priority_1", "") or ""),
+        priority_2=getattr(plan, "priority_2", None),
+        priority_3=getattr(plan, "priority_3", None),
+        created_at=getattr(plan, "created_at", None),
+        is_active=bool(getattr(plan, "is_active", True)),
+    )
+
+
+def _alignment_view_from_obj(edge) -> AlignmentMutationView:
+    return AlignmentMutationView(
+        id=int(getattr(edge, "id")),
+        parent_id=int(getattr(edge, "parent_id")),
+        child_id=int(getattr(edge, "child_id")),
+        alignment_type=str(_enum_value(getattr(edge, "alignment_type", "SUPPORTS"))),
+        created_at=getattr(edge, "created_at", None),
+        created_by=getattr(edge, "created_by", None),
+    )
+
+
 def _resolve_actor(
     *,
     header_actor: Optional[str],
@@ -196,6 +376,40 @@ def _resolve_actor(
         header_actor=header_actor,
         payload_actor=payload_actor,
     )
+
+
+def _coerce_experiment_updates(updates: dict) -> dict:
+    clean = dict(updates or {})
+    for date_field in ("start_at", "end_at"):
+        if date_field in clean:
+            clean[date_field] = _coerce_datetime(clean.get(date_field), field_name=date_field)
+
+    if "status" in clean:
+        clean["status"] = _coerce_enum(
+            clean.get("status"),
+            ExperimentStatus,
+            field_name="status",
+        )
+    if "decision" in clean:
+        clean["decision"] = _coerce_enum(
+            clean.get("decision"),
+            ExperimentDecision,
+            field_name="decision",
+        )
+    if "expected_effect_direction" in clean:
+        clean["expected_effect_direction"] = _coerce_enum(
+            clean.get("expected_effect_direction"),
+            ExpectedEffectDirection,
+            field_name="expected_effect_direction",
+        )
+    return clean
+
+
+def _status_for_value_error(message: str, default: int = 400) -> int:
+    text = str(message or "").strip().lower()
+    if "not found" in text:
+        return 404
+    return int(default)
 
 
 @app.get("/healthz")
@@ -515,3 +729,556 @@ def api_delete_node(
         node_type=normalized_type,  # type: ignore[arg-type]
         deleted=True,
     )
+
+
+@app.post(
+    "/v1/users",
+    response_model=UserMutationView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_service_access)],
+)
+def api_create_user(
+    payload: UserCreateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> UserMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        user = create_user(
+            username=payload.username,
+            password=payload.password,
+            role=_coerce_enum(payload.role, UserRole, field_name="role"),
+            display_name=payload.display_name,
+            manager_id=payload.manager_id,
+            team_id=payload.team_id,
+            must_change_password=payload.must_change_password,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    return _user_view_from_obj(user)
+
+
+@app.patch(
+    "/v1/users/{user_id}",
+    response_model=UserMutationView,
+    dependencies=[Depends(require_service_access)],
+)
+def api_update_user(
+    user_id: int,
+    payload: UserUpdateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> UserMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    role = None
+    if payload.role is not None:
+        role = _coerce_enum(payload.role, UserRole, field_name="role")
+    try:
+        user = update_user(
+            user_id=int(user_id),
+            display_name=payload.display_name,
+            role=role,
+            manager_id=payload.manager_id,
+            team_id=payload.team_id,
+            is_active=payload.is_active,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return _user_view_from_obj(user)
+
+
+@app.post(
+    "/v1/users/{user_id}/reset-password",
+    response_model=UserPasswordResetResponse,
+    dependencies=[Depends(require_service_access)],
+)
+def api_reset_user_password(
+    user_id: int,
+    payload: UserPasswordResetRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> UserPasswordResetResponse:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        reset_ok = reset_user_password(
+            user_id=int(user_id),
+            new_password=payload.new_password,
+            require_change=bool(payload.require_change),
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    if not reset_ok:
+        raise HTTPException(status_code=404, detail="User not found.")
+    return UserPasswordResetResponse(user_id=int(user_id), reset=True)
+
+
+@app.post(
+    "/v1/cycles",
+    response_model=CycleMutationView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_service_access)],
+)
+def api_create_cycle(
+    payload: CycleCreateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> CycleMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        cycle = create_cycle(
+            title=payload.title,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            is_active=payload.is_active,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _cycle_view_from_obj(cycle)
+
+
+@app.patch(
+    "/v1/cycles/{cycle_id}",
+    response_model=CycleMutationView,
+    dependencies=[Depends(require_service_access)],
+)
+def api_update_cycle(
+    cycle_id: int,
+    payload: CycleUpdateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> CycleMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        cycle = update_cycle(
+            cycle_id=int(cycle_id),
+            title=payload.title,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            is_active=payload.is_active,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not cycle:
+        raise HTTPException(status_code=404, detail="Cycle not found.")
+    return _cycle_view_from_obj(cycle)
+
+
+@app.delete(
+    "/v1/cycles/{cycle_id}",
+    response_model=CycleDeleteResponse,
+    dependencies=[Depends(require_service_access)],
+)
+def api_delete_cycle(
+    cycle_id: int,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> CycleDeleteResponse:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    try:
+        deleted = delete_cycle(int(cycle_id), actor_username=actor)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Cycle not found.")
+    return CycleDeleteResponse(id=int(cycle_id), deleted=True)
+
+
+@app.post(
+    "/v1/teams",
+    response_model=TeamMutationView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_service_access)],
+)
+def api_create_team(
+    payload: TeamCreateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> TeamMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        team = create_team(
+            name=payload.name,
+            description=payload.description,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _team_view_from_obj(team)
+
+
+@app.patch(
+    "/v1/teams/{team_id}",
+    response_model=TeamMutationView,
+    dependencies=[Depends(require_service_access)],
+)
+def api_update_team(
+    team_id: int,
+    payload: TeamUpdateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> TeamMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    updates = {}
+    if payload.name is not None:
+        updates["name"] = payload.name
+    if payload.description is not None:
+        updates["description"] = payload.description
+    try:
+        team = update_team(
+            int(team_id),
+            actor_username=actor,
+            **updates,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found.")
+    return _team_view_from_obj(team)
+
+
+@app.delete(
+    "/v1/teams/{team_id}",
+    response_model=TeamDeleteResponse,
+    dependencies=[Depends(require_service_access)],
+)
+def api_delete_team(
+    team_id: int,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> TeamDeleteResponse:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    try:
+        deleted = delete_team(int(team_id), actor_username=actor)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Team not found.")
+    return TeamDeleteResponse(id=int(team_id), deleted=True)
+
+
+@app.post(
+    "/v1/check-ins",
+    response_model=CheckInMutationView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_service_access)],
+)
+def api_create_check_in(
+    payload: CheckInCreateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> CheckInMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        check_in = create_check_in(
+            kr_id=payload.kr_id,
+            value=payload.value,
+            confidence=payload.confidence,
+            comment=payload.comment,
+            actor_username=actor,
+            variation_type=_coerce_enum(
+                payload.variation_type,
+                VariationType,
+                field_name="variation_type",
+            ),
+            special_cause_note=payload.special_cause_note,
+            experiment_id=payload.experiment_id,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    return _check_in_view_from_obj(check_in)
+
+
+@app.post(
+    "/v1/experiments",
+    response_model=ExperimentMutationView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_service_access)],
+)
+def api_create_experiment(
+    payload: ExperimentCreateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> ExperimentMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        experiment = create_experiment(
+            key_result_id=payload.key_result_id,
+            cycle_id=payload.cycle_id,
+            hypothesis=payload.hypothesis,
+            change_description=payload.change_description,
+            actor_username=actor,
+            start_at=payload.start_at,
+            expected_effect_direction=_coerce_enum(
+                payload.expected_effect_direction,
+                ExpectedEffectDirection,
+                field_name="expected_effect_direction",
+            ),
+            expected_effect_size=payload.expected_effect_size,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    return _experiment_view_from_obj(experiment)
+
+
+@app.patch(
+    "/v1/experiments/{experiment_id}",
+    response_model=ExperimentMutationView,
+    dependencies=[Depends(require_service_access)],
+)
+def api_update_experiment(
+    experiment_id: int,
+    payload: ExperimentUpdateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> ExperimentMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    updates = _coerce_experiment_updates(payload.updates)
+    try:
+        experiment = update_experiment(
+            int(experiment_id),
+            actor_username=actor,
+            **updates,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found.")
+    return _experiment_view_from_obj(experiment)
+
+
+@app.post(
+    "/v1/experiments/{experiment_id}/close",
+    response_model=ExperimentMutationView,
+    dependencies=[Depends(require_service_access)],
+)
+def api_close_experiment(
+    experiment_id: int,
+    payload: ExperimentCloseRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> ExperimentMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        experiment = close_experiment(
+            experiment_id=int(experiment_id),
+            decision=_coerce_enum(
+                payload.decision,
+                ExperimentDecision,
+                field_name="decision",
+            ),
+            rationale=payload.rationale,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    if not experiment:
+        raise HTTPException(status_code=404, detail="Experiment not found.")
+    return _experiment_view_from_obj(experiment)
+
+
+@app.post(
+    "/v1/retrospectives",
+    response_model=RetrospectiveMutationView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_service_access)],
+)
+def api_create_retrospective(
+    payload: RetrospectiveCreateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> RetrospectiveMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        retro = create_retrospective(
+            user_id=payload.user_id,
+            cycle_id=payload.cycle_id,
+            week_start_date=payload.week_start_date,
+            content=payload.content,
+            sentiment=payload.sentiment,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    return _retrospective_view_from_obj(retro)
+
+
+@app.put(
+    "/v1/retrospectives/{retrospective_id}/experiment-outcomes",
+    response_model=RetroExperimentOutcomeView,
+    dependencies=[Depends(require_service_access)],
+)
+def api_upsert_retro_experiment_outcome(
+    retrospective_id: int,
+    payload: RetroExperimentOutcomeUpsertRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> RetroExperimentOutcomeView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        outcome = upsert_retro_experiment_outcome(
+            retrospective_id=int(retrospective_id),
+            experiment_id=payload.experiment_id,
+            decision=_coerce_enum(
+                payload.decision,
+                ExperimentDecision,
+                field_name="decision",
+            ),
+            rationale=payload.rationale,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    return _retro_outcome_view_from_obj(outcome)
+
+
+@app.post(
+    "/v1/weekly-plans",
+    response_model=WeeklyPlanMutationView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_service_access)],
+)
+def api_create_weekly_plan(
+    payload: WeeklyPlanCreateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> WeeklyPlanMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    try:
+        plan = create_weekly_plan(
+            user_id=payload.user_id,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            p1=payload.p1,
+            p2=payload.p2,
+            p3=payload.p3,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    return _weekly_plan_view_from_obj(plan)
+
+
+@app.post(
+    "/v1/alignments",
+    response_model=AlignmentMutationView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_service_access)],
+)
+def api_create_alignment(
+    payload: AlignmentCreateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> AlignmentMutationView:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    alignment_type = _coerce_enum(
+        payload.alignment_type,
+        AlignmentType,
+        field_name="alignment_type",
+    )
+    try:
+        edge = create_alignment(
+            parent_id=payload.parent_id,
+            child_id=payload.child_id,
+            alignment_type=str(_enum_value(alignment_type)),
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
+    return _alignment_view_from_obj(edge)
+
+
+@app.delete(
+    "/v1/alignments/{edge_id}",
+    response_model=AlignmentDeleteResponse,
+    dependencies=[Depends(require_service_access)],
+)
+def api_delete_alignment(
+    edge_id: int,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> AlignmentDeleteResponse:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    try:
+        deleted = delete_alignment(int(edge_id), actor_username=actor)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Alignment not found.")
+    return AlignmentDeleteResponse(id=int(edge_id), deleted=True)
+
+
+@app.delete(
+    "/v1/work-logs/{work_log_id}",
+    response_model=WorkLogDeleteResponse,
+    dependencies=[Depends(require_service_access)],
+)
+def api_delete_work_log(
+    work_log_id: int,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> WorkLogDeleteResponse:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    try:
+        deleted = delete_work_log(int(work_log_id), actor_username=actor)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Work log not found.")
+    return WorkLogDeleteResponse(id=int(work_log_id), deleted=True)
