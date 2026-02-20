@@ -68,8 +68,11 @@ def _get_database_url() -> str:
 
 def _normalize_database_url(url: str) -> str:
     normalized = str(url or "").strip()
+    # Backward compatibility with legacy Postgres DSNs.
     if normalized.startswith("postgres://"):
         normalized = normalized.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif normalized.startswith("postgresql://"):
+        normalized = normalized.replace("postgresql://", "postgresql+psycopg2://", 1)
     return normalized
 
 
@@ -90,52 +93,18 @@ def _allow_supabase_superuser_url() -> bool:
 
 def _validate_database_url(url: str) -> str:
     normalized = _normalize_database_url(url)
-    if _allow_non_supabase_url():
-        return normalized
-    if not normalized.startswith("postgresql+psycopg2://"):
-        raise RuntimeError(
-            "Supabase PostgreSQL URL is required and must start with "
-            "'postgresql+psycopg2://'."
-        )
-    normalized_lower = normalized.lower()
-    if ("supabase.com" not in normalized_lower) and ("supabase.co" not in normalized_lower):
-        raise RuntimeError(
-            "Supabase PostgreSQL URL is required (host must include "
-            "'supabase.com' or 'supabase.co')."
-        )
-    parsed = urlparse(normalized)
-    host = str(parsed.hostname or "").lower()
-    username = str(parsed.username or "").strip().lower()
-    try:
-        port = parsed.port
-    except ValueError as exc:
-        raise RuntimeError("Database URL port is invalid.") from exc
-    if (username == "postgres" or username.startswith("postgres.")) and (
-        not _allow_supabase_superuser_url()
+    if not normalized:
+        raise RuntimeError("Database URL is required.")
+    if not (
+        normalized.startswith("postgresql+psycopg2://")
+        or normalized.startswith("sqlite:///")
     ):
         raise RuntimeError(
-            "Least-privilege Supabase DB user is required. Do not use 'postgres' in "
-            "runtime DSNs (set OKR_ALLOW_SUPABASE_SUPERUSER=1 only for temporary "
-            "break-glass operations)."
+            "Database URL must start with 'postgresql+psycopg2://' or 'sqlite:///'."
         )
-    allow_session_pooler = (
-        os.getenv("OKR_ALLOW_SUPABASE_SESSION_POOLER", "").strip().lower() in _TRUE_VALUES
-    )
-    allow_direct = (
-        os.getenv("OKR_ALLOW_SUPABASE_DIRECT_CONNECTION", "").strip().lower() in _TRUE_VALUES
-    )
-    if "pooler.supabase.com" in host or "pooler.supabase.co" in host:
-        if port != 6543 and not allow_session_pooler:
-            raise RuntimeError(
-                "Supabase transaction pooler URL is required for production safety. "
-                "Use port 6543 on *.pooler.supabase.com (set "
-                "OKR_ALLOW_SUPABASE_SESSION_POOLER=1 only for temporary exceptions)."
-            )
-    elif not allow_direct:
-        raise RuntimeError(
-            "Supabase pooler URL is required. Use *.pooler.supabase.com with port 6543 "
-            "(set OKR_ALLOW_SUPABASE_DIRECT_CONNECTION=1 only for temporary exceptions)."
-        )
+    parsed = urlparse(normalized)
+    if normalized.startswith("postgresql+psycopg2://") and not parsed.hostname:
+        raise RuntimeError("Database URL host is missing.")
     return normalized
 
 
