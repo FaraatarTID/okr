@@ -473,7 +473,11 @@ def render_password_reset_gate():
     if new_pw != confirm_pw:
         st.error("Passwords do not match.")
         return
-    if reset_user_password(user_id, new_pw):
+    if reset_user_password(
+        user_id,
+        new_pw,
+        actor_username=st.session_state.get("username"),
+    ):
         st.success(
             "Password updated successfully. Please log in again with your new password."
         )
@@ -550,6 +554,7 @@ def render_app(username, runtime_bundle=None):
             start_date=now,
             end_date=now + timedelta(days=90),
             is_active=True,
+            actor_username=username,
         )
         cycles = [default_cycle]
 

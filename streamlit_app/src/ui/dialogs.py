@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 import json
+import os
 from datetime import datetime, timedelta
 from src.utils.time_utils import utc_now_naive
 from src.ui.styles import TYPE_COLORS, TYPE_ICONS, inject_dialog_styles
@@ -69,7 +70,10 @@ def render_manage_cycles_dialog():
                 with col2:
                     if st.button("🗑️", key=f"del_cycle_{c.id}"):
                         try:
-                            delete_cycle(c.id)
+                            delete_cycle(
+                                c.id,
+                                actor_username=st.session_state.get("username"),
+                            )
                             st.cache_data.clear()
                             st.success("Cycle deleted")
                             st.rerun()
@@ -86,7 +90,12 @@ def render_manage_cycles_dialog():
                 st.error("Title required")
             else:
                 try:
-                    create_cycle(title=new_title, start_date=datetime.combine(new_start, datetime.min.time()), end_date=datetime.combine(new_end, datetime.min.time()))
+                    create_cycle(
+                        title=new_title,
+                        start_date=datetime.combine(new_start, datetime.min.time()),
+                        end_date=datetime.combine(new_end, datetime.min.time()),
+                        actor_username=st.session_state.get("username"),
+                    )
                     st.cache_data.clear()
                     st.success("Cycle created")
                     st.rerun()
@@ -338,7 +347,11 @@ def render_admin_panel_dialog():
                     
                     if user.username != "admin":  # Prevent editing the main admin
                         if c4.button("🗑️", key=f"deact_{user.id}", help="Deactivate"):
-                            update_user(user.id, is_active=not user.is_active)
+                            update_user(
+                                user.id,
+                                is_active=not user.is_active,
+                                actor_username=st.session_state.get("username"),
+                            )
                             st.rerun()
     
     with tab2:
@@ -371,6 +384,7 @@ def render_admin_panel_dialog():
                         manager_id=manager_id_val,
                         team_id=team_options.get(new_team) if new_team != "None" else None,
                         must_change_password=require_pw_change,
+                        actor_username=st.session_state.get("username"),
                     )
                     st.success(f"User '{new_username}' created successfully!")
                     st.rerun()
@@ -389,7 +403,10 @@ def render_admin_panel_dialog():
             if col_t2.form_submit_button("➕ Create"):
                 if new_team_name:
                     try:
-                        create_team(new_team_name)
+                        create_team(
+                            new_team_name,
+                            actor_username=st.session_state.get("username"),
+                        )
                         st.success(f"Team '{new_team_name}' created!")
                         st.rerun()
                     except Exception as e:
@@ -407,8 +424,12 @@ def render_admin_panel_dialog():
                     # Rename
                     new_name = st.text_input("Name", value=team.name, key=f"team_name_{team.id}")
                     if st.button("Update Name", key=f"upd_team_{team.id}"):
-                         update_team(team.id, name=new_name)
-                         st.rerun()
+                        update_team(
+                            team.id,
+                            name=new_name,
+                            actor_username=st.session_state.get("username"),
+                        )
+                        st.rerun()
 
                     # Members
                     st.markdown("**Members:**")
@@ -422,7 +443,10 @@ def render_admin_panel_dialog():
                     
                     if st.button("🗑️ Delete Team", key=f"del_team_{team.id}"):
                         try:
-                            delete_team(team.id)
+                            delete_team(
+                                team.id,
+                                actor_username=st.session_state.get("username"),
+                            )
                             st.rerun()
                         except Exception as e:
                             st.error(str(e))
@@ -432,12 +456,23 @@ def render_admin_panel_dialog():
             export_database_backup,
             import_database_backup,
         )
+        from src.services.backend_client import is_backend_enabled
 
         st.markdown("#### Full Database Backup")
         st.caption(
             "Export a full logical JSON backup or restore one. "
             "Restore replaces all current application data."
         )
+        proxy_mutations = (
+            str(os.getenv("OKR_BACKEND_PROXY_MUTATIONS", "true")).strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
+        restore_allowed = not (proxy_mutations and is_backend_enabled())
+        if not restore_allowed:
+            st.warning(
+                "Backup restore is disabled while backend-assisted mutation mode is active. "
+                "Use backend maintenance procedures for restore operations."
+            )
 
         export_col, import_col = st.columns(2)
 
@@ -488,6 +523,7 @@ def render_admin_panel_dialog():
                 uploaded_backup is None
                 or not confirm_restore
                 or confirm_phrase.strip() != "RESTORE"
+                or not restore_allowed
             )
             if st.button(
                 "Restore Backup",
@@ -525,7 +561,12 @@ def render_admin_panel_dialog():
         if st.button("Reset Password", type="primary", key="reset_pw_btn"):
             if new_pw and new_pw == confirm_pw:
                 u_id = user_options_reset.get(selected_user)
-                if u_id and reset_user_password(u_id, new_pw, require_change=force_change):
+                if u_id and reset_user_password(
+                    u_id,
+                    new_pw,
+                    require_change=force_change,
+                    actor_username=st.session_state.get("username"),
+                ):
                     st.success(f"Password for '{selected_user}' reset successfully!")
                 else:
                     st.error("Failed to reset password.")
@@ -788,7 +829,8 @@ def render_weekly_ritual_dialog(username):
                     user_id=current_user_obj.id,
                     cycle_id=cycle_id,
                     week_start_date=start_date,
-                    content=retro_input
+                    content=retro_input,
+                    actor_username=username,
                 )
                 st.toast("Retrospective Saved!")
             
@@ -1010,7 +1052,15 @@ def render_weekly_ritual_dialog(username):
                 user_obj_p = _cached_get_user_by_username(username)
                 if user_obj_p:
                     sd = utc_now_naive(); ed = sd + timedelta(days=7)
-                    create_weekly_plan(user_obj_p.id, sd, ed, p1, p2, p3)
+                    create_weekly_plan(
+                        user_obj_p.id,
+                        sd,
+                        ed,
+                        p1,
+                        p2,
+                        p3,
+                        actor_username=username,
+                    )
                 st.toast("Weekly Ritual Complete!")
                 del st.session_state.ritual_step
                 if "ritual_summary" in st.session_state: del st.session_state.ritual_summary

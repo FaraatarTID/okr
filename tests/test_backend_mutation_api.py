@@ -152,3 +152,90 @@ def test_submit_job_endpoint_forwards_idempotency_key(monkeypatch):
 
     assert response.status_code == 202
     assert captured.get("idempotency_key") == "abc-123"
+
+
+def test_create_user_endpoint_parses_role_and_team(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = {}
+
+    def _fake_create_user(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            id=9,
+            username=kwargs.get("username"),
+            display_name=kwargs.get("display_name"),
+            role=kwargs.get("role"),
+            manager_id=kwargs.get("manager_id"),
+            team_id=kwargs.get("team_id"),
+            is_active=True,
+            must_change_password=bool(kwargs.get("must_change_password")),
+        )
+
+    monkeypatch.setattr(backend_main, "create_user", _fake_create_user)
+
+    response = client.post(
+        "/v1/users",
+        headers={"X-OKR-Actor": "admin"},
+        json={
+            "username": "member1",
+            "password": "secret",
+            "role": "manager",
+            "display_name": "Member One",
+            "manager_id": 2,
+            "team_id": 7,
+            "must_change_password": True,
+        },
+    )
+
+    assert response.status_code == 201
+    assert str(getattr(captured.get("role"), "value", captured.get("role"))) == "manager"
+    assert int(captured.get("team_id")) == 7
+    assert response.json()["role"] == "manager"
+
+
+def test_create_check_in_endpoint_coerces_variation_enum(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = {}
+
+    def _fake_create_check_in(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            id=11,
+            key_result_id=kwargs.get("kr_id"),
+            value=float(kwargs.get("value", 0)),
+            confidence_score=int(kwargs.get("confidence", 0)),
+            comment=kwargs.get("comment"),
+            variation_type=kwargs.get("variation_type"),
+            special_cause_note=kwargs.get("special_cause_note"),
+            experiment_id=kwargs.get("experiment_id"),
+            created_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+
+    monkeypatch.setattr(backend_main, "create_check_in", _fake_create_check_in)
+
+    response = client.post(
+        "/v1/check-ins",
+        headers={"X-OKR-Actor": "alice"},
+        json={
+            "kr_id": 12,
+            "value": 42.0,
+            "confidence": 8,
+            "comment": "weekly update",
+            "variation_type": "COMMON_CAUSE",
+        },
+    )
+
+    assert response.status_code == 201
+    assert str(getattr(captured.get("variation_type"), "value", "")) == "COMMON_CAUSE"
+
+
+def test_delete_alignment_endpoint_returns_404_when_missing(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    monkeypatch.setattr(backend_main, "delete_alignment", lambda *args, **kwargs: False)
+
+    response = client.delete(
+        "/v1/alignments/123",
+        headers={"X-OKR-Actor": "alice"},
+    )
+
+    assert response.status_code == 404

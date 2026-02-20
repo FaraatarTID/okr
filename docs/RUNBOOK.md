@@ -37,7 +37,7 @@ Runbook: first deployment
 - Verify one PDF export succeeds in the selected provider mode
 - Verify one AI action succeeds (or document AI as intentionally disabled)
 - Verify async job path works end-to-end (submit AI/PDF action and confirm worker completion)
-- Verify Goal/Objective/KR/Task create-update-delete works with backend API enabled
+- Verify frontend write flows work with backend API enabled (node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments)
 - Run AI provider health check:
   - `python streamlit_app/scripts/ai_provider_health_check.py`
 

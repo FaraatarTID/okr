@@ -417,3 +417,428 @@ def delete_node(*, node_type: str, node_id: int, actor_username: str) -> Dict[st
         timeout=(3.0, 25.0),
         retries=1,
     )
+
+
+def create_user(
+    *,
+    username: str,
+    password: str,
+    role: Any = "member",
+    display_name: Optional[str] = None,
+    manager_id: Optional[int] = None,
+    team_id: Optional[int] = None,
+    must_change_password: bool = False,
+    actor_username: str,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path="/v1/users",
+        actor_username=actor_username,
+        payload={
+            "username": str(username or "").strip(),
+            "password": str(password or ""),
+            "role": str(_json_safe(role) or "member"),
+            "display_name": str(display_name).strip() if display_name is not None else None,
+            "manager_id": int(manager_id) if manager_id else None,
+            "team_id": int(team_id) if team_id else None,
+            "must_change_password": bool(must_change_password),
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def update_user(
+    *,
+    user_id: int,
+    actor_username: str,
+    display_name: Optional[str] = None,
+    role: Optional[Any] = None,
+    manager_id: Optional[int] = None,
+    team_id: Optional[int] = None,
+    is_active: Optional[bool] = None,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "actor_username": str(actor_username),
+    }
+    if display_name is not None:
+        payload["display_name"] = str(display_name)
+    if role is not None:
+        payload["role"] = str(_json_safe(role))
+    if manager_id is not None:
+        payload["manager_id"] = int(manager_id)
+    if team_id is not None:
+        payload["team_id"] = int(team_id)
+    if is_active is not None:
+        payload["is_active"] = bool(is_active)
+
+    return _request_json(
+        method="PATCH",
+        path=f"/v1/users/{int(user_id)}",
+        actor_username=actor_username,
+        payload=payload,
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def reset_user_password(
+    *,
+    user_id: int,
+    new_password: str,
+    actor_username: str,
+    require_change: bool = False,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path=f"/v1/users/{int(user_id)}/reset-password",
+        actor_username=actor_username,
+        payload={
+            "new_password": str(new_password or ""),
+            "require_change": bool(require_change),
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def create_cycle(
+    *,
+    title: str,
+    start_date: Any,
+    end_date: Any,
+    is_active: bool,
+    actor_username: str,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path="/v1/cycles",
+        actor_username=actor_username,
+        payload={
+            "title": str(title or ""),
+            "start_date": _json_safe(start_date),
+            "end_date": _json_safe(end_date),
+            "is_active": bool(is_active),
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def update_cycle(
+    *,
+    cycle_id: int,
+    title: str,
+    start_date: Any,
+    end_date: Any,
+    is_active: bool,
+    actor_username: str,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="PATCH",
+        path=f"/v1/cycles/{int(cycle_id)}",
+        actor_username=actor_username,
+        payload={
+            "title": str(title or ""),
+            "start_date": _json_safe(start_date),
+            "end_date": _json_safe(end_date),
+            "is_active": bool(is_active),
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def delete_cycle(*, cycle_id: int, actor_username: str) -> Dict[str, Any]:
+    return _request_json(
+        method="DELETE",
+        path=f"/v1/cycles/{int(cycle_id)}",
+        actor_username=actor_username,
+        payload=None,
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def create_team(
+    *,
+    name: str,
+    actor_username: str,
+    description: Optional[str] = None,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path="/v1/teams",
+        actor_username=actor_username,
+        payload={
+            "name": str(name or ""),
+            "description": str(description) if description is not None else None,
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def update_team(
+    *,
+    team_id: int,
+    actor_username: str,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"actor_username": str(actor_username)}
+    if name is not None:
+        payload["name"] = str(name)
+    if description is not None:
+        payload["description"] = str(description)
+    return _request_json(
+        method="PATCH",
+        path=f"/v1/teams/{int(team_id)}",
+        actor_username=actor_username,
+        payload=payload,
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def delete_team(*, team_id: int, actor_username: str) -> Dict[str, Any]:
+    return _request_json(
+        method="DELETE",
+        path=f"/v1/teams/{int(team_id)}",
+        actor_username=actor_username,
+        payload=None,
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def create_check_in(
+    *,
+    kr_id: int,
+    value: float,
+    confidence: int,
+    comment: str,
+    actor_username: str,
+    variation_type: Any,
+    special_cause_note: Optional[str] = None,
+    experiment_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path="/v1/check-ins",
+        actor_username=actor_username,
+        payload={
+            "kr_id": int(kr_id),
+            "value": float(value),
+            "confidence": int(confidence),
+            "comment": str(comment or ""),
+            "variation_type": str(_json_safe(variation_type) or ""),
+            "special_cause_note": (
+                str(special_cause_note) if special_cause_note is not None else None
+            ),
+            "experiment_id": int(experiment_id) if experiment_id else None,
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def create_experiment(
+    *,
+    key_result_id: int,
+    cycle_id: int,
+    hypothesis: str,
+    change_description: str,
+    actor_username: str,
+    start_at: Any = None,
+    expected_effect_direction: Optional[Any] = None,
+    expected_effect_size: Optional[float] = None,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path="/v1/experiments",
+        actor_username=actor_username,
+        payload={
+            "key_result_id": int(key_result_id),
+            "cycle_id": int(cycle_id),
+            "hypothesis": str(hypothesis or ""),
+            "change_description": str(change_description or ""),
+            "start_at": _json_safe(start_at),
+            "expected_effect_direction": _json_safe(expected_effect_direction),
+            "expected_effect_size": (
+                float(expected_effect_size)
+                if expected_effect_size is not None
+                else None
+            ),
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def update_experiment(
+    *,
+    experiment_id: int,
+    updates: Dict[str, Any],
+    actor_username: str,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="PATCH",
+        path=f"/v1/experiments/{int(experiment_id)}",
+        actor_username=actor_username,
+        payload={
+            "updates": _json_safe(dict(updates or {})),
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def close_experiment(
+    *,
+    experiment_id: int,
+    decision: Any,
+    rationale: str,
+    actor_username: str,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path=f"/v1/experiments/{int(experiment_id)}/close",
+        actor_username=actor_username,
+        payload={
+            "decision": str(_json_safe(decision) or ""),
+            "rationale": str(rationale or ""),
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def create_retrospective(
+    *,
+    user_id: int,
+    cycle_id: Optional[int],
+    week_start_date: Any,
+    content: str,
+    actor_username: str,
+    sentiment: Optional[str] = None,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path="/v1/retrospectives",
+        actor_username=actor_username,
+        payload={
+            "user_id": int(user_id),
+            "cycle_id": int(cycle_id) if cycle_id else None,
+            "week_start_date": _json_safe(week_start_date),
+            "content": str(content or ""),
+            "sentiment": str(sentiment) if sentiment is not None else None,
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def upsert_retro_experiment_outcome(
+    *,
+    retrospective_id: int,
+    experiment_id: int,
+    decision: Any,
+    rationale: Optional[str],
+    actor_username: str,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="PUT",
+        path=f"/v1/retrospectives/{int(retrospective_id)}/experiment-outcomes",
+        actor_username=actor_username,
+        payload={
+            "experiment_id": int(experiment_id),
+            "decision": str(_json_safe(decision) or ""),
+            "rationale": str(rationale) if rationale is not None else None,
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def create_weekly_plan(
+    *,
+    user_id: int,
+    start_date: Any,
+    end_date: Any,
+    p1: str,
+    actor_username: str,
+    p2: Optional[str] = None,
+    p3: Optional[str] = None,
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path="/v1/weekly-plans",
+        actor_username=actor_username,
+        payload={
+            "user_id": int(user_id),
+            "start_date": _json_safe(start_date),
+            "end_date": _json_safe(end_date),
+            "p1": str(p1 or ""),
+            "p2": str(p2) if p2 is not None else None,
+            "p3": str(p3) if p3 is not None else None,
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def create_alignment(
+    *,
+    parent_id: int,
+    child_id: int,
+    actor_username: str,
+    alignment_type: str = "SUPPORTS",
+) -> Dict[str, Any]:
+    return _request_json(
+        method="POST",
+        path="/v1/alignments",
+        actor_username=actor_username,
+        payload={
+            "parent_id": int(parent_id),
+            "child_id": int(child_id),
+            "alignment_type": str(alignment_type or "SUPPORTS"),
+            "actor_username": str(actor_username),
+        },
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def delete_alignment(*, edge_id: int, actor_username: str) -> Dict[str, Any]:
+    return _request_json(
+        method="DELETE",
+        path=f"/v1/alignments/{int(edge_id)}",
+        actor_username=actor_username,
+        payload=None,
+        timeout=(3.0, 25.0),
+        retries=1,
+    )
+
+
+def delete_work_log(*, work_log_id: int, actor_username: str) -> Dict[str, Any]:
+    return _request_json(
+        method="DELETE",
+        path=f"/v1/work-logs/{int(work_log_id)}",
+        actor_username=actor_username,
+        payload=None,
+        timeout=(3.0, 25.0),
+        retries=1,
+    )

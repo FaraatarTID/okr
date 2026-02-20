@@ -22,7 +22,7 @@ AI requests can execute in two modes:
 This separation reduces Streamlit request pressure for heavy AI flows and gives a durable job status model.
 
 Related architecture detail:
-- With `OKR_BACKEND_PROXY_MUTATIONS=true`, node writes that may persist AI outputs (for example KR analysis fields) can route via backend API mutation endpoints.
+- With `OKR_BACKEND_PROXY_MUTATIONS=true`, frontend writes that may persist AI outputs (for example KR analysis fields) route via backend API mutation endpoints.
 - If backend transport fails, production default is fail-closed; local execution fallback is available only when `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`.
 
 ## 2. Implemented AI Capabilities

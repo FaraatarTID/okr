@@ -33,7 +33,7 @@ Phase 3: Security and Compliance
 
 Phase 4: Testing and Go-Live
 - [ ] Run smoke tests: login, OKR creation, timer, dashboard, reports, and AI flows (if enabled).
-- [ ] Verify Goal/Objective/KR/Task create-update-delete flows succeed with backend API enabled.
+- [ ] Verify frontend mutation flows succeed with backend API enabled (node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments).
 - [ ] Validate PDF/report behavior with `PDF_METHOD=pdfshift` (the only supported runtime mode).
 - [ ] Validate backend job flow (`backend-worker` processes AI/PDF requests successfully).
 - [ ] Pilot with a limited team and collect feedback.

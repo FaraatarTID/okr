@@ -132,7 +132,7 @@ Both report types:
 - Export: PDF via `PDF_METHOD=pdfshift`; if PDFShift is unavailable, HTML fallback is offered.
 
 Technical note:
-- In backend-assisted deployments, Goal/Objective/KR/Task write operations and timer calls route through `backend-api` (`OKR_BACKEND_PROXY_MUTATIONS=true`).
+- In backend-assisted deployments, frontend write operations route through `backend-api` (`OKR_BACKEND_PROXY_MUTATIONS=true`) including node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments, and work-log deletes.
 - Report AI/PDF generation can run through internal async jobs (`backend-api` + `backend-worker`), while read-heavy hierarchy queries remain local in Streamlit.
 
 ## 5. Strategic Dashboard (What It Actually Shows)

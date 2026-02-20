@@ -148,3 +148,31 @@ def test_production_disallows_local_backend_fallback():
         runtime_env="production",
     )
     assert any("OKR_ALLOW_LOCAL_BACKEND_FALLBACK" in msg for msg in report.errors)
+
+
+def test_production_requires_backend_proxy_mutations_enabled():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=False,
+        backend_api_url="http://backend-api:8100",
+        backend_service_token="token",
+        backend_signing_secret="secret",
+        runtime_env="production",
+    )
+    assert any("OKR_BACKEND_PROXY_MUTATIONS=true" in msg for msg in report.errors)
+
+
+def test_production_requires_backend_api_url():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=False,
+        backend_api_url="",
+        runtime_env="production",
+    )
+    assert any("OKR_BACKEND_API_URL" in msg for msg in report.errors)

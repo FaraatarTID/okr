@@ -53,14 +53,15 @@ Current recommended deployment topology:
 Key wiring:
 - `OKR_BACKEND_API_URL` from `okr` -> `backend-api`
 - `OKR_BACKEND_SERVICE_TOKEN` must match across caller and backend API
-- `OKR_BACKEND_PROXY_MUTATIONS=true` keeps Goal/Objective/KR/Task writes routed via backend API (`/v1/nodes/*`)
+- `OKR_BACKEND_PROXY_MUTATIONS=true` keeps frontend write flows routed via backend API
 - backend API should remain private/internal, not internet-exposed
 
 Technical behavior (current):
 - Read-heavy hierarchy traversal is still served in-process (`Streamlit -> src/crud.py -> DB`).
-- Write-heavy node mutations and timer actions route through backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`).
+- Write-heavy frontend mutations and timer actions route through backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`).
 - If backend is unavailable, production default is fail-closed (optional emergency fallback via `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`).
 - AI/PDF heavy operations are executed asynchronously by `backend-worker` through `async_job`.
+- In backend-assisted mode, admin backup restore from the Streamlit UI is intentionally disabled; use backend maintenance/runbook procedures.
 
 ## 3. Lifecycle and Rollup Rules You Must Enforce
 
