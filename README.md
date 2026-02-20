@@ -10,7 +10,7 @@ Use this section as the single entry point for all project docs.
 
 ### ðŸ“˜ Core Guides
 
-- **Architecture (Learning Loop Contract, EN+FA)**: [docs/architecture.md](docs/architecture.md)
+- **Architecture (Learning Loop Contract, EN+FA)**: [docs/LEARNING_LOOP_ARCHITECTURE.md](docs/LEARNING_LOOP_ARCHITECTURE.md)
 - **Learning Loop Workflow (EN+FA)**: [docs/learning-loop.md](docs/learning-loop.md)
 - **Architecture (Full System)**: [ARCHITECTURE.md](ARCHITECTURE.md)
 - **License**: [LICENSE](LICENSE)
