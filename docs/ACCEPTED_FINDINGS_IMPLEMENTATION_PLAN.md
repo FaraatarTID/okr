@@ -31,10 +31,12 @@ Tasks
 - Rotate all app connection strings from `postgres` user to least-privilege role.
 - Add startup guard in app/backends to reject superuser DSNs in non-dev environments.
 - Update deployment docs/examples to prohibit `postgres` in runtime DSNs.
+- Interim control note: if startup guard behavior is temporarily relaxed during incident response, production deployment still must enforce `okr_app` DSN usage via checklist/release gate (not optional).
 Acceptance Criteria
 - Runtime DSN user is not `postgres`.
 - App startup fails in production mode if superuser DSN is supplied.
 - CRUD, timer, and job flows still pass integration tests with least-privilege role.
+- Release checklist explicitly verifies `okr_app` (or equivalent least-privilege role) before go-live.
 
 Workstream B: Single Mutation Authority (F2, F4)
 Owner: Backend + Streamlit
@@ -97,11 +99,13 @@ Priority: P0
 Tasks
 - Add/extend tests for auth bypass attempts, IDOR cases, and split-path regression.
 - Add integration tests that enforce backend-only mutation routing.
+- Add UI runtime guard test to prevent non-submit Streamlit buttons inside forms (`st.button`/container `.button` inside `st.form`).
 - Run concurrency/load test for dashboard reads + timer actions + job submissions.
 - Run chaos test: backend API restart, worker restart, transient DB/network blips.
 - Run security verification checklist before pilot go-live.
 Acceptance Criteria
 - Test suite passes with new controls enabled.
+- No form-widget runtime regressions in smoke tests (no `st.button() can't be used in an st.form()` failures).
 - No critical/high findings remain open in pre-go-live review.
 - Pilot load profile meets latency/error-budget targets.
 

@@ -2172,9 +2172,11 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                     # Find edge ID to delete
                     with get_session_context() as session:
                         edge = session.exec(select(AlignmentEdge).where(AlignmentEdge.parent_id == p.id).where(AlignmentEdge.child_id == node_id)).first()
-                        if edge and p_col2.button("🗑️", key=f"del_align_p_{edge.id}"):
-                            delete_alignment(edge.id, actor_username=username)
-                            st.rerun()
+                        if edge:
+                            with p_col2:
+                                if st.form_submit_button("🗑️", key=f"del_align_p_{edge.id}"):
+                                    delete_alignment(edge.id, actor_username=username)
+                                    st.rerun()
 
             if children:
                 st.write("**Supported by (Children):**")
@@ -2183,9 +2185,11 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                     c_col1.write(f"⬇️ {c.title}")
                     with get_session_context() as session:
                         edge = session.exec(select(AlignmentEdge).where(AlignmentEdge.parent_id == node_id).where(AlignmentEdge.child_id == c.id)).first()
-                        if edge and c_col2.button("🗑️", key=f"del_align_c_{edge.id}"):
-                            delete_alignment(edge.id, actor_username=username)
-                            st.rerun()
+                        if edge:
+                            with c_col2:
+                                if st.form_submit_button("🗑️", key=f"del_align_c_{edge.id}"):
+                                    delete_alignment(edge.id, actor_username=username)
+                                    st.rerun()
             
             if not parents and not children:
                 st.info("No active alignments. This objective is currently isolated.")
@@ -2204,7 +2208,7 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                     
                     align_type_sel = st.radio("Relationship", ["This objective SUPPORTS the target", "The target SUPPORTS this objective"], key=f"align_type_{node_id}")
                     
-                    if st.button("🔗 Link Objectives", key=f"link_btn_{node_id}", use_container_width=True):
+                    if st.form_submit_button("🔗 Link Objectives", use_container_width=True):
                         try:
                             if align_type_sel == "This objective SUPPORTS the target":
                                 create_alignment(parent_id=target_id, child_id=node_id, actor_username=username)

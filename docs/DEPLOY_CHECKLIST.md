@@ -44,7 +44,8 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] `deploy/docker/.env` exists (copied from `deploy/docker/.env.example`).
 - [ ] Optional shortcut used if applicable: `deploy/docker/.env.mycompany.example`.
 - [ ] `OKR_DATABASE_URL` is set in `.env` and points to Supabase transaction pooler (`*.pooler.supabase.com:6543`).
-- [ ] `OKR_DATABASE_URL` uses a least-privilege DB user (not `postgres`) for runtime operations.
+- [ ] `OKR_DATABASE_URL` uses the least-privilege `okr_app` role (or equivalent non-superuser role), not `postgres`, for runtime operations.
+- [ ] DB-role verification is completed as a release gate even if runtime startup validation is temporarily relaxed.
 - [ ] `BASE_URL_PATH` is empty for subdomain deployment.
 - [ ] Optional integrations secrets are prepared in `deploy/secrets/secrets.toml`.
 - [ ] `PDF_METHOD` is explicitly set to `pdfshift`.

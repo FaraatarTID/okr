@@ -18,6 +18,8 @@ Phase 2: Infrastructure
 - [ ] Place app behind Nginx/Traefik with TLS termination.
 - [ ] Restrict access to company network and/or VPN.
 - [ ] Configure PostgreSQL connectivity (internal DB or approved private endpoint).
+- [ ] Ensure runtime `OKR_DATABASE_URL` uses least-privilege `okr_app` role credentials (not `postgres`).
+- [ ] Treat DB-role verification as a mandatory go-live check even if runtime startup guards are temporarily relaxed.
 - [ ] Ensure backend stack is running (`okr`, `backend-api`, `backend-worker`).
 - [ ] Ensure `OKR_BACKEND_API_URL` is set in `okr` and `OKR_BACKEND_PROXY_MUTATIONS=true` for backend-owned writes.
 - [ ] Ensure `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` is unset/false in production.
@@ -33,6 +35,7 @@ Phase 3: Security and Compliance
 
 Phase 4: Testing and Go-Live
 - [ ] Run smoke tests: login, OKR creation, timer, dashboard, reports, and AI flows (if enabled).
+- [ ] Run UI form guard test: `python -m pytest streamlit_app/tests/test_streamlit_form_constraints.py -q` (enforces `st.form_submit_button` usage inside `st.form`).
 - [ ] Verify frontend mutation flows succeed with backend API enabled (node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments).
 - [ ] Validate PDF/report behavior with `PDF_METHOD=pdfshift` (the only supported runtime mode).
 - [ ] Validate backend job flow (`backend-worker` processes AI/PDF requests successfully).
