@@ -105,13 +105,23 @@ def request_job_cancel(job_id: str, actor_username: str) -> Optional[AsyncJob]:
 def claim_next_pending_job(worker_id: str) -> Optional[AsyncJob]:
     now = utc_now_naive()
     with get_session_context() as session:
-        candidate = session.exec(
+        stmt = (
             select(AsyncJob)
             .where(AsyncJob.status == AsyncJobStatus.PENDING)
             .where(AsyncJob.cancel_requested == False)  # noqa: E712
             .order_by(AsyncJob.created_at.asc())
             .limit(1)
-        ).first()
+        )
+        # Postgres workers should claim with SKIP LOCKED to avoid queue head contention.
+        try:
+            bind = session.get_bind()
+            dialect_name = str(getattr(getattr(bind, "dialect", None), "name", "")).lower()
+            if dialect_name == "postgresql":
+                stmt = stmt.with_for_update(skip_locked=True)
+        except Exception:
+            pass
+
+        candidate = session.exec(stmt).first()
         if not candidate:
             return None
 

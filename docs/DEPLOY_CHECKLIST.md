@@ -50,6 +50,7 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] If `PDF_METHOD=pdfshift`, `pdfshift_api_key` is present in secrets.
 - [ ] `OKR_BACKEND_API_URL` is set (default: `http://backend-api:8100`).
 - [ ] `OKR_BACKEND_SERVICE_TOKEN` is set to a strong shared secret.
+- [ ] `OKR_BACKEND_PROXY_MUTATIONS=true` is set (recommended for backend-owned writes).
 - [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` is set (recommended for production).
 - [ ] `GEMINI_API_KEY` is set (or AI-disable decision is documented).
 
@@ -83,6 +84,7 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 7. Functional Smoke Tests
 - [ ] Login/logout works.
 - [ ] Create Goal > Objective > KR > Task works.
+- [ ] Goal/Objective/KR/Task updates and deletes work while backend API is enabled.
 - [ ] Timer start/stop works.
 - [ ] Reports render.
 - [ ] No browser reconnect loops.

@@ -139,6 +139,7 @@ BASE_URL_PATH=
 OKR_DATABASE_URL=postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
 OKR_BACKEND_API_URL=http://backend-api:8100
 OKR_BACKEND_SERVICE_TOKEN=CHANGE_ME_STRONG_SHARED_TOKEN
+OKR_BACKEND_PROXY_MUTATIONS=true
 PDF_METHOD=pdfshift
 PDFSHIFT_API_KEY=CHANGE_ME_PDFSHIFT_KEY
 ALLOW_EXTERNAL_AI=false
@@ -151,6 +152,7 @@ OKR_STRICT_RUNTIME_PREFLIGHT=true
 Notes:
 - Keep `BASE_URL_PATH` empty for subdomain hosting.
 - For subpath hosting (`/okr`), set `BASE_URL_PATH=okr`.
+- Keep `OKR_BACKEND_PROXY_MUTATIONS=true` so Goal/Objective/KR/Task writes route via backend API.
 
 Step 4: Configure optional secrets (PDF/API integrations)
 

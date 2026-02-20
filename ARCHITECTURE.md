@@ -40,20 +40,25 @@ Primary data/control flow in backend-assisted mode:
 - Streamlit handles page rendering, state, and role-aware UX.
 
 2. Synchronous domain mutations:
-- Streamlit -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
-- This still covers core hierarchy CRUD (Goal/Objective/KR/Task) in current MVP.
+- Preferred (backend URL configured): Streamlit -> `backend-api` (`/v1/nodes/*`) -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
+- Fallback (backend unavailable / transient transport error): Streamlit -> local CRUD -> Supabase PostgreSQL.
+- Scope: Goal/Objective/KeyResult/Task create/update/delete and timer start/stop.
 
-3. Async heavy workflows:
+3. Synchronous read/query paths:
+- Streamlit -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
+- Current MVP still serves most read-heavy hierarchy traversal in-process.
+
+4. Async heavy workflows:
 - Streamlit -> `backend-api` (`/v1/jobs`) with `OKR_BACKEND_SERVICE_TOKEN`.
 - `backend-api` enqueues durable jobs in `async_job`.
 - `backend-worker` claims and executes jobs (`ai.generate_json`, `pdf.weekly`).
 - Streamlit polls job status and renders result/fallback.
 
-4. Timer routing:
+5. Timer routing:
 - Preferred: Streamlit timer service -> `backend-api` (`/v1/timer/start|stop`).
 - Resilience path: local CRUD fallback on transient backend transport failure.
 
-5. PDF rendering:
+6. PDF rendering:
 - Only supported binary renderer: `PDFShift` (`PDF_METHOD=pdfshift`).
 - If PDF binary rendering is unavailable, UI falls back to HTML export.
 
@@ -192,6 +197,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Worker writes result/error payloads into `async_job`.
 - UI reads job state and surfaces final output.
 - On transient backend failures/timeouts, local fallback path executes where supported.
+- In PostgreSQL runtimes, worker claim path uses `FOR UPDATE SKIP LOCKED` semantics to reduce queue-head contention across concurrent workers.
 
 ## Invariants and Guardrails
 
@@ -215,7 +221,8 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 ## Current Architectural Limits
 
 - Streamlit rerun model still governs UI interaction cost and concurrency.
-- Core hierarchy CRUD remains in-process from Streamlit to DB (not yet API-decoupled).
+- Read-heavy hierarchy paths remain in-process from Streamlit to DB (not yet fully API-decoupled).
+- Mutation paths can be routed through backend API with `OKR_BACKEND_API_URL` (`OKR_BACKEND_PROXY_MUTATIONS=true` by default).
 - Kubernetes manifests in `deploy/k8s/` currently model the Streamlit service; backend API/worker manifests must be added for full backend-assisted parity.
 
 ## Recommended Next Refactor Boundary

@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError, OperationalError
 import os
 import time
+from types import SimpleNamespace
 from typing import Any, Dict, Optional, List
 from datetime import datetime, timedelta
 from src.utils.time_utils import ensure_utc, to_epoch_millis, utc_now_naive
@@ -108,6 +109,7 @@ _ALLOWED_EXPERIMENT_UPDATE_FIELDS = {
     "expected_effect_size",
 }
 _UNSET = object()
+_TRUE_VALUES = {"1", "true", "yes", "on"}
 AUTH_USER_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_USER_WINDOW_SECONDS", "300")))
 AUTH_USER_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_USER_MAX_ATTEMPTS", "5")))
 AUTH_IP_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_IP_WINDOW_SECONDS", "300")))
@@ -117,6 +119,59 @@ ADMIN_BOOTSTRAP_MAX_RETRIES = max(1, int(os.getenv("ADMIN_BOOTSTRAP_MAX_RETRIES"
 ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS = max(
     0.0, float(os.getenv("ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", "0.4"))
 )
+
+
+def _backend_mutation_proxy_enabled() -> bool:
+    proxy_flag = str(os.getenv("OKR_BACKEND_PROXY_MUTATIONS", "true")).strip().lower()
+    if proxy_flag not in _TRUE_VALUES:
+        return False
+    try:
+        from src.services.backend_client import is_backend_enabled
+
+        return bool(is_backend_enabled())
+    except Exception:
+        return False
+
+
+def _is_transient_backend_mutation_error(payload: Dict[str, Any]) -> bool:
+    try:
+        code = int(payload.get("status_code") or 0)
+    except Exception:
+        code = 0
+    if code == 0 or code in {500, 502, 503, 504}:
+        return True
+    message = str(payload.get("error") or "").strip().lower()
+    return any(
+        token in message
+        for token in {
+            "connection",
+            "timed out",
+            "timeout",
+            "temporar",
+            "unavailable",
+            "refused",
+        }
+    )
+
+
+def _raise_backend_mutation_error(payload: Dict[str, Any]) -> None:
+    message = str(payload.get("error") or "Backend mutation failed.").strip()
+    try:
+        code = int(payload.get("status_code") or 0)
+    except Exception:
+        code = 0
+    if code in {401, 403}:
+        raise PermissionError(message)
+    if code == 404:
+        raise ValueError(message or "Target not found.")
+    raise ValueError(message)
+
+
+def _node_from_backend_payload(payload: Dict[str, Any]):
+    node_data = payload.get("node")
+    if isinstance(node_data, dict):
+        return SimpleNamespace(**node_data)
+    return SimpleNamespace(**{k: v for k, v in payload.items() if k != "status_code"})
 
 
 def _validate_update_fields(
@@ -1260,6 +1315,30 @@ def create_goal(
     actor_username: Optional[str] = None,
 ) -> Goal:
     """Create a new goal."""
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import create_goal as backend_create_goal
+
+        backend_result = backend_create_goal(
+            user_id=user_id,
+            title=title,
+            description=description,
+            cycle_id=cycle_id,
+            strategy_tags=strategy_tags,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
+    if isinstance(strategy_tags, list):
+        import json
+
+        strategy_tags = json.dumps(
+            [str(item).strip() for item in strategy_tags if str(item).strip()],
+            ensure_ascii=False,
+        )
+
     with get_session_context() as session:
         # Get owner_id from username
         user_obj = session.exec(select(User).where(User.username == user_id)).first()
@@ -1323,6 +1402,20 @@ def create_objective(
     actor_username: Optional[str] = None,
 ) -> Objective:
     """Create a new objective under a goal."""
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import create_objective as backend_create_objective
+
+        backend_result = backend_create_objective(
+            goal_id=goal_id,
+            title=title,
+            description=description,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
         if not goal:
@@ -1374,6 +1467,31 @@ def create_key_result(
     actor_username: Optional[str] = None,
 ) -> KeyResult:
     """Create a new key result under an objective."""
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import create_key_result as backend_create_key_result
+
+        backend_result = backend_create_key_result(
+            objective_id=objective_id,
+            title=title,
+            description=description,
+            target_value=target_value,
+            unit=unit,
+            initiative_tags=initiative_tags,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
+    if isinstance(initiative_tags, list):
+        import json
+
+        initiative_tags = json.dumps(
+            [str(item).strip() for item in initiative_tags if str(item).strip()],
+            ensure_ascii=False,
+        )
+
     with get_session_context() as session:
         objective = session.get(Objective, objective_id)
         if not objective:
@@ -1430,6 +1548,24 @@ def create_task(
     actor_username: Optional[str] = None,
 ) -> Task:
     """Create a new task under a key result."""
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import create_task as backend_create_task
+
+        backend_result = backend_create_task(
+            key_result_id=key_result_id,
+            title=title,
+            description=description,
+            estimated_minutes=estimated_minutes,
+            start_date=start_date,
+            deadline=deadline,
+            assignee_id=assignee_id,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
     with get_session_context() as session:
         parent_check = session.get(KeyResult, key_result_id)
         if not parent_check:
@@ -1493,6 +1629,28 @@ def update_goal(
     goal_id: int, actor_username: Optional[str] = None, **updates
 ) -> Optional[Goal]:
     """Update a goal's fields."""
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import update_node as backend_update_node
+
+        backend_result = backend_update_node(
+            node_type="GOAL",
+            node_id=goal_id,
+            updates=dict(updates or {}),
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
+    if isinstance(updates.get("strategy_tags"), list):
+        import json
+
+        updates["strategy_tags"] = json.dumps(
+            [str(item).strip() for item in updates["strategy_tags"] if str(item).strip()],
+            ensure_ascii=False,
+        )
+
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
         if goal:
@@ -1543,6 +1701,20 @@ def update_key_result_analysis(
 def update_objective(
     objective_id: int, actor_username: Optional[str] = None, **updates
 ) -> Optional[Objective]:
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import update_node as backend_update_node
+
+        backend_result = backend_update_node(
+            node_type="OBJECTIVE",
+            node_id=objective_id,
+            updates=dict(updates or {}),
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
     with get_session_context() as session:
         item = session.get(Objective, objective_id)
         if item:
@@ -1677,6 +1849,28 @@ def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
 def update_key_result(
     key_result_id: int, actor_username: Optional[str] = None, **updates
 ) -> Optional[KeyResult]:
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import update_node as backend_update_node
+
+        backend_result = backend_update_node(
+            node_type="KEY_RESULT",
+            node_id=key_result_id,
+            updates=dict(updates or {}),
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
+    if isinstance(updates.get("initiative_tags"), list):
+        import json
+
+        updates["initiative_tags"] = json.dumps(
+            [str(item).strip() for item in updates["initiative_tags"] if str(item).strip()],
+            ensure_ascii=False,
+        )
+
     with get_session_context() as session:
         item = session.get(KeyResult, key_result_id)
         if item:
@@ -1757,6 +1951,30 @@ def update_task(
     **kwargs,
 ) -> Optional[Task]:
     """Update task details."""
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import update_node as backend_update_node
+
+        remote_updates = dict(kwargs or {})
+        if title is not None:
+            remote_updates["title"] = title
+        if status is not None:
+            remote_updates["status"] = status
+        if estimated_minutes is not None:
+            remote_updates["estimated_minutes"] = estimated_minutes
+        if start_date is not _UNSET:
+            remote_updates["start_date"] = start_date
+
+        backend_result = backend_update_node(
+            node_type="TASK",
+            node_id=task_id,
+            updates=remote_updates,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return _node_from_backend_payload(backend_result)
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
     with get_session_context() as session:
         task = session.get(Task, task_id)
         if not task:
@@ -1803,6 +2021,19 @@ def update_task(
 
 def delete_goal(goal_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a goal and all its children (cascade)."""
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import delete_node as backend_delete_node
+
+        backend_result = backend_delete_node(
+            node_type="GOAL",
+            node_id=goal_id,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return bool(backend_result.get("deleted", True))
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
         if goal:
@@ -1819,6 +2050,19 @@ def delete_goal(goal_id: int, actor_username: Optional[str] = None) -> bool:
 
 def delete_task(task_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a task and its work logs."""
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import delete_node as backend_delete_node
+
+        backend_result = backend_delete_node(
+            node_type="TASK",
+            node_id=task_id,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return bool(backend_result.get("deleted", True))
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
     with get_session_context() as session:
         task = session.get(Task, task_id)
         if task:
@@ -1833,6 +2077,19 @@ def delete_task(task_id: int, actor_username: Optional[str] = None) -> bool:
 
 
 def delete_objective(objective_id: int, actor_username: Optional[str] = None) -> bool:
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import delete_node as backend_delete_node
+
+        backend_result = backend_delete_node(
+            node_type="OBJECTIVE",
+            node_id=objective_id,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return bool(backend_result.get("deleted", True))
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
     with get_session_context() as session:
         item = session.get(Objective, objective_id)
         if item:
@@ -1847,6 +2104,19 @@ def delete_objective(objective_id: int, actor_username: Optional[str] = None) ->
 
 
 def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
+    if _backend_mutation_proxy_enabled() and actor_username:
+        from src.services.backend_client import delete_node as backend_delete_node
+
+        backend_result = backend_delete_node(
+            node_type="KEY_RESULT",
+            node_id=kr_id,
+            actor_username=actor_username,
+        )
+        if "error" not in backend_result:
+            return bool(backend_result.get("deleted", True))
+        if not _is_transient_backend_mutation_error(backend_result):
+            _raise_backend_mutation_error(backend_result)
+
     with get_session_context() as session:
         item = session.get(KeyResult, kr_id)
         if item:

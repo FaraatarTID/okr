@@ -31,6 +31,14 @@ AI features unavailable
   - Verify `OKR_BACKEND_API_URL` is reachable from `okr`
   - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between `okr` and `backend-api`
 
+CRUD save/update/delete errors in UI
+- If backend mutation proxy is enabled (`OKR_BACKEND_PROXY_MUTATIONS=true`):
+  - Verify `OKR_BACKEND_API_URL` resolves from `okr`
+  - Verify `backend-api` is healthy (`/healthz`)
+  - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between services
+  - Check backend logs for 403/400 details (permission or validation failures)
+- For emergency isolation, set `OKR_BACKEND_PROXY_MUTATIONS=false` to use local mutation path temporarily.
+
 Migrations fail
 - Ensure the configured DB is reachable from the host/pod
 - Check that OKR_DATABASE_URL is valid and that the user has DDL permissions

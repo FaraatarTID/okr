@@ -74,7 +74,8 @@ Weekly Report:
 - خروجی: PDF فقط از مسیر `PDF_METHOD=pdfshift`؛ در نبود PDFShift خروجی HTML ارائه می‌شود.
 
 نکته فنی:
-- در deploymentهای backend-assisted، پردازش‌های سنگین AI/PDF می‌توانند از مسیر `backend-api` و `backend-worker` اجرا شوند.
+- در deploymentهای backend-assisted، عملیات نوشتنی Goal/Objective/KR/Task و timer می‌توانند با `OKR_BACKEND_PROXY_MUTATIONS=true` از مسیر `backend-api` عبور کنند.
+- پردازش‌های سنگین AI/PDF از مسیر `backend-api` و `backend-worker` اجرا می‌شوند و مسیرهای read-heavy همچنان داخل Streamlit باقی می‌مانند.
 
 ## ۵. داشبورد استراتژیک (محتوای واقعی فعلی)
 
