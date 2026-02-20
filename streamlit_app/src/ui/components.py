@@ -579,8 +579,6 @@ def render_timer_content(node_id, username):
             # Ensure start_ts is handled correctly (it's a datetime in SQLModel usually, but might be float in JSON?)
             # In Models it is Optional[datetime].
             # We need to convert to timestamp for the math or use timedelta.
-            import time
-
             now = ensure_utc(utc_now_naive())
             elapsed = now - ensure_utc(start_ts)
             elapsed_sec = int(elapsed.total_seconds())
@@ -592,6 +590,9 @@ def render_timer_content(node_id, username):
             placeholder.markdown(
                 f"<div class='timer-display'>{h:02d}:{m:02d}:{s:02d}</div>",
                 unsafe_allow_html=True,
+            )
+            st.caption(
+                "Elapsed time is calculated from the stored start timestamp and updates when the view rerenders."
             )
 
             summary = st.text_input(
@@ -626,9 +627,6 @@ def render_timer_content(node_id, username):
                 if "active_timer_node_id" in st.session_state:
                     del st.session_state.active_timer_node_id
                 st.rerun()
-
-            time.sleep(1)
-            st.rerun()
         else:
             placeholder.markdown(
                 "<div class='timer-display'>00:00:00</div>", unsafe_allow_html=True

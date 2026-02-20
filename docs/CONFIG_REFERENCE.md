@@ -14,14 +14,23 @@ Database
   - OKR_DATABASE_URL (recommended)
   - DATABASE_URL (optional alias)
   - Example:
-    - `postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require`
+    - `postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
 - Streamlit secrets:
   - [database]
     - url: full connection string
   - See template: [deploy/secrets/secrets.toml.example](../deploy/secrets/secrets.toml.example)
 - Requirements enforced by runtime:
   - URL must start with `postgresql+psycopg2://`
-  - Host must include `supabase.com`
+  - Host must include `*.pooler.supabase.com` (or `*.pooler.supabase.co`)
+  - Port must be `6543` (transaction pooler) unless explicitly overridden
+  - Optional exception flags:
+    - `OKR_ALLOW_SUPABASE_SESSION_POOLER=1` (allow port 5432 on pooler host)
+    - `OKR_ALLOW_SUPABASE_DIRECT_CONNECTION=1` (allow non-pooler host)
+  - Pool sizing controls:
+    - `OKR_DB_POOL_SIZE` (default: `5`)
+    - `OKR_DB_MAX_OVERFLOW` (default: `5`)
+    - `OKR_DB_POOL_TIMEOUT` (default: `30`)
+    - `OKR_DB_POOL_RECYCLE` (default: `1800`)
 
 Streamlit server
 

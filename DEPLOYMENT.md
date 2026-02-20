@@ -44,7 +44,7 @@ Quick decision matrix
 - Use subpath only if your company policy requires it: `mycompany.com/okr`
 
 2) Which database?
-- Required: Supabase PostgreSQL (Session Pooler URL with `sslmode=require`)
+- Required: Supabase PostgreSQL (Transaction Pooler URL on port `6543` with `sslmode=require`)
 
 3) Which platform?
 - Start with Docker Compose on one VM
@@ -76,7 +76,7 @@ Step 0: Collect required values
 Prepare these values first:
 - `APP_DOMAIN`: for example `okr.mycompany.com`
 - `SERVER_IP`: public/private server IP
-- `OKR_DATABASE_URL`: example `postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require`
+- `OKR_DATABASE_URL`: example `postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
 - `CONTACT_EMAIL`: certificate contact email
 
 Step 1: Prepare the Linux host (Ubuntu example)
@@ -126,7 +126,7 @@ Edit `deploy/docker/.env` and set at minimum:
 PORT=8501
 HOST_PORT=8501
 BASE_URL_PATH=
-OKR_DATABASE_URL=postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres?sslmode=require
+OKR_DATABASE_URL=postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
 
 # Optional image pin (recommended after first stable release)
 # IMAGE=ghcr.io/your-org/okr-streamlit:2026-02-14
@@ -341,7 +341,7 @@ Assets broken under subpath:
 - Ensure reverse proxy strips `/okr` before forwarding.
 
 App fails at startup with database URL error:
-- Ensure `OKR_DATABASE_URL` is set and points to `*.supabase.com` with `postgresql+psycopg2://`.
+- Ensure `OKR_DATABASE_URL` uses `postgresql+psycopg2://` and points to `*.pooler.supabase.com:6543`.
 
 Cannot log in:
 - If DB is new, use `admin/admin` once and change password.

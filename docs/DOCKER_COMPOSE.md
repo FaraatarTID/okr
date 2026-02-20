@@ -15,7 +15,7 @@ Single host, subpath
 Starting with PostgreSQL
 - Required: Supabase PostgreSQL
   - Set OKR_DATABASE_URL in the environment (compose env or .env)
-  - Use the session pooler URL with `sslmode=require`
+  - Use the transaction pooler URL (`:6543`) with `sslmode=require`
 
 Secrets
 - Create a secrets file if using integrations and mount as:

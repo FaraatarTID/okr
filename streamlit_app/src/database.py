@@ -14,8 +14,12 @@ from collections.abc import Mapping
 from datetime import datetime, date, time
 from decimal import Decimal
 from typing import Optional
+from urllib.parse import urlparse
 from sqlalchemy import text
 from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
+
+
+_TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
 def _get_database_url() -> str:
@@ -71,7 +75,7 @@ def _normalize_database_url(url: str) -> str:
 def _allow_non_supabase_url() -> bool:
     """Test-only escape hatch for local CI fixtures."""
     flag = os.getenv("OKR_ALLOW_NON_SUPABASE_DB", "").strip().lower()
-    if flag in {"1", "true", "yes", "on"}:
+    if flag in _TRUE_VALUES:
         return True
     return "PYTEST_CURRENT_TEST" in os.environ
 
@@ -91,6 +95,30 @@ def _validate_database_url(url: str) -> str:
             "Supabase PostgreSQL URL is required (host must include "
             "'supabase.com' or 'supabase.co')."
         )
+    parsed = urlparse(normalized)
+    host = str(parsed.hostname or "").lower()
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise RuntimeError("Database URL port is invalid.") from exc
+    allow_session_pooler = (
+        os.getenv("OKR_ALLOW_SUPABASE_SESSION_POOLER", "").strip().lower() in _TRUE_VALUES
+    )
+    allow_direct = (
+        os.getenv("OKR_ALLOW_SUPABASE_DIRECT_CONNECTION", "").strip().lower() in _TRUE_VALUES
+    )
+    if "pooler.supabase.com" in host or "pooler.supabase.co" in host:
+        if port != 6543 and not allow_session_pooler:
+            raise RuntimeError(
+                "Supabase transaction pooler URL is required for production safety. "
+                "Use port 6543 on *.pooler.supabase.com (set "
+                "OKR_ALLOW_SUPABASE_SESSION_POOLER=1 only for temporary exceptions)."
+            )
+    elif not allow_direct:
+        raise RuntimeError(
+            "Supabase pooler URL is required. Use *.pooler.supabase.com with port 6543 "
+            "(set OKR_ALLOW_SUPABASE_DIRECT_CONNECTION=1 only for temporary exceptions)."
+        )
     return normalized
 
 
@@ -102,6 +130,12 @@ def _create_engine(url: str):
     kwargs = {}
     if normalized.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
+    elif normalized.startswith("postgresql+psycopg2://"):
+        kwargs["pool_size"] = max(1, int(os.getenv("OKR_DB_POOL_SIZE", "5")))
+        kwargs["max_overflow"] = max(0, int(os.getenv("OKR_DB_MAX_OVERFLOW", "5")))
+        kwargs["pool_timeout"] = max(1, int(os.getenv("OKR_DB_POOL_TIMEOUT", "30")))
+        kwargs["pool_recycle"] = max(30, int(os.getenv("OKR_DB_POOL_RECYCLE", "1800")))
+        kwargs["pool_use_lifo"] = True
 
     engine = create_engine(
         normalized,
