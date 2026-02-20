@@ -98,6 +98,13 @@ def _runtime_preflight_strict_mode() -> bool:
         return True
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _run_pdf_preflight():
     if st.session_state.get("preflight_done"):
         return
@@ -122,6 +129,12 @@ def _run_pdf_preflight():
         ai_provider=ai_status.provider,
         ai_provider_ready=ai_status.ready,
         ai_provider_message=ai_status.message,
+        backend_api_url=os.getenv("OKR_BACKEND_API_URL", ""),
+        backend_proxy_mutations=_env_bool("OKR_BACKEND_PROXY_MUTATIONS", True),
+        backend_service_token=os.getenv("OKR_BACKEND_SERVICE_TOKEN", ""),
+        backend_signing_secret=os.getenv("OKR_BACKEND_SIGNING_SECRET", ""),
+        allow_local_backend_fallback=_env_bool("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False),
+        runtime_env=os.getenv("OKR_ENV", os.getenv("OKR_RUNTIME_ENV", "development")),
     )
     for msg in report.errors:
         st.error(f"Runtime preflight: {msg}")

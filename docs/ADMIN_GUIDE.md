@@ -58,7 +58,8 @@ Key wiring:
 
 Technical behavior (current):
 - Read-heavy hierarchy traversal is still served in-process (`Streamlit -> src/crud.py -> DB`).
-- Write-heavy node mutations and timer actions can route through backend API with transient local fallback.
+- Write-heavy node mutations and timer actions route through backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`).
+- If backend is unavailable, production default is fail-closed (optional emergency fallback via `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`).
 - AI/PDF heavy operations are executed asynchronously by `backend-worker` through `async_job`.
 
 ## 3. Lifecycle and Rollup Rules You Must Enforce

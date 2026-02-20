@@ -9,6 +9,8 @@ Phase 1: Preparation
 - [ ] Select AI provider (`openai_compatible` recommended for internal gateways, or `gemini` if approved).
 - [ ] Keep `ALLOW_EXTERNAL_AI=false` unless outbound AI is explicitly approved.
 - [ ] Set `OKR_BACKEND_SERVICE_TOKEN` to a strong shared secret for internal service auth.
+- [ ] Set `OKR_BACKEND_SIGNING_SECRET` and keep `OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true`.
+- [ ] Review and execute `docs/ACCEPTED_FINDINGS_IMPLEMENTATION_PLAN.md` before production rollout.
 - [ ] Review `DEPLOYMENT.md` and `docs/CONFIG_REFERENCE.md`.
 
 Phase 2: Infrastructure
@@ -18,6 +20,7 @@ Phase 2: Infrastructure
 - [ ] Configure PostgreSQL connectivity (internal DB or approved private endpoint).
 - [ ] Ensure backend stack is running (`okr`, `backend-api`, `backend-worker`).
 - [ ] Ensure `OKR_BACKEND_API_URL` is set in `okr` and `OKR_BACKEND_PROXY_MUTATIONS=true` for backend-owned writes.
+- [ ] Ensure `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` is unset/false in production.
 - [ ] Keep backend API host binding private (`127.0.0.1` unless explicitly required otherwise).
 
 Phase 3: Security and Compliance

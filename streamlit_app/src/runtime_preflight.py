@@ -34,6 +34,12 @@ def evaluate_runtime_preflight(
     ai_provider: str = "gemini",
     ai_provider_ready: Optional[bool] = None,
     ai_provider_message: Optional[str] = None,
+    backend_api_url: Optional[str] = None,
+    backend_proxy_mutations: bool = False,
+    backend_service_token: Optional[str] = None,
+    backend_signing_secret: Optional[str] = None,
+    allow_local_backend_fallback: bool = False,
+    runtime_env: str = "development",
 ) -> RuntimePreflightReport:
     """Evaluate runtime safety constraints for PDF and AI integrations."""
     report = RuntimePreflightReport()
@@ -51,6 +57,38 @@ def evaluate_runtime_preflight(
         )
     else:
         report.infos.append("PDF provider is PDFShift (secure mode).")
+
+    backend_url = str(backend_api_url or "").strip()
+    env_name = str(runtime_env or "development").strip().lower()
+    is_production = env_name in {"prod", "production"}
+
+    if backend_proxy_mutations and not backend_url:
+        message = (
+            "OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set."
+        )
+        if is_production:
+            report.errors.append(message)
+        else:
+            report.warnings.append(message)
+
+    if backend_url and not str(backend_service_token or "").strip():
+        message = (
+            "OKR_BACKEND_API_URL is configured but OKR_BACKEND_SERVICE_TOKEN is missing."
+        )
+        if is_production:
+            report.errors.append(message)
+        else:
+            report.warnings.append(message)
+
+    if is_production and backend_url and not str(backend_signing_secret or "").strip():
+        report.errors.append(
+            "Production backend mode requires OKR_BACKEND_SIGNING_SECRET."
+        )
+
+    if is_production and allow_local_backend_fallback:
+        report.errors.append(
+            "OKR_ALLOW_LOCAL_BACKEND_FALLBACK should be disabled in production."
+        )
 
     key = str(gemini_api_key or "").strip()
     if not external_ai_allowed:

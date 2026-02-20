@@ -39,8 +39,38 @@ def post_json_with_retry(
     backoff_factor: float = 0.5,
 ) -> requests.Response:
     """POST JSON with retry and explicit timeout."""
+    return request_with_retry(
+        "POST",
+        url,
+        headers=headers,
+        json_payload=json_payload,
+        timeout=timeout,
+        retries=retries,
+        backoff_factor=backoff_factor,
+    )
+
+
+def request_with_retry(
+    method: str,
+    url: str,
+    *,
+    headers: Optional[Dict[str, str]] = None,
+    json_payload: Optional[Dict[str, Any]] = None,
+    body_bytes: Optional[bytes] = None,
+    timeout: Tuple[float, float] = DEFAULT_TIMEOUT,
+    retries: int = 2,
+    backoff_factor: float = 0.5,
+) -> requests.Response:
+    """HTTP request with retry and explicit timeout."""
+    if json_payload is not None and body_bytes is not None:
+        raise ValueError("Provide only one of json_payload or body_bytes.")
     session = _build_session(total_retries=retries, backoff_factor=backoff_factor)
     try:
-        return session.post(url, headers=headers, json=json_payload, timeout=timeout)
+        kwargs: Dict[str, Any] = {"headers": headers, "timeout": timeout}
+        if body_bytes is not None:
+            kwargs["data"] = body_bytes
+        elif json_payload is not None:
+            kwargs["json"] = json_payload
+        return session.request(str(method).upper(), url, **kwargs)
     finally:
         session.close()

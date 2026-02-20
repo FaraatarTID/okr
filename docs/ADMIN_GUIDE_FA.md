@@ -58,7 +58,7 @@ Documentation HQ: [README](../README.md)
 
 رفتار فنی فعلی:
 - مسیرهای read-heavy هنوز در خود Streamlit اجرا می‌شوند (`Streamlit -> src/crud.py -> DB`).
-- مسیرهای نوشتنی نودها و timer می‌توانند از backend API عبور کنند و در خطاهای transient fallback محلی دارند.
+- مسیرهای نوشتنی نودها و timer از backend API عبور می‌کنند؛ در Production رفتار پیش‌فرض fail-closed است و fallback محلی فقط با `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` فعال می‌شود.
 - عملیات سنگین AI/PDF به‌صورت async توسط `backend-worker` و جدول `async_job` اجرا می‌شود.
 
 ## ۳. قواعد چرخه‌حیات و Rollup که باید رعایت شوند

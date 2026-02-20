@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 
@@ -84,3 +85,70 @@ def test_update_task_endpoint_coerces_enum_and_datetime(monkeypatch):
     assert str(captured["updates"]["status"].value) == "done"
     assert isinstance(captured["updates"]["start_date"], datetime)
     assert isinstance(captured["updates"]["deadline"], datetime)
+
+
+def test_submit_job_endpoint_returns_429_when_quota_exceeded(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _raise_quota(*args, **kwargs):
+        raise HTTPException(status_code=429, detail="quota exceeded")
+
+    monkeypatch.setattr(backend_main, "enforce_job_submit_limits", _raise_quota)
+
+    response = client.post(
+        "/v1/jobs",
+        headers={"X-OKR-Actor": "alice"},
+        json={"kind": "ai.generate_json", "payload": {"prompt": "hello"}},
+    )
+
+    assert response.status_code == 429
+    assert "quota" in str(response.json().get("detail", "")).lower()
+
+
+def test_submit_job_endpoint_forwards_idempotency_key(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = {}
+
+    monkeypatch.setattr(
+        backend_main,
+        "enforce_job_submit_limits",
+        lambda **kwargs: None,
+    )
+
+    def _fake_enqueue_job(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(id="job-1")
+
+    monkeypatch.setattr(backend_main, "enqueue_job", _fake_enqueue_job)
+    monkeypatch.setattr(
+        backend_main,
+        "serialize_job",
+        lambda job: {
+            "id": "job-1",
+            "kind": "ai.generate_json",
+            "status": "pending",
+            "actor_username": "alice",
+            "team_id": 1,
+            "attempts": 0,
+            "max_attempts": 2,
+            "cancel_requested": False,
+            "idempotency_key": captured.get("idempotency_key"),
+            "created_at": datetime.now(timezone.utc).replace(tzinfo=None),
+            "started_at": None,
+            "finished_at": None,
+            "result": None,
+            "error_text": None,
+        },
+    )
+
+    response = client.post(
+        "/v1/jobs",
+        headers={
+            "X-OKR-Actor": "alice",
+            "X-OKR-Idempotency-Key": "abc-123",
+        },
+        json={"kind": "ai.generate_json", "payload": {"prompt": "hello"}},
+    )
+
+    assert response.status_code == 202
+    assert captured.get("idempotency_key") == "abc-123"

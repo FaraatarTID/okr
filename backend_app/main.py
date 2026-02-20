@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 
+from backend_app.job_limits import enforce_job_submit_limits
 from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job
 from backend_app.path_setup import ensure_streamlit_app_on_path
 from backend_app.schemas import (
@@ -260,16 +261,23 @@ def api_stop_timer(
 def api_submit_job(
     payload: JobSubmitRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> JobView:
     actor = _resolve_actor(
         header_actor=x_okr_actor,
         payload_actor=payload.actor_username,
+    )
+    enforce_job_submit_limits(
+        kind=payload.kind,
+        actor_username=actor,
+        idempotency_key=x_okr_idempotency_key,
     )
     job = enqueue_job(
         kind=payload.kind,
         payload=payload.payload,
         actor_username=actor,
         max_attempts=payload.max_attempts,
+        idempotency_key=x_okr_idempotency_key,
     )
     return JobView(**serialize_job(job))
 

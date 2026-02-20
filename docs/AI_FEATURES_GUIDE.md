@@ -23,7 +23,7 @@ This separation reduces Streamlit request pressure for heavy AI flows and gives 
 
 Related architecture detail:
 - With `OKR_BACKEND_PROXY_MUTATIONS=true`, node writes that may persist AI outputs (for example KR analysis fields) can route via backend API mutation endpoints.
-- If backend transport fails transiently, supported paths degrade to local execution for resilience.
+- If backend transport fails, production default is fail-closed; local execution fallback is available only when `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`.
 
 ## 2. Implemented AI Capabilities
 

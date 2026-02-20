@@ -16,6 +16,7 @@ from decimal import Decimal
 from typing import Optional
 from urllib.parse import urlparse
 from sqlalchemy import text
+from sqlalchemy.pool import NullPool
 from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
 
 
@@ -80,6 +81,13 @@ def _allow_non_supabase_url() -> bool:
     return "PYTEST_CURRENT_TEST" in os.environ
 
 
+def _allow_supabase_superuser_url() -> bool:
+    """Temporary escape hatch for break-glass migrations only."""
+    return (
+        os.getenv("OKR_ALLOW_SUPABASE_SUPERUSER", "").strip().lower() in _TRUE_VALUES
+    )
+
+
 def _validate_database_url(url: str) -> str:
     normalized = _normalize_database_url(url)
     if _allow_non_supabase_url():
@@ -97,10 +105,19 @@ def _validate_database_url(url: str) -> str:
         )
     parsed = urlparse(normalized)
     host = str(parsed.hostname or "").lower()
+    username = str(parsed.username or "").strip().lower()
     try:
         port = parsed.port
     except ValueError as exc:
         raise RuntimeError("Database URL port is invalid.") from exc
+    if (username == "postgres" or username.startswith("postgres.")) and (
+        not _allow_supabase_superuser_url()
+    ):
+        raise RuntimeError(
+            "Least-privilege Supabase DB user is required. Do not use 'postgres' in "
+            "runtime DSNs (set OKR_ALLOW_SUPABASE_SUPERUSER=1 only for temporary "
+            "break-glass operations)."
+        )
     allow_session_pooler = (
         os.getenv("OKR_ALLOW_SUPABASE_SESSION_POOLER", "").strip().lower() in _TRUE_VALUES
     )
@@ -131,11 +148,19 @@ def _create_engine(url: str):
     if normalized.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
     elif normalized.startswith("postgresql+psycopg2://"):
-        kwargs["pool_size"] = max(1, int(os.getenv("OKR_DB_POOL_SIZE", "5")))
-        kwargs["max_overflow"] = max(0, int(os.getenv("OKR_DB_MAX_OVERFLOW", "5")))
-        kwargs["pool_timeout"] = max(1, int(os.getenv("OKR_DB_POOL_TIMEOUT", "30")))
-        kwargs["pool_recycle"] = max(30, int(os.getenv("OKR_DB_POOL_RECYCLE", "1800")))
-        kwargs["pool_use_lifo"] = True
+        # Supabase recommends PgBouncer transaction pooler; disable app-side pooling
+        # by default to avoid session/prepared-statement conflicts.
+        use_null_pool = (
+            str(os.getenv("OKR_DB_USE_NULL_POOL", "1")).strip().lower() in _TRUE_VALUES
+        )
+        if use_null_pool:
+            kwargs["poolclass"] = NullPool
+        else:
+            kwargs["pool_size"] = max(1, int(os.getenv("OKR_DB_POOL_SIZE", "5")))
+            kwargs["max_overflow"] = max(0, int(os.getenv("OKR_DB_MAX_OVERFLOW", "5")))
+            kwargs["pool_timeout"] = max(1, int(os.getenv("OKR_DB_POOL_TIMEOUT", "30")))
+            kwargs["pool_recycle"] = max(30, int(os.getenv("OKR_DB_POOL_RECYCLE", "1800")))
+            kwargs["pool_use_lifo"] = True
 
     engine = create_engine(
         normalized,

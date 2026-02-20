@@ -133,6 +133,13 @@ def _backend_mutation_proxy_enabled() -> bool:
         return False
 
 
+def _local_backend_fallback_allowed() -> bool:
+    return (
+        str(os.getenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", "false")).strip().lower()
+        in _TRUE_VALUES
+    )
+
+
 def _is_transient_backend_mutation_error(payload: Dict[str, Any]) -> bool:
     try:
         code = int(payload.get("status_code") or 0)
@@ -165,6 +172,16 @@ def _raise_backend_mutation_error(payload: Dict[str, Any]) -> None:
     if code == 404:
         raise ValueError(message or "Target not found.")
     raise ValueError(message)
+
+
+def _enforce_backend_mutation_failure_policy(payload: Dict[str, Any]) -> None:
+    if not _is_transient_backend_mutation_error(payload):
+        _raise_backend_mutation_error(payload)
+    if not _local_backend_fallback_allowed():
+        message = str(payload.get("error") or "Backend mutation request failed.").strip()
+        raise ValueError(
+            f"{message} Local backend fallback is disabled; retry when backend is healthy."
+        )
 
 
 def _node_from_backend_payload(payload: Dict[str, Any]):
@@ -1328,8 +1345,7 @@ def create_goal(
         )
         if "error" not in backend_result:
             return _node_from_backend_payload(backend_result)
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     if isinstance(strategy_tags, list):
         import json
@@ -1413,8 +1429,7 @@ def create_objective(
         )
         if "error" not in backend_result:
             return _node_from_backend_payload(backend_result)
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
@@ -1481,8 +1496,7 @@ def create_key_result(
         )
         if "error" not in backend_result:
             return _node_from_backend_payload(backend_result)
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     if isinstance(initiative_tags, list):
         import json
@@ -1563,8 +1577,7 @@ def create_task(
         )
         if "error" not in backend_result:
             return _node_from_backend_payload(backend_result)
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
         parent_check = session.get(KeyResult, key_result_id)
@@ -1640,8 +1653,7 @@ def update_goal(
         )
         if "error" not in backend_result:
             return _node_from_backend_payload(backend_result)
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     if isinstance(updates.get("strategy_tags"), list):
         import json
@@ -1712,8 +1724,7 @@ def update_objective(
         )
         if "error" not in backend_result:
             return _node_from_backend_payload(backend_result)
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
         item = session.get(Objective, objective_id)
@@ -1860,8 +1871,7 @@ def update_key_result(
         )
         if "error" not in backend_result:
             return _node_from_backend_payload(backend_result)
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     if isinstance(updates.get("initiative_tags"), list):
         import json
@@ -1972,8 +1982,7 @@ def update_task(
         )
         if "error" not in backend_result:
             return _node_from_backend_payload(backend_result)
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
         task = session.get(Task, task_id)
@@ -2031,8 +2040,7 @@ def delete_goal(goal_id: int, actor_username: Optional[str] = None) -> bool:
         )
         if "error" not in backend_result:
             return bool(backend_result.get("deleted", True))
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
@@ -2060,8 +2068,7 @@ def delete_task(task_id: int, actor_username: Optional[str] = None) -> bool:
         )
         if "error" not in backend_result:
             return bool(backend_result.get("deleted", True))
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
         task = session.get(Task, task_id)
@@ -2087,8 +2094,7 @@ def delete_objective(objective_id: int, actor_username: Optional[str] = None) ->
         )
         if "error" not in backend_result:
             return bool(backend_result.get("deleted", True))
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
         item = session.get(Objective, objective_id)
@@ -2114,8 +2120,7 @@ def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
         )
         if "error" not in backend_result:
             return bool(backend_result.get("deleted", True))
-        if not _is_transient_backend_mutation_error(backend_result):
-            _raise_backend_mutation_error(backend_result)
+        _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
         item = session.get(KeyResult, kr_id)

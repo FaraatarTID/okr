@@ -46,3 +46,26 @@ def test_update_task_backend_permission_error_bubbles(monkeypatch):
 
     with pytest.raises(PermissionError):
         crud.update_task(12, title="x", actor_username="alice")
+
+
+def test_create_goal_backend_transient_error_fails_closed_by_default(monkeypatch):
+    import src.crud as crud
+    import src.services.backend_client as backend_client
+
+    monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
+    monkeypatch.setenv("OKR_BACKEND_PROXY_MUTATIONS", "true")
+    monkeypatch.delenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", raising=False)
+
+    monkeypatch.setattr(
+        backend_client,
+        "create_goal",
+        lambda **kwargs: {"error": "connection refused", "status_code": 0},
+    )
+
+    with pytest.raises(ValueError, match="fallback is disabled"):
+        crud.create_goal(
+            user_id="alice",
+            title="Proxy Goal",
+            description="Created via backend",
+            actor_username="alice",
+        )

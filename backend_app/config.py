@@ -25,23 +25,48 @@ def _as_int(raw: str | None, *, default: int, minimum: int) -> int:
 
 @dataclass(frozen=True)
 class BackendSettings:
+    runtime_env: str
     host: str
     port: int
     service_token: str
     enforce_service_token: bool
+    signing_secret: str
+    enforce_request_signing: bool
+    request_signing_window_seconds: int
     rate_limit_window_seconds: int
     rate_limit_max_requests: int
+    job_user_window_seconds: int
+    job_user_max_requests: int
+    job_user_daily_max_requests: int
+    job_team_window_seconds: int
+    job_team_max_requests: int
+    job_team_daily_max_requests: int
     worker_poll_seconds: int
 
 
 def get_backend_settings() -> BackendSettings:
+    runtime_env = str(
+        os.getenv("OKR_ENV", os.getenv("OKR_RUNTIME_ENV", "development"))
+    ).strip().lower() or "development"
+    is_production = runtime_env in {"prod", "production"}
     return BackendSettings(
+        runtime_env=runtime_env,
         host=str(os.getenv("OKR_BACKEND_HOST", "0.0.0.0")).strip() or "0.0.0.0",
         port=_as_int(os.getenv("OKR_BACKEND_PORT"), default=8100, minimum=1),
         service_token=str(os.getenv("OKR_BACKEND_SERVICE_TOKEN", "")).strip(),
         enforce_service_token=_as_bool(
             os.getenv("OKR_BACKEND_ENFORCE_TOKEN"),
             default=True,
+        ),
+        signing_secret=str(os.getenv("OKR_BACKEND_SIGNING_SECRET", "")).strip(),
+        enforce_request_signing=_as_bool(
+            os.getenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING"),
+            default=is_production,
+        ),
+        request_signing_window_seconds=_as_int(
+            os.getenv("OKR_BACKEND_REQUEST_SIGNING_WINDOW_SECONDS"),
+            default=300,
+            minimum=10,
         ),
         rate_limit_window_seconds=_as_int(
             os.getenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS"),
@@ -51,6 +76,36 @@ def get_backend_settings() -> BackendSettings:
         rate_limit_max_requests=_as_int(
             os.getenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS"),
             default=120,
+            minimum=1,
+        ),
+        job_user_window_seconds=_as_int(
+            os.getenv("OKR_BACKEND_JOB_USER_WINDOW_SECONDS"),
+            default=60,
+            minimum=1,
+        ),
+        job_user_max_requests=_as_int(
+            os.getenv("OKR_BACKEND_JOB_USER_MAX_REQUESTS"),
+            default=8,
+            minimum=1,
+        ),
+        job_user_daily_max_requests=_as_int(
+            os.getenv("OKR_BACKEND_JOB_USER_DAILY_MAX_REQUESTS"),
+            default=200,
+            minimum=1,
+        ),
+        job_team_window_seconds=_as_int(
+            os.getenv("OKR_BACKEND_JOB_TEAM_WINDOW_SECONDS"),
+            default=60,
+            minimum=1,
+        ),
+        job_team_max_requests=_as_int(
+            os.getenv("OKR_BACKEND_JOB_TEAM_MAX_REQUESTS"),
+            default=60,
+            minimum=1,
+        ),
+        job_team_daily_max_requests=_as_int(
+            os.getenv("OKR_BACKEND_JOB_TEAM_DAILY_MAX_REQUESTS"),
+            default=1200,
             minimum=1,
         ),
         worker_poll_seconds=_as_int(

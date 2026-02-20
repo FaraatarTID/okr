@@ -6,6 +6,7 @@ import json
 from typing import Any, Dict, Optional
 
 from sqlalchemy import update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
 from backend_app.path_setup import ensure_streamlit_app_on_path
@@ -13,7 +14,7 @@ from backend_app.path_setup import ensure_streamlit_app_on_path
 ensure_streamlit_app_on_path()
 
 from src.database import get_session_context
-from src.models import AsyncJob, AsyncJobStatus
+from src.models import AsyncJob, AsyncJobStatus, User
 from src.utils.time_utils import utc_now_naive
 
 
@@ -35,9 +36,11 @@ def serialize_job(job: AsyncJob) -> Dict[str, Any]:
         "kind": job.kind,
         "status": str(getattr(job.status, "value", job.status)),
         "actor_username": job.actor_username,
+        "team_id": job.team_id,
         "attempts": int(job.attempts or 0),
         "max_attempts": int(job.max_attempts or 0),
         "cancel_requested": bool(job.cancel_requested),
+        "idempotency_key": job.idempotency_key,
         "created_at": job.created_at,
         "started_at": job.started_at,
         "finished_at": job.finished_at,
@@ -46,18 +49,48 @@ def serialize_job(job: AsyncJob) -> Dict[str, Any]:
     }
 
 
+def _normalize_idempotency_key(value: Optional[str]) -> Optional[str]:
+    key = str(value or "").strip()
+    if not key:
+        return None
+    return key[:255]
+
+
+def _resolve_actor_team_id(session, actor_username: str) -> Optional[int]:
+    actor = session.exec(select(User).where(User.username == actor_username)).first()
+    if not actor:
+        return None
+    return actor.team_id
+
+
 def enqueue_job(
     *,
     kind: str,
     payload: Dict[str, Any],
     actor_username: str,
     max_attempts: int,
+    idempotency_key: Optional[str] = None,
 ) -> AsyncJob:
     now = utc_now_naive()
     with get_session_context() as session:
+        normalized_key = _normalize_idempotency_key(idempotency_key)
+        if normalized_key:
+            existing = session.exec(
+                select(AsyncJob)
+                .where(AsyncJob.actor_username == actor_username)
+                .where(AsyncJob.kind == str(kind).strip())
+                .where(AsyncJob.idempotency_key == normalized_key)
+                .order_by(AsyncJob.created_at.desc())
+            ).first()
+            if existing:
+                return existing
+
+        team_id = _resolve_actor_team_id(session, actor_username)
         job = AsyncJob(
             kind=str(kind).strip(),
             actor_username=actor_username,
+            team_id=team_id,
+            idempotency_key=normalized_key,
             payload_json=json.dumps(payload, ensure_ascii=False),
             max_attempts=max(1, int(max_attempts)),
             status=AsyncJobStatus.PENDING,
@@ -65,7 +98,22 @@ def enqueue_job(
             updated_at=now,
         )
         session.add(job)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            if not normalized_key:
+                raise
+            existing = session.exec(
+                select(AsyncJob)
+                .where(AsyncJob.actor_username == actor_username)
+                .where(AsyncJob.kind == str(kind).strip())
+                .where(AsyncJob.idempotency_key == normalized_key)
+                .order_by(AsyncJob.created_at.desc())
+            ).first()
+            if existing:
+                return existing
+            raise
         session.refresh(job)
         return job
 

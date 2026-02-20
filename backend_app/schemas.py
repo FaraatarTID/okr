@@ -31,9 +31,11 @@ class JobView(BaseModel):
     kind: str
     status: str
     actor_username: Optional[str] = None
+    team_id: Optional[int] = None
     attempts: int
     max_attempts: int
     cancel_requested: bool
+    idempotency_key: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None

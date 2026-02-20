@@ -8,8 +8,8 @@ Learning Loop specific architecture contract (EN+FA, canonical): [docs/architect
 
 This repository is a Streamlit-based OKR product with a SQLModel persistence layer on Supabase PostgreSQL.
 
-Current production topology has two runtime profiles:
-- `Legacy direct mode`:
+Current runtime topology has two profiles:
+- `Legacy direct mode` (development/demo only):
   - Streamlit UI calls CRUD/service code in-process.
   - Heavy operations (AI/PDF) run in the Streamlit runtime.
 - `Backend-assisted mode` (recommended):
@@ -41,7 +41,8 @@ Primary data/control flow in backend-assisted mode:
 
 2. Synchronous domain mutations:
 - Preferred (backend URL configured): Streamlit -> `backend-api` (`/v1/nodes/*`) -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
-- Fallback (backend unavailable / transient transport error): Streamlit -> local CRUD -> Supabase PostgreSQL.
+- Default production behavior (backend unavailable): fail closed with explicit user-facing error; no implicit local mutation fallback.
+- Optional emergency fallback (non-production only): set `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`.
 - Scope: Goal/Objective/KeyResult/Task create/update/delete and timer start/stop.
 
 3. Synchronous read/query paths:
@@ -52,11 +53,11 @@ Primary data/control flow in backend-assisted mode:
 - Streamlit -> `backend-api` (`/v1/jobs`) with `OKR_BACKEND_SERVICE_TOKEN`.
 - `backend-api` enqueues durable jobs in `async_job`.
 - `backend-worker` claims and executes jobs (`ai.generate_json`, `pdf.weekly`).
-- Streamlit polls job status and renders result/fallback.
+- Streamlit polls job status and renders result.
 
 5. Timer routing:
 - Preferred: Streamlit timer service -> `backend-api` (`/v1/timer/start|stop`).
-- Resilience path: local CRUD fallback on transient backend transport failure.
+- Production default: fail closed if backend is unavailable (optional local fallback only when explicitly enabled).
 
 6. PDF rendering:
 - Only supported binary renderer: `PDFShift` (`PDF_METHOD=pdfshift`).
@@ -69,6 +70,7 @@ Primary data/control flow in backend-assisted mode:
   - Connection policy expects transaction pooler endpoint (`:6543`).
 - Service boundary:
   - `backend-api` authenticates service calls using `OKR_BACKEND_SERVICE_TOKEN`.
+  - Optional cryptographic request signing (`OKR_BACKEND_SIGNING_SECRET`) enforces signed/replay-protected internal calls.
   - Basic in-memory IP rate limiting protects API endpoints.
 - Network boundary:
   - Public ingress should expose only reverse proxy/app paths.
@@ -196,7 +198,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Job lifecycle: `pending -> running -> succeeded|failed|cancelled`.
 - Worker writes result/error payloads into `async_job`.
 - UI reads job state and surfaces final output.
-- On transient backend failures/timeouts, local fallback path executes where supported.
+- Job submission is guarded by per-user/per-team quotas and idempotency keys in backend API.
 - In PostgreSQL runtimes, worker claim path uses `FOR UPDATE SKIP LOCKED` semantics to reduce queue-head contention across concurrent workers.
 
 ## Invariants and Guardrails
@@ -222,7 +224,7 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 
 - Streamlit rerun model still governs UI interaction cost and concurrency.
 - Read-heavy hierarchy paths remain in-process from Streamlit to DB (not yet fully API-decoupled).
-- Mutation paths can be routed through backend API with `OKR_BACKEND_API_URL` (`OKR_BACKEND_PROXY_MUTATIONS=true` by default).
+- Mutation paths route through backend API with `OKR_BACKEND_API_URL` (`OKR_BACKEND_PROXY_MUTATIONS=true` by default in internal deployments).
 - Kubernetes manifests in `deploy/k8s/` currently model the Streamlit service; backend API/worker manifests must be added for full backend-assisted parity.
 
 ## Recommended Next Refactor Boundary
