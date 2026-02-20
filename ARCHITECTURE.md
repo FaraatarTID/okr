@@ -2,7 +2,7 @@
 
 Documentation HQ: [README](README.md)
 
-Learning Loop specific architecture contract (EN+FA, canonical): [docs/architecture.md](docs/architecture.md)
+Learning Loop specific architecture contract (EN+FA, canonical): [docs/LEARNING_LOOP_ARCHITECTURE.md](docs/LEARNING_LOOP_ARCHITECTURE.md)
 
 ## System Overview
 
@@ -68,6 +68,8 @@ Primary data/control flow in backend-assisted mode:
 - DB boundary:
   - Single source of truth in Supabase PostgreSQL.
   - Connection policy expects transaction pooler endpoint (`:6543`).
+  - Runtime DSN should use a least-privilege app user (not `postgres`) except explicit break-glass overrides.
+  - Postgres engine defaults to `NullPool` in app runtimes to align with Supabase PgBouncer transaction pooling.
 - Service boundary:
   - `backend-api` authenticates service calls using `OKR_BACKEND_SERVICE_TOKEN`.
   - Optional cryptographic request signing (`OKR_BACKEND_SIGNING_SECRET`) enforces signed/replay-protected internal calls.
@@ -208,6 +210,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - DB constraints enforce progress ranges, non-negative durations, and single open work log per task.
 - Hot-path query budgets are tested in `tests/test_performance_hotpaths.py` to prevent N+1 regressions.
 - Runtime preflight defaults to strict (`OKR_STRICT_RUNTIME_PREFLIGHT=true`) for fail-fast misconfiguration detection.
+- Runtime preflight validates backend production wiring (API URL/token/signing secret/local-fallback policy) when backend mode is enabled.
 - `pdfshift` is the only supported PDF binary engine in secure runtime.
 
 ## Current Performance-Critical Paths

@@ -3,7 +3,7 @@ Documentation HQ: [README](../README.md)
 
 Canonical docs for ongoing usage and maintenance:
 - Operator workflow (EN+FA): [`docs/learning-loop.md`](learning-loop.md)
-- Developer contract (EN+FA): [`docs/architecture.md`](architecture.md)
+- Developer contract (EN+FA): [`docs/LEARNING_LOOP_ARCHITECTURE.md`](LEARNING_LOOP_ARCHITECTURE.md)
 
 This file is kept as an implementation history report.
 
