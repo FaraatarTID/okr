@@ -51,7 +51,8 @@ Runtime preflight checks
   - All runtimes: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
 
 Architecture note
-- Current MVP uses hybrid execution: Streamlit handles UI and core CRUD, while backend services handle timer/api orchestration and async heavy jobs.
+- Current MVP uses hybrid execution: read-heavy traversal remains in Streamlit, while backend services can own node mutations, timer APIs, and async heavy jobs when `OKR_BACKEND_API_URL` is configured.
+- Keep `OKR_BACKEND_PROXY_MUTATIONS=1` in internal deployments so Goal/Objective/KR/Task writes route through backend API by default.
 
 Release governance
 - Protect main branch with required CI checks.

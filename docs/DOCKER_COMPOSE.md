@@ -4,11 +4,12 @@ Docker Compose deployment
 
 Stack services
 - `okr` (Streamlit UI)
-- `backend-api` (internal FastAPI service for timer/jobs)
+- `backend-api` (internal FastAPI service for node mutations, timer, and jobs)
 - `backend-worker` (async worker for AI/PDF jobs)
 
 Service interaction
 - `okr` sends authenticated backend calls using `OKR_BACKEND_SERVICE_TOKEN`.
+- With `OKR_BACKEND_PROXY_MUTATIONS=true` (default), Goal/Objective/KR/Task writes route via `backend-api`.
 - `backend-api` persists async jobs in primary DB (`async_job` table).
 - `backend-worker` executes queued job kinds (`ai.generate_json`, `pdf.weekly`).
 - If backend is unavailable, supported paths degrade to local fallback behavior.
@@ -19,6 +20,7 @@ Single host, subdomain (recommended)
 - Set required values:
   - `OKR_DATABASE_URL` (Supabase transaction pooler `:6543` + `sslmode=require`)
   - `OKR_BACKEND_SERVICE_TOKEN` (shared token for UI -> backend-api auth)
+  - `OKR_BACKEND_PROXY_MUTATIONS=true` (recommended)
   - `PDFSHIFT_API_KEY` (required for PDF binary exports)
 - Build and start:
   - `docker compose -f deploy/docker/docker-compose.yml up -d --build`

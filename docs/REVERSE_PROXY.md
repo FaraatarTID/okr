@@ -15,6 +15,7 @@ Nginx (subdomain)
 - Pass Upgrade and Connection headers for websocket
 - Route only Streamlit UI traffic through public Nginx.
 - Backend API (`backend-api`, default port 8100) should remain on internal network/loopback.
+- Do not publicly route backend mutation endpoints (`/v1/nodes/*`, `/v1/timer/*`, `/v1/jobs/*`) through internet-facing proxy rules.
 
 Nginx (subpath)
 - Use the /okr location example in deploy/nginx.conf

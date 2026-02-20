@@ -18,6 +18,7 @@ Runbook: first deployment
 - Configure backend routing:
   - `OKR_BACKEND_API_URL` (default in compose: `http://backend-api:8100`)
   - `OKR_BACKEND_SERVICE_TOKEN` (strong shared secret)
+  - `OKR_BACKEND_PROXY_MUTATIONS=true` (recommended)
 - Configure `GEMINI_API_KEY` if AI features are enabled
 - Enable strict runtime checks in production: `OKR_STRICT_RUNTIME_PREFLIGHT=1`
 
@@ -34,6 +35,7 @@ Runbook: first deployment
 - Verify one PDF export succeeds in the selected provider mode
 - Verify one AI action succeeds (or document AI as intentionally disabled)
 - Verify async job path works end-to-end (submit AI/PDF action and confirm worker completion)
+- Verify Goal/Objective/KR/Task create-update-delete works with backend API enabled
 - Run AI provider health check:
   - `python streamlit_app/scripts/ai_provider_health_check.py`
 

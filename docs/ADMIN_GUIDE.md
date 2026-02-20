@@ -46,14 +46,20 @@ Use this cockpit for controlled sync and correction, not blind bulk updates.
 
 Current recommended deployment topology:
 - `okr` (Streamlit UI/session workflow shell)
-- `backend-api` (internal timer + job control plane)
+- `backend-api` (internal mutation + timer + job control plane)
 - `backend-worker` (async execution for AI/PDF jobs)
 - shared Supabase PostgreSQL database
 
 Key wiring:
 - `OKR_BACKEND_API_URL` from `okr` -> `backend-api`
 - `OKR_BACKEND_SERVICE_TOKEN` must match across caller and backend API
+- `OKR_BACKEND_PROXY_MUTATIONS=true` keeps Goal/Objective/KR/Task writes routed via backend API (`/v1/nodes/*`)
 - backend API should remain private/internal, not internet-exposed
+
+Technical behavior (current):
+- Read-heavy hierarchy traversal is still served in-process (`Streamlit -> src/crud.py -> DB`).
+- Write-heavy node mutations and timer actions can route through backend API with transient local fallback.
+- AI/PDF heavy operations are executed asynchronously by `backend-worker` through `async_job`.
 
 ## 3. Lifecycle and Rollup Rules You Must Enforce
 

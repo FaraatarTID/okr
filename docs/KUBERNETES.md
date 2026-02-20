@@ -26,6 +26,7 @@ Current scope of provided manifests (important)
   - `backend-api` (FastAPI)
   - `backend-worker` (job processor)
 - Streamlit should then use `OKR_BACKEND_API_URL` pointing to the cluster-internal backend API Service.
+- Set `OKR_BACKEND_PROXY_MUTATIONS=true` on the `okr` Deployment to route node writes through backend API.
 - Keep backend API Service internal (`ClusterIP`) and avoid public ingress exposure.
 
 Recommended backend K8s additions
@@ -35,6 +36,7 @@ Recommended backend K8s additions
 - Shared environment/Secret values across app + backend:
   - `OKR_DATABASE_URL`
   - `OKR_BACKEND_SERVICE_TOKEN`
+  - `OKR_BACKEND_PROXY_MUTATIONS=true` (on `okr` workload)
   - `PDF_METHOD=pdfshift`, `PDFSHIFT_API_KEY`
   - AI policy/provider values (`ALLOW_EXTERNAL_AI`, `AI_PROVIDER`, provider credentials)
 - Optional HorizontalPodAutoscaler for app and backend API after baseline load testing.

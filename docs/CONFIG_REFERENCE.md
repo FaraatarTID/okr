@@ -101,6 +101,7 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_API_URL` (e.g. `http://backend-api:8100`)
   - `OKR_BACKEND_SERVICE_TOKEN` (shared token for service-to-service auth)
   - `OKR_BACKEND_DEFAULT_ACTOR` (fallback actor for system-initiated AI requests; default: `system`)
+  - `OKR_BACKEND_PROXY_MUTATIONS` (default: `true`; routes Goal/Objective/KR/Task writes through backend API when backend URL is set)
 - Backend API runtime:
   - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
   - `OKR_BACKEND_PORT` (default: `8100`)
@@ -110,10 +111,11 @@ Backend API (recommended for scale)
 - Backend worker runtime:
   - `OKR_BACKEND_WORKER_POLL_SECONDS` (default: `2`)
 - Notes:
-  - With `OKR_BACKEND_API_URL` set, timer operations and heavy AI/PDF workflows can run through the backend job system.
+  - With `OKR_BACKEND_API_URL` set, node mutations (Goal/Objective/KR/Task), timer operations, and heavy AI/PDF workflows can run through backend services.
+  - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API while preserving transient local fallback if backend transport fails.
   - Without it, the app runs in direct mode (legacy behavior).
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.
-  - Current MVP still performs core hierarchy CRUD directly via Streamlit + SQLModel; backend API covers timer + async heavy flows.
+  - Current MVP still serves most read-heavy hierarchy traversal directly via Streamlit + SQLModel.
 
 Recommended deployment profiles
 

@@ -17,6 +17,7 @@ Phase 2: Infrastructure
 - [ ] Restrict access to company network and/or VPN.
 - [ ] Configure PostgreSQL connectivity (internal DB or approved private endpoint).
 - [ ] Ensure backend stack is running (`okr`, `backend-api`, `backend-worker`).
+- [ ] Ensure `OKR_BACKEND_API_URL` is set in `okr` and `OKR_BACKEND_PROXY_MUTATIONS=true` for backend-owned writes.
 - [ ] Keep backend API host binding private (`127.0.0.1` unless explicitly required otherwise).
 
 Phase 3: Security and Compliance
@@ -29,6 +30,7 @@ Phase 3: Security and Compliance
 
 Phase 4: Testing and Go-Live
 - [ ] Run smoke tests: login, OKR creation, timer, dashboard, reports, and AI flows (if enabled).
+- [ ] Verify Goal/Objective/KR/Task create-update-delete flows succeed with backend API enabled.
 - [ ] Validate PDF/report behavior with `PDF_METHOD=pdfshift` (the only supported runtime mode).
 - [ ] Validate backend job flow (`backend-worker` processes AI/PDF requests successfully).
 - [ ] Pilot with a limited team and collect feedback.

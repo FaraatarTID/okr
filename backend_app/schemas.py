@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 
@@ -45,3 +45,64 @@ class JobCancelResponse(BaseModel):
     id: str
     status: str
     cancel_requested: bool
+
+
+NodeType = Literal["GOAL", "OBJECTIVE", "KEY_RESULT", "TASK"]
+
+
+class GoalCreateRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=128)
+    title: str = ""
+    description: str = ""
+    cycle_id: Optional[int] = Field(default=None, gt=0)
+    strategy_tags: Optional[Union[str, List[str]]] = None
+    actor_username: Optional[str] = None
+
+
+class ObjectiveCreateRequest(BaseModel):
+    goal_id: int = Field(..., gt=0)
+    title: str = ""
+    description: str = ""
+    actor_username: Optional[str] = None
+
+
+class KeyResultCreateRequest(BaseModel):
+    objective_id: int = Field(..., gt=0)
+    title: str = ""
+    description: str = ""
+    target_value: float = 100.0
+    unit: str = "%"
+    initiative_tags: Optional[Union[str, List[str]]] = None
+    actor_username: Optional[str] = None
+
+
+class TaskCreateRequest(BaseModel):
+    key_result_id: int = Field(..., gt=0)
+    title: str = ""
+    description: str = ""
+    estimated_minutes: int = Field(default=0, ge=0)
+    start_date: Optional[datetime] = None
+    deadline: Optional[datetime] = None
+    assignee_id: Optional[int] = Field(default=None, gt=0)
+    actor_username: Optional[str] = None
+
+
+class NodeUpdateRequest(BaseModel):
+    updates: Dict[str, Any] = Field(default_factory=dict)
+    actor_username: Optional[str] = None
+
+
+class NodeMutationView(BaseModel):
+    id: int
+    node_type: NodeType
+    title: str
+    description: Optional[str] = None
+    progress: Optional[int] = None
+    owner_id: Optional[int] = None
+    updated_at: Optional[datetime] = None
+
+
+class NodeDeleteResponse(BaseModel):
+    id: int
+    node_type: NodeType
+    deleted: bool

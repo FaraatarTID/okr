@@ -46,14 +46,20 @@ Documentation HQ: [README](../README.md)
 
 توپولوژی پیشنهادی تولید:
 - `okr` (Streamlit UI)
-- `backend-api` (کنترل‌پلین داخلی برای timer/job)
+- `backend-api` (کنترل‌پلین داخلی برای mutation + timer + job)
 - `backend-worker` (اجرای async برای AI/PDF)
 - پایگاه‌داده مشترک Supabase PostgreSQL
 
 نکات wiring:
 - `OKR_BACKEND_API_URL` از `okr` به `backend-api`
 - `OKR_BACKEND_SERVICE_TOKEN` باید بین caller و backend-api یکسان باشد
+- `OKR_BACKEND_PROXY_MUTATIONS=true` باعث می‌شود نوشتن Goal/Objective/KR/Task از مسیر backend API (`/v1/nodes/*`) انجام شود
 - پورت backend-api باید داخلی/خصوصی بماند و عمومی expose نشود
+
+رفتار فنی فعلی:
+- مسیرهای read-heavy هنوز در خود Streamlit اجرا می‌شوند (`Streamlit -> src/crud.py -> DB`).
+- مسیرهای نوشتنی نودها و timer می‌توانند از backend API عبور کنند و در خطاهای transient fallback محلی دارند.
+- عملیات سنگین AI/PDF به‌صورت async توسط `backend-worker` و جدول `async_job` اجرا می‌شود.
 
 ## ۳. قواعد چرخه‌حیات و Rollup که باید رعایت شوند
 

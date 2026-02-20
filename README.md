@@ -90,14 +90,16 @@ Recommended internal topology:
 ```text
 Browser
   -> Streamlit UI (okr)
-      -> CRUD + Domain logic -> Supabase PostgreSQL
+      -> Read paths: CRUD + Domain logic -> Supabase PostgreSQL
+      -> Mutation/API paths: backend-api (internal) -> CRUD -> Supabase PostgreSQL
       -> backend-api (internal) -> async_job table -> backend-worker
                                       -> AI provider / PDFShift
 ```
 
 Key technical points:
-- Core hierarchy CRUD currently executes through Streamlit + SQLModel.
-- Timer, AI-heavy flows, and PDF-heavy flows can route via backend job services.
+- With `OKR_BACKEND_API_URL` configured, Goal/Objective/KR/Task mutations and timer flows route through `backend-api` (with transient-error local fallback).
+- Read-heavy hierarchy traversal still executes in-process via Streamlit + SQLModel in the current MVP.
+- AI-heavy and PDF-heavy flows route via backend job services.
 - Only supported PDF binary engine is `pdfshift` (`PDF_METHOD=pdfshift`).
 - For internal production, keep `backend-api` private and prefer `ALLOW_EXTERNAL_AI=false` unless approved.
 
