@@ -154,6 +154,8 @@ OKR_STRICT_RUNTIME_PREFLIGHT=true
 Notes:
 - Keep `BASE_URL_PATH` empty for subdomain hosting.
 - For subpath hosting (`/okr`), set `BASE_URL_PATH=okr`.
+- `OKR_DATABASE_URL` must use the least-privilege `okr_app` role (or equivalent non-superuser role), never `postgres`, for runtime app traffic.
+- Enforce the DB-role check in deployment review/checklists even during periods where startup guards are temporarily relaxed.
 - Keep `OKR_BACKEND_PROXY_MUTATIONS=true` so Goal/Objective/KR/Task writes route via backend API.
 - Keep `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` unset/false in production (fail-closed behavior).
 
@@ -372,6 +374,7 @@ Assets broken under subpath:
 
 App fails at startup with database URL error:
 - Ensure `OKR_DATABASE_URL` uses `postgresql+psycopg2://` and points to `*.pooler.supabase.com:6543`.
+- Ensure DSN user is `okr_app` (or equivalent least-privilege role), not `postgres`.
 
 Cannot log in:
 - If DB is new, use `admin/admin` once and change password.

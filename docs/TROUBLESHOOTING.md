@@ -43,6 +43,7 @@ CRUD save/update/delete errors in UI
 Migrations fail
 - Ensure the configured DB is reachable from the host/pod
 - Check that OKR_DATABASE_URL is valid and that the user has DDL permissions
+- If you see `permission denied to reassign objects`, run ownership/reassign SQL using an admin DB role; keep app runtime DSN on least-privilege `okr_app`.
 
 Login not working
 - Default admin only exists on an empty DB
@@ -52,6 +53,7 @@ Supabase connection errors
 - Verify OKR_DATABASE_URL uses `postgresql+psycopg2://`
 - Verify host includes `supabase.com`
 - Ensure `sslmode=require` is present
+- Prefer transaction pooler `:6543` for runtime app traffic; avoid session-pooler saturation patterns for app workloads.
 - Confirm DB password is URL-encoded if it contains special characters
 
 Hosting under subpath breaks assets

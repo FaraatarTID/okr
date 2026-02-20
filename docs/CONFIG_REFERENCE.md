@@ -19,22 +19,21 @@ Database
   - [database]
     - url: full connection string
   - See template: [deploy/secrets/secrets.toml.example](../deploy/secrets/secrets.toml.example)
-- Requirements enforced by runtime:
-  - URL must start with `postgresql+psycopg2://`
-  - Host must include `*.pooler.supabase.com` (or `*.pooler.supabase.co`)
-  - Port must be `6543` (transaction pooler) unless explicitly overridden
-  - Runtime DSN must use a least-privilege DB user (not `postgres`) unless break-glass override is set
-  - Optional exception flags:
-    - `OKR_ALLOW_SUPABASE_SESSION_POOLER=1` (allow port 5432 on pooler host)
-    - `OKR_ALLOW_SUPABASE_DIRECT_CONNECTION=1` (allow non-pooler host)
-    - `OKR_ALLOW_SUPABASE_SUPERUSER=1` (temporary break-glass allowance for `postgres` user)
-  - Pooling controls:
-    - `OKR_DB_USE_NULL_POOL` (default: `1`, recommended for Supabase PgBouncer transaction mode)
-    - If `OKR_DB_USE_NULL_POOL=0`, app-side SQLAlchemy pool sizing controls apply:
-      - `OKR_DB_POOL_SIZE` (default: `5`)
-      - `OKR_DB_MAX_OVERFLOW` (default: `5`)
-      - `OKR_DB_POOL_TIMEOUT` (default: `30`)
-      - `OKR_DB_POOL_RECYCLE` (default: `1800`)
+- Runtime validation behavior:
+  - URL must start with `postgresql+psycopg2://` (or `sqlite:///` for local/test only).
+  - PostgreSQL URLs must include a host.
+- Production requirements (deployment policy, mandatory):
+  - Use Supabase transaction pooler (`*.pooler.supabase.com:6543`) with `sslmode=require`.
+  - Use a dedicated least-privilege DB user (`okr_app` role, typically `okr_app.<project_ref>` in Supabase pooler DSN).
+  - Do not use `postgres` as runtime app user.
+  - Treat this as a release gate even if startup guards are temporarily relaxed.
+- Pooling controls:
+  - `OKR_DB_USE_NULL_POOL` (default: `1`, recommended for Supabase PgBouncer transaction mode)
+  - If `OKR_DB_USE_NULL_POOL=0`, app-side SQLAlchemy pool sizing controls apply:
+    - `OKR_DB_POOL_SIZE` (default: `5`)
+    - `OKR_DB_MAX_OVERFLOW` (default: `5`)
+    - `OKR_DB_POOL_TIMEOUT` (default: `30`)
+    - `OKR_DB_POOL_RECYCLE` (default: `1800`)
 
 Streamlit server
 
