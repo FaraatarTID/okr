@@ -4,11 +4,15 @@ Hierarchy: Cycle -> Goal -> Objective -> KeyResult -> Task
 Plus WorkLog for time tracking.
 """
 from sqlmodel import SQLModel, Field, Relationship
+from sqlmodel.main import default_registry
 from sqlalchemy import CheckConstraint, event, Index, text
 from sqlalchemy.orm import relationship
 
-# We can't easily clear the registry here without side effects.
-# Instead, the fully qualified names + extend_existing MUST be enough.
+# Streamlit hot-reload can import this module multiple times in one process.
+# Reset mapper registry/metadata to avoid duplicate-class ambiguity (e.g. "User").
+default_registry.dispose()
+SQLModel.metadata.clear()
+
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Union
