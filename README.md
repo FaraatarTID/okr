@@ -180,7 +180,7 @@ Use the cycle selector in the sidebar to choose your active OKR period (e.g., "Q
 **For Members Only**
 
 1. Click **Start Timer** on any task card
-2. Work on the task - timer runs in background
+2. Work on the task - elapsed time updates while the timer view is open
 3. Click **Stop & Save** when done
 4. Add a summary of what you accomplished
 5. View work history in the Task Inspector
@@ -359,7 +359,7 @@ pip install --require-hashes -r streamlit_app/requirements.txt
 # AI_BASE_URL = "http://localhost:11434"  # required for openai_compatible provider
 # AI_MODEL = "llama3.1"  # required for openai_compatible provider
 # [database]
-# url = "postgresql+psycopg2://user:pass@host:5432/okr"
+# url = "postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"
 
 # 5. Run the app
 streamlit run streamlit_app/app.py
