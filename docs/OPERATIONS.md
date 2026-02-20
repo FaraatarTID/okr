@@ -42,11 +42,10 @@ Incident response
 - Know rollback steps for Compose and K8s
 
 Runtime preflight checks
-- On startup, validate that PDF mode and dependencies/keys are coherent.
+- On startup, validate that PDF mode and API keys are coherent.
 - If strict mode is enabled and preflight reports errors, treat startup block as configuration incident (not app defect).
 - Resolve by fixing provider mismatch:
-  - Cloud: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
-  - Self-hosted + pdfkit: ensure `wkhtmltopdf` is present
+  - All runtimes: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
 
 Release governance
 - Protect main branch with required CI checks.

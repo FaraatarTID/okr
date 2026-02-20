@@ -36,6 +36,7 @@ def test_provider_alias_ollama_maps_to_openai_compatible(monkeypatch):
 
 def test_runtime_status_openai_provider_missing_required_fields(monkeypatch):
     _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
     monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
     status = get_ai_provider_runtime_status()
     assert status.provider == "openai_compatible"
@@ -51,8 +52,16 @@ def test_generate_json_respects_external_ai_policy(monkeypatch):
     assert "disabled by policy" in str(result.get("error")).lower()
 
 
+def test_generate_json_defaults_to_external_ai_disabled(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    result = generate_json("hello")
+    assert "error" in result
+    assert "disabled by policy" in str(result.get("error")).lower()
+
+
 def test_generate_json_openai_compatible_success_path(monkeypatch):
     _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
     monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
     monkeypatch.setenv("AI_BASE_URL", "http://localhost:11434")
     monkeypatch.setenv("AI_MODEL", "llama3.1")
@@ -83,6 +92,7 @@ def test_generate_json_openai_compatible_success_path(monkeypatch):
 
 def test_generate_json_openai_compatible_http_error(monkeypatch):
     _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
     monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
     monkeypatch.setenv("AI_BASE_URL", "http://localhost:11434")
     monkeypatch.setenv("AI_MODEL", "llama3.1")
@@ -112,6 +122,7 @@ def test_run_ai_health_check_disabled(monkeypatch):
 
 def test_run_ai_health_check_not_configured(monkeypatch):
     _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
     monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
     report = run_ai_health_check(live_probe=True)
     assert report.get("status") == "not_configured"
@@ -120,6 +131,7 @@ def test_run_ai_health_check_not_configured(monkeypatch):
 
 def test_run_ai_health_check_probe_success(monkeypatch):
     _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
     monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
     monkeypatch.setenv("AI_BASE_URL", "http://localhost:11434")
     monkeypatch.setenv("AI_MODEL", "llama3.1")
@@ -134,6 +146,7 @@ def test_run_ai_health_check_probe_success(monkeypatch):
 
 def test_run_ai_health_check_probe_failure(monkeypatch):
     _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
     monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
     monkeypatch.setenv("AI_BASE_URL", "http://localhost:11434")
     monkeypatch.setenv("AI_MODEL", "llama3.1")

@@ -34,7 +34,7 @@ def _get_pdf_method() -> str:
         # Accept common typo to keep deployments resilient.
         if method == "shiftpdf":
             method = "pdfshift"
-        if method in {"pdfshift", "pdfkit"}:
+        if method == "pdfshift":
             return method
         if (
             "pdfshift_api_key" in st.secrets
@@ -45,7 +45,7 @@ def _get_pdf_method() -> str:
             return "pdfshift"
     except Exception:
         pass
-    return "pdfkit"
+    return "pdfshift"
 
 
 def _is_streamlit_cloud_runtime() -> bool:
@@ -65,22 +65,6 @@ def _has_pdfshift_api_key() -> bool:
     except Exception:
         pass
     return bool(os.getenv("PDFSHIFT_API_KEY", "").strip())
-
-
-def _detect_wkhtmltopdf() -> bool:
-    try:
-        import shutil
-
-        wkhtml = shutil.which("wkhtmltopdf")
-        if wkhtml:
-            return True
-        common_paths = [
-            r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe",
-            r"C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe",
-        ]
-        return any(os.path.exists(path) for path in common_paths)
-    except Exception:
-        return False
 
 
 def _runtime_preflight_strict_mode() -> bool:
@@ -108,12 +92,6 @@ def _run_pdf_preflight():
     pdf_method = _get_pdf_method()
     has_pdfshift_key = _has_pdfshift_api_key()
     is_cloud = _is_streamlit_cloud_runtime()
-    has_pdfkit_module = False
-    try:
-        import pdfkit  # noqa: F401
-        has_pdfkit_module = True
-    except Exception:
-        pass
 
     from src.services.ai_service import get_api_key
     from src.services.ai_provider import (
@@ -126,8 +104,6 @@ def _run_pdf_preflight():
         pdf_method=pdf_method,
         is_streamlit_cloud=is_cloud,
         has_pdfshift_key=has_pdfshift_key,
-        has_pdfkit_module=has_pdfkit_module,
-        has_wkhtmltopdf=_detect_wkhtmltopdf(),
         gemini_api_key=get_api_key(),
         external_ai_allowed=is_external_ai_allowed(),
         ai_provider=ai_status.provider,

@@ -35,15 +35,14 @@ Streamlit server
 PDF generation
 
 - Streamlit secrets keys:
-  - PDF_METHOD: pdfshift or pdfkit (optional override)
-  - pdfshift_api_key: required if using pdfshift
-- System dependency for pdfkit: wkhtmltopdf (already installed in the container)
+  - PDF_METHOD: pdfshift
+  - pdfshift_api_key: required for PDF binary export
 
 AI integration
 
 - Streamlit secrets keys:
   - AI_PROVIDER: `gemini` (default) or `openai_compatible`
-  - ALLOW_EXTERNAL_AI: optional policy gate (`true`/`false`); default `true`
+  - ALLOW_EXTERNAL_AI: policy gate (`true`/`false`); default `false`
   - GEMINI_API_KEY: required when `AI_PROVIDER=gemini`
   - GEMINI_MODEL: optional override (default: `gemini-flash-latest`)
   - AI_BASE_URL: required when `AI_PROVIDER=openai_compatible`
@@ -75,9 +74,9 @@ Runtime preflight policy
 - Optional strict mode:
   - OKR_STRICT_RUNTIME_PREFLIGHT=1
 - Behavior:
-  - Runtime validates PDF provider mode and key/dependency presence.
+  - Runtime validates PDF provider mode and key presence.
   - If strict mode is enabled, critical preflight errors stop app startup.
-  - Non-critical issues (for example missing wkhtmltopdf in pdfkit mode) are surfaced as warnings.
+  - Provider configuration issues are surfaced as warnings/errors depending on severity.
 
 Recommended deployment profiles
 
@@ -87,10 +86,9 @@ Recommended deployment profiles
   - pdfshift_api_key must be present
   - OKR_STRICT_RUNTIME_PREFLIGHT=1 (recommended)
 - Self-hosted server (Docker/VM):
-  - PDF_METHOD=pdfkit (or pdfshift if desired)
+  - PDF_METHOD=pdfshift
   - AI_PROVIDER=openai_compatible for local/self-hosted LLM routing
   - If openai_compatible: set AI_BASE_URL and AI_MODEL
-  - If pdfkit: wkhtmltopdf must be installed and reachable
   - OKR_STRICT_RUNTIME_PREFLIGHT=1 (recommended)
 
 Release governance (CI)
