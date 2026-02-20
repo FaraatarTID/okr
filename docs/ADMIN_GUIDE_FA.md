@@ -42,6 +42,19 @@ Documentation HQ: [README](../README.md)
 
 از این cockpit برای همگام‌سازی کنترل‌شده استفاده کنید، نه به‌روزرسانی کور.
 
+### معماری Runtime برای اپراتور ادمین
+
+توپولوژی پیشنهادی تولید:
+- `okr` (Streamlit UI)
+- `backend-api` (کنترل‌پلین داخلی برای timer/job)
+- `backend-worker` (اجرای async برای AI/PDF)
+- پایگاه‌داده مشترک Supabase PostgreSQL
+
+نکات wiring:
+- `OKR_BACKEND_API_URL` از `okr` به `backend-api`
+- `OKR_BACKEND_SERVICE_TOKEN` باید بین caller و backend-api یکسان باشد
+- پورت backend-api باید داخلی/خصوصی بماند و عمومی expose نشود
+
 ## ۳. قواعد چرخه‌حیات و Rollup که باید رعایت شوند
 
 برای Objective و KR:
@@ -109,7 +122,7 @@ Definition of done برای کیفیت پایش مدیر:
 زمان‌بندی گزارش:
 - `Daily Report`: پنجره امروز.
 - `Weekly Report`: پنجره ۷ روز اخیر.
-- هر دو بر اساس Work Log هستند و خروجی‌پذیرند (PDF یا HTML fallback).
+- هر دو بر اساس Work Log هستند و خروجی‌پذیرند (مسیر PDF با `pdfshift` و fallback به HTML).
 
 ## ۶. Playbook رخدادها
 

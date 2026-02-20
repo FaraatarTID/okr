@@ -129,7 +129,10 @@ Weekly Report:
 Both report types:
 - Source data: work logs tied to tasks.
 - Include detailed log table, objective time distribution, and deadline health.
-- Export: PDF if engine is available, otherwise HTML fallback.
+- Export: PDF via `PDF_METHOD=pdfshift`; if PDFShift is unavailable, HTML fallback is offered.
+
+Technical note:
+- In backend-assisted deployments, report AI/PDF generation can run through internal async jobs (`backend-api` + `backend-worker`).
 
 ## 5. Strategic Dashboard (What It Actually Shows)
 

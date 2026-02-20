@@ -2,7 +2,7 @@ Documentation HQ: [README](README.md)
 
 Enterprise Deployment Guide (Step-by-Step, Beginner Friendly)
 
-Last updated: 2026-02-16
+Last updated: 2026-02-20
 
 This guide is for deploying the OKR app in a company environment where users access it through a corporate URL such as:
 - `https://okr.mycompany.com` (recommended)
@@ -23,6 +23,7 @@ What this deployment gives you
 - Automatic DB migrations at app startup
 - Health checks and restart policy
 - Reverse-proxy compatible with Streamlit websocket traffic
+- Internal backend API + async worker for timer/PDF/AI heavy flows
 - Optional CI/CD via GitHub Actions
 
 Key files used by this guide
@@ -60,10 +61,19 @@ Use one of these modes:
 - No SSH deploy secrets are required.
 - The app is deployed by Streamlit Cloud from your GitHub repo.
 - In this mode, the GitHub Actions SSH deploy step is expected to skip.
+- For confidential internal data, prefer self-hosted deployment instead of Streamlit Cloud.
 
 2) Docker Compose on your own server (enterprise/self-hosted)
 - SSH deploy is disabled by default. Set `ENABLE_SSH_DEPLOY=true` (repo secret or variable) before adding SSH deploy secrets.
 - Use this when you want GitHub Actions to connect to your server and run `docker compose`.
+
+Architecture profile (recommended)
+
+- Use backend-assisted profile:
+  - `okr` + `backend-api` + `backend-worker`
+  - shared DB + internal service token
+- This isolates heavy AI/PDF work from Streamlit rerun cycle and improves operational resilience.
+- Keep backend API internal; do not expose it via public reverse proxy.
 
 ---
 
@@ -127,6 +137,12 @@ PORT=8501
 HOST_PORT=8501
 BASE_URL_PATH=
 OKR_DATABASE_URL=postgresql+psycopg2://postgres.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
+OKR_BACKEND_API_URL=http://backend-api:8100
+OKR_BACKEND_SERVICE_TOKEN=CHANGE_ME_STRONG_SHARED_TOKEN
+PDF_METHOD=pdfshift
+PDFSHIFT_API_KEY=CHANGE_ME_PDFSHIFT_KEY
+ALLOW_EXTERNAL_AI=false
+OKR_STRICT_RUNTIME_PREFLIGHT=true
 
 # Optional image pin (recommended after first stable release)
 # IMAGE=ghcr.io/your-org/okr-streamlit:2026-02-14
@@ -159,11 +175,13 @@ Health check:
 ```bash
 docker compose -f deploy/docker/docker-compose.yml ps
 curl -I http://127.0.0.1:8501/
+curl -f http://127.0.0.1:8100/healthz
 ```
 
 Expected:
-- Container status is `Up` (eventually healthy)
+- Services `okr`, `backend-api`, and `backend-worker` are `Up`
 - HTTP response from `/` is `200 OK`
+- Backend health endpoint returns `{"status":"ok"}`
 
 Step 6: Configure Nginx reverse proxy
 
@@ -250,6 +268,8 @@ curl -I https://okr.mycompany.com
 
 # Container logs
 docker compose -f deploy/docker/docker-compose.yml logs --tail=200 okr
+docker compose -f deploy/docker/docker-compose.yml logs --tail=200 backend-api
+docker compose -f deploy/docker/docker-compose.yml logs --tail=200 backend-worker
 
 # Confirm proxy configuration active
 sudo nginx -t
@@ -260,6 +280,7 @@ Confirm manually:
 - Create Goal/Objectives/KRs/Tasks
 - Timer starts/stops
 - Reports load
+- PDF export works (via PDFShift)
 - No websocket reconnect loops in browser
 
 ---
@@ -289,12 +310,14 @@ Logs
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml logs -f okr
+docker compose -f deploy/docker/docker-compose.yml logs -f backend-api
+docker compose -f deploy/docker/docker-compose.yml logs -f backend-worker
 ```
 
 Restart app
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml restart okr
+docker compose -f deploy/docker/docker-compose.yml restart okr backend-api backend-worker
 ```
 
 Upgrade (same server, new code/image)
@@ -323,6 +346,7 @@ Security hardening checklist
 - Use Supabase PostgreSQL only.
 - Keep only ports 80/443 exposed publicly.
 - Block direct public access to `8501`.
+- Keep backend API port (`8100`) private (default bind: `127.0.0.1`).
 - Keep secrets in `deploy/secrets/secrets.toml` or platform secret manager.
 - Do not commit secrets to git.
 - Rotate DB/API credentials periodically.
@@ -357,6 +381,10 @@ Workflow file:
 What it can do:
 - Build and push image to GHCR on push to `main`/`master`
 - Optional remote deploy over SSH (self-hosted mode only, opt-in via `ENABLE_SSH_DEPLOY=true`)
+
+Recommended for internal networks:
+- Prefer pull-based deployment (server-side pull/agent/cron) to avoid granting CI direct SSH into internal hosts.
+- Keep SSH push deployment only for explicitly approved environments.
 
 Required secrets for SSH deploy (recommended names):
 - `ENABLE_SSH_DEPLOY` = `true`

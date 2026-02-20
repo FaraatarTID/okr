@@ -11,7 +11,7 @@ This checklist matches `DEPLOYMENT.md` and is optimized for:
 
 Mark each item complete before go-live.
 
-Last updated: 2026-02-16
+Last updated: 2026-02-20
 
 Mode selection
 - If you are deploying on Streamlit Cloud, use section `A` and skip section `B`.
@@ -27,6 +27,7 @@ A. Streamlit Cloud checklist (MVP mode)
 - [ ] App starts and login works in Streamlit Cloud.
 - [ ] GitHub Actions SSH deploy step is skipped (expected when `ENABLE_SSH_DEPLOY` is unset/false).
 - [ ] You understand SSH secrets are only needed later for self-hosted server deploy.
+- [ ] You accept Streamlit Cloud is not the preferred mode for confidential internal company data.
 
 B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 
@@ -42,19 +43,23 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] Repo is cloned on the server.
 - [ ] `deploy/docker/.env` exists (copied from `deploy/docker/.env.example`).
 - [ ] Optional shortcut used if applicable: `deploy/docker/.env.mycompany.example`.
-- [ ] `OKR_DATABASE_URL` is set in `.env` and points to Supabase (`*.supabase.com`).
+- [ ] `OKR_DATABASE_URL` is set in `.env` and points to Supabase transaction pooler (`*.pooler.supabase.com:6543`).
 - [ ] `BASE_URL_PATH` is empty for subdomain deployment.
 - [ ] Optional integrations secrets are prepared in `deploy/secrets/secrets.toml`.
 - [ ] `PDF_METHOD` is explicitly set to `pdfshift`.
 - [ ] If `PDF_METHOD=pdfshift`, `pdfshift_api_key` is present in secrets.
+- [ ] `OKR_BACKEND_API_URL` is set (default: `http://backend-api:8100`).
+- [ ] `OKR_BACKEND_SERVICE_TOKEN` is set to a strong shared secret.
 - [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` is set (recommended for production).
 - [ ] `GEMINI_API_KEY` is set (or AI-disable decision is documented).
 
 3. App Launch
 - [ ] App is started with `docker compose -f deploy/docker/docker-compose.yml up -d --build`.
-- [ ] Container is running (`docker compose ... ps`).
+- [ ] Services are running (`okr`, `backend-api`, `backend-worker` in `docker compose ... ps`).
 - [ ] Local health check responds on `http://127.0.0.1:8501/`.
+- [ ] Backend health check responds on `http://127.0.0.1:8100/healthz`.
 - [ ] No startup migration errors in container logs.
+- [ ] Async job loop is healthy (`backend-worker` consuming jobs).
 
 4. Reverse Proxy
 - [ ] Nginx config is in place (subdomain proxy to `127.0.0.1:8501`).
@@ -87,6 +92,7 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 8. Security And Operations
 - [ ] Public access is limited to ports `80/443`.
 - [ ] App port `8501` is not publicly exposed.
+- [ ] Backend API port `8100` is private (bound to loopback/internal only).
 - [ ] DB backups are enabled and restore tested.
 - [ ] Logs are collected (Nginx + container).
 - [ ] Uptime monitoring is enabled for `https://okr.mycompany.com`.

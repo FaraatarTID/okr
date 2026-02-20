@@ -71,7 +71,10 @@ Weekly Report:
 هر دو نوع گزارش:
 - داده منبع: Work Logهای متصل به Task.
 - شامل جدول جزئیات کار، توزیع زمان بر اساس Objective و سلامت deadline.
-- خروجی: PDF در صورت آماده بودن موتور؛ در غیر اینصورت HTML.
+- خروجی: PDF فقط از مسیر `PDF_METHOD=pdfshift`؛ در نبود PDFShift خروجی HTML ارائه می‌شود.
+
+نکته فنی:
+- در deploymentهای backend-assisted، پردازش‌های سنگین AI/PDF می‌توانند از مسیر `backend-api` و `backend-worker` اجرا شوند.
 
 ## ۵. داشبورد استراتژیک (محتوای واقعی فعلی)
 

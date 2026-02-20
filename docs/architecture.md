@@ -12,6 +12,12 @@ This document covers only Learning Loop architecture:
 - UI integration points in `streamlit_app/src/ui/dialogs.py`,
 - migration and documentation sync rules.
 
+### Runtime Placement (Current System)
+Learning Loop logic executes in the main application domain layer:
+- read/write path: Streamlit UI -> `src/crud.py` -> Supabase PostgreSQL.
+- it is not currently offloaded to `backend-worker` async jobs.
+- backend jobs are used for heavy AI/PDF workflows, not for check-in/experiment mutations.
+
 ### Schema Contract
 Learning Loop depends on exactly 3 tables/contracts:
 
@@ -80,6 +86,12 @@ Any PR that changes Learning Loop models, CRUD, migration, or UI wiring must upd
 - قواعد CRUD و authorization،
 - نقاط اتصال UI در `streamlit_app/src/ui/dialogs.py`,
 - قواعد migration و همگام‌سازی مستندات.
+
+### Runtime Placement (Current System)
+منطق Learning Loop در لایه دامنه اصلی اجرا می‌شود:
+- مسیر read/write: رابط Streamlit -> `src/crud.py` -> پایگاه‌داده Supabase PostgreSQL.
+- در وضعیت فعلی به `backend-worker` منتقل نشده است.
+- صف backend فقط برای کارهای سنگین AI/PDF استفاده می‌شود، نه mutationهای check-in/experiment.
 
 ### Schema Contract
 Learning Loop بر ۳ قرارداد جدولی متکی است:

@@ -9,6 +9,7 @@ Blank page or reconnecting loop
 PDF export fails
 - If using PDFShift: set pdfshift_api_key in secrets
 - Ensure `PDF_METHOD=pdfshift`
+- If backend mode is enabled, verify `backend-worker` is running and has access to `PDFSHIFT_API_KEY`
 
 Runtime preflight shows configuration errors
 - If preflight says `PDF_METHOD=pdfshift but PDFShift API key is missing`:
@@ -26,6 +27,9 @@ AI features unavailable
   - Verify `AI_PROVIDER=openai_compatible`
   - Verify `AI_BASE_URL` and `AI_MODEL` are set
   - Verify endpoint is reachable from app runtime
+- If backend mode is enabled:
+  - Verify `OKR_BACKEND_API_URL` is reachable from `okr`
+  - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between `okr` and `backend-api`
 
 Migrations fail
 - Ensure the configured DB is reachable from the host/pod

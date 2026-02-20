@@ -11,8 +11,9 @@ Backups
 
 Monitoring
 - Uptime check: GET /
+- Backend uptime check: GET /healthz (backend-api)
 - Reverse proxy logs (Nginx) for access and errors
-- Container logs for app messages
+- Container logs for `okr`, `backend-api`, and `backend-worker`
 - AI provider check:
   - Run `python streamlit_app/scripts/ai_provider_health_check.py`
   - Config-only validation: `python streamlit_app/scripts/ai_provider_health_check.py --no-probe`
@@ -35,17 +36,22 @@ Security hardening
 - Limit exposed ports (only proxy exposed)
 - Non-root containers (already configured)
 - Set firewall rules so only the proxy can reach the app port
+- Keep backend API port private (`127.0.0.1` bind by default in compose)
 - Keep DB credentials in secret manager and rotate regularly
 
 Incident response
 - Take snapshots before risky changes
 - Know rollback steps for Compose and K8s
+- Prefer pull-based deployment for internal servers; avoid CI-originated SSH access unless explicitly approved.
 
 Runtime preflight checks
 - On startup, validate that PDF mode and API keys are coherent.
 - If strict mode is enabled and preflight reports errors, treat startup block as configuration incident (not app defect).
 - Resolve by fixing provider mismatch:
   - All runtimes: `PDF_METHOD=pdfshift` + `pdfshift_api_key`
+
+Architecture note
+- Current MVP uses hybrid execution: Streamlit handles UI and core CRUD, while backend services handle timer/api orchestration and async heavy jobs.
 
 Release governance
 - Protect main branch with required CI checks.

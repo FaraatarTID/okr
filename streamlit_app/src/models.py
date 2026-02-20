@@ -12,6 +12,7 @@ from sqlalchemy.orm import relationship
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Union
+from uuid import uuid4
 from src.utils.time_utils import utc_now_naive
 
 
@@ -138,6 +139,41 @@ class AuthThrottleState(SQLModel, table=True):
     window_started_at: datetime = Field(default_factory=utc_now_naive)
     locked_until: Optional[datetime] = None
     last_failed_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class AsyncJobStatus(str, Enum):
+    """Lifecycle status for async backend jobs."""
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class AsyncJob(SQLModel, table=True):
+    """Durable async job record for backend worker execution."""
+    __tablename__ = "async_job"
+    __table_args__ = (
+        Index("ix_async_job_status_created", "status", "created_at"),
+        Index("ix_async_job_actor_created", "actor_username", "created_at"),
+        {"extend_existing": True},
+    )
+
+    id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True, index=True)
+    kind: str = Field(index=True)
+    status: AsyncJobStatus = Field(default=AsyncJobStatus.PENDING, index=True)
+    actor_username: Optional[str] = Field(default=None, index=True)
+    payload_json: str
+    result_json: Optional[str] = None
+    error_text: Optional[str] = None
+    attempts: int = Field(default=0)
+    max_attempts: int = Field(default=2)
+    cancel_requested: bool = Field(default=False, index=True)
+    worker_id: Optional[str] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utc_now_naive, index=True)
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
 

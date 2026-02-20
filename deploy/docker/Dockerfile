@@ -4,7 +4,8 @@ FROM python:3.11-slim
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app:/app/streamlit_app
 
 # System deps.
 RUN set -eux; \
@@ -19,6 +20,7 @@ WORKDIR /app
 
 # Copy app source
 COPY streamlit_app/ /app/streamlit_app/
+COPY backend_app/ /app/backend_app/
 
 # Install Python deps
 RUN python -m pip install --upgrade pip \

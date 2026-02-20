@@ -56,10 +56,12 @@ Choose one mode:
 - No SSH deploy secrets are required.
 - App is deployed by Streamlit Cloud from this GitHub repository.
 - The SSH deploy workflow/job is expected to skip.
+- Not recommended for confidential internal company datasets.
 
 2. Self-hosted Docker Compose (server/VM)
 
 - Use this for Nginx + Docker Compose + your own server.
+- Runs `okr`, `backend-api`, and `backend-worker` together for better operational separation.
 - SSH deploy in GitHub Actions is disabled by default. To enable it, set `ENABLE_SSH_DEPLOY=true` and then configure:
   - `SSH_HOST`
   - `SSH_USER`
@@ -79,6 +81,25 @@ Where to set `SSH_KEY` (only when `ENABLE_SSH_DEPLOY=true`):
 Security note:
 
 - Never commit private keys or deploy secrets to the repository.
+
+---
+## Architecture At A Glance
+
+Recommended internal topology:
+
+```text
+Browser
+  -> Streamlit UI (okr)
+      -> CRUD + Domain logic -> Supabase PostgreSQL
+      -> backend-api (internal) -> async_job table -> backend-worker
+                                      -> AI provider / PDFShift
+```
+
+Key technical points:
+- Core hierarchy CRUD currently executes through Streamlit + SQLModel.
+- Timer, AI-heavy flows, and PDF-heavy flows can route via backend job services.
+- Only supported PDF binary engine is `pdfshift` (`PDF_METHOD=pdfshift`).
+- For internal production, keep `backend-api` private and prefer `ALLOW_EXTERNAL_AI=false` unless approved.
 
 ---
 ## AI Analysis Privacy and Policy
@@ -309,6 +330,7 @@ Access via **Daily Report** or **Weekly Report** buttons.
 #### PDF Export
 
 Click **ðŸ“„ Export as PDF** to generate a formatted report.
+- Runtime PDF mode is `PDF_METHOD=pdfshift` (only supported PDF engine).
 
 ---
 
@@ -375,6 +397,7 @@ python streamlit_app/scripts/ai_provider_health_check.py
 | Component | Technology                                   |
 | --------- | -------------------------------------------- |
 | Frontend  | Streamlit + Plotly + streamlit-agraph        |
+| Backend API/Worker | FastAPI + internal async worker (optional but recommended) |
 | Styling   | Vanilla CSS + Vazirmatn font                 |
 | Auth      | bcrypt password hashing                      |
 | Database  | SQLModel + Supabase PostgreSQL               |
@@ -397,6 +420,7 @@ The codebase is organized modularly to separate concerns across the UI, business
   - **`crud.py`**, **`models.py`**, **`database.py`**: Core app facade, data model, and persistence layer.
 - **`streamlit_app/src/utils/`**: Shared utility helpers used across app layers.
 - **`streamlit_app/alembic/`**: Database migration environment and versions.
+- **`backend_app/`**: Internal backend API + async worker for timer/job execution.
 - **`tests/`**: Automated regression and performance-path tests.
 - **`docs/`**, **`deploy/`**: Operations and deployment assets.
 

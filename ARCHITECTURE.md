@@ -8,6 +8,17 @@ Learning Loop specific architecture contract (EN+FA, canonical): [docs/architect
 
 This repository is a Streamlit-based OKR product with a SQLModel persistence layer on Supabase PostgreSQL.
 
+Current production topology has two runtime profiles:
+- `Legacy direct mode`:
+  - Streamlit UI calls CRUD/service code in-process.
+  - Heavy operations (AI/PDF) run in the Streamlit runtime.
+- `Backend-assisted mode` (recommended):
+  - Streamlit UI still renders pages and handles session UX.
+  - Timer mutations and heavy AI/PDF workflows route to internal backend services:
+    - `backend-api` (FastAPI control plane)
+    - `backend-worker` (async execution plane)
+  - Jobs are persisted in `async_job` table and processed out-of-band.
+
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
   - Primary hierarchy UX: Atlas focus-first workspace (`Focus Map` + `Inspector`)
@@ -18,6 +29,48 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 - Persistence: `streamlit_app/src/database.py`, `streamlit_app/src/models.py`, Alembic migrations in `streamlit_app/alembic/`
 - External integrations: `streamlit_app/src/services/ai_service.py`, `streamlit_app/src/services/pdf_service.py`
 - Shared business helpers: `streamlit_app/src/utils/deadline_utils.py`
+- Internal backend services: `backend_app/main.py`, `backend_app/worker.py`, `backend_app/jobs.py`, `backend_app/job_runner.py`
+
+## Runtime Topology
+
+Primary data/control flow in backend-assisted mode:
+
+1. UI and session:
+- Browser -> Streamlit (`okr` service).
+- Streamlit handles page rendering, state, and role-aware UX.
+
+2. Synchronous domain mutations:
+- Streamlit -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
+- This still covers core hierarchy CRUD (Goal/Objective/KR/Task) in current MVP.
+
+3. Async heavy workflows:
+- Streamlit -> `backend-api` (`/v1/jobs`) with `OKR_BACKEND_SERVICE_TOKEN`.
+- `backend-api` enqueues durable jobs in `async_job`.
+- `backend-worker` claims and executes jobs (`ai.generate_json`, `pdf.weekly`).
+- Streamlit polls job status and renders result/fallback.
+
+4. Timer routing:
+- Preferred: Streamlit timer service -> `backend-api` (`/v1/timer/start|stop`).
+- Resilience path: local CRUD fallback on transient backend transport failure.
+
+5. PDF rendering:
+- Only supported binary renderer: `PDFShift` (`PDF_METHOD=pdfshift`).
+- If PDF binary rendering is unavailable, UI falls back to HTML export.
+
+## Security and Isolation Boundaries
+
+- DB boundary:
+  - Single source of truth in Supabase PostgreSQL.
+  - Connection policy expects transaction pooler endpoint (`:6543`).
+- Service boundary:
+  - `backend-api` authenticates service calls using `OKR_BACKEND_SERVICE_TOKEN`.
+  - Basic in-memory IP rate limiting protects API endpoints.
+- Network boundary:
+  - Public ingress should expose only reverse proxy/app paths.
+  - `backend-api` should remain private (loopback/internal bind in compose by default).
+- Data egress boundary:
+  - AI calls are policy-gated by `ALLOW_EXTERNAL_AI`.
+  - `AI_PROVIDER=openai_compatible` supports internal/self-hosted gateways.
 
 ## Module Boundaries
 
@@ -42,10 +95,11 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 - Guarantees FK integrity, check constraints, and migration-driven schema updates.
 - Manages `LifecycleState` transitions and persistence.
 
-4. Integration boundary (`services/*`)
+4. Integration boundary (`services/*` + `backend_app/*`)
 
 - Owns AI analysis and PDF/report output.
 - Should not contain core authorization logic.
+- Backend API/worker isolate heavy operations from Streamlit request reruns.
 
 ## Critical Request/Data Flows
 
@@ -131,12 +185,22 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Read-sensitive node retrieval can be actor-scoped via `get_node(..., actor_username=...)`.
 - AI node analysis (`analyze_node`) can use this actor-scoped read path before prompt context assembly.
 
+5. Async job flow
+
+- `run_job_and_wait` submits to `backend-api` when backend mode is enabled.
+- Job lifecycle: `pending -> running -> succeeded|failed|cancelled`.
+- Worker writes result/error payloads into `async_job`.
+- UI reads job state and surfaces final output.
+- On transient backend failures/timeouts, local fallback path executes where supported.
+
 ## Invariants and Guardrails
 
 - Goal ownership is anchored on `goal.owner_id`.
 - Mutations require `actor_username` for goal-scoped entities.
 - DB constraints enforce progress ranges, non-negative durations, and single open work log per task.
 - Hot-path query budgets are tested in `tests/test_performance_hotpaths.py` to prevent N+1 regressions.
+- Runtime preflight defaults to strict (`OKR_STRICT_RUNTIME_PREFLIGHT=true`) for fail-fast misconfiguration detection.
+- `pdfshift` is the only supported PDF binary engine in secure runtime.
 
 ## Current Performance-Critical Paths
 
@@ -147,3 +211,16 @@ Interaction model is intentionally split into control-plane and work-plane:
 These paths now have explicit query-count budgets and a reproducible benchmark script:
 
 - `streamlit_app/scripts/perf_hotpaths.py`
+
+## Current Architectural Limits
+
+- Streamlit rerun model still governs UI interaction cost and concurrency.
+- Core hierarchy CRUD remains in-process from Streamlit to DB (not yet API-decoupled).
+- Kubernetes manifests in `deploy/k8s/` currently model the Streamlit service; backend API/worker manifests must be added for full backend-assisted parity.
+
+## Recommended Next Refactor Boundary
+
+To move toward higher-concurrency internal production:
+- Move all hierarchy writes behind backend API contracts.
+- Keep Streamlit as presentation/workflow shell.
+- Preserve SQLModel domain logic but execute mutation policies in backend API layer.
