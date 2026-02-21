@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 
 from src.models import Task, TaskStatus
-from src.utils.time_utils import utc_now_naive
+from src.utils.time_utils import from_epoch_millis, from_epoch_seconds, utc_now_naive
 
 
 def _resolve_task_finish_date(deadline: Any, start: datetime) -> tuple[datetime, bool]:
@@ -22,8 +22,8 @@ def _resolve_task_finish_date(deadline: Any, start: datetime) -> tuple[datetime,
     if isinstance(deadline, (int, float)):
         numeric = float(deadline)
         if numeric > 10_000_000_000:  # epoch milliseconds
-            return datetime.fromtimestamp(numeric / 1000), False
-        return datetime.fromtimestamp(numeric), False
+            return from_epoch_millis(numeric), False
+        return from_epoch_seconds(numeric), False
 
     if isinstance(deadline, str):
         stripped = deadline.strip()
@@ -35,8 +35,8 @@ def _resolve_task_finish_date(deadline: Any, start: datetime) -> tuple[datetime,
             try:
                 numeric = float(stripped)
                 if numeric > 10_000_000_000:
-                    return datetime.fromtimestamp(numeric / 1000), False
-                return datetime.fromtimestamp(numeric), False
+                    return from_epoch_millis(numeric), False
+                return from_epoch_seconds(numeric), False
             except ValueError:
                 return start + timedelta(days=1), True
 

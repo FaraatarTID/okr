@@ -264,7 +264,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
 <body>
     <div id="header">
         <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{_escape(title)}</h1>
-        <p>Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
+        <p>Generated: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC</p>
     </div>
 
     <div class="total-box">

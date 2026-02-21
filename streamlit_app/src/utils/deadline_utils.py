@@ -7,6 +7,7 @@ or SQLModel/ORM objects (snake_case keys, datetime values).
 
 from datetime import datetime
 from typing import Any, Optional, Tuple
+from src.utils.time_utils import from_epoch_millis, utc_now_naive
 
 
 _MILLIS_THRESHOLD = 10_000_000_000  # values below this are interpreted as epoch seconds
@@ -86,7 +87,7 @@ def get_deadline_status(node: Any) -> Tuple[str, str, int]:
     if not deadline_ms:
         return ("no_deadline", "No Deadline", 50)
 
-    now_ms = int(datetime.now().timestamp() * 1000)
+    now_ms = int(utc_now_naive().timestamp() * 1000)
     created_ms = _to_millis(_get_value(node, "createdAt", "created_at")) or now_ms
 
     # Deadline passed.
@@ -118,7 +119,7 @@ def get_expected_progress(created_at: Any, deadline: Any) -> int:
     if not created_ms or not deadline_ms:
         return 0
 
-    now_ms = int(datetime.now().timestamp() * 1000)
+    now_ms = int(utc_now_naive().timestamp() * 1000)
     total_duration = deadline_ms - created_ms
     if total_duration <= 0:
         return 100
@@ -137,7 +138,7 @@ def get_days_remaining(deadline: Any) -> int:
     if not deadline_ms:
         return 0
 
-    now_ms = int(datetime.now().timestamp() * 1000)
+    now_ms = int(utc_now_naive().timestamp() * 1000)
     diff_ms = deadline_ms - now_ms
     days = diff_ms / (1000 * 60 * 60 * 24)
     return int(days)
@@ -152,7 +153,7 @@ def format_deadline_display(deadline: Any) -> str:
     if not deadline_ms:
         return "-"
 
-    dt = datetime.fromtimestamp(deadline_ms / 1000)
+    dt = from_epoch_millis(deadline_ms)
     date_str = dt.strftime("%b %d")
     days = get_days_remaining(deadline_ms)
 

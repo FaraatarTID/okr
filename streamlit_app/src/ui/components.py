@@ -48,7 +48,12 @@ from src.crud import (
     get_work_logs_by_date_range,
     get_all_tasks_by_cycle,
 )
-from src.utils.time_utils import ensure_utc, utc_now_naive
+from src.utils.time_utils import (
+    ensure_utc,
+    from_epoch_millis,
+    from_epoch_seconds,
+    utc_now_naive,
+)
 
 # Phase 4 Imports
 from src.domain.analysis import (
@@ -1211,7 +1216,7 @@ def render_report_content(username, mode):
     if mode == "Daily":
         # Start of today
         # Calculate midnight timestamp for today
-        dt_now = datetime.fromtimestamp(now / 1000)
+        dt_now = from_epoch_millis(now)
         dt_start = dt_now.replace(hour=0, minute=0, second=0, microsecond=0)
         start_time = dt_start.timestamp() * 1000
         period_label = "Today"
@@ -1312,8 +1317,8 @@ def render_report_content(username, mode):
         st.error("User not found")
         return
 
-    start_dt = datetime.fromtimestamp(start_time / 1000)
-    end_dt = datetime.fromtimestamp(now / 1000)
+    start_dt = from_epoch_millis(start_time)
+    end_dt = from_epoch_millis(now)
 
     logs = _cached_get_work_logs_by_range(user_obj.id, start_dt, end_dt)
 
@@ -1408,10 +1413,10 @@ def render_report_content(username, mode):
 
                         res = generate_weekly_summary(
                             username,
-                            datetime.fromtimestamp(start_time / 1000).strftime(
+                            from_epoch_millis(start_time).strftime(
                                 "%Y-%m-%d"
                             ),
-                            datetime.now().strftime("%Y-%m-%d"),
+                            utc_now_naive().strftime("%Y-%m-%d"),
                             stats,
                         )
 
@@ -1543,7 +1548,7 @@ def render_report_content(username, mode):
                     "time_label": period_label,
                     "report_summary": st.session_state.get("report_summary"),
                     "achievements": achievements,
-                    "filename": f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
+                    "filename": f"{mode}_Report_{utc_now_naive().strftime('%Y-%m-%d')}.pdf",
                 },
                 actor_username=username,
                 timeout_seconds=120,
@@ -1574,7 +1579,7 @@ def render_report_content(username, mode):
             st.download_button(
                 label="📄 Export as PDF",
                 data=pdf_bytes,
-                file_name=f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.pdf",
+                file_name=f"{mode}_Report_{utc_now_naive().strftime('%Y-%m-%d')}.pdf",
                 mime="application/pdf",
                 key="report_pdf_download",
             )
@@ -1597,7 +1602,7 @@ def render_report_content(username, mode):
             st.download_button(
                 label="📄 Export as HTML",
                 data=fallback_html.encode("utf-8"),
-                file_name=f"{mode}_Report_{datetime.now().strftime('%Y-%m-%d')}.html",
+                file_name=f"{mode}_Report_{utc_now_naive().strftime('%Y-%m-%d')}.html",
                 mime="text/html",
                 key="report_html_download",
             )
@@ -4875,10 +4880,8 @@ def render_atlas_workspace(username):
                                     return deadline_raw.isoformat()
                                 ts = float(deadline_raw)
                                 if ts > 1e10:
-                                    return datetime.fromtimestamp(
-                                        ts / 1000.0
-                                    ).isoformat()
-                                return datetime.fromtimestamp(ts).isoformat()
+                                    return from_epoch_millis(ts).isoformat()
+                                return from_epoch_seconds(ts).isoformat()
                             except Exception:
                                 try:
                                     return str(deadline_raw)
@@ -5389,7 +5392,7 @@ def render_strategy_pulse_content(username):
                 pdf_bytes = generate_achievement_portfolio_pdf(portfolio)
                 if pdf_bytes:
                     st.session_state.portfolio_pdf = pdf_bytes.getvalue()
-                    st.session_state.portfolio_filename = f"Portfolio_{username}_{datetime.now().strftime('%Y%m%d')}.pdf"
+                    st.session_state.portfolio_filename = f"Portfolio_{username}_{utc_now_naive().strftime('%Y%m%d')}.pdf"
                     st.success("Portfolio ready!")
                 else:
                     st.error("Failed to generate PDF. Check PDF engine configuration.")

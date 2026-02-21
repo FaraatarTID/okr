@@ -18,6 +18,10 @@ Runtime preflight shows configuration errors
   - Change `PDF_METHOD` to `pdfshift`
 - If preflight says `OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set` even after changing secrets:
   - Check the new `Config trace` info line in the UI; it shows effective value and source (`env`, `secrets_root`, `secrets_app`, `default`).
+  - In Streamlit secrets TOML, prefer native booleans (avoid wrapping an entire block in quotes):
+    - `OKR_BACKEND_PROXY_MUTATIONS = false` (recommended)
+    - `OKR_BACKEND_PROXY_MUTATIONS = "false"` (works with current parser, but not preferred)
+    - `"PDF_METHOD = \"pdfshift\"\nOKR_BACKEND_PROXY_MUTATIONS=false"` (invalid TOML blob)
   - Remove/adjust any conflicting environment variable override, then restart app process.
 - If strict mode is enabled (`OKR_STRICT_RUNTIME_PREFLIGHT=1`), app startup will stop on critical preflight errors until fixed.
 
@@ -46,7 +50,8 @@ CRUD save/update/delete errors in UI
 Migrations fail
 - Ensure the configured DB is reachable from the host/pod
 - Check that OKR_DATABASE_URL is valid and that the user has DDL permissions
-- If you see `permission denied to reassign objects`, run ownership/reassign SQL using an admin DB role; keep app runtime DSN on least-privilege `okr_app`.
+- If you see `permission denied to reassign objects`, run ownership/reassign SQL using an admin DB role; keep app runtime DSN on a least-privilege runtime role (example: `okr_app`).
+  - If your current deployment uses a different least-privilege role name, use that runtime role consistently instead of `postgres`.
 
 Workspace runtime load fails with `Multiple classes found for path "User"`
 - Cause: SQLModel mapper registry/class references became stale after a code hot-reload.
@@ -66,6 +71,11 @@ Supabase connection errors
 - Ensure `sslmode=require` is present
 - Prefer transaction pooler `:6543` for runtime app traffic; avoid session-pooler saturation patterns for app workloads.
 - If you see `MaxClientsInSessionMode: max clients reached`, your URL is using session mode (`:5432`); switch to transaction pooler (`:6543`).
+- To enforce strict Supabase runtime URL checks at startup, set `OKR_ALLOW_NON_SUPABASE_DB=0`.
+- Use overrides only for controlled exceptions:
+  - `OKR_ALLOW_SUPABASE_SESSION_POOLER=1`
+  - `OKR_ALLOW_SUPABASE_DIRECT_CONNECTION=1`
+  - `OKR_ALLOW_SUPABASE_SUPERUSER=1`
 - Confirm DB password is URL-encoded if it contains special characters
 
 Hosting under subpath breaks assets

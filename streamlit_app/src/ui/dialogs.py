@@ -529,7 +529,7 @@ def render_weekly_ritual_dialog(username):
         st.markdown("#### 📅 Week in Review")
         
         # Calculate stats for the last 7 days
-        end_date = datetime.now()
+        end_date = utc_now_naive()
         start_date = end_date - timedelta(days=7)
         start_ts = int(start_date.timestamp() * 1000)
         
