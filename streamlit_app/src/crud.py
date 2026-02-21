@@ -241,7 +241,9 @@ def _enforce_backend_mutation_failure_policy(payload: Dict[str, Any]) -> None:
     if not _is_transient_backend_mutation_error(payload):
         _raise_backend_mutation_error(payload)
     if not _local_backend_fallback_allowed():
-        message = str(payload.get("error") or "Backend mutation request failed.").strip()
+        message = str(
+            payload.get("error") or "Backend mutation request failed."
+        ).strip()
         raise ValueError(
             f"{message} Local backend fallback is disabled; retry when backend is healthy."
         )
@@ -1138,7 +1140,9 @@ def create_check_in(
         actor_name = str(actor_username or "").strip()
         if not actor_name:
             raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import create_check_in as backend_create_check_in
+        from src.services.backend_client import (
+            create_check_in as backend_create_check_in,
+        )
 
         backend_result = backend_create_check_in(
             kr_id=kr_id,
@@ -1177,7 +1181,7 @@ def create_check_in(
         elif variation_type == VariationType.COMMON_CAUSE:
             # Common cause: clear special_cause_note
             special_cause_note = None
-            
+
             # Validate experiment belongs to this KR if provided
             if experiment_id is not None:
                 experiment = session.get(Experiment, experiment_id)
@@ -1270,7 +1274,9 @@ def create_experiment(
         actor_name = str(actor_username or "").strip()
         if not actor_name:
             raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import create_experiment as backend_create_experiment
+        from src.services.backend_client import (
+            create_experiment as backend_create_experiment,
+        )
 
         backend_result = backend_create_experiment(
             key_result_id=key_result_id,
@@ -1289,13 +1295,13 @@ def create_experiment(
     with get_session_context() as session:
         goal = _get_goal_for_key_result(session, key_result_id)
         _authorize_goal_mutation(session, goal, actor_username)
-        
+
         # Validate cycle_id matches the KR's goal cycle
         if goal.cycle_id != cycle_id:
             raise ValueError(
                 f"Experiment cycle_id ({cycle_id}) must match goal's cycle ({goal.cycle_id})"
             )
-        
+
         experiment = Experiment(
             key_result_id=key_result_id,
             cycle_id=cycle_id,
@@ -1311,8 +1317,14 @@ def create_experiment(
         session.commit()
         session.refresh(experiment)
         audit_log(
-            "create", "experiment", actor=actor_username,
-            details={"experiment_id": experiment.id, "kr_id": key_result_id, "cycle_id": cycle_id}
+            "create",
+            "experiment",
+            actor=actor_username,
+            details={
+                "experiment_id": experiment.id,
+                "kr_id": key_result_id,
+                "cycle_id": cycle_id,
+            },
         )
         clear_cache_safe()
         return experiment
@@ -1326,7 +1338,7 @@ def list_experiments_for_kr(
     with get_session_context() as session:
         goal = _get_goal_for_key_result(session, key_result_id)
         domain_auth._authorize_goal_scoped_access(session, goal, actor_username)
-        
+
         statement = (
             select(Experiment)
             .where(Experiment.key_result_id == key_result_id)
@@ -1343,7 +1355,7 @@ def get_active_experiments_for_kr(
     with get_session_context() as session:
         goal = _get_goal_for_key_result(session, key_result_id)
         domain_auth._authorize_goal_scoped_access(session, goal, actor_username)
-        
+
         statement = (
             select(Experiment)
             .where(Experiment.key_result_id == key_result_id)
@@ -1354,16 +1366,16 @@ def get_active_experiments_for_kr(
 
 
 def update_experiment(
-    experiment_id: int,
-    actor_username: str,
-    **updates
+    experiment_id: int, actor_username: str, **updates
 ) -> Optional[Experiment]:
     """Update experiment fields with authorization."""
     if _backend_mutation_proxy_enabled():
         actor_name = str(actor_username or "").strip()
         if not actor_name:
             raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import update_experiment as backend_update_experiment
+        from src.services.backend_client import (
+            update_experiment as backend_update_experiment,
+        )
 
         backend_result = backend_update_experiment(
             experiment_id=experiment_id,
@@ -1378,22 +1390,26 @@ def update_experiment(
         experiment = session.get(Experiment, experiment_id)
         if not experiment:
             return None
-        
+
         goal = _get_goal_for_key_result(session, experiment.key_result_id)
         _authorize_goal_mutation(session, goal, actor_username)
-        
-        _validate_update_fields("experiment", updates, _ALLOWED_EXPERIMENT_UPDATE_FIELDS)
-        
+
+        _validate_update_fields(
+            "experiment", updates, _ALLOWED_EXPERIMENT_UPDATE_FIELDS
+        )
+
         for key, value in updates.items():
             if hasattr(experiment, key):
                 setattr(experiment, key, value)
-        
+
         session.add(experiment)
         session.commit()
         session.refresh(experiment)
         audit_log(
-            "update", "experiment", actor=actor_username,
-            details={"experiment_id": experiment_id, "fields": list(updates.keys())}
+            "update",
+            "experiment",
+            actor=actor_username,
+            details={"experiment_id": experiment_id, "fields": list(updates.keys())},
         )
         clear_cache_safe()
         return experiment
@@ -1410,7 +1426,9 @@ def close_experiment(
         actor_name = str(actor_username or "").strip()
         if not actor_name:
             raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import close_experiment as backend_close_experiment
+        from src.services.backend_client import (
+            close_experiment as backend_close_experiment,
+        )
 
         backend_result = backend_close_experiment(
             experiment_id=experiment_id,
@@ -1628,7 +1646,9 @@ def delete_cycle(cycle_id: int, actor_username: Optional[str] = None) -> bool:
 
         session.delete(cycle)
         session.commit()
-        audit_log("delete", "cycle", actor=actor_username, details={"cycle_id": cycle_id})
+        audit_log(
+            "delete", "cycle", actor=actor_username, details={"cycle_id": cycle_id}
+        )
         clear_cache_safe()
         return True
 
@@ -1802,7 +1822,9 @@ def create_objective(
 ) -> Objective:
     """Create a new objective under a goal."""
     if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import create_objective as backend_create_objective
+        from src.services.backend_client import (
+            create_objective as backend_create_objective,
+        )
 
         backend_result = backend_create_objective(
             goal_id=goal_id,
@@ -1866,7 +1888,9 @@ def create_key_result(
 ) -> KeyResult:
     """Create a new key result under an objective."""
     if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import create_key_result as backend_create_key_result
+        from src.services.backend_client import (
+            create_key_result as backend_create_key_result,
+        )
 
         backend_result = backend_create_key_result(
             objective_id=objective_id,
@@ -2042,7 +2066,11 @@ def update_goal(
         import json
 
         updates["strategy_tags"] = json.dumps(
-            [str(item).strip() for item in updates["strategy_tags"] if str(item).strip()],
+            [
+                str(item).strip()
+                for item in updates["strategy_tags"]
+                if str(item).strip()
+            ],
             ensure_ascii=False,
         )
 
@@ -2175,7 +2203,9 @@ def create_alignment(
     if _backend_mutation_proxy_enabled():
         if not actor_username:
             raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import create_alignment as backend_create_alignment
+        from src.services.backend_client import (
+            create_alignment as backend_create_alignment,
+        )
 
         backend_result = backend_create_alignment(
             parent_id=parent_id,
@@ -2244,7 +2274,9 @@ def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
     if _backend_mutation_proxy_enabled():
         if not actor_username:
             raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import delete_alignment as backend_delete_alignment
+        from src.services.backend_client import (
+            delete_alignment as backend_delete_alignment,
+        )
 
         backend_result = backend_delete_alignment(
             edge_id=edge_id,
@@ -2290,7 +2322,11 @@ def update_key_result(
         import json
 
         updates["initiative_tags"] = json.dumps(
-            [str(item).strip() for item in updates["initiative_tags"] if str(item).strip()],
+            [
+                str(item).strip()
+                for item in updates["initiative_tags"]
+                if str(item).strip()
+            ],
             ensure_ascii=False,
         )
 
@@ -2964,7 +3000,9 @@ def delete_work_log(log_id: int, actor_username: Optional[str] = None) -> bool:
     if _backend_mutation_proxy_enabled():
         if not actor_username:
             raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import delete_work_log as backend_delete_work_log
+        from src.services.backend_client import (
+            delete_work_log as backend_delete_work_log,
+        )
 
         backend_result = backend_delete_work_log(
             work_log_id=log_id,
@@ -3154,7 +3192,9 @@ def create_weekly_plan(
         actor_name = str(actor_username or "").strip()
         if not actor_name:
             raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import create_weekly_plan as backend_create_weekly_plan
+        from src.services.backend_client import (
+            create_weekly_plan as backend_create_weekly_plan,
+        )
 
         backend_result = backend_create_weekly_plan(
             user_id=user_id,
@@ -3372,22 +3412,24 @@ def upsert_retro_experiment_outcome(
         retro = session.get(Retrospective, retrospective_id)
         if not retro:
             raise ValueError(f"Retrospective {retrospective_id} not found")
-        
+
         # Authorization: only retro owner can attach outcomes
         actor = session.exec(
             select(User).where(User.username == actor_username)
         ).first()
         if not actor:
             raise PermissionError("Actor not found")
-        
+
         if retro.user_id != actor.id:
-            raise PermissionError("Only the retrospective owner can attach experiment outcomes")
-        
+            raise PermissionError(
+                "Only the retrospective owner can attach experiment outcomes"
+            )
+
         # Validate experiment exists
         experiment = session.get(Experiment, experiment_id)
         if not experiment:
             raise ValueError(f"Experiment {experiment_id} not found")
-        
+
         # Attempt upsert with race condition handling
         try:
             # Try insert first
