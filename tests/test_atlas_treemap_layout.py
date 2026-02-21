@@ -56,6 +56,7 @@ def test_atlas_treemap_leaf_nodes_use_equal_default_weight() -> None:
     assert fig is not None
     trace = fig.data[0]
     by_id = dict(zip(trace.ids, trace.values))
+    assert by_id["goal_1"] == 0
     assert by_id["task_1"] == by_id["task_2"] == 10
 
 
