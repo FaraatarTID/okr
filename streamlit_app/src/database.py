@@ -12,7 +12,7 @@ import json
 import base64
 from threading import Lock
 from collections.abc import Mapping
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timezone
 from decimal import Decimal
 from typing import Optional
 from urllib.parse import urlparse
@@ -471,7 +471,7 @@ def export_database_backup() -> bytes:
     table_names = _backup_table_names()
     payload = {
         "format": BACKUP_FORMAT_VERSION,
-        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "exported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "database_url": _sanitize_url_for_backup(_resolved_database_url()),
         "tables": {},
     }

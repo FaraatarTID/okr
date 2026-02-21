@@ -7,7 +7,7 @@ import json
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from dotenv import load_dotenv
-from src.utils.time_utils import utc_now
+from src.utils.time_utils import from_epoch_millis, from_epoch_seconds, utc_now
 
 from src.services.ai_provider import (
     generate_json as generate_ai_json,
@@ -98,7 +98,7 @@ def analyze_efficiency_effectiveness(
         d_iso = None
         if t.deadline:
             try:
-                d_iso = datetime.fromtimestamp(t.deadline / 1000).isoformat()
+                d_iso = from_epoch_millis(t.deadline).isoformat()
             except Exception:
                 d_iso = None
 
@@ -354,19 +354,19 @@ def analyze_node(
                     ts = float(dl_val)
                     if ts > 1e10:  # milliseconds
                         dl_ms = int(ts)
-                        d_date = datetime.fromtimestamp(ts / 1000.0).date()
+                        d_date = from_epoch_millis(ts).date()
                     else:  # seconds
                         dl_ms = int(ts * 1000)
-                        d_date = datetime.fromtimestamp(ts).date()
+                        d_date = from_epoch_seconds(ts).date()
                 elif isinstance(dl_val, str):
                     try:
                         ts = float(dl_val)
                         if ts > 1e10:
                             dl_ms = int(ts)
-                            d_date = datetime.fromtimestamp(ts / 1000.0).date()
+                            d_date = from_epoch_millis(ts).date()
                         else:
                             dl_ms = int(ts * 1000)
-                            d_date = datetime.fromtimestamp(ts).date()
+                            d_date = from_epoch_seconds(ts).date()
                     except Exception:
                         try:
                             dtp = datetime.fromisoformat(dl_val)

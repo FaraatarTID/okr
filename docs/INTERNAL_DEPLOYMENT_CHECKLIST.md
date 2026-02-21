@@ -6,6 +6,13 @@ Use this checklist for company-internal pilot rollout sign-off.
 
 Phase 1: Preparation
 - [ ] Copy `deploy/secrets/secrets.toml.example` to runtime `secrets.toml` and populate internal values only.
+- [ ] Validate Streamlit secrets TOML syntax (one key per line, no quoted multi-line blob). Minimal example:
+  ```toml
+  PDF_METHOD = "pdfshift"
+  OKR_BACKEND_PROXY_MUTATIONS = true
+  OKR_ALLOW_LOCAL_BACKEND_FALLBACK = false
+  OKR_STRICT_RUNTIME_PREFLIGHT = true
+  ```
 - [ ] Select AI provider (`openai_compatible` recommended for internal gateways, or `gemini` if approved).
 - [ ] Keep `ALLOW_EXTERNAL_AI=false` unless outbound AI is explicitly approved.
 - [ ] Set `OKR_BACKEND_SERVICE_TOKEN` to a strong shared secret for internal service auth.
@@ -18,11 +25,12 @@ Phase 2: Infrastructure
 - [ ] Place app behind Nginx/Traefik with TLS termination.
 - [ ] Restrict access to company network and/or VPN.
 - [ ] Configure PostgreSQL connectivity (internal DB or approved private endpoint).
-- [ ] Ensure runtime `OKR_DATABASE_URL` uses least-privilege `okr_app` role credentials (not `postgres`).
+- [ ] Ensure runtime `OKR_DATABASE_URL` uses least-privilege runtime role credentials (example: `okr_app`, never `postgres`).
 - [ ] Treat DB-role verification as a mandatory go-live check even if runtime startup guards are temporarily relaxed.
 - [ ] Ensure backend stack is running (`okr`, `backend-api`, `backend-worker`).
 - [ ] Ensure `OKR_BACKEND_API_URL` is set in `okr` and `OKR_BACKEND_PROXY_MUTATIONS=true` for backend-owned writes.
 - [ ] Ensure `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` is unset/false in production.
+- [ ] Confirm reverted behavior is preserved: no direct local mutation fallback in `okr` production runtime.
 - [ ] Keep backend API host binding private (`127.0.0.1` unless explicitly required otherwise).
 
 Phase 3: Security and Compliance
@@ -35,7 +43,8 @@ Phase 3: Security and Compliance
 
 Phase 4: Testing and Go-Live
 - [ ] Run smoke tests: login, OKR creation, timer, dashboard, reports, and AI flows (if enabled).
-- [ ] Run UI form guard test: `python -m pytest streamlit_app/tests/test_streamlit_form_constraints.py -q` (enforces `st.form_submit_button` usage inside `st.form`).
+- [ ] Run UI form guard test: `python -m pytest tests/test_streamlit_form_guardrails.py -q` (enforces `st.form_submit_button` usage inside `st.form`).
+- [ ] Run timestamp safety guard test: `python -m pytest tests/test_timestamp_timezone_guardrails.py -q` (enforces centralized UTC epoch conversion helpers).
 - [ ] Run mapper/reload structural guard tests: `python -m pytest tests/test_models_import_consistency.py tests/test_models_relationship_resolution.py tests/test_hot_reload_model_bindings.py tests/test_hot_reload_model_rebinding.py tests/test_no_duplicate_top_level_functions.py -q`.
 - [ ] Verify frontend mutation flows succeed with backend API enabled (node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments).
 - [ ] Validate PDF/report behavior with `PDF_METHOD=pdfshift` (the only supported runtime mode).

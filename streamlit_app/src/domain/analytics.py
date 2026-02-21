@@ -350,7 +350,7 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
             ).all()
             trace.mark("task_query_ms")
 
-            now_ms = int(datetime.now().timestamp() * 1000)
+            now_ms = int(utc_now_naive().timestamp() * 1000)
             for owner_id, progress_value, deadline, created_at in task_rows:
                 owner_username = user_id_to_username.get(owner_id)
                 if not owner_username:

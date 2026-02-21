@@ -16,15 +16,32 @@ Database
   - Example:
     - `postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
 - Streamlit secrets:
+  - root keys:
+    - `OKR_DATABASE_URL` (supported)
+    - `DATABASE_URL` (supported alias)
   - [database]
     - url: full connection string
   - See template: [deploy/secrets/secrets.toml.example](../deploy/secrets/secrets.toml.example)
 - Runtime validation behavior:
   - URL must start with `postgresql+psycopg2://` (or `sqlite:///` for local/test only).
   - PostgreSQL URLs must include a host.
+- Runtime DB URL strictness flags:
+  - `OKR_ALLOW_NON_SUPABASE_DB` (default: `1`)
+    - `1`: relaxed compatibility mode (permits non-Supabase/non-pooler URLs; startup guards are softer).
+    - `0`: strict Supabase validation mode (enforces pooler/role checks below).
+  - `OKR_ALLOW_SUPABASE_SESSION_POOLER` (default: `0`)
+    - Only relevant when strict mode is enabled.
+    - `1` allows Supabase session pooler on `:5432`; otherwise runtime expects transaction pooler `:6543`.
+  - `OKR_ALLOW_SUPABASE_DIRECT_CONNECTION` (default: `0`)
+    - Only relevant when strict mode is enabled.
+    - `1` allows direct/non-pooler Supabase hosts.
+  - `OKR_ALLOW_SUPABASE_SUPERUSER` (default: `0`)
+    - Only relevant when strict mode is enabled.
+    - `1` permits `postgres*` usernames in DSN (not recommended for production).
 - Production requirements (deployment policy, mandatory):
+  - Enforce strict runtime DB validation with `OKR_ALLOW_NON_SUPABASE_DB=0`.
   - Use Supabase transaction pooler (`*.pooler.supabase.com:6543`) with `sslmode=require`.
-  - Use a dedicated least-privilege DB user (`okr_app` role, typically `okr_app.<project_ref>` in Supabase pooler DSN).
+  - Use a dedicated least-privilege runtime DB user (example: `okr_app`, typically `okr_app.<project_ref>` in Supabase pooler DSN).
   - Do not use `postgres` as runtime app user.
   - Treat this as a release gate even if startup guards are temporarily relaxed.
 - Pooling controls:
@@ -130,7 +147,7 @@ Backend API (recommended for scale)
   - With `OKR_BACKEND_API_URL` set, frontend write flows (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes) and heavy AI/PDF workflows run through backend services.
   - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API.
   - If backend transport fails, production default is fail-closed unless `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` is explicitly set.
-  - Without it, the app runs in direct mode (legacy behavior).
+  - In non-production (or when strict runtime preflight is disabled), missing backend URL can result in direct-mode legacy behavior.
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.
   - Current MVP still serves most read-heavy hierarchy traversal directly via Streamlit + SQLModel.
 

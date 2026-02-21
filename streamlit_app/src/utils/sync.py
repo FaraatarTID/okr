@@ -3,7 +3,7 @@ from typing import Dict, Any
 from datetime import datetime
 from src.database import get_session_context
 from src.models import Goal, Objective, KeyResult, Task, WorkLog, User
-from src.utils.time_utils import utc_now_naive
+from src.utils.time_utils import from_epoch_millis, utc_now_naive
 from sqlmodel import select
 
 def sync_data_to_db(username: str, data: Dict[Any, Any]):
@@ -113,7 +113,7 @@ def _sync_node(session, model_class, json_node, username, parent_id=None, all_no
     created_at_val = json_node.get("createdAt")
     if created_at_val:
         if isinstance(created_at_val, (int, float)):
-            fields["created_at"] = datetime.fromtimestamp(created_at_val / 1000)
+            fields["created_at"] = from_epoch_millis(created_at_val)
     
     # KR specific
     if model_class == KeyResult:
@@ -236,7 +236,7 @@ def _sync_work_logs(session, task_json_node, task_sql_id):
         if not start_ms: continue
         
         # Check if exists (exact start time)
-        start_dt = datetime.fromtimestamp(start_ms / 1000)
+        start_dt = from_epoch_millis(start_ms)
         statement = select(WorkLog).where(WorkLog.task_id == task_sql_id).where(WorkLog.start_time == start_dt)
         sql_log = session.exec(statement).first()
         
@@ -245,7 +245,7 @@ def _sync_work_logs(session, task_json_node, task_sql_id):
             sql_log = WorkLog(
                 task_id=task_sql_id,
                 start_time=start_dt,
-                end_time=datetime.fromtimestamp(end_ms / 1000) if end_ms else None,
+                end_time=from_epoch_millis(end_ms) if end_ms else None,
                 duration_minutes=int(log.get("durationMinutes", 0)),
                 note=log.get("summary")
             )

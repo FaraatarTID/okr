@@ -538,11 +538,10 @@ def render_app(username, runtime_bundle=None):
 
     # If no cycles exist, create a default one
     if not cycles:
-        from datetime import datetime, timedelta
-
-        now = datetime.utcnow()
+        now = utc_now_naive()
+        quarter = ((now.month - 1) // 3) + 1
         default_cycle = create_cycle(
-            title="Q1 2026",
+            title=f"Q{quarter} {now.year}",
             start_date=now,
             end_date=now + timedelta(days=90),
             is_active=True,

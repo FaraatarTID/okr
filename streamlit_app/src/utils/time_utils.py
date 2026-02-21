@@ -32,3 +32,13 @@ def to_epoch_millis(value: Optional[datetime]) -> Optional[int]:
     if dt is None:
         return None
     return int(dt.timestamp() * 1000)
+
+
+def from_epoch_seconds(value: float | int) -> datetime:
+    """Convert epoch seconds to naive UTC datetime."""
+    return datetime.fromtimestamp(float(value), tz=timezone.utc).replace(tzinfo=None)
+
+
+def from_epoch_millis(value: float | int) -> datetime:
+    """Convert epoch milliseconds to naive UTC datetime."""
+    return from_epoch_seconds(float(value) / 1000.0)

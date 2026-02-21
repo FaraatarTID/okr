@@ -26,12 +26,12 @@ Workstream A: Database Privilege Hardening (F1)
 Owner: Platform + Backend
 Priority: P0
 Tasks
-- Create a dedicated non-superuser DB role for the app (`okr_app`) with least privilege.
+- Create a dedicated non-superuser DB role for the app (example: `okr_app`) with least privilege.
 - Revoke unnecessary grants from default/public roles and grant only required schema/table permissions.
 - Rotate all app connection strings from `postgres` user to least-privilege role.
 - Add startup guard in app/backends to reject superuser DSNs in non-dev environments.
 - Update deployment docs/examples to prohibit `postgres` in runtime DSNs.
-- Interim control note: if startup guard behavior is temporarily relaxed during incident response, production deployment still must enforce `okr_app` DSN usage via checklist/release gate (not optional).
+- Interim control note: if startup guard behavior is temporarily relaxed during incident response, production deployment still must enforce least-privilege runtime DSN usage via checklist/release gate (not optional).
 Acceptance Criteria
 - Runtime DSN user is not `postgres`.
 - App startup fails in production mode if superuser DSN is supplied.
@@ -47,10 +47,12 @@ Tasks
 - Make backend availability a startup requirement for production profile.
 - Ensure Streamlit Cloud mode is documented as non-production/demo only.
 - Keep heavy operations (AI/PDF) asynchronous through backend API + worker only.
+- Keep this as a protected invariant: do not re-introduce direct Streamlit-side local mutation fallback in production without a new security review/ADR.
 Acceptance Criteria
 - All write operations go through `backend_api` in production.
 - If backend is unavailable, write actions fail closed with clear user message (no local write path).
 - No production route performs synchronous AI/PDF work in Streamlit process.
+- Deployment checklist explicitly verifies reverted local-fallback behavior remains off in production.
 
 Workstream C: Internal Service Authentication Hardening (F3)
 Owner: Security + Backend
@@ -100,6 +102,7 @@ Tasks
 - Add/extend tests for auth bypass attempts, IDOR cases, and split-path regression.
 - Add integration tests that enforce backend-only mutation routing.
 - Add UI runtime guard test to prevent non-submit Streamlit buttons inside forms (`st.button`/container `.button` inside `st.form`).
+- Add timestamp safety guard test to block ad-hoc local-time `datetime.fromtimestamp(...)` usage outside shared UTC helpers.
 - Add mapper hot-reload guards: enforce consistent `src.models` import path, lambda-based relationship resolution, and stale-binding recovery tests.
 - Run concurrency/load test for dashboard reads + timer actions + job submissions.
 - Run chaos test: backend API restart, worker restart, transient DB/network blips.
