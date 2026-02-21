@@ -6,6 +6,43 @@ from typing import List, Dict, Any
 from src.models import Task, TaskStatus
 from src.utils.time_utils import utc_now_naive
 
+
+def _resolve_task_finish_date(deadline: Any, start: datetime) -> tuple[datetime, bool]:
+    """
+    Resolve task finish datetime from mixed deadline formats.
+    Returns (finish_datetime, is_projected).
+    """
+    if deadline is None:
+        return start + timedelta(days=1), True
+
+    if isinstance(deadline, datetime):
+        return deadline, False
+
+    # Legacy compatibility: numeric deadline may be epoch seconds or milliseconds.
+    if isinstance(deadline, (int, float)):
+        numeric = float(deadline)
+        if numeric > 10_000_000_000:  # epoch milliseconds
+            return datetime.fromtimestamp(numeric / 1000), False
+        return datetime.fromtimestamp(numeric), False
+
+    if isinstance(deadline, str):
+        stripped = deadline.strip()
+        if not stripped:
+            return start + timedelta(days=1), True
+        try:
+            return datetime.fromisoformat(stripped), False
+        except ValueError:
+            try:
+                numeric = float(stripped)
+                if numeric > 10_000_000_000:
+                    return datetime.fromtimestamp(numeric / 1000), False
+                return datetime.fromtimestamp(numeric), False
+            except ValueError:
+                return start + timedelta(days=1), True
+
+    return start + timedelta(days=1), True
+
+
 def render_gantt_chart(tasks: List[Task], current_user_role: str, current_username: str, users_map: Dict[int, Any] = None):
     """
     Render a Smart Gantt Chart using Plotly Express.
@@ -33,20 +70,7 @@ def render_gantt_chart(tasks: List[Task], current_user_role: str, current_userna
         finish = None
         is_projected = False
         
-        if t.deadline:
-            try:
-                # Handle potential millisecond timestamp (standard for this app)
-                d_val = t.deadline
-                if isinstance(d_val, str): d_val = int(d_val)
-                finish = datetime.fromtimestamp(d_val / 1000)
-            except Exception:
-                # Fallback if invalid
-                finish = start + timedelta(days=1)
-                is_projected = True
-        else:
-            # Fallback: Start + 1 day
-            finish = start + timedelta(days=1)
-            is_projected = True
+        finish, is_projected = _resolve_task_finish_date(t.deadline, start)
             
         # Determine Assignee Display
         assignee_label = "Unassigned"
@@ -131,7 +155,7 @@ def render_gantt_chart(tasks: List[Task], current_user_role: str, current_userna
     )
     
     # Add today line
-    fig.add_vline(x=now.timestamp() * 1000, line_width=1, line_dash="dash", line_color="red", annotation_text="Today")
+    fig.add_vline(x=now, line_width=1, line_dash="dash", line_color="red", annotation_text="Today")
     
     st.plotly_chart(fig, use_container_width=True)
     

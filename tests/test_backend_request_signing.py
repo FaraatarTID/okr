@@ -63,7 +63,7 @@ def test_signed_request_is_accepted(monkeypatch):
 
     response = client.post(
         "/v1/timer/start",
-        data=body,
+        content=body,
         headers={
             "Content-Type": "application/json",
             "X-OKR-Actor": "alice",
@@ -100,8 +100,8 @@ def test_replay_nonce_is_rejected(monkeypatch):
         "X-OKR-Signature": signature,
     }
 
-    first = client.post("/v1/timer/start", data=body, headers=headers)
-    second = client.post("/v1/timer/start", data=body, headers=headers)
+    first = client.post("/v1/timer/start", content=body, headers=headers)
+    second = client.post("/v1/timer/start", content=body, headers=headers)
 
     assert first.status_code == 200
     assert second.status_code == 401
