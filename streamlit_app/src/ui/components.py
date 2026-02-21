@@ -3725,12 +3725,13 @@ def _build_atlas_treemap(
         source_explanation = _atlas_health_source_explanation(health.get("source"))
 
         # Standardized sizing: leaf nodes stay visually consistent so new siblings
-        # appear with equal proportion by default.
+        # appear with equal proportion by default. Non-leaf nodes contribute no
+        # extra remainder area, which avoids large blank regions in treemap layout.
         child_count = len(meta.get("children", []))
         if child_count <= 0:
             value = 10
         else:
-            value = max(10, child_count * 10)
+            value = 0
 
         fill = _atlas_health_fill_color(health, progress, meta=meta)
 
