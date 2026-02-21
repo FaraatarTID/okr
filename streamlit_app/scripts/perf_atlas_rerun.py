@@ -219,7 +219,14 @@ def _simulate_atlas_data_path(cycle_id: int, owner_ids: List[int]) -> Dict[str, 
     nav_stack = list(index.get(selected_ref, {}).get("path") or [])
 
     t3 = time.perf_counter()
-    breadcrumb_labels = components._atlas_breadcrumb_labels(nav_stack, node_lookup)
+    breadcrumb_labels = ["Home"]
+    for ref in nav_stack:
+        node_type, node_title = components._atlas_get_node_details_from_lookup(
+            ref, node_lookup=node_lookup
+        )
+        if not node_type:
+            continue
+        breadcrumb_labels.append(f"{components.TYPE_ICONS.get(node_type, '')} {node_title}")
     for ref in nav_stack:
         components.get_node_details(ref, node_lookup=node_lookup)
     breadcrumb_ms = (time.perf_counter() - t3) * 1000.0

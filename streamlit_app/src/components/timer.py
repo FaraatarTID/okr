@@ -198,14 +198,29 @@ def render_quick_add_dialog(
             st.info("No tasks available. Create tasks first to log time.")
             return
         
-        task_options = {t["title"]: t["id"] for t in tasks}
+        task_option_ids: list[int] = []
+        task_option_labels: dict[int, str] = {}
+        for task in tasks:
+            task_id = task.get("id")
+            if task_id is None:
+                continue
+            task_id = int(task_id)
+            task_title = str(task.get("title") or "").strip() or "Untitled task"
+            task_option_ids.append(task_id)
+            task_option_labels[task_id] = f"{task_title} | #{task_id}"
+        if not task_option_ids:
+            st.info("No tasks available. Create tasks first to log time.")
+            return
         
         col1, col2 = st.columns(2)
         
         with col1:
-            selected_task = st.selectbox(
+            selected_task_id = st.selectbox(
                 "Select Task",
-                options=list(task_options.keys()),
+                options=task_option_ids,
+                format_func=lambda task_id: task_option_labels.get(
+                    task_id, f"Task #{task_id}"
+                ),
                 key="quick_add_task"
             )
         
@@ -225,8 +240,9 @@ def render_quick_add_dialog(
         )
         
         if st.button("Add Log", type="primary"):
-            if selected_task:
-                task_id = task_options[selected_task]
+            if selected_task_id is not None:
+                task_id = int(selected_task_id)
                 on_add(task_id, duration, note)
-                st.success(f"Added {duration}m to '{selected_task}'")
+                task_label = task_option_labels.get(task_id, f"Task #{task_id}")
+                st.success(f"Added {duration}m to '{task_label}'")
                 st.rerun()

@@ -6,7 +6,7 @@ Provides efficient data access with JOINs for dashboard and tree loading.
 from contextlib import contextmanager
 
 from sqlmodel import Session, col, select
-from sqlalchemy import inspect as sa_inspect
+from sqlalchemy import inspect as sa_inspect, or_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError, OperationalError
 import os
@@ -154,13 +154,26 @@ _MODEL_BINDING_NAMES = (
 
 def _ensure_model_bindings_current() -> None:
     """Refresh class bindings after hot-reload if registry classes were replaced."""
-    try:
-        sa_inspect(User)
-        return
-    except Exception:
-        pass
-
     import src.models as _models
+
+    bindings_are_current = True
+    for name in _MODEL_BINDING_NAMES:
+        latest = getattr(_models, name, None)
+        if latest is None:
+            continue
+        if globals().get(name) is not latest:
+            bindings_are_current = False
+            break
+
+    if bindings_are_current:
+        try:
+            sa_inspect(User)
+            return
+        except Exception:
+            bindings_are_current = False
+
+    if bindings_are_current:
+        return
 
     for name in _MODEL_BINDING_NAMES:
         value = getattr(_models, name, None)
@@ -448,28 +461,48 @@ def _normalize_client_ip(client_ip: Optional[str]) -> Optional[str]:
     return value or None
 
 
-def _get_or_create_auth_throttle_state(
+def _get_auth_throttle_states(
     session: Session,
+    normalized_username: str,
+    normalized_ip: Optional[str],
+) -> tuple[Optional[AuthThrottleState], Optional[AuthThrottleState]]:
+    clauses = []
+    if normalized_username:
+        clauses.append(
+            (AuthThrottleState.scope == "user")
+            & (AuthThrottleState.identifier == normalized_username)
+        )
+    if normalized_ip:
+        clauses.append(
+            (AuthThrottleState.scope == "ip")
+            & (AuthThrottleState.identifier == normalized_ip)
+        )
+    if not clauses:
+        return None, None
+
+    states = list(session.exec(select(AuthThrottleState).where(or_(*clauses))).all())
+    user_state = None
+    ip_state = None
+    for state in states:
+        scope = str(state.scope or "").lower()
+        if scope == "user":
+            user_state = state
+        elif scope == "ip":
+            ip_state = state
+    return user_state, ip_state
+
+
+def _new_auth_throttle_state(
     scope: str,
     identifier: str,
     now: datetime,
 ) -> AuthThrottleState:
-    state = session.exec(
-        select(AuthThrottleState)
-        .where(AuthThrottleState.scope == scope)
-        .where(AuthThrottleState.identifier == identifier)
-    ).first()
-    if state:
-        return state
-    state = AuthThrottleState(
+    return AuthThrottleState(
         scope=scope,
         identifier=identifier,
         failed_attempts=0,
         window_started_at=now,
     )
-    session.add(state)
-    session.flush()
-    return state
 
 
 def _remaining_lockout_seconds(
@@ -527,13 +560,16 @@ def _record_failed_auth_attempt(
 
 def _clear_auth_throttle_state(
     state: Optional[AuthThrottleState], now: datetime
-) -> None:
+) -> bool:
     if not state:
-        return
+        return False
+    if int(state.failed_attempts or 0) == 0 and state.locked_until is None:
+        return False
     state.failed_attempts = 0
     state.window_started_at = now
     state.locked_until = None
     state.updated_at = now
+    return True
 
 
 def _is_auth_throttle_operational_error(exc: OperationalError) -> bool:
@@ -654,16 +690,11 @@ def authenticate_user_detailed(
 
     with get_session_context() as session:
         try:
-            user_state: Optional[AuthThrottleState] = None
-            ip_state: Optional[AuthThrottleState] = None
-            if normalized_username:
-                user_state = _get_or_create_auth_throttle_state(
-                    session, "user", normalized_username, now
-                )
-            if normalized_ip:
-                ip_state = _get_or_create_auth_throttle_state(
-                    session, "ip", normalized_ip, now
-                )
+            user_state, ip_state = _get_auth_throttle_states(
+                session,
+                normalized_username,
+                normalized_ip,
+            )
 
             user_lock_remaining = (
                 _prepare_throttle_state_for_check(
@@ -718,13 +749,12 @@ def authenticate_user_detailed(
                 and user.is_active
                 and verify_password(password, user.password_hash)
             ):
-                _clear_auth_throttle_state(user_state, now)
-                _clear_auth_throttle_state(ip_state, now)
-                if user_state:
+                user_state_changed = _clear_auth_throttle_state(user_state, now)
+                ip_state_changed = _clear_auth_throttle_state(ip_state, now)
+                if user_state and user_state_changed:
                     session.add(user_state)
-                if ip_state:
+                if ip_state and ip_state_changed:
                     session.add(ip_state)
-                session.flush()
 
                 audit_log(
                     "login",
@@ -739,6 +769,19 @@ def authenticate_user_detailed(
                     "retry_after_seconds": 0,
                     "lock_scope": None,
                 }
+
+            if normalized_username and user_state is None:
+                user_state = _new_auth_throttle_state(
+                    "user",
+                    normalized_username,
+                    now,
+                )
+            if normalized_ip and ip_state is None:
+                ip_state = _new_auth_throttle_state(
+                    "ip",
+                    normalized_ip,
+                    now,
+                )
 
             user_lock_remaining = (
                 _record_failed_auth_attempt(
@@ -767,7 +810,6 @@ def authenticate_user_detailed(
                 session.add(user_state)
             if ip_state:
                 session.add(ip_state)
-            session.flush()
 
             lock_remaining = max(user_lock_remaining, ip_lock_remaining)
             if lock_remaining > 0:

@@ -194,7 +194,14 @@ def _run_login_to_atlas_once(admin_id: int, cycle_id: int):
         None,
     )
     nav_stack = list(index.get(task_ref, {}).get("path") or [])
-    _ = components._atlas_breadcrumb_labels(nav_stack, node_lookup)
+    breadcrumb_labels = ["Home"]
+    for ref in nav_stack:
+        node_type, node_title = components._atlas_get_node_details_from_lookup(
+            ref, node_lookup=node_lookup
+        )
+        if not node_type:
+            continue
+        breadcrumb_labels.append(f"{components.TYPE_ICONS.get(node_type, '')} {node_title}")
     for ref in nav_stack:
         components.get_node_details(ref, node_lookup=node_lookup)
     t4 = time.perf_counter()
@@ -208,6 +215,7 @@ def _run_login_to_atlas_once(admin_id: int, cycle_id: int):
         "auth_success": bool(auth.get("success")),
         "runtime_has_user": bool(runtime_bundle.get("user")),
         "atlas_nodes": int(len(index)),
+        "breadcrumb_labels_count": int(len(breadcrumb_labels)),
     }
 
 

@@ -45,6 +45,7 @@ Database
   - Do not use `postgres` as runtime app user.
   - Treat this as a release gate even if startup guards are temporarily relaxed.
 - Pooling controls:
+  - These flags are resolved via standard runtime config precedence (env first, then Streamlit secrets).
   - `OKR_DB_USE_NULL_POOL` (default: `1`, recommended for Supabase PgBouncer transaction mode)
   - If `OKR_DB_USE_NULL_POOL=0`, app-side SQLAlchemy pool sizing controls apply:
     - `OKR_DB_POOL_SIZE` (default: `5`)

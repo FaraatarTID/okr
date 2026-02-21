@@ -160,9 +160,96 @@ from src.crud import (
 from src.models import UserRole
 
 
+def _cycle_to_snapshot(cycle) -> dict | None:
+    if not cycle:
+        return None
+    cycle_id = getattr(cycle, "id", None)
+    if cycle_id is None:
+        return None
+    return {
+        "id": int(cycle_id),
+        "title": str(getattr(cycle, "title", "") or ""),
+        "start_date": getattr(cycle, "start_date", None),
+        "end_date": getattr(cycle, "end_date", None),
+        "is_active": bool(getattr(cycle, "is_active", False)),
+    }
+
+
+def _date_label(value) -> str:
+    if value is None:
+        return ""
+    try:
+        return value.strftime("%Y-%m-%d")
+    except Exception:
+        return str(value)
+
+
+def _format_cycle_label(cycle_snapshot: dict) -> str:
+    cycle_id = int(cycle_snapshot.get("id"))
+    title = str(cycle_snapshot.get("title", "") or "").strip() or "Untitled cycle"
+    start_label = _date_label(cycle_snapshot.get("start_date"))
+    end_label = _date_label(cycle_snapshot.get("end_date"))
+    if start_label and end_label:
+        return f"{title} ({start_label} -> {end_label}) | #{cycle_id}"
+    if start_label:
+        return f"{title} (from {start_label}) | #{cycle_id}"
+    if end_label:
+        return f"{title} (until {end_label}) | #{cycle_id}"
+    return f"{title} | #{cycle_id}"
+
+def _build_cycle_selector_payload(cycles: list[dict]) -> tuple[list[int], dict[int, str]]:
+    cycle_ids: list[int] = []
+    labels: dict[int, str] = {}
+    for cycle in cycles:
+        cycle_id = cycle.get("id")
+        if cycle_id is None:
+            continue
+        cycle_id_int = int(cycle_id)
+        cycle_ids.append(cycle_id_int)
+        labels[cycle_id_int] = _format_cycle_label(cycle)
+    return cycle_ids, labels
+
+
 @st.cache_data(ttl=30, show_spinner=False)
 def _cached_get_all_cycles():
-    return get_all_cycles()
+    snapshots: list[dict] = []
+    for cycle in get_all_cycles():
+        payload = _cycle_to_snapshot(cycle)
+        if payload:
+            snapshots.append(payload)
+    return snapshots
+
+
+def _bootstrap_default_cycle_if_needed(
+    cycles: list[dict], *, username: str, user_role: str
+) -> tuple[list[dict], str | None]:
+    if cycles:
+        return cycles, None
+
+    if str(user_role).lower() != "admin":
+        return [], "No cycles are configured yet. Ask an admin to create one."
+
+    now = utc_now_naive()
+    quarter = ((now.month - 1) // 3) + 1
+    try:
+        default_cycle = create_cycle(
+            title=f"Q{quarter} {now.year}",
+            start_date=now,
+            end_date=now + timedelta(days=90),
+            is_active=True,
+            actor_username=username,
+        )
+    except PermissionError:
+        return [], "No cycles are configured yet. Ask an admin to create one."
+    except Exception as exc:
+        error_log("Default cycle bootstrap failed", exc)
+        return [], "No cycles available and default cycle creation failed."
+
+    default_cycle_snapshot = _cycle_to_snapshot(default_cycle)
+    if not default_cycle_snapshot:
+        return [], "No cycles available and default cycle creation failed."
+    _cached_get_all_cycles.clear()
+    return [default_cycle_snapshot], None
 
 
 @st.cache_data(ttl=10, show_spinner=False)
@@ -536,48 +623,48 @@ def render_app(username, runtime_bundle=None):
 
     st.sidebar.markdown("---")
 
-    # If no cycles exist, create a default one
-    if not cycles:
-        now = utc_now_naive()
-        quarter = ((now.month - 1) // 3) + 1
-        default_cycle = create_cycle(
-            title=f"Q{quarter} {now.year}",
-            start_date=now,
-            end_date=now + timedelta(days=90),
-            is_active=True,
-            actor_username=username,
-        )
-        cycles = [default_cycle]
+    cycles, cycles_error = _bootstrap_default_cycle_if_needed(
+        cycles,
+        username=username,
+        user_role=user_role,
+    )
+    if cycles_error:
+        st.error(cycles_error)
+        return
 
     # Cycle Selection in Sidebar
     st.sidebar.markdown("### 📅 OKR Cycle")
-    cycle_titles = [c.title for c in cycles]
+    cycle_ids, cycle_labels = _build_cycle_selector_payload(cycles)
+    if not cycle_ids:
+        st.error("No cycles available. Create one from Admin Panel -> Manage Cycles.")
+        return
 
     # Store selected cycle in session state
     if "active_cycle_id" not in st.session_state:
-        # Default to first active cycle or just the first one
-        st.session_state.active_cycle_id = cycles[0].id
+        st.session_state.active_cycle_id = cycle_ids[0]
+    active_cycle_id = int(st.session_state.get("active_cycle_id", cycle_ids[0]))
+    if active_cycle_id not in cycle_ids:
+        active_cycle_id = cycle_ids[0]
+        st.session_state.active_cycle_id = active_cycle_id
 
-    current_cycle_index = 0
-    for i, c in enumerate(cycles):
-        if c.id == st.session_state.active_cycle_id:
-            current_cycle_index = i
-            break
+    current_cycle_index = cycle_ids.index(active_cycle_id)
 
-    selected_cycle_title = st.sidebar.selectbox(
-        "Select Cycle",
-        options=cycle_titles,
-        index=current_cycle_index,
-        label_visibility="collapsed",
+    selected_cycle_id = int(
+        st.sidebar.selectbox(
+            "Select Cycle",
+            options=cycle_ids,
+            format_func=lambda cid: cycle_labels.get(cid, f"Cycle #{cid}"),
+            index=current_cycle_index,
+            label_visibility="collapsed",
+        )
     )
 
     if st.sidebar.button("⚙️ Manage Cycles", key="manage_cycles_sidebar"):
         render_manage_cycles_dialog()
 
     # Update active_cycle_id if changed
-    selected_cycle = next(c for c in cycles if c.title == selected_cycle_title)
-    if selected_cycle.id != st.session_state.active_cycle_id:
-        st.session_state.active_cycle_id = selected_cycle.id
+    if selected_cycle_id != active_cycle_id:
+        st.session_state.active_cycle_id = selected_cycle_id
         st.session_state.nav_stack = []
         for key in [
             "atlas_selected_ref",

@@ -44,8 +44,15 @@ Phase 3: Security and Compliance
 Phase 4: Testing and Go-Live
 - [ ] Run smoke tests: login, OKR creation, timer, dashboard, reports, and AI flows (if enabled).
 - [ ] Run UI form guard test: `python -m pytest tests/test_streamlit_form_guardrails.py -q` (enforces `st.form_submit_button` usage inside `st.form`).
+- [ ] Run auth throttle + login query budget test: `python -m pytest tests/test_auth_rate_limit.py -q` (validates lockout behavior and guards steady-state successful login query count).
+- [ ] Run selector integrity guard test: `python -m pytest tests/test_selector_integrity_guardrails.py -q` (enforces ID-backed `selectbox`/`multiselect` options to avoid duplicate-label collisions).
+- [ ] Run Atlas cache/latency guard test: `python -m pytest tests/test_atlas_cache_performance.py -q` (enforces deterministic owner-scope cache keys, bounded query budget, and session-level treemap cache reuse on rerun).
 - [ ] Run timestamp safety guard test: `python -m pytest tests/test_timestamp_timezone_guardrails.py -q` (enforces centralized UTC epoch conversion helpers).
+- [ ] Run UTC API guard test: `python -m pytest tests/test_time_api_guardrails.py -q` (blocks deprecated `datetime.utcnow()` usage in runtime code).
+- [ ] Run cycle bootstrap/cache guard test: `python -m pytest tests/test_app_cycle_cache_snapshot.py -q` (verifies cycle selector payload integrity and safe default-cycle bootstrap behavior).
+- [ ] Run DB pooling config guard test: `python -m pytest tests/test_database_engine_pooling.py -q` (verifies NullPool defaults, secrets-aware pooling flags, and safe bounds on pool tunables).
 - [ ] Run mapper/reload structural guard tests: `python -m pytest tests/test_models_import_consistency.py tests/test_models_relationship_resolution.py tests/test_hot_reload_model_bindings.py tests/test_hot_reload_model_rebinding.py tests/test_no_duplicate_top_level_functions.py -q`.
+- [ ] Run model identity + cache invalidation guard tests: `python -m pytest tests/test_model_binding_identity_guard.py tests/test_hot_reload_cache_invalidation.py -q` (ensures hot reload rebinding tracks latest `src.models` classes and clears stale Streamlit data cache).
 - [ ] Verify frontend mutation flows succeed with backend API enabled (node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments).
 - [ ] Validate PDF/report behavior with `PDF_METHOD=pdfshift` (the only supported runtime mode).
 - [ ] Validate backend job flow (`backend-worker` processes AI/PDF requests successfully).

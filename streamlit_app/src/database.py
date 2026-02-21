@@ -19,9 +19,7 @@ from urllib.parse import urlparse
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
-
-
-_TRUE_VALUES = {"1", "true", "yes", "on"}
+from src.config_runtime import get_bool_config, get_config_value
 
 
 def _get_database_url() -> str:
@@ -79,20 +77,28 @@ def _normalize_database_url(url: str) -> str:
 
 def _allow_non_supabase_url() -> bool:
     """Compatibility gate: relaxed by default, strict when explicitly disabled."""
-    raw = str(os.getenv("OKR_ALLOW_NON_SUPABASE_DB", "1")).strip().lower()
-    return raw in _TRUE_VALUES
+    return get_bool_config("OKR_ALLOW_NON_SUPABASE_DB", True)
 
 
 def _allow_supabase_session_pooler() -> bool:
-    return str(os.getenv("OKR_ALLOW_SUPABASE_SESSION_POOLER", "")).strip().lower() in _TRUE_VALUES
+    return get_bool_config("OKR_ALLOW_SUPABASE_SESSION_POOLER", False)
 
 
 def _allow_supabase_direct_connection() -> bool:
-    return str(os.getenv("OKR_ALLOW_SUPABASE_DIRECT_CONNECTION", "")).strip().lower() in _TRUE_VALUES
+    return get_bool_config("OKR_ALLOW_SUPABASE_DIRECT_CONNECTION", False)
 
 
 def _allow_supabase_superuser_url() -> bool:
-    return str(os.getenv("OKR_ALLOW_SUPABASE_SUPERUSER", "")).strip().lower() in _TRUE_VALUES
+    return get_bool_config("OKR_ALLOW_SUPABASE_SUPERUSER", False)
+
+
+def _get_int_runtime_config(name: str, default: int, minimum: int) -> int:
+    raw = str(get_config_value(name, str(default))).strip()
+    try:
+        value = int(raw)
+    except Exception:
+        value = int(default)
+    return max(int(minimum), value)
 
 
 def _validate_database_url(url: str) -> str:
@@ -143,16 +149,22 @@ def _create_engine(url: str):
     elif normalized.startswith("postgresql+psycopg2://"):
         # Supabase recommends PgBouncer transaction pooler; disable app-side pooling
         # by default to avoid session/prepared-statement conflicts.
-        use_null_pool = (
-            str(os.getenv("OKR_DB_USE_NULL_POOL", "1")).strip().lower() in _TRUE_VALUES
-        )
+        use_null_pool = get_bool_config("OKR_DB_USE_NULL_POOL", True)
         if use_null_pool:
             kwargs["poolclass"] = NullPool
         else:
-            kwargs["pool_size"] = max(1, int(os.getenv("OKR_DB_POOL_SIZE", "5")))
-            kwargs["max_overflow"] = max(0, int(os.getenv("OKR_DB_MAX_OVERFLOW", "5")))
-            kwargs["pool_timeout"] = max(1, int(os.getenv("OKR_DB_POOL_TIMEOUT", "30")))
-            kwargs["pool_recycle"] = max(30, int(os.getenv("OKR_DB_POOL_RECYCLE", "1800")))
+            kwargs["pool_size"] = _get_int_runtime_config(
+                "OKR_DB_POOL_SIZE", default=5, minimum=1
+            )
+            kwargs["max_overflow"] = _get_int_runtime_config(
+                "OKR_DB_MAX_OVERFLOW", default=5, minimum=0
+            )
+            kwargs["pool_timeout"] = _get_int_runtime_config(
+                "OKR_DB_POOL_TIMEOUT", default=30, minimum=1
+            )
+            kwargs["pool_recycle"] = _get_int_runtime_config(
+                "OKR_DB_POOL_RECYCLE", default=1800, minimum=30
+            )
             kwargs["pool_use_lifo"] = True
 
     engine = create_engine(
@@ -298,6 +310,12 @@ def _refresh_loaded_model_references_if_needed() -> None:
                 module_dict[binding_name] = latest
 
     _last_models_identity = identity
+    try:
+        import streamlit as st
+
+        st.cache_data.clear()
+    except Exception:
+        pass
 
 
 def get_engine():
