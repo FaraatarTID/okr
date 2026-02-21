@@ -4,6 +4,7 @@ import time
 import os
 import sys
 import json
+import hashlib
 from datetime import datetime
 from types import SimpleNamespace
 import plotly.graph_objects as go
@@ -85,13 +86,26 @@ _MODEL_BINDING_NAMES = (
 
 def _ensure_model_bindings_current() -> None:
     """Refresh local model symbols if SQLModel registry classes were reloaded."""
-    try:
-        sa_inspect(User)
-        return
-    except Exception:
-        pass
-
     import src.models as _models
+
+    bindings_are_current = True
+    for name in _MODEL_BINDING_NAMES:
+        latest = getattr(_models, name, None)
+        if latest is None:
+            continue
+        if globals().get(name) is not latest:
+            bindings_are_current = False
+            break
+
+    if bindings_are_current:
+        try:
+            sa_inspect(User)
+            return
+        except Exception:
+            bindings_are_current = False
+
+    if bindings_are_current:
+        return
 
     for name in _MODEL_BINDING_NAMES:
         value = getattr(_models, name, None)
@@ -446,12 +460,15 @@ def _cached_get_atlas_scope_runtime(
     )
     node_lookup = _atlas_build_node_lookup(index)
     health_index = _atlas_health_index(index)
+    snapshot_json = json.dumps(snapshot, default=str, sort_keys=True, separators=(",", ":"))
+    runtime_token = hashlib.sha1(snapshot_json.encode("utf-8")).hexdigest()
     return {
         "snapshot": snapshot,
         "index": index,
         "roots": roots,
         "node_lookup": node_lookup,
         "health_index": health_index,
+        "runtime_token": runtime_token,
     }
 
 
@@ -726,24 +743,23 @@ def render_leadership_dashboard_content(username):
 
         # Filter active users and create options
         active_users = [u for u in all_users if u.is_active]
-        member_options = {
-            u.display_name or u.username: u.username for u in active_users
-        }
         member_display_map = {
             u.username: u.display_name or u.username for u in active_users
         }
+        member_usernames = [u.username for u in active_users]
 
-        if member_options:
+        if member_usernames:
             # Multi-select with all selected by default
-            selected_names = st.multiselect(
+            selected_usernames = st.multiselect(
                 "Select members to include in dashboard",
-                options=list(member_options.keys()),
-                default=list(member_options.keys()),
+                options=member_usernames,
+                default=member_usernames,
+                format_func=lambda uname: member_display_map.get(uname, uname),
                 help="Filter dashboard metrics to show data for selected members only",
                 key="dash_members",
             )
 
-            selected_members = [member_options[name] for name in selected_names]
+            selected_members = selected_usernames
 
             if not selected_members:
                 st.warning("Please select at least one team member.")
@@ -1940,27 +1956,39 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                     if manager_obj:
                         potential_assignees.append(manager_obj)
 
-                # Map for selection
-                member_options = {
-                    f"{u.display_name} (@{u.username})": u.id
-                    for u in potential_assignees
-                }
+                assignee_ids: list[int] = []
+                assignee_labels: dict[int, str] = {}
+                for user_option in potential_assignees:
+                    user_id = getattr(user_option, "id", None)
+                    if user_id is None:
+                        continue
+                    user_id = int(user_id)
+                    assignee_ids.append(user_id)
+                    display_name = (
+                        user_option.display_name
+                        or user_option.username
+                        or f"user_{user_id}"
+                    )
+                    assignee_labels[user_id] = (
+                        f"{display_name} (@{user_option.username}) | #{user_id}"
+                    )
 
-                # Find current index
-                curr_idx_ass = 0
-                if new_assignee_id_insp:
-                    for i, (lab, uid) in enumerate(member_options.items()):
-                        if uid == new_assignee_id_insp:
-                            curr_idx_ass = i
-                            break
+                if assignee_ids:
+                    curr_idx_ass = 0
+                    if new_assignee_id_insp:
+                        try:
+                            curr_idx_ass = assignee_ids.index(int(new_assignee_id_insp))
+                        except ValueError:
+                            curr_idx_ass = 0
 
-                selected_label_ass = st.selectbox(
-                    "Assign To",
-                    options=list(member_options.keys()),
-                    index=curr_idx_ass,
-                    key=f"assign_sel_{node_id}",
-                )
-                new_assignee_id_insp = member_options[selected_label_ass]
+                    selected_assignee_id = st.selectbox(
+                        "Assign To",
+                        options=assignee_ids,
+                        index=curr_idx_ass,
+                        format_func=lambda uid: assignee_labels.get(uid, f"User #{uid}"),
+                        key=f"assign_sel_{node_id}",
+                    )
+                    new_assignee_id_insp = int(selected_assignee_id)
             else:
                 # Read-only for Members
                 if node.assignee:
@@ -2241,22 +2269,46 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                     all_objs = session.exec(select(Objective).where(Objective.id != node_id)).all()
                 
                 if all_objs:
-                    obj_options = {f"{o.title} (@{o.created_by or 'system'})": o.id for o in all_objs}
-                    selected_obj_label = st.selectbox("Select Objective", options=list(obj_options.keys()), key=f"align_sel_{node_id}")
-                    target_id = obj_options.get(selected_obj_label)
-                    
-                    align_type_sel = st.radio("Relationship", ["This objective SUPPORTS the target", "The target SUPPORTS this objective"], key=f"align_type_{node_id}")
-                    
-                    if st.form_submit_button("🔗 Link Objectives", use_container_width=True):
-                        try:
-                            if align_type_sel == "This objective SUPPORTS the target":
-                                create_alignment(parent_id=target_id, child_id=node_id, actor_username=username)
-                            else:
-                                create_alignment(parent_id=node_id, child_id=target_id, actor_username=username)
-                            st.success("Alignment linked!")
-                            st.rerun()
-                        except ValueError as e:
-                            st.error(str(e))
+                    objective_ids: list[int] = []
+                    objective_labels: dict[int, str] = {}
+                    for objective in all_objs:
+                        objective_id = getattr(objective, "id", None)
+                        if objective_id is None:
+                            continue
+                        objective_id = int(objective_id)
+                        objective_ids.append(objective_id)
+                        objective_title = (objective.title or "").strip() or "Untitled objective"
+                        objective_owner = (objective.created_by or "system").strip() or "system"
+                        objective_labels[objective_id] = (
+                            f"{objective_title} (@{objective_owner}) | #{objective_id}"
+                        )
+
+                    if not objective_ids:
+                        st.write("No other objectives available to link.")
+                    else:
+                        target_id = int(
+                            st.selectbox(
+                                "Select Objective",
+                                options=objective_ids,
+                                format_func=lambda oid: objective_labels.get(
+                                    oid, f"Objective #{oid}"
+                                ),
+                                key=f"align_sel_{node_id}",
+                            )
+                        )
+                        
+                        align_type_sel = st.radio("Relationship", ["This objective SUPPORTS the target", "The target SUPPORTS this objective"], key=f"align_type_{node_id}")
+                        
+                        if st.form_submit_button("🔗 Link Objectives", use_container_width=True):
+                            try:
+                                if align_type_sel == "This objective SUPPORTS the target":
+                                    create_alignment(parent_id=target_id, child_id=node_id, actor_username=username)
+                                else:
+                                    create_alignment(parent_id=node_id, child_id=target_id, actor_username=username)
+                                st.success("Alignment linked!")
+                                st.rerun()
+                            except ValueError as e:
+                                st.error(str(e))
                 else:
                     st.write("No other objectives available to link.")
 
@@ -3649,6 +3701,90 @@ def _atlas_scope_refs(roots, index, limit: int = 800):
     return refs
 
 
+_ATLAS_TREEMAP_CACHE_STATE_KEY = "_atlas_treemap_figure_cache"
+_ATLAS_TREEMAP_CACHE_ORDER_KEY = "_atlas_treemap_figure_cache_order"
+_ATLAS_TREEMAP_CACHE_MAX_ENTRIES = 8
+
+
+def _atlas_treemap_cache_key(
+    runtime_token,
+    refs,
+    selected_ref,
+    focus_task_ref,
+    selected_path_refs,
+    chart_height: int,
+):
+    refs_key = tuple(str(ref) for ref in (refs or []))
+    path_key = tuple(sorted(str(ref) for ref in (selected_path_refs or [])))
+    return (
+        str(runtime_token or ""),
+        refs_key,
+        str(selected_ref or ""),
+        str(focus_task_ref or ""),
+        path_key,
+        int(chart_height),
+    )
+
+
+def _atlas_cached_treemap(
+    refs,
+    index,
+    selected_ref: str,
+    focus_task_ref: str,
+    selected_path_refs=None,
+    chart_height: int = 500,
+    health_index=None,
+    runtime_token=None,
+):
+    cache = st.session_state.get(_ATLAS_TREEMAP_CACHE_STATE_KEY)
+    if not isinstance(cache, dict):
+        cache = {}
+    order = st.session_state.get(_ATLAS_TREEMAP_CACHE_ORDER_KEY)
+    if not isinstance(order, list):
+        order = []
+
+    cache_key = _atlas_treemap_cache_key(
+        runtime_token,
+        refs,
+        selected_ref,
+        focus_task_ref,
+        selected_path_refs,
+        chart_height,
+    )
+    hit = cache.get(cache_key)
+    if hit is not None:
+        if cache_key in order:
+            order.remove(cache_key)
+        order.append(cache_key)
+        st.session_state[_ATLAS_TREEMAP_CACHE_ORDER_KEY] = order
+        st.session_state[_ATLAS_TREEMAP_CACHE_STATE_KEY] = cache
+        return hit
+
+    built = _build_atlas_treemap(
+        refs,
+        index,
+        selected_ref,
+        focus_task_ref,
+        selected_path_refs=selected_path_refs,
+        chart_height=chart_height,
+        health_index=health_index,
+    )
+    if built is None:
+        return None
+
+    cache[cache_key] = built
+    if cache_key in order:
+        order.remove(cache_key)
+    order.append(cache_key)
+    while len(order) > _ATLAS_TREEMAP_CACHE_MAX_ENTRIES:
+        stale_key = order.pop(0)
+        cache.pop(stale_key, None)
+
+    st.session_state[_ATLAS_TREEMAP_CACHE_ORDER_KEY] = order
+    st.session_state[_ATLAS_TREEMAP_CACHE_STATE_KEY] = cache
+    return built
+
+
 def _build_atlas_treemap(
     refs,
     index,
@@ -3866,6 +4002,7 @@ def render_atlas_workspace(username):
     roots = list(atlas_runtime.get("roots") or [])
     node_lookup = atlas_runtime.get("node_lookup") or {}
     health_index = atlas_runtime.get("health_index")
+    runtime_token = atlas_runtime.get("runtime_token")
     if not isinstance(health_index, dict):
         health_index = _atlas_health_index(index)
     st.session_state["atlas_node_lookup"] = node_lookup
@@ -5153,7 +5290,7 @@ def render_atlas_workspace(username):
                         st.session_state.pop("atlas_ai_undo_report", None)
 
                 map_chart_height = 280 if is_mobile_request else 500
-                treemap = _build_atlas_treemap(
+                treemap = _atlas_cached_treemap(
                     map_refs,
                     index,
                     selected_ref,
@@ -5161,6 +5298,7 @@ def render_atlas_workspace(username):
                     selected_path_refs=selected_path_refs,
                     chart_height=map_chart_height,
                     health_index=health_index,
+                    runtime_token=runtime_token,
                 )
                 if treemap is not None:
                     chart_key = f"atlas_focus_treemap_{selected_ref}"

@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy.exc import OperationalError
+from sqlalchemy import event
 from sqlmodel import SQLModel, select
 
 
@@ -189,7 +190,7 @@ def test_authentication_falls_back_on_generic_throttle_operational_error(
         )
 
     monkeypatch.setattr(
-        crud, "_get_or_create_auth_throttle_state", _raise_operational_error, raising=True
+        crud, "_get_auth_throttle_states", _raise_operational_error, raising=True
     )
 
     failed = authenticate_user_detailed("alice", "wrong-pass", client_ip="203.0.113.10")
@@ -199,3 +200,33 @@ def test_authentication_falls_back_on_generic_throttle_operational_error(
     success = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
     assert success["success"] is True
     assert success["user"] is not None
+
+
+def test_successful_login_query_budget_after_throttle_reset(isolated_db):
+    from src.crud import authenticate_user_detailed, create_user
+    from src.database import get_engine
+
+    create_user("alice", "alice-pass")
+    client_ip = "203.0.113.55"
+
+    # Seed + reset throttle states once, then measure steady-state successful login.
+    authenticate_user_detailed("alice", "bad", client_ip=client_ip)
+    authenticate_user_detailed("alice", "alice-pass", client_ip=client_ip)
+
+    engine = get_engine()
+    counter = {"count": 0}
+
+    def _before_cursor_execute(
+        conn, cursor, statement, parameters, context, executemany
+    ):
+        counter["count"] += 1
+
+    event.listen(engine, "before_cursor_execute", _before_cursor_execute)
+    try:
+        auth = authenticate_user_detailed("alice", "alice-pass", client_ip=client_ip)
+    finally:
+        event.remove(engine, "before_cursor_execute", _before_cursor_execute)
+
+    assert auth["success"] is True
+    # Steady-state success should only read throttle states + user row.
+    assert counter["count"] <= 2

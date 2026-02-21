@@ -56,7 +56,7 @@ def test_no_st_button_inside_forms() -> None:
 
     issues: list[str] = []
     for path in files:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
         rel = path.relative_to(repo_root)
         visitor = _FormButtonVisitor(rel)
         visitor.visit(tree)

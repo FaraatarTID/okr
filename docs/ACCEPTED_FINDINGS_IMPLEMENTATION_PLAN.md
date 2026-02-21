@@ -104,6 +104,7 @@ Tasks
 - Add UI runtime guard test to prevent non-submit Streamlit buttons inside forms (`st.button`/container `.button` inside `st.form`).
 - Add timestamp safety guard test to block ad-hoc local-time `datetime.fromtimestamp(...)` usage outside shared UTC helpers.
 - Add mapper hot-reload guards: enforce consistent `src.models` import path, lambda-based relationship resolution, and stale-binding recovery tests.
+- Add Atlas map rerun latency guard: cache treemap figure builds per runtime snapshot + selection state to avoid repeated Plotly reconstruction on unchanged reruns.
 - Run concurrency/load test for dashboard reads + timer actions + job submissions.
 - Run chaos test: backend API restart, worker restart, transient DB/network blips.
 - Run security verification checklist before pilot go-live.
@@ -111,6 +112,7 @@ Acceptance Criteria
 - Test suite passes with new controls enabled.
 - No form-widget runtime regressions in smoke tests (no `st.button() can't be used in an st.form()` failures).
 - No SQLAlchemy duplicate-class/runtime mapper failures during app code hot-reload.
+- Atlas workspace reruns do not repeatedly rebuild treemap figures when map inputs are unchanged.
 - No critical/high findings remain open in pre-go-live review.
 - Pilot load profile meets latency/error-budget targets.
 

@@ -208,27 +208,58 @@ def render_admin_panel_dialog():
         new_role = st.selectbox("Role", options=["member", "manager", "admin"], key="new_role")
         require_pw_change = st.checkbox("Require password change on first login", value=True, key="new_require_pw_change")
         
-        # Manager assignment (for members)
+        # Manager assignment (for members) - ID-backed to avoid display-name collisions.
         managers = [u for u in get_all_users() if u.role.value in ["manager", "admin"]]
-        manager_options = {u.display_name: u.id for u in managers}
-        new_manager = st.selectbox("Assigned Manager", options=["None"] + list(manager_options.keys()), key="new_manager")
+        manager_option_ids = [None]
+        manager_labels = {None: "None"}
+        for manager in managers:
+            manager_id = getattr(manager, "id", None)
+            if manager_id is None:
+                continue
+            manager_id = int(manager_id)
+            manager_option_ids.append(manager_id)
+            manager_name = (
+                (manager.display_name or manager.username or f"user_{manager_id}").strip()
+                or f"user_{manager_id}"
+            )
+            manager_labels[manager_id] = f"{manager_name} (@{manager.username}) | #{manager_id}"
+        new_manager_id = st.selectbox(
+            "Assigned Manager",
+            options=manager_option_ids,
+            format_func=lambda mid: manager_labels.get(mid, f"User #{mid}"),
+            key="new_manager",
+        )
         
         # Team assignment
         teams = get_all_teams()
-        team_options = {t.name: t.id for t in teams}
-        new_team = st.selectbox("Assign Team", options=["None"] + list(team_options.keys()), key="new_team_select")
+        team_option_ids = [None]
+        team_labels = {None: "None"}
+        for team in teams:
+            team_id = getattr(team, "id", None)
+            if team_id is None:
+                continue
+            team_id = int(team_id)
+            team_option_ids.append(team_id)
+            team_name = (team.name or f"team_{team_id}").strip() or f"team_{team_id}"
+            team_labels[team_id] = f"{team_name} | #{team_id}"
+        new_team_id = st.selectbox(
+            "Assign Team",
+            options=team_option_ids,
+            format_func=lambda tid: team_labels.get(tid, f"Team #{tid}"),
+            key="new_team_select",
+        )
         
         if st.button("Create User", type="primary"):
             if new_username and new_password:
                 try:
-                    manager_id_val = manager_options.get(new_manager) if new_manager != "None" else None
+                    manager_id_val = int(new_manager_id) if new_manager_id is not None else None
                     create_user(
                         username=new_username,
                         password=new_password,
                         role=UserRole(new_role),
                         display_name=new_display or new_username,
                         manager_id=manager_id_val,
-                        team_id=team_options.get(new_team) if new_team != "None" else None,
+                        team_id=int(new_team_id) if new_team_id is not None else None,
                         must_change_password=require_pw_change,
                         actor_username=st.session_state.get("username"),
                     )
@@ -395,28 +426,50 @@ def render_admin_panel_dialog():
     with tab5:
         st.markdown("#### Reset Password")
         user_list_reset = get_all_users()
-        user_options_reset = {u.display_name: u.id for u in user_list_reset}
-        selected_user = st.selectbox("Select User", options=list(user_options_reset.keys()), key="reset_user")
-        new_pw = st.text_input("New Password", type="password", key="new_pw")
-        confirm_pw = st.text_input("Confirm Password", type="password", key="confirm_pw")
-        force_change = st.checkbox("Require change at next login", value=False, key="reset_force_change")
-        
-        if st.button("Reset Password", type="primary", key="reset_pw_btn"):
-            if new_pw and new_pw == confirm_pw:
-                u_id = user_options_reset.get(selected_user)
-                if u_id and reset_user_password(
-                    u_id,
-                    new_pw,
-                    require_change=force_change,
-                    actor_username=st.session_state.get("username"),
-                ):
-                    st.success(f"Password for '{selected_user}' reset successfully!")
+        reset_user_ids: list[int] = []
+        reset_user_labels: dict[int, str] = {}
+        reset_user_names: dict[int, str] = {}
+        for user in user_list_reset:
+            user_id = getattr(user, "id", None)
+            if user_id is None:
+                continue
+            user_id = int(user_id)
+            reset_user_ids.append(user_id)
+            display_name = (user.display_name or user.username or f"user_{user_id}").strip()
+            if not display_name:
+                display_name = f"user_{user_id}"
+            reset_user_names[user_id] = display_name
+            reset_user_labels[user_id] = f"{display_name} (@{user.username}) | #{user_id}"
+        if not reset_user_ids:
+            st.info("No users available for password reset.")
+        else:
+            selected_user_id = st.selectbox(
+                "Select User",
+                options=reset_user_ids,
+                format_func=lambda uid: reset_user_labels.get(uid, f"User #{uid}"),
+                key="reset_user",
+            )
+            new_pw = st.text_input("New Password", type="password", key="new_pw")
+            confirm_pw = st.text_input("Confirm Password", type="password", key="confirm_pw")
+            force_change = st.checkbox("Require change at next login", value=False, key="reset_force_change")
+            
+            if st.button("Reset Password", type="primary", key="reset_pw_btn"):
+                if new_pw and new_pw == confirm_pw:
+                    u_id = int(selected_user_id)
+                    if u_id and reset_user_password(
+                        u_id,
+                        new_pw,
+                        require_change=force_change,
+                        actor_username=st.session_state.get("username"),
+                    ):
+                        selected_display = reset_user_names.get(u_id, f"User #{u_id}")
+                        st.success(f"Password for '{selected_display}' reset successfully!")
+                    else:
+                        st.error("Failed to reset password.")
+                elif new_pw != confirm_pw:
+                    st.error("Passwords do not match.")
                 else:
-                    st.error("Failed to reset password.")
-            elif new_pw != confirm_pw:
-                st.error("Passwords do not match.")
-            else:
-                st.error("Please enter a new password.")
+                    st.error("Please enter a new password.")
 
     with tab6:
         from src.services.ai_provider import (
@@ -786,18 +839,42 @@ def render_weekly_ritual_dialog(username):
                         active_exps = st.session_state.get(exp_cache_key, [])
                         
                         if active_exps:
-                            exp_options = {"None (no experiment this week)": None}
-                            for e in active_exps:
-                                status_bad = "🟢" if e.status == ExperimentStatus.RUNNING else "⚪"
-                                label = f"{status_bad} {e.hypothesis[:50]}{'...' if len(e.hypothesis) > 50 else ''}"
-                                exp_options[label] = e.id
-                            
-                            selected_exp_label = st.selectbox(
+                            exp_ids = [None]
+                            exp_labels = {None: "None (no experiment this week)"}
+                            for experiment in active_exps:
+                                exp_id = getattr(experiment, "id", None)
+                                if exp_id is None:
+                                    continue
+                                exp_id = int(exp_id)
+                                exp_ids.append(exp_id)
+                                status_badge = (
+                                    "🟢"
+                                    if experiment.status == ExperimentStatus.RUNNING
+                                    else "⚪"
+                                )
+                                hypothesis = experiment.hypothesis or ""
+                                hypothesis_excerpt = (
+                                    f"{hypothesis[:50]}..."
+                                    if len(hypothesis) > 50
+                                    else hypothesis
+                                )
+                                exp_labels[exp_id] = (
+                                    f"{status_badge} {hypothesis_excerpt} | #{exp_id}"
+                                )
+
+                            selected_exp_id = st.selectbox(
                                 "Link to active experiment",
-                                options=list(exp_options.keys()),
+                                options=exp_ids,
+                                format_func=lambda eid: exp_labels.get(
+                                    eid, f"Experiment #{eid}"
+                                ),
                                 key=f"exp_select_{kr.id}",
                             )
-                            experiment_id_to_link = exp_options.get(selected_exp_label)
+                            experiment_id_to_link = (
+                                int(selected_exp_id)
+                                if selected_exp_id is not None
+                                else None
+                            )
                         else:
                             st.warning("No active experiments for this KR.")
                             
@@ -938,17 +1015,34 @@ def render_create_task_dialog(parent_id, username):
             user_obj = _cached_get_user_by_username(username)
             if user_obj:
                 team = get_team_members(user_obj.id)
-                member_map = {
-                    f"{m.display_name or m.username} ({m.username})": m.id
-                    for m in team
-                    if m.id is not None
-                }
+                member_option_ids: list[int] = []
+                member_option_labels: dict[int, str] = {}
+                for member in team:
+                    member_id = getattr(member, "id", None)
+                    if member_id is None:
+                        continue
+                    member_id = int(member_id)
+                    member_option_ids.append(member_id)
+                    display_name = member.display_name or member.username or f"user_{member_id}"
+                    member_option_labels[member_id] = (
+                        f"{display_name} (@{member.username}) | #{member_id}"
+                    )
                 if user_obj.id is not None:
-                    member_map[f"{user_obj.display_name or user_obj.username} (Me)"] = user_obj.id
-                
-                selected_label = st.selectbox("Assign To", options=list(member_map.keys()))
-                if selected_label:
-                    assignee_id = member_map[selected_label]
+                    owner_id = int(user_obj.id)
+                    owner_name = user_obj.display_name or user_obj.username or f"user_{owner_id}"
+                    member_option_labels[owner_id] = (
+                        f"{owner_name} (@{user_obj.username}) (Me) | #{owner_id}"
+                    )
+                    if owner_id not in member_option_ids:
+                        member_option_ids.append(owner_id)
+
+                if member_option_ids:
+                    selected_member_id = st.selectbox(
+                        "Assign To",
+                        options=member_option_ids,
+                        format_func=lambda uid: member_option_labels.get(uid, f"User #{uid}"),
+                    )
+                    assignee_id = int(selected_member_id)
         else:
             # Member assigns to self.
             assignee_id = st.session_state.get("user_id")
@@ -1363,11 +1457,26 @@ def render_retrobox_dialog(username):
                 
                 # Fetch team members for filter
                 team_members = get_team_members(current_user.id)
-                member_options = {"All": None}
-                for m in team_members: member_options[m.display_name] = m.id
-                
-                selected_member_name = st.selectbox("Filter by Member", options=list(member_options.keys()))
-                selected_member_id = member_options[selected_member_name]
+                member_option_ids = [None]
+                member_option_labels = {None: "All"}
+                for member in team_members:
+                    member_id = getattr(member, "id", None)
+                    if member_id is None:
+                        continue
+                    member_id = int(member_id)
+                    member_option_ids.append(member_id)
+                    display_name = (
+                        member.display_name or member.username or f"user_{member_id}"
+                    )
+                    member_option_labels[member_id] = (
+                        f"{display_name} (@{member.username})"
+                    )
+
+                selected_member_id = st.selectbox(
+                    "Filter by Member",
+                    options=member_option_ids,
+                    format_func=lambda uid: member_option_labels.get(uid, f"User #{uid}"),
+                )
                 
                 for r in team_retros:
                     # Filter logic

@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import streamlit as st
 from sqlalchemy import event
 from sqlmodel import SQLModel
 
@@ -198,3 +199,64 @@ def test_atlas_cache_miss_snapshot_query_budget(isolated_db):
 
     query_count = _count_queries(isolated_db, _cache_miss_snapshot_work)
     assert query_count <= 4
+
+
+def test_atlas_treemap_session_cache_reuses_figure(isolated_db, monkeypatch):
+    from src.ui import components as atlas_components
+
+    user, cycle = _seed_small_tree()
+    owner_ids_key = atlas_components._canonical_owner_ids_key([user.id])
+
+    atlas_components._cached_get_atlas_scope_runtime.clear()
+    runtime = atlas_components._cached_get_atlas_scope_runtime(
+        cycle.id,
+        owner_ids_key,
+        include_analysis=False,
+    )
+    index = runtime.get("index", {})
+    roots = runtime.get("roots", [])
+    health_index = runtime.get("health_index")
+    runtime_token = runtime.get("runtime_token")
+    task_ref = next(
+        (ref for ref, meta in index.items() if meta.get("type") == "TASK"),
+        None,
+    )
+    assert task_ref is not None
+    refs = atlas_components._atlas_scope_refs(roots, index, limit=800)
+    selected_path_refs = set(index[task_ref]["path"])
+
+    build_calls = {"count": 0}
+
+    def _fake_build(*args, **kwargs):
+        import plotly.graph_objects as go
+
+        build_calls["count"] += 1
+        return go.Figure()
+
+    monkeypatch.setattr(atlas_components, "_build_atlas_treemap", _fake_build)
+    st.session_state.pop("_atlas_treemap_figure_cache", None)
+    st.session_state.pop("_atlas_treemap_figure_cache_order", None)
+
+    fig1 = atlas_components._atlas_cached_treemap(
+        refs,
+        index,
+        task_ref,
+        task_ref,
+        selected_path_refs=selected_path_refs,
+        chart_height=500,
+        health_index=health_index,
+        runtime_token=runtime_token,
+    )
+    fig2 = atlas_components._atlas_cached_treemap(
+        refs,
+        index,
+        task_ref,
+        task_ref,
+        selected_path_refs=selected_path_refs,
+        chart_height=500,
+        health_index=health_index,
+        runtime_token=runtime_token,
+    )
+
+    assert fig1 is fig2
+    assert build_calls["count"] == 1
