@@ -44,6 +44,11 @@ class AIProviderStatus:
 
 
 def _get_config_value(keys: Sequence[str]) -> Optional[str]:
+    for key in keys:
+        value = os.getenv(key)
+        if value is not None:
+            return value
+
     try:
         app_cfg = st.secrets.get("app", {})
         for key in keys:
@@ -57,11 +62,6 @@ def _get_config_value(keys: Sequence[str]) -> Optional[str]:
                     return str(value)
     except Exception:
         pass
-
-    for key in keys:
-        value = os.getenv(key)
-        if value is not None:
-            return value
     return None
 
 

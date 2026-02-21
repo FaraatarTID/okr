@@ -16,6 +16,9 @@ Runtime preflight shows configuration errors
   - Add `pdfshift_api_key`
 - If preflight says unsupported `PDF_METHOD`:
   - Change `PDF_METHOD` to `pdfshift`
+- If preflight says `OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set` even after changing secrets:
+  - Check the new `Config trace` info line in the UI; it shows effective value and source (`env`, `secrets_root`, `secrets_app`, `default`).
+  - Remove/adjust any conflicting environment variable override, then restart app process.
 - If strict mode is enabled (`OKR_STRICT_RUNTIME_PREFLIGHT=1`), app startup will stop on critical preflight errors until fixed.
 
 AI features unavailable
@@ -45,6 +48,14 @@ Migrations fail
 - Check that OKR_DATABASE_URL is valid and that the user has DDL permissions
 - If you see `permission denied to reassign objects`, run ownership/reassign SQL using an admin DB role; keep app runtime DSN on least-privilege `okr_app`.
 
+Workspace runtime load fails with `Multiple classes found for path "User"`
+- Cause: SQLModel mapper registry/class references became stale after a code hot-reload.
+- Ensure all model imports use `src.models` (no `models` or `streamlit_app.src.models` imports).
+- Ensure relationships are lambda-resolved (`sa_relationship=relationship(lambda: ...)`) instead of relying on string class lookup.
+- Run guard tests:
+  - `python -m pytest tests/test_models_import_consistency.py tests/test_models_relationship_resolution.py tests/test_hot_reload_model_bindings.py tests/test_hot_reload_model_rebinding.py -q`
+- Restart the `okr` app process after a live code pull if the error loop persists.
+
 Login not working
 - Default admin only exists on an empty DB
 - Check password hash path; try reset via Admin Panel after login
@@ -54,6 +65,7 @@ Supabase connection errors
 - Verify host includes `supabase.com`
 - Ensure `sslmode=require` is present
 - Prefer transaction pooler `:6543` for runtime app traffic; avoid session-pooler saturation patterns for app workloads.
+- If you see `MaxClientsInSessionMode: max clients reached`, your URL is using session mode (`:5432`); switch to transaction pooler (`:6543`).
 - Confirm DB password is URL-encoded if it contains special characters
 
 Hosting under subpath breaks assets

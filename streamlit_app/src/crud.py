@@ -3,7 +3,10 @@ CRUD operations for OKR Application.
 Provides efficient data access with JOINs for dashboard and tree loading.
 """
 
+from contextlib import contextmanager
+
 from sqlmodel import Session, col, select
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError, OperationalError
 import os
@@ -40,7 +43,8 @@ from src.models import (
     Experiment,
     RetroExperimentOutcome,
 )
-from src.database import get_session_context
+from src.config_runtime import get_bool_config
+from src.database import get_session_context as _database_get_session_context
 from src.domain import analytics as domain_analytics
 from src.domain import authorization as domain_auth
 from src.audit import audit_log
@@ -109,7 +113,6 @@ _ALLOWED_EXPERIMENT_UPDATE_FIELDS = {
     "expected_effect_size",
 }
 _UNSET = object()
-_TRUE_VALUES = {"1", "true", "yes", "on"}
 AUTH_USER_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_USER_WINDOW_SECONDS", "300")))
 AUTH_USER_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_USER_MAX_ATTEMPTS", "5")))
 AUTH_IP_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_IP_WINDOW_SECONDS", "300")))
@@ -120,10 +123,60 @@ ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS = max(
     0.0, float(os.getenv("ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", "0.4"))
 )
 
+_MODEL_BINDING_NAMES = (
+    "Goal",
+    "Objective",
+    "KeyResult",
+    "Task",
+    "WorkLog",
+    "TaskStatus",
+    "DashboardGoal",
+    "TaskWithTimer",
+    "Cycle",
+    "CheckIn",
+    "User",
+    "UserRole",
+    "WeeklyPlan",
+    "Retrospective",
+    "AuthThrottleState",
+    "Team",
+    "LifecycleState",
+    "AlignmentEdge",
+    "AlignmentType",
+    "VariationType",
+    "ExperimentStatus",
+    "ExperimentDecision",
+    "ExpectedEffectDirection",
+    "Experiment",
+    "RetroExperimentOutcome",
+)
+
+
+def _ensure_model_bindings_current() -> None:
+    """Refresh class bindings after hot-reload if registry classes were replaced."""
+    try:
+        sa_inspect(User)
+        return
+    except Exception:
+        pass
+
+    import src.models as _models
+
+    for name in _MODEL_BINDING_NAMES:
+        value = getattr(_models, name, None)
+        if value is not None:
+            globals()[name] = value
+
+
+@contextmanager
+def get_session_context():
+    _ensure_model_bindings_current()
+    with _database_get_session_context() as session:
+        yield session
+
 
 def _backend_mutation_proxy_enabled() -> bool:
-    proxy_flag = str(os.getenv("OKR_BACKEND_PROXY_MUTATIONS", "true")).strip().lower()
-    if proxy_flag not in _TRUE_VALUES:
+    if not get_bool_config("OKR_BACKEND_PROXY_MUTATIONS", True):
         return False
     try:
         from src.services.backend_client import is_backend_enabled
@@ -134,10 +187,7 @@ def _backend_mutation_proxy_enabled() -> bool:
 
 
 def _local_backend_fallback_allowed() -> bool:
-    return (
-        str(os.getenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", "false")).strip().lower()
-        in _TRUE_VALUES
-    )
+    return get_bool_config("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False)
 
 
 def _is_transient_backend_mutation_error(payload: Dict[str, Any]) -> bool:

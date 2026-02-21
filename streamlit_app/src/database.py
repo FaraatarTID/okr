@@ -6,6 +6,7 @@ from sqlmodel import create_engine, Session, SQLModel
 from contextlib import contextmanager
 import os
 import re
+import sys
 import traceback
 import json
 import base64
@@ -77,18 +78,21 @@ def _normalize_database_url(url: str) -> str:
 
 
 def _allow_non_supabase_url() -> bool:
-    """Test-only escape hatch for local CI fixtures."""
-    flag = os.getenv("OKR_ALLOW_NON_SUPABASE_DB", "").strip().lower()
-    if flag in _TRUE_VALUES:
-        return True
-    return "PYTEST_CURRENT_TEST" in os.environ
+    """Compatibility gate: relaxed by default, strict when explicitly disabled."""
+    raw = str(os.getenv("OKR_ALLOW_NON_SUPABASE_DB", "1")).strip().lower()
+    return raw in _TRUE_VALUES
+
+
+def _allow_supabase_session_pooler() -> bool:
+    return str(os.getenv("OKR_ALLOW_SUPABASE_SESSION_POOLER", "")).strip().lower() in _TRUE_VALUES
+
+
+def _allow_supabase_direct_connection() -> bool:
+    return str(os.getenv("OKR_ALLOW_SUPABASE_DIRECT_CONNECTION", "")).strip().lower() in _TRUE_VALUES
 
 
 def _allow_supabase_superuser_url() -> bool:
-    """Temporary escape hatch for break-glass migrations only."""
-    return (
-        os.getenv("OKR_ALLOW_SUPABASE_SUPERUSER", "").strip().lower() in _TRUE_VALUES
-    )
+    return str(os.getenv("OKR_ALLOW_SUPABASE_SUPERUSER", "")).strip().lower() in _TRUE_VALUES
 
 
 def _validate_database_url(url: str) -> str:
@@ -105,6 +109,26 @@ def _validate_database_url(url: str) -> str:
     parsed = urlparse(normalized)
     if normalized.startswith("postgresql+psycopg2://") and not parsed.hostname:
         raise RuntimeError("Database URL host is missing.")
+
+    if not normalized.startswith("postgresql+psycopg2://"):
+        return normalized
+
+    if _allow_non_supabase_url():
+        return normalized
+
+    host = str(parsed.hostname or "").lower()
+    port = int(parsed.port or 0)
+    username = str(parsed.username or "")
+
+    is_pooler_host = host.endswith(".pooler.supabase.com") or host.endswith(".pooler.supabase.co")
+    if not is_pooler_host and not _allow_supabase_direct_connection():
+        raise RuntimeError("Supabase pooler URL is required for runtime database connections.")
+
+    if is_pooler_host and port != 6543 and not _allow_supabase_session_pooler():
+        raise RuntimeError("Supabase transaction pooler must use port 6543 (session pooler requires explicit override).")
+
+    if username.lower().startswith("postgres") and not _allow_supabase_superuser_url():
+        raise RuntimeError("Least-privilege Supabase DB user is required (do not run runtime traffic as postgres).")
     return normalized
 
 
@@ -153,17 +177,127 @@ _engine = None
 _migrations_lock = Lock()
 _migrations_applied_urls = set()
 _backup_lock = Lock()
+_emitted_db_advisories: set[str] = set()
 
 BACKUP_FORMAT_VERSION = "okr-db-backup/v1"
+_MODEL_BINDING_NAMES = (
+    "Goal",
+    "Objective",
+    "KeyResult",
+    "Task",
+    "WorkLog",
+    "TaskStatus",
+    "DashboardGoal",
+    "TaskWithTimer",
+    "Cycle",
+    "CheckIn",
+    "User",
+    "UserRole",
+    "WeeklyPlan",
+    "Retrospective",
+    "AuthThrottleState",
+    "Team",
+    "MetricType",
+    "ScoreMode",
+    "LifecycleState",
+    "AlignmentEdge",
+    "AlignmentType",
+    "VariationType",
+    "AsyncJobStatus",
+    "AsyncJob",
+    "ExperimentStatus",
+    "ExperimentDecision",
+    "ExpectedEffectDirection",
+    "Experiment",
+    "RetroExperimentOutcome",
+    "NodeBase",
+    "GoalRead",
+    "AnalysisContext",
+)
+_last_models_identity: Optional[int] = None
 
 
 def _resolved_database_url() -> str:
     """Resolve and validate DATABASE_URL with caching."""
     global DATABASE_URL
     if DATABASE_URL and str(DATABASE_URL).strip():
-        return _validate_database_url(str(DATABASE_URL).strip())
+        validated = _validate_database_url(str(DATABASE_URL).strip())
+        _emit_database_url_advisory(validated)
+        return validated
     DATABASE_URL = _get_database_url()
-    return _validate_database_url(DATABASE_URL)
+    validated = _validate_database_url(DATABASE_URL)
+    _emit_database_url_advisory(validated)
+    return validated
+
+
+def _database_url_advisory(url: str) -> Optional[str]:
+    """Return non-fatal DB URL advisories for known operational pitfalls."""
+    normalized = _normalize_database_url(url)
+    if not normalized.startswith("postgresql+psycopg2://"):
+        return None
+
+    parsed = urlparse(normalized)
+    host = str(parsed.hostname or "").lower()
+    port = int(parsed.port or 0)
+    is_supabase_pooler = host.endswith(".pooler.supabase.com") or host.endswith(".pooler.supabase.co")
+
+    if is_supabase_pooler and port == 5432:
+        return (
+            "Supabase session pooler detected (:5432). "
+            "This can trigger MaxClientsInSessionMode saturation; "
+            "prefer transaction pooler on :6543 for runtime traffic."
+        )
+
+    if is_supabase_pooler and port not in {0, 6543}:
+        return (
+            f"Supabase pooler host is using port {port}. "
+            "Runtime workloads should use transaction pooler port 6543."
+        )
+
+    return None
+
+
+def _emit_database_url_advisory(url: str) -> None:
+    advisory = _database_url_advisory(url)
+    if not advisory:
+        return
+    cache_key = f"{url}::{advisory}"
+    if cache_key in _emitted_db_advisories:
+        return
+    _emitted_db_advisories.add(cache_key)
+    print(f"WARNING [okr_db] {advisory}")
+
+
+def _refresh_loaded_model_references_if_needed() -> None:
+    """Rebind stale model symbols in loaded src modules after hot reload."""
+    global _last_models_identity
+    try:
+        import src.models as models_module
+    except Exception:
+        return
+
+    identity = id(getattr(models_module, "User", None))
+    if not identity or identity == _last_models_identity:
+        return
+
+    for module_name, module in list(sys.modules.items()):
+        if not module_name or not module_name.startswith("src."):
+            continue
+        module_dict = getattr(module, "__dict__", None)
+        if not isinstance(module_dict, dict):
+            continue
+
+        for binding_name in _MODEL_BINDING_NAMES:
+            if binding_name not in module_dict:
+                continue
+            latest = getattr(models_module, binding_name, None)
+            if latest is None:
+                continue
+            current = module_dict.get(binding_name)
+            if current is not latest:
+                module_dict[binding_name] = latest
+
+    _last_models_identity = identity
 
 
 def get_engine():
@@ -257,12 +391,14 @@ def create_db_and_tables():
 
 def get_session() -> Session:
     """Get a new database session."""
+    _refresh_loaded_model_references_if_needed()
     return Session(get_engine(), expire_on_commit=False)
 
 
 @contextmanager
 def get_session_context():
     """Context manager for database sessions with automatic commit/rollback."""
+    _refresh_loaded_model_references_if_needed()
     # expire_on_commit=False allows using objects after session is closed (DetachedInstanceError fix)
     session = Session(get_engine(), expire_on_commit=False)
     try:

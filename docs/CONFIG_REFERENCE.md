@@ -102,6 +102,7 @@ Runtime preflight policy
 Backend API (recommended for scale)
 
 - Streamlit-to-backend routing:
+  - Source precedence: environment variables first, then Streamlit secrets (root key or `[app]` section).
   - `OKR_BACKEND_API_URL` (e.g. `http://backend-api:8100`)
   - `OKR_BACKEND_SERVICE_TOKEN` (shared token for service-to-service auth)
   - `OKR_BACKEND_SIGNING_SECRET` (shared HMAC signing secret for signed internal requests)

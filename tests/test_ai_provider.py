@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import src.services.ai_provider as ai_provider
 from src.services.ai_provider import (
     generate_json,
     get_ai_provider,
@@ -31,6 +32,37 @@ def _clear_ai_env(monkeypatch):
 def test_provider_alias_ollama_maps_to_openai_compatible(monkeypatch):
     _clear_ai_env(monkeypatch)
     monkeypatch.setenv("AI_PROVIDER", "ollama")
+    assert get_ai_provider() == "openai_compatible"
+
+
+def test_ai_provider_env_takes_precedence_over_secrets(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
+    monkeypatch.setattr(
+        ai_provider,
+        "st",
+        SimpleNamespace(
+            secrets={
+                "AI_PROVIDER": "gemini",
+                "app": {"AI_PROVIDER": "gemini"},
+            }
+        ),
+    )
+    assert get_ai_provider() == "openai_compatible"
+
+
+def test_ai_provider_falls_back_to_secrets_when_env_missing(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    monkeypatch.setattr(
+        ai_provider,
+        "st",
+        SimpleNamespace(
+            secrets={
+                "AI_PROVIDER": "openai_compatible",
+                "app": {},
+            }
+        ),
+    )
     assert get_ai_provider() == "openai_compatible"
 
 
