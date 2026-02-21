@@ -100,12 +100,14 @@ Tasks
 - Add/extend tests for auth bypass attempts, IDOR cases, and split-path regression.
 - Add integration tests that enforce backend-only mutation routing.
 - Add UI runtime guard test to prevent non-submit Streamlit buttons inside forms (`st.button`/container `.button` inside `st.form`).
+- Add mapper hot-reload guards: enforce consistent `src.models` import path, lambda-based relationship resolution, and stale-binding recovery tests.
 - Run concurrency/load test for dashboard reads + timer actions + job submissions.
 - Run chaos test: backend API restart, worker restart, transient DB/network blips.
 - Run security verification checklist before pilot go-live.
 Acceptance Criteria
 - Test suite passes with new controls enabled.
 - No form-widget runtime regressions in smoke tests (no `st.button() can't be used in an st.form()` failures).
+- No SQLAlchemy duplicate-class/runtime mapper failures during app code hot-reload.
 - No critical/high findings remain open in pre-go-live review.
 - Pilot load profile meets latency/error-budget targets.
 

@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 from types import SimpleNamespace
 import plotly.graph_objects as go
+from sqlalchemy import inspect as sa_inspect
 
 try:
     from streamlit_plotly_events import plotly_events
@@ -61,6 +62,36 @@ from src.domain.reporting import (
 )
 from src.services.ai_service import generate_predictive_outlook
 from src.services.pdf_service import generate_achievement_portfolio_pdf
+
+
+_MODEL_BINDING_NAMES = (
+    "Goal",
+    "Objective",
+    "KeyResult",
+    "Task",
+    "User",
+    "WorkLog",
+    "CheckIn",
+    "MetricType",
+    "ScoreMode",
+    "LifecycleState",
+)
+
+
+def _ensure_model_bindings_current() -> None:
+    """Refresh local model symbols if SQLModel registry classes were reloaded."""
+    try:
+        sa_inspect(User)
+        return
+    except Exception:
+        pass
+
+    import src.models as _models
+
+    for name in _MODEL_BINDING_NAMES:
+        value = getattr(_models, name, None)
+        if value is not None:
+            globals()[name] = value
 
 
 # Cache helpers for heavy queries/aggregations
@@ -122,6 +153,7 @@ def _cached_get_user_by_id(user_id):
 
 @st.cache_data(ttl=45, show_spinner=False)
 def _cached_get_work_logs(task_id):
+    _ensure_model_bindings_current()
     from src.database import get_session_context
     from sqlmodel import select
     from src.models import WorkLog
@@ -174,6 +206,7 @@ def _cached_get_atlas_scope_snapshot(
     include_analysis: bool = False,
 ):
     """Cached, serialization-safe Atlas snapshot to reduce rerun DB latency."""
+    _ensure_model_bindings_current()
     canonical_owner_ids_key = _canonical_owner_ids_key(owner_ids_key)
 
     with get_session_context() as session:
@@ -445,6 +478,7 @@ def _atlas_get_node_details_from_lookup(node_id, node_lookup=None):
 
 def get_node_details(node_id, node_lookup=None):
     """Resolve node details with O(1) Atlas lookup first, DB fallback on cache miss."""
+    _ensure_model_bindings_current()
     lookup_type, lookup_title = _atlas_get_node_details_from_lookup(
         node_id, node_lookup
     )

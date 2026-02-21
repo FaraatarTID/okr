@@ -7,7 +7,6 @@ from enum import Enum
 import hashlib
 import hmac
 import json
-import os
 import secrets
 import time
 from typing import Any, Dict, Optional
@@ -15,33 +14,28 @@ from urllib.parse import urlparse
 
 import requests
 
+from src.config_runtime import get_bool_config, get_config_value
 from src.services.http_client import request_with_retry
 
 
-_TRUE_VALUES = {"1", "true", "yes", "on"}
-
-
 def is_backend_enabled() -> bool:
-    return bool(str(os.getenv("OKR_BACKEND_API_URL", "")).strip())
+    return bool(str(get_config_value("OKR_BACKEND_API_URL", "")).strip())
 
 
 def allow_local_backend_fallback() -> bool:
-    return (
-        str(os.getenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", "false")).strip().lower()
-        in _TRUE_VALUES
-    )
+    return get_bool_config("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False)
 
 
 def _base_url() -> str:
-    return str(os.getenv("OKR_BACKEND_API_URL", "")).strip().rstrip("/")
+    return str(get_config_value("OKR_BACKEND_API_URL", "")).strip().rstrip("/")
 
 
 def _service_token() -> str:
-    return str(os.getenv("OKR_BACKEND_SERVICE_TOKEN", "")).strip()
+    return str(get_config_value("OKR_BACKEND_SERVICE_TOKEN", "")).strip()
 
 
 def _signing_secret() -> str:
-    return str(os.getenv("OKR_BACKEND_SIGNING_SECRET", "")).strip()
+    return str(get_config_value("OKR_BACKEND_SIGNING_SECRET", "")).strip()
 
 
 def _body_digest_hex(body_bytes: bytes) -> str:
@@ -170,7 +164,13 @@ def _request_json(
     extra_headers: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     try:
-        url = f"{_base_url()}{path}"
+        base_url = _base_url()
+        if not base_url:
+            return {
+                "error": "Backend request skipped: OKR_BACKEND_API_URL is not set.",
+                "status_code": 0,
+            }
+        url = f"{base_url}{path}"
         body_bytes = _json_body(payload)
         response = request_with_retry(
             method,

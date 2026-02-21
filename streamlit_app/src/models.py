@@ -99,7 +99,12 @@ class Team(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now_naive)
 
     # Relationships
-    members: List["User"] = Relationship(back_populates="team")
+    members: List["User"] = Relationship(
+        sa_relationship=relationship(
+            lambda: User,
+            back_populates="team",
+        )
+    )
 
 
 class User(SQLModel, table=True):
@@ -123,7 +128,12 @@ class User(SQLModel, table=True):
     is_active: bool = Field(default=True)
 
     # Relationships
-    team: Optional[Team] = Relationship(back_populates="members")
+    team: Optional[Team] = Relationship(
+        sa_relationship=relationship(
+            lambda: Team,
+            back_populates="members",
+        )
+    )
 
 
 class AuthThrottleState(SQLModel, table=True):
@@ -404,7 +414,10 @@ class Task(NodeBase, table=True):
         sa_relationship=relationship(lambda: KeyResult, back_populates="tasks")
     )
     assignee: Optional["User"] = Relationship(
-        sa_relationship=relationship(lambda: User, foreign_keys="[Task.assignee_id]")
+        sa_relationship=relationship(
+            lambda: User,
+            foreign_keys=lambda: [Task.assignee_id],
+        )
     )
     work_logs: List["WorkLog"] = Relationship(
         sa_relationship=relationship(

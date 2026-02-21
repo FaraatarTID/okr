@@ -1,8 +1,8 @@
 import streamlit as st
 import time
 import json
-import os
 from datetime import datetime, timedelta
+from src.config_runtime import get_bool_config
 from src.utils.time_utils import utc_now_naive
 from src.ui.styles import TYPE_COLORS, TYPE_ICONS, inject_dialog_styles
 from src.ui.components import (
@@ -103,160 +103,6 @@ def render_manage_cycles_dialog():
                     st.error(f"Create failed: {e}")
 
 
-@st.dialog("Create New Objective", width="medium")
-def render_create_objective_dialog(parent_id):
-    # Hide default modal close button and add a custom close at top-right
-    st.markdown("""
-        <style>
-        div[role="dialog"] { position: relative; }
-        /* hide Streamlit's native title and close to use custom header */
-        div[role="dialog"] h1, div[role="dialog"] h2 { display: none !important; }
-        div[role="dialog"] button[aria-label="Close"] { display: none; }
-        div[data-baseweb="modal-backdrop"] { display: none; }
-        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
-        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
-        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
-            position: absolute !important;
-            top: 12px !important;
-            right: 12px !important;
-            z-index: 9999 !important;
-            border-radius: 50% !important;
-            border: 1px solid #e0e0e0 !important;
-            width: 36px !important;
-            height: 36px !important;
-            padding: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
-            background-color: white !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    # Header with Close button (pinned top-right)
-    c_head, c_close = st.columns([0.92, 0.08])
-    # Title rendered here so it's aligned with the custom close
-    c_head.markdown("### Create New Objective")
-    if c_close.button("", icon=":material/close:", key=f"close_create_objective_{parent_id}"):
-        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
-        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
-        st.rerun()
-    # Subtitle below the header
-    st.caption("Measurable objective to achieve the parent goal.")
-
-    with st.form("create_objective_form"):
-        title = st.text_input("Objective Title", placeholder="e.g. Increase conversion rate by 20%")
-        desc = st.text_area("Description", height=100)
-        
-        if st.form_submit_button("Create Objective", type="primary"):
-            if not title: st.error("Objective title is required.")
-            else:
-                # parent_id may be a typed ref like 'goal_15' — extract numeric id if needed
-                goal_id_val = parent_id
-                try:
-                    if isinstance(parent_id, str) and "_" in parent_id:
-                        goal_id_val = int(parent_id.split("_")[-1])
-                    else:
-                        goal_id_val = int(parent_id)
-                except Exception:
-                    st.error(f"Invalid parent id: {parent_id}")
-                    return
-
-                try:
-                    create_objective(
-                        goal_id=goal_id_val,
-                        title=title,
-                        description=desc,
-                        actor_username=st.session_state.get("username"),
-                    )
-                except PermissionError as e:
-                    st.error(str(e))
-                    return
-                st.success("Objective created!")
-                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
-                st.rerun()
-
-@st.dialog("Create New Key Result", width="medium")
-def render_create_kr_dialog(parent_id):
-    # Hide default modal close button and add a custom close at top-right
-    st.markdown("""
-        <style>
-        div[role="dialog"] { position: relative; }
-        /* hide Streamlit's native title and close to use custom header */
-        div[role="dialog"] h1, div[role="dialog"] h2 { display: none !important; }
-        div[role="dialog"] button[aria-label="Close"] { display: none; }
-        div[data-baseweb="modal-backdrop"] { display: none; }
-        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
-        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
-        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
-            position: absolute !important;
-            top: 12px !important;
-            right: 12px !important;
-            z-index: 9999 !important;
-            border-radius: 50% !important;
-            border: 1px solid #e0e0e0 !important;
-            width: 36px !important;
-            height: 36px !important;
-            padding: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
-            background-color: white !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    # Header with Close button (pinned top-right)
-    c_head, c_close = st.columns([0.92, 0.08])
-    # Title rendered here so it's aligned with the custom close
-    c_head.markdown("### Create New Key Result")
-    if c_close.button("", icon=":material/close:", key=f"close_create_kr_{parent_id}"):
-        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
-        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
-        st.rerun()
-    # Subtitle below the header
-    st.caption("Specific, time-bound metric to measure success.")
-
-    with st.form("create_kr_form"):
-        title = st.text_input("Key Result Title", placeholder="e.g. 10,000 New Active Users")
-        desc = st.text_area("Description", height=100)
-        col1, col2 = st.columns(2)
-        with col1:
-            target = st.number_input("Target Value", value=100.0)
-        with col2:
-            unit = st.text_input("Unit", value="%")
-            
-        if st.form_submit_button("Create Key Result", type="primary"):
-            if not title:
-                st.error("Key Result title is required.")
-            else:
-                # parent_id may be typed ref like 'objective_1' — extract numeric id
-                try:
-                    if isinstance(parent_id, str) and "_" in parent_id:
-                        obj_id_val = int(parent_id.split("_")[-1])
-                    else:
-                        obj_id_val = int(parent_id)
-                except Exception:
-                    st.error(f"Invalid parent id: {parent_id}")
-                    return
-
-                try:
-                    create_key_result(
-                        objective_id=obj_id_val,
-                        title=title,
-                        description=desc,
-                        target_value=target,
-                        unit=unit,
-                        actor_username=st.session_state.get("username"),
-                    )
-                except PermissionError as e:
-                    st.error(str(e))
-                    return
-                st.success("Key Result created!")
-                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
-                st.rerun()
 @st.dialog("⏱️ Timer", width="small")
 def render_timer_dialog(node_id, username):
     """Dialog wrapper for task timer content."""
@@ -463,10 +309,7 @@ def render_admin_panel_dialog():
             "Export a full logical JSON backup or restore one. "
             "Restore replaces all current application data."
         )
-        proxy_mutations = (
-            str(os.getenv("OKR_BACKEND_PROXY_MUTATIONS", "true")).strip().lower()
-            in {"1", "true", "yes", "on"}
-        )
+        proxy_mutations = get_bool_config("OKR_BACKEND_PROXY_MUTATIONS", True)
         restore_allowed = not (proxy_mutations and is_backend_enabled())
         if not restore_allowed:
             st.warning(

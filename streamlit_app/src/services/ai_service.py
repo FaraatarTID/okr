@@ -14,6 +14,7 @@ from src.services.ai_provider import (
     get_gemini_api_key,
     is_external_ai_allowed as provider_external_ai_allowed,
 )
+from src.config_runtime import get_config_value
 from src.services.backend_client import is_backend_enabled
 from src.services.job_service import run_job_and_wait
 
@@ -36,7 +37,7 @@ def get_api_key() -> Optional[str]:
 def _run_ai_json_prompt(prompt: str) -> Dict[str, Any]:
     """Invoke configured AI provider and normalize error shape."""
     if is_backend_enabled():
-        actor = str(os.getenv("OKR_BACKEND_DEFAULT_ACTOR", "system")).strip() or "system"
+        actor = str(get_config_value("OKR_BACKEND_DEFAULT_ACTOR", "system")).strip() or "system"
         response = run_job_and_wait(
             kind="ai.generate_json",
             payload={"prompt": prompt},

@@ -13,7 +13,6 @@ Outputs median/p95 wall time, query count, and measured DB execution time.
 from __future__ import annotations
 
 import json
-import os
 import statistics
 import sys
 import tempfile
@@ -48,7 +47,6 @@ from src.models import (
 
 
 def _setup_db():
-    os.environ["OKR_ALLOW_NON_SUPABASE_DB"] = "1"
     tmpdir = Path(tempfile.mkdtemp(prefix="okr_perf_login_to_atlas_"))
     db_path = tmpdir / "login_to_atlas_perf.db"
     db_url = f"sqlite:///{db_path}"

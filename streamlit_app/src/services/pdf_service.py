@@ -99,13 +99,17 @@ def _get_secret_value(*keys: str) -> str:
 
 
 def _resolve_pdfshift_api_key() -> str:
+    env_key = str(os.getenv("PDFSHIFT_API_KEY", "")).strip()
+    if env_key:
+        return env_key
+
     key = _get_secret_value(
         "pdfshift_api_key",
         "PDFSHIFT_API_KEY",
     )
     if key:
         return key
-    return str(os.getenv("PDFSHIFT_API_KEY", "")).strip()
+    return ""
 
 
 def is_deployed_environment():
@@ -113,13 +117,13 @@ def is_deployed_environment():
     Resolve whether PDF binary generation is enabled in secure mode.
     Returns True only when PDF_METHOD resolves to `pdfshift`.
     """
-    method = _get_secret_value("PDF_METHOD", "pdf_method").lower()
+    method = str(os.getenv("PDF_METHOD", os.getenv("OKR_PDF_METHOD", ""))).strip().lower()
     if method == "shiftpdf":
         method = "pdfshift"
     if method:
         return method == "pdfshift"
 
-    method = str(os.getenv("PDF_METHOD", os.getenv("OKR_PDF_METHOD", ""))).strip().lower()
+    method = _get_secret_value("PDF_METHOD", "pdf_method").lower()
     if method == "shiftpdf":
         method = "pdfshift"
     if method:

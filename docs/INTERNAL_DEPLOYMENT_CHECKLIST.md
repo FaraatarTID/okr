@@ -36,6 +36,7 @@ Phase 3: Security and Compliance
 Phase 4: Testing and Go-Live
 - [ ] Run smoke tests: login, OKR creation, timer, dashboard, reports, and AI flows (if enabled).
 - [ ] Run UI form guard test: `python -m pytest streamlit_app/tests/test_streamlit_form_constraints.py -q` (enforces `st.form_submit_button` usage inside `st.form`).
+- [ ] Run mapper/reload structural guard tests: `python -m pytest tests/test_models_import_consistency.py tests/test_models_relationship_resolution.py tests/test_hot_reload_model_bindings.py tests/test_hot_reload_model_rebinding.py tests/test_no_duplicate_top_level_functions.py -q`.
 - [ ] Verify frontend mutation flows succeed with backend API enabled (node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments).
 - [ ] Validate PDF/report behavior with `PDF_METHOD=pdfshift` (the only supported runtime mode).
 - [ ] Validate backend job flow (`backend-worker` processes AI/PDF requests successfully).

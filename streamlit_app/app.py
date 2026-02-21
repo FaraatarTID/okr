@@ -16,42 +16,28 @@ from src.bootstrap import (
     prewarm_startup_ready_async,
     should_run_startup_recovery,
 )
+from src.config_runtime import (
+    get_bool_config,
+    get_config_value,
+    get_config_value_with_source,
+)
 from src.runtime_preflight import evaluate_runtime_preflight
 from src.utils.time_utils import utc_now_naive
 
 
 # One-time preflight: check PDF engine (after login to speed initial load)
 def _get_pdf_method() -> str:
-    try:
-        app_cfg = st.secrets.get("app", {})
-        method = str(st.secrets.get("PDF_METHOD", "")).strip().lower()
-        if not method and hasattr(app_cfg, "get"):
-            method = (
-                str(app_cfg.get("PDF_METHOD", app_cfg.get("pdf_method", "")))
-                .strip()
-                .lower()
-            )
-        # Accept common typo to keep deployments resilient.
-        if method == "shiftpdf":
-            method = "pdfshift"
-        if method:
-            return method
-        if (
-            "pdfshift_api_key" in st.secrets
-            or ("PDFSHIFT_API_KEY" in st.secrets)
-            or (hasattr(app_cfg, "get") and app_cfg.get("pdfshift_api_key"))
-            or (hasattr(app_cfg, "get") and app_cfg.get("PDFSHIFT_API_KEY"))
-        ):
-            return "pdfshift"
-    except Exception:
-        pass
     method = str(
-        os.getenv("PDF_METHOD", os.getenv("OKR_PDF_METHOD", ""))
+        _cfg_value("PDF_METHOD", "")
+        or _cfg_value("OKR_PDF_METHOD", "")
+        or _cfg_value("pdf_method", "")
     ).strip().lower()
     if method == "shiftpdf":
         method = "pdfshift"
     if method:
         return method
+    if _has_pdfshift_api_key():
+        return "pdfshift"
     return "pdfshift"
 
 
@@ -60,64 +46,28 @@ def _is_streamlit_cloud_runtime() -> bool:
 
 
 def _has_pdfshift_api_key() -> bool:
-    try:
-        app_cfg = st.secrets.get("app", {})
-        if (
-            "pdfshift_api_key" in st.secrets
-            or "PDFSHIFT_API_KEY" in st.secrets
-            or (hasattr(app_cfg, "get") and app_cfg.get("pdfshift_api_key"))
-            or (hasattr(app_cfg, "get") and app_cfg.get("PDFSHIFT_API_KEY"))
-        ):
-            return True
-    except Exception:
-        pass
-    return bool(os.getenv("PDFSHIFT_API_KEY", "").strip())
+    return bool(
+        _cfg_value("PDFSHIFT_API_KEY", "").strip()
+        or _cfg_value("pdfshift_api_key", "").strip()
+    )
 
 
 def _runtime_preflight_strict_mode() -> bool:
     # Security-first default: runtime preflight is strict unless explicitly disabled.
-    raw = str(os.getenv("OKR_STRICT_RUNTIME_PREFLIGHT", "")).strip().lower()
+    raw = str(_cfg_value("OKR_STRICT_RUNTIME_PREFLIGHT", "")).strip().lower()
     if raw in {"0", "false", "no", "off"}:
         return False
     if raw in {"1", "true", "yes", "on"}:
         return True
-    try:
-        app_cfg = st.secrets.get("app", {})
-        secret_raw = str(
-            st.secrets.get(
-                "OKR_STRICT_RUNTIME_PREFLIGHT",
-                app_cfg.get("OKR_STRICT_RUNTIME_PREFLIGHT", ""),
-            )
-        ).strip().lower()
-        if secret_raw in {"0", "false", "no", "off"}:
-            return False
-        if not secret_raw:
-            return True
-        return secret_raw in {"1", "true", "yes", "on"}
-    except Exception:
-        return True
+    return True
 
 
 def _cfg_value(name: str, default: str = "") -> str:
-    raw = os.getenv(name)
-    if raw is not None:
-        return str(raw)
-    try:
-        if name in st.secrets:
-            return str(st.secrets.get(name, default))
-        app_cfg = st.secrets.get("app", {})
-        if hasattr(app_cfg, "get"):
-            return str(app_cfg.get(name, default))
-    except Exception:
-        pass
-    return str(default)
+    return get_config_value(name, default)
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
-    raw = _cfg_value(name, "")
-    if not str(raw).strip():
-        return default
-    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+    return get_bool_config(name, default)
 
 
 def _run_pdf_preflight():
@@ -135,6 +85,14 @@ def _run_pdf_preflight():
     )
     ai_status = get_ai_provider_runtime_status()
 
+    backend_api_url, backend_api_url_source = get_config_value_with_source(
+        "OKR_BACKEND_API_URL", ""
+    )
+    backend_proxy_mutations = _env_bool("OKR_BACKEND_PROXY_MUTATIONS", True)
+    backend_proxy_raw, backend_proxy_source = get_config_value_with_source(
+        "OKR_BACKEND_PROXY_MUTATIONS", ""
+    )
+
     report = evaluate_runtime_preflight(
         pdf_method=pdf_method,
         is_streamlit_cloud=is_cloud,
@@ -144,8 +102,8 @@ def _run_pdf_preflight():
         ai_provider=ai_status.provider,
         ai_provider_ready=ai_status.ready,
         ai_provider_message=ai_status.message,
-        backend_api_url=_cfg_value("OKR_BACKEND_API_URL", ""),
-        backend_proxy_mutations=_env_bool("OKR_BACKEND_PROXY_MUTATIONS", True),
+        backend_api_url=backend_api_url,
+        backend_proxy_mutations=backend_proxy_mutations,
         backend_service_token=_cfg_value("OKR_BACKEND_SERVICE_TOKEN", ""),
         backend_signing_secret=_cfg_value("OKR_BACKEND_SIGNING_SECRET", ""),
         allow_local_backend_fallback=_env_bool("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False),
@@ -158,6 +116,22 @@ def _run_pdf_preflight():
         st.error(f"Runtime preflight: {msg}")
     for msg in report.warnings:
         st.warning(f"Runtime preflight: {msg}")
+    if (
+        "OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set."
+        in report.warnings
+    ):
+        effective_proxy = (
+            str(backend_proxy_raw).strip()
+            if str(backend_proxy_raw).strip()
+            else str(backend_proxy_mutations)
+        )
+        st.info(
+            "Config trace: "
+            f"OKR_BACKEND_PROXY_MUTATIONS={effective_proxy!r} "
+            f"(source={backend_proxy_source}), "
+            f"OKR_BACKEND_API_URL={backend_api_url!r} "
+            f"(source={backend_api_url_source})."
+        )
 
     st.session_state["preflight_done"] = True
     if report.errors and _runtime_preflight_strict_mode():

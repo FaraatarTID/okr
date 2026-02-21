@@ -10,7 +10,6 @@ Measures the effect of deferring and throttling startup bootstrap:
 from __future__ import annotations
 
 import json
-import os
 import statistics
 import tempfile
 import time
@@ -33,7 +32,6 @@ import src.database as database
 
 
 def _setup_db():
-    os.environ["OKR_ALLOW_NON_SUPABASE_DB"] = "1"
     tmpdir = Path(tempfile.mkdtemp(prefix="okr_perf_login_bootstrap_"))
     db_path = tmpdir / "login_bootstrap_perf.db"
     db_url = f"sqlite:///{db_path}"
