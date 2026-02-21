@@ -3724,10 +3724,13 @@ def _build_atlas_treemap(
             attention_reason = str(health.get("reason") or "On track")
         source_explanation = _atlas_health_source_explanation(health.get("source"))
 
-        if node_type == "TASK":
-            value = max(1, 100 - progress)
+        # Standardized sizing: leaf nodes stay visually consistent so new siblings
+        # appear with equal proportion by default.
+        child_count = len(meta.get("children", []))
+        if child_count <= 0:
+            value = 10
         else:
-            value = max(2, len(meta.get("children", [])) * 6)
+            value = max(10, child_count * 10)
 
         fill = _atlas_health_fill_color(health, progress, meta=meta)
 
@@ -3781,7 +3784,8 @@ def _build_atlas_treemap(
                 "<b>%{label}</b><br>%{customdata[1]}"
                 "<br>Why: %{customdata[2]}<extra></extra>"
             ),
-            tiling=dict(pad=4),
+            sort=False,
+            tiling=dict(pad=4, packing="slice-dice"),
             pathbar=dict(visible=False),
         )
     )
