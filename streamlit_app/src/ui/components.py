@@ -21,9 +21,9 @@ from sqlmodel import select
 
 from src.config_runtime import get_bool_config
 from src.crud import get_session_context, get_user_by_username
-from src.domain.authorization import can_track_task_timer
+from src.domain.authorization import can_track_task_timer  # noqa: F401 - compatibility export
 from src.domain.scoring import calculate_kr_score, get_score_color_band, get_score_label
-from src.models import (
+from src.models import (  # noqa: F401 - compatibility exports for bridge helpers/tests
     CheckIn,
     Goal,
     KeyResult,
@@ -35,7 +35,7 @@ from src.models import (
     User,
     WorkLog,
 )
-from src.ui import (
+from src.ui import (  # noqa: F401 - compatibility imports for dynamic bridge resolution
     atlas_cached_read_helpers,
     atlas_focus_preparation_helpers,
     atlas_focus_section_helpers,
@@ -61,7 +61,7 @@ from src.ui import (
     report_kr_status_helpers,
     strategy_pulse_helpers,
 )
-from src.ui.atlas_helpers import (
+from src.ui.atlas_helpers import (  # noqa: F401 - compatibility exports for legacy imports
     _atlas_ai_deadline_warnings,
     _atlas_ai_overall_score,
     _atlas_ai_progress_decision,
@@ -90,8 +90,18 @@ from src.ui.atlas_helpers import (
     _atlas_timer_owner_id,
 )
 from src.ui.safe_html import escape_html
-from src.ui.styles import CHILD_TYPE_MAP, TYPE_COLORS, TYPE_ICONS, inject_atlas_styles
-from src.utils.time_utils import ensure_utc, from_epoch_millis, from_epoch_seconds, utc_now_naive
+from src.ui.styles import (  # noqa: F401 - compatibility exports for monkeypatch-based tests
+    CHILD_TYPE_MAP,
+    TYPE_COLORS,
+    TYPE_ICONS,
+    inject_atlas_styles,
+)
+from src.utils.time_utils import (
+    ensure_utc,
+    from_epoch_millis,
+    from_epoch_seconds,  # noqa: F401 - compatibility export
+    utc_now_naive,
+)
 
 try:
     from streamlit_plotly_events import plotly_events

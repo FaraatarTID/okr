@@ -20,15 +20,24 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 # Database utilities
 from src.audit import error_log
 from src.bootstrap import (
-    ensure_startup_ready,
-    prewarm_startup_ready_async,
-    should_run_startup_recovery,
+    ensure_startup_ready,  # noqa: F401 - exported for auth helper module contract
+    prewarm_startup_ready_async,  # noqa: F401 - exported for auth helper module contract
+    should_run_startup_recovery,  # noqa: F401 - exported for auth helper module contract
 )
 from src.config_runtime import (
     get_bool_config,
     get_config_value,
     get_config_value_with_source,
 )
+from src.crud import (
+    get_all_cycles,
+    create_cycle,
+    # User Auth dependencies are resolved dynamically by helper modules via app_module.
+    authenticate_user_detailed,  # noqa: F401 - exported for auth helper module contract
+    reset_user_password,  # noqa: F401 - exported for auth helper module contract
+    get_user_by_id,
+)
+from src.models import UserRole
 from src.runtime_preflight import evaluate_runtime_preflight
 from src.ui import (
     app_auth_helpers,
@@ -117,17 +126,6 @@ def _run_pdf_preflight():
         is_streamlit_cloud_runtime_fn=_is_streamlit_cloud_runtime,
         runtime_preflight_strict_mode_fn=_runtime_preflight_strict_mode,
     )
-
-
-from src.crud import (
-    get_all_cycles,
-    create_cycle,
-    # User Auth
-    authenticate_user_detailed,
-    reset_user_password,
-    get_user_by_id,
-)
-from src.models import UserRole
 
 
 # ---------------------------------------------------------------------------
