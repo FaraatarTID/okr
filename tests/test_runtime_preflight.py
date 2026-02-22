@@ -210,7 +210,7 @@ def test_production_requires_strong_bootstrap_admin_password():
     assert any("at least 12 characters" in msg for msg in report.errors)
 
 
-def test_production_requires_database_security_state_backend():
+def test_production_requires_distributed_security_state_backend():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
         is_streamlit_cloud=False,
@@ -224,7 +224,7 @@ def test_production_requires_database_security_state_backend():
         backend_security_state_backend="memory",
         runtime_env="production",
     )
-    assert any("OKR_BACKEND_SECURITY_STATE_BACKEND=database" in msg for msg in report.errors)
+    assert any("database or redis" in msg for msg in report.errors)
 
 
 def test_production_accepts_database_security_state_backend():
@@ -241,4 +241,44 @@ def test_production_accepts_database_security_state_backend():
         backend_security_state_backend="database",
         runtime_env="production",
     )
-    assert not any("OKR_BACKEND_SECURITY_STATE_BACKEND=database" in msg for msg in report.errors)
+    assert not any("database or redis" in msg for msg in report.errors)
+
+
+def test_production_requires_redis_url_when_redis_backend_selected():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="http://backend-api:8100",
+        backend_service_token="token",
+        backend_signing_secret="secret",
+        bootstrap_admin_password="ValidAdmin123!",
+        backend_security_state_backend="redis",
+        backend_security_state_redis_url="",
+        runtime_env="production",
+    )
+    assert any(
+        "OKR_BACKEND_SECURITY_STATE_REDIS_URL" in msg for msg in report.errors
+    )
+
+
+def test_production_accepts_redis_security_state_backend_with_url():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="http://backend-api:8100",
+        backend_service_token="token",
+        backend_signing_secret="secret",
+        bootstrap_admin_password="ValidAdmin123!",
+        backend_security_state_backend="redis",
+        backend_security_state_redis_url="redis://redis:6379/0",
+        runtime_env="production",
+    )
+    assert not any(
+        "OKR_BACKEND_SECURITY_STATE_REDIS_URL" in msg for msg in report.errors
+    )

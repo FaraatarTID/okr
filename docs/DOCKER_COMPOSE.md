@@ -10,7 +10,7 @@ Stack services
 Service interaction
 - `okr` sends authenticated backend calls using `OKR_BACKEND_SERVICE_TOKEN`.
 - With `OKR_BACKEND_PROXY_MUTATIONS=true` (default), frontend write flows route via `backend-api` (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes).
-- In production, keep `OKR_BACKEND_SECURITY_STATE_BACKEND=database` so nonce replay and backend API rate-limit state is shared across replicas.
+- In production, keep `OKR_BACKEND_SECURITY_STATE_BACKEND` on a distributed backend (`database` or `redis`) so nonce replay and backend API rate-limit state is shared across replicas.
 - `backend-api` persists async jobs in primary DB (`async_job` table).
 - `backend-worker` executes queued job kinds (`ai.generate_json`, `pdf.weekly`).
 - Backend write/timer/job paths fail closed by default if backend is unavailable.
@@ -24,7 +24,8 @@ Single host, subdomain (recommended)
   - `OKR_BACKEND_SERVICE_TOKEN` (shared token for UI -> backend-api auth)
   - `OKR_BACKEND_SIGNING_SECRET` (recommended for signed internal requests)
   - `OKR_BACKEND_PROXY_MUTATIONS=true` (recommended)
-  - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` (production default)
+  - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` (production default; may be `redis` with explicit Redis URL)
+  - `OKR_BACKEND_SECURITY_STATE_REDIS_URL` (required when backend is `redis`)
   - `PDFSHIFT_API_KEY` (required for PDF binary exports)
 - Build and start:
   - `docker compose -f deploy/docker/docker-compose.yml up -d --build`

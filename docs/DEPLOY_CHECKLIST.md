@@ -56,7 +56,8 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] `OKR_BACKEND_SIGNING_SECRET` is set and matches across `okr` and `backend-api`.
 - [ ] `OKR_BOOTSTRAP_ADMIN_PASSWORD` is set to a strong value (required in production; minimum 12 chars with upper/lowercase, number, symbol).
 - [ ] `OKR_BACKEND_PROXY_MUTATIONS=true` is set (recommended for backend-owned writes).
-- [ ] `OKR_BACKEND_SECURITY_STATE_BACKEND=database` is set for production distributed nonce/rate-limit state.
+- [ ] `OKR_BACKEND_SECURITY_STATE_BACKEND` is set to `database` or `redis` for production distributed nonce/rate-limit state.
+- [ ] If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, `OKR_BACKEND_SECURITY_STATE_REDIS_URL` is set.
 - [ ] `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` is unset/false in production.
 - [ ] `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` is unset/false in production (production runtime ignores fail-open overrides).
 - [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` is set (recommended for production).

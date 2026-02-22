@@ -31,13 +31,14 @@ REQUIRED_ENV_KEYS = (
 
 SECURE_EXPECTED = {
     "OKR_BACKEND_PROXY_MUTATIONS": "true",
-    "OKR_BACKEND_SECURITY_STATE_BACKEND": "database",
     "OKR_ALLOW_LOCAL_BACKEND_FALLBACK": "false",
     "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN": "false",
     "OKR_ENFORCE_STRONG_PASSWORD_POLICY": "true",
     "PDF_METHOD": "pdfshift",
     "OKR_STRICT_RUNTIME_PREFLIGHT": "true",
 }
+
+ALLOWED_SECURITY_STATE_BACKENDS = {"database", "redis"}
 
 PLACEHOLDER_TOKENS = (
     "CHANGE_ME",
@@ -140,6 +141,34 @@ def _validate_database_url(url: str, report: ValidationReport, *, strict: bool) 
         )
 
 
+def _validate_redis_url(url: str, report: ValidationReport, *, strict: bool) -> None:
+    raw = str(url or "").strip()
+    if not raw:
+        report.errors.append(
+            "OKR_BACKEND_SECURITY_STATE_REDIS_URL is required when "
+            "OKR_BACKEND_SECURITY_STATE_BACKEND=redis."
+        )
+        return
+
+    if not raw.startswith(("redis://", "rediss://")):
+        report.errors.append(
+            "OKR_BACKEND_SECURITY_STATE_REDIS_URL must start with 'redis://' or 'rediss://'."
+        )
+        return
+
+    parsed = urlparse(raw)
+    if not parsed.hostname:
+        report.errors.append(
+            "OKR_BACKEND_SECURITY_STATE_REDIS_URL must include a Redis host."
+        )
+        return
+
+    if strict and _looks_placeholder(raw):
+        report.errors.append(
+            "OKR_BACKEND_SECURITY_STATE_REDIS_URL appears to be a placeholder in runtime mode."
+        )
+
+
 def validate(
     *,
     env_file: Path,
@@ -197,6 +226,23 @@ def validate(
         report,
         strict=(mode == "runtime"),
     )
+
+    security_state_backend = _normalize(env.get("OKR_BACKEND_SECURITY_STATE_BACKEND", ""))
+    if not security_state_backend:
+        report.errors.append(
+            "Missing value for 'OKR_BACKEND_SECURITY_STATE_BACKEND' "
+            f"in {_display_path(env_file)}."
+        )
+    elif security_state_backend not in ALLOWED_SECURITY_STATE_BACKENDS:
+        report.errors.append(
+            "OKR_BACKEND_SECURITY_STATE_BACKEND must be one of: database, redis."
+        )
+    elif security_state_backend == "redis":
+        _validate_redis_url(
+            env.get("OKR_BACKEND_SECURITY_STATE_REDIS_URL", ""),
+            report,
+            strict=(mode == "runtime"),
+        )
 
     if secrets:
         if "pdfshift_api_key" not in secrets:

@@ -302,11 +302,131 @@ class DatabaseSecurityStateStore:
             ) from exc
 
 
+class RedisSecurityStateStore:
+    """Distributed security state backed by Redis."""
+
+    _RATE_LIMIT_LUA = """
+    local current = redis.call('INCR', KEYS[1])
+    if current == 1 then
+        redis.call('EXPIRE', KEYS[1], ARGV[1])
+    end
+    if current > tonumber(ARGV[2]) then
+        return 0
+    end
+    return 1
+    """
+
+    def __init__(self, *, redis_url: str, key_prefix: str = "okr:security") -> None:
+        safe_redis_url = str(redis_url or "").strip()
+        if not safe_redis_url:
+            raise SecurityStateUnavailableError(
+                "Redis security state backend requires OKR_BACKEND_SECURITY_STATE_REDIS_URL."
+            )
+        self._key_prefix = str(key_prefix or "okr:security").strip() or "okr:security"
+        try:
+            from redis import Redis
+        except Exception as exc:
+            raise SecurityStateUnavailableError(
+                "Redis backend requires the 'redis' Python package."
+            ) from exc
+
+        try:
+            self._client = Redis.from_url(
+                safe_redis_url,
+                socket_connect_timeout=2,
+                socket_timeout=2,
+                health_check_interval=30,
+            )
+            self._client.ping()
+        except Exception as exc:
+            raise SecurityStateUnavailableError(
+                "Redis security state backend is unavailable."
+            ) from exc
+
+    def dispose(self) -> None:
+        try:
+            self._client.close()
+        except Exception:
+            pass
+
+    def _nonce_key(self, nonce: str) -> str:
+        nonce_hash = hashlib.sha256(str(nonce).encode("utf-8")).hexdigest()
+        return f"{self._key_prefix}:nonce:{nonce_hash}"
+
+    def _rate_limit_key(
+        self,
+        *,
+        key: str,
+        bucket_start: int,
+    ) -> str:
+        key_hash = hashlib.sha256(str(key).encode("utf-8")).hexdigest()
+        return f"{self._key_prefix}:rl:{key_hash}:{bucket_start}"
+
+    def register_nonce_once(
+        self,
+        *,
+        nonce: str,
+        now_ts: int,
+        window_seconds: int,
+    ) -> bool:
+        safe_nonce = str(nonce or "").strip()
+        if not safe_nonce:
+            return False
+        safe_window = max(1, int(window_seconds))
+        key = self._nonce_key(safe_nonce)
+
+        try:
+            accepted = self._client.set(
+                key,
+                str(int(now_ts)),
+                nx=True,
+                ex=safe_window,
+            )
+            return bool(accepted)
+        except Exception as exc:
+            raise SecurityStateUnavailableError(
+                "Distributed nonce replay protection is unavailable."
+            ) from exc
+
+    def check_rate_limit(
+        self,
+        *,
+        key: str,
+        limit: int,
+        window_seconds: int,
+        now_ts: Optional[float] = None,
+    ) -> bool:
+        safe_key = str(key or "").strip() or "unknown"
+        safe_limit = max(1, int(limit))
+        safe_window_seconds = max(1, int(window_seconds))
+        now_float = float(now_ts if now_ts is not None else time.time())
+        bucket_start = int(now_float // safe_window_seconds) * safe_window_seconds
+        bucket_key = self._rate_limit_key(
+            key=safe_key,
+            bucket_start=bucket_start,
+        )
+        ttl_seconds = safe_window_seconds + 1
+
+        try:
+            allowed = self._client.eval(
+                self._RATE_LIMIT_LUA,
+                1,
+                bucket_key,
+                str(ttl_seconds),
+                str(safe_limit),
+            )
+            return bool(int(allowed) == 1)
+        except Exception as exc:
+            raise SecurityStateUnavailableError(
+                "Distributed rate limiter storage is unavailable."
+            ) from exc
+
+
 _PRODUCTION_ENV_NAMES = {"prod", "production"}
 _memory_store = InMemorySecurityStateStore()
 _store_lock = Lock()
 _cached_store: SecurityStateStore | None = None
-_cached_signature: tuple[str, str, int, str] | None = None
+_cached_signature: tuple[str, str, int, str, str, str] | None = None
 
 
 def _utc_naive_from_epoch(epoch_seconds: float | int) -> datetime:
@@ -329,12 +449,14 @@ def _is_production(settings: BackendSettings) -> bool:
     return str(settings.runtime_env or "").strip().lower() in _PRODUCTION_ENV_NAMES
 
 
-def _store_signature(settings: BackendSettings) -> tuple[str, str, int, str]:
+def _store_signature(settings: BackendSettings) -> tuple[str, str, int, str, str, str]:
     return (
         str(settings.runtime_env or "").strip().lower(),
         str(settings.security_state_backend or "").strip().lower(),
         int(settings.security_state_cleanup_seconds),
         _resolve_database_url(),
+        str(settings.security_state_redis_url or "").strip(),
+        str(settings.security_state_redis_prefix or "").strip(),
     )
 
 
@@ -342,6 +464,17 @@ def _build_store(settings: BackendSettings) -> SecurityStateStore:
     backend = str(settings.security_state_backend or "memory").strip().lower()
     if backend == "memory":
         return _memory_store
+
+    if backend == "redis":
+        try:
+            return RedisSecurityStateStore(
+                redis_url=settings.security_state_redis_url,
+                key_prefix=settings.security_state_redis_prefix,
+            )
+        except SecurityStateUnavailableError:
+            if not _is_production(settings):
+                return _memory_store
+            raise
 
     try:
         return DatabaseSecurityStateStore(
@@ -362,7 +495,7 @@ def _get_store() -> SecurityStateStore:
     with _store_lock:
         if _cached_store is not None and _cached_signature == signature:
             return _cached_store
-        if isinstance(_cached_store, DatabaseSecurityStateStore):
+        if isinstance(_cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)):
             _cached_store.dispose()
         _cached_store = _build_store(settings)
         _cached_signature = signature
@@ -372,7 +505,7 @@ def _get_store() -> SecurityStateStore:
 def _fallback_to_memory_store() -> InMemorySecurityStateStore:
     global _cached_store, _cached_signature
     with _store_lock:
-        if isinstance(_cached_store, DatabaseSecurityStateStore):
+        if isinstance(_cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)):
             _cached_store.dispose()
         _cached_store = _memory_store
         _cached_signature = None
@@ -432,7 +565,7 @@ def check_rate_limit_window(
 def reset_security_state_for_tests() -> None:
     global _cached_store, _cached_signature
     with _store_lock:
-        if isinstance(_cached_store, DatabaseSecurityStateStore):
+        if isinstance(_cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)):
             _cached_store.dispose()
         _cached_store = None
         _cached_signature = None

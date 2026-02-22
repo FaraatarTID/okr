@@ -43,6 +43,7 @@ def evaluate_runtime_preflight(
     bootstrap_admin_password: Optional[str] = None,
     allow_local_backend_fallback: bool = False,
     backend_security_state_backend: str = "memory",
+    backend_security_state_redis_url: Optional[str] = None,
     runtime_env: str = "development",
 ) -> RuntimePreflightReport:
     """Evaluate runtime safety constraints for PDF and AI integrations."""
@@ -102,9 +103,19 @@ def evaluate_runtime_preflight(
     security_state_backend = str(backend_security_state_backend or "").strip().lower()
     if not security_state_backend:
         security_state_backend = "memory"
-    if is_production and backend_url and security_state_backend != "database":
+    distributed_backends = {"database", "redis"}
+    if is_production and backend_url and security_state_backend not in distributed_backends:
         report.errors.append(
-            "Production backend mode requires OKR_BACKEND_SECURITY_STATE_BACKEND=database."
+            "Production backend mode requires OKR_BACKEND_SECURITY_STATE_BACKEND=database or redis."
+        )
+    if (
+        is_production
+        and backend_url
+        and security_state_backend == "redis"
+        and not str(backend_security_state_redis_url or "").strip()
+    ):
+        report.errors.append(
+            "OKR_BACKEND_SECURITY_STATE_BACKEND=redis requires OKR_BACKEND_SECURITY_STATE_REDIS_URL."
         )
 
     bootstrap_password = str(bootstrap_admin_password or "").strip()

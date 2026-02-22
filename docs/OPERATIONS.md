@@ -41,7 +41,8 @@ Security hardening
 - Set firewall rules so only the proxy can reach the app port
 - Keep backend API port private (`127.0.0.1` bind by default in compose)
 - Enable request signing for internal service calls (`OKR_BACKEND_SIGNING_SECRET`)
-- Keep `OKR_BACKEND_SECURITY_STATE_BACKEND=database` in production for distributed nonce/rate-limit controls
+- Keep `OKR_BACKEND_SECURITY_STATE_BACKEND` on a distributed backend (`database` or `redis`) in production for nonce/rate-limit controls
+- If using `redis`, set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and keep `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX` consistent
 - Keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production (runtime ignores fail-open overrides in production)
 - Keep DB credentials in secret manager and rotate regularly
 

@@ -112,6 +112,10 @@ def _run_pdf_preflight():
             "OKR_BACKEND_SECURITY_STATE_BACKEND",
             "memory",
         ),
+        backend_security_state_redis_url=_cfg_value(
+            "OKR_BACKEND_SECURITY_STATE_REDIS_URL",
+            "",
+        ),
         runtime_env=(
             _cfg_value("OKR_ENV", "")
             or _cfg_value("OKR_RUNTIME_ENV", "development")

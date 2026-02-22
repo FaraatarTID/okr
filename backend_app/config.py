@@ -44,6 +44,8 @@ class BackendSettings:
     rate_limit_max_requests: int
     security_state_backend: str
     security_state_cleanup_seconds: int
+    security_state_redis_url: str
+    security_state_redis_prefix: str
     job_user_window_seconds: int
     job_user_max_requests: int
     job_user_daily_max_requests: int
@@ -91,12 +93,21 @@ def get_backend_settings() -> BackendSettings:
         security_state_backend=_as_choice(
             os.getenv("OKR_BACKEND_SECURITY_STATE_BACKEND"),
             default=security_state_backend_default,
-            allowed={"memory", "database"},
+            allowed={"memory", "database", "redis"},
         ),
         security_state_cleanup_seconds=_as_int(
             os.getenv("OKR_BACKEND_SECURITY_STATE_CLEANUP_SECONDS"),
             default=60,
             minimum=1,
+        ),
+        security_state_redis_url=str(
+            os.getenv("OKR_BACKEND_SECURITY_STATE_REDIS_URL", "")
+        ).strip(),
+        security_state_redis_prefix=(
+            str(
+                os.getenv("OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX", "okr:security")
+            ).strip()
+            or "okr:security"
         ),
         job_user_window_seconds=_as_int(
             os.getenv("OKR_BACKEND_JOB_USER_WINDOW_SECONDS"),
