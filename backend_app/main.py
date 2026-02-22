@@ -465,7 +465,7 @@ def _resolve_actor_scope(session: Session, actor_username: str) -> dict[str, Any
     for row in rows:
         try:
             user_id_raw, username_raw = row
-        except Exception:
+        except (TypeError, ValueError):
             continue
         if user_id_raw is None or not username_raw:
             continue
@@ -490,7 +490,7 @@ def _coerce_owner_ids(values: Optional[list[int]]) -> list[int]:
     for value in values:
         try:
             output.append(int(value))
-        except Exception:
+        except (TypeError, ValueError):
             continue
     return sorted(set(output))
 

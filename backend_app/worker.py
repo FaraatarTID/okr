@@ -85,8 +85,12 @@ def run_worker_loop() -> None:
                         deleted,
                         settings.job_retention_days,
                     )
-            except Exception:
-                logger.exception("Async job pruning failed")
+            except Exception as exc:
+                logger.exception(
+                    "Async job pruning failed (worker_id=%s): %s",
+                    worker_id,
+                    exc,
+                )
             finally:
                 last_prune_at = now_ts
         handled = process_next_job(worker_id=worker_id)
