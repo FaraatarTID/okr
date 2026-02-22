@@ -23,7 +23,7 @@ This separation reduces Streamlit request pressure for heavy AI flows and gives 
 
 Related architecture detail:
 - With `OKR_BACKEND_PROXY_MUTATIONS=true`, frontend writes that may persist AI outputs (for example KR analysis fields) route via backend API mutation endpoints.
-- If backend transport fails, production default is fail-closed; local execution fallback is available only when `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`.
+- If backend transport fails, production default is fail-closed; local execution fallback is available only when the scoped flag is enabled (`OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation/job flows, `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied reads).
 
 ## 2. Implemented AI Capabilities
 

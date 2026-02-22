@@ -32,7 +32,7 @@ Current scope of provided manifests (important)
   - `OKR_BACKEND_SIGNING_SECRET`
   - `OKR_BACKEND_PROXY_MUTATIONS=true` (on `okr` workload)
   - `OKR_BACKEND_PROXY_READS=true` (optional; routes selected read-heavy paths via backend API)
-  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=false` (recommended production default)
+  - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false` and `OKR_ALLOW_LOCAL_READ_FALLBACK=false` (recommended production default)
   - `PDF_METHOD=pdfshift`, `PDFSHIFT_API_KEY`
   - AI policy/provider values (`ALLOW_EXTERNAL_AI`, `AI_PROVIDER`, provider credentials)
 - Optional HorizontalPodAutoscaler for app and backend API after baseline load testing.

@@ -12,7 +12,7 @@ Documentation HQ: [README](../README.md)
 - `backend-api` jobها را در جدول `async_job` ذخیره می‌کند.
 - `backend-worker` jobهای `ai.generate_json` و `pdf.weekly` را اجرا می‌کند.
 - در production رفتار پیش‌فرض fail-closed است.
-- fallback اضطراری فقط با `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` و صرفا غیر production.
+- fallback اضطراری فقط با فلگ‌های مجزا و صرفا غیر production فعال شود: `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` برای write/timer/job و `OKR_ALLOW_LOCAL_READ_FALLBACK=true` برای readهای proxied.
 
 سناریوی پیشنهادی: یک هاست با زیر‌دامنه
 - `deploy/docker/.env.example` را به `deploy/docker/.env` کپی کنید.

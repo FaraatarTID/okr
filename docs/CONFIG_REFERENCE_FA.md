@@ -65,7 +65,9 @@ Documentation HQ: [README](../README.md)
 - `OKR_BACKEND_SIGNING_SECRET`
 - `OKR_BACKEND_DEFAULT_ACTOR`
 - `OKR_BACKEND_PROXY_MUTATIONS` (توصیه: `true`)
-- `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (production: `false`)
+- `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (production: `false`)
+- `OKR_ALLOW_LOCAL_READ_FALLBACK` (production: `false`)
+- `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy compatibility fallback when scoped flags are unset)
 
 ### Runtime Backend
 - `OKR_BACKEND_HOST` (پیش‌فرض `0.0.0.0`)
