@@ -54,7 +54,8 @@ Documentation HQ: [README](../README.md)
   - `OKR_BOOTSTRAP_ADMIN_PASSWORD` اجباری است و باید strong باشد:
     - حداقل 12 کاراکتر
     - uppercase + lowercase + number + symbol
-  - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` اجباری است.
+  - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` یا `redis` اجباری است.
+  - اگر `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` باشد، `OKR_BACKEND_SECURITY_STATE_REDIS_URL` باید تنظیم شود.
 
 ## Backend API
 
@@ -81,12 +82,19 @@ Documentation HQ: [README](../README.md)
 - `OKR_BACKEND_SECURITY_STATE_BACKEND`
   - production پیش‌فرض: `database`
   - non-production پیش‌فرض: `memory`
+- `OKR_BACKEND_SECURITY_STATE_REDIS_URL`
+  - وقتی backend روی `redis` باشد اجباری است.
+- `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`
+  - اختیاری؛ پیش‌فرض: `okr:security`
 - `OKR_BACKEND_SECURITY_STATE_CLEANUP_SECONDS` (پیش‌فرض `60`)
 - وقتی backend روی `database` باشد:
   - nonce replay و rate-limit در جداول shared DB ذخیره می‌شوند:
     - `backend_request_nonce`
     - `backend_rate_limit_counter`
   - کنترل‌ها بین replicaها سازگار می‌مانند.
+- وقتی backend روی `redis` باشد:
+  - nonce replay و rate-limit در Redis shared key-space ذخیره می‌شوند.
+  - `OKR_BACKEND_SECURITY_STATE_REDIS_URL` اجباری است و `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX` namespace کلیدها را تعیین می‌کند.
 
 ## Worker
 

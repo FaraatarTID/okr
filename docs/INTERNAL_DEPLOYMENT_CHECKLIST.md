@@ -18,7 +18,8 @@ Phase 1: Preparation
 - [ ] Keep `ALLOW_EXTERNAL_AI=false` unless outbound AI is explicitly approved.
 - [ ] Set `OKR_BACKEND_SERVICE_TOKEN` to a strong shared secret for internal service auth.
 - [ ] Set `OKR_BACKEND_SIGNING_SECRET` and keep `OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true`.
-- [ ] Keep `OKR_BACKEND_SECURITY_STATE_BACKEND=database` in production so nonce replay and backend API rate limits are shared across replicas.
+- [ ] Keep `OKR_BACKEND_SECURITY_STATE_BACKEND` set to `database` or `redis` in production so nonce replay and backend API rate limits are shared across replicas.
+- [ ] If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, set `OKR_BACKEND_SECURITY_STATE_REDIS_URL`.
 - [ ] Review and execute `docs/ACCEPTED_FINDINGS_IMPLEMENTATION_PLAN.md` before production rollout.
 - [ ] Review `DEPLOYMENT.md` and `docs/CONFIG_REFERENCE.md`.
 

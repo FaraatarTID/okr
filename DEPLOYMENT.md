@@ -144,6 +144,8 @@ OKR_BOOTSTRAP_ADMIN_PASSWORD=CHANGE_ME_STRONG_BOOTSTRAP_PASSWORD
 OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true
 OKR_BACKEND_PROXY_MUTATIONS=true
 OKR_BACKEND_SECURITY_STATE_BACKEND=database
+OKR_BACKEND_SECURITY_STATE_REDIS_URL=
+OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX=okr:security
 OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN=false
 OKR_ENFORCE_STRONG_PASSWORD_POLICY=true
 PDF_METHOD=pdfshift
@@ -161,7 +163,8 @@ Notes:
 - `OKR_DATABASE_URL` must use the least-privilege `okr_app` role (or equivalent non-superuser role), never `postgres`, for runtime app traffic.
 - Enforce the DB-role check in deployment review/checklists even during periods where startup guards are temporarily relaxed.
 - Keep `OKR_BACKEND_PROXY_MUTATIONS=true` so Goal/Objective/KR/Task writes route via backend API.
-- Keep `OKR_BACKEND_SECURITY_STATE_BACKEND=database` in production so nonce replay and backend rate-limit state are shared across replicas.
+- Keep `OKR_BACKEND_SECURITY_STATE_BACKEND` on a distributed backend (`database` or `redis`) in production so nonce replay and backend rate-limit state are shared across replicas.
+- If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` (and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`).
 - Keep `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` unset/false in production (fail-closed behavior).
 - In production, set `OKR_BOOTSTRAP_ADMIN_PASSWORD` before first startup (minimum 12 chars including uppercase, lowercase, number, symbol).
 - Keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production; production runtime ignores fail-open overrides and returns `AUTH_TEMP_UNAVAILABLE` on throttle subsystem errors.

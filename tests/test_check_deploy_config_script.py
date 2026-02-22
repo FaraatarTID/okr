@@ -28,7 +28,14 @@ def _run_checker(env_file: Path, secrets_file: Path, mode: str) -> subprocess.Co
     )
 
 
-def _write_env(path: Path, *, placeholder_values: bool, include_throttle_key: bool = True) -> None:
+def _write_env(
+    path: Path,
+    *,
+    placeholder_values: bool,
+    include_throttle_key: bool = True,
+    security_state_backend: str = "database",
+    security_state_redis_url: str = "",
+) -> None:
     service_token = "CHANGE_ME_SHARED_TOKEN" if placeholder_values else "tok_live_123"
     signing_secret = "CHANGE_ME_SIGNING_SECRET" if placeholder_values else "sign_live_123"
     bootstrap_pw = "CHANGE_ME_BOOTSTRAP_PASSWORD" if placeholder_values else "Admin!Passw0rd"
@@ -49,7 +56,8 @@ def _write_env(path: Path, *, placeholder_values: bool, include_throttle_key: bo
         f"OKR_BACKEND_SIGNING_SECRET={signing_secret}",
         f"OKR_BOOTSTRAP_ADMIN_PASSWORD={bootstrap_pw}",
         "OKR_BACKEND_PROXY_MUTATIONS=true",
-        "OKR_BACKEND_SECURITY_STATE_BACKEND=database",
+        f"OKR_BACKEND_SECURITY_STATE_BACKEND={security_state_backend}",
+        f"OKR_BACKEND_SECURITY_STATE_REDIS_URL={security_state_redis_url}",
         "OKR_ALLOW_LOCAL_BACKEND_FALLBACK=false",
         "OKR_ENFORCE_STRONG_PASSWORD_POLICY=true",
         "PDF_METHOD=pdfshift",
@@ -118,6 +126,40 @@ def test_runtime_mode_passes_with_non_placeholder_values(tmp_path: Path):
     env_file = tmp_path / ".env"
     secrets_file = tmp_path / "secrets.toml"
     _write_env(env_file, placeholder_values=False)
+    _write_secrets(secrets_file)
+
+    result = _run_checker(env_file, secrets_file, mode="runtime")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Deploy config check passed (mode=runtime)" in result.stdout
+
+
+def test_runtime_mode_rejects_redis_backend_without_redis_url(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    secrets_file = tmp_path / "secrets.toml"
+    _write_env(
+        env_file,
+        placeholder_values=False,
+        security_state_backend="redis",
+        security_state_redis_url="",
+    )
+    _write_secrets(secrets_file)
+
+    result = _run_checker(env_file, secrets_file, mode="runtime")
+
+    assert result.returncode == 1
+    assert "OKR_BACKEND_SECURITY_STATE_REDIS_URL is required" in result.stdout
+
+
+def test_runtime_mode_accepts_redis_backend_with_valid_redis_url(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    secrets_file = tmp_path / "secrets.toml"
+    _write_env(
+        env_file,
+        placeholder_values=False,
+        security_state_backend="redis",
+        security_state_redis_url="redis://redis.internal:6379/0",
+    )
     _write_secrets(secrets_file)
 
     result = _run_checker(env_file, secrets_file, mode="runtime")

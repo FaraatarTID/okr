@@ -115,7 +115,8 @@ Runtime preflight policy
   - Runtime validates PDF provider mode and key presence.
   - Runtime also validates backend production-safety wiring (backend URL/token/signing secret and local-fallback policy) when relevant.
   - Production requires `OKR_BOOTSTRAP_ADMIN_PASSWORD` and it must be strong (minimum 12 chars including upper/lowercase, number, symbol).
-  - Production backend mode requires `OKR_BACKEND_SECURITY_STATE_BACKEND=database` for distributed nonce/rate-limit state.
+  - Production backend mode requires `OKR_BACKEND_SECURITY_STATE_BACKEND=database` or `redis` for distributed nonce/rate-limit state.
+  - If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, set `OKR_BACKEND_SECURITY_STATE_REDIS_URL`.
   - In strict mode, critical preflight errors stop app startup.
   - Provider configuration issues are surfaced as warnings/errors depending on severity.
 
@@ -134,7 +135,9 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_PORT` (default: `8100`)
   - `OKR_BACKEND_ENFORCE_TOKEN` (default: `true`)
   - `OKR_BACKEND_ENFORCE_REQUEST_SIGNING` (default: `true` in production envs, otherwise `false`)
-  - `OKR_BACKEND_SECURITY_STATE_BACKEND` (`database` in production by default, `memory` in non-production by default)
+  - `OKR_BACKEND_SECURITY_STATE_BACKEND` (`database` in production by default, `memory` in non-production by default; supported values: `memory`, `database`, `redis`)
+  - `OKR_BACKEND_SECURITY_STATE_REDIS_URL` (required when backend is `redis`)
+  - `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX` (optional Redis key namespace; default: `okr:security`)
   - `OKR_BACKEND_SECURITY_STATE_CLEANUP_SECONDS` (default: `60`)
   - `OKR_BACKEND_REQUEST_SIGNING_WINDOW_SECONDS` (default: `300`)
   - `OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS` (default: `60`)
@@ -152,6 +155,7 @@ Backend API (recommended for scale)
   - With `OKR_BACKEND_API_URL` set, frontend write flows (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes) and heavy AI/PDF workflows run through backend services.
   - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
+  - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
   - If backend transport fails, production default is fail-closed unless `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` is explicitly set.
   - In non-production (or when strict runtime preflight is disabled), missing backend URL can result in direct-mode legacy behavior.
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.

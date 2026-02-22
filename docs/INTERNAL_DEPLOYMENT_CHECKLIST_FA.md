@@ -18,7 +18,8 @@ Documentation HQ: [README](../README.md)
 - [ ] `ALLOW_EXTERNAL_AI=false` بماند مگر تایید صریح وجود داشته باشد.
 - [ ] `OKR_BACKEND_SERVICE_TOKEN` قوی تنظیم شود.
 - [ ] `OKR_BACKEND_SIGNING_SECRET` تنظیم و `OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true` حفظ شود.
-- [ ] در production مقدار `OKR_BACKEND_SECURITY_STATE_BACKEND=database` حفظ شود تا nonce/rate-limit بین replicaها مشترک بماند.
+- [ ] در production مقدار `OKR_BACKEND_SECURITY_STATE_BACKEND` روی `database` یا `redis` حفظ شود تا nonce/rate-limit بین replicaها مشترک بماند.
+- [ ] اگر backend روی `redis` است، مقدار `OKR_BACKEND_SECURITY_STATE_REDIS_URL` تنظیم شود.
 - [ ] `docs/ACCEPTED_FINDINGS_IMPLEMENTATION_PLAN.md` مرور و اجرا شود.
 - [ ] `DEPLOYMENT.md` و `docs/CONFIG_REFERENCE.md` مرور شوند.
 
