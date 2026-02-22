@@ -19,9 +19,9 @@ Runbook: first deployment
   - `OKR_BACKEND_API_URL` (default in compose: `http://backend-api:8100`)
   - `OKR_BACKEND_SERVICE_TOKEN` (strong shared secret)
   - `OKR_BACKEND_SIGNING_SECRET` (recommended; signed internal requests)
-  - `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required in production; strong value)
+  - `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required in production; minimum 12 chars with upper/lowercase, number, symbol)
   - `OKR_BACKEND_PROXY_MUTATIONS=true` (recommended)
-  - keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production
+  - keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production (runtime ignores fail-open overrides in production)
   - keep `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` unset/false in production
 - Configure `GEMINI_API_KEY` if AI features are enabled
 - Enable strict runtime checks in production: `OKR_STRICT_RUNTIME_PREFLIGHT=1`

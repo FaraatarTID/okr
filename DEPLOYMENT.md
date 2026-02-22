@@ -161,8 +161,8 @@ Notes:
 - Enforce the DB-role check in deployment review/checklists even during periods where startup guards are temporarily relaxed.
 - Keep `OKR_BACKEND_PROXY_MUTATIONS=true` so Goal/Objective/KR/Task writes route via backend API.
 - Keep `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` unset/false in production (fail-closed behavior).
-- In production, set `OKR_BOOTSTRAP_ADMIN_PASSWORD` before first startup (strong value).
-- Keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production.
+- In production, set `OKR_BOOTSTRAP_ADMIN_PASSWORD` before first startup (minimum 12 chars including uppercase, lowercase, number, symbol).
+- Keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production; production runtime ignores fail-open overrides and returns `AUTH_TEMP_UNAVAILABLE` on throttle subsystem errors.
 
 Step 4: Configure optional secrets (PDF/API integrations)
 

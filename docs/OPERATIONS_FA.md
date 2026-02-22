@@ -4,7 +4,7 @@ Documentation HQ: [README](../README.md)
 اجرای اولیه
 - migrationها در startup اجرا می‌شوند.
 - حساب bootstrap روی DB خالی: `admin`
-- منبع رمز production: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (اجباری)
+- منبع رمز production: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (اجباری؛ حداقل 12 کاراکتر با uppercase/lowercase/number/symbol)
 - fallback غیر production: `admin` (فقط برای توسعه)
 - ادمین اولیه مجبور به تغییر رمز در اولین ورود است.
 
@@ -41,7 +41,7 @@ Documentation HQ: [README](../README.md)
 - firewall طوری تنظیم شود که فقط proxy به app دسترسی داشته باشد
 - پورت backend خصوصی بماند (`127.0.0.1` در compose)
 - امضای درخواست داخلی با `OKR_BACKEND_SIGNING_SECRET` فعال باشد
-- در production مقدار `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` را false/unset نگه دارید
+- در production مقدار `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` را false/unset نگه دارید (runtime در production fail-open override را نادیده می‌گیرد)
 - credentialهای DB را rotate کنید
 
 پاسخ به رخداد

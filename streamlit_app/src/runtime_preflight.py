@@ -3,6 +3,8 @@
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from src.domain.password_policy import validate_password_policy
+
 
 @dataclass
 class RuntimePreflightReport:
@@ -96,10 +98,20 @@ def evaluate_runtime_preflight(
             "Production backend mode requires OKR_BACKEND_SIGNING_SECRET."
         )
 
-    if is_production and not str(bootstrap_admin_password or "").strip():
+    bootstrap_password = str(bootstrap_admin_password or "").strip()
+    if is_production and not bootstrap_password:
         report.errors.append(
             "Production requires OKR_BOOTSTRAP_ADMIN_PASSWORD for secure admin bootstrap."
         )
+    elif is_production:
+        try:
+            validate_password_policy(
+                bootstrap_password,
+                field_name="OKR_BOOTSTRAP_ADMIN_PASSWORD",
+                strict=True,
+            )
+        except ValueError as exc:
+            report.errors.append(str(exc))
 
     if is_production and allow_local_backend_fallback:
         report.errors.append(

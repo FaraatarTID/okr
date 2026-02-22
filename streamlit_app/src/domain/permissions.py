@@ -4,7 +4,7 @@ Role-Based Access Control (RBAC) and Permission verify logic.
 from enum import Enum
 from typing import Any, Optional, Protocol
 
-from src.models import User, UserRole, NodeBase, Team
+from src.models import User, UserRole
 
 
 class ResourceProtocol(Protocol):
@@ -28,26 +28,50 @@ def _is_owner(user: User, resource: ResourceProtocol) -> bool:
     return resource.owner_id == user.id
 
 
+def can_track_task_by_owner(
+    *,
+    actor_user_id: Optional[int],
+    task_owner_id: Optional[int],
+) -> bool:
+    """Timer tracking is allowed only for the propagated goal owner."""
+    if actor_user_id is None or task_owner_id is None:
+        return False
+    try:
+        return int(actor_user_id) == int(task_owner_id)
+    except Exception:
+        return False
+
+
 def _is_team_manager(user: User, resource: ResourceProtocol, session: Any = None) -> bool:
     """Check if user is the manager of the resource's owner or team."""
-    # 1. Direct team manager check (if team_id exists and we checked 'team.manager_id' - but Team doesn't have manager_id yet?)
-    # The current model uses User.manager_id. User.team_id aligns users.
-    # If resource.owner_id is a user managed by 'user', allow.
-    
-    if not resource.owner_id:
+    if user.role != UserRole.MANAGER or user.id is None:
         return False
-        
-    # We need a session to resolve the owner's manager if not loaded.
-    # For MVP, we assume permissions are checked with loaded objects or simple logic.
-    # If we don't have the owner object loaded, we might need to fetch it.
-    # But crud.py usually has the session.
-    
-    # Ideally, we pass the owner User object or session.
-    # To keep this pure, we might need the resource to have owner loaded.
-    pass 
-    # Placeholder: detailed logic requires session queries which we want to keep out of pure domain if possible,
-    # or pass session in.
-    return False
+
+    owner_id = getattr(resource, "owner_id", None)
+    if owner_id is None:
+        return False
+    try:
+        owner_id = int(owner_id)
+    except Exception:
+        return False
+
+    if owner_id == int(user.id):
+        return False
+
+    owner = getattr(resource, "owner", None)
+    if owner is not None:
+        return bool(
+            getattr(owner, "is_active", True)
+            and getattr(owner, "manager_id", None) == user.id
+        )
+
+    if session is None:
+        return False
+
+    owner_row = session.get(User, owner_id)
+    if not owner_row:
+        return False
+    return bool(owner_row.is_active and owner_row.manager_id == user.id)
 
 
 def check_permission(
@@ -98,38 +122,36 @@ def check_permission(
         # Action requires a resource but none provided
         return False
 
-    # Ownership check
-    is_owner = (resource.owner_id == user.id)
+    is_owner = _is_owner(user, resource)
+    is_manager_of_owner = _is_team_manager(user, resource, session=session)
 
-    # Team Manager check
-    # For now, we rely on the existing hierarchy logic: Manager of the Owner.
-    # We need to fetch the owner to check their manager_id.
-    is_manager_of_owner = False
-    if user.role == UserRole.MANAGER and resource.owner_id and session:
-        from src.models import User as DBUser
-        owner = session.get(DBUser, resource.owner_id)
-        if owner and owner.manager_id == user.id:
-            is_manager_of_owner = True
-            
     # Team checks (if resource belongs to user's team)
-    is_same_team = (resource.team_id == user.team_id) if (resource.team_id and user.team_id) else False
+    is_same_team = (
+        resource.team_id == user.team_id
+        if (resource.team_id is not None and user.team_id is not None)
+        else False
+    )
 
     # MATRIX
     if action == Action.READ:
         # Member: Own + Public/Team info?
         # For MVP, strict: Own items only? Or Team items?
         # Current app: Members see only own. Managers see team.
-        if is_owner: return True
-        if user.role == UserRole.MANAGER and (is_manager_of_owner or is_same_team): return True
+        if is_owner:
+            return True
+        if user.role == UserRole.MANAGER and (is_manager_of_owner or is_same_team):
+            return True
         return False
 
     if action in [Action.UPDATE, Action.DELETE]:
         # Member: Own items only.
-        if is_owner: return True
+        if is_owner:
+            return True
         # Manager: Can update team member items?
         # Existing policy: "Manager... manage their assigned OKRs".
         # Usually managers can edit direct reports' OKRs.
-        if user.role == UserRole.MANAGER and is_manager_of_owner: return True
+        if user.role == UserRole.MANAGER and is_manager_of_owner:
+            return True
         return False
 
     return False

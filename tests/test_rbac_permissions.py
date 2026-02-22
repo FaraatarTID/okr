@@ -1,7 +1,14 @@
+from src.models import Goal, User, UserRole
+from src.domain.permissions import check_permission, Action, can_track_task_by_owner
 
-import pytest
-from src.models import User, UserRole, Goal, Team
-from src.domain.permissions import check_permission, Action
+
+class _SessionStub:
+    def __init__(self, owners):
+        self._owners = owners
+
+    def get(self, _model, owner_id):
+        return self._owners.get(owner_id)
+
 
 def test_rbac_matrix():
     # Setup users
@@ -53,3 +60,25 @@ def test_rbac_matrix():
     # Cannot read manager goal? (Strict ownership for now, unless public?)
     # Implementation: `if is_owner: return True`. Else False for Member.
     assert check_permission(member, Action.READ, manager_goal) is False
+
+
+def test_manager_can_update_direct_report_resource_with_session_lookup():
+    manager = User(id=2, username="manager", role=UserRole.MANAGER, is_active=True, team_id=10)
+    member = User(
+        id=3,
+        username="member",
+        role=UserRole.MEMBER,
+        is_active=True,
+        manager_id=manager.id,
+        team_id=10,
+    )
+    member_goal = Goal(id=100, owner_id=member.id, team_id=member.team_id, title="Member Goal")
+    session = _SessionStub({member.id: member})
+
+    assert check_permission(manager, Action.UPDATE, member_goal, session=session) is True
+
+
+def test_timer_tracking_owner_check_requires_exact_owner_match():
+    assert can_track_task_by_owner(actor_user_id=10, task_owner_id=10) is True
+    assert can_track_task_by_owner(actor_user_id=10, task_owner_id=11) is False
+    assert can_track_task_by_owner(actor_user_id=None, task_owner_id=11) is False

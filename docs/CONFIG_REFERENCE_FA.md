@@ -88,6 +88,7 @@ AI
   - mode/key مربوط به PDF
   - wiring ایمن backend در production
   - وجود `OKR_BOOTSTRAP_ADMIN_PASSWORD` در production
+  - در production مقدار bootstrap باید strong باشد: حداقل 12 کاراکتر شامل حروف بزرگ/کوچک، عدد، و نماد
 - در strict mode، خطاهای بحرانی startup را متوقف می‌کنند
 
 Backend API (توصیه‌شده برای مقیاس)
@@ -139,7 +140,7 @@ Bootstrap ادمین
 - روی اولین اجرای DB خالی:
   - username: `admin`
   - password:
-    - production: `OKR_BOOTSTRAP_ADMIN_PASSWORD`
+    - production: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (حداقل 12 کاراکتر شامل حروف بزرگ/کوچک، عدد، نماد)
     - غیر production: fallback روی `admin`
 - ادمین اولیه مجبور به تغییر رمز است.
 - `OKR_BOOTSTRAP_ADMIN_PASSWORD` فقط از env خوانده می‌شود.
@@ -148,9 +149,13 @@ Bootstrap ادمین
 - `OKR_ENFORCE_STRONG_PASSWORD_POLICY`
   - production: پیش‌فرض فعال
   - non-production: پیش‌فرض غیرفعال
+  - در صورت فعال بودن، create/reset password باید حداقل 12 کاراکتر و شامل uppercase/lowercase/number/symbol باشد
+  - این policy هم در API schema validation و هم در CRUD mutation path اعمال می‌شود
 - `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN`
   - production: پیش‌فرض غیرفعال
   - non-production: پیش‌فرض فعال
+  - در production حتی اگر این env روی true باشد، fail-open اعمال نمی‌شود
+  - هنگام خطای زیرسامانه throttle، پاسخ `AUTH_TEMP_UNAVAILABLE` برمی‌گردد
 
 سلامت و لاگ
 - health endpoint: `GET /`
