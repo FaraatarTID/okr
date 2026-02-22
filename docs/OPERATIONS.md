@@ -5,7 +5,7 @@ Operations guide
 First run
 - App runs migrations automatically
 - Empty DB bootstrap account is `admin`
-- Production password source: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required)
+- Production password source: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required; minimum 12 chars with upper/lowercase, number, symbol)
 - Non-production fallback password: `admin` (local/dev convenience only)
 - Initial admin is forced to change password on first login
 
@@ -41,7 +41,7 @@ Security hardening
 - Set firewall rules so only the proxy can reach the app port
 - Keep backend API port private (`127.0.0.1` bind by default in compose)
 - Enable request signing for internal service calls (`OKR_BACKEND_SIGNING_SECRET`)
-- Keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production
+- Keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production (runtime ignores fail-open overrides in production)
 - Keep DB credentials in secret manager and rotate regularly
 
 Incident response

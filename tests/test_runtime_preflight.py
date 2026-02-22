@@ -192,3 +192,19 @@ def test_production_requires_bootstrap_admin_password():
         runtime_env="production",
     )
     assert any("OKR_BOOTSTRAP_ADMIN_PASSWORD" in msg for msg in report.errors)
+
+
+def test_production_requires_strong_bootstrap_admin_password():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="http://backend-api:8100",
+        backend_service_token="token",
+        backend_signing_secret="secret",
+        bootstrap_admin_password="weakpass",
+        runtime_env="production",
+    )
+    assert any("at least 12 characters" in msg for msg in report.errors)

@@ -40,6 +40,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn, MetricType, ScoreMode, LifecycleState
 from src.domain.lifecycle import get_allowed_transitions, get_state_color, STATE_HINTS, STATE_ICONS
+from src.domain.permissions import can_track_task_by_owner
 from src.domain.scoring import calculate_kr_score, get_score_color_band, get_score_label
 from src.crud import (
     get_goal_tree,
@@ -4081,7 +4082,12 @@ def render_atlas_workspace(username):
         return ranked_refs[0][3] if ranked_refs else task_refs[0]
 
     def _can_track_task(task_meta) -> bool:
-        return bool(task_meta and task_meta.get("owner_id") == actor_id)
+        if not task_meta:
+            return False
+        return can_track_task_by_owner(
+            actor_user_id=actor_id,
+            task_owner_id=task_meta.get("owner_id"),
+        )
 
     def _atlas_attention_chip_html(meta) -> str:
         meta_ref = str(meta.get("ref") or "")

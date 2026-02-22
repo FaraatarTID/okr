@@ -193,6 +193,23 @@ def test_create_user_endpoint_parses_role_and_team(monkeypatch):
     assert response.json()["role"] == "manager"
 
 
+def test_create_user_endpoint_rejects_weak_password_when_strict_policy_enabled(monkeypatch):
+    client, _backend_main = _make_client(monkeypatch)
+    monkeypatch.setenv("OKR_ENFORCE_STRONG_PASSWORD_POLICY", "true")
+
+    response = client.post(
+        "/v1/users",
+        headers={"X-OKR-Actor": "admin"},
+        json={
+            "username": "member1",
+            "password": "weakpass",
+            "role": "member",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_create_check_in_endpoint_coerces_variation_enum(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
     captured = {}

@@ -54,10 +54,10 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] `OKR_BACKEND_API_URL` is set (default: `http://backend-api:8100`).
 - [ ] `OKR_BACKEND_SERVICE_TOKEN` is set to a strong shared secret.
 - [ ] `OKR_BACKEND_SIGNING_SECRET` is set and matches across `okr` and `backend-api`.
-- [ ] `OKR_BOOTSTRAP_ADMIN_PASSWORD` is set to a strong value (required in production).
+- [ ] `OKR_BOOTSTRAP_ADMIN_PASSWORD` is set to a strong value (required in production; minimum 12 chars with upper/lowercase, number, symbol).
 - [ ] `OKR_BACKEND_PROXY_MUTATIONS=true` is set (recommended for backend-owned writes).
 - [ ] `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` is unset/false in production.
-- [ ] `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` is unset/false in production.
+- [ ] `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` is unset/false in production (production runtime ignores fail-open overrides).
 - [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` is set (recommended for production).
 - [ ] `GEMINI_API_KEY` is set (or AI-disable decision is documented).
 

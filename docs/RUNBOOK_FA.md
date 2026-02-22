@@ -20,9 +20,9 @@ Documentation HQ: [README](../README.md)
   - `OKR_BACKEND_API_URL` (پیش‌فرض compose: `http://backend-api:8100`)
   - `OKR_BACKEND_SERVICE_TOKEN` (توکن داخلی قوی)
   - `OKR_BACKEND_SIGNING_SECRET` (توصیه‌شده برای امضای درخواست داخلی)
-  - `OKR_BOOTSTRAP_ADMIN_PASSWORD` (در production اجباری و قوی)
+  - `OKR_BOOTSTRAP_ADMIN_PASSWORD` (در production اجباری؛ حداقل 12 کاراکتر با uppercase/lowercase/number/symbol)
   - `OKR_BACKEND_PROXY_MUTATIONS=true` (توصیه‌شده)
-  - در production مقدار `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` را false/unset نگه دارید
+  - در production مقدار `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` را false/unset نگه دارید (runtime در production fail-open override را نادیده می‌گیرد)
   - در production مقدار `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` را false/unset نگه دارید
 - در صورت فعال بودن AI، مقدار `GEMINI_API_KEY` یا provider معادل را تنظیم کنید
 - در production، preflight سخت‌گیرانه را فعال نگه دارید: `OKR_STRICT_RUNTIME_PREFLIGHT=1`

@@ -114,7 +114,7 @@ Runtime preflight policy
 - Behavior:
   - Runtime validates PDF provider mode and key presence.
   - Runtime also validates backend production-safety wiring (backend URL/token/signing secret and local-fallback policy) when relevant.
-  - Production also requires `OKR_BOOTSTRAP_ADMIN_PASSWORD` for secure admin bootstrap.
+  - Production requires `OKR_BOOTSTRAP_ADMIN_PASSWORD` and it must be strong (minimum 12 chars including upper/lowercase, number, symbol).
   - In strict mode, critical preflight errors stop app startup.
   - Provider configuration issues are surfaced as warnings/errors depending on severity.
 
@@ -182,7 +182,7 @@ Admin bootstrap
 - On first run (empty DB), an admin user is created:
   - username: `admin`
   - password:
-    - production: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required, strong)
+    - production: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required; minimum 12 chars including upper/lowercase, number, symbol)
     - non-production: defaults to `admin` for local/dev convenience
 - The initial admin is forced to change password on first login.
 - `OKR_BOOTSTRAP_ADMIN_PASSWORD` is read from environment variables at runtime (not Streamlit secrets).
@@ -191,10 +191,12 @@ Authentication policy controls
 
 - `OKR_ENFORCE_STRONG_PASSWORD_POLICY`
   - default: enabled in production, disabled in non-production
-  - enforces stronger password requirements on user creation and reset
+  - when enabled, create/reset password requests must be at least 12 characters and include uppercase, lowercase, number, and symbol
+  - this policy is enforced in both backend API request validation and CRUD mutation paths
 - `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN`
   - default: disabled in production, enabled in non-production
-  - when disabled, auth-throttle operational failures return temporary auth unavailability instead of bypassing throttle checks
+  - in production, fail-open is forcibly disabled even if the variable is set
+  - auth-throttle operational failures return temporary auth unavailability (`AUTH_TEMP_UNAVAILABLE`) instead of bypassing throttle checks
 
 Logging & health
 

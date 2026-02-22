@@ -47,6 +47,8 @@ from src.config_runtime import get_bool_config
 from src.database import get_session_context as _database_get_session_context
 from src.domain import analytics as domain_analytics
 from src.domain import authorization as domain_auth
+from src.domain.password_policy import is_production_runtime, validate_password_policy
+from src.domain.permissions import can_track_task_by_owner
 from src.audit import audit_log
 from src.utils.cache_utils import clear_cache_safe
 from src.domain.progress import (
@@ -122,8 +124,6 @@ ADMIN_BOOTSTRAP_MAX_RETRIES = max(1, int(os.getenv("ADMIN_BOOTSTRAP_MAX_RETRIES"
 ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS = max(
     0.0, float(os.getenv("ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", "0.4"))
 )
-_PRODUCTION_ENV_NAMES = {"prod", "production"}
-_STRONG_PASSWORD_MIN_LENGTH = 12
 _BOOTSTRAP_ADMIN_PASSWORD_ENV = "OKR_BOOTSTRAP_ADMIN_PASSWORD"
 
 _MODEL_BINDING_NAMES = (
@@ -277,74 +277,26 @@ def _validate_update_fields(
 # ============================================================================
 
 
-def _runtime_env_name() -> str:
-    return (
-        str(os.getenv("OKR_ENV", os.getenv("OKR_RUNTIME_ENV", "development"))).strip().lower()
-        or "development"
-    )
-
-
-def _is_production_runtime() -> bool:
-    return _runtime_env_name() in _PRODUCTION_ENV_NAMES
-
-
 def _auth_throttle_fail_open_allowed() -> bool:
+    if is_production_runtime():
+        return False
     return get_bool_config(
         "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN",
-        default=not _is_production_runtime(),
+        default=True,
     )
-
-
-def _strong_password_requirements_met(password: str) -> bool:
-    return (
-        any(ch.islower() for ch in password)
-        and any(ch.isupper() for ch in password)
-        and any(ch.isdigit() for ch in password)
-        and any(not ch.isalnum() for ch in password)
-    )
-
-
-def _validate_password_policy(
-    password: str,
-    *,
-    field_name: str = "Password",
-    strict: Optional[bool] = None,
-) -> None:
-    value = str(password or "")
-    if not value:
-        raise ValueError(f"{field_name} is required.")
-
-    strict_policy = (
-        bool(strict)
-        if strict is not None
-        else get_bool_config(
-            "OKR_ENFORCE_STRONG_PASSWORD_POLICY",
-            default=_is_production_runtime(),
-        )
-    )
-
-    if strict_policy:
-        if len(value) < _STRONG_PASSWORD_MIN_LENGTH:
-            raise ValueError(
-                f"{field_name} must be at least {_STRONG_PASSWORD_MIN_LENGTH} characters."
-            )
-        if not _strong_password_requirements_met(value):
-            raise ValueError(
-                f"{field_name} must include uppercase, lowercase, number, and symbol characters."
-            )
 
 
 def _resolve_bootstrap_admin_password() -> str:
     configured = str(os.getenv(_BOOTSTRAP_ADMIN_PASSWORD_ENV, "")).strip()
     if configured:
-        _validate_password_policy(
+        validate_password_policy(
             configured,
             field_name="Bootstrap admin password",
             strict=True,
         )
         return configured
 
-    if _is_production_runtime():
+    if is_production_runtime():
         raise RuntimeError(
             f"Production requires {_BOOTSTRAP_ADMIN_PASSWORD_ENV} with a strong password."
         )
@@ -373,7 +325,7 @@ def create_user(
     actor_username: Optional[str] = None,
 ) -> User:
     """Create a new user with hashed password."""
-    _validate_password_policy(password)
+    validate_password_policy(password)
 
     if _backend_mutation_proxy_enabled():
         if not actor_username:
@@ -1092,7 +1044,7 @@ def reset_user_password(
     actor_username: Optional[str] = None,
 ) -> bool:
     """Reset a user's password."""
-    _validate_password_policy(new_password)
+    validate_password_policy(new_password)
 
     if _backend_mutation_proxy_enabled():
         if not actor_username:
@@ -2825,15 +2777,31 @@ def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
 def _query_owned_task_for_timer(
     session: Session, task_id: int, user_id: str
 ) -> Optional[Task]:
+    actor_user_id = session.exec(
+        select(User.id).where(User.username == str(user_id)).limit(1)
+    ).first()
+    if actor_user_id is None:
+        return None
+
     statement = (
-        select(Task)
+        select(Task, Goal.owner_id)
         .join(KeyResult)
         .join(Objective)
         .join(Goal)
         .where(Task.id == task_id)
-        .where(_goal_owner_predicate_by_username(user_id))
+        .where(Goal.owner_id == int(actor_user_id))
     )
-    return session.exec(statement).first()
+    row = session.exec(statement).first()
+    if not row:
+        return None
+
+    task, task_owner_id = row
+    if not can_track_task_by_owner(
+        actor_user_id=int(actor_user_id),
+        task_owner_id=task_owner_id,
+    ):
+        return None
+    return task
 
 
 def _get_active_work_log_for_task(session: Session, task_id: int) -> Optional[WorkLog]:

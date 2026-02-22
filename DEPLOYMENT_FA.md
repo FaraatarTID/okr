@@ -16,10 +16,10 @@ Documentation HQ: [README](README.md)
 - استفاده از runtime DB role کم‌اختیار (مثل `okr_app`، نه `postgres`)
 - `OKR_BACKEND_SERVICE_TOKEN` قوی
 - `OKR_BACKEND_SIGNING_SECRET` قوی
-- `OKR_BOOTSTRAP_ADMIN_PASSWORD` قوی (در production اجباری)
+- `OKR_BOOTSTRAP_ADMIN_PASSWORD` قوی (در production اجباری): حداقل 12 کاراکتر شامل uppercase/lowercase/number/symbol
 - `OKR_BACKEND_PROXY_MUTATIONS=true`
 - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=false` در production
-- `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN=false` در production
+- `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN=false` در production (در production حتی اگر true شود، runtime همچنان fail-open را اعمال نمی‌کند)
 - `PDF_METHOD=pdfshift` و `PDFSHIFT_API_KEY`
 - `OKR_STRICT_RUNTIME_PREFLIGHT=true`
 
@@ -69,7 +69,7 @@ curl -f http://127.0.0.1:8100/healthz
 - TLS را با Certbot یا PKI داخلی فعال کنید.
 
 8) ورود اولیه و hardening
-- در production ورود اولیه: `admin/<OKR_BOOTSTRAP_ADMIN_PASSWORD>`
+- در production ورود اولیه: `admin/<OKR_BOOTSTRAP_ADMIN_PASSWORD>` (با الگوی strong بالا)
 - در غیر production fallback: `admin/admin`
 - بلافاصله رمز عبور را تغییر دهید.
 - ادمین‌های واقعی را بسازید و کاربرهای تست را غیرفعال کنید.

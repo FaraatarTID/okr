@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from backend_app.path_setup import ensure_streamlit_app_on_path
+
+ensure_streamlit_app_on_path()
+
+from src.domain.password_policy import validate_password_policy
 
 
 class TimerStartRequest(BaseModel):
@@ -127,6 +133,12 @@ class UserCreateRequest(BaseModel):
     must_change_password: bool = False
     actor_username: Optional[str] = None
 
+    @field_validator("password")
+    @classmethod
+    def _validate_password_policy(cls, value: str) -> str:
+        validate_password_policy(value, field_name="Password")
+        return value
+
 
 class UserUpdateRequest(BaseModel):
     display_name: Optional[str] = Field(default=None, max_length=256)
@@ -141,6 +153,12 @@ class UserPasswordResetRequest(BaseModel):
     new_password: str = Field(..., min_length=8, max_length=512)
     require_change: bool = False
     actor_username: Optional[str] = None
+
+    @field_validator("new_password")
+    @classmethod
+    def _validate_new_password_policy(cls, value: str) -> str:
+        validate_password_policy(value, field_name="New password")
+        return value
 
 
 class UserMutationView(BaseModel):
