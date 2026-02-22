@@ -56,7 +56,7 @@ def test_timer_service_falls_back_to_local_on_backend_transport_error(monkeypatc
     import src.crud as crud
 
     monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
-    monkeypatch.setenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", "true")
+    monkeypatch.setenv("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", "true")
     monkeypatch.setattr(
         timer_service,
         "backend_start_timer",
@@ -95,6 +95,7 @@ def test_timer_service_transient_backend_error_fails_closed_by_default(monkeypat
     import src.services.timer_service as timer_service
 
     monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
+    monkeypatch.delenv("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", raising=False)
     monkeypatch.delenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", raising=False)
     monkeypatch.setattr(
         timer_service,

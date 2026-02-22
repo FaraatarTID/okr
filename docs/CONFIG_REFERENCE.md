@@ -113,7 +113,8 @@ Runtime preflight policy
   - Set `OKR_STRICT_RUNTIME_PREFLIGHT=0` only for temporary troubleshooting.
 - Behavior:
   - Runtime validates PDF provider mode and key presence.
-  - Runtime also validates backend production-safety wiring (backend URL/token/signing secret and local-fallback policy) when relevant.
+  - Runtime also validates backend production-safety wiring (backend URL/token/signing secret and scoped local-fallback policy) when relevant.
+  - In production, runtime warns if `OKR_BACKEND_PROXY_READS=true` is combined with `OKR_ALLOW_LOCAL_READ_FALLBACK=true`.
   - Production requires `OKR_BOOTSTRAP_ADMIN_PASSWORD` and it must be strong (minimum 12 chars including upper/lowercase, number, symbol).
   - Production backend mode requires `OKR_BACKEND_SECURITY_STATE_BACKEND=database` or `redis` for distributed nonce/rate-limit state.
   - If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, set `OKR_BACKEND_SECURITY_STATE_REDIS_URL`.
@@ -130,7 +131,9 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_DEFAULT_ACTOR` (fallback actor for system-initiated AI requests; default: `system`)
   - `OKR_BACKEND_PROXY_MUTATIONS` (default: `true`; routes frontend mutation writes through backend API when backend URL is set)
   - `OKR_BACKEND_PROXY_READS` (default: `false`; when enabled, selected high-traffic reads are fetched via backend read endpoints)
-  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (default: `false`; emergency non-production fallback only)
+  - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (default: `false`; emergency non-production fallback for mutation/timer/job flows)
+  - `OKR_ALLOW_LOCAL_READ_FALLBACK` (default: `false`; emergency non-production fallback for proxied read flows)
+  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy compatibility fallback; used only when scoped flags above are unset)
   - `OKR_ENABLE_DIRECT_DB_RESTORE` (default: `false`; direct Streamlit DB restore is disabled by default and blocked in production)
 - Backend API runtime:
   - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
@@ -167,7 +170,7 @@ Backend API (recommended for scale)
   - Job submit accepted/rejected events are written to audit log for usage reporting and incident review.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
-  - If backend transport fails, production default is fail-closed unless `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` is explicitly set.
+  - If proxied backend transport fails, default behavior is fail-closed unless scoped fallback is explicitly enabled (`OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation paths, `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied reads).
   - Direct DB restore in Streamlit Admin is opt-in (`OKR_ENABLE_DIRECT_DB_RESTORE=true`) and intended for controlled non-production scenarios only.
   - In non-production (or when strict runtime preflight is disabled), missing backend URL can result in direct-mode legacy behavior.
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.

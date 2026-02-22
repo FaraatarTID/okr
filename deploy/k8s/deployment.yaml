@@ -53,7 +53,9 @@ spec:
                 secretKeyRef:
                   name: okr-backend-auth
                   key: OKR_BACKEND_SIGNING_SECRET
-            - name: OKR_ALLOW_LOCAL_BACKEND_FALLBACK
+            - name: OKR_ALLOW_LOCAL_MUTATION_FALLBACK
+              value: "false"
+            - name: OKR_ALLOW_LOCAL_READ_FALLBACK
               value: "false"
           readinessProbe:
             httpGet:

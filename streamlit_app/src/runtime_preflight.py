@@ -38,10 +38,13 @@ def evaluate_runtime_preflight(
     ai_provider_message: Optional[str] = None,
     backend_api_url: Optional[str] = None,
     backend_proxy_mutations: bool = False,
+    backend_proxy_reads: bool = False,
+    allow_local_backend_mutation_fallback: Optional[bool] = None,
+    allow_local_backend_read_fallback: Optional[bool] = None,
+    allow_local_backend_fallback: Optional[bool] = None,
     backend_service_token: Optional[str] = None,
     backend_signing_secret: Optional[str] = None,
     bootstrap_admin_password: Optional[str] = None,
-    allow_local_backend_fallback: bool = False,
     backend_security_state_backend: str = "memory",
     backend_security_state_redis_url: Optional[str] = None,
     runtime_env: str = "development",
@@ -66,6 +69,17 @@ def evaluate_runtime_preflight(
     backend_url = str(backend_api_url or "").strip()
     env_name = str(runtime_env or "development").strip().lower()
     is_production = env_name in {"prod", "production"}
+    legacy_fallback = bool(allow_local_backend_fallback)
+    mutation_fallback = (
+        bool(allow_local_backend_mutation_fallback)
+        if allow_local_backend_mutation_fallback is not None
+        else legacy_fallback
+    )
+    read_fallback = (
+        bool(allow_local_backend_read_fallback)
+        if allow_local_backend_read_fallback is not None
+        else legacy_fallback
+    )
 
     if is_production and not backend_proxy_mutations:
         report.errors.append(
@@ -133,9 +147,14 @@ def evaluate_runtime_preflight(
         except ValueError as exc:
             report.errors.append(str(exc))
 
-    if is_production and allow_local_backend_fallback:
+    if is_production and mutation_fallback:
         report.errors.append(
-            "OKR_ALLOW_LOCAL_BACKEND_FALLBACK should be disabled in production."
+            "OKR_ALLOW_LOCAL_MUTATION_FALLBACK should be disabled in production."
+        )
+    if is_production and backend_proxy_reads and read_fallback:
+        report.warnings.append(
+            "Production risk: OKR_BACKEND_PROXY_READS=true with "
+            "OKR_ALLOW_LOCAL_READ_FALLBACK=true can bypass backend read fail-closed policy."
         )
 
     key = str(gemini_api_key or "").strip()

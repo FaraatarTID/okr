@@ -38,7 +38,9 @@ spec:
               value: "300"
             - name: OKR_BACKEND_JOB_PRUNE_BATCH_SIZE
               value: "200"
-            - name: OKR_ALLOW_LOCAL_BACKEND_FALLBACK
+            - name: OKR_ALLOW_LOCAL_MUTATION_FALLBACK
+              value: "false"
+            - name: OKR_ALLOW_LOCAL_READ_FALLBACK
               value: "false"
           resources:
             requests:

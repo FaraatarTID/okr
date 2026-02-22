@@ -185,6 +185,38 @@ def _backend_read_proxy_enabled() -> bool:
         return False
 
 
+def _allow_local_backend_fallback() -> bool:
+    try:
+        from src.config_runtime import get_config_value
+
+        scoped_raw = str(get_config_value("OKR_ALLOW_LOCAL_READ_FALLBACK", "")).strip()
+        if scoped_raw:
+            return scoped_raw.lower() in {"1", "true", "yes", "on"}
+        return bool(get_bool_config("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False))
+    except Exception as exc:
+        logger.debug("Local backend fallback check failed: %s", exc)
+        return False
+
+
+def _handle_backend_read_failure(*, operation: str, backend_result=None, exc: Exception | None = None) -> None:
+    detail = None
+    if isinstance(backend_result, dict):
+        detail = backend_result.get("error")
+    if detail is None and exc is not None:
+        detail = str(exc)
+    detail_text = str(detail or "unknown backend read failure")
+
+    if not _allow_local_backend_fallback():
+        raise RuntimeError(
+            f"Backend read '{operation}' failed and local fallback is disabled: {detail_text}"
+        )
+    logger.warning(
+        "Falling back to local %s read: %s",
+        operation,
+        detail_text,
+    )
+
+
 # Cache helpers for heavy queries/aggregations
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_leadership_metrics(user_ids, cycle_id, actor_username=None):
@@ -199,15 +231,16 @@ def _cached_get_leadership_metrics(user_ids, cycle_id, actor_username=None):
             )
             if isinstance(backend_result, dict) and "error" not in backend_result:
                 return backend_result
-            logger.warning(
-                "Falling back to local leadership metrics read: %s",
-                backend_result.get("error")
-                if isinstance(backend_result, dict)
-                else "invalid backend response",
+            _handle_backend_read_failure(
+                operation="leadership metrics",
+                backend_result=backend_result,
             )
         except Exception as exc:
-            logger.warning(
-                "Backend leadership metrics read failed; using local path: %s", exc
+            if isinstance(exc, RuntimeError):
+                raise
+            _handle_backend_read_failure(
+                operation="leadership metrics",
+                exc=exc,
             )
     from src.crud import get_leadership_metrics
 
@@ -353,14 +386,17 @@ def _cached_get_atlas_scope_snapshot(
             if isinstance(backend_result, dict) and "error" not in backend_result:
                 if isinstance(backend_result.get("goals"), list):
                     return backend_result
-            logger.warning(
-                "Falling back to local atlas snapshot read: %s",
-                backend_result.get("error")
-                if isinstance(backend_result, dict)
-                else "invalid backend response",
+            _handle_backend_read_failure(
+                operation="atlas snapshot",
+                backend_result=backend_result,
             )
         except Exception as exc:
-            logger.warning("Backend atlas snapshot read failed; using local path: %s", exc)
+            if isinstance(exc, RuntimeError):
+                raise
+            _handle_backend_read_failure(
+                operation="atlas snapshot",
+                exc=exc,
+            )
 
     with get_session_context() as session:
         goal_stmt = (

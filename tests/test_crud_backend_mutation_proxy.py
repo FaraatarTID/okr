@@ -54,6 +54,7 @@ def test_create_goal_backend_transient_error_fails_closed_by_default(monkeypatch
 
     monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
     monkeypatch.setenv("OKR_BACKEND_PROXY_MUTATIONS", "true")
+    monkeypatch.delenv("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", raising=False)
     monkeypatch.delenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", raising=False)
 
     monkeypatch.setattr(
