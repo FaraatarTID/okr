@@ -11,33 +11,27 @@ Manifests
 
 - Namespace: create okr (kubectl create namespace okr)
 - Secret: [deploy/k8s/secret-db.yaml](../deploy/k8s/secret-db.yaml) with OKR_DATABASE_URL
-- Deployment: [deploy/k8s/deployment.yaml](../deploy/k8s/deployment.yaml)
-  - Reads OKR_DATABASE_URL from Secret
-  - Non-root securityContext
-  - Probes on /
-- Service: [deploy/k8s/service.yaml](../deploy/k8s/service.yaml)
+- Backend auth secret: [deploy/k8s/secret-backend-auth.yaml](../deploy/k8s/secret-backend-auth.yaml)
+- Streamlit Deployment: [deploy/k8s/deployment.yaml](../deploy/k8s/deployment.yaml)
+- Streamlit Service: [deploy/k8s/service.yaml](../deploy/k8s/service.yaml)
+- Backend API Deployment: [deploy/k8s/deployment-backend-api.yaml](../deploy/k8s/deployment-backend-api.yaml)
+- Backend API Service: [deploy/k8s/service-backend-api.yaml](../deploy/k8s/service-backend-api.yaml)
+- Backend Worker Deployment: [deploy/k8s/deployment-backend-worker.yaml](../deploy/k8s/deployment-backend-worker.yaml)
 - Ingress: [deploy/k8s/ingress.yaml](../deploy/k8s/ingress.yaml)
   - Set host and TLS secret
 
 Current scope of provided manifests (important)
 
-- The checked-in Kubernetes manifests currently deploy the Streamlit app service (`okr-streamlit`) only.
-- For full backend-assisted architecture parity with Docker Compose, add internal services for:
-  - `backend-api` (FastAPI)
-  - `backend-worker` (job processor)
-- Streamlit should then use `OKR_BACKEND_API_URL` pointing to the cluster-internal backend API Service.
-- Set `OKR_BACKEND_PROXY_MUTATIONS=true` on the `okr` Deployment to route frontend write flows through backend API.
+- The checked-in manifests now include Streamlit + backend API + backend worker.
+- Streamlit uses cluster-internal backend API Service via `OKR_BACKEND_API_URL=http://okr-backend-api:8100`.
+- `OKR_BACKEND_PROXY_MUTATIONS=true` is enabled on Streamlit deployment.
 - Keep backend API Service internal (`ClusterIP`) and avoid public ingress exposure.
-
-Recommended backend K8s additions
-
-- Deployment + Service for `backend-api`.
-- Deployment for `backend-worker`.
 - Shared environment/Secret values across app + backend:
   - `OKR_DATABASE_URL`
   - `OKR_BACKEND_SERVICE_TOKEN`
   - `OKR_BACKEND_SIGNING_SECRET`
   - `OKR_BACKEND_PROXY_MUTATIONS=true` (on `okr` workload)
+  - `OKR_BACKEND_PROXY_READS=true` (optional; routes selected read-heavy paths via backend API)
   - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=false` (recommended production default)
   - `PDF_METHOD=pdfshift`, `PDFSHIFT_API_KEY`
   - AI policy/provider values (`ALLOW_EXTERNAL_AI`, `AI_PROVIDER`, provider credentials)

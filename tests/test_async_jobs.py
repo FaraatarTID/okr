@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlmodel import SQLModel
@@ -141,3 +141,38 @@ def test_enqueue_job_captures_actor_team_id_when_available(isolated_db):
         max_attempts=1,
     )
     assert int(job.team_id or 0) == int(team.id or 0)
+
+
+def test_prune_terminal_jobs_removes_old_finished_rows(isolated_db):
+    from backend_app.jobs import enqueue_job, mark_job_succeeded, prune_terminal_jobs
+    from src.database import get_session_context
+    from src.models import AsyncJob
+
+    old_job = enqueue_job(
+        kind="ai.generate_json",
+        payload={"prompt": "old"},
+        actor_username="alice",
+        max_attempts=1,
+    )
+    fresh_job = enqueue_job(
+        kind="ai.generate_json",
+        payload={"prompt": "fresh"},
+        actor_username="alice",
+        max_attempts=1,
+    )
+    mark_job_succeeded(old_job.id, {"ok": True})
+    mark_job_succeeded(fresh_job.id, {"ok": True})
+
+    with get_session_context() as session:
+        stale = session.get(AsyncJob, old_job.id)
+        assert stale is not None
+        stale.finished_at = _utc_now_naive() - timedelta(days=30)
+        stale.updated_at = stale.finished_at
+        session.add(stale)
+
+    deleted = prune_terminal_jobs(retention_days=14, batch_size=100)
+    assert deleted >= 1
+
+    with get_session_context() as session:
+        assert session.get(AsyncJob, old_job.id) is None
+        assert session.get(AsyncJob, fresh_job.id) is not None

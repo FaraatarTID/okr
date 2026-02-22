@@ -1,47 +1,44 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: okr-streamlit
+  name: okr-backend-api
   namespace: okr
   labels:
-    app: okr-streamlit
+    app: okr-backend-api
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: okr-streamlit
+      app: okr-backend-api
   template:
     metadata:
       labels:
-        app: okr-streamlit
+        app: okr-backend-api
     spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         fsGroup: 10001
       containers:
-        - name: app
+        - name: backend-api
           image: ghcr.io/your-org/okr-streamlit:latest
           imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "backend_app.run_api"]
           ports:
-            - containerPort: 8501
+            - containerPort: 8100
           env:
-            - name: PORT
-              value: "8501"
-            - name: STREAMLIT_SERVER_HEADLESS
-              value: "true"
-            - name: BASE_URL_PATH
-              value: "" # set to "okr" if serving under a subpath
             - name: OKR_DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: okr-db
                   key: OKR_DATABASE_URL
-            - name: OKR_BACKEND_API_URL
-              value: "http://okr-backend-api:8100"
-            - name: OKR_BACKEND_PROXY_MUTATIONS
+            - name: OKR_BACKEND_HOST
+              value: "0.0.0.0"
+            - name: OKR_BACKEND_PORT
+              value: "8100"
+            - name: OKR_BACKEND_ENFORCE_TOKEN
               value: "true"
-            - name: OKR_BACKEND_PROXY_READS
+            - name: OKR_BACKEND_ENFORCE_REQUEST_SIGNING
               value: "true"
             - name: OKR_BACKEND_SERVICE_TOKEN
               valueFrom:
@@ -53,20 +50,24 @@ spec:
                 secretKeyRef:
                   name: okr-backend-auth
                   key: OKR_BACKEND_SIGNING_SECRET
+            - name: OKR_BACKEND_SECURITY_STATE_BACKEND
+              value: "database"
             - name: OKR_ALLOW_LOCAL_BACKEND_FALLBACK
               value: "false"
+            - name: OKR_BACKEND_JOB_RETENTION_DAYS
+              value: "14"
           readinessProbe:
             httpGet:
-              path: /
-              port: 8501
-            initialDelaySeconds: 10
+              path: /healthz
+              port: 8100
+            initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 3
           livenessProbe:
             httpGet:
-              path: /
-              port: 8501
-            initialDelaySeconds: 30
+              path: /healthz
+              port: 8100
+            initialDelaySeconds: 20
             periodSeconds: 20
             timeoutSeconds: 3
           resources:

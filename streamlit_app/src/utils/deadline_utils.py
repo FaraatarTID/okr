@@ -63,7 +63,7 @@ def _to_progress(value: Any) -> int:
         return 0
     try:
         return max(0, min(100, int(float(value))))
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 

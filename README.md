@@ -15,6 +15,7 @@ Use this section as the single entry point for all project docs.
 - **Architecture (Learning Loop Contract, EN+FA)**: [docs/LEARNING_LOOP_ARCHITECTURE.md](docs/LEARNING_LOOP_ARCHITECTURE.md)
 - **Learning Loop Workflow (EN+FA)**: [docs/learning-loop.md](docs/learning-loop.md)
 - **Architecture (Full System)**: [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Architecture Improvement Plan**: [docs/ARCHITECTURE_IMPROVEMENT_PLAN.md](docs/ARCHITECTURE_IMPROVEMENT_PLAN.md)
 - **License**: [LICENSE](LICENSE)
 - **Deployment Guide (En)**: [DEPLOYMENT.md](DEPLOYMENT.md)
 - **Deployment Guide (Fa)**: [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md)
@@ -569,4 +570,3 @@ python streamlit_app/scripts/perf_hotpaths.py
 ```
 
 See `performance.md` for current baselines and budgets.
-

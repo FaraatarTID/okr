@@ -129,7 +129,7 @@ def _headers(
 def _response_json_or_error(response: requests.Response) -> Dict[str, Any]:
     try:
         payload = response.json()
-    except Exception:
+    except ValueError:
         payload = {"error": str(response.text or "").strip() or "Invalid response."}
     if response.status_code >= 400:
         detail = payload.get("detail") if isinstance(payload, dict) else None
@@ -277,6 +277,50 @@ def get_job(job_id: str, actor_username: str) -> Dict[str, Any]:
         actor_username=actor_username,
         payload=None,
         timeout=(3.0, 20.0),
+        retries=1,
+    )
+
+
+def fetch_atlas_scope_snapshot(
+    *,
+    cycle_id: int,
+    owner_ids: Optional[list[int]],
+    include_analysis: bool,
+    actor_username: str,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "cycle_id": int(cycle_id),
+        "owner_ids": [int(owner_id) for owner_id in (owner_ids or [])] if owner_ids is not None else None,
+        "include_analysis": bool(include_analysis),
+        "actor_username": str(actor_username),
+    }
+    return _request_json(
+        method="POST",
+        path="/v1/read/atlas/snapshot",
+        actor_username=actor_username,
+        payload=payload,
+        timeout=(3.0, 30.0),
+        retries=1,
+    )
+
+
+def fetch_leadership_metrics(
+    *,
+    cycle_id: int,
+    usernames: list[str],
+    actor_username: str,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "cycle_id": int(cycle_id),
+        "usernames": [str(value).strip() for value in (usernames or []) if str(value).strip()],
+        "actor_username": str(actor_username),
+    }
+    return _request_json(
+        method="POST",
+        path="/v1/read/leadership/metrics",
+        actor_username=actor_username,
+        payload=payload,
+        timeout=(3.0, 30.0),
         retries=1,
     )
 

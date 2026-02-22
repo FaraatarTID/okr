@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from sqlmodel import Session, select
 
 from backend_app.job_limits import enforce_job_submit_limits
 from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job
@@ -16,6 +18,7 @@ from backend_app.schemas import (
     AlignmentCreateRequest,
     AlignmentDeleteResponse,
     AlignmentMutationView,
+    AtlasSnapshotRequest,
     CheckInCreateRequest,
     CheckInMutationView,
     CycleCreateRequest,
@@ -31,6 +34,7 @@ from backend_app.schemas import (
     JobSubmitRequest,
     JobView,
     KeyResultCreateRequest,
+    LeadershipMetricsRequest,
     NodeDeleteResponse,
     NodeMutationView,
     NodeUpdateRequest,
@@ -93,8 +97,11 @@ from src.crud import (
     update_team,
     update_user,
     upsert_retro_experiment_outcome,
+    get_leadership_metrics,
 )
-from src.database import init_database
+from src.database import get_session_context, init_database
+from src.domain.read_queries import build_atlas_scope_snapshot
+from src.observability import observability_context
 from src.models import (
     AlignmentType,
     ExperimentDecision,
@@ -104,6 +111,7 @@ from src.models import (
     MetricType,
     ScoreMode,
     TaskStatus,
+    User,
     UserRole,
     VariationType,
 )
@@ -121,6 +129,43 @@ app = FastAPI(
     version="0.1.0",
     lifespan=_lifespan,
 )
+
+
+def _normalize_observability_id(value: Optional[str]) -> Optional[str]:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return text[:128]
+
+
+def _resolve_request_observability_ids(request: Request) -> tuple[str, str]:
+    headers = request.headers
+    request_id = _normalize_observability_id(
+        headers.get("x-request-id") or headers.get("x-okr-request-id")
+    )
+    correlation_id = _normalize_observability_id(
+        headers.get("x-correlation-id")
+        or headers.get("x-okr-correlation-id")
+        or request_id
+    )
+    if not correlation_id:
+        correlation_id = f"req-{uuid.uuid4().hex}"
+    if not request_id:
+        request_id = correlation_id
+    return correlation_id, request_id
+
+
+@app.middleware("http")
+async def _inject_observability_context(request: Request, call_next):
+    correlation_id, request_id = _resolve_request_observability_ids(request)
+    with observability_context(
+        correlation_id=correlation_id,
+        request_id=request_id,
+    ):
+        response = await call_next(request)
+    response.headers["X-Correlation-ID"] = correlation_id
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 
 _NODE_TYPES = {"GOAL", "OBJECTIVE", "KEY_RESULT", "TASK"}
@@ -379,6 +424,77 @@ def _resolve_actor(
     )
 
 
+def _resolve_actor_scope(session: Session, actor_username: str) -> dict[str, Any]:
+    actor = session.exec(
+        select(User).where(User.username == str(actor_username).strip())
+    ).first()
+    if not actor or not bool(getattr(actor, "is_active", False)):
+        raise HTTPException(status_code=403, detail="Actor is not authorized.")
+
+    actor_id = getattr(actor, "id", None)
+    if actor_id is None:
+        raise HTTPException(status_code=403, detail="Actor is not authorized.")
+
+    actor_id_int = int(actor_id)
+    role = getattr(actor, "role", UserRole.MEMBER)
+    if role == UserRole.ADMIN:
+        rows = list(
+            session.exec(
+                select(User.id, User.username).where(User.is_active == True)  # noqa: E712
+            ).all()
+        )
+    elif role == UserRole.MANAGER:
+        rows = list(
+            session.exec(
+                select(User.id, User.username)
+                .where(User.is_active == True)  # noqa: E712
+                .where((User.id == actor_id_int) | (User.manager_id == actor_id_int))
+            ).all()
+        )
+    else:
+        rows = list(
+            session.exec(
+                select(User.id, User.username)
+                .where(User.is_active == True)  # noqa: E712
+                .where(User.id == actor_id_int)
+            ).all()
+        )
+
+    owner_ids: set[int] = set()
+    usernames: set[str] = set()
+    for row in rows:
+        try:
+            user_id_raw, username_raw = row
+        except Exception:
+            continue
+        if user_id_raw is None or not username_raw:
+            continue
+        owner_ids.add(int(user_id_raw))
+        usernames.add(str(username_raw))
+
+    if not owner_ids:
+        owner_ids.add(actor_id_int)
+        usernames.add(str(actor.username))
+
+    return {
+        "is_admin": role == UserRole.ADMIN,
+        "owner_ids": owner_ids,
+        "usernames": usernames,
+    }
+
+
+def _coerce_owner_ids(values: Optional[list[int]]) -> list[int]:
+    if not values:
+        return []
+    output: list[int] = []
+    for value in values:
+        try:
+            output.append(int(value))
+        except Exception:
+            continue
+    return sorted(set(output))
+
+
 def _coerce_experiment_updates(updates: dict) -> dict:
     clean = dict(updates or {})
     for date_field in ("start_at", "end_at"):
@@ -467,6 +583,67 @@ def _safe_audit_job_submit(
 @app.get("/healthz")
 def healthz() -> dict:
     return {"status": "ok"}
+
+
+@app.post(
+    "/v1/read/atlas/snapshot",
+    dependencies=[Depends(require_service_access)],
+)
+def api_read_atlas_snapshot(
+    payload: AtlasSnapshotRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    actor = _resolve_actor(
+        header_actor=x_okr_actor,
+        payload_actor=payload.actor_username,
+    )
+    requested_owner_ids = _coerce_owner_ids(payload.owner_ids)
+    with get_session_context() as session:
+        scope = _resolve_actor_scope(session, actor)
+        allowed_owner_ids = set(scope.get("owner_ids") or set())
+        if bool(scope.get("is_admin", False)):
+            owner_ids = requested_owner_ids or None
+        else:
+            if requested_owner_ids:
+                owner_ids = sorted(allowed_owner_ids.intersection(set(requested_owner_ids)))
+            else:
+                owner_ids = sorted(allowed_owner_ids)
+        snapshot = build_atlas_scope_snapshot(
+            session,
+            cycle_id=int(payload.cycle_id),
+            owner_ids=owner_ids,
+            include_analysis=bool(payload.include_analysis),
+        )
+    return snapshot
+
+
+@app.post(
+    "/v1/read/leadership/metrics",
+    dependencies=[Depends(require_service_access)],
+)
+def api_read_leadership_metrics(
+    payload: LeadershipMetricsRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    actor = _resolve_actor(
+        header_actor=x_okr_actor,
+        payload_actor=payload.actor_username,
+    )
+    requested_usernames = {
+        str(value).strip()
+        for value in (payload.usernames or [])
+        if str(value).strip()
+    }
+    with get_session_context() as session:
+        scope = _resolve_actor_scope(session, actor)
+        allowed_usernames = {str(value) for value in (scope.get("usernames") or set())}
+    if bool(scope.get("is_admin", False)):
+        usernames = sorted(requested_usernames) if requested_usernames else sorted(allowed_usernames)
+    else:
+        usernames = sorted(allowed_usernames.intersection(requested_usernames)) if requested_usernames else sorted(allowed_usernames)
+    if not usernames:
+        return {}
+    return get_leadership_metrics(usernames, int(payload.cycle_id))
 
 
 @app.post(

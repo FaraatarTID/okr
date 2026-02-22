@@ -376,3 +376,89 @@ def test_delete_alignment_endpoint_returns_404_when_missing(monkeypatch):
     )
 
     assert response.status_code == 404
+
+
+def test_read_atlas_snapshot_endpoint_scopes_owner_ids_for_non_admin(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = {}
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _fake_session_context():
+        yield object()
+
+    monkeypatch.setattr(backend_main, "get_session_context", _fake_session_context)
+
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_actor_scope",
+        lambda _session, _actor: {
+            "is_admin": False,
+            "owner_ids": {2, 3},
+            "usernames": {"alice"},
+        },
+    )
+
+    def _fake_snapshot(_session, *, cycle_id, owner_ids, include_analysis):
+        captured["cycle_id"] = cycle_id
+        captured["owner_ids"] = owner_ids
+        captured["include_analysis"] = include_analysis
+        return {"goals": [], "users_map": {}}
+
+    monkeypatch.setattr(backend_main, "build_atlas_scope_snapshot", _fake_snapshot)
+
+    response = client.post(
+        "/v1/read/atlas/snapshot",
+        headers={"X-OKR-Actor": "alice"},
+        json={
+            "cycle_id": 7,
+            "owner_ids": [1, 2, 99],
+            "include_analysis": False,
+        },
+    )
+    assert response.status_code == 200
+    assert captured["cycle_id"] == 7
+    assert captured["owner_ids"] == [2]
+    assert captured["include_analysis"] is False
+
+
+def test_read_leadership_metrics_endpoint_scopes_usernames_for_non_admin(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = {}
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _fake_session_context():
+        yield object()
+
+    monkeypatch.setattr(backend_main, "get_session_context", _fake_session_context)
+
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_actor_scope",
+        lambda _session, _actor: {
+            "is_admin": False,
+            "owner_ids": {1},
+            "usernames": {"alice", "bob"},
+        },
+    )
+
+    def _fake_metrics(usernames, cycle_id):
+        captured["usernames"] = usernames
+        captured["cycle_id"] = cycle_id
+        return {"hygiene_pct": 100.0}
+
+    monkeypatch.setattr(backend_main, "get_leadership_metrics", _fake_metrics)
+
+    response = client.post(
+        "/v1/read/leadership/metrics",
+        headers={"X-OKR-Actor": "alice"},
+        json={
+            "cycle_id": 8,
+            "usernames": ["mallory", "bob", "alice"],
+        },
+    )
+    assert response.status_code == 200
+    assert captured["cycle_id"] == 8
+    assert captured["usernames"] == ["alice", "bob"]
+    assert response.json().get("hygiene_pct") == 100.0

@@ -16,7 +16,7 @@ from src.services.backend_client import (
 def _should_fallback_to_local(result) -> bool:
     try:
         code = int((result or {}).get("status_code") or 0)
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         code = 0
     return code == 0 or code >= 500
 

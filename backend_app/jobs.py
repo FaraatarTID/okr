@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
+from datetime import timedelta
 from typing import Any, Dict, Optional
 
-from sqlalchemy import update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete, update
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import select
 
 from backend_app.path_setup import ensure_streamlit_app_on_path
@@ -18,6 +20,9 @@ from src.models import AsyncJob, AsyncJobStatus, User
 from src.utils.time_utils import utc_now_naive
 
 
+_LOGGER = logging.getLogger(__name__)
+
+
 def _loads_json(raw: Optional[str]) -> Optional[Dict[str, Any]]:
     if raw is None:
         return None
@@ -25,8 +30,8 @@ def _loads_json(raw: Optional[str]) -> Optional[Dict[str, Any]]:
         parsed = json.loads(raw)
         if isinstance(parsed, dict):
             return parsed
-    except Exception:
-        pass
+    except (TypeError, ValueError):
+        return None
     return None
 
 
@@ -166,8 +171,8 @@ def claim_next_pending_job(worker_id: str) -> Optional[AsyncJob]:
             dialect_name = str(getattr(getattr(bind, "dialect", None), "name", "")).lower()
             if dialect_name == "postgresql":
                 stmt = stmt.with_for_update(skip_locked=True)
-        except Exception:
-            pass
+        except (AttributeError, SQLAlchemyError, RuntimeError, TypeError, ValueError) as exc:
+            _LOGGER.debug("Falling back to non-locking pending-job claim: %s", exc)
 
         candidate = session.exec(stmt).first()
         if not candidate:
@@ -249,3 +254,36 @@ def mark_job_cancelled(job_id: str, error_text: Optional[str] = None) -> None:
         job.updated_at = now
         session.add(job)
         session.commit()
+
+
+def prune_terminal_jobs(*, retention_days: int, batch_size: int = 200) -> int:
+    """Delete old terminal jobs to keep async_job table growth bounded."""
+    safe_days = max(1, int(retention_days))
+    safe_batch = max(1, int(batch_size))
+    cutoff = utc_now_naive() - timedelta(days=safe_days)
+    terminal_states = (
+        AsyncJobStatus.SUCCEEDED,
+        AsyncJobStatus.FAILED,
+        AsyncJobStatus.CANCELLED,
+    )
+    with get_session_context() as session:
+        raw_ids = list(
+            session.exec(
+                select(AsyncJob.id)
+                .where(AsyncJob.status.in_(terminal_states))
+                .where(AsyncJob.finished_at.isnot(None))
+                .where(AsyncJob.finished_at < cutoff)
+                .order_by(AsyncJob.finished_at.asc())
+                .limit(safe_batch)
+            ).all()
+        )
+        candidate_ids = [str(job_id) for job_id in raw_ids if job_id]
+        if not candidate_ids:
+            return 0
+
+        result = session.exec(
+            delete(AsyncJob).where(AsyncJob.id.in_(candidate_ids))
+        )
+        deleted = int(getattr(result, "rowcount", 0) or 0)
+        session.commit()
+        return deleted

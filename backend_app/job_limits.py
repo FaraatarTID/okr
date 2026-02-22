@@ -27,13 +27,16 @@ def _scalar_to_int(value) -> int:
         return int(value)
     if isinstance(value, (tuple, list)) and value:
         return int(value[0] or 0)
+    coerced: int | None
     try:
-        return int(value)
-    except Exception:
-        pass
+        coerced = int(value)
+    except (TypeError, ValueError):
+        coerced = None
+    if coerced is not None:
+        return coerced
     try:
         return int(getattr(value, "_mapping", {}).get("count", 0) or 0)
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return 0
 
 
@@ -44,19 +47,21 @@ def _scalar_to_datetime(value) -> datetime | None:
         candidate = value[0]
         if isinstance(candidate, datetime):
             return candidate
+    indexed_candidate: datetime | None
     try:
         candidate = value[0]
-        if isinstance(candidate, datetime):
-            return candidate
-    except Exception:
-        pass
+        indexed_candidate = candidate if isinstance(candidate, datetime) else None
+    except (TypeError, IndexError, KeyError):
+        indexed_candidate = None
+    if indexed_candidate is not None:
+        return indexed_candidate
     try:
         mapping = getattr(value, "_mapping", {})
         for candidate in mapping.values():
             if isinstance(candidate, datetime):
                 return candidate
-    except Exception:
-        pass
+    except (AttributeError, TypeError):
+        return None
     return None
 
 

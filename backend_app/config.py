@@ -18,7 +18,7 @@ def _as_bool(raw: str | None, *, default: bool) -> bool:
 def _as_int(raw: str | None, *, default: int, minimum: int) -> int:
     try:
         value = int(str(raw).strip()) if raw is not None else default
-    except Exception:
+    except (TypeError, ValueError):
         value = default
     return max(minimum, value)
 
@@ -55,6 +55,9 @@ class BackendSettings:
     job_team_daily_max_requests: int
     job_team_pending_max_requests: int
     job_actor_backoff_base_seconds: int
+    job_retention_days: int
+    job_prune_interval_seconds: int
+    job_prune_batch_size: int
     worker_poll_seconds: int
 
 
@@ -156,6 +159,21 @@ def get_backend_settings() -> BackendSettings:
             os.getenv("OKR_BACKEND_JOB_BACKOFF_BASE_SECONDS"),
             default=3,
             minimum=0,
+        ),
+        job_retention_days=_as_int(
+            os.getenv("OKR_BACKEND_JOB_RETENTION_DAYS"),
+            default=14,
+            minimum=1,
+        ),
+        job_prune_interval_seconds=_as_int(
+            os.getenv("OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS"),
+            default=300,
+            minimum=10,
+        ),
+        job_prune_batch_size=_as_int(
+            os.getenv("OKR_BACKEND_JOB_PRUNE_BATCH_SIZE"),
+            default=200,
+            minimum=10,
         ),
         worker_poll_seconds=_as_int(
             os.getenv("OKR_BACKEND_WORKER_POLL_SECONDS"),

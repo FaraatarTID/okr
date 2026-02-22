@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError, OperationalError
 import os
 import time
+import logging
 from types import SimpleNamespace
 from typing import Any, Dict, Optional, List
 from datetime import datetime, timedelta
@@ -56,6 +57,8 @@ from src.domain.progress import (
     calculate_goal_progress,
 )
 import bcrypt
+
+logger = logging.getLogger(__name__)
 
 
 _ALLOWED_GOAL_UPDATE_FIELDS = {
@@ -171,7 +174,8 @@ def _ensure_model_bindings_current() -> None:
         try:
             sa_inspect(User)
             return
-        except Exception:
+        except Exception as exc:
+            logger.debug("Model binding inspect failed in CRUD; forcing refresh: %s", exc)
             bindings_are_current = False
 
     if bindings_are_current:
@@ -197,7 +201,8 @@ def _backend_mutation_proxy_enabled() -> bool:
         from src.services.backend_client import is_backend_enabled
 
         return bool(is_backend_enabled())
-    except Exception:
+    except Exception as exc:
+        logger.debug("Backend mutation proxy availability check failed: %s", exc)
         return False
 
 
@@ -208,7 +213,12 @@ def _local_backend_fallback_allowed() -> bool:
 def _is_transient_backend_mutation_error(payload: Dict[str, Any]) -> bool:
     try:
         code = int(payload.get("status_code") or 0)
-    except Exception:
+    except Exception as exc:
+        logger.debug(
+            "Failed to parse backend mutation status_code '%s': %s",
+            payload.get("status_code"),
+            exc,
+        )
         code = 0
     if code == 0 or code in {500, 502, 503, 504}:
         return True
@@ -230,7 +240,12 @@ def _raise_backend_mutation_error(payload: Dict[str, Any]) -> None:
     message = str(payload.get("error") or "Backend mutation failed.").strip()
     try:
         code = int(payload.get("status_code") or 0)
-    except Exception:
+    except Exception as exc:
+        logger.debug(
+            "Failed to parse backend mutation status_code for raise '%s': %s",
+            payload.get("status_code"),
+            exc,
+        )
         code = 0
     if code in {401, 403}:
         raise PermissionError(message)
@@ -1576,7 +1591,7 @@ def list_experiments_for_retro_window(
                 )
                 allowed.append(e)
             except PermissionError:
-                pass
+                continue
         return allowed
 
 
@@ -2514,7 +2529,12 @@ def update_key_result(
                 ):
                     try:
                         value = json.dumps(value, ensure_ascii=False)
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug(
+                            "Failed to JSON-serialize KR gemini_analysis for key_result_id=%s: %s",
+                            key_result_id,
+                            exc,
+                        )
                         value = str(value)
                 if hasattr(item, key):
                     setattr(item, key, value)
@@ -3174,12 +3194,30 @@ def get_work_logs_by_date_range(
     return domain_analytics.get_work_logs_by_date_range(user_id, start_date, end_date)
 
 
-def get_all_krs_by_cycle(cycle_id: int) -> List[KeyResult]:
-    return domain_analytics.get_all_krs_by_cycle(cycle_id)
+def get_all_krs_by_cycle(
+    cycle_id: int,
+    *,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> List[KeyResult]:
+    return domain_analytics.get_all_krs_by_cycle(
+        cycle_id,
+        limit=limit,
+        offset=offset,
+    )
 
 
-def get_all_tasks_by_cycle(cycle_id: int) -> List[Task]:
-    return domain_analytics.get_all_tasks_by_cycle(cycle_id)
+def get_all_tasks_by_cycle(
+    cycle_id: int,
+    *,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> List[Task]:
+    return domain_analytics.get_all_tasks_by_cycle(
+        cycle_id,
+        limit=limit,
+        offset=offset,
+    )
 
 
 def get_hours_by_goal(user_id: int, days: int = 7) -> dict:
@@ -3594,7 +3632,14 @@ def upsert_retro_experiment_outcome(
             raise  # Re-raise if we can't find it after constraint error
 
 
-def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dict:
+def get_user_data_from_sql(
+    username: str,
+    cycle_id: Optional[int] = None,
+    *,
+    goal_limit: Optional[int] = None,
+    goal_offset: int = 0,
+    include_work_logs: bool = True,
+) -> dict:
     """
     Reconstructs the hierarchical JSON-like dictionary structure from the SQL database.
     This allows the UI to continue using its existing logic while powered by SQL.
@@ -3608,14 +3653,33 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
         statement = select(Goal).where(Goal.owner_id == user.id)
         if cycle_id:
             statement = statement.where(Goal.cycle_id == cycle_id)
+        statement = statement.order_by(Goal.id)
 
-        statement = statement.options(
+        safe_goal_offset = max(0, int(goal_offset or 0))
+        if safe_goal_offset:
+            statement = statement.offset(safe_goal_offset)
+
+        safe_goal_limit: Optional[int] = None
+        if goal_limit is not None:
+            safe_goal_limit = max(1, int(goal_limit))
+            # Fetch one extra row to signal "has more" without COUNT(*).
+            statement = statement.limit(safe_goal_limit + 1)
+
+        eager_load = (
             selectinload(Goal.objectives)
             .selectinload(Objective.key_results)
             .selectinload(KeyResult.tasks)
-            .selectinload(Task.work_logs)
         )
-        goals = session.exec(statement).all()
+        if include_work_logs:
+            eager_load = eager_load.selectinload(Task.work_logs)
+
+        statement = statement.options(eager_load)
+        goals = list(session.exec(statement).all())
+
+        has_more_goals = False
+        if safe_goal_limit is not None and len(goals) > safe_goal_limit:
+            has_more_goals = True
+            goals = goals[:safe_goal_limit]
 
         nodes = {}
         root_ids = []
@@ -3665,15 +3729,23 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
                     if kr.initiative_tags:
                         try:
                             init_tags = json.loads(kr.initiative_tags)
-                        except:
-                            pass
+                        except Exception as exc:
+                            logger.debug(
+                                "Failed to parse initiative_tags for key_result_id=%s: %s",
+                                kr.id,
+                                exc,
+                            )
 
                     gemini_analysis = None
                     if kr.gemini_analysis:
                         try:
                             gemini_analysis = json.loads(kr.gemini_analysis)
-                        except:
-                            pass
+                        except Exception as exc:
+                            logger.debug(
+                                "Failed to parse gemini_analysis for key_result_id=%s: %s",
+                                kr.id,
+                                exc,
+                            )
 
                     nodes[k_id] = {
                         "id": k_id,
@@ -3697,15 +3769,16 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
 
                         # Reconstruct WorkLog
                         work_log = []
-                        for log in task.work_logs:
-                            work_log.append(
-                                {
-                                    "startedAt": to_epoch_millis(log.start_time),
-                                    "endedAt": to_epoch_millis(log.end_time),
-                                    "durationMinutes": log.duration_minutes,
-                                    "summary": log.summary,
-                                }
-                            )
+                        if include_work_logs:
+                            for log in task.work_logs:
+                                work_log.append(
+                                    {
+                                        "startedAt": to_epoch_millis(log.start_time),
+                                        "endedAt": to_epoch_millis(log.end_time),
+                                        "durationMinutes": log.duration_minutes,
+                                        "summary": log.summary,
+                                    }
+                                )
 
                         nodes[t_id] = {
                             "id": t_id,
@@ -3724,7 +3797,17 @@ def get_user_data_from_sql(username: str, cycle_id: Optional[int] = None) -> dic
                             "workLog": work_log,
                         }
 
-        return {"nodes": nodes, "rootIds": root_ids}
+        payload = {"nodes": nodes, "rootIds": root_ids}
+        if safe_goal_limit is not None:
+            payload["meta"] = {
+                "goal_offset": safe_goal_offset,
+                "goal_limit": safe_goal_limit,
+                "has_more_goals": has_more_goals,
+                "next_goal_offset": (
+                    safe_goal_offset + safe_goal_limit if has_more_goals else None
+                ),
+            }
+        return payload
 
 
 def get_sql_id_by_external(external_id: str, model_class) -> Optional[int]:

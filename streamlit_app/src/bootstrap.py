@@ -5,6 +5,7 @@ Avoids running expensive DB bootstrap on every Streamlit session/rerun while
 still re-running periodically for safety.
 """
 
+import logging
 import os
 import time
 from threading import Lock, Thread, current_thread
@@ -14,6 +15,9 @@ from sqlalchemy.exc import OperationalError
 
 from src.crud import ensure_admin_exists
 from src.database import init_database
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 BOOTSTRAP_MIN_INTERVAL_SECONDS = max(
@@ -128,9 +132,9 @@ def prewarm_startup_ready_async(force: bool = False) -> Dict[str, Any]:
         def _run():
             try:
                 ensure_startup_ready(force=force)
-            except Exception:
+            except Exception as exc:
                 # Background prewarm is best effort; submit path handles errors.
-                pass
+                _LOGGER.debug("Startup prewarm failed in background thread: %s", exc)
 
         _prewarm_thread = Thread(
             target=_run,
