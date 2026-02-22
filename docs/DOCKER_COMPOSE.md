@@ -42,6 +42,8 @@ Secrets
   - /app/streamlit_app/.streamlit/secrets.toml
 - Use deploy/secrets/secrets.toml.example as a template
 - If you do not mount secrets, set equivalent env vars in `.env` (PDF/AI settings).
+- Validate deploy config before go-live:
+  - `python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml`
 
 Persistence
 - All runtime data is stored in Supabase PostgreSQL

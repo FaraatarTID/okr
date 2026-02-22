@@ -119,7 +119,7 @@ ExpectedEffectDirectionType = Literal["UP", "DOWN"]
 
 class UserCreateRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=128)
-    password: str = Field(..., min_length=1, max_length=512)
+    password: str = Field(..., min_length=8, max_length=512)
     role: RoleType = "member"
     display_name: Optional[str] = Field(default=None, max_length=256)
     manager_id: Optional[int] = Field(default=None, gt=0)
@@ -138,7 +138,7 @@ class UserUpdateRequest(BaseModel):
 
 
 class UserPasswordResetRequest(BaseModel):
-    new_password: str = Field(..., min_length=1, max_length=512)
+    new_password: str = Field(..., min_length=8, max_length=512)
     require_change: bool = False
     actor_username: Optional[str] = None
 

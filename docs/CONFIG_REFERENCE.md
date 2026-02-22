@@ -114,6 +114,7 @@ Runtime preflight policy
 - Behavior:
   - Runtime validates PDF provider mode and key presence.
   - Runtime also validates backend production-safety wiring (backend URL/token/signing secret and local-fallback policy) when relevant.
+  - Production also requires `OKR_BOOTSTRAP_ADMIN_PASSWORD` for secure admin bootstrap.
   - In strict mode, critical preflight errors stop app startup.
   - Provider configuration issues are surfaced as warnings/errors depending on severity.
 
@@ -172,15 +173,28 @@ Release governance (CI)
 
 - Branches should require passing CI checks before merge:
   - Docs HQ link check
+  - Deploy config template gate
   - RBAC regression gate
   - Full pytest suite
 
 Admin bootstrap
 
-- On first run (empty DB), a default admin user is created:
-  - username: admin
-  - password: admin
-- Change this immediately in the Admin Panel.
+- On first run (empty DB), an admin user is created:
+  - username: `admin`
+  - password:
+    - production: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required, strong)
+    - non-production: defaults to `admin` for local/dev convenience
+- The initial admin is forced to change password on first login.
+- `OKR_BOOTSTRAP_ADMIN_PASSWORD` is read from environment variables at runtime (not Streamlit secrets).
+
+Authentication policy controls
+
+- `OKR_ENFORCE_STRONG_PASSWORD_POLICY`
+  - default: enabled in production, disabled in non-production
+  - enforces stronger password requirements on user creation and reset
+- `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN`
+  - default: disabled in production, enabled in non-production
+  - when disabled, auth-throttle operational failures return temporary auth unavailability instead of bypassing throttle checks
 
 Logging & health
 

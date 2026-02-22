@@ -19,10 +19,14 @@ Runbook: first deployment
   - `OKR_BACKEND_API_URL` (default in compose: `http://backend-api:8100`)
   - `OKR_BACKEND_SERVICE_TOKEN` (strong shared secret)
   - `OKR_BACKEND_SIGNING_SECRET` (recommended; signed internal requests)
+  - `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required in production; strong value)
   - `OKR_BACKEND_PROXY_MUTATIONS=true` (recommended)
+  - keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production
   - keep `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` unset/false in production
 - Configure `GEMINI_API_KEY` if AI features are enabled
 - Enable strict runtime checks in production: `OKR_STRICT_RUNTIME_PREFLIGHT=1`
+- Validate deploy config before first startup:
+  - `python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml`
 
 4) Start services
 - Compose: start `okr`, `backend-api`, and `backend-worker`
@@ -31,7 +35,10 @@ Runbook: first deployment
 5) Post-deploy checks
 - Health check: GET /
 - Backend health check: GET /healthz on backend-api
-- Login as admin/admin and change password
+- Login with bootstrap admin:
+  - production: `admin/<OKR_BOOTSTRAP_ADMIN_PASSWORD>`
+  - non-production/dev fallback: `admin/admin`
+- Change password immediately
 - Create your first cycle and users
 - Confirm runtime preflight has no critical errors
 - Verify one PDF export succeeds in the selected provider mode
@@ -53,5 +60,6 @@ Runbook: first deployment
 - Enable branch protection on main branch
 - Require passing CI checks before merge:
   - Docs HQ Link Check
+  - Deploy Config Template Gate
   - RBAC Regression Gate
   - Full tests

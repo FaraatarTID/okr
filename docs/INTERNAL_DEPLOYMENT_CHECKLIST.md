@@ -6,6 +6,7 @@ Use this checklist for company-internal pilot rollout sign-off.
 
 Phase 1: Preparation
 - [ ] Copy `deploy/secrets/secrets.toml.example` to runtime `secrets.toml` and populate internal values only.
+- [ ] Run deploy config gate and resolve any errors: `python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml`.
 - [ ] Validate Streamlit secrets TOML syntax (one key per line, no quoted multi-line blob). Minimal example:
   ```toml
   PDF_METHOD = "pdfshift"

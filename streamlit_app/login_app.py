@@ -106,11 +106,17 @@ def render_login():
                     st.info("Loading full app…")
                     st.rerun()
                 else:
-                    if str(auth.get("error_code", "")).startswith("AUTH_LOCKED"):
+                    error_code = str(auth.get("error_code", ""))
+                    if error_code.startswith("AUTH_LOCKED"):
                         retry_after = int(auth.get("retry_after_seconds") or 0)
                         minutes = max(1, (retry_after + 59) // 60)
                         st.error(
                             f"Too many failed attempts. Try again in about {minutes} minute(s)."
+                        )
+                    elif error_code == "AUTH_TEMP_UNAVAILABLE":
+                        st.error(
+                            "Login is temporarily unavailable due to authentication safeguards. "
+                            "Please try again shortly."
                         )
                     else:
                         st.error("Invalid username or password.")

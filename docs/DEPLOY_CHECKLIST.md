@@ -48,13 +48,16 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] DB-role verification is completed as a release gate even if runtime startup validation is temporarily relaxed.
 - [ ] `BASE_URL_PATH` is empty for subdomain deployment.
 - [ ] Optional integrations secrets are prepared in `deploy/secrets/secrets.toml`.
+- [ ] Deploy config validation passes: `python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml`.
 - [ ] `PDF_METHOD` is explicitly set to `pdfshift`.
 - [ ] If `PDF_METHOD=pdfshift`, `pdfshift_api_key` is present in secrets.
 - [ ] `OKR_BACKEND_API_URL` is set (default: `http://backend-api:8100`).
 - [ ] `OKR_BACKEND_SERVICE_TOKEN` is set to a strong shared secret.
 - [ ] `OKR_BACKEND_SIGNING_SECRET` is set and matches across `okr` and `backend-api`.
+- [ ] `OKR_BOOTSTRAP_ADMIN_PASSWORD` is set to a strong value (required in production).
 - [ ] `OKR_BACKEND_PROXY_MUTATIONS=true` is set (recommended for backend-owned writes).
 - [ ] `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` is unset/false in production.
+- [ ] `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` is unset/false in production.
 - [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` is set (recommended for production).
 - [ ] `GEMINI_API_KEY` is set (or AI-disable decision is documented).
 
@@ -79,7 +82,8 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] `curl -I https://okr.mycompany.com` returns a successful response.
 
 6. First Login Hardening
-- [ ] Login with bootstrap account (`admin/admin`) only on first empty DB.
+- [ ] First login on empty production DB uses `admin/<OKR_BOOTSTRAP_ADMIN_PASSWORD>`.
+- [ ] Non-production fallback `admin/admin` is not used in production environments.
 - [ ] Admin password is changed immediately.
 - [ ] Named admin users are created.
 - [ ] Unused/test users are disabled.
@@ -125,6 +129,7 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] CI must pass before merge.
 - [ ] Required CI checks include:
   - Docs HQ Link Check
+  - Deploy Config Template Gate
   - RBAC Regression Gate
   - Full Test job
 

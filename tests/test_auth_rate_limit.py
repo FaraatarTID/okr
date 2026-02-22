@@ -17,6 +17,9 @@ def isolated_db(monkeypatch, tmp_path):
 
     monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
     monkeypatch.setattr(database, "_engine", engine, raising=False)
+    monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.delenv("OKR_RUNTIME_ENV", raising=False)
+    monkeypatch.delenv("OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN", raising=False)
 
     # Deterministic, test-friendly throttle defaults.
     monkeypatch.setattr(crud, "AUTH_USER_WINDOW_SECONDS", 300, raising=True)
@@ -200,6 +203,33 @@ def test_authentication_falls_back_on_generic_throttle_operational_error(
     success = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
     assert success["success"] is True
     assert success["user"] is not None
+
+
+def test_authentication_fails_closed_on_throttle_operational_error_in_production(
+    isolated_db, monkeypatch
+):
+    import src.crud as crud
+    from src.crud import authenticate_user_detailed, create_user
+
+    create_user("alice", "alice-pass")
+    monkeypatch.setenv("OKR_ENV", "production")
+    monkeypatch.delenv("OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN", raising=False)
+
+    def _raise_operational_error(*_args, **_kwargs):
+        raise OperationalError(
+            statement="select * from auth_throttle_state where scope=:scope",
+            params={"scope": "user"},
+            orig=Exception("permission denied"),
+        )
+
+    monkeypatch.setattr(
+        crud, "_get_auth_throttle_states", _raise_operational_error, raising=True
+    )
+
+    auth = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
+    assert auth["success"] is False
+    assert auth["user"] is None
+    assert auth["error_code"] == "AUTH_TEMP_UNAVAILABLE"
 
 
 def test_successful_login_query_budget_after_throttle_reset(isolated_db):

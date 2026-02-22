@@ -140,8 +140,11 @@ OKR_DATABASE_URL=postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REG
 OKR_BACKEND_API_URL=http://backend-api:8100
 OKR_BACKEND_SERVICE_TOKEN=CHANGE_ME_STRONG_SHARED_TOKEN
 OKR_BACKEND_SIGNING_SECRET=CHANGE_ME_STRONG_SIGNING_KEY
+OKR_BOOTSTRAP_ADMIN_PASSWORD=CHANGE_ME_STRONG_BOOTSTRAP_PASSWORD
 OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true
 OKR_BACKEND_PROXY_MUTATIONS=true
+OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN=false
+OKR_ENFORCE_STRONG_PASSWORD_POLICY=true
 PDF_METHOD=pdfshift
 PDFSHIFT_API_KEY=CHANGE_ME_PDFSHIFT_KEY
 ALLOW_EXTERNAL_AI=false
@@ -158,6 +161,8 @@ Notes:
 - Enforce the DB-role check in deployment review/checklists even during periods where startup guards are temporarily relaxed.
 - Keep `OKR_BACKEND_PROXY_MUTATIONS=true` so Goal/Objective/KR/Task writes route via backend API.
 - Keep `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` unset/false in production (fail-closed behavior).
+- In production, set `OKR_BOOTSTRAP_ADMIN_PASSWORD` before first startup (strong value).
+- Keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production.
 
 Step 4: Configure optional secrets (PDF/API integrations)
 
@@ -169,7 +174,17 @@ cp deploy/secrets/secrets.toml.example deploy/secrets/secrets.toml
 Then edit `deploy/secrets/secrets.toml` with your real keys if needed.
 Do not commit this file.
 
-Step 5: Start the application
+Step 5: Validate deploy config policy
+
+```bash
+python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml
+```
+
+Expected:
+- Exit code `0`
+- No `ERROR:` lines in output
+
+Step 6: Start the application
 
 From repo root:
 
@@ -190,7 +205,7 @@ Expected:
 - HTTP response from `/` is `200 OK`
 - Backend health endpoint returns `{"status":"ok"}`
 
-Step 6: Configure Nginx reverse proxy
+Step 7: Configure Nginx reverse proxy
 
 Fastest path for this exact domain:
 
@@ -230,7 +245,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Step 7: Create DNS record
+Step 8: Create DNS record
 
 In your DNS provider:
 - Add `A` record: `okr.mycompany.com -> SERVER_IP`
@@ -241,7 +256,7 @@ Wait for propagation and confirm:
 nslookup okr.mycompany.com
 ```
 
-Step 8: Enable HTTPS (TLS)
+Step 9: Enable HTTPS (TLS)
 
 Using Certbot (public CA):
 
@@ -252,10 +267,11 @@ sudo certbot --nginx -d okr.mycompany.com -m your-email@company.com --agree-tos 
 
 If your company uses internal PKI, install certificates per your security policy instead of Certbot.
 
-Step 9: First login and hardening
+Step 10: First login and hardening
 
 On first run with empty DB:
-- Default login is `admin / admin`
+- Production: login is `admin / <OKR_BOOTSTRAP_ADMIN_PASSWORD>`
+- Non-production/dev: fallback `admin / admin` remains for local convenience
 - You will be forced to change password
 
 Immediately after login:
@@ -265,7 +281,7 @@ Immediately after login:
 4. Create initial OKR cycle.
 5. Verify role-based access for manager/member users.
 
-Step 10: Validate production readiness
+Step 11: Validate production readiness
 
 Run these checks:
 
@@ -377,7 +393,8 @@ App fails at startup with database URL error:
 - Ensure DSN user is `okr_app` (or equivalent least-privilege role), not `postgres`.
 
 Cannot log in:
-- If DB is new, use `admin/admin` once and change password.
+- If DB is new in production, confirm `OKR_BOOTSTRAP_ADMIN_PASSWORD` is set and use that value.
+- If DB is new in non-production, `admin/admin` is available by default.
 - If DB is existing, default admin bootstrap does not run again.
 
 ---

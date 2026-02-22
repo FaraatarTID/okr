@@ -283,6 +283,7 @@ def _emit_database_url_advisory(url: str) -> None:
 def _refresh_loaded_model_references_if_needed() -> None:
     """Rebind stale model symbols in loaded src modules after hot reload."""
     global _last_models_identity
+    previous_identity = _last_models_identity
     try:
         import src.models as models_module
     except Exception:
@@ -310,6 +311,10 @@ def _refresh_loaded_model_references_if_needed() -> None:
                 module_dict[binding_name] = latest
 
     _last_models_identity = identity
+    # Only invalidate Streamlit cache entries on an actual reload transition.
+    # The first initialization has no stale cache state to clear.
+    if previous_identity is None:
+        return
     try:
         import streamlit as st
 
