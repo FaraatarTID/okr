@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from sqlalchemy import inspect as sa_inspect
 from sqlmodel import SQLModel
 
 
@@ -176,3 +177,12 @@ def test_prune_terminal_jobs_removes_old_finished_rows(isolated_db):
     with get_session_context() as session:
         assert session.get(AsyncJob, old_job.id) is None
         assert session.get(AsyncJob, fresh_job.id) is not None
+
+
+def test_async_job_prune_index_exists(isolated_db):
+    from src.database import get_engine
+
+    inspector = sa_inspect(get_engine())
+    indexes = inspector.get_indexes("async_job")
+    index_names = {str(index.get("name", "")) for index in indexes}
+    assert "ix_async_job_status_finished" in index_names

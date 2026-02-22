@@ -44,7 +44,7 @@ from src.models import (
     Experiment,
     RetroExperimentOutcome,
 )
-from src.config_runtime import get_bool_config
+from src.config_runtime import get_bool_config, get_config_value
 from src.database import get_session_context as _database_get_session_context
 from src.domain import analytics as domain_analytics
 from src.domain import authorization as domain_auth
@@ -207,6 +207,9 @@ def _backend_mutation_proxy_enabled() -> bool:
 
 
 def _local_backend_fallback_allowed() -> bool:
+    scoped_raw = str(get_config_value("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", "")).strip()
+    if scoped_raw:
+        return scoped_raw.lower() in {"1", "true", "yes", "on"}
     return get_bool_config("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False)
 
 

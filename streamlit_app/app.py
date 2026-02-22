@@ -70,6 +70,13 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return get_bool_config(name, default)
 
 
+def _env_bool_with_legacy(name: str, legacy_name: str, default: bool = False) -> bool:
+    raw = str(_cfg_value(name, "")).strip()
+    if raw:
+        return raw.lower() in {"1", "true", "yes", "on"}
+    return _env_bool(legacy_name, default)
+
+
 def _run_pdf_preflight():
     if st.session_state.get("preflight_done"):
         return
@@ -89,6 +96,17 @@ def _run_pdf_preflight():
         "OKR_BACKEND_API_URL", ""
     )
     backend_proxy_mutations = _env_bool("OKR_BACKEND_PROXY_MUTATIONS", True)
+    backend_proxy_reads = _env_bool("OKR_BACKEND_PROXY_READS", False)
+    allow_local_backend_mutation_fallback = _env_bool_with_legacy(
+        "OKR_ALLOW_LOCAL_MUTATION_FALLBACK",
+        "OKR_ALLOW_LOCAL_BACKEND_FALLBACK",
+        False,
+    )
+    allow_local_backend_read_fallback = _env_bool_with_legacy(
+        "OKR_ALLOW_LOCAL_READ_FALLBACK",
+        "OKR_ALLOW_LOCAL_BACKEND_FALLBACK",
+        False,
+    )
     backend_proxy_raw, backend_proxy_source = get_config_value_with_source(
         "OKR_BACKEND_PROXY_MUTATIONS", ""
     )
@@ -104,10 +122,12 @@ def _run_pdf_preflight():
         ai_provider_message=ai_status.message,
         backend_api_url=backend_api_url,
         backend_proxy_mutations=backend_proxy_mutations,
+        backend_proxy_reads=backend_proxy_reads,
+        allow_local_backend_mutation_fallback=allow_local_backend_mutation_fallback,
+        allow_local_backend_read_fallback=allow_local_backend_read_fallback,
         backend_service_token=_cfg_value("OKR_BACKEND_SERVICE_TOKEN", ""),
         backend_signing_secret=_cfg_value("OKR_BACKEND_SIGNING_SECRET", ""),
         bootstrap_admin_password=os.getenv("OKR_BOOTSTRAP_ADMIN_PASSWORD", ""),
-        allow_local_backend_fallback=_env_bool("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False),
         backend_security_state_backend=_cfg_value(
             "OKR_BACKEND_SECURITY_STATE_BACKEND",
             "memory",

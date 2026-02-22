@@ -52,7 +52,9 @@ spec:
                   key: OKR_BACKEND_SIGNING_SECRET
             - name: OKR_BACKEND_SECURITY_STATE_BACKEND
               value: "database"
-            - name: OKR_ALLOW_LOCAL_BACKEND_FALLBACK
+            - name: OKR_ALLOW_LOCAL_MUTATION_FALLBACK
+              value: "false"
+            - name: OKR_ALLOW_LOCAL_READ_FALLBACK
               value: "false"
             - name: OKR_BACKEND_JOB_RETENTION_DAYS
               value: "14"

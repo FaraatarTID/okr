@@ -22,8 +22,35 @@ def is_backend_enabled() -> bool:
     return bool(str(get_config_value("OKR_BACKEND_API_URL", "")).strip())
 
 
-def allow_local_backend_fallback() -> bool:
+_TRUE_VALUES = {"1", "true", "yes", "on"}
+
+
+def _bool_from_raw(raw: str, default: bool = False) -> bool:
+    text = str(raw or "").strip().lower()
+    if not text:
+        return bool(default)
+    return text in _TRUE_VALUES
+
+
+def _scoped_fallback_flag(scoped_name: str) -> bool:
+    raw = str(get_config_value(scoped_name, "")).strip()
+    if raw:
+        return _bool_from_raw(raw, default=False)
+    # Legacy compatibility: when scoped flag is unset, inherit global fallback.
     return get_bool_config("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False)
+
+
+def allow_local_mutation_fallback() -> bool:
+    return _scoped_fallback_flag("OKR_ALLOW_LOCAL_MUTATION_FALLBACK")
+
+
+def allow_local_read_fallback() -> bool:
+    return _scoped_fallback_flag("OKR_ALLOW_LOCAL_READ_FALLBACK")
+
+
+def allow_local_backend_fallback() -> bool:
+    # Backward-compatible alias: mutation fallback is the legacy behavior.
+    return allow_local_mutation_fallback()
 
 
 def _base_url() -> str:

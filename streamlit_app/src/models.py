@@ -170,6 +170,7 @@ class AsyncJob(SQLModel, table=True):
     __tablename__ = "async_job"
     __table_args__ = (
         Index("ix_async_job_status_created", "status", "created_at"),
+        Index("ix_async_job_status_finished", "status", "finished_at"),
         Index("ix_async_job_actor_created", "actor_username", "created_at"),
         Index("ix_async_job_team_created", "team_id", "created_at"),
         Index(

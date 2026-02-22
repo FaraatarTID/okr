@@ -8,7 +8,7 @@ import time
 from typing import Any, Dict
 
 from src.services.backend_client import (
-    allow_local_backend_fallback,
+    allow_local_mutation_fallback,
     get_job,
     is_backend_enabled,
     submit_job,
@@ -97,7 +97,7 @@ def run_job_and_wait(
         idempotency_key=_idempotency_key(kind, payload, actor_username),
     )
     if "error" in submitted:
-        if _is_transient_backend_error(submitted) and allow_local_backend_fallback():
+        if _is_transient_backend_error(submitted) and allow_local_mutation_fallback():
             return _run_local(kind, payload)
         if _is_transient_backend_error(submitted):
             return {
@@ -115,7 +115,7 @@ def run_job_and_wait(
     while time.time() - started <= float(timeout_seconds):
         state = get_job(job_id, actor_username)
         if "error" in state:
-            if _is_transient_backend_error(state) and allow_local_backend_fallback():
+            if _is_transient_backend_error(state) and allow_local_mutation_fallback():
                 return _run_local(kind, payload)
             if _is_transient_backend_error(state):
                 return {
@@ -130,6 +130,6 @@ def run_job_and_wait(
         if status_value in {"failed", "cancelled"}:
             return {"error": state.get("error_text") or f"Job {status_value}."}
         time.sleep(max(0.2, float(poll_seconds)))
-    if allow_local_backend_fallback():
+    if allow_local_mutation_fallback():
         return _run_local(kind, payload)
     return {"error": "Backend job timed out and local fallback is disabled."}
