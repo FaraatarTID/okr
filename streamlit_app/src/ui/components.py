@@ -70,6 +70,9 @@ from src.ui import inspector_shell_helpers
 from src.ui import inspector_form_helpers
 from src.ui import inspector_alignment_helpers
 from src.ui import inspector_navigation_helpers
+from src.ui import atlas_focus_preparation_helpers
+from src.ui import atlas_workspace_orchestrator_helpers
+from src.ui import atlas_runtime_lookup_helpers
 
 # Keep Atlas helper symbols available from this module for existing tests/imports.
 _ATLAS_HELPER_REEXPORTS = (
@@ -331,32 +334,11 @@ def _canonical_owner_ids_key(owner_ids):
 
 
 def _atlas_extract_ai_snapshot_fields(raw_analysis):
-    ai_overall_score = None
-    ai_deadline_state = None
-
-    analysis = _atlas_parse_ai_analysis(raw_analysis)
-    if not isinstance(analysis, dict):
-        return ai_overall_score, ai_deadline_state
-
-    try:
-        score_raw = analysis.get("overall_score")
-        if score_raw is not None:
-            ai_overall_score = max(0, min(100, int(float(score_raw))))
-    except Exception as exc:
-        logger.debug("Failed to parse atlas AI overall score '%s': %s", analysis.get("overall_score"), exc)
-        ai_overall_score = None
-
-    warnings_list = analysis.get("deadline_warnings") or []
-    if isinstance(warnings_list, list) and warnings_list:
-        joined = " ".join(
-            str(item) for item in warnings_list if item is not None
-        ).lower()
-        if "overdue" in joined:
-            ai_deadline_state = "overdue"
-        else:
-            ai_deadline_state = "risk"
-
-    return ai_overall_score, ai_deadline_state
+    return atlas_runtime_lookup_helpers.extract_ai_snapshot_fields(
+        raw_analysis,
+        parse_ai_analysis_fn=_atlas_parse_ai_analysis,
+        logger=logger,
+    )
 
 
 @st.cache_data(ttl=45, show_spinner=False)
@@ -644,29 +626,15 @@ def _cached_get_atlas_scope_runtime(
 
 
 def _atlas_build_node_lookup(index: dict) -> dict:
-    return {
-        str(ref): {
-            "type": str(meta.get("type") or ""),
-            "title": str(meta.get("title") or "Unknown"),
-        }
-        for ref, meta in (index or {}).items()
-    }
+    return atlas_runtime_lookup_helpers.build_node_lookup(index)
 
 
 def _atlas_get_node_details_from_lookup(node_id, node_lookup=None):
-    lookup = node_lookup
-    if lookup is None:
-        candidate = st.session_state.get("atlas_node_lookup")
-        lookup = candidate if isinstance(candidate, dict) else {}
-    if not isinstance(lookup, dict):
-        return None, None
-
-    hit = lookup.get(str(node_id))
-    if not isinstance(hit, dict):
-        return None, None
-    node_type = str(hit.get("type") or "").upper() or None
-    title = str(hit.get("title") or "Unknown")
-    return node_type, title
+    return atlas_runtime_lookup_helpers.get_node_details_from_lookup(
+        node_id,
+        node_lookup=node_lookup,
+        session_state=st.session_state,
+    )
 
 
 def get_node_details(node_id, node_lookup=None):
@@ -2084,12 +2052,8 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
     return atlas_index_helpers.build_atlas_index_from_snapshot(goals_snapshot, users_map)
 
 
-def _atlas_fire_browser_notification(title: str, body: str):
-    return atlas_treemap_helpers.atlas_fire_browser_notification(title, body)
-
-
-def _atlas_is_mobile_request() -> bool:
-    return atlas_treemap_helpers.atlas_is_mobile_request()
+_atlas_fire_browser_notification = atlas_treemap_helpers.atlas_fire_browser_notification
+_atlas_is_mobile_request = atlas_treemap_helpers.atlas_is_mobile_request
 
 
 def _atlas_suggested_next_score(meta, actor_id: int, index=None, health=None):
@@ -2119,22 +2083,7 @@ _ATLAS_TREEMAP_CACHE_ORDER_KEY = atlas_treemap_helpers.ATLAS_TREEMAP_CACHE_ORDER
 _ATLAS_TREEMAP_CACHE_MAX_ENTRIES = atlas_treemap_helpers.ATLAS_TREEMAP_CACHE_MAX_ENTRIES
 
 
-def _atlas_treemap_cache_key(
-    runtime_token,
-    refs,
-    selected_ref,
-    focus_task_ref,
-    selected_path_refs,
-    chart_height: int,
-):
-    return atlas_treemap_helpers.atlas_treemap_cache_key(
-        runtime_token,
-        refs,
-        selected_ref,
-        focus_task_ref,
-        selected_path_refs,
-        chart_height,
-    )
+_atlas_treemap_cache_key = atlas_treemap_helpers.atlas_treemap_cache_key
 
 
 def _atlas_cached_treemap(
@@ -2164,35 +2113,23 @@ def _atlas_cached_treemap(
     )
 
 
-def _build_atlas_treemap(
-    refs,
-    index,
-    selected_ref: str,
-    focus_task_ref: str,
-    selected_path_refs=None,
-    chart_height: int = 500,
-    health_index=None,
-):
-    return atlas_treemap_helpers.build_atlas_treemap(
-        refs,
-        index,
-        selected_ref,
-        focus_task_ref,
-        selected_path_refs=selected_path_refs,
-        chart_height=chart_height,
-        health_index=health_index,
-    )
+_build_atlas_treemap = atlas_treemap_helpers.build_atlas_treemap
 
 
 def render_atlas_workspace(username):
-    inject_atlas_styles()
-    is_mobile_request = _atlas_is_mobile_request()
+    from src.services.timer_service import start_timer, stop_timer
 
-    workspace_ctx = atlas_workspace_bootstrap_helpers.resolve_workspace_bootstrap(
+    return atlas_workspace_orchestrator_helpers.render_atlas_workspace(
         st_module=st,
         session_state=st.session_state,
         username=username,
         logger=logger,
+        inject_atlas_styles_fn=inject_atlas_styles,
+        is_mobile_request_fn=_atlas_is_mobile_request,
+        resolve_workspace_bootstrap_fn=atlas_workspace_bootstrap_helpers.resolve_workspace_bootstrap,
+        prepare_focus_task_context_fn=atlas_focus_preparation_helpers.prepare_focus_task_context,
+        render_focus_section_fn=atlas_focus_section_helpers.render_focus_section,
+        render_workspace_tabs_fn=atlas_workspace_tabs_helpers.render_workspace_tabs,
         resolve_actor_context_fn=atlas_workspace_helpers.resolve_actor_context,
         build_scope_options_fn=atlas_workspace_helpers.build_scope_options,
         ensure_scope_selection_fn=atlas_workspace_helpers.ensure_scope_selection,
@@ -2204,57 +2141,9 @@ def render_atlas_workspace(username):
         runtime_loader=_cached_get_atlas_scope_runtime,
         canonical_owner_ids_key_fn=_canonical_owner_ids_key,
         health_index_builder_fn=_atlas_health_index,
-        rerun_fn=st.rerun,
-    )
-    if workspace_ctx is None:
-        return
-
-    actor_id = int(workspace_ctx["actor_id"])
-    role_value = str(workspace_ctx["role_value"])
-    selected_scope = str(workspace_ctx["selected_scope"])
-    scope_labels = list(workspace_ctx["scope_labels"])
-    index = workspace_ctx.get("index", {})
-    roots = list(workspace_ctx.get("roots") or [])
-    node_lookup = workspace_ctx.get("node_lookup") or {}
-    health_index = workspace_ctx.get("health_index")
-    runtime_token = workspace_ctx.get("runtime_token")
-    selected_ref = str(workspace_ctx["selected_ref"])
-    selected_meta = dict(workspace_ctx["selected_meta"] or {})
-    selected_path_refs = workspace_ctx.get("selected_path_refs") or set()
-
-    from src.services.timer_service import start_timer, stop_timer
-
-    task_refs = atlas_workspace_helpers.collect_task_refs(
-        index=index,
-        root_ref=selected_ref,
-        limit=200,
-    )
-    suggested_task_ref = atlas_workspace_helpers.suggest_focus_task(
-        task_refs=task_refs,
-        index=index,
-        health_index=health_index,
         health_state_fn=_atlas_health_state,
-    )
-
-    focus_task_ref = atlas_workspace_helpers.resolve_focus_task_ref(
-        st.session_state,
-        task_refs=task_refs,
-        suggested_task_ref=suggested_task_ref,
-    )
-
-    focus_task_ref = atlas_focus_section_helpers.render_focus_section(
-        st_module=st,
-        session_state=st.session_state,
-        index=index,
-        task_refs=task_refs,
-        selected_scope=selected_scope,
-        actor_id=actor_id,
-        health_index=health_index,
-        type_icons=TYPE_ICONS,
-        escape_html_fn=escape_html,
         suggested_next_score_fn=_atlas_suggested_next_score,
         suggested_next_reason_fn=_atlas_suggested_next_reason,
-        health_state_fn=_atlas_health_state,
         timer_owner_id_fn=_atlas_timer_owner_id,
         can_track_task_timer_fn=can_track_task_timer,
         health_source_explanation_fn=_atlas_health_source_explanation,
@@ -2266,38 +2155,13 @@ def render_atlas_workspace(username):
         clean_work_summary_fn=_atlas_clean_work_summary,
         ensure_utc_fn=ensure_utc,
         utc_now_naive_fn=utc_now_naive,
-        username=username,
-        is_mobile_request=is_mobile_request,
-        focus_task_ref=focus_task_ref,
-        start_timer_fn=start_timer,
-        stop_timer_fn=stop_timer,
-        error_fn=st.error,
-        rerun_fn=st.rerun,
-        logger=logger,
-    )
-
-    atlas_workspace_tabs_helpers.render_workspace_tabs(
-        st_module=st,
-        session_state=st.session_state,
-        scope_labels=scope_labels,
-        index=index,
+        collect_task_refs_fn=atlas_workspace_helpers.collect_task_refs,
+        suggest_focus_task_fn=atlas_workspace_helpers.suggest_focus_task,
+        resolve_focus_task_ref_fn=atlas_workspace_helpers.resolve_focus_task_ref,
         type_icons=TYPE_ICONS,
-        selected_meta=selected_meta,
-        node_lookup=node_lookup,
-        is_mobile_request=is_mobile_request,
         child_type_map=CHILD_TYPE_MAP,
-        selected_ref=selected_ref,
-        roots=roots,
-        role_value=role_value,
-        health_index=health_index,
-        actor_id=actor_id,
-        selected_scope=selected_scope,
-        focus_task_ref=focus_task_ref,
-        selected_path_refs=selected_path_refs,
-        runtime_token=runtime_token,
-        username=username,
-        get_node_details_fn=_atlas_get_node_details_from_lookup,
         escape_html_fn=escape_html,
+        get_node_details_fn=_atlas_get_node_details_from_lookup,
         scope_refs_fn=_atlas_scope_refs,
         descendant_refs_fn=_atlas_descendant_refs,
         health_debug_rows_fn=_atlas_health_debug_rows,
@@ -2305,16 +2169,15 @@ def render_atlas_workspace(username):
         plotly_events_fn=plotly_events,
         extract_selection_points_fn=_atlas_extract_selection_points,
         extract_clicked_ref_from_points_fn=_atlas_extract_clicked_ref_from_points,
-        health_state_fn=_atlas_health_state,
         ai_progress_decision_fn=_atlas_ai_progress_decision,
         ai_overall_score_fn=_atlas_ai_overall_score,
-        next_score_fn=_atlas_suggested_next_score,
         from_epoch_millis_fn=from_epoch_millis,
         from_epoch_seconds_fn=from_epoch_seconds,
-        health_source_explanation_fn=_atlas_health_source_explanation,
         parse_typed_ref_fn=_parse_typed_ref,
         render_inspector_content_fn=render_inspector_content,
-        logger=logger,
+        start_timer_fn=start_timer,
+        stop_timer_fn=stop_timer,
+        error_fn=st.error,
         rerun_fn=st.rerun,
     )
 
