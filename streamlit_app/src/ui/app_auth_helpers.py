@@ -1,0 +1,170 @@
+"""Authentication and session-gate helpers extracted from app.py."""
+
+from __future__ import annotations
+
+import time
+
+
+SESSION_KEYS = [
+    "user_id",
+    "username",
+    "display_name",
+    "user_role",
+    "manager_id",
+    "manager_username",
+    "nav_stack",
+    "active_cycle_id",
+    "active_report_mode",
+    "active_timer_node_id",
+    "active_inspector_id",
+    "atlas_selected_ref",
+    "atlas_jump_query",
+    "atlas_scope_selector",
+    "atlas_focus_task_ref",
+    "atlas_focus_task_picker",
+    "atlas_last_selected_ref",
+    "atlas_map_lens",
+    "atlas_map_last_click_ref",
+    "atlas_commit_preset",
+    "atlas_commit_custom_min",
+    "atlas_sprint_target_minutes",
+    "atlas_sprint_task_ref",
+    "atlas_sprint_started_at_epoch",
+    "atlas_sprint_reminder_dismissed_for",
+    "atlas_sprint_notification_sent_for",
+    "atlas_last_session_summary",
+    "atlas_breadcrumbs",
+    "workspace_mode",
+    "must_change_password",
+]
+
+
+def clear_user_session(session_state, *, keys=None) -> None:
+    for key in list(keys or SESSION_KEYS):
+        if key in session_state:
+            del session_state[key]
+
+
+def render_login_from_app(*, app_module) -> None:
+    st = app_module.st
+    st.markdown("## Login to OKR Tracker")
+    st.info("Welcome! Please enter your credentials to access your data.")
+    try:
+        app_module.prewarm_startup_ready_async()
+    except Exception as exc:
+        app_module.error_log("Login bootstrap prewarm scheduling failed", exc)
+
+    col1, _col2 = st.columns([1, 2])
+    with col1:
+        username = st.text_input("Username", placeholder="e.g. admin")
+        password = st.text_input("Password", type="password")
+
+        if st.button("Login", type="primary"):
+            if username.strip() and password:
+                try:
+                    auth = app_module.authenticate_user_detailed(
+                        username.strip(),
+                        password,
+                        client_ip=app_module._get_client_ip(),
+                    )
+                except Exception as exc:
+                    # Fast path: auth first. If startup bootstrap wasn't ready yet,
+                    # run it once and retry auth.
+                    app_module.error_log("Authentication attempt failed before startup ready", exc)
+                    if not app_module.should_run_startup_recovery(exc):
+                        st.error(
+                            "Login is temporarily unavailable due to a database issue. "
+                            "Please contact your administrator."
+                        )
+                        return
+                    try:
+                        app_module.ensure_startup_ready()
+                        auth = app_module.authenticate_user_detailed(
+                            username.strip(),
+                            password,
+                            client_ip=app_module._get_client_ip(),
+                        )
+                    except Exception as retry_exc:
+                        app_module.error_log("Authentication failed unexpectedly", retry_exc)
+                        st.error(
+                            "Login is temporarily unavailable due to a database issue. "
+                            "Please contact your administrator."
+                        )
+                        return
+                user = auth.get("user")
+                if user:
+                    # Store user info in session.
+                    st.session_state["user_id"] = user.id
+                    st.session_state["username"] = user.username
+                    st.session_state["display_name"] = user.display_name
+                    st.session_state["user_role"] = user.role.value
+                    st.session_state["manager_id"] = user.manager_id
+                    st.session_state["must_change_password"] = bool(
+                        user.must_change_password
+                    )
+
+                    st.success(f"Welcome, {user.display_name}!")
+                    st.rerun()
+                else:
+                    error_code = str(auth.get("error_code", ""))
+                    if error_code.startswith("AUTH_LOCKED"):
+                        retry_after = int(auth.get("retry_after_seconds") or 0)
+                        minutes = max(1, (retry_after + 59) // 60)
+                        st.error(
+                            f"Too many failed attempts. Try again in about {minutes} minute(s)."
+                        )
+                    elif error_code == "AUTH_TEMP_UNAVAILABLE":
+                        st.error(
+                            "Login is temporarily unavailable due to authentication safeguards. "
+                            "Please try again shortly."
+                        )
+                    else:
+                        st.error("Invalid username or password.")
+            else:
+                st.error("Please enter both username and password.")
+
+
+def render_password_reset_gate_from_app(*, app_module) -> None:
+    st = app_module.st
+    st.markdown("## Change Your Password")
+    st.warning(
+        "For security, you must change your temporary password before continuing."
+    )
+
+    user_id = st.session_state.get("user_id")
+    if not user_id:
+        app_module._clear_user_session()
+        st.rerun()
+
+    if st.button("Logout"):
+        app_module._clear_user_session()
+        st.rerun()
+
+    with st.form("force_password_change_form"):
+        new_pw = st.text_input("New Password", type="password")
+        confirm_pw = st.text_input("Confirm Password", type="password")
+        submitted = st.form_submit_button("Update Password", type="primary")
+
+    if not submitted:
+        return
+    if not new_pw:
+        st.error("Password is required.")
+        return
+    if len(new_pw) < 8:
+        st.error("Use at least 8 characters.")
+        return
+    if new_pw != confirm_pw:
+        st.error("Passwords do not match.")
+        return
+    if app_module.reset_user_password(
+        user_id,
+        new_pw,
+        actor_username=st.session_state.get("username"),
+    ):
+        st.success(
+            "Password updated successfully. Please log in again with your new password."
+        )
+        time.sleep(0.7)
+        app_module._clear_user_session()
+        st.rerun()
+    st.error("Failed to update password.")

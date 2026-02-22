@@ -1,12 +1,20 @@
+"""Thin Streamlit entry coordinator.
+
+This module intentionally stays small and declarative:
+1. Adapt environment/config/runtime data to helper modules.
+2. Expose cached runtime snapshot utilities consumed by helper modules.
+3. Delegate UI/auth/app-shell flows to focused helper modules.
+
+Business logic should live in `src/ui/app_*_helpers.py` (or lower layers), not here.
+"""
+
 import streamlit as st
 import sys
 import os
-import time
 import subprocess
-import traceback
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# Add current directory to path so we can import modules if running from outside
+# Keep `import app` stable for test/runtime contexts that execute from repo root.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Database utilities
@@ -22,355 +30,233 @@ from src.config_runtime import (
     get_config_value_with_source,
 )
 from src.runtime_preflight import evaluate_runtime_preflight
+from src.ui import (
+    app_auth_helpers,
+    app_entry_helpers,
+    app_network_helpers,
+    app_preflight_helpers,
+    app_runtime_helpers,
+    app_shell_helpers,
+)
 from src.utils.time_utils import utc_now_naive
 
 
-# One-time preflight: check PDF engine (after login to speed initial load)
+# ---------------------------------------------------------------------------
+# Runtime Preflight Adapters
+# ---------------------------------------------------------------------------
+# These adapter functions pass app-local dependencies into the dedicated
+# preflight helper module. This keeps orchestration here, policy there.
 def _get_pdf_method() -> str:
-    method = str(
-        _cfg_value("PDF_METHOD", "")
-        or _cfg_value("OKR_PDF_METHOD", "")
-        or _cfg_value("pdf_method", "")
-    ).strip().lower()
-    if method == "shiftpdf":
-        method = "pdfshift"
-    if method:
-        return method
-    if _has_pdfshift_api_key():
-        return "pdfshift"
-    return "pdfshift"
+    """Resolve effective PDF backend method."""
+    return app_preflight_helpers.get_pdf_method(
+        cfg_value_fn=_cfg_value,
+        has_pdfshift_api_key_fn=_has_pdfshift_api_key,
+    )
 
 
 def _is_streamlit_cloud_runtime() -> bool:
-    return bool(os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD"))
+    """Detect Streamlit Cloud deployment environment."""
+    return app_preflight_helpers.is_streamlit_cloud_runtime(environ=os.environ)
 
 
 def _has_pdfshift_api_key() -> bool:
-    return bool(
-        _cfg_value("PDFSHIFT_API_KEY", "").strip()
-        or _cfg_value("pdfshift_api_key", "").strip()
+    """Check if PDFShift credentials are configured."""
+    return app_preflight_helpers.has_pdfshift_api_key(
+        cfg_value_fn=_cfg_value,
     )
 
 
 def _runtime_preflight_strict_mode() -> bool:
-    # Security-first default: runtime preflight is strict unless explicitly disabled.
-    raw = str(_cfg_value("OKR_STRICT_RUNTIME_PREFLIGHT", "")).strip().lower()
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    if raw in {"1", "true", "yes", "on"}:
-        return True
-    return True
+    """Resolve strict-mode flag for runtime preflight policy."""
+    return app_preflight_helpers.runtime_preflight_strict_mode(
+        cfg_value_fn=_cfg_value
+    )
 
 
 def _cfg_value(name: str, default: str = "") -> str:
+    """Read string config value with legacy compatibility handled downstream."""
     return get_config_value(name, default)
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
+    """Read boolean config value."""
     return get_bool_config(name, default)
 
 
 def _env_bool_with_legacy(name: str, legacy_name: str, default: bool = False) -> bool:
-    raw = str(_cfg_value(name, "")).strip()
-    if raw:
-        return raw.lower() in {"1", "true", "yes", "on"}
-    return _env_bool(legacy_name, default)
+    """Support renamed feature flags while preserving old env var behavior."""
+    return app_preflight_helpers.env_bool_with_legacy(
+        name=name,
+        legacy_name=legacy_name,
+        default=default,
+        cfg_value_fn=_cfg_value,
+        env_bool_fn=_env_bool,
+    )
 
 
 def _run_pdf_preflight():
-    if st.session_state.get("preflight_done"):
-        return
-
-    pdf_method = _get_pdf_method()
-    has_pdfshift_key = _has_pdfshift_api_key()
-    is_cloud = _is_streamlit_cloud_runtime()
-
+    """Run one-time startup/runtime safeguards before authenticated workspace load."""
+    # Keep imports lazy so login cold-start remains fast.
     from src.services.ai_service import get_api_key
     from src.services.ai_provider import (
         get_ai_provider_runtime_status,
         is_external_ai_allowed,
     )
-    ai_status = get_ai_provider_runtime_status()
-
-    backend_api_url, backend_api_url_source = get_config_value_with_source(
-        "OKR_BACKEND_API_URL", ""
+    return app_preflight_helpers.run_pdf_preflight(
+        st_module=st,
+        environ=os.environ,
+        cfg_value_fn=_cfg_value,
+        env_bool_fn=_env_bool,
+        get_config_value_with_source_fn=get_config_value_with_source,
+        evaluate_runtime_preflight_fn=evaluate_runtime_preflight,
+        get_api_key_fn=get_api_key,
+        get_ai_provider_runtime_status_fn=get_ai_provider_runtime_status,
+        is_external_ai_allowed_fn=is_external_ai_allowed,
+        get_pdf_method_fn=_get_pdf_method,
+        has_pdfshift_api_key_fn=_has_pdfshift_api_key,
+        is_streamlit_cloud_runtime_fn=_is_streamlit_cloud_runtime,
+        runtime_preflight_strict_mode_fn=_runtime_preflight_strict_mode,
     )
-    backend_proxy_mutations = _env_bool("OKR_BACKEND_PROXY_MUTATIONS", True)
-    backend_proxy_reads = _env_bool("OKR_BACKEND_PROXY_READS", False)
-    allow_local_backend_mutation_fallback = _env_bool_with_legacy(
-        "OKR_ALLOW_LOCAL_MUTATION_FALLBACK",
-        "OKR_ALLOW_LOCAL_BACKEND_FALLBACK",
-        False,
-    )
-    allow_local_backend_read_fallback = _env_bool_with_legacy(
-        "OKR_ALLOW_LOCAL_READ_FALLBACK",
-        "OKR_ALLOW_LOCAL_BACKEND_FALLBACK",
-        False,
-    )
-    backend_proxy_raw, backend_proxy_source = get_config_value_with_source(
-        "OKR_BACKEND_PROXY_MUTATIONS", ""
-    )
-
-    report = evaluate_runtime_preflight(
-        pdf_method=pdf_method,
-        is_streamlit_cloud=is_cloud,
-        has_pdfshift_key=has_pdfshift_key,
-        gemini_api_key=get_api_key(),
-        external_ai_allowed=is_external_ai_allowed(),
-        ai_provider=ai_status.provider,
-        ai_provider_ready=ai_status.ready,
-        ai_provider_message=ai_status.message,
-        backend_api_url=backend_api_url,
-        backend_proxy_mutations=backend_proxy_mutations,
-        backend_proxy_reads=backend_proxy_reads,
-        allow_local_backend_mutation_fallback=allow_local_backend_mutation_fallback,
-        allow_local_backend_read_fallback=allow_local_backend_read_fallback,
-        backend_service_token=_cfg_value("OKR_BACKEND_SERVICE_TOKEN", ""),
-        backend_signing_secret=_cfg_value("OKR_BACKEND_SIGNING_SECRET", ""),
-        bootstrap_admin_password=os.getenv("OKR_BOOTSTRAP_ADMIN_PASSWORD", ""),
-        backend_security_state_backend=_cfg_value(
-            "OKR_BACKEND_SECURITY_STATE_BACKEND",
-            "memory",
-        ),
-        backend_security_state_redis_url=_cfg_value(
-            "OKR_BACKEND_SECURITY_STATE_REDIS_URL",
-            "",
-        ),
-        runtime_env=(
-            _cfg_value("OKR_ENV", "")
-            or _cfg_value("OKR_RUNTIME_ENV", "development")
-        ),
-    )
-    for msg in report.errors:
-        st.error(f"Runtime preflight: {msg}")
-    for msg in report.warnings:
-        st.warning(f"Runtime preflight: {msg}")
-    if (
-        "OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set."
-        in report.warnings
-    ):
-        effective_proxy = (
-            str(backend_proxy_raw).strip()
-            if str(backend_proxy_raw).strip()
-            else str(backend_proxy_mutations)
-        )
-        st.info(
-            "Config trace: "
-            f"OKR_BACKEND_PROXY_MUTATIONS={effective_proxy!r} "
-            f"(source={backend_proxy_source}), "
-            f"OKR_BACKEND_API_URL={backend_api_url!r} "
-            f"(source={backend_api_url_source})."
-        )
-
-    st.session_state["preflight_done"] = True
-    if report.errors and _runtime_preflight_strict_mode():
-        st.stop()
 
 
 from src.crud import (
     get_all_cycles,
     create_cycle,
-    get_active_cycles,
-    create_check_in,
-    get_krs_needing_checkin,
-    get_check_ins,
-    get_leadership_metrics,
-    update_cycle,
-    delete_cycle,
     # User Auth
     authenticate_user_detailed,
-    get_all_users,
-    create_user,
-    update_user,
     reset_user_password,
-    get_team_members,
     get_user_by_id,
 )
 from src.models import UserRole
 
 
+# ---------------------------------------------------------------------------
+# Runtime Snapshot / Cache Adapters
+# ---------------------------------------------------------------------------
+# These wrappers define cache boundaries and adapter wiring for runtime helpers.
 def _cycle_to_snapshot(cycle) -> dict | None:
-    if not cycle:
-        return None
-    cycle_id = getattr(cycle, "id", None)
-    if cycle_id is None:
-        return None
-    return {
-        "id": int(cycle_id),
-        "title": str(getattr(cycle, "title", "") or ""),
-        "start_date": getattr(cycle, "start_date", None),
-        "end_date": getattr(cycle, "end_date", None),
-        "is_active": bool(getattr(cycle, "is_active", False)),
-    }
+    """Convert ORM cycle object into cache-safe primitive snapshot."""
+    return app_runtime_helpers.cycle_to_snapshot(cycle)
 
 
 def _date_label(value) -> str:
-    if value is None:
-        return ""
-    try:
-        return value.strftime("%Y-%m-%d")
-    except Exception:
-        return str(value)
+    """Format a date-like value for cycle labels."""
+    return app_runtime_helpers.date_label(value)
 
 
 def _format_cycle_label(cycle_snapshot: dict) -> str:
-    cycle_id = int(cycle_snapshot.get("id"))
-    title = str(cycle_snapshot.get("title", "") or "").strip() or "Untitled cycle"
-    start_label = _date_label(cycle_snapshot.get("start_date"))
-    end_label = _date_label(cycle_snapshot.get("end_date"))
-    if start_label and end_label:
-        return f"{title} ({start_label} -> {end_label}) | #{cycle_id}"
-    if start_label:
-        return f"{title} (from {start_label}) | #{cycle_id}"
-    if end_label:
-        return f"{title} (until {end_label}) | #{cycle_id}"
-    return f"{title} | #{cycle_id}"
+    """Build user-facing cycle selector label from snapshot data."""
+    return app_runtime_helpers.format_cycle_label(
+        cycle_snapshot,
+        date_label_fn=_date_label,
+    )
+
 
 def _build_cycle_selector_payload(cycles: list[dict]) -> tuple[list[int], dict[int, str]]:
-    cycle_ids: list[int] = []
-    labels: dict[int, str] = {}
-    for cycle in cycles:
-        cycle_id = cycle.get("id")
-        if cycle_id is None:
-            continue
-        cycle_id_int = int(cycle_id)
-        cycle_ids.append(cycle_id_int)
-        labels[cycle_id_int] = _format_cycle_label(cycle)
-    return cycle_ids, labels
+    """Return ID-backed selector options plus display labels."""
+    return app_runtime_helpers.build_cycle_selector_payload(
+        cycles,
+        format_cycle_label_fn=_format_cycle_label,
+    )
 
 
 @st.cache_data(ttl=30, show_spinner=False)
 def _cached_get_all_cycles():
-    snapshots: list[dict] = []
-    for cycle in get_all_cycles():
-        payload = _cycle_to_snapshot(cycle)
-        if payload:
-            snapshots.append(payload)
-    return snapshots
+    """Cache cycle list snapshots to reduce rerun query pressure."""
+    return app_runtime_helpers.cached_get_all_cycles(
+        get_all_cycles_fn=get_all_cycles,
+        cycle_to_snapshot_fn=_cycle_to_snapshot,
+    )
 
 
 def _bootstrap_default_cycle_if_needed(
     cycles: list[dict], *, username: str, user_role: str
 ) -> tuple[list[dict], str | None]:
-    if cycles:
-        return cycles, None
-
-    if str(user_role).lower() != "admin":
-        return [], "No cycles are configured yet. Ask an admin to create one."
-
-    now = utc_now_naive()
-    quarter = ((now.month - 1) // 3) + 1
-    try:
-        default_cycle = create_cycle(
-            title=f"Q{quarter} {now.year}",
-            start_date=now,
-            end_date=now + timedelta(days=90),
-            is_active=True,
-            actor_username=username,
-        )
-    except PermissionError:
-        return [], "No cycles are configured yet. Ask an admin to create one."
-    except Exception as exc:
-        error_log("Default cycle bootstrap failed", exc)
-        return [], "No cycles available and default cycle creation failed."
-
-    default_cycle_snapshot = _cycle_to_snapshot(default_cycle)
-    if not default_cycle_snapshot:
-        return [], "No cycles available and default cycle creation failed."
-    _cached_get_all_cycles.clear()
-    return [default_cycle_snapshot], None
+    """Create a default cycle only when policy allows and none exist."""
+    return app_runtime_helpers.bootstrap_default_cycle_if_needed(
+        cycles,
+        username=username,
+        user_role=user_role,
+        admin_role_value=UserRole.ADMIN.value,
+        utc_now_naive_fn=utc_now_naive,
+        create_cycle_fn=create_cycle,
+        cycle_to_snapshot_fn=_cycle_to_snapshot,
+        clear_cycles_cache_fn=_cached_get_all_cycles.clear,
+        error_log_fn=error_log,
+    )
 
 
 @st.cache_data(ttl=10, show_spinner=False)
 def _cached_get_user_runtime_snapshot(user_id: int):
-    user = get_user_by_id(int(user_id))
-    return _build_runtime_user_snapshot(user)
+    """Cache current user's runtime identity snapshot."""
+    return app_runtime_helpers.cached_get_user_runtime_snapshot(
+        int(user_id),
+        get_user_by_id_fn=get_user_by_id,
+        build_runtime_user_snapshot_fn=_build_runtime_user_snapshot,
+    )
 
 
 def _weekly_plan_cache_bucket(now: datetime | None = None) -> str:
-    point = now or utc_now_naive()
-    week_start = (point - timedelta(days=point.weekday())).date()
-    return week_start.isoformat()
+    """Bucket weekly plan cache by week start to avoid per-rerun churn."""
+    return app_runtime_helpers.weekly_plan_cache_bucket(
+        now=now,
+        utc_now_naive_fn=utc_now_naive,
+    )
 
 
 @st.cache_data(ttl=10, show_spinner=False)
 def _cached_get_active_weekly_plan_snapshot(user_id: int, week_bucket: str):
-    _ = week_bucket
+    """Cache active weekly plan snapshot for current week bucket."""
     from src.crud import get_active_weekly_plan
 
-    plan = get_active_weekly_plan(int(user_id))
-    if not plan:
-        return None
-    return {
-        "priority_1": plan.priority_1,
-        "priority_2": plan.priority_2,
-        "priority_3": plan.priority_3,
-    }
+    return app_runtime_helpers.cached_get_active_weekly_plan_snapshot(
+        int(user_id),
+        week_bucket,
+        get_active_weekly_plan_fn=get_active_weekly_plan,
+    )
 
 
 def _get_active_weekly_plan_snapshot(user_id: int, now: datetime | None = None):
-    return _cached_get_active_weekly_plan_snapshot(
+    """Resolve active weekly plan via bucketed cache strategy."""
+    return app_runtime_helpers.get_active_weekly_plan_snapshot(
         int(user_id),
-        _weekly_plan_cache_bucket(now),
+        now=now,
+        weekly_plan_cache_bucket_fn=_weekly_plan_cache_bucket,
+        cached_get_active_weekly_plan_snapshot_fn=_cached_get_active_weekly_plan_snapshot,
     )
 
 
 def _should_warn_default_admin_password(user_snapshot: dict | None) -> bool:
-    if not user_snapshot:
-        return False
-    if str(user_snapshot.get("role") or "").lower() != UserRole.ADMIN.value:
-        return False
-    # Startup bootstrap (ensure_admin_exists) enforces must_change_password when
-    # default admin credentials are active, so this flag is sufficient here.
-    return bool(user_snapshot.get("must_change_password"))
+    # Startup bootstrap enforces `must_change_password` for default credentials,
+    # so runtime warning can safely key off this computed snapshot signal.
+    return app_runtime_helpers.should_warn_default_admin_password(
+        user_snapshot,
+        admin_role_value=UserRole.ADMIN.value,
+    )
 
 
 def _build_runtime_user_snapshot(user) -> dict | None:
-    if not user:
-        return None
-    role_attr = getattr(user, "role", None)
-    role_value = role_attr.value if hasattr(role_attr, "value") else str(role_attr)
-    return {
-        "id": int(user.id),
-        "username": user.username,
-        "display_name": user.display_name,
-        "role": role_value,
-        "manager_id": user.manager_id,
-        "is_active": bool(user.is_active),
-        "must_change_password": bool(user.must_change_password),
-    }
+    """Project runtime-safe user fields from ORM entity."""
+    return app_runtime_helpers.build_runtime_user_snapshot(user)
 
 
 def _resolve_app_shell_runtime_from_user_snapshot(snapshot: dict | None) -> dict:
-    if not snapshot:
-        return {
-            "user": None,
-            "cycles": [],
-            "weekly_plan": None,
-            "show_admin_default_password_warning": False,
-        }
-    user_id = snapshot.get("id")
-    if user_id is None:
-        return {
-            "user": None,
-            "cycles": [],
-            "weekly_plan": None,
-            "show_admin_default_password_warning": False,
-        }
-    user_id = int(user_id)
-    return {
-        "user": snapshot,
-        "cycles": _cached_get_all_cycles(),
-        "weekly_plan": _get_active_weekly_plan_snapshot(user_id),
-        "show_admin_default_password_warning": _should_warn_default_admin_password(
-            snapshot
-        ),
-    }
+    """Build full app-shell runtime bundle from user snapshot + cached deps."""
+    return app_runtime_helpers.resolve_app_shell_runtime_from_user_snapshot(
+        snapshot,
+        cached_get_all_cycles_fn=_cached_get_all_cycles,
+        get_active_weekly_plan_snapshot_fn=_get_active_weekly_plan_snapshot,
+        should_warn_default_admin_password_fn=_should_warn_default_admin_password,
+    )
 
 
 def _resolve_app_shell_runtime(user_id: int) -> dict:
-    snapshot = _cached_get_user_runtime_snapshot(int(user_id))
-    return _resolve_app_shell_runtime_from_user_snapshot(snapshot)
+    """Resolve app-shell runtime bundle for current user id."""
+    return app_runtime_helpers.resolve_app_shell_runtime(
+        int(user_id),
+        cached_get_user_runtime_snapshot_fn=_cached_get_user_runtime_snapshot,
+        resolve_app_shell_runtime_from_user_snapshot_fn=_resolve_app_shell_runtime_from_user_snapshot,
+    )
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -417,519 +303,45 @@ def _excepthook(exc_type, exc, tb):
 sys.excepthook = _excepthook
 
 
+# ---------------------------------------------------------------------------
+# Thin Delegation Wrappers
+# ---------------------------------------------------------------------------
+# Keep entry-level functions stable for imports/tests, but delegate all heavy
+# logic to focused helper modules.
 def _get_client_ip() -> str | None:
-    """Best-effort client IP extraction from Streamlit request headers."""
-    try:
-        context = getattr(st, "context", None)
-        headers = getattr(context, "headers", None) if context is not None else None
-        if headers is None:
-            return None
-
-        header_map = {str(k).lower(): str(v) for k, v in dict(headers).items()}
-        for key in [
-            "x-forwarded-for",
-            "x-real-ip",
-            "cf-connecting-ip",
-            "x-client-ip",
-            "x-cluster-client-ip",
-        ]:
-            value = header_map.get(key)
-            if value:
-                return value.split(",", 1)[0].strip() or None
-    except Exception:
-        return None
-    return None
+    """Extract best-effort client IP from Streamlit request context."""
+    return app_network_helpers.get_client_ip_from_streamlit(st_module=st)
 
 
 def render_login():
-    st.markdown("## 🔐 Login to OKR Tracker")
-    st.info("👋 Welcome! Please enter your credentials to access your data.")
-    try:
-        prewarm_startup_ready_async()
-    except Exception as exc:
-        error_log("Login bootstrap prewarm scheduling failed", exc)
-
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        username = st.text_input("Username", placeholder="e.g. admin")
-        password = st.text_input("Password", type="password")
-
-        if st.button("Login", type="primary"):
-            if username.strip() and password:
-                try:
-                    auth = authenticate_user_detailed(
-                        username.strip(),
-                        password,
-                        client_ip=_get_client_ip(),
-                    )
-                except Exception as exc:
-                    # Fast path: auth first. If startup bootstrap wasn't ready yet,
-                    # run it once and retry auth.
-                    error_log("Authentication attempt failed before startup ready", exc)
-                    if not should_run_startup_recovery(exc):
-                        st.error(
-                            "Login is temporarily unavailable due to a database issue. "
-                            "Please contact your administrator."
-                        )
-                        return
-                    try:
-                        ensure_startup_ready()
-                        auth = authenticate_user_detailed(
-                            username.strip(),
-                            password,
-                            client_ip=_get_client_ip(),
-                        )
-                    except Exception as retry_exc:
-                        error_log("Authentication failed unexpectedly", retry_exc)
-                        st.error(
-                            "Login is temporarily unavailable due to a database issue. "
-                            "Please contact your administrator."
-                        )
-                        return
-                user = auth.get("user")
-                if user:
-                    # Store user info in session
-                    st.session_state["user_id"] = user.id
-                    st.session_state["username"] = user.username
-                    st.session_state["display_name"] = user.display_name
-                    st.session_state["user_role"] = user.role.value
-                    st.session_state["manager_id"] = user.manager_id
-                    st.session_state["must_change_password"] = bool(
-                        user.must_change_password
-                    )
-
-                    st.success(f"Welcome, {user.display_name}!")
-                    st.rerun()
-                else:
-                    error_code = str(auth.get("error_code", ""))
-                    if error_code.startswith("AUTH_LOCKED"):
-                        retry_after = int(auth.get("retry_after_seconds") or 0)
-                        minutes = max(1, (retry_after + 59) // 60)
-                        st.error(
-                            f"Too many failed attempts. Try again in about {minutes} minute(s)."
-                        )
-                    elif error_code == "AUTH_TEMP_UNAVAILABLE":
-                        st.error(
-                            "Login is temporarily unavailable due to authentication safeguards. "
-                            "Please try again shortly."
-                        )
-                    else:
-                        st.error("Invalid username or password.")
-            else:
-                st.error("Please enter both username and password.")
+    """Render login form and authentication flow."""
+    return app_auth_helpers.render_login_from_app(app_module=sys.modules[__name__])
 
 
 def _clear_user_session():
-    for key in [
-        "user_id",
-        "username",
-        "display_name",
-        "user_role",
-        "manager_id",
-        "manager_username",
-        "nav_stack",
-        "active_cycle_id",
-        "active_report_mode",
-        "active_timer_node_id",
-        "active_inspector_id",
-        "atlas_selected_ref",
-        "atlas_jump_query",
-        "atlas_scope_selector",
-        "atlas_focus_task_ref",
-        "atlas_focus_task_picker",
-        "atlas_last_selected_ref",
-        "atlas_map_lens",
-        "atlas_map_last_click_ref",
-        "atlas_commit_preset",
-        "atlas_commit_custom_min",
-        "atlas_sprint_target_minutes",
-        "atlas_sprint_task_ref",
-        "atlas_sprint_started_at_epoch",
-        "atlas_sprint_reminder_dismissed_for",
-        "atlas_sprint_notification_sent_for",
-        "atlas_last_session_summary",
-        "atlas_breadcrumbs",
-        "workspace_mode",
-        "must_change_password",
-    ]:
-        if key in st.session_state:
-            del st.session_state[key]
+    """Clear auth/navigation/session keys on logout or invalid session."""
+    return app_auth_helpers.clear_user_session(st.session_state)
 
 
 def render_password_reset_gate():
-    st.markdown("## Change Your Password")
-    st.warning(
-        "For security, you must change your temporary password before continuing."
+    """Render forced password-reset flow for temporary/initial credentials."""
+    return app_auth_helpers.render_password_reset_gate_from_app(
+        app_module=sys.modules[__name__]
     )
-
-    user_id = st.session_state.get("user_id")
-    if not user_id:
-        _clear_user_session()
-        st.rerun()
-
-    if st.button("Logout"):
-        _clear_user_session()
-        st.rerun()
-
-    with st.form("force_password_change_form"):
-        new_pw = st.text_input("New Password", type="password")
-        confirm_pw = st.text_input("Confirm Password", type="password")
-        submitted = st.form_submit_button("Update Password", type="primary")
-
-    if not submitted:
-        return
-    if not new_pw:
-        st.error("Password is required.")
-        return
-    if len(new_pw) < 8:
-        st.error("Use at least 8 characters.")
-        return
-    if new_pw != confirm_pw:
-        st.error("Passwords do not match.")
-        return
-    if reset_user_password(
-        user_id,
-        new_pw,
-        actor_username=st.session_state.get("username"),
-    ):
-        st.success(
-            "Password updated successfully. Please log in again with your new password."
-        )
-        time.sleep(0.7)
-        _clear_user_session()
-        st.rerun()
-    st.error("Failed to update password.")
 
 
 def render_app(username, runtime_bundle=None):
-    _run_pdf_preflight()
-
-    # Lazy imports to speed initial login page
-    from src.ui.styles import apply_custom_fonts, inject_dialog_styles
-    from src.ui.components import render_level
-    from src.ui.dialogs import (
-        render_weekly_report_dialog,
-        render_daily_report_dialog,
-        render_inspector_dialog,
-        render_retrobox_dialog,
-        render_timeline_dialog,
-        render_create_goal_dialog,
-        render_create_objective_dialog,
-        render_create_kr_dialog,
-        render_weekly_ritual_dialog,
-        render_timer_dialog,
-        render_leadership_dashboard_dialog,
-        render_admin_panel_dialog,
-        render_create_task_dialog,
-        render_manage_cycles_dialog,
-    )
-
-    apply_custom_fonts()
-    inject_dialog_styles()
-    # Ensure session state is initialized
-    if "nav_stack" not in st.session_state:
-        st.session_state.nav_stack = []
-
-    runtime_bundle = runtime_bundle or _resolve_app_shell_runtime(
-        int(st.session_state.get("user_id"))
-    )
-    current_user_snapshot = runtime_bundle.get("user")
-    cycles = runtime_bundle.get("cycles", [])
-    weekly_plan = runtime_bundle.get("weekly_plan")
-
-    # Sidebar Header
-    display_name = st.session_state.get("display_name", username)
-    user_role = st.session_state.get("user_role", "member")
-
-    st.sidebar.markdown(f"👤 **{display_name}** ({user_role.title()})")
-    if st.sidebar.button("🚪 Logout"):
-        _clear_user_session()
-        st.rerun()
-
-    # Admin Panel Button (Admin only)
-    if st.session_state.get("user_role") == "admin":
-        if runtime_bundle.get("show_admin_default_password_warning"):
-            st.sidebar.warning(
-                "Default admin password is still active. Change it in Admin Panel."
-            )
-        if st.sidebar.button("🛠️ Admin Panel", use_container_width=True):
-            st.session_state.active_report_mode = "Admin"
-            st.rerun()
-
-    st.sidebar.markdown("---")
-
-    cycles, cycles_error = _bootstrap_default_cycle_if_needed(
-        cycles,
+    """Render authenticated workspace shell."""
+    return app_shell_helpers.render_app_from_app(
+        app_module=sys.modules[__name__],
         username=username,
-        user_role=user_role,
+        runtime_bundle=runtime_bundle,
     )
-    if cycles_error:
-        st.error(cycles_error)
-        return
-
-    # Cycle Selection in Sidebar
-    st.sidebar.markdown("### 📅 OKR Cycle")
-    cycle_ids, cycle_labels = _build_cycle_selector_payload(cycles)
-    if not cycle_ids:
-        st.error("No cycles available. Create one from Admin Panel -> Manage Cycles.")
-        return
-
-    # Store selected cycle in session state
-    if "active_cycle_id" not in st.session_state:
-        st.session_state.active_cycle_id = cycle_ids[0]
-    active_cycle_id = int(st.session_state.get("active_cycle_id", cycle_ids[0]))
-    if active_cycle_id not in cycle_ids:
-        active_cycle_id = cycle_ids[0]
-        st.session_state.active_cycle_id = active_cycle_id
-
-    current_cycle_index = cycle_ids.index(active_cycle_id)
-
-    selected_cycle_id = int(
-        st.sidebar.selectbox(
-            "Select Cycle",
-            options=cycle_ids,
-            format_func=lambda cid: cycle_labels.get(cid, f"Cycle #{cid}"),
-            index=current_cycle_index,
-            label_visibility="collapsed",
-        )
-    )
-
-    if st.sidebar.button("⚙️ Manage Cycles", key="manage_cycles_sidebar"):
-        render_manage_cycles_dialog()
-
-    # Update active_cycle_id if changed
-    if selected_cycle_id != active_cycle_id:
-        st.session_state.active_cycle_id = selected_cycle_id
-        st.session_state.nav_stack = []
-        for key in [
-            "atlas_selected_ref",
-            "atlas_jump_query",
-            "atlas_breadcrumbs",
-            "atlas_focus_task_ref",
-            "atlas_focus_task_picker",
-            "atlas_last_selected_ref",
-            "atlas_map_lens",
-            "atlas_map_last_click_ref",
-            "atlas_commit_preset",
-            "atlas_commit_custom_min",
-            "atlas_sprint_target_minutes",
-            "atlas_sprint_task_ref",
-            "atlas_sprint_started_at_epoch",
-            "atlas_sprint_reminder_dismissed_for",
-            "atlas_sprint_notification_sent_for",
-            "atlas_last_session_summary",
-        ]:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
-
-    st.sidebar.markdown("---")
-
-    st.session_state["workspace_mode"] = "Atlas"
-    if user_role == "admin":
-        st.sidebar.markdown("### Experience")
-        st.sidebar.success("Atlas Workspace Active")
-        st.sidebar.caption(f"Build `{_get_build_fingerprint()}`")
-
-    st.sidebar.markdown("---")
-
-    # Navigation & Views
-    st.sidebar.markdown("### 🧭 Navigation")
-    if st.sidebar.button("🏠 Home / OKRs", use_container_width=True):
-        if "active_report_mode" in st.session_state:
-            del st.session_state.active_report_mode
-        st.session_state.nav_stack = []
-        for key in [
-            "atlas_selected_ref",
-            "atlas_breadcrumbs",
-            "atlas_focus_task_ref",
-            "atlas_focus_task_picker",
-            "atlas_last_selected_ref",
-            "atlas_map_lens",
-            "atlas_map_last_click_ref",
-            "atlas_commit_preset",
-            "atlas_commit_custom_min",
-            "atlas_sprint_target_minutes",
-            "atlas_sprint_task_ref",
-            "atlas_sprint_started_at_epoch",
-            "atlas_sprint_reminder_dismissed_for",
-            "atlas_sprint_notification_sent_for",
-            "atlas_last_session_summary",
-            "active_inspector_id",
-        ]:
-            if key in st.session_state:
-                del st.session_state[key]
-        st.rerun()
-
-    st.sidebar.markdown("### 📈 Insights & Reports")
-
-    dialog_active = False
-
-    if st.sidebar.button("📊 Weekly Report", use_container_width=True):
-        st.session_state.active_report_mode = "Weekly"
-        # Clear others
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button("📅 Daily Report", use_container_width=True):
-        st.session_state.active_report_mode = "Daily"
-        # Clear others
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button(
-        "🔄 Weekly Ritual",
-        help="Guided check-in for your metrics",
-        use_container_width=True,
-    ):
-        st.session_state.active_report_mode = "Ritual"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button(
-        "📬 RetroBox", help="Weekly retrospectives", use_container_width=True
-    ):
-        st.session_state.active_report_mode = "RetroBox"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button(
-        "📅 Project Timeline", help="Smart Gantt Chart", use_container_width=True
-    ):
-        st.session_state.active_report_mode = "Timeline"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button(
-        "🧭 Strategic \nDashboard",
-        help="Executive visibility",
-        use_container_width=True,
-    ):
-        st.session_state.active_report_mode = "Dashboard"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    # === WEEKLY FOCUS CARD ===
-    if current_user_snapshot and weekly_plan:
-        with st.container(border=True):
-            c_wc1, c_wc2 = st.columns([0.15, 0.85])
-            with c_wc1:
-                st.markdown("### ðŸŽ¯")
-                st.caption("Weekly Focus")
-            with c_wc2:
-                # Display priorities as pills or structured list
-                priorities = [
-                    p
-                    for p in [
-                        weekly_plan.get("priority_1"),
-                        weekly_plan.get("priority_2"),
-                        weekly_plan.get("priority_3"),
-                    ]
-                    if p
-                ]
-
-                if not priorities:
-                    st.info("No priorities set for this week.")
-                else:
-                    # CSS for custom pills/cards
-                    cols = st.columns(len(priorities))
-                    for idx, p in enumerate(priorities):
-                        with cols[idx]:
-                            st.markdown(f"**{idx + 1}.** {p}")
-
-    render_level(username)
-
-    # Persistent Dialog Checks - Only if no other dialog is active
-    # (Though Sidebar buttons act as triggers, if we use them to set state, we fall through here)
-    if not dialog_active:
-        if "active_timer_node_id" in st.session_state:
-            render_timer_dialog(st.session_state.active_timer_node_id, username)
-        elif "active_inspector_id" in st.session_state:
-            render_inspector_dialog(st.session_state.active_inspector_id, username)
-        elif "active_report_mode" in st.session_state:
-            mode = st.session_state.active_report_mode
-            if mode == "Ritual":
-                render_weekly_ritual_dialog(username)
-            elif mode == "Dashboard":
-                render_leadership_dashboard_dialog(username)
-            elif mode == "Admin":
-                render_admin_panel_dialog()
-            elif mode == "Weekly":
-                render_weekly_report_dialog(username)
-            elif mode == "Daily":
-                render_daily_report_dialog(username)
-            elif mode == "RetroBox":
-                render_retrobox_dialog(username)
-            elif mode == "Timeline":
-                render_timeline_dialog(username)
-        # Handle Node Creation Dialogs
-        if "add_mode_type" in st.session_state:
-            ntype = st.session_state.add_mode_type
-            parent_id = st.session_state.get("add_mode_parent")
-
-            if ntype == "GOAL":
-                render_create_goal_dialog(username)
-            elif ntype == "OBJECTIVE":
-                render_create_objective_dialog(parent_id)
-            elif ntype == "KEY_RESULT":
-                render_create_kr_dialog(parent_id)
-            elif ntype == "TASK":
-                render_create_task_dialog(parent_id, username)
 
 
 def main():
-    if "user_id" not in st.session_state:
-        render_login()
-        return
-
-    # Keep compatibility for any flow still checking this sentinel.
-    st.session_state["_bootstrap_ready"] = True
-
-    try:
-        runtime_bundle = _resolve_app_shell_runtime(int(st.session_state["user_id"]))
-    except Exception as exc:
-        error_log("Workspace runtime load failed", exc)
-        st.error(
-            "Workspace is temporarily unavailable due to a database issue. "
-            "Please retry shortly."
-        )
-        return
-    current_user = runtime_bundle.get("user")
-    if not current_user or not current_user.get("is_active"):
-        _clear_user_session()
-        st.error("Your session is no longer valid. Please log in again.")
-        return
-
-    st.session_state["username"] = current_user.get("username")
-    st.session_state["display_name"] = current_user.get("display_name")
-    st.session_state["user_role"] = current_user.get("role")
-    st.session_state["manager_id"] = current_user.get("manager_id")
-    st.session_state["must_change_password"] = bool(
-        current_user.get("must_change_password")
-    )
-    if st.session_state.get("must_change_password"):
-        render_password_reset_gate()
-        return
-
-    render_app(st.session_state["username"], runtime_bundle=runtime_bundle)
+    """Top-level app entrypoint."""
+    return app_entry_helpers.run_main_from_app(app_module=sys.modules[__name__])
 
 
 if __name__ == "__main__":
