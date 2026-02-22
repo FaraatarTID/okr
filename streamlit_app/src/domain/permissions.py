@@ -56,7 +56,7 @@ def _is_team_manager(user: User, resource: ResourceProtocol, session: Any = None
         return False
     try:
         owner_id = int(owner_id)
-    except Exception:
+    except (TypeError, ValueError):
         return False
 
     if owner_id == int(user.id):

@@ -11,26 +11,42 @@ def _coerce_int(value) -> Optional[int]:
     """Best-effort integer coercion for SQLModel scalar/row values."""
     if value is None:
         return None
+    coerced_direct: Optional[int]
     try:
-        return int(value)
-    except Exception:
-        # SQLAlchemy Row-like objects can expose values as positional containers.
-        if isinstance(value, (tuple, list)) and value:
-            try:
-                return int(value[0])
-            except Exception:
-                return None
+        coerced_direct = int(value)
+    except (TypeError, ValueError, OverflowError):
+        coerced_direct = None
+    if coerced_direct is not None:
+        return coerced_direct
+
+    # SQLAlchemy Row-like objects can expose values as positional containers.
+    if isinstance(value, (tuple, list)) and value:
         try:
-            return int(value[0])  # type: ignore[index]
-        except Exception:
-            pass
-        mapping = getattr(value, "_mapping", None)
-        if mapping:
-            try:
-                return int(next(iter(mapping.values())))
-            except Exception:
-                return None
-        return None
+            return int(value[0])
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    first_value = None
+    try:
+        first_value = value[0]  # type: ignore[index]
+    except (TypeError, KeyError, IndexError):
+        first_value = None
+    if first_value is not None:
+        try:
+            return int(first_value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+
+    mapping = getattr(value, "_mapping", None)
+    if mapping:
+        mapped_first = next(iter(mapping.values()), None)
+        if mapped_first is None:
+            return None
+        try:
+            return int(mapped_first)
+        except (TypeError, ValueError, OverflowError):
+            return None
+    return None
 
 
 def _goal_owner_predicate_by_username(username: str):
@@ -66,7 +82,7 @@ def can_track_task_timer(
         return False
     try:
         return int(actor_user_id) == int(timer_owner_user_id)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return False
 
 
@@ -146,7 +162,7 @@ def get_timer_task_for_actor(
     timer_owner_user_id = None
     try:
         task, timer_owner_user_id = row
-    except Exception:
+    except (TypeError, ValueError):
         if isinstance(row, (tuple, list)) and len(row) >= 2:
             task, timer_owner_user_id = row[0], row[1]
         else:

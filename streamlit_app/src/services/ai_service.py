@@ -4,6 +4,7 @@ Context-aware AI analysis with aggregated data preprocessing.
 """
 import os
 import json
+import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from dotenv import load_dotenv
@@ -19,6 +20,8 @@ from src.services.backend_client import is_backend_enabled
 from src.services.job_service import run_job_and_wait
 
 from src.models import Objective, KeyResult, Task, TaskStatus, AnalysisContext
+
+logger = logging.getLogger(__name__)
 
 # Load .env from parent directory (okr/) where .streamlit is located
 _parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -99,7 +102,12 @@ def analyze_efficiency_effectiveness(
         if t.deadline:
             try:
                 d_iso = from_epoch_millis(t.deadline).isoformat()
-            except Exception:
+            except Exception as exc:
+                logger.debug(
+                    "Failed to parse task deadline as epoch millis for task '%s': %s",
+                    getattr(t, "id", None),
+                    exc,
+                )
                 d_iso = None
 
         tasks_context.append({
@@ -336,8 +344,12 @@ def analyze_node(
                 ]
                 if summaries:
                     work_summ_text = "\n  Recent Work: " + "; ".join(summaries)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Failed to load recent worklog summaries for child '%s': %s",
+                    getattr(child, "id", None),
+                    exc,
+                )
         
         # Deadline information (robust parsing)
         deadline_info = ""
@@ -367,18 +379,32 @@ def analyze_node(
                         else:
                             dl_ms = int(ts * 1000)
                             d_date = from_epoch_seconds(ts).date()
-                    except Exception:
+                    except Exception as exc:
+                        logger.debug(
+                            "Failed numeric deadline parse for child '%s': %s",
+                            getattr(child, "id", None),
+                            exc,
+                        )
                         try:
                             dtp = datetime.fromisoformat(dl_val)
                             dl_ms = int(dtp.timestamp() * 1000)
                             d_date = dtp.date()
-                        except Exception:
+                        except Exception as nested_exc:
+                            logger.debug(
+                                "Failed ISO deadline parse for child '%s': %s",
+                                getattr(child, "id", None),
+                                nested_exc,
+                            )
                             dl_ms = None
                 if dl_ms and d_date:
                     days = get_days_remaining(dl_ms)
                     deadline_info = f"\n  Deadline: {d_date} ({days} days remaining)"
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug(
+                    "Failed to parse deadline for child '%s': %s",
+                    getattr(child, "id", None),
+                    exc,
+                )
 
         # Start Date
         start_date_info = ""
@@ -692,7 +718,8 @@ def suggest_critical_task(task_candidates: List[Dict[str, Any]], context: Option
     try:
         if confidence_val is not None:
             confidence = max(0, min(100, int(float(confidence_val))))
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to parse AI confidence '%s': %s", confidence_val, exc)
         confidence = None
 
     return {

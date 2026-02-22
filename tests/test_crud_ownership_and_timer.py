@@ -120,6 +120,43 @@ def test_work_logs_and_cycle_tasks_use_owner_id_ownership(isolated_db):
     assert loaded_task.key_result.objective.goal.title == "Owned Tree Goal"
 
 
+def test_cycle_task_windowing_returns_stable_slices(isolated_db):
+    from src.crud import (
+        create_cycle,
+        create_goal,
+        create_key_result,
+        create_objective,
+        create_task,
+        create_user,
+        get_all_tasks_by_cycle,
+    )
+
+    create_user("alice", "alice-pass")
+    cycle = create_cycle(
+        "Q2-window",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+    )
+    goal = create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
+    objective = create_objective(goal.id, "Objective A", actor_username="alice")
+    kr = create_key_result(objective.id, "KR A", actor_username="alice")
+
+    create_task(kr.id, "Task 1", actor_username="alice")
+    create_task(kr.id, "Task 2", actor_username="alice")
+    create_task(kr.id, "Task 3", actor_username="alice")
+
+    page_1 = get_all_tasks_by_cycle(cycle.id, limit=2, offset=0)
+    page_2 = get_all_tasks_by_cycle(cycle.id, limit=2, offset=2)
+    full = get_all_tasks_by_cycle(cycle.id)
+
+    assert len(full) == 3
+    assert len(page_1) == 2
+    assert len(page_2) == 1
+    full_ids = [int(t.id) for t in full]
+    assert [int(t.id) for t in page_1] == full_ids[:2]
+    assert [int(t.id) for t in page_2] == full_ids[2:]
+
+
 def test_user_data_goal_nodes_emit_owner_id_only(isolated_db):
     from src.crud import create_cycle, create_goal, create_user, get_user_data_from_sql
 
@@ -136,6 +173,35 @@ def test_user_data_goal_nodes_emit_owner_id_only(isolated_db):
     assert goal_nodes
     assert all("owner_id" in node for node in goal_nodes)
     assert all("user_id" not in node for node in goal_nodes)
+
+
+def test_user_data_supports_goal_pagination_meta(isolated_db):
+    from src.crud import (
+        create_cycle,
+        create_goal,
+        create_user,
+        get_user_data_from_sql,
+    )
+
+    create_user("alice", "alice-pass")
+    cycle = create_cycle(
+        "Q2C",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+    )
+    create_goal("alice", title="Goal A", cycle_id=cycle.id, actor_username="alice")
+    create_goal("alice", title="Goal B", cycle_id=cycle.id, actor_username="alice")
+
+    page_1 = get_user_data_from_sql("alice", cycle.id, goal_limit=1, goal_offset=0)
+    page_2 = get_user_data_from_sql("alice", cycle.id, goal_limit=1, goal_offset=1)
+
+    assert len(page_1["rootIds"]) == 1
+    assert len(page_2["rootIds"]) == 1
+    assert "meta" in page_1
+    assert "meta" in page_2
+    assert page_1["meta"]["has_more_goals"] is True
+    assert page_1["meta"]["next_goal_offset"] == 1
+    assert page_2["meta"]["goal_offset"] == 1
 
 
 def test_timer_start_stop_enforces_task_ownership(isolated_db):

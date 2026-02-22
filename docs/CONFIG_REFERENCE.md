@@ -129,7 +129,9 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_SIGNING_SECRET` (shared HMAC signing secret for signed internal requests)
   - `OKR_BACKEND_DEFAULT_ACTOR` (fallback actor for system-initiated AI requests; default: `system`)
   - `OKR_BACKEND_PROXY_MUTATIONS` (default: `true`; routes frontend mutation writes through backend API when backend URL is set)
+  - `OKR_BACKEND_PROXY_READS` (default: `false`; when enabled, selected high-traffic reads are fetched via backend read endpoints)
   - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (default: `false`; emergency non-production fallback only)
+  - `OKR_ENABLE_DIRECT_DB_RESTORE` (default: `false`; direct Streamlit DB restore is disabled by default and blocked in production)
 - Backend API runtime:
   - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
   - `OKR_BACKEND_PORT` (default: `8100`)
@@ -152,8 +154,11 @@ Backend API (recommended for scale)
     - `OKR_BACKEND_JOB_TEAM_DAILY_MAX_REQUESTS` (default: `1200`)
     - `OKR_BACKEND_JOB_TEAM_PENDING_MAX_REQUESTS` (default: `40`; max active `pending`/`running` jobs per team)
     - `OKR_BACKEND_JOB_BACKOFF_BASE_SECONDS` (default: `3`; minimum spacing between new submissions per actor; set `0` to disable)
-- Backend worker runtime:
+  - Backend worker runtime:
   - `OKR_BACKEND_WORKER_POLL_SECONDS` (default: `2`)
+  - `OKR_BACKEND_JOB_RETENTION_DAYS` (default: `14`; terminal async job retention before prune)
+  - `OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS` (default: `300`; worker prune cadence)
+  - `OKR_BACKEND_JOB_PRUNE_BATCH_SIZE` (default: `200`; max rows removed per prune pass)
 - Notes:
   - With `OKR_BACKEND_API_URL` set, frontend write flows (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes) and heavy AI/PDF workflows run through backend services.
   - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API.
@@ -163,6 +168,7 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
   - If backend transport fails, production default is fail-closed unless `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` is explicitly set.
+  - Direct DB restore in Streamlit Admin is opt-in (`OKR_ENABLE_DIRECT_DB_RESTORE=true`) and intended for controlled non-production scenarios only.
   - In non-production (or when strict runtime preflight is disabled), missing backend URL can result in direct-mode legacy behavior.
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.
   - Current MVP still serves most read-heavy hierarchy traversal directly via Streamlit + SQLModel.

@@ -20,7 +20,7 @@ from src.services.pdf_service import generate_pdf_html, generate_pdf_with_pdfshi
 def _is_transient_backend_error(payload: Dict[str, Any]) -> bool:
     try:
         code = int(payload.get("status_code") or 0)
-    except Exception:
+    except (TypeError, ValueError):
         code = 0
     if code == 0 or code in {500, 502, 503, 504}:
         return True

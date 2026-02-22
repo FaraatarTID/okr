@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Sequence
@@ -20,6 +21,7 @@ except ImportError:
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
+_LOGGER = logging.getLogger(__name__)
 
 _PROVIDER_ALIASES = {
     "gemini": "gemini",
@@ -60,8 +62,8 @@ def _get_config_value(keys: Sequence[str]) -> Optional[str]:
                 value = app_cfg.get(key)
                 if value is not None:
                     return str(value)
-    except Exception:
-        pass
+    except (AttributeError, KeyError, RuntimeError, FileNotFoundError, OSError) as exc:
+        _LOGGER.debug("Unable to read AI provider config from Streamlit secrets: %s", exc)
     return None
 
 
@@ -188,7 +190,7 @@ def _parse_json_payload(text: str, provider_name: str) -> Dict[str, Any]:
 
     try:
         return json.loads(cleaned)
-    except Exception:
+    except ValueError:
         # Fallback: attempt to isolate first JSON object block.
         start = cleaned.find("{")
         end = cleaned.rfind("}")
@@ -196,8 +198,8 @@ def _parse_json_payload(text: str, provider_name: str) -> Dict[str, Any]:
             snippet = cleaned[start : end + 1]
             try:
                 return json.loads(snippet)
-            except Exception:
-                pass
+            except ValueError:
+                return {"error": f"Failed to parse {provider_name} JSON response."}
         return {"error": f"Failed to parse {provider_name} JSON response."}
 
 

@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: okr-backend-worker
+  namespace: okr
+  labels:
+    app: okr-backend-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: okr-backend-worker
+  template:
+    metadata:
+      labels:
+        app: okr-backend-worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: backend-worker
+          image: ghcr.io/your-org/okr-streamlit:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "backend_app.worker"]
+          env:
+            - name: OKR_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: okr-db
+                  key: OKR_DATABASE_URL
+            - name: OKR_BACKEND_WORKER_POLL_SECONDS
+              value: "2"
+            - name: OKR_BACKEND_JOB_RETENTION_DAYS
+              value: "14"
+            - name: OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS
+              value: "300"
+            - name: OKR_BACKEND_JOB_PRUNE_BATCH_SIZE
+              value: "200"
+            - name: OKR_ALLOW_LOCAL_BACKEND_FALLBACK
+              value: "false"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi

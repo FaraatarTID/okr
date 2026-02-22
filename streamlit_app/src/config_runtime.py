@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
+_LOGGER = logging.getLogger(__name__)
 
 
 def get_config_value_with_source(name: str, default: Any = "") -> tuple[str, str]:
@@ -26,8 +28,8 @@ def get_config_value_with_source(name: str, default: Any = "") -> tuple[str, str
         if hasattr(app_cfg, "get") and name in app_cfg:
             value = app_cfg.get(name, default)
             return str(value if value is not None else default), "secrets_app"
-    except Exception:
-        pass
+    except (ImportError, FileNotFoundError, OSError, RuntimeError, KeyError, AttributeError) as exc:
+        _LOGGER.debug("Config secrets fallback unavailable for %s: %s", name, exc)
 
     return str(default), "default"
 

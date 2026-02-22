@@ -373,3 +373,16 @@ class AlignmentDeleteResponse(BaseModel):
 class WorkLogDeleteResponse(BaseModel):
     id: int
     deleted: bool
+
+
+class AtlasSnapshotRequest(BaseModel):
+    cycle_id: int = Field(..., gt=0)
+    owner_ids: Optional[List[int]] = None
+    include_analysis: bool = False
+    actor_username: Optional[str] = None
+
+
+class LeadershipMetricsRequest(BaseModel):
+    cycle_id: int = Field(..., gt=0)
+    usernames: Optional[List[str]] = None
+    actor_username: Optional[str] = None

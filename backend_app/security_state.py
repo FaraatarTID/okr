@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import time
 from collections import defaultdict, deque
@@ -15,6 +16,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 
 from backend_app.config import BackendSettings, get_backend_settings
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class SecurityStateUnavailableError(RuntimeError):
@@ -124,8 +128,8 @@ class DatabaseSecurityStateStore:
     def dispose(self) -> None:
         try:
             self._engine.dispose()
-        except Exception:
-            pass
+        except Exception as exc:  # best-effort shutdown path
+            _LOGGER.debug("Database security state dispose failed: %s", exc)
 
     def _ensure_schema(self) -> None:
         if self._schema_ready:
@@ -346,8 +350,8 @@ class RedisSecurityStateStore:
     def dispose(self) -> None:
         try:
             self._client.close()
-        except Exception:
-            pass
+        except Exception as exc:  # best-effort shutdown path
+            _LOGGER.debug("Redis security state dispose failed: %s", exc)
 
     def _nonce_key(self, nonce: str) -> str:
         nonce_hash = hashlib.sha256(str(nonce).encode("utf-8")).hexdigest()

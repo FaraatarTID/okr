@@ -1,18 +1,22 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import time
 import os
 import sys
 import json
 import hashlib
+import logging
 from datetime import datetime
 from types import SimpleNamespace
 import plotly.graph_objects as go
 from sqlalchemy import inspect as sa_inspect
+from src.config_runtime import get_bool_config
 
 try:
     from streamlit_plotly_events import plotly_events
-except Exception:
+except Exception as exc:
+    logging.getLogger(__name__).debug(
+        "Optional dependency streamlit_plotly_events unavailable: %s", exc
+    )
     plotly_events = None
 
 # Import UI constants
@@ -24,6 +28,58 @@ from src.ui.styles import (
     inject_atlas_styles,
 )
 from src.ui.safe_html import escape_html
+from src.ui.atlas_helpers import (
+    _atlas_ai_deadline_warnings,
+    _atlas_ai_overall_score,
+    _atlas_ai_progress_decision,
+    _atlas_clean_work_summary,
+    _atlas_commit_target_minutes,
+    _atlas_attention_kind,
+    _atlas_attention_reason,
+    _atlas_descendant_refs,
+    _atlas_extract_clicked_ref,
+    _atlas_extract_clicked_ref_from_points,
+    _atlas_extract_selection_points,
+    _atlas_health_debug_rows,
+    _atlas_health_fill_color,
+    _atlas_health_index,
+    _atlas_health_source_explanation,
+    _atlas_health_state,
+    _atlas_needs_attention,
+    _atlas_parse_ai_analysis,
+    _atlas_point_value,
+    _atlas_scope_refs,
+    _atlas_should_emit_target_notification,
+    _atlas_should_show_soft_reminder,
+    _atlas_sprint_run_key,
+    _atlas_status_label,
+    _atlas_task_rollup,
+    _atlas_timer_owner_id,
+)
+from src.ui import atlas_treemap_helpers
+from src.ui import atlas_workspace_helpers
+
+# Keep Atlas helper symbols available from this module for existing tests/imports.
+_ATLAS_HELPER_REEXPORTS = (
+    _atlas_ai_deadline_warnings,
+    _atlas_ai_overall_score,
+    _atlas_attention_kind,
+    _atlas_attention_reason,
+    _atlas_health_fill_color,
+    _atlas_health_index,
+    _atlas_health_source_explanation,
+    _atlas_health_state,
+    _atlas_extract_clicked_ref,
+    _atlas_extract_clicked_ref_from_points,
+    _atlas_extract_selection_points,
+    _atlas_health_debug_rows,
+    _atlas_needs_attention,
+    _atlas_parse_ai_analysis,
+    _atlas_point_value,
+    _atlas_scope_refs,
+    _atlas_status_label,
+    _atlas_task_rollup,
+)
 
 
 def format_time(minutes):
@@ -70,6 +126,8 @@ from src.domain.reporting import (
 from src.services.ai_service import generate_predictive_outlook
 from src.services.pdf_service import generate_achievement_portfolio_pdf
 
+logger = logging.getLogger(__name__)
+
 
 _MODEL_BINDING_NAMES = (
     "Goal",
@@ -102,7 +160,8 @@ def _ensure_model_bindings_current() -> None:
         try:
             sa_inspect(User)
             return
-        except Exception:
+        except Exception as exc:
+            logger.debug("Model binding inspect failed; forcing refresh: %s", exc)
             bindings_are_current = False
 
     if bindings_are_current:
@@ -114,19 +173,67 @@ def _ensure_model_bindings_current() -> None:
             globals()[name] = value
 
 
+def _backend_read_proxy_enabled() -> bool:
+    try:
+        from src.services.backend_client import is_backend_enabled
+
+        return bool(get_bool_config("OKR_BACKEND_PROXY_READS", False)) and bool(
+            is_backend_enabled()
+        )
+    except Exception as exc:
+        logger.debug("Backend read proxy availability check failed: %s", exc)
+        return False
+
+
 # Cache helpers for heavy queries/aggregations
 @st.cache_data(ttl=60, show_spinner=False)
-def _cached_get_leadership_metrics(user_ids, cycle_id):
+def _cached_get_leadership_metrics(user_ids, cycle_id, actor_username=None):
+    if _backend_read_proxy_enabled() and actor_username:
+        try:
+            from src.services.backend_client import fetch_leadership_metrics
+
+            backend_result = fetch_leadership_metrics(
+                cycle_id=int(cycle_id),
+                usernames=[str(uid) for uid in list(user_ids)],
+                actor_username=str(actor_username),
+            )
+            if isinstance(backend_result, dict) and "error" not in backend_result:
+                return backend_result
+            logger.warning(
+                "Falling back to local leadership metrics read: %s",
+                backend_result.get("error")
+                if isinstance(backend_result, dict)
+                else "invalid backend response",
+            )
+        except Exception as exc:
+            logger.warning(
+                "Backend leadership metrics read failed; using local path: %s", exc
+            )
     from src.crud import get_leadership_metrics
 
     return get_leadership_metrics(list(user_ids), cycle_id)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _cached_get_all_tasks_by_cycle(cycle_id):
+def _cached_get_all_tasks_by_cycle(cycle_id, limit=None, offset=0):
     from src.crud import get_all_tasks_by_cycle
 
-    return get_all_tasks_by_cycle(cycle_id)
+    return get_all_tasks_by_cycle(cycle_id, limit=limit, offset=offset)
+
+
+def _cycle_task_scan_limit() -> int:
+    """
+    Soft guardrail for cycle-wide scans in dashboard widgets.
+
+    Keeps UI queries bounded while remaining configurable for larger deployments.
+    """
+    raw = str(os.getenv("OKR_UI_CYCLE_TASK_SCAN_LIMIT", "2000")).strip()
+    try:
+        value = int(raw)
+    except Exception as exc:
+        logger.debug("Invalid OKR_UI_CYCLE_TASK_SCAN_LIMIT '%s': %s", raw, exc)
+        value = 2000
+    return max(100, value)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -203,7 +310,8 @@ def _atlas_extract_ai_snapshot_fields(raw_analysis):
         score_raw = analysis.get("overall_score")
         if score_raw is not None:
             ai_overall_score = max(0, min(100, int(float(score_raw))))
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to parse atlas AI overall score '%s': %s", analysis.get("overall_score"), exc)
         ai_overall_score = None
 
     warnings_list = analysis.get("deadline_warnings") or []
@@ -224,10 +332,35 @@ def _cached_get_atlas_scope_snapshot(
     cycle_id: int,
     owner_ids_key,
     include_analysis: bool = False,
+    actor_username: str | None = None,
 ):
     """Cached, serialization-safe Atlas snapshot to reduce rerun DB latency."""
     _ensure_model_bindings_current()
     canonical_owner_ids_key = _canonical_owner_ids_key(owner_ids_key)
+    if _backend_read_proxy_enabled() and actor_username:
+        owner_ids = (
+            list(canonical_owner_ids_key) if canonical_owner_ids_key is not None else None
+        )
+        try:
+            from src.services.backend_client import fetch_atlas_scope_snapshot
+
+            backend_result = fetch_atlas_scope_snapshot(
+                cycle_id=int(cycle_id),
+                owner_ids=owner_ids,
+                include_analysis=include_analysis,
+                actor_username=str(actor_username),
+            )
+            if isinstance(backend_result, dict) and "error" not in backend_result:
+                if isinstance(backend_result.get("goals"), list):
+                    return backend_result
+            logger.warning(
+                "Falling back to local atlas snapshot read: %s",
+                backend_result.get("error")
+                if isinstance(backend_result, dict)
+                else "invalid backend response",
+            )
+        except Exception as exc:
+            logger.warning("Backend atlas snapshot read failed; using local path: %s", exc)
 
     with get_session_context() as session:
         goal_stmt = (
@@ -449,11 +582,13 @@ def _cached_get_atlas_scope_runtime(
     cycle_id: int,
     owner_ids_key,
     include_analysis: bool = False,
+    actor_username: str | None = None,
 ):
     snapshot = _cached_get_atlas_scope_snapshot(
         cycle_id,
         owner_ids_key,
         include_analysis=include_analysis,
+        actor_username=actor_username,
     )
     users_map = snapshot.get("users_map", {})
     index, roots = _build_atlas_index_from_snapshot(
@@ -537,7 +672,8 @@ def get_node_details(node_id, node_lookup=None):
         # Fallback for ambiguous numeric IDs.
         try:
             raw_id = int(node_id)
-        except Exception:
+        except Exception as exc:
+            logger.debug("Failed to coerce node id '%s' to int: %s", node_id, exc)
             return None, "Unknown"
 
         for model, label in (
@@ -550,7 +686,8 @@ def get_node_details(node_id, node_lookup=None):
                 row = session.get(model, raw_id)
                 if row:
                     return label, row.title
-            except Exception:
+            except Exception as exc:
+                logger.debug("Failed fallback lookup for model %s id=%s: %s", label, raw_id, exc)
                 continue
     return None, "Unknown"
 
@@ -772,7 +909,11 @@ def render_leadership_dashboard_content(username):
     from src.utils.deadline_utils import get_deadline_summary, get_deadline_status
 
     # === FETCH AGGREGATED METRICS ===
-    metrics = _cached_get_leadership_metrics(selected_members, cycle_id)
+    metrics = _cached_get_leadership_metrics(
+        selected_members,
+        cycle_id,
+        actor_username=username,
+    )
     if not metrics:
         st.error("Could not fetch metrics.")
         return
@@ -1015,7 +1156,8 @@ def render_leadership_dashboard_content(username):
     # Build overdue tasks list from DB tasks for current cycle
     overdue_tasks = []
     try:
-        tasks = _cached_get_all_tasks_by_cycle(cycle_id)
+        task_scan_limit = _cycle_task_scan_limit()
+        tasks = _cached_get_all_tasks_by_cycle(cycle_id, limit=task_scan_limit)
         for task in tasks:
             # Build a lightweight node dict for deadline utils
             dl = None
@@ -1050,7 +1192,8 @@ def render_leadership_dashboard_content(username):
                         if goal_owner_id and goal_owner_id in users_map:
                             user_obj = users_map[goal_owner_id]
                             owner_disp = user_obj.display_name or user_obj.username
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Failed to resolve overdue task owner display: %s", exc)
                     owner_disp = "Unknown"
 
                 overdue_tasks.append(
@@ -1060,11 +1203,17 @@ def render_leadership_dashboard_content(username):
                         "progress": node.get("progress", 0),
                     }
                 )
-    except Exception:
+    except Exception as exc:
+        logger.warning("Failed while building overdue task list: %s", exc)
         overdue_tasks = []
 
     if overdue_tasks:
         st.markdown("#### 🔴 Overdue Tasks")
+        if len(tasks) >= task_scan_limit:
+            st.caption(
+                f"Showing results from first {task_scan_limit} tasks in this cycle. "
+                "Increase OKR_UI_CYCLE_TASK_SCAN_LIMIT for deeper scans."
+            )
         limit_overdue = st.number_input(
             "Max overdue tasks to show", min_value=5, max_value=100, value=10, step=5
         )
@@ -1127,7 +1276,12 @@ def render_leadership_dashboard_content(username):
             # Health Score Header
             try:
                 health_score = int(float(coaching.get("overall_health_score", 0)))
-            except Exception:
+            except Exception as exc:
+                logger.debug(
+                    "Failed to parse coaching overall_health_score '%s': %s",
+                    coaching.get("overall_health_score"),
+                    exc,
+                )
                 health_score = 0
             grade = str(coaching.get("health_grade", "?"))[:1].upper() or "?"
             headline = escape_html(str(coaching.get("headline", "")))
@@ -1366,8 +1520,8 @@ def render_report_content(username, mode):
             try:
                 _, status_label, _ = get_deadline_status(task)
                 deadline_status = status_label
-            except:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to compute deadline status for task %s: %s", task.id, exc)
 
         log_date = log.start_time.strftime("%Y-%m-%d")
 
@@ -1490,11 +1644,11 @@ def render_report_content(username, mode):
 
     # Deadline Health
     st.subheader("⚠️ Deadline Health")
-    from src.crud import get_all_tasks_by_cycle
     from src.utils.deadline_utils import get_deadline_status
 
     cycle_id_dl = st.session_state.get("active_cycle_id")
-    tasks_dl = _cached_get_all_tasks_by_cycle(cycle_id_dl)
+    task_scan_limit = _cycle_task_scan_limit()
+    tasks_dl = _cached_get_all_tasks_by_cycle(cycle_id_dl, limit=task_scan_limit)
 
     warnings_dl = []
     for t_dl in tasks_dl:
@@ -1503,10 +1657,14 @@ def render_report_content(username, mode):
                 _, label_dl, _ = get_deadline_status(t_dl)
                 if "Overdue" in label_dl or "At Risk" in label_dl:
                     warnings_dl.append(f"{label_dl} - {t_dl.title}")
-            except:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to evaluate deadline warning for task %s: %s", t_dl.id, exc)
 
     if warnings_dl:
+        if len(tasks_dl) >= task_scan_limit:
+            st.caption(
+                f"Showing deadline warnings from first {task_scan_limit} tasks in this cycle."
+            )
         for w in warnings_dl[:5]:
             st.error(w)
         if len(warnings_dl) > 5:
@@ -1536,7 +1694,8 @@ def render_report_content(username, mode):
             if isinstance(ga, str):
                 try:
                     ga_dict = json.loads(ga)
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Failed to parse KR analysis JSON for PDF export: %s", exc)
                     ga_dict = None
             elif isinstance(ga, dict):
                 ga_dict = ga
@@ -1804,8 +1963,8 @@ def render_report_content(username, mode):
                                 qual_score = f"{q_val}%"
                             if o_val is not None:
                                 fulfillment = f"{o_val}%"
-                        except:
-                            pass
+                        except Exception as exc:
+                            logger.debug("Failed to parse KR analysis score payload: %s", exc)
 
                     p_eff.markdown(eff_score)
                     p_qual.markdown(qual_score)
@@ -2072,7 +2231,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
 
             try:
                 curr_idx_cyc = cycle_ids_insp.index(new_cycle_id_insp)
-            except:
+            except Exception as exc:
+                logger.debug("Failed to resolve current cycle index for node %s: %s", node_id, exc)
                 curr_idx_cyc = 0
 
             sel_cyc = st.selectbox(
@@ -2090,7 +2250,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             if isinstance(raw_strats, str):
                 try:
                     curr_strats = json.loads(raw_strats)
-                except:
+                except Exception as exc:
+                    logger.debug("Failed to parse strategy_tags JSON for node %s: %s", node_id, exc)
                     curr_strats = [
                         t.strip() for t in raw_strats.split(",") if t.strip()
                     ]
@@ -2153,7 +2314,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             if isinstance(raw_inits, str):
                 try:
                     curr_inits = json.loads(raw_inits)
-                except:
+                except Exception as exc:
+                    logger.debug("Failed to parse initiative_tags JSON for node %s: %s", node_id, exc)
                     curr_inits = [t.strip() for t in raw_inits.split(",") if t.strip()]
             elif isinstance(raw_inits, list):
                 curr_inits = raw_inits
@@ -2443,8 +2605,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                 st_code, st_lbl, hlth = get_deadline_status(node)
                 st.metric("Deadline Status", st_lbl)
                 st.progress(hlth / 100)
-            except:
-                pass
+            except Exception as exc:
+                logger.debug("Failed to compute inspector deadline status for node %s: %s", node_id, exc)
 
         if node_type_insp == "TASK":
             st.markdown("---")
@@ -2514,7 +2676,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             if isinstance(analysis_raw, str):
                 try:
                     analysis_data = json.loads(analysis_raw)
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Failed to parse KR analysis JSON for node %s: %s", node_id, exc)
                     try:
                         import ast
 
@@ -2529,7 +2692,8 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
                                 gemini_analysis=analysis_data,
                                 actor_username=username,
                             )
-                    except Exception:
+                    except Exception as nested_exc:
+                        logger.debug("Failed to normalize KR analysis payload for node %s: %s", node_id, nested_exc)
                         analysis_data = None
             elif isinstance(analysis_raw, dict):
                 analysis_data = analysis_raw
@@ -2644,7 +2808,8 @@ def _parse_typed_ref(node_ref: str):
     tab = "_".join(parts[:-1]).lower()
     try:
         node_id = int(parts[-1])
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to parse typed ref '%s': %s", node_ref, exc)
         return None, None
 
     if tab == "goal":
@@ -2863,614 +3028,12 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
     return index, roots
 
 
-def _atlas_parse_ai_analysis(raw_analysis):
-    if not raw_analysis:
-        return None
-    if isinstance(raw_analysis, dict):
-        return raw_analysis
-    if isinstance(raw_analysis, str):
-        try:
-            parsed = json.loads(raw_analysis)
-            return parsed if isinstance(parsed, dict) else None
-        except Exception:
-            try:
-                import ast
-
-                parsed = ast.literal_eval(raw_analysis)
-                return parsed if isinstance(parsed, dict) else None
-            except Exception:
-                return None
-    return None
-
-
-def _atlas_ai_overall_score(meta):
-    node = meta.get("node")
-    precomputed = getattr(node, "ai_overall_score", None)
-    if precomputed is not None:
-        try:
-            return max(0, min(100, int(float(precomputed))))
-        except Exception:
-            pass
-    analysis = _atlas_parse_ai_analysis(getattr(node, "gemini_analysis", None))
-    if not analysis:
-        return None
-    score_val = analysis.get("overall_score")
-    try:
-        return max(0, min(100, int(float(score_val))))
-    except Exception:
-        return None
-
-
-def _atlas_ai_deadline_warnings(meta):
-    node = meta.get("node")
-    precomputed_state = str(getattr(node, "ai_deadline_state", "") or "").lower()
-    if precomputed_state == "overdue":
-        return ["Potentially overdue"]
-    if precomputed_state == "risk":
-        return ["At risk"]
-    analysis = _atlas_parse_ai_analysis(getattr(node, "gemini_analysis", None))
-    if not analysis:
-        return []
-    warnings_list = analysis.get("deadline_warnings") or []
-    if not isinstance(warnings_list, list):
-        return []
-    cleaned = [str(item).strip() for item in warnings_list if str(item).strip()]
-    return cleaned
-
-
-def _atlas_health_state(meta, index=None, _visited_refs=None, _memo=None):
-    """
-    Canonical Atlas health engine for map/inspector status surfaces.
-
-    Returns:
-      {
-        "kind": "done|overdue|risk|inherited|low_progress|on_track",
-        "reason": "Complete|Needs care|On track",
-        "status_label": <human label>,
-        "source": "ai_deadline_warning|ai_overall_score|deadline_status|task_status|inherited_rollup|progress|status_label",
-        "needs_attention": bool,
-      }
-    """
-    meta_ref = meta.get("ref")
-    if _memo is not None and meta_ref and meta_ref in _memo:
-        return _memo[meta_ref]
-
-    progress = int(meta.get("progress", 0) or 0)
-    node_type = meta.get("type")
-    node = meta.get("node")
-    state = getattr(node, "state", LifecycleState.ACTIVE)
-
-    status_label = None
-    source = "progress"
-
-    # [Lifecycle Logic] If node is not Active, that pulse/state takes precedence
-    if state != LifecycleState.ACTIVE:
-        icon = STATE_ICONS.get(state, "")
-        status_label = f"{icon} {state.value.title()}" if icon else state.value.title()
-        source = "status_label"
-        kind = "inherited" # DRAFT, GRADING, ARCHIVED are neutral-ish or procedural
-        if state == LifecycleState.DRAFT:
-            kind = "inherited"
-        elif state == LifecycleState.GRADING:
-            kind = "risk" # Needs attention/completion
-        elif state == LifecycleState.ARCHIVED:
-            kind = "on_track" # Done/Closed
-
-        return {
-            "kind": kind,
-            "reason": status_label,
-            "status_label": status_label,
-            "source": source,
-            "needs_attention": state == LifecycleState.GRADING,
-        }
-
-    if node_type == "TASK":
-        task_status = str(
-            getattr(getattr(node, "status", None), "value", getattr(node, "status", ""))
-        ).lower()
-        if task_status == "done":
-            status_label = "Done"
-            source = "task_status"
-        elif task_status == "in_progress" and progress <= 0:
-            status_label = "In progress"
-            source = "task_status"
-        else:
-            deadline = getattr(node, "deadline", None)
-            if deadline is not None:
-                try:
-                    from src.utils.deadline_utils import get_deadline_status
-
-                    _, status_label, _ = get_deadline_status(node)
-                    source = "deadline_status"
-                except Exception:
-                    status_label = None
-            if not status_label:
-                if progress >= 100:
-                    status_label = "Done"
-                elif progress <= 0:
-                    status_label = "Not started"
-                else:
-                    status_label = "In progress"
-
-    elif node_type == "KEY_RESULT":
-        # Respect AI deadline warnings when available; these are explicit risk signals.
-        ai_warnings = [str(w).lower() for w in _atlas_ai_deadline_warnings(meta)]
-        if ai_warnings:
-            if any("overdue" in warning for warning in ai_warnings):
-                return {
-                    "kind": "overdue",
-                    "reason": "Needs care",
-                    "status_label": "Overdue (AI)",
-                    "source": "ai_deadline_warning",
-                    "needs_attention": True,
-                }
-            if any("risk" in warning for warning in ai_warnings):
-                return {
-                    "kind": "risk",
-                    "reason": "Needs care",
-                    "status_label": "At risk (AI)",
-                    "source": "ai_deadline_warning",
-                    "needs_attention": True,
-                }
-
-        # Calculate normalized score
-        score = calculate_kr_score(
-            current=getattr(node, "current_value", 0.0),
-            target=getattr(node, "target_value", 100.0),
-            start=getattr(node, "start_value", 0.0),
-            metric_type=getattr(node, "metric_type", "numeric")
-        )
-        score_label = get_score_label(score)
-        
-        if score <= 0.3:
-            kind = "overdue" # Mapping to red
-        elif score <= 0.7:
-            kind = "risk" # Mapping to yellow
-        elif score <= 0.9:
-            kind = "on_track" # Mapping to green
-        else:
-            kind = "done" # Mapping to blue/superstar
-            
-        return {
-            "kind": kind,
-            "reason": score_label,
-            "status_label": f"Score: {score:.2f} ({score_label})",
-            "source": "normalized_score",
-            "needs_attention": kind in {"overdue", "risk"},
-        }
-    elif node_type == "OBJECTIVE":
-        # Aggregate KR scores
-        if hasattr(node, "key_results") and node.key_results:
-            kr_scores = [
-                calculate_kr_score(kr.current_value, kr.target_value, kr.start_value, kr.metric_type)
-                for kr in node.key_results
-            ]
-            kr_weights = [kr.weight for kr in node.key_results]
-            from src.domain.scoring import calculate_objective_score
-            obj_score = calculate_objective_score(
-                kr_scores, 
-                kr_weights if getattr(node, "score_mode", None) == ScoreMode.WEIGHTED else None,
-                weighted=(getattr(node, "score_mode", None) == ScoreMode.WEIGHTED)
-            )
-            score_label = get_score_label(obj_score)
-            
-            if obj_score <= 0.3:
-                kind = "overdue"
-            elif obj_score <= 0.7:
-                kind = "risk"
-            elif obj_score <= 0.9:
-                kind = "on_track"
-            else:
-                kind = "done"
-
-            return {
-                "kind": kind,
-                "reason": score_label,
-                "status_label": f"Score: {obj_score:.2f} ({score_label})",
-                "source": "normalized_score",
-                "needs_attention": kind in {"overdue", "risk"},
-            }
-
-    if status_label is None:
-        if progress >= 100:
-            status_label = "Done"
-        elif progress < 40:
-            status_label = "Needs attention"
-        else:
-            status_label = "In progress"
-
-    if progress >= 100:
-        kind = "done"
-    else:
-        status_lower = str(status_label).lower()
-        if "done" in status_lower or "complete" in status_lower:
-            kind = "done"
-            if source == "progress":
-                source = "status_label"
-        elif "overdue" in status_lower:
-            kind = "overdue"
-            if source == "progress":
-                source = "status_label"
-        elif "risk" in status_lower:
-            kind = "risk"
-            if source == "progress":
-                source = "status_label"
-        else:
-            kind = None
-
-    if kind is None and index is not None:
-        visited_refs = set(_visited_refs or [])
-        meta_ref = meta.get("ref")
-        if meta_ref:
-            visited_refs.add(meta_ref)
-        child_refs = list(meta.get("children") or [])
-        for child_ref in child_refs:
-            if child_ref in visited_refs:
-                continue
-            child_meta = index.get(child_ref)
-            if not child_meta:
-                continue
-            child_health = _atlas_health_state(
-                child_meta,
-                index=index,
-                _visited_refs=visited_refs,
-                _memo=_memo,
-            )
-            if child_health.get("needs_attention"):
-                kind = "inherited"
-                source = "inherited_rollup"
-                break
-
-    if kind is None:
-        kind = "low_progress" if progress < 40 else "on_track"
-
-    if kind == "done":
-        reason = "Complete"
-    elif kind in {"overdue", "risk", "inherited", "low_progress"}:
-        reason = "Needs care"
-    else:
-        reason = "On track"
-
-    result = {
-        "kind": kind,
-        "reason": reason,
-        "status_label": status_label,
-        "source": source,
-        "needs_attention": kind in {"overdue", "risk", "inherited", "low_progress"},
-    }
-    if _memo is not None and meta_ref:
-        _memo[meta_ref] = result
-    return result
-
-
-def _atlas_health_index(index):
-    if not isinstance(index, dict) or not index:
-        return {}
-    memo = {}
-    health_by_ref = {}
-    for ref, meta in index.items():
-        if not isinstance(meta, dict):
-            continue
-        health_by_ref[ref] = _atlas_health_state(meta, index=index, _memo=memo)
-    return health_by_ref
-
-
-def _atlas_health_fill_color(health, progress: int, meta=None) -> str:
-    kind = str((health or {}).get("kind") or "")
-    
-    # Check if we can use the score band for OKRs
-    if meta and meta.get("type") in ["GOAL", "OBJECTIVE", "KEY_RESULT"]:
-        node = meta.get("node")
-        if meta.get("type") == "KEY_RESULT":
-            score = calculate_kr_score(
-                getattr(node, "current_value", 0.0),
-                getattr(node, "target_value", 100.0),
-                getattr(node, "start_value", 0.0),
-                getattr(node, "metric_type", "NUMERIC")
-            )
-        elif meta.get("type") == "OBJECTIVE":
-            score = 0.0
-            krs = getattr(node, 'key_results', [])
-            if krs:
-                from src.domain.scoring import calculate_objective_score
-                kr_scores = [
-                    calculate_kr_score(
-                        getattr(kr, "current_value", 0.0),
-                        getattr(kr, "target_value", 100.0),
-                        getattr(kr, "start_value", 0.0),
-                        getattr(kr, "metric_type", "NUMERIC")
-                    )
-                    for kr in krs
-                ]
-                kr_weights = [getattr(kr, "weight", 1.0) for kr in krs]
-                score = calculate_objective_score(
-                    kr_scores, 
-                    kr_weights if getattr(node, "score_mode", None) == "WEIGHTED" else None,
-                    weighted=(getattr(node, "score_mode", None) == "WEIGHTED")
-                )
-        else: # GOAL
-            from src.domain.scoring import calculate_objective_score
-            score = 0.0
-            objectives = getattr(node, 'objectives', [])
-            obj_scores = []
-            for obj in objectives:
-                krs = getattr(obj, 'key_results', [])
-                if krs:
-                    kr_scores = [
-                        calculate_kr_score(
-                            getattr(kr, "current_value", 0.0),
-                            getattr(kr, "target_value", 100.0),
-                            getattr(kr, "start_value", 0.0),
-                            getattr(kr, "metric_type", "NUMERIC")
-                        )
-                        for kr in krs
-                    ]
-                    kr_weights = [getattr(kr, "weight", 1.0) for kr in krs]
-                    obj_scores.append(calculate_objective_score(
-                        kr_scores,
-                        kr_weights if getattr(obj, "score_mode", None) == "WEIGHTED" else None,
-                        weighted=(getattr(obj, "score_mode", None) == "WEIGHTED")
-                    ))
-            if obj_scores:
-                score = sum(obj_scores) / len(obj_scores)
-        
-        band = get_score_color_band(score)
-        mapping = {
-            "atlas-score-band-red": "#fce7e2",
-            "atlas-score-band-yellow": "#fff1de",
-            "atlas-score-band-green": "#e8f8f3",
-            "atlas-score-band-blue": "#e0f2fe"
-        }
-        return mapping.get(band, "#e5d6bb")
-
-    if kind in {"overdue", "risk", "inherited", "low_progress"}:
-        return "#c36d27"
-    if kind == "done" or int(progress or 0) >= 100:
-        return "#b5becb"
-    return "#e5d6bb"
-
-
-def _atlas_health_source_explanation(source: str | None) -> str:
-    source_key = str(source or "").strip().lower()
-    mapping = {
-        "ai_deadline_warning": "AI detected deadline risk signals.",
-        "ai_overall_score": "AI overall score drove this assessment.",
-        "deadline_status": "Task deadline timing drove this assessment.",
-        "task_status": "Task workflow status drove this assessment.",
-        "inherited_rollup": "Inherited from child items that need care.",
-        "progress": "Progress threshold rules drove this assessment.",
-        "status_label": "Status label rules drove this assessment.",
-    }
-    return mapping.get(source_key, "Health rules drove this assessment.")
-
-
-def _atlas_ai_progress_decision(
-    current_progress,
-    ai_score,
-    max_delta: int = 25,
-    allow_decrease: bool = False,
-):
-    """Policy gate for applying AI score to KR progress."""
-    try:
-        current_val = max(0, min(100, int(float(current_progress))))
-    except Exception:
-        current_val = 0
-    try:
-        if ai_score is None:
-            raise ValueError("missing_ai_score")
-        proposed_val = max(0, min(100, int(float(ai_score))))
-    except Exception:
-        return {
-            "action": "skip",
-            "reason": "missing_ai_score",
-            "current_progress": current_val,
-            "proposed_progress": None,
-            "delta": None,
-        }
-
-    delta = int(proposed_val - current_val)
-    bounded_delta = max(0, min(100, int(max_delta or 0)))
-
-    if delta == 0:
-        return {
-            "action": "skip",
-            "reason": "no_change",
-            "current_progress": current_val,
-            "proposed_progress": proposed_val,
-            "delta": 0,
-        }
-    if delta < 0 and not bool(allow_decrease):
-        return {
-            "action": "skip",
-            "reason": "decrease_blocked",
-            "current_progress": current_val,
-            "proposed_progress": proposed_val,
-            "delta": delta,
-        }
-    if abs(delta) > bounded_delta:
-        return {
-            "action": "skip",
-            "reason": "delta_cap",
-            "current_progress": current_val,
-            "proposed_progress": proposed_val,
-            "delta": delta,
-        }
-    return {
-        "action": "apply",
-        "reason": "within_policy",
-        "current_progress": current_val,
-        "proposed_progress": proposed_val,
-        "delta": delta,
-    }
-
-
-def _atlas_status_label(meta, index=None):
-    return _atlas_health_state(meta, index=index).get("status_label", "In progress")
-
-
-def _atlas_attention_kind(meta, index=None) -> str:
-    return str(_atlas_health_state(meta, index=index).get("kind") or "on_track")
-
-
-def _atlas_needs_attention(meta, index=None) -> bool:
-    return bool(_atlas_health_state(meta, index=index).get("needs_attention"))
-
-
-def _atlas_attention_reason(meta, index=None) -> str:
-    return str(_atlas_health_state(meta, index=index).get("reason") or "On track")
-
-
-def _atlas_commit_target_minutes(
-    preset_choice: str, custom_minutes: int | None = None
-) -> int:
-    preset = str(preset_choice or "25m")
-    if preset == "50m":
-        return 50
-    if preset == "Custom":
-        if custom_minutes is None:
-            return 35
-        return max(5, min(240, int(custom_minutes)))
-    return 25
-
-
-def _atlas_sprint_run_key(
-    task_ref: str | None, target_minutes: int, started_at_epoch
-) -> str | None:
-    if not task_ref:
-        return None
-    try:
-        target = int(target_minutes or 0)
-    except Exception:
-        target = 0
-    if target <= 0:
-        return None
-    try:
-        started = int(float(started_at_epoch or 0))
-    except Exception:
-        started = 0
-    if started <= 0:
-        return None
-    return f"{task_ref}|{target}|{started}"
-
-
-def _atlas_should_show_soft_reminder(
-    elapsed_minutes: int,
-    target_minutes: int,
-    sprint_key: str | None,
-    dismissed_key: str | None,
-) -> bool:
-    if not sprint_key:
-        return False
-    if dismissed_key == sprint_key:
-        return False
-    try:
-        elapsed = int(elapsed_minutes or 0)
-        target = int(target_minutes or 0)
-    except Exception:
-        return False
-    return target > 0 and elapsed >= target
-
-
-def _atlas_should_emit_target_notification(
-    sprint_key: str | None, emitted_key: str | None
-) -> bool:
-    return bool(sprint_key and sprint_key != emitted_key)
-
-
 def _atlas_fire_browser_notification(title: str, body: str):
-    title_json = json.dumps(str(title or "Sprint update"))
-    body_json = json.dumps(str(body or "Target reached"))
-    components.html(
-        f"""
-        <script>
-        (function () {{
-          const title = {title_json};
-          const body = {body_json};
-          try {{
-            const beep = () => {{
-              const Ctx = window.AudioContext || window.webkitAudioContext;
-              if (!Ctx) return;
-              const ctx = new Ctx();
-              const osc = ctx.createOscillator();
-              const gain = ctx.createGain();
-              osc.type = "sine";
-              osc.frequency.value = 880;
-              gain.gain.value = 0.04;
-              osc.connect(gain);
-              gain.connect(ctx.destination);
-              osc.start();
-              setTimeout(() => {{
-                osc.stop();
-                if (ctx.close) ctx.close();
-              }}, 180);
-            }};
-            beep();
-            if (!("Notification" in window)) return;
-            if (Notification.permission === "granted") {{
-              new Notification(title, {{ body }});
-              return;
-            }}
-            if (Notification.permission === "default") {{
-              Notification.requestPermission().then((permission) => {{
-                if (permission === "granted") {{
-                  new Notification(title, {{ body }});
-                }}
-              }});
-            }}
-          }} catch (e) {{
-            // best-effort only
-          }}
-        }})();
-        </script>
-        """,
-        height=0,
-    )
+    return atlas_treemap_helpers.atlas_fire_browser_notification(title, body)
 
 
 def _atlas_is_mobile_request() -> bool:
-    """Best-effort mobile detection from Streamlit request headers."""
-    user_agent = ""
-    try:
-        context_obj = getattr(st, "context", None)
-        header_map = getattr(context_obj, "headers", None)
-        if header_map:
-            user_agent = str(
-                header_map.get("user-agent") or header_map.get("User-Agent") or ""
-            ).lower()
-    except Exception:
-        user_agent = ""
-
-    if not user_agent:
-        return False
-
-    mobile_tokens = (
-        "android",
-        "iphone",
-        "ipad",
-        "ipod",
-        "mobile",
-        "windows phone",
-    )
-    return any(token in user_agent for token in mobile_tokens)
-
-
-def _atlas_clean_work_summary(summary: str | None) -> str | None:
-    if summary is None:
-        return None
-    cleaned = str(summary).strip()
-    return cleaned if cleaned else None
-
-
-def _atlas_timer_owner_id(meta) -> int | None:
-    if not isinstance(meta, dict):
-        return None
-    owner_id = meta.get("timer_owner_id", meta.get("owner_id"))
-    if owner_id is None:
-        return None
-    try:
-        return int(owner_id)
-    except Exception:
-        return None
+    return atlas_treemap_helpers.atlas_is_mobile_request()
 
 
 def _atlas_suggested_next_score(meta, actor_id: int, index=None, health=None):
@@ -3512,243 +3075,9 @@ def _atlas_suggested_next_reason(meta, actor_id: int, index=None, health=None) -
     return "Continue momentum"
 
 
-def _atlas_point_value(point, keys):
-    key_candidates = keys if isinstance(keys, (list, tuple)) else [keys]
-    for key in key_candidates:
-        if isinstance(point, dict):
-            if key in point:
-                return point.get(key)
-        else:
-            value = getattr(point, key, None)
-            if value is not None:
-                return value
-    return None
-
-
-def _atlas_extract_clicked_ref(
-    selected_point, point_refs=None, label_lookup=None
-) -> str | None:
-    if selected_point is None:
-        return None
-
-    clicked_ref = None
-
-    customdata = _atlas_point_value(selected_point, "customdata")
-    if isinstance(customdata, (list, tuple)) and customdata:
-        clicked_ref = customdata[0]
-        if isinstance(clicked_ref, (list, tuple)) and clicked_ref:
-            clicked_ref = clicked_ref[0]
-    elif isinstance(customdata, str):
-        clicked_ref = customdata
-    elif isinstance(customdata, dict):
-        clicked_ref = customdata.get("ref") or customdata.get("id")
-
-    if not clicked_ref:
-        clicked_ref = _atlas_point_value(selected_point, "id")
-
-    if not clicked_ref and point_refs:
-        raw_idx = _atlas_point_value(
-            selected_point,
-            ("point_index", "pointIndex", "point_number", "pointNumber"),
-        )
-        if raw_idx is not None:
-            try:
-                point_idx = int(raw_idx)
-            except Exception:
-                point_idx = -1
-            if 0 <= point_idx < len(point_refs):
-                clicked_ref = point_refs[point_idx]
-
-    if not clicked_ref and label_lookup:
-        point_label = _atlas_point_value(selected_point, ("label", "text"))
-        if point_label is not None:
-            matched_refs = label_lookup.get(str(point_label), [])
-            if len(matched_refs) == 1:
-                clicked_ref = matched_refs[0]
-
-    if clicked_ref is None:
-        return None
-    return str(clicked_ref)
-
-
-def _atlas_extract_clicked_ref_from_points(
-    points,
-    index=None,
-    current_selected: str | None = None,
-    point_refs=None,
-    label_lookup=None,
-) -> str | None:
-    if not points:
-        return None
-
-    refs = []
-    for point in points:
-        ref = _atlas_extract_clicked_ref(
-            point,
-            point_refs=point_refs,
-            label_lookup=label_lookup,
-        )
-        if ref:
-            refs.append(ref)
-    if not refs:
-        return None
-
-    unique_refs = []
-    for ref in refs:
-        if ref not in unique_refs:
-            unique_refs.append(ref)
-
-    if current_selected and current_selected in unique_refs and len(unique_refs) > 1:
-        candidate_refs = [ref for ref in unique_refs if ref != current_selected]
-    else:
-        candidate_refs = list(unique_refs)
-
-    if index is not None:
-        in_index = [ref for ref in candidate_refs if ref in index]
-        if in_index:
-            candidate_refs = in_index
-        else:
-            return None
-        # Treemap point payloads may include multiple nodes across a path. Use deepest node.
-        return max(
-            candidate_refs, key=lambda ref: int(index.get(ref, {}).get("depth", -1))
-        )
-
-    return candidate_refs[-1]
-
-
-def _atlas_extract_selection_points(event_payload):
-    if event_payload is None:
-        return []
-
-    if isinstance(event_payload, list):
-        return list(event_payload)
-
-    if isinstance(event_payload, dict):
-        selection_data = event_payload.get("selection")
-    else:
-        selection_data = getattr(event_payload, "selection", None)
-
-    if selection_data is None:
-        return []
-    if isinstance(selection_data, dict):
-        points = selection_data.get("points", [])
-    else:
-        points = getattr(selection_data, "points", [])
-    return list(points or [])
-
-
-def _atlas_task_rollup(task_refs, index, health_index=None):
-    rollup = {
-        "total": 0,
-        "running": 0,
-        "attention": 0,
-        "done": 0,
-    }
-    if health_index is None:
-        health_index = _atlas_health_index(index)
-
-    for ref in task_refs:
-        meta = index.get(ref)
-        if not meta or meta.get("type") != "TASK":
-            continue
-        rollup["total"] += 1
-
-        task = meta.get("node")
-        if getattr(task, "timer_started_at", None) is not None:
-            rollup["running"] += 1
-
-        progress = int(meta.get("progress", 0) or 0)
-        if progress >= 100:
-            rollup["done"] += 1
-        health = health_index.get(ref)
-        if health is None:
-            health = _atlas_health_state(meta, index=index)
-        if bool(health.get("needs_attention")):
-            rollup["attention"] += 1
-
-    return rollup
-
-
-def _atlas_health_debug_rows(refs, index, health_index=None, limit: int = 80):
-    rows = []
-    kind_rank = {
-        "overdue": 0,
-        "risk": 1,
-        "low_progress": 2,
-        "inherited": 2,
-        "on_track": 3,
-        "done": 4,
-    }
-    resolved_health = health_index or {}
-
-    for ref in refs:
-        meta = index.get(ref)
-        if not meta:
-            continue
-        health = resolved_health.get(ref)
-        if health is None:
-            health = _atlas_health_state(meta, index=index)
-        kind = str(health.get("kind") or "on_track")
-        rows.append(
-            {
-                "Ref": str(ref),
-                "Type": str(meta.get("type") or ""),
-                "Title": str(meta.get("title") or "Untitled"),
-                "Kind": kind,
-                "Reason": str(health.get("reason") or "On track"),
-                "Status": str(health.get("status_label") or "In progress"),
-                "Source": str(health.get("source") or "progress"),
-                "Progress": int(meta.get("progress", 0) or 0),
-                "NeedsAttention": bool(health.get("needs_attention")),
-                "_rank": int(kind_rank.get(kind, 5)),
-            }
-        )
-
-    rows.sort(key=lambda item: (item["_rank"], item["Progress"], item["Title"].lower()))
-    cleaned = []
-    for item in rows[: max(1, int(limit or 80))]:
-        clean_item = dict(item)
-        clean_item.pop("_rank", None)
-        cleaned.append(clean_item)
-    return cleaned
-
-
-def _atlas_descendant_refs(root_ref: str, index, limit: int = 350):
-    refs = []
-    pending = [root_ref]
-    seen = set()
-    while pending and len(refs) < limit:
-        node_ref = pending.pop()
-        if node_ref in seen:
-            continue
-        seen.add(node_ref)
-        refs.append(node_ref)
-        meta = index.get(node_ref)
-        if not meta:
-            continue
-        for child_ref in reversed(meta.get("children", [])):
-            pending.append(child_ref)
-    return refs
-
-
-def _atlas_scope_refs(roots, index, limit: int = 800):
-    refs = []
-    seen = set()
-    for root_ref in roots:
-        for ref in _atlas_descendant_refs(root_ref, index, limit=limit):
-            if ref in seen:
-                continue
-            seen.add(ref)
-            refs.append(ref)
-            if len(refs) >= limit:
-                return refs
-    return refs
-
-
-_ATLAS_TREEMAP_CACHE_STATE_KEY = "_atlas_treemap_figure_cache"
-_ATLAS_TREEMAP_CACHE_ORDER_KEY = "_atlas_treemap_figure_cache_order"
-_ATLAS_TREEMAP_CACHE_MAX_ENTRIES = 8
+_ATLAS_TREEMAP_CACHE_STATE_KEY = atlas_treemap_helpers.ATLAS_TREEMAP_CACHE_STATE_KEY
+_ATLAS_TREEMAP_CACHE_ORDER_KEY = atlas_treemap_helpers.ATLAS_TREEMAP_CACHE_ORDER_KEY
+_ATLAS_TREEMAP_CACHE_MAX_ENTRIES = atlas_treemap_helpers.ATLAS_TREEMAP_CACHE_MAX_ENTRIES
 
 
 def _atlas_treemap_cache_key(
@@ -3759,15 +3088,13 @@ def _atlas_treemap_cache_key(
     selected_path_refs,
     chart_height: int,
 ):
-    refs_key = tuple(str(ref) for ref in (refs or []))
-    path_key = tuple(sorted(str(ref) for ref in (selected_path_refs or [])))
-    return (
-        str(runtime_token or ""),
-        refs_key,
-        str(selected_ref or ""),
-        str(focus_task_ref or ""),
-        path_key,
-        int(chart_height),
+    return atlas_treemap_helpers.atlas_treemap_cache_key(
+        runtime_token,
+        refs,
+        selected_ref,
+        focus_task_ref,
+        selected_path_refs,
+        chart_height,
     )
 
 
@@ -3781,31 +3108,8 @@ def _atlas_cached_treemap(
     health_index=None,
     runtime_token=None,
 ):
-    cache = st.session_state.get(_ATLAS_TREEMAP_CACHE_STATE_KEY)
-    if not isinstance(cache, dict):
-        cache = {}
-    order = st.session_state.get(_ATLAS_TREEMAP_CACHE_ORDER_KEY)
-    if not isinstance(order, list):
-        order = []
-
-    cache_key = _atlas_treemap_cache_key(
-        runtime_token,
-        refs,
-        selected_ref,
-        focus_task_ref,
-        selected_path_refs,
-        chart_height,
-    )
-    hit = cache.get(cache_key)
-    if hit is not None:
-        if cache_key in order:
-            order.remove(cache_key)
-        order.append(cache_key)
-        st.session_state[_ATLAS_TREEMAP_CACHE_ORDER_KEY] = order
-        st.session_state[_ATLAS_TREEMAP_CACHE_STATE_KEY] = cache
-        return hit
-
-    built = _build_atlas_treemap(
+    return atlas_treemap_helpers.atlas_cached_treemap(
+        st.session_state,
         refs,
         index,
         selected_ref,
@@ -3813,21 +3117,12 @@ def _atlas_cached_treemap(
         selected_path_refs=selected_path_refs,
         chart_height=chart_height,
         health_index=health_index,
+        runtime_token=runtime_token,
+        build_fn=_build_atlas_treemap,
+        cache_state_key=_ATLAS_TREEMAP_CACHE_STATE_KEY,
+        cache_order_key=_ATLAS_TREEMAP_CACHE_ORDER_KEY,
+        cache_max_entries=_ATLAS_TREEMAP_CACHE_MAX_ENTRIES,
     )
-    if built is None:
-        return None
-
-    cache[cache_key] = built
-    if cache_key in order:
-        order.remove(cache_key)
-    order.append(cache_key)
-    while len(order) > _ATLAS_TREEMAP_CACHE_MAX_ENTRIES:
-        stale_key = order.pop(0)
-        cache.pop(stale_key, None)
-
-    st.session_state[_ATLAS_TREEMAP_CACHE_ORDER_KEY] = order
-    st.session_state[_ATLAS_TREEMAP_CACHE_STATE_KEY] = cache
-    return built
 
 
 def _build_atlas_treemap(
@@ -3839,152 +3134,15 @@ def _build_atlas_treemap(
     chart_height: int = 500,
     health_index=None,
 ):
-    ids = []
-    labels = []
-    parents = []
-    values = []
-    fill_colors = []
-    line_colors = []
-    line_widths = []
-    custom = []
-    local_health_memo = {}
-
-    path_refs = set(selected_path_refs or [])
-
-    for ref in refs:
-        meta = index.get(ref)
-        if not meta:
-            continue
-        title = meta.get("title") or "Untitled"
-        if len(title) > 36:
-            title = f"{title[:33]}..."
-        parent_ref = meta.get("parent") if meta.get("parent") in refs else ""
-        progress = int(meta.get("progress", 0) or 0)
-        node_type = meta.get("type")
-        health = (
-            (health_index or {}).get(ref)
-            if isinstance(health_index, dict)
-            else None
-        )
-        if health is None:
-            health = _atlas_health_state(meta, index=index, _memo=local_health_memo)
-        
-        status = str(health.get("status_label") or "In progress")
-        
-        # For KRs and Objectives, try to show the score in hover
-        if node_type in ["KEY_RESULT", "OBJECTIVE"]:
-            node_obj = meta.get("node")
-            if node_type == "KEY_RESULT":
-                score = calculate_kr_score(
-                    getattr(node_obj, "current_value", 0.0),
-                    getattr(node_obj, "target_value", 100.0),
-                    getattr(node_obj, "start_value", 0.0),
-                    getattr(node_obj, "metric_type", "NUMERIC")
-                )
-            else:
-                obj_score = 0.0
-                krs = getattr(node_obj, 'key_results', [])
-                if krs:
-                    from src.domain.scoring import calculate_objective_score
-                    kr_scores = [
-                        calculate_kr_score(
-                            getattr(kr, "current_value", 0.0),
-                            getattr(kr, "target_value", 100.0),
-                            getattr(kr, "start_value", 0.0),
-                            getattr(kr, "metric_type", "NUMERIC")
-                        )
-                        for kr in krs
-                    ]
-                    kr_weights = [getattr(kr, "weight", 1.0) for kr in krs]
-                    obj_score = calculate_objective_score(
-                        kr_scores, 
-                        kr_weights if getattr(node_obj, "score_mode", None) == "WEIGHTED" else None,
-                        weighted=(getattr(node_obj, "score_mode", None) == "WEIGHTED")
-                    )
-                score = obj_score
-            
-            score_label = get_score_label(score)
-            status = f"Score: {score:.2f} ({score_label})"
-            attention_reason = score_label
-        else:
-            attention_reason = str(health.get("reason") or "On track")
-        source_explanation = _atlas_health_source_explanation(health.get("source"))
-
-        # Standardized sizing: leaf nodes stay visually consistent so new siblings
-        # appear with equal proportion by default. Non-leaf nodes contribute no
-        # extra remainder area, which avoids large blank regions in treemap layout.
-        child_count = len(meta.get("children", []))
-        if child_count <= 0:
-            value = 10
-        else:
-            value = 0
-
-        fill = _atlas_health_fill_color(health, progress, meta=meta)
-
-        line_color = "#f5ede0"
-        line_width = 1.4
-        if ref in path_refs:
-            line_color = "#b9914a"
-            line_width = 2.0
-        if ref == selected_ref:
-            line_color = "#8a6827"
-            line_width = 3.2
-        if ref == focus_task_ref:
-            line_color = "#0d9488"
-            line_width = 3.6
-
-        ids.append(ref)
-        labels.append(f"{TYPE_ICONS.get(node_type, '')} {title}")
-        parents.append(parent_ref)
-        values.append(value)
-        fill_colors.append(fill)
-        line_colors.append(line_color)
-        line_widths.append(line_width)
-        custom.append(
-            [
-                ref,
-                (
-                    f"{node_type.replace('_', ' ').title()} | {status} | {progress}%"
-                    f" | {attention_reason}"
-                ),
-                source_explanation,
-            ]
-        )
-
-    if not ids:
-        return None
-
-    fig = go.Figure(
-        go.Treemap(
-            ids=ids,
-            labels=labels,
-            parents=parents,
-            values=values,
-            branchvalues="remainder",
-            marker=dict(
-                colors=fill_colors,
-                line=dict(color=line_colors, width=line_widths),
-            ),
-            textinfo="label",
-            customdata=custom,
-            hovertemplate=(
-                "<b>%{label}</b><br>%{customdata[1]}"
-                "<br>Why: %{customdata[2]}<extra></extra>"
-            ),
-            sort=False,
-            tiling=dict(pad=4, packing="slice-dice"),
-            pathbar=dict(visible=False),
-        )
+    return atlas_treemap_helpers.build_atlas_treemap(
+        refs,
+        index,
+        selected_ref,
+        focus_task_ref,
+        selected_path_refs=selected_path_refs,
+        chart_height=chart_height,
+        health_index=health_index,
     )
-    fig.update_layout(
-        margin=dict(l=8, r=8, t=10, b=28),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(size=13, color="#1f2933"),
-        height=int(chart_height),
-        clickmode="event+select",
-    )
-    return fig
 
 
 def render_atlas_workspace(username):
@@ -3996,60 +3154,42 @@ def render_atlas_workspace(username):
         st.info("Select a cycle to load the OKR workspace.")
         return
 
-    actor_id = st.session_state.get("user_id")
-    try:
-        actor_id = int(actor_id) if actor_id is not None else None
-    except Exception:
-        actor_id = None
-    role_value = str(st.session_state.get("user_role") or "").strip().lower()
+    actor_id, role_value = atlas_workspace_helpers.resolve_actor_context(
+        st.session_state,
+        logger=logger,
+    )
     if actor_id is None or not role_value:
         st.error("User context is unavailable. Please log in again.")
         return
 
-    scope_options = {"My OKRs": [actor_id]}
-    if role_value == "manager":
-        team_members = [
-            member
-            for member in _cached_get_team_members(actor_id)
-            if bool(getattr(member, "is_active", True))
-        ]
-        if team_members:
-            scope_options["My Team"] = sorted(
-                set([actor_id] + [member.id for member in team_members])
-            )
-            for member in team_members:
-                label = f"{member.display_name or member.username} (@{member.username})"
-                scope_options[label] = [member.id]
-    elif role_value == "admin":
-        all_users = [
-            member
-            for member in _cached_get_all_users()
-            if bool(getattr(member, "is_active", True))
-        ]
-        scope_options["All Users"] = None
-        for member in all_users:
-            label = f"{member.display_name or member.username} (@{member.username})"
-            scope_options[label] = [member.id]
-
-    scope_labels = list(scope_options.keys())
-    if st.session_state.get("atlas_scope_selector") not in scope_labels:
-        st.session_state["atlas_scope_selector"] = scope_labels[0]
-    selected_scope = st.session_state.get("atlas_scope_selector", scope_labels[0])
-
-    owner_ids = scope_options.get(selected_scope)
-    owner_ids_key = _canonical_owner_ids_key(owner_ids)
-    atlas_runtime = _cached_get_atlas_scope_runtime(
-        int(cycle_id),
-        owner_ids_key,
-        include_analysis=False,
+    scope_options = atlas_workspace_helpers.build_scope_options(
+        actor_id=int(actor_id),
+        role_value=role_value,
+        team_members_loader=_cached_get_team_members,
+        all_users_loader=_cached_get_all_users,
     )
-    index = atlas_runtime.get("index", {})
-    roots = list(atlas_runtime.get("roots") or [])
-    node_lookup = atlas_runtime.get("node_lookup") or {}
-    health_index = atlas_runtime.get("health_index")
-    runtime_token = atlas_runtime.get("runtime_token")
-    if not isinstance(health_index, dict):
-        health_index = _atlas_health_index(index)
+    selected_scope = atlas_workspace_helpers.ensure_scope_selection(
+        st.session_state,
+        scope_options,
+    )
+    scope_labels = list(scope_options.keys())
+
+    runtime_data = atlas_workspace_helpers.resolve_scope_runtime(
+        cycle_id=int(cycle_id),
+        selected_scope=selected_scope,
+        scope_options=scope_options,
+        runtime_loader=_cached_get_atlas_scope_runtime,
+        canonical_owner_ids_key=_canonical_owner_ids_key,
+        health_index_builder=_atlas_health_index,
+        actor_username=username,
+    )
+    owner_ids = runtime_data.get("owner_ids")
+    owner_ids_key = runtime_data.get("owner_ids_key")
+    index = runtime_data.get("index", {})
+    roots = list(runtime_data.get("roots") or [])
+    node_lookup = runtime_data.get("node_lookup") or {}
+    health_index = runtime_data.get("health_index")
+    runtime_token = runtime_data.get("runtime_token")
     st.session_state["atlas_node_lookup"] = node_lookup
     if not roots:
         st.info("No goals found for this cycle and scope.")
@@ -4059,99 +3199,41 @@ def render_atlas_workspace(username):
             st.rerun()
         return
 
-    selected_ref = st.session_state.get("atlas_selected_ref")
-    if selected_ref not in index:
-        stack = st.session_state.get("nav_stack", [])
-        candidate = stack[-1] if stack else None
-        selected_ref = candidate if candidate in index else roots[0]
-        st.session_state["atlas_selected_ref"] = selected_ref
+    selected_ref = atlas_workspace_helpers.ensure_selected_ref(
+        st.session_state,
+        index,
+        roots,
+    )
+    if selected_ref is None:
+        st.info("No selectable nodes found in this scope.")
+        return
 
     selected_meta = index[selected_ref]
-    st.session_state["nav_stack"] = list(selected_meta["path"])
-    selected_path_refs = set(selected_meta["path"])
-    if st.session_state.get("atlas_last_selected_ref") != selected_ref:
-        st.session_state["atlas_last_selected_ref"] = selected_ref
-        st.session_state["atlas_breadcrumbs"] = selected_ref
-
-    def _collect_task_refs(root_ref: str, limit: int = 200):
-        pending = [root_ref]
-        seen = set()
-        task_refs = []
-        while pending and len(task_refs) < limit:
-            node_ref = pending.pop()
-            if node_ref in seen:
-                continue
-            seen.add(node_ref)
-            meta = index.get(node_ref)
-            if not meta:
-                continue
-            if meta["type"] == "TASK":
-                task_refs.append(node_ref)
-                continue
-            for child_ref in reversed(meta["children"]):
-                pending.append(child_ref)
-        return task_refs
-
-    def _suggest_focus_task(task_refs):
-        if not task_refs:
-            return None
-
-        running_refs = []
-        ranked_refs = []
-        for ref in task_refs:
-            meta = index[ref]
-            task = meta["node"]
-            if getattr(task, "timer_started_at", None) is not None:
-                running_refs.append(ref)
-                continue
-            progress = int(meta.get("progress", 0) or 0)
-            health = health_index.get(ref)
-            if health is None:
-                health = _atlas_health_state(meta, index=index)
-            kind = str(health.get("kind") or "on_track")
-            if kind == "overdue":
-                bucket = 0
-            elif kind in {"risk", "low_progress", "inherited"}:
-                bucket = 1
-            elif progress >= 100:
-                bucket = 3
-            else:
-                bucket = 2
-            ranked_refs.append((bucket, progress, meta["title_l"], ref))
-
-        if running_refs:
-            return running_refs[0]
-
-        ranked_refs.sort()
-        return ranked_refs[0][3] if ranked_refs else task_refs[0]
-
-    def _can_track_task(task_meta) -> bool:
-        if not task_meta:
-            return False
-        return can_track_task_timer(
-            actor_user_id=actor_id,
-            timer_owner_user_id=_atlas_timer_owner_id(task_meta),
-        )
-
-    def _atlas_attention_chip_html(meta) -> str:
-        meta_ref = str(meta.get("ref") or "")
-        health = health_index.get(meta_ref) if meta_ref else None
-        if health is None:
-            health = _atlas_health_state(meta, index=index)
-        kind = str(health.get("kind") or "on_track")
-        reason = str(health.get("reason") or "On track")
-        return f"<span class='atlas-attn-chip atlas-attn-{kind}'>{escape_html(reason)}</span>"
+    selected_path_refs = atlas_workspace_helpers.sync_selected_navigation(
+        st.session_state,
+        selected_ref=selected_ref,
+        selected_meta=selected_meta,
+    )
 
     from src.services.timer_service import start_timer, stop_timer
 
-    task_refs = _collect_task_refs(selected_ref)
-    suggested_task_ref = _suggest_focus_task(task_refs)
+    task_refs = atlas_workspace_helpers.collect_task_refs(
+        index=index,
+        root_ref=selected_ref,
+        limit=200,
+    )
+    suggested_task_ref = atlas_workspace_helpers.suggest_focus_task(
+        task_refs=task_refs,
+        index=index,
+        health_index=health_index,
+        health_state_fn=_atlas_health_state,
+    )
 
-    focus_task_ref = st.session_state.get("atlas_focus_task_ref")
-    if focus_task_ref not in task_refs:
-        focus_task_ref = suggested_task_ref
-        if focus_task_ref:
-            st.session_state["atlas_focus_task_ref"] = focus_task_ref
+    focus_task_ref = atlas_workspace_helpers.resolve_focus_task_ref(
+        st.session_state,
+        task_refs=task_refs,
+        suggested_task_ref=suggested_task_ref,
+    )
 
     with st.container(border=True):
         st.markdown("<div class='atlas-luxe-strip'></div>", unsafe_allow_html=True)
@@ -4268,7 +3350,12 @@ def render_atlas_workspace(username):
             if focus_health is None:
                 focus_health = _atlas_health_state(focus_meta, index=index)
             focus_running = getattr(focus_task, "timer_started_at", None) is not None
-            can_track_focus = _can_track_task(focus_meta)
+            can_track_focus = atlas_workspace_helpers.can_track_task(
+                actor_user_id=actor_id,
+                task_meta=focus_meta,
+                timer_owner_resolver=_atlas_timer_owner_id,
+                can_track_fn=can_track_task_timer,
+            )
             stop_capture_key = "atlas_stop_capture_task_ref"
             stop_draft_key = f"atlas_stop_summary_draft_{focus_task_ref}"
             stop_composer_open = (
@@ -4310,7 +3397,17 @@ def render_atlas_workspace(username):
             spotlight_cols = st.columns([4.8, 1.8], gap="small")
             spotlight_cols[0].caption(f"Owned by {focus_meta['owner_name']}")
             spotlight_cols[0].markdown(
-                f"<div class='atlas-chip-row'>{_atlas_attention_chip_html(focus_meta)}</div>",
+                (
+                    "<div class='atlas-chip-row'>"
+                    + atlas_workspace_helpers.attention_chip_html(
+                        meta=focus_meta,
+                        index=index,
+                        health_index=health_index,
+                        health_state_fn=_atlas_health_state,
+                        escape_html_fn=escape_html,
+                    )
+                    + "</div>"
+                ),
                 unsafe_allow_html=True,
             )
             spotlight_cols[0].caption(
@@ -4345,33 +3442,6 @@ def render_atlas_workspace(username):
                 )
                 target_minutes = _atlas_commit_target_minutes("Custom", custom_minutes)
 
-            def _stop_focus_session(summary: str | None = None):
-                cleaned_summary = _atlas_clean_work_summary(summary)
-                worklog_local = stop_timer(
-                    focus_task.id,
-                    summary=cleaned_summary,
-                    user_id=username,
-                )
-                if worklog_local:
-                    st.session_state["atlas_last_session_summary"] = {
-                        "task_ref": focus_task_ref,
-                        "minutes": round(float(worklog_local.duration_minutes or 0), 1),
-                        "summary": cleaned_summary,
-                        "at": time.time(),
-                    }
-                for state_key in [
-                    "atlas_sprint_target_minutes",
-                    "atlas_sprint_task_ref",
-                    "atlas_sprint_started_at_epoch",
-                    "atlas_sprint_reminder_dismissed_for",
-                    "atlas_sprint_notification_sent_for",
-                    stop_capture_key,
-                    stop_draft_key,
-                ]:
-                    if state_key in st.session_state:
-                        del st.session_state[state_key]
-                return worklog_local
-
             if focus_running:
                 elapsed_minutes = 0
                 try:
@@ -4382,7 +3452,8 @@ def render_atlas_workspace(username):
                         ).total_seconds()
                         // 60
                     )
-                except Exception:
+                except Exception as exc:
+                    logger.debug("Failed to compute focus task elapsed minutes: %s", exc)
                     elapsed_minutes = 0
 
                 target_for_focus = 0
@@ -4529,14 +3600,34 @@ def render_atlas_workspace(username):
                         use_container_width=True,
                         disabled=not bool(cleaned_stop_summary),
                     ):
-                        _stop_focus_session(summary=stop_summary)
+                        atlas_workspace_helpers.stop_focus_session(
+                            session_state=st.session_state,
+                            focus_task=focus_task,
+                            focus_task_ref=focus_task_ref,
+                            username=username,
+                            summary=stop_summary,
+                            stop_timer_fn=stop_timer,
+                            clean_summary_fn=_atlas_clean_work_summary,
+                            stop_capture_key=stop_capture_key,
+                            stop_draft_key=stop_draft_key,
+                        )
                         st.rerun()
                     if action_container.button(
                         "Stop without summary",
                         key=f"atlas_stop_without_summary_{focus_task_ref}",
                         use_container_width=True,
                     ):
-                        _stop_focus_session(summary=None)
+                        atlas_workspace_helpers.stop_focus_session(
+                            session_state=st.session_state,
+                            focus_task=focus_task,
+                            focus_task_ref=focus_task_ref,
+                            username=username,
+                            summary=None,
+                            stop_timer_fn=stop_timer,
+                            clean_summary_fn=_atlas_clean_work_summary,
+                            stop_capture_key=stop_capture_key,
+                            stop_draft_key=stop_draft_key,
+                        )
                         st.rerun()
                     if action_container.button(
                         "Cancel",
@@ -4555,14 +3646,34 @@ def render_atlas_workspace(username):
                         use_container_width=True,
                         disabled=not bool(cleaned_stop_summary),
                     ):
-                        _stop_focus_session(summary=stop_summary)
+                        atlas_workspace_helpers.stop_focus_session(
+                            session_state=st.session_state,
+                            focus_task=focus_task,
+                            focus_task_ref=focus_task_ref,
+                            username=username,
+                            summary=stop_summary,
+                            stop_timer_fn=stop_timer,
+                            clean_summary_fn=_atlas_clean_work_summary,
+                            stop_capture_key=stop_capture_key,
+                            stop_draft_key=stop_draft_key,
+                        )
                         st.rerun()
                     if composer_actions[1].button(
                         "Stop without summary",
                         key=f"atlas_stop_without_summary_{focus_task_ref}",
                         use_container_width=True,
                     ):
-                        _stop_focus_session(summary=None)
+                        atlas_workspace_helpers.stop_focus_session(
+                            session_state=st.session_state,
+                            focus_task=focus_task,
+                            focus_task_ref=focus_task_ref,
+                            username=username,
+                            summary=None,
+                            stop_timer_fn=stop_timer,
+                            clean_summary_fn=_atlas_clean_work_summary,
+                            stop_capture_key=stop_capture_key,
+                            stop_draft_key=stop_draft_key,
+                        )
                         st.rerun()
                     if composer_actions[2].button(
                         "Cancel",
@@ -4828,38 +3939,17 @@ def render_atlas_workspace(username):
                                     update_key_result,
                                     recalculate_rollup_for_key_results,
                                 )
-
-                                restored = 0
-                                undo_failed = []
-                                rollback_kr_ids = []
-                                for item in undo_items:
-                                    kr_id = item.get("kr_id")
-                                    previous_progress = item.get("previous_progress")
-                                    kr_title = item.get("title") or f"KR {kr_id}"
-                                    if kr_id is None or previous_progress is None:
-                                        continue
-                                    try:
-                                        update_key_result(
-                                            int(kr_id),
-                                            progress=int(previous_progress),
-                                            actor_username=username,
-                                        )
-                                        rollback_kr_ids.append(int(kr_id))
-                                        restored += 1
-                                    except Exception as exc:
-                                        undo_failed.append(f"{kr_title}: {exc}")
-                                if rollback_kr_ids:
-                                    try:
-                                        recalculate_rollup_for_key_results(
-                                            rollback_kr_ids
-                                        )
-                                    except Exception as exc:
-                                        undo_failed.append(
-                                            f"Rollup refresh failed: {exc}"
-                                        )
+                                undo_result = atlas_workspace_helpers.apply_ai_progress_undo(
+                                    undo_items=undo_items,
+                                    username=username,
+                                    update_key_result_fn=update_key_result,
+                                    recalculate_rollup_for_key_results_fn=(
+                                        recalculate_rollup_for_key_results
+                                    ),
+                                )
                                 st.session_state["atlas_ai_undo_report"] = {
-                                    "restored": restored,
-                                    "failed": undo_failed[:6],
+                                    "restored": int(undo_result.get("restored") or 0),
+                                    "failed": list(undo_result.get("failed") or []),
                                     "at": float(time.time()),
                                 }
                                 st.session_state.pop("atlas_ai_progress_undo", None)
@@ -4881,329 +3971,66 @@ def render_atlas_workspace(username):
                         update_key_result,
                         recalculate_rollup_for_key_results,
                     )
-
                     total_kr = len(map_kr_refs)
-                    synced = 0
-                    applied_progress = 0
-                    planned_progress = 0
-                    missing_ai_score = 0
-                    skipped_delta_cap = 0
-                    skipped_decrease = 0
-                    unchanged_progress = 0
-                    rollup_kr_ids = []
-                    progress_undo_items = []
-                    trace_rows = []
-                    failed = []
-                    ai_suggest_error = None
-                    ai_suggested_payload = None
                     progress_bar = map_sidebar_area.progress(
                         0.0,
                         text=f"Syncing AI analysis for {total_kr} key result(s)...",
                     )
-
-                    for idx, kr_ref in enumerate(map_kr_refs, start=1):
-                        kr_meta = index.get(kr_ref, {})
-                        kr_id = kr_meta.get("id")
-                        kr_title = kr_meta.get("title", kr_ref)
-                        if kr_id is None:
-                            failed.append(f"{kr_title}: missing ID")
-                            progress_bar.progress(
-                                idx / total_kr,
-                                text=f"Syncing {idx}/{total_kr}",
+                    sync_result = atlas_workspace_helpers.run_ai_progress_sync(
+                        map_kr_refs=map_kr_refs,
+                        map_task_refs=map_task_refs,
+                        index=index,
+                        health_index=health_index,
+                        actor_id=actor_id,
+                        selected_scope=selected_scope,
+                        map_lens=map_lens,
+                        selected_node_title=str(selected_meta.get("title") or ""),
+                        username=username,
+                        apply_ai_score_to_progress=apply_ai_score_to_progress,
+                        preview_ai_sync=preview_ai_sync,
+                        max_progress_delta=max_progress_delta,
+                        allow_progress_decrease=allow_progress_decrease,
+                        analyze_node_fn=analyze_node,
+                        suggest_critical_task_fn=suggest_critical_task,
+                        update_key_result_fn=update_key_result,
+                        recalculate_rollup_for_key_results_fn=(
+                            recalculate_rollup_for_key_results
+                        ),
+                        ai_progress_decision_fn=_atlas_ai_progress_decision,
+                        health_state_fn=_atlas_health_state,
+                        ai_overall_score_fn=_atlas_ai_overall_score,
+                        next_score_fn=_atlas_suggested_next_score,
+                        deadline_to_iso_fn=lambda deadline_raw: (
+                            atlas_workspace_helpers.deadline_to_iso(
+                                deadline_raw,
+                                from_epoch_millis_fn=from_epoch_millis,
+                                from_epoch_seconds_fn=from_epoch_seconds,
+                                logger=logger,
                             )
-                            continue
-
-                        # Alignment: Skip DRAFT nodes during bulk sync
-                        if kr_meta.get("state") == "DRAFT":
-                            progress_bar.progress(
-                                idx / total_kr,
-                                text=f"Skipping {idx}/{total_kr} (DRAFT)",
-                            )
-                            trace_rows.append({
-                                "node": kr_title,
-                                "action": "skipped",
-                                "reason": "draft_state"
-                            })
-                            continue
-
-                        try:
-                            result = analyze_node(
-                                int(kr_id),
-                                "KEY_RESULT",
-                                actor_username=username,
-                            )
-                            if isinstance(result, dict) and "error" not in result:
-                                current_progress = int(
-                                    kr_meta.get("progress", 0) or 0
-                                )
-                                decision = _atlas_ai_progress_decision(
-                                    current_progress,
-                                    result.get("overall_score"),
-                                    max_delta=max_progress_delta,
-                                    allow_decrease=allow_progress_decrease,
-                                )
-                                action = "analysis_only"
-                                detail_reason = "analysis_refreshed"
-                                ai_score_raw = result.get("overall_score")
-                                ai_score_val = None
-                                if ai_score_raw is not None:
-                                    try:
-                                        ai_score_val = max(
-                                            0,
-                                            min(100, int(float(ai_score_raw))),
-                                        )
-                                    except Exception:
-                                        ai_score_val = None
-                                if apply_ai_score_to_progress:
-                                    if decision["action"] == "apply":
-                                        if preview_ai_sync:
-                                            action = "would_update"
-                                            planned_progress += 1
-                                        else:
-                                            action = "progress_update"
-                                        detail_reason = str(
-                                            decision.get("reason") or "within_policy"
-                                        )
-                                    else:
-                                        reason = str(
-                                            decision.get("reason")
-                                            or "policy_blocked"
-                                        )
-                                        detail_reason = reason
-                                        if reason == "missing_ai_score":
-                                            missing_ai_score += 1
-                                        elif reason == "delta_cap":
-                                            skipped_delta_cap += 1
-                                        elif reason == "decrease_blocked":
-                                            skipped_decrease += 1
-                                        elif reason == "no_change":
-                                            unchanged_progress += 1
-                                        action = "progress_skipped"
-                                proposed_progress = decision.get("proposed_progress")
-                                trace_rows.append(
-                                    {
-                                        "KR": str(kr_title),
-                                        "Current": int(
-                                            decision.get("current_progress") or 0
-                                        ),
-                                        "AI Score": ai_score_val,
-                                        "Proposed": (
-                                            int(proposed_progress)
-                                            if proposed_progress is not None
-                                            else None
-                                        ),
-                                        "Delta": decision.get("delta"),
-                                        "Action": action,
-                                        "Reason": detail_reason,
-                                    }
-                                )
-
-                                if preview_ai_sync:
-                                    synced += 1
-                                else:
-                                    updates = {"gemini_analysis": result}
-                                    if (
-                                        apply_ai_score_to_progress
-                                        and decision["action"] == "apply"
-                                        and proposed_progress is not None
-                                    ):
-                                        updates["progress"] = int(proposed_progress)
-                                        applied_progress += 1
-                                        rollup_kr_ids.append(int(kr_id))
-                                        progress_undo_items.append(
-                                            {
-                                                "kr_id": int(kr_id),
-                                                "title": str(kr_title),
-                                                "previous_progress": int(
-                                                    decision.get("current_progress")
-                                                    or 0
-                                                ),
-                                                "new_progress": int(proposed_progress),
-                                            }
-                                        )
-
-                                    update_key_result(
-                                        int(kr_id),
-                                        **updates,
-                                        actor_username=username,
-                                    )
-                                    synced += 1
-                            else:
-                                err_msg = (
-                                    str(result.get("error"))
-                                    if isinstance(result, dict)
-                                    else "unknown AI error"
-                                )
-                                failed.append(f"{kr_title}: {err_msg}")
-                        except PermissionError as exc:
-                            failed.append(f"{kr_title}: {exc}")
-                        except Exception as exc:
-                            failed.append(f"{kr_title}: {exc}")
-
-                        progress_bar.progress(
-                            idx / total_kr,
-                            text=f"Syncing {idx}/{total_kr}",
-                        )
-
-                    if (
-                        not preview_ai_sync
-                        and apply_ai_score_to_progress
-                        and rollup_kr_ids
-                    ):
-                        try:
-                            recalculate_rollup_for_key_results(rollup_kr_ids)
-                        except Exception as exc:
-                            failed.append(f"Rollup refresh failed: {exc}")
-
+                        ),
+                        logger=logger,
+                        progress_callback=lambda idx, total, text: progress_bar.progress(
+                            min(1.0, float(idx) / max(1, int(total))),
+                            text=text,
+                        ),
+                    )
                     progress_bar.empty()
-
-                    if map_task_refs:
-
-                        def _deadline_iso(deadline_raw):
-                            if deadline_raw is None:
-                                return None
-                            try:
-                                if isinstance(deadline_raw, datetime):
-                                    return deadline_raw.isoformat()
-                                ts = float(deadline_raw)
-                                if ts > 1e10:
-                                    return from_epoch_millis(ts).isoformat()
-                                return from_epoch_seconds(ts).isoformat()
-                            except Exception:
-                                try:
-                                    return str(deadline_raw)
-                                except Exception:
-                                    return None
-
-                        ranked_task_refs = sorted(
-                            map_task_refs,
-                            key=lambda ref: _atlas_suggested_next_score(
-                                index[ref],
-                                actor_id,
-                                index,
-                                health=health_index.get(ref),
-                            ),
-                        )
-                        task_candidates = []
-                        for task_ref in ranked_task_refs[:80]:
-                            task_meta = index.get(task_ref, {})
-                            task_node = task_meta.get("node")
-                            task_health = health_index.get(task_ref)
-                            if task_health is None:
-                                task_health = _atlas_health_state(task_meta, index=index)
-                            parent_ref = task_meta.get("parent")
-                            parent_meta = index.get(parent_ref) if parent_ref else None
-                            parent_ai_score = (
-                                _atlas_ai_overall_score(parent_meta)
-                                if parent_meta
-                                and parent_meta.get("type") == "KEY_RESULT"
-                                else None
-                            )
-                            task_path_titles = [
-                                index[path_ref]["title"]
-                                for path_ref in (task_meta.get("path") or [])
-                                if path_ref in index
-                            ]
-                            task_candidates.append(
-                                {
-                                    "task_ref": task_ref,
-                                    "title": task_meta.get("title"),
-                                    "status": str(
-                                        task_health.get("status_label")
-                                        or "In progress"
-                                    ),
-                                    "progress": int(task_meta.get("progress", 0) or 0),
-                                    "deadline": _deadline_iso(
-                                        getattr(task_node, "deadline", None)
-                                    ),
-                                    "owner_name": task_meta.get("owner_name"),
-                                    "path": " > ".join(task_path_titles),
-                                    "attention": str(
-                                        task_health.get("reason") or "On track"
-                                    ),
-                                    "parent_kr_ai_score": parent_ai_score,
-                                    "local_priority_score": _atlas_suggested_next_score(
-                                        task_meta,
-                                        actor_id,
-                                        index,
-                                        health=task_health,
-                                    ),
-                                }
-                            )
-
-                        ai_pick = suggest_critical_task(
-                            task_candidates,
-                            context={
-                                "scope": selected_scope,
-                                "lens": map_lens,
-                                "selected_node": selected_meta.get("title"),
-                                "candidate_count": len(task_candidates),
-                            },
-                        )
-                        if isinstance(ai_pick, dict) and "error" not in ai_pick:
-                            ai_ref = str(ai_pick.get("task_ref") or "")
-                            if ai_ref in map_task_refs and ai_ref in index:
-                                ai_suggested_payload = {
-                                    "task_ref": ai_ref,
-                                    "reason": str(ai_pick.get("reason") or "").strip(),
-                                    "confidence": ai_pick.get("confidence"),
-                                    "scope": str(selected_scope),
-                                    "lens": str(map_lens),
-                                    "at": float(time.time()),
-                                }
-                                st.session_state["atlas_ai_suggested_next"] = (
-                                    ai_suggested_payload
-                                )
-                            else:
-                                ai_suggest_error = (
-                                    "AI returned a task outside this map scope."
-                                )
-                        else:
-                            ai_suggest_error = (
-                                str(ai_pick.get("error"))
-                                if isinstance(ai_pick, dict)
-                                else "AI suggestion failed."
-                            )
+                    ai_suggested_payload = sync_result.get("ai_suggested_payload")
+                    if ai_suggested_payload:
+                        st.session_state["atlas_ai_suggested_next"] = ai_suggested_payload
                     else:
                         st.session_state.pop("atlas_ai_suggested_next", None)
-
-                    if (
-                        not preview_ai_sync
-                        and apply_ai_score_to_progress
-                        and progress_undo_items
-                    ):
+                    progress_undo_items = list(
+                        sync_result.get("progress_undo_items") or []
+                    )
+                    if not preview_ai_sync and apply_ai_score_to_progress and progress_undo_items:
                         st.session_state["atlas_ai_progress_undo"] = {
                             "items": progress_undo_items,
                             "at": float(time.time()),
                         }
-
-                    st.session_state["atlas_ai_sync_report"] = {
-                        "synced": synced,
-                        "failed": failed[:6],
-                        "total": total_kr,
-                        "preview_mode": bool(preview_ai_sync),
-                        "apply_progress": bool(apply_ai_score_to_progress),
-                        "planned_progress": int(planned_progress),
-                        "applied_progress": int(applied_progress),
-                        "missing_ai_score": int(missing_ai_score),
-                        "skipped_delta_cap": int(skipped_delta_cap),
-                        "skipped_decrease": int(skipped_decrease),
-                        "unchanged_progress": int(unchanged_progress),
-                        "max_progress_delta": int(max_progress_delta),
-                        "allow_progress_decrease": bool(allow_progress_decrease),
-                        "trace_rows": trace_rows[:80],
-                        "ai_suggested_ref": (ai_suggested_payload or {}).get(
-                            "task_ref"
-                        ),
-                        "ai_suggested_reason": (ai_suggested_payload or {}).get(
-                            "reason"
-                        ),
-                        "ai_suggested_confidence": (ai_suggested_payload or {}).get(
-                            "confidence"
-                        ),
-                        "ai_suggest_error": ai_suggest_error,
-                        "at": float(time.time()),
-                    }
+                    st.session_state["atlas_ai_sync_report"] = dict(
+                        sync_result.get("sync_report") or {}
+                    )
                     st.rerun()
 
                 sync_report = st.session_state.get("atlas_ai_sync_report")
@@ -5387,7 +4214,8 @@ def render_atlas_workspace(username):
                                     or []
                                 )
                             rendered_with_events = True
-                        except Exception:
+                        except Exception as exc:
+                            logger.warning("plotly_events interaction failed; falling back to plotly selection: %s", exc)
                             points = []
 
                     if not rendered_with_events:
@@ -5424,10 +4252,20 @@ def render_atlas_workspace(username):
                         if clicked_meta["type"] == "TASK":
                             st.session_state["atlas_focus_task_ref"] = clicked_ref
                         else:
-                            branch_tasks = _collect_task_refs(clicked_ref, limit=200)
+                            branch_tasks = atlas_workspace_helpers.collect_task_refs(
+                                index=index,
+                                root_ref=clicked_ref,
+                                limit=200,
+                            )
                             if branch_tasks:
                                 st.session_state["atlas_focus_task_ref"] = (
-                                    _suggest_focus_task(branch_tasks) or branch_tasks[0]
+                                    atlas_workspace_helpers.suggest_focus_task(
+                                        task_refs=branch_tasks,
+                                        index=index,
+                                        health_index=health_index,
+                                        health_state_fn=_atlas_health_state,
+                                    )
+                                    or branch_tasks[0]
                                 )
                         st.rerun()
                 else:

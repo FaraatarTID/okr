@@ -483,7 +483,7 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                     if cached is _PARSE_MISS:
                         try:
                             cached = json.loads(gemini_analysis)
-                        except Exception:
+                        except ValueError:
                             cached = None
                         parse_cache[gemini_analysis] = cached
                     analysis = cached
@@ -578,21 +578,38 @@ def get_work_logs_by_date_range(
         return list(session.exec(statement).all())
 
 
-def get_all_krs_by_cycle(cycle_id: int) -> List[KeyResult]:
-    """Fetch all Key Results for a specific cycle with their objectives and goals loaded."""
+def get_all_krs_by_cycle(
+    cycle_id: int,
+    *,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> List[KeyResult]:
+    """Fetch Key Results for a cycle with optional windowing."""
     with get_session_context() as session:
         statement = (
             select(KeyResult)
             .join(Objective)
             .join(Goal)
             .where(Goal.cycle_id == cycle_id)
+            .order_by(KeyResult.id)
             .options(selectinload(KeyResult.objective).selectinload(Objective.goal))
         )
+        safe_offset = max(0, int(offset or 0))
+        if safe_offset:
+            statement = statement.offset(safe_offset)
+        if limit is not None:
+            safe_limit = max(1, int(limit))
+            statement = statement.limit(safe_limit)
         return list(session.exec(statement).all())
 
 
-def get_all_tasks_by_cycle(cycle_id: int) -> List[Task]:
-    """Fetch all Tasks for a specific cycle."""
+def get_all_tasks_by_cycle(
+    cycle_id: int,
+    *,
+    limit: Optional[int] = None,
+    offset: int = 0,
+) -> List[Task]:
+    """Fetch Tasks for a cycle with optional windowing."""
     with get_session_context() as session:
         statement = (
             select(Task)
@@ -600,12 +617,19 @@ def get_all_tasks_by_cycle(cycle_id: int) -> List[Task]:
             .join(Objective)
             .join(Goal)
             .where(Goal.cycle_id == cycle_id)
+            .order_by(Task.id)
             .options(
                 selectinload(Task.key_result)
                 .selectinload(KeyResult.objective)
                 .selectinload(Objective.goal)
             )
         )
+        safe_offset = max(0, int(offset or 0))
+        if safe_offset:
+            statement = statement.offset(safe_offset)
+        if limit is not None:
+            safe_limit = max(1, int(limit))
+            statement = statement.limit(safe_limit)
         return list(session.exec(statement).all())
 
 

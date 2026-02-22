@@ -10,6 +10,7 @@ import sys
 import traceback
 import json
 import base64
+import logging
 from threading import Lock
 from collections.abc import Mapping
 from datetime import datetime, date, time, timezone
@@ -20,6 +21,8 @@ from sqlalchemy import text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
 from src.config_runtime import get_bool_config, get_config_value
+
+logger = logging.getLogger(__name__)
 
 
 def _get_database_url() -> str:
@@ -55,9 +58,8 @@ def _get_database_url() -> str:
             if user and password and host and name:
                 port_part = f":{port}" if port else ""
                 return f"{driver}://{user}:{password}@{host}{port_part}/{name}"
-    except Exception:
-        # secrets not available
-        pass
+    except Exception as exc:
+        logger.debug("Streamlit secrets unavailable while resolving database URL: %s", exc)
 
     raise RuntimeError(
         "Database URL is required. Set OKR_DATABASE_URL, DATABASE_URL, or "
@@ -96,7 +98,14 @@ def _get_int_runtime_config(name: str, default: int, minimum: int) -> int:
     raw = str(get_config_value(name, str(default))).strip()
     try:
         value = int(raw)
-    except Exception:
+    except Exception as exc:
+        logger.debug(
+            "Invalid integer config %s='%s'; using default=%s (%s)",
+            name,
+            raw,
+            default,
+            exc,
+        )
         value = int(default)
     return max(int(minimum), value)
 
@@ -277,7 +286,7 @@ def _emit_database_url_advisory(url: str) -> None:
     if cache_key in _emitted_db_advisories:
         return
     _emitted_db_advisories.add(cache_key)
-    print(f"WARNING [okr_db] {advisory}")
+    logger.warning("okr_db: %s", advisory)
 
 
 def _refresh_loaded_model_references_if_needed() -> None:
@@ -286,7 +295,8 @@ def _refresh_loaded_model_references_if_needed() -> None:
     previous_identity = _last_models_identity
     try:
         import src.models as models_module
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to import src.models for hot-reload rebinding: %s", exc)
         return
 
     identity = id(getattr(models_module, "User", None))
@@ -319,8 +329,8 @@ def _refresh_loaded_model_references_if_needed() -> None:
         import streamlit as st
 
         st.cache_data.clear()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("Failed to clear Streamlit cache during model reload: %s", exc)
 
 
 def get_engine():
@@ -348,7 +358,8 @@ def _database_is_at_migration_head(alembic_cfg) -> bool:
         with get_engine().connect() as connection:
             current = MigrationContext.configure(connection).get_current_revision()
         return bool(current) and current in heads
-    except Exception:
+    except Exception as exc:
+        logger.debug("Failed to verify migration head status: %s", exc)
         return False
 
 
@@ -385,7 +396,7 @@ def run_migrations():
             # Alembic can raise KeyError('config') during cleanup when multiple
             # script threads race through init. If DB is already at head, continue.
             if _is_benign_alembic_config_keyerror(exc) and _database_is_at_migration_head(alembic_cfg):
-                print("Alembic reported KeyError('config') after reaching head; continuing.")
+                logger.warning("Alembic reported KeyError('config') after reaching head; continuing.")
             else:
                 raise
 
@@ -397,7 +408,7 @@ def create_db_and_tables():
     # Schema setup is strictly migration-driven.
     try:
         run_migrations()
-        print("Database migrations applied successfully.")
+        logger.info("Database migrations applied successfully.")
     except Exception as e:
         raw_message = f"{type(e).__name__}: {e}"
         # Redact credential-bearing URLs if present in driver errors.
@@ -406,8 +417,8 @@ def create_db_and_tables():
             r"\1\2:***@",
             raw_message,
         )
-        print(f"Migration failed: {sanitized_message}")
-        print(traceback.format_exc())
+        logger.error("Migration failed: %s", sanitized_message)
+        logger.error("%s", traceback.format_exc())
         raise RuntimeError(
             f"Database migration failed. {sanitized_message}"
         ) from e
@@ -427,7 +438,8 @@ def get_session_context():
     try:
         yield session
         session.commit()
-    except Exception:
+    except Exception as exc:
+        logger.debug("Rolling back DB session due to exception: %s", exc)
         session.rollback()
         raise
     finally:

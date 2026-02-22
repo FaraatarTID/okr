@@ -2,6 +2,7 @@ import streamlit as st
 import time
 import json
 from datetime import datetime, timedelta
+from sqlalchemy.exc import SQLAlchemyError
 from src.config_runtime import get_bool_config
 from src.utils.time_utils import utc_now_naive
 from src.ui.styles import TYPE_COLORS, TYPE_ICONS, inject_dialog_styles
@@ -340,11 +341,31 @@ def render_admin_panel_dialog():
             "Export a full logical JSON backup or restore one. "
             "Restore replaces all current application data."
         )
+        from src.domain.password_policy import is_production_runtime
+
         proxy_mutations = get_bool_config("OKR_BACKEND_PROXY_MUTATIONS", True)
-        restore_allowed = not (proxy_mutations and is_backend_enabled())
-        if not restore_allowed:
+        explicit_restore_override = get_bool_config(
+            "OKR_ENABLE_DIRECT_DB_RESTORE",
+            False,
+        )
+        restore_allowed = (
+            explicit_restore_override
+            and not is_production_runtime()
+            and not (proxy_mutations and is_backend_enabled())
+        )
+        if not explicit_restore_override:
             st.warning(
-                "Backup restore is disabled while backend-assisted mutation mode is active. "
+                "Direct DB restore from Streamlit is disabled by default. "
+                "Use backend/operator maintenance procedures for restore operations."
+            )
+        elif is_production_runtime():
+            st.warning(
+                "Direct DB restore is blocked in production runtime. "
+                "Use backend/operator maintenance procedures for restore operations."
+            )
+        elif proxy_mutations and is_backend_enabled():
+            st.warning(
+                "Direct DB restore is disabled while backend-assisted mutation mode is active. "
                 "Use backend maintenance procedures for restore operations."
             )
 
@@ -606,7 +627,7 @@ def render_weekly_ritual_dialog(username):
                     node_title = wl.task.title
                 elif wl.task and wl.task.key_result and getattr(wl.task.key_result, 'title', None):
                     node_title = wl.task.key_result.title
-            except Exception:
+            except (AttributeError, TypeError):
                 node_title = None
 
             node_title = node_title or 'Work'
@@ -1059,7 +1080,7 @@ def render_create_task_dialog(parent_id, username):
                         kr_id_val = int(parent_id.split("_")[-1])
                     else:
                         kr_id_val = int(parent_id)
-                except Exception:
+                except (TypeError, ValueError):
                     st.error(f"Invalid parent id: {parent_id}")
                     return
 
@@ -1197,7 +1218,7 @@ def render_create_objective_dialog(parent_id):
                         goal_id_val = int(parent_id.split("_")[-1])
                     else:
                         goal_id_val = int(parent_id)
-                except Exception:
+                except (TypeError, ValueError):
                     st.error(f"Invalid parent id: {parent_id}")
                     return
 
@@ -1271,7 +1292,7 @@ def render_create_kr_dialog(parent_id):
                         obj_id_val = int(parent_id.split("_")[-1])
                     else:
                         obj_id_val = int(parent_id)
-                except Exception:
+                except (TypeError, ValueError):
                     st.error(f"Invalid parent id: {parent_id}")
                     return
 
@@ -1313,7 +1334,7 @@ def render_inspector_dialog(node_id, username):
         tab = "_".join(parts[:-1]).lower()
         try:
             raw_id = int(parts[-1])
-        except Exception:
+        except (TypeError, ValueError):
             raw_id = node_id
         if tab == "goal": node_type = "GOAL"
         elif tab == "objective": node_type = "OBJECTIVE"
@@ -1370,7 +1391,7 @@ def render_mindmap_dialog(node_id):
                 # Try Task (no children)
                 stmt = select(Task).where(Task.id == node_id)
                 obj = session.exec(stmt).first()
-        except Exception:
+        except (AttributeError, SQLAlchemyError, TypeError, ValueError):
             obj = None
 
     if not obj:

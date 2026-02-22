@@ -21,7 +21,7 @@ try:
     import requests
     PDFSHIFT_AVAILABLE = True
 except ImportError:
-    pass
+    requests = None
 
 
 def _escape(value):
@@ -35,7 +35,7 @@ def _load_file_secrets() -> dict:
     """Best-effort secrets loader for non-Streamlit runtimes (backend worker/api)."""
     try:
         import tomllib
-    except Exception:
+    except ModuleNotFoundError:
         return {}
 
     candidates = []
@@ -61,7 +61,7 @@ def _load_file_secrets() -> dict:
                 data = tomllib.load(fh)
             if isinstance(data, dict):
                 return data
-        except Exception:
+        except (OSError, ValueError, TypeError):
             continue
     return {}
 
@@ -82,8 +82,8 @@ def _get_secret_value(*keys: str) -> str:
                 value = app_cfg.get(key)
                 if value not in (None, ""):
                     return str(value).strip()
-    except Exception:
-        pass
+    except (AttributeError, KeyError, RuntimeError, FileNotFoundError, OSError):
+        app_cfg = {}
 
     file_secrets = _load_file_secrets()
     app_cfg = file_secrets.get("app", {}) if isinstance(file_secrets, dict) else {}

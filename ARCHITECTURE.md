@@ -228,8 +228,8 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 - Streamlit rerun model still governs UI interaction cost and concurrency.
 - Read-heavy hierarchy paths remain in-process from Streamlit to DB (not yet fully API-decoupled).
 - Frontend mutation paths route through backend API with `OKR_BACKEND_API_URL` (`OKR_BACKEND_PROXY_MUTATIONS=true` by default in internal deployments).
-- Admin backup import/export in the Streamlit UI still performs direct DB operations and should remain restricted to trusted admin-only environments.
-- Kubernetes manifests in `deploy/k8s/` currently model the Streamlit service; backend API/worker manifests must be added for full backend-assisted parity.
+- Direct Streamlit DB restore is disabled by default and blocked in production; enable only for controlled non-production operations via `OKR_ENABLE_DIRECT_DB_RESTORE=true`.
+- Backend-assisted Kubernetes manifests are available in `deploy/k8s/` for `okr-streamlit`, `okr-backend-api`, and `okr-backend-worker`.
 
 ## Recommended Next Refactor Boundary
 
