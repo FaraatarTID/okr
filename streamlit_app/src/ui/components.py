@@ -2033,258 +2033,77 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             st.success("Saved!")
             st.rerun()
 
-    if node_type_insp == "TASK":
-        st.markdown("---")
-        st.write("### 📅 Schedule")
+    from src.utils.deadline_utils import get_deadline_status
 
-        # Start Date
-        curr_sd = (
-            node.start_date.date() if isinstance(node.start_date, datetime) else None
-        )
+    should_abort_task_schedule = inspector_form_helpers.render_task_schedule_section(
+        st_module=st,
+        node=node,
+        node_type_upper=node_type_insp,
+        node_id=node_id,
+        username=username,
+        update_task_fn=update_task,
+        datetime_cls=datetime,
+        get_deadline_status_fn=get_deadline_status,
+        rerun_fn=st.rerun,
+        logger=logger,
+    )
+    if should_abort_task_schedule:
+        return
 
-        # Deadline (now normalized to DateTime in DB)
-        curr_d = (
-            node.deadline.date()
-            if isinstance(getattr(node, "deadline", None), datetime)
-            else None
-        )
+    from src.crud import delete_work_log
 
-        col_sch1, col_sch2 = st.columns(2)
-        with col_sch1:
-            new_sd = st.date_input("Start Date", value=curr_sd, key=f"sd_inp_{node_id}")
-            if st.button("💾 Save Start Date", key=f"save_sd_{node_id}"):
-                new_sd_dt = (
-                    datetime.combine(new_sd, datetime.min.time()) if new_sd else None
-                )
-                try:
-                    update_task(node_id, start_date=new_sd_dt, actor_username=username)
-                except PermissionError as e:
-                    st.error(str(e))
-                    return
-                st.rerun()
+    should_abort_task_history = inspector_form_helpers.render_task_work_history_section(
+        st_module=st,
+        node=node,
+        node_type_upper=node_type_insp,
+        username=username,
+        get_work_logs_fn=_cached_get_work_logs,
+        delete_work_log_fn=delete_work_log,
+        rerun_fn=st.rerun,
+        datetime_cls=datetime,
+    )
+    if should_abort_task_history:
+        return
 
-        with col_sch2:
-            new_d = st.date_input("Due Date", value=curr_d, key=f"dl_inp_{node_id}")
-            if st.button("💾 Save Due Date", key=f"save_dl_{node_id}"):
-                new_dl_dt = (
-                    datetime.combine(new_d, datetime.max.time()) if new_d else None
-                )
-                try:
-                    update_task(node_id, deadline=new_dl_dt, actor_username=username)
-                except PermissionError as e:
-                    st.error(str(e))
-                    return
-                st.rerun()
+    from src.crud import update_key_result
+    from src.services.ai_service import analyze_node
+    import ast
 
-        # Clear Buttons Row
-        clr1, clr2 = st.columns(2)
-        if curr_sd and clr1.button("🗑️ Clear Start", key=f"clear_sd_{node_id}"):
-            try:
-                update_task(node_id, start_date=None, actor_username=username)
-            except PermissionError as e:
-                st.error(str(e))
-                return
-            st.rerun()
-        has_deadline = getattr(node, "deadline", None) is not None
-        if has_deadline and clr2.button("🗑️ Clear Due", key=f"clear_dl_{node_id}"):
-            try:
-                update_task(node_id, deadline=None, actor_username=username)
-            except PermissionError as e:
-                st.error(str(e))
-                return
-            st.rerun()
+    inspector_form_helpers.render_key_result_ai_analysis_section(
+        st_module=st,
+        node=node,
+        node_type_upper=node_type_insp,
+        node_id=node_id,
+        username=username,
+        analyze_node_fn=analyze_node,
+        update_key_result_fn=update_key_result,
+        json_loads_fn=json.loads,
+        literal_eval_fn=ast.literal_eval,
+        rerun_fn=st.rerun,
+        logger=logger,
+    )
 
-        if has_deadline:
-            from src.utils.deadline_utils import get_deadline_status
+    from src.crud import (
+        delete_goal,
+        delete_key_result,
+        delete_objective,
+        delete_task,
+    )
 
-            # We need to adapt get_deadline_status if it expects dict?
-            # Let's hope it's flexible or we adapt it later.
-            # Actually, node is SQLModel here.
-            try:
-                st_code, st_lbl, hlth = get_deadline_status(node)
-                st.metric("Deadline Status", st_lbl)
-                st.progress(hlth / 100)
-            except Exception as exc:
-                logger.debug("Failed to compute inspector deadline status for node %s: %s", node_id, exc)
-
-        if node_type_insp == "TASK":
-            st.markdown("---")
-            st.markdown("### 📜 Work History")
-            # Load work logs (cached)
-            w_log = _cached_get_work_logs(node.id)
-
-            # Show debug count and list logs
-            st.caption(f"Work logs found: {len(w_log)}")
-            if not w_log:
-                st.info("No work logs found for this task.")
-                if st.button("Refresh Work History"):
-                    st.rerun()
-            else:
-                w_sorted = sorted(
-                    w_log, key=lambda x: x.end_time or datetime.min, reverse=True
-                )
-                for l in w_sorted:
-                    ended_at = (
-                        l.end_time.strftime("%Y-%m-%d %H:%M")
-                        if l.end_time
-                        else "Running"
-                    )
-                    dur_str = f"{round(l.duration_minutes, 1)}m"
-                    sm = l.summary or "-"
-
-                    col_l1, col_l2 = st.columns([0.9, 0.1])
-                    col_l1.write(f"**{ended_at}** | {dur_str} | {sm}")
-                    if col_l2.button("🗑️", key=f"del_log_{l.id}"):
-                        from src.crud import delete_work_log
-
-                        try:
-                            delete_work_log(l.id, actor_username=username)
-                        except PermissionError as e:
-                            st.error(str(e))
-                            return
-                        st.rerun()
-    else:
-        st.markdown("---")
-        st.info(
-            "Work logs are attached to tasks. Select a task in Focus Map to view its Work History."
-        )
-
-    if node_type_insp == "KEY_RESULT":
-        st.markdown("---")
-        st.markdown("### 🧠 AI Strategic Analysis")
-        if st.button("✨ Run Analysis", type="primary", key=f"run_ai_insp_{node_id}"):
-            with st.spinner("Analyzing..."):
-                from src.services.ai_service import analyze_node
-                from src.crud import update_key_result
-
-                res_ai = analyze_node(
-                    node_id, "KEY_RESULT", actor_username=username
-                )
-
-                if "error" not in res_ai:
-                    # Store full analysis dict; update_key_result will serialize
-                    update_key_result(
-                        node_id, gemini_analysis=res_ai, actor_username=username
-                    )
-                    st.rerun()
-
-        analysis_raw = getattr(node, "gemini_analysis", None)
-        if analysis_raw:
-            # Parse stored JSON or accept dict. If JSON fails (old format), try literal_eval and normalize.
-            analysis_data = None
-            if isinstance(analysis_raw, str):
-                try:
-                    analysis_data = json.loads(analysis_raw)
-                except Exception as exc:
-                    logger.debug("Failed to parse KR analysis JSON for node %s: %s", node_id, exc)
-                    try:
-                        import ast
-
-                        tmp = ast.literal_eval(analysis_raw)
-                        if isinstance(tmp, dict):
-                            analysis_data = tmp
-                            # Normalize storage to proper JSON
-                            from src.crud import update_key_result
-
-                            update_key_result(
-                                node_id,
-                                gemini_analysis=analysis_data,
-                                actor_username=username,
-                            )
-                    except Exception as nested_exc:
-                        logger.debug("Failed to normalize KR analysis payload for node %s: %s", node_id, nested_exc)
-                        analysis_data = None
-            elif isinstance(analysis_raw, dict):
-                analysis_data = analysis_raw
-
-            if analysis_data:
-                c_m1, c_m2, c_m3 = st.columns(3)
-                if analysis_data.get("efficiency_score") is not None:
-                    c_m1.metric(
-                        "Efficiency", f"{analysis_data.get('efficiency_score')}%"
-                    )
-                if analysis_data.get("effectiveness_score") is not None:
-                    c_m2.metric(
-                        "Effectiveness", f"{analysis_data.get('effectiveness_score')}%"
-                    )
-                if analysis_data.get("overall_score") is not None:
-                    c_m3.metric("Overall", f"{analysis_data.get('overall_score')}%")
-
-                if analysis_data.get("summary"):
-                    st.info(analysis_data["summary"])
-
-                # Deadline warnings
-                warnings_list = analysis_data.get("deadline_warnings") or []
-                for w in warnings_list:
-                    st.warning(w)
-
-                # Gap & Quality
-                ga = analysis_data.get("gap_analysis")
-                qa = analysis_data.get("quality_assessment")
-                if ga or qa:
-                    c_g, c_q = st.columns(2)
-                    if ga:
-                        with c_g:
-                            st.markdown("**Gap Analysis**")
-                            st.write(ga)
-                    if qa:
-                        with c_q:
-                            st.markdown("**Quality Assessment**")
-                            st.write(qa)
-
-                # Proposed tasks
-                props = analysis_data.get("proposed_tasks") or []
-                if props:
-                    st.markdown("**Proposed Tasks**")
-                    for t in props:
-                        st.markdown(f"- {t}")
-            else:
-                # Fallback: show raw string in a code block for visibility
-                st.code(str(analysis_raw))
-
-    st.markdown("---")
-    user_role_del = st.session_state.get("user_role")
-    # Permissions based on SQLModel ownership
-    can_delete = bool(username)
-
-    if can_delete:
-        if st.button("🗑️ Delete Entity", type="primary", key=f"del_insp_{node_id}"):
-            from src.crud import (
-                delete_goal,
-                delete_objective,
-                delete_key_result,
-                delete_task,
-            )
-
-            try:
-                if node_type_insp == "GOAL":
-                    delete_goal(node_id, actor_username=username)
-                elif node_type_insp == "OBJECTIVE":
-                    delete_objective(node_id, actor_username=username)
-                elif node_type_insp == "KEY_RESULT":
-                    delete_key_result(node_id, actor_username=username)
-                elif node_type_insp == "TASK":
-                    delete_task(node_id, actor_username=username)
-            except PermissionError as e:
-                st.error(str(e))
-                return
-            # Clear any cached UI data that may hold stale references
-            keys_to_clear = [
-                k for k in st.session_state.keys() if k.startswith("okr_data_cache_")
-            ]
-            for k in keys_to_clear:
-                del st.session_state[k]
-
-            # Remove nav stack entries pointing to this node (both numeric and typed refs)
-            if "nav_stack" in st.session_state:
-                ns = st.session_state.nav_stack
-                ns = [v for v in ns if not (str(v).endswith(str(node_id)))]
-                st.session_state.nav_stack = ns
-
-            if "active_inspector_id" in st.session_state:
-                del st.session_state.active_inspector_id
-            st.rerun()
-
+    should_abort_delete = inspector_form_helpers.render_delete_entity_section(
+        st_module=st,
+        session_state=st.session_state,
+        node_type_upper=node_type_insp,
+        node_id=node_id,
+        username=username,
+        delete_goal_fn=delete_goal,
+        delete_objective_fn=delete_objective,
+        delete_key_result_fn=delete_key_result,
+        delete_task_fn=delete_task,
+        rerun_fn=st.rerun,
+    )
+    if should_abort_delete:
+        return
 
 def _normalize_node_type(raw_type: str) -> str:
     node_type = str(raw_type or "").upper()
@@ -3017,6 +2836,10 @@ def render_level(username):
     if "active_inspector_id" in st.session_state:
         del st.session_state.active_inspector_id
     return render_atlas_workspace(username)
+
+
+
+
 
 
 
