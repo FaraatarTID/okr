@@ -36,7 +36,7 @@ Tasks
   - Backend mutation error rate by status code.
   - Streamlit cache hit ratio on Atlas snapshot/runtime helpers.
 - Add release gate checks:
-  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=false` in production.
+  - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false` and `OKR_ALLOW_LOCAL_READ_FALLBACK=false` in production.
   - backend token/signing config present in production.
 Acceptance Criteria
 - Baseline report stored and referenced from operations docs.

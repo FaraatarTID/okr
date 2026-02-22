@@ -44,7 +44,8 @@ AI در دسترس نیست
   - اگر signing فعال است، `OKR_BACKEND_SIGNING_SECRET` بین `okr` و `backend-api` یکسان باشد
   - لاگ backend برای 400/403 بررسی شود
 - fallback محلی فقط برای شرایط اضطراری و غیر production:
-  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`
+- `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` (برای write/timer/job)
+- `OKR_ALLOW_LOCAL_READ_FALLBACK=true` (برای readهای proxied)
 
 خطای migration
 - DB از runtime قابل‌دسترسی باشد

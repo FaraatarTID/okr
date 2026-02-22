@@ -35,8 +35,10 @@ Use this section as the single entry point for all project docs.
 
 - **Config Reference (En)**: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 - **Config Reference (Fa)**: [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md)
+- **Deployment + Operations (Consolidated, En)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
+- **Deployment + Operations (Consolidated, Fa)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
 - **Deployment Checklist (En)**: [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
-- **Deployment Checklist (Fa)**: [docs/DEPLOY_CHECKLIST_FA.md](docs/DEPLOY_CHECKLIST_FA.md)
+- **Deployment Checklist (Fa, moved)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
 - **Internal Deployment Checklist (En)**: [docs/INTERNAL_DEPLOYMENT_CHECKLIST.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST.md)
 - **Internal Deployment Checklist (Fa)**: [docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md)
 - **Docker Compose (En)**: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
@@ -46,11 +48,11 @@ Use this section as the single entry point for all project docs.
 - **Reverse Proxy (En)**: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
 - **Reverse Proxy (Fa)**: [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md)
 - **Operations (En)**: [docs/OPERATIONS.md](docs/OPERATIONS.md)
-- **Operations (Fa)**: [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md)
+- **Operations (Fa, moved)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
 - **Troubleshooting (En)**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - **Troubleshooting (Fa)**: [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md)
 - **First-Run Runbook (En)**: [docs/RUNBOOK.md](docs/RUNBOOK.md)
-- **First-Run Runbook (Fa)**: [docs/RUNBOOK_FA.md](docs/RUNBOOK_FA.md)
+- **First-Run Runbook (Fa, moved)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
 
 ---
 
@@ -62,9 +64,9 @@ If you are not sure where to go, use this intent-based map.
 
 | Your Goal | Read First | Then Read |
 | --- | --- | --- |
-| First production deploy on a server | [docs/RUNBOOK.md](docs/RUNBOOK.md) / [docs/RUNBOOK_FA.md](docs/RUNBOOK_FA.md) | [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) + [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md) / [docs/DEPLOY_CHECKLIST_FA.md](docs/DEPLOY_CHECKLIST_FA.md) |
+| First production deploy on a server | [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md) / [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md) | [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) |
 | Validate env + secrets before startup | [scripts/check_deploy_config.py](scripts/check_deploy_config.py) | [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md) / [docs/DOCKER_COMPOSE_FA.md](docs/DOCKER_COMPOSE_FA.md) |
-| Run day-2 operations safely | [docs/OPERATIONS.md](docs/OPERATIONS.md) / [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md) | [docs/INTERNAL_DEPLOYMENT_CHECKLIST.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST.md) / [docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md) |
+| Run day-2 operations safely | [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md) / [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md) | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) / [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md) |
 | Debug an outage or runtime error | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) / [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md) | [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md) / [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md) |
 | Understand any config key quickly | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) / [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) | [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) for full examples |
 | Deploy on Kubernetes | [docs/KUBERNETES.md](docs/KUBERNETES.md) / [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md) | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) / [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) |
@@ -87,12 +89,12 @@ If you are not sure where to go, use this intent-based map.
 
 | نیاز شما | سند شروع |
 | --- | --- |
-| استقرار اولیه روی سرور | [docs/RUNBOOK_FA.md](docs/RUNBOOK_FA.md) |
+| استقرار اولیه روی سرور | [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md) |
 | استقرار کامل سازمانی | [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) |
-| چک‌لیست go-live | [docs/DEPLOY_CHECKLIST_FA.md](docs/DEPLOY_CHECKLIST_FA.md) |
+| چک‌لیست go-live | [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md) |
 | تنظیم Docker Compose | [docs/DOCKER_COMPOSE_FA.md](docs/DOCKER_COMPOSE_FA.md) |
 | بررسی/عیب‌یابی خطاها | [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md) |
-| عملیات روزانه و نگهداری | [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md) |
+| عملیات روزانه و نگهداری | [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md) |
 | مرجع کلیدهای تنظیمات | [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) |
 | استقرار Kubernetes | [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md) |
 | تنظیم Reverse Proxy | [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md) |
@@ -570,3 +572,5 @@ python streamlit_app/scripts/perf_hotpaths.py
 ```
 
 See `performance.md` for current baselines and budgets.
+
+

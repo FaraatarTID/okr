@@ -450,6 +450,7 @@ Security note:
 
 Related docs
 - `docs/CONFIG_REFERENCE.md`
+- `docs/DEPLOYMENT_OPERATIONS_GUIDE.md`
 - `docs/DEPLOY_CHECKLIST.md`
 - `docs/DOCKER_COMPOSE.md`
 - `docs/KUBERNETES.md`

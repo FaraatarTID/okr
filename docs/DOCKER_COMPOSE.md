@@ -14,7 +14,7 @@ Service interaction
 - `backend-api` persists async jobs in primary DB (`async_job` table).
 - `backend-worker` executes queued job kinds (`ai.generate_json`, `pdf.weekly`).
 - Backend write/timer/job paths fail closed by default if backend is unavailable.
-- Optional emergency fallback is opt-in via `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` (non-production only).
+- Optional emergency fallback is opt-in via scoped flags (non-production only): `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation/timer/job flows and `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied read flows.
 
 Single host, subdomain (recommended)
 - Copy `deploy/docker/.env.example` to `deploy/docker/.env`

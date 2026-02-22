@@ -16,7 +16,7 @@ This document covers only Learning Loop architecture:
 Learning Loop logic executes in the shared domain layer (`src/crud.py`) with backend-assisted mutation routing:
 - read path: Streamlit UI -> `src/crud.py` -> Supabase PostgreSQL.
 - write path (when backend mode is enabled): Streamlit UI -> `backend-api` -> `src/crud.py` -> Supabase PostgreSQL.
-- production default is fail-closed on backend transport failures; local mutation fallback is non-production only (`OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`).
+- production default is fail-closed on backend transport failures; local mutation fallback is non-production only (`OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true`).
 - `backend-worker` remains reserved for heavy AI/PDF async jobs, not check-in/experiment/retro mutations.
 
 ### Schema Contract
