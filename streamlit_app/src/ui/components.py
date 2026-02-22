@@ -66,6 +66,12 @@ from src.ui import atlas_focus_task_view_helpers
 from src.ui import atlas_focus_selection_helpers
 from src.ui import atlas_focus_running_helpers
 from src.ui import atlas_workspace_helpers
+from src.ui import strategy_pulse_helpers
+from src.ui import report_helpers
+from src.ui import report_export_helpers
+from src.ui import report_kr_status_helpers
+from src.ui import inspector_shell_helpers
+from src.ui import inspector_form_helpers
 
 # Keep Atlas helper symbols available from this module for existing tests/imports.
 _ATLAS_HELPER_REEXPORTS = (
@@ -120,19 +126,6 @@ from src.utils.time_utils import (
     from_epoch_seconds,
     utc_now_naive,
 )
-
-# Phase 4 Imports
-from src.domain.analysis import (
-    calculate_burnout_risk,
-    detect_strategy_gaps,
-    aggregate_achievements,
-)
-from src.domain.reporting import (
-    generate_achievement_portfolio,
-    format_portfolio_as_markdown,
-)
-from src.services.ai_service import generate_predictive_outlook
-from src.services.pdf_service import generate_achievement_portfolio_pdf
 
 logger = logging.getLogger(__name__)
 
@@ -1541,57 +1534,18 @@ def render_report_content(username, mode):
         st.info(f"No work recorded in the this period.")
         return
 
-    report_items = []
-    objective_stats = {}  # { "Objective Title": total_minutes }
-    daily_minutes = {}  # { "YYYY-MM-DD": total_minutes }
-    achievements = set()  # Completed task titles
+    from src.utils.deadline_utils import get_deadline_status
 
-    for log in logs:
-        task = log.task
-        kr = task.key_result
-        obj = kr.objective
-        goal = obj.goal
-
-        duration = log.duration_minutes
-        obj_title = obj.title
-        kr_title = kr.title
-
-        # Get deadline status if available
-        deadline_status = "—"
-        if task.deadline:
-            from src.utils.deadline_utils import get_deadline_status
-
-            try:
-                _, status_label, _ = get_deadline_status(task)
-                deadline_status = status_label
-            except Exception as exc:
-                logger.debug("Failed to compute deadline status for task %s: %s", task.id, exc)
-
-        log_date = log.start_time.strftime("%Y-%m-%d")
-
-        report_items.append(
-            {
-                "Task": task.title,
-                "Type": "TASK",
-                "Date": log_date,
-                "Time": log.start_time.strftime("%H:%M"),
-                "Duration (m)": round(duration, 2),
-                "Deadline": deadline_status,
-                "Summary": log.summary or log.note or "-",
-                "Objective": obj_title,
-                "KeyResult": kr_title,
-            }
-        )
-
-        objective_stats[obj_title] = objective_stats.get(obj_title, 0) + duration
-        daily_minutes[log_date] = daily_minutes.get(log_date, 0) + duration
-
-        if task.status == "done" or task.progress == 100:
-            achievements.add(task.title)
-
-    achievements = list(achievements)
-
-    total = sum(item["Duration (m)"] for item in report_items)
+    report_payload = report_helpers.build_report_payload(
+        logs=list(logs),
+        get_deadline_status_fn=get_deadline_status,
+        logger=logger,
+    )
+    report_items = list(report_payload.get("report_items") or [])
+    objective_stats = dict(report_payload.get("objective_stats") or {})
+    daily_minutes = dict(report_payload.get("daily_minutes") or {})
+    achievements = list(report_payload.get("achievements") or [])
+    total = float(report_payload.get("total_minutes") or 0)
 
     # === EXECUTIVE SUMMARY CARD ===
     if mode != "Daily":
@@ -1688,8 +1642,6 @@ def render_report_content(username, mode):
 
     # Deadline Health
     st.subheader("⚠️ Deadline Health")
-    from src.utils.deadline_utils import get_deadline_status
-
     cycle_id_dl = st.session_state.get("active_cycle_id")
     task_scan_limit = _cycle_task_scan_limit()
     tasks_dl = _cached_get_all_tasks_by_cycle(cycle_id_dl, limit=task_scan_limit)
@@ -1723,111 +1675,33 @@ def render_report_content(username, mode):
     krs_list = _cached_get_all_krs_by_cycle(cycle_id_krs)
 
     # PDF Export (Moved to Top)
-    try:
-        from src.services.pdf_service import generate_weekly_pdf_v2, generate_pdf_html
-        from src.services.backend_client import is_backend_enabled
-        from src.services.job_service import run_job_and_wait
-        import base64
-        import json
+    from src.services.pdf_service import generate_pdf_html, generate_weekly_pdf_v2
+    from src.services.backend_client import is_backend_enabled
+    from src.services.job_service import run_job_and_wait
+    import base64
+    import json
 
-        # Generate PDF
-        # Only include key_results filter for PDF if mode is Weekly
-        def _kr_to_dict(kr):
-            ga = getattr(kr, "gemini_analysis", None)
-            ga_dict = None
-            if isinstance(ga, str):
-                try:
-                    ga_dict = json.loads(ga)
-                except Exception as exc:
-                    logger.debug("Failed to parse KR analysis JSON for PDF export: %s", exc)
-                    ga_dict = None
-            elif isinstance(ga, dict):
-                ga_dict = ga
-            return {
-                "title": getattr(kr, "title", "Untitled"),
-                "progress": getattr(kr, "progress", 0),
-                "geminiAnalysis": ga_dict,
-            }
-
-        pdf_krs = [_kr_to_dict(k) for k in krs_list] if mode == "Weekly" else []
-
-        # Determine Title
-        pdf_title = "Daily Work Report" if mode == "Daily" else "Weekly Work Report"
-
-        pdf_bytes = None
-        if is_backend_enabled():
-            job_result = run_job_and_wait(
-                kind="pdf.weekly",
-                payload={
-                    "report_items": report_items,
-                    "objective_stats": objective_stats,
-                    "total_time_str": format_time(total),
-                    "key_results": pdf_krs,
-                    "direction": st.session_state.report_direction,
-                    "title": pdf_title,
-                    "time_label": period_label,
-                    "report_summary": st.session_state.get("report_summary"),
-                    "achievements": achievements,
-                    "filename": f"{mode}_Report_{utc_now_naive().strftime('%Y-%m-%d')}.pdf",
-                },
-                actor_username=username,
-                timeout_seconds=120,
-                poll_seconds=1.0,
-            )
-            if "error" in job_result:
-                st.warning(f"Backend PDF job failed: {job_result['error']}")
-            else:
-                encoded_pdf = str(job_result.get("content_b64") or "").strip()
-                if encoded_pdf:
-                    pdf_bytes = base64.b64decode(encoded_pdf)
-        else:
-            pdf_buffer = generate_weekly_pdf_v2(
-                report_items,
-                objective_stats,
-                format_time(total),
-                pdf_krs,
-                st.session_state.report_direction,
-                title=pdf_title,
-                time_label=period_label,
-                report_summary=st.session_state.get("report_summary"),
-                achievements=achievements,
-            )
-            if pdf_buffer:
-                pdf_bytes = pdf_buffer.getvalue()
-
-        if pdf_bytes:
-            st.download_button(
-                label="📄 Export as PDF",
-                data=pdf_bytes,
-                file_name=f"{mode}_Report_{utc_now_naive().strftime('%Y-%m-%d')}.pdf",
-                mime="application/pdf",
-                key="report_pdf_download",
-            )
-        else:
-            # Fallback: export HTML if PDFShift isn't available.
-            fallback_html = generate_pdf_html(
-                report_items,
-                objective_stats,
-                format_time(total),
-                pdf_krs,
-                st.session_state.report_direction,
-                title=pdf_title,
-                time_label=period_label,
-                report_summary=st.session_state.get("report_summary"),
-                achievements=achievements,
-            )
-            st.info(
-                "PDF engine not available (PDFShift). Download the HTML report instead."
-            )
-            st.download_button(
-                label="📄 Export as HTML",
-                data=fallback_html.encode("utf-8"),
-                file_name=f"{mode}_Report_{utc_now_naive().strftime('%Y-%m-%d')}.html",
-                mime="text/html",
-                key="report_html_download",
-            )
-    except Exception as e_pdf:
-        st.error(f"PDF Generation Error: {e_pdf}")
+    report_export_helpers.render_report_export_controls(
+        st_module=st,
+        session_state=st.session_state,
+        mode=mode,
+        period_label=period_label,
+        report_items=report_items,
+        objective_stats=objective_stats,
+        total_minutes=total,
+        krs_list=list(krs_list),
+        achievements=list(achievements),
+        username=username,
+        utc_now_naive_fn=utc_now_naive,
+        format_time_fn=format_time,
+        is_backend_enabled_fn=is_backend_enabled,
+        run_job_and_wait_fn=run_job_and_wait,
+        generate_weekly_pdf_v2_fn=generate_weekly_pdf_v2,
+        generate_pdf_html_fn=generate_pdf_html,
+        b64decode_fn=base64.b64decode,
+        json_loads_fn=json.loads,
+        logger=logger,
+    )
 
     st.markdown("---")
     st.subheader("📝 Detailed Work Log")
@@ -1908,163 +1782,24 @@ def render_report_content(username, mode):
     st.markdown(obj_table_h, unsafe_allow_html=True)
 
     # --- SECTION: Key Result Strategic Status (Weekly Only) ---
-    if mode == "Weekly":
-        st.markdown("---")
-        st.subheader("Key Result Strategic Status")
+    from src.crud import update_key_result
+    from src.services.ai_service import analyze_node
 
-        if not krs_list:
-            st.info("No Key Results found.")
-        else:
-            # Header Row
-            h1, h2, h3, h4, h5, h6 = st.columns([2.5, 1.2, 1.2, 1.2, 1.2, 0.8])
-            h1.markdown("**Key Result**")
-            h2.markdown("**Status**", help="Current normalized score")
-            h3.markdown("**Efficiency**", help="Completeness of work scope vs required")
-            h4.markdown("**Effectiveness**", help="Quality of strategy and methods")
-            h5.markdown("**Fulfillment**", help="Overall Score")
-            h6.markdown("**Action**")
-
-            st.markdown(
-                "<hr style='margin: 5px 0; border: none; border-top: 1px solid #eee;'>",
-                unsafe_allow_html=True,
-            )
-
-            from src.services.ai_service import analyze_node
-
-            for kr_item in krs_list:
-                # Prepare Data
-                kr_title_text = kr_item.title
-
-                # Render Row Layout
-                c1_kr, c2_kr, c3_kr, c4_kr, c5_kr, c6_kr = st.columns(
-                    [2.5, 1.2, 1.2, 1.2, 1.2, 0.8]
-                )
-
-                c1_kr.markdown(f"{kr_title_text}")
-                
-                # Calculate score and color band
-                kr_score = calculate_kr_score(
-                    current=kr_item.current_value,
-                    target=kr_item.target_value,
-                    start=kr_item.start_value,
-                    metric_type=kr_item.metric_type
-                )
-                score_label = get_score_label(kr_score)
-                band_class = get_score_color_band(kr_score)
-                
-                c2_kr.markdown(
-                    f"<span class='atlas-attn-chip {band_class}'>{kr_score:.2f} ({score_label})</span>",
-                    unsafe_allow_html=True
-                )
-
-                # Placeholders for dynamic updates
-                p_eff = c3_kr.empty()
-                p_qual = c4_kr.empty()
-                p_full = c5_kr.empty()
-
-                # Action Button
-                do_update = c6_kr.button(
-                    "🔄", key=f"upd_kr_{kr_item.id}", help="Update Analysis"
-                )
-
-                # Row Separator
-                st.markdown(
-                    "<hr style='margin: 5px 0; border: none; border-top: 0.5px solid #f0f0f0;'>",
-                    unsafe_allow_html=True,
-                )
-
-                # Details Placeholder
-                p_details = st.empty()
-
-                # Helper to render current state to placeholders
-                def render_kr_state(node_kr):
-                    an = node_kr.gemini_analysis
-                    eff_score = "N/A"
-                    qual_score = "N/A"
-                    fulfillment = "N/A"
-
-                    if an and isinstance(an, dict):
-                        e_val = an.get("efficiency_score")
-                        q_val = an.get("effectiveness_score")
-                        o_val = an.get("overall_score")
-
-                        if e_val is not None:
-                            eff_score = f"{e_val}%"
-                        if q_val is not None:
-                            qual_score = f"{q_val}%"
-                        if o_val is not None:
-                            fulfillment = f"{o_val}%"
-                    elif an and isinstance(an, str):
-                        # Some older analysis might be stored as strings
-                        try:
-                            an_dict = json.loads(an)
-                            e_val = an_dict.get("efficiency_score")
-                            q_val = an_dict.get("effectiveness_score")
-                            o_val = an_dict.get("overall_score")
-                            if e_val is not None:
-                                eff_score = f"{e_val}%"
-                            if q_val is not None:
-                                qual_score = f"{q_val}%"
-                            if o_val is not None:
-                                fulfillment = f"{o_val}%"
-                        except Exception as exc:
-                            logger.debug("Failed to parse KR analysis score payload: %s", exc)
-
-                    p_eff.markdown(eff_score)
-                    p_qual.markdown(qual_score)
-                    p_full.markdown(f"**{fulfillment}**")
-
-                    # Render Details
-                    with p_details.container():
-                        if an and isinstance(an, dict):
-                            with st.expander("📝 Analysis Details"):
-                                if an.get("summary"):
-                                    st.markdown(
-                                        f"**Executive Summary:** {an.get('summary')}"
-                                    )
-
-                                c_d1, c_d2 = st.columns(2)
-                                with c_d1:
-                                    if an.get("gap_analysis"):
-                                        st.markdown(
-                                            f"**Gap Analysis:**\n{an.get('gap_analysis')}"
-                                        )
-                                with c_d2:
-                                    if an.get("quality_assessment"):
-                                        st.markdown(
-                                            f"**Quality Assessment:**\n{an.get('quality_assessment')}"
-                                        )
-
-                # Initial Render
-                render_kr_state(kr_item)
-
-                # Handle Update
-                if do_update:
-                    with st.spinner("Analyzing..."):
-                        from src.crud import update_key_result
-
-                        res_kr = analyze_node(
-                            kr_item.id,
-                            "KEY_RESULT",
-                            actor_username=username,
-                        )  # analyze_node now fetches from DB
-                        if "error" in res_kr:
-                            st.error(res_kr["error"])
-                        else:
-                            # Update DB
-                            try:
-                                update_key_result(
-                                    kr_item.id,
-                                    gemini_analysis=res_kr,
-                                    actor_username=username,
-                                )
-                            except PermissionError as e:
-                                st.error(str(e))
-                                return
-                            # Update UI immediately
-                            kr_item.gemini_analysis = res_kr
-                            render_kr_state(kr_item)
-
+    should_abort_report = report_kr_status_helpers.render_weekly_kr_strategic_status(
+        st_module=st,
+        mode=mode,
+        krs_list=list(krs_list),
+        username=username,
+        calculate_kr_score_fn=calculate_kr_score,
+        get_score_label_fn=get_score_label,
+        get_score_color_band_fn=get_score_color_band,
+        analyze_node_fn=analyze_node,
+        update_key_result_fn=update_key_result,
+        json_loads_fn=json.loads,
+        logger=logger,
+    )
+    if should_abort_report:
+        return
 
 @st.fragment
 def render_inspector_content(node_id, node_type, username, show_close=True):
@@ -2086,119 +1821,54 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
     )
     from src.models import Goal, Objective, KeyResult, Task, WorkLog
 
-    # CSS for dialog styling
-    st.markdown(
-        """
-        <style>
-        div[role="dialog"] button[aria-label="Close"] { display: none; }
-        div[data-baseweb="modal-backdrop"] { display: none; }
-        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
-        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
-        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button:hover { border-color: #ff4b4b; color: #ff4b4b; background-color: #fff5f5; }
-        </style>
-    """,
-        unsafe_allow_html=True,
-    )
+    inspector_shell_helpers.inject_dialog_css(st_module=st)
 
     # Fetch node (cached to prevent rerun DB bottleneck)
     node = _cached_get_node(node_id, node_type, actor_username=username)
     if not node:
-        st.error(f"Node {node_id} ({node_type}) not found")
-        if st.button("Close", key=f"close_error_{node_id}"):
-            if "active_inspector_id" in st.session_state:
-                del st.session_state.active_inspector_id
-            st.rerun()
-        return
+        if inspector_shell_helpers.handle_missing_node(
+            st_module=st,
+            session_state=st.session_state,
+            node_id=node_id,
+            node_type=node_type,
+            rerun_fn=st.rerun,
+        ):
+            return
 
     # Extract properties from SQLModel object
-    title_insp = node.title
-    progress_insp = node.progress
-    node_type_insp = node_type.upper()
+    node_context = inspector_shell_helpers.derive_node_context(
+        node=node,
+        node_type=node_type,
+    )
+    title_insp = node_context["title"]
+    progress_insp = node_context["progress"]
+    node_type_insp = node_context["node_type_upper"]
+    has_children_insp = bool(node_context["has_children"])
 
-    # Check for children based on relationships
-    has_children_insp = False
-    if node_type_insp == "GOAL" and hasattr(node, "objectives"):
-        has_children_insp = len(node.objectives) > 0
-    elif node_type_insp == "OBJECTIVE" and hasattr(node, "key_results"):
-        has_children_insp = len(node.key_results) > 0
-    elif node_type_insp == "KEY_RESULT" and hasattr(node, "tasks"):
-        has_children_insp = len(node.tasks) > 0
-
-    # Header logic with optional close action (dialog uses close, Atlas pane does not)
-    if show_close:
-        c_head_insp, c_close_insp = st.columns([0.92, 0.08])
-        c_head_insp.markdown(f"### {TYPE_ICONS.get(node_type_insp, '')} {title_insp}")
-        if c_close_insp.button(
-            "", icon=":material/close:", key=f"close_insp_{node_id}"
-        ):
-            if "active_inspector_id" in st.session_state:
-                del st.session_state.active_inspector_id
-            st.rerun()
-    else:
-        st.markdown(f"### {TYPE_ICONS.get(node_type_insp, '')} {title_insp}")
+    inspector_shell_helpers.render_header(
+        st_module=st,
+        session_state=st.session_state,
+        show_close=show_close,
+        node_id=node_id,
+        node_type_upper=node_type_insp,
+        title=title_insp,
+        type_icons=TYPE_ICONS,
+        rerun_fn=st.rerun,
+    )
 
     with st.form(key=f"edit_form_{node_id}"):
         new_title_insp = st.text_input("Title", value=title_insp)
         new_desc_insp = st.text_area("Description", value=node.description or "")
-
-        # Show Assignee (Editable for Admin/Manager, only for Tasks)
-        new_assignee_id_insp = (
-            getattr(node, "assignee_id", None) if node_type_insp == "TASK" else None
+        new_assignee_id_insp = inspector_form_helpers.resolve_task_assignee(
+            st_module=st,
+            session_state=st.session_state,
+            node=node,
+            node_type_upper=node_type_insp,
+            node_id=node_id,
+            get_all_users_fn=_cached_get_all_users,
+            get_user_by_id_fn=_cached_get_user_by_id,
+            get_team_members_fn=_cached_get_team_members,
         )
-        if node_type_insp == "TASK":
-            user_role_insp = st.session_state.get("user_role")
-            if user_role_insp in ["admin", "manager"]:
-                potential_assignees = []
-                if user_role_insp == "admin":
-                    potential_assignees = _cached_get_all_users()
-                elif user_role_insp == "manager":
-                    manager_id_insp = st.session_state.get("user_id")
-                    manager_obj = _cached_get_user_by_id(manager_id_insp)
-                    potential_assignees = _cached_get_team_members(manager_id_insp)
-                    if manager_obj:
-                        potential_assignees.append(manager_obj)
-
-                assignee_ids: list[int] = []
-                assignee_labels: dict[int, str] = {}
-                for user_option in potential_assignees:
-                    user_id = getattr(user_option, "id", None)
-                    if user_id is None:
-                        continue
-                    user_id = int(user_id)
-                    assignee_ids.append(user_id)
-                    display_name = (
-                        user_option.display_name
-                        or user_option.username
-                        or f"user_{user_id}"
-                    )
-                    assignee_labels[user_id] = (
-                        f"{display_name} (@{user_option.username}) | #{user_id}"
-                    )
-
-                if assignee_ids:
-                    curr_idx_ass = 0
-                    if new_assignee_id_insp:
-                        try:
-                            curr_idx_ass = assignee_ids.index(int(new_assignee_id_insp))
-                        except ValueError:
-                            curr_idx_ass = 0
-
-                    selected_assignee_id = st.selectbox(
-                        "Assign To",
-                        options=assignee_ids,
-                        index=curr_idx_ass,
-                        format_func=lambda uid: assignee_labels.get(uid, f"User #{uid}"),
-                        key=f"assign_sel_{node_id}",
-                    )
-                    new_assignee_id_insp = int(selected_assignee_id)
-            else:
-                # Read-only for Members
-                if node.assignee:
-                    st.info(f"👥 **Assigned To:** {node.assignee.display_name}")
-                else:
-                    st.info("👥 **Unassigned**")
 
         col1_insp, col2_insp = st.columns(2)
         with col1_insp:
@@ -3536,139 +3206,34 @@ def render_atlas_workspace(username):
 
 
 def render_strategy_pulse_content(username):
-    """
-    Phase 4: Strategic insights dashboard tab.
-    Displays burnout risk, strategy gaps, and predictive outlook.
-    """
-    cycle_id = st.session_state.get("active_cycle_id")
-    if not cycle_id:
-        st.warning("Please select a cycle to view strategic insights.")
-        return
+    from src.domain.analysis import (
+        calculate_burnout_risk,
+        detect_strategy_gaps,
+    )
+    from src.domain.reporting import generate_achievement_portfolio
+    from src.services.ai_service import generate_predictive_outlook
+    from src.services.pdf_service import generate_achievement_portfolio_pdf
 
-    user_obj = get_user_by_username(username)
-    if not user_obj:
-        st.error("User not found.")
-        return
-
-    st.markdown("### 🧠 Strategy Pulse")
-    st.caption("Advanced insights into execution health and strategic alignment.")
-
-    col1, col2 = st.columns([1, 1])
-
-    # --- BURNOUT RISK ---
-    with col1:
-        st.markdown("#### ⚖️ Workload & Burnout")
-        with st.spinner("Calculating focus intensity..."):
-            burnout = calculate_burnout_risk(user_obj.id, days=14)
-
-        risk_label = burnout.get("risk_label", "Healthy")
-        risk_score = burnout.get("risk_score", 0)
-        
-        color = "#2e7d32" if risk_label == "Healthy" else "#f57f17" if risk_label == "Elevated" else "#e65100" if risk_label == "High" else "#c62828"
-        
-        st.markdown(f"""
-            <div style="padding: 20px; border-radius: 10px; background: {color}11; border: 1px solid {color}33;">
-                <h2 style="color: {color}; margin: 0;">{risk_label}</h2>
-                <p style="margin: 5px 0; color: #666;">Burnout Risk Score: <strong>{risk_score}/100</strong></p>
-                <div style="margin-top: 10px;">
-                    <span style="font-size: 13px; margin-right: 15px;">⏱️ Avg Daily: <strong>{burnout.get('avg_daily_minutes', 0)}m</strong></span>
-                    <span style="font-size: 13px;">✅ 14d Output: <strong>{burnout.get('completed_tasks', 0)} tasks</strong></span>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        if risk_score > 50:
-            st.warning("⚠️ High effort detected relative to output velocity. Consider task pruning or workload redistribution.")
-
-    # --- STRATEGY GAPS ---
-    with col2:
-        st.markdown("#### 🧭 Ghost Goals & Gaps")
-        with st.spinner("Scanning for alignment gaps..."):
-            gaps = detect_strategy_gaps(cycle_id, user_ids=[user_obj.id])
-        
-        if not gaps:
-            st.success("🎯 All active objectives show healthy task activity.")
-        else:
-            for gap in gaps:
-                with st.expander(f"⚠️ {gap['title']}", expanded=True):
-                    st.write(gap.get("detail", "No additional detail provided."))
-                    st.caption(
-                        f"Progress: {gap.get('progress', 0)}% | "
-                        f"Type: {gap.get('gap_type', 'N/A')} | "
-                        f"Severity: {gap.get('severity', 'N/A')}"
-                    )
-
-    st.markdown("---")
-
-    # --- PREDICTIVE OUTLOOK ---
-    st.markdown("#### 🔮 AI Predictive Outlook")
-    if st.button("✨ Generate Strategic Forecast", type="primary"):
-        with st.spinner("Gemini is synthesizing insights..."):
-            outlook = generate_predictive_outlook(
-                burnout_data=burnout,
-                strategy_gaps=gaps,
-                cycle_title=f"Cycle {cycle_id}",
-            )
-            if "error" in outlook:
-                st.error(outlook["error"])
-            else:
-                st.session_state.strategy_outlook = outlook
-
-    outlook = st.session_state.get("strategy_outlook")
-    if outlook:
-        with st.container(border=True):
-            st.markdown(f"**Confidence:** {outlook.get('confidence_level', 'N/A')}")
-            st.markdown(
-                outlook.get("outlook_markdown")
-                or outlook.get("outlook_summary")
-                or "No forecast generated."
-            )
-            
-            with st.expander("🛠️ Risk Mitigation Steps"):
-                for step in (outlook.get("mitigation_steps") or outlook.get("risk_mitigation") or []):
-                    st.markdown(f"- {step}")
-
-            pivots = outlook.get("strategic_pivots") or []
-            if pivots:
-                with st.expander("🔀 Strategic Pivots"):
-                    for pivot in pivots:
-                        st.markdown(f"- {pivot}")
-
-    st.markdown("---")
-
-    # --- ACHIEVEMENT PORTFOLIO ---
-    st.markdown("#### 🏆 Achievement Portfolio")
-    col_port1, col_port2 = st.columns([2, 1])
-    with col_port1:
-        st.caption("Generate a professional summary of high-impact contributions for this cycle.")
-    
-    with col_port2:
-        if st.button("📄 Prepare Portfolio PDF", use_container_width=True):
-            with st.spinner("Aggregating achievements..."):
-                portfolio = generate_achievement_portfolio(
-                    user_id=user_obj.id,
-                    cycle_id=cycle_id,
-                    user_display_name=user_obj.display_name or user_obj.username
-                )
-                pdf_bytes = generate_achievement_portfolio_pdf(portfolio)
-                if pdf_bytes:
-                    st.session_state.portfolio_pdf = pdf_bytes.getvalue()
-                    st.session_state.portfolio_filename = f"Portfolio_{username}_{utc_now_naive().strftime('%Y%m%d')}.pdf"
-                    st.success("Portfolio ready!")
-                else:
-                    st.error("Failed to generate PDF. Check PDF engine configuration.")
-
-    if "portfolio_pdf" in st.session_state:
-        st.download_button(
-            label="📥 Download Achievement Portfolio",
-            data=st.session_state.portfolio_pdf,
-            file_name=st.session_state.portfolio_filename,
-            mime="application/pdf",
-            use_container_width=True
-        )
+    strategy_pulse_helpers.render_strategy_pulse_content(
+        st_module=st,
+        session_state=st.session_state,
+        username=username,
+        get_user_by_username_fn=get_user_by_username,
+        calculate_burnout_risk_fn=calculate_burnout_risk,
+        detect_strategy_gaps_fn=detect_strategy_gaps,
+        generate_predictive_outlook_fn=generate_predictive_outlook,
+        generate_achievement_portfolio_fn=generate_achievement_portfolio,
+        generate_achievement_portfolio_pdf_fn=generate_achievement_portfolio_pdf,
+        utc_now_naive_fn=utc_now_naive,
+    )
 
 
 def render_level(username):
     if "active_inspector_id" in st.session_state:
         del st.session_state.active_inspector_id
     return render_atlas_workspace(username)
+
+
+
+
+
