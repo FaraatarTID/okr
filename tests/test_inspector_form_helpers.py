@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from enum import Enum
+from datetime import datetime, date
 
 from src.ui import inspector_form_helpers
 
@@ -720,3 +721,409 @@ def test_resolve_lifecycle_section_key_result_no_warning_and_invalid_state_fallb
     assert new_reflection == "kr reflection"
     assert fake_st.warning_calls == []
     assert any("Draft" in msg for msg in fake_st.info_calls)
+
+class _FakeScheduleLogger:
+    def __init__(self):
+        self.debug_calls = []
+
+    def debug(self, message, *args):
+        if args:
+            message = message % args
+        self.debug_calls.append(str(message))
+
+
+class _ScheduleColumn:
+    def __init__(self, *, parent):
+        self._parent = parent
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def button(self, label, key=None, **_kwargs):
+        button_key = str(key) if key is not None else str(label)
+        return bool(self._parent.buttons.get(button_key, False))
+
+
+class _FakeScheduleSt:
+    def __init__(self, *, buttons=None, dates=None):
+        self.buttons = dict(buttons or {})
+        self.dates = dict(dates or {})
+        self.markdown_calls = []
+        self.write_calls = []
+        self.error_calls = []
+        self.info_calls = []
+        self.metric_calls = []
+        self.progress_calls = []
+        self.date_input_calls = []
+        self.columns_specs = []
+
+    def markdown(self, value, **_kwargs):
+        self.markdown_calls.append(str(value))
+
+    def write(self, value):
+        self.write_calls.append(str(value))
+
+    def error(self, value):
+        self.error_calls.append(str(value))
+
+    def info(self, value):
+        self.info_calls.append(str(value))
+
+    def metric(self, label, value):
+        self.metric_calls.append((str(label), str(value)))
+
+    def progress(self, value):
+        self.progress_calls.append(float(value))
+
+    def date_input(self, label, value=None, key=None):
+        self.date_input_calls.append(
+            {"label": str(label), "value": value, "key": str(key)}
+        )
+        return self.dates.get(str(key), value)
+
+    def button(self, label, key=None, **_kwargs):
+        button_key = str(key) if key is not None else str(label)
+        return bool(self.buttons.get(button_key, False))
+
+    def columns(self, spec, **_kwargs):
+        self.columns_specs.append(spec if isinstance(spec, int) else list(spec))
+        count = int(spec) if isinstance(spec, int) else len(spec)
+        return [_ScheduleColumn(parent=self) for _ in range(count)]
+
+
+def test_render_task_schedule_section_non_task_noop():
+    fake_st = _FakeScheduleSt()
+    aborted = inspector_form_helpers.render_task_schedule_section(
+        st_module=fake_st,
+        node=SimpleNamespace(),
+        node_type_upper="GOAL",
+        node_id=1,
+        username="alice",
+        update_task_fn=lambda *_args, **_kwargs: None,
+        datetime_cls=datetime,
+        get_deadline_status_fn=lambda _node: ("ok", "On Track", 90),
+        rerun_fn=lambda: None,
+        logger=None,
+    )
+    assert aborted is False
+    assert fake_st.markdown_calls == []
+
+
+def test_render_task_schedule_section_save_start_updates_and_reruns():
+    fake_st = _FakeScheduleSt(
+        buttons={"save_sd_42": True},
+        dates={"sd_inp_42": date(2026, 2, 10)},
+    )
+    node = SimpleNamespace(
+        start_date=datetime(2026, 2, 1, 9, 0),
+        deadline=None,
+    )
+    update_calls = []
+    reruns = []
+
+    aborted = inspector_form_helpers.render_task_schedule_section(
+        st_module=fake_st,
+        node=node,
+        node_type_upper="TASK",
+        node_id=42,
+        username="alice",
+        update_task_fn=lambda node_id, **kwargs: update_calls.append((node_id, kwargs)),
+        datetime_cls=datetime,
+        get_deadline_status_fn=lambda _node: ("ok", "On Track", 90),
+        rerun_fn=lambda: reruns.append("rerun"),
+        logger=None,
+    )
+
+    assert aborted is False
+    assert len(update_calls) == 1
+    assert update_calls[0][0] == 42
+    assert update_calls[0][1]["actor_username"] == "alice"
+    assert update_calls[0][1]["start_date"] == datetime(2026, 2, 10, 0, 0)
+    assert reruns == ["rerun"]
+
+
+def test_render_task_schedule_section_clear_due_permission_error_aborts():
+    fake_st = _FakeScheduleSt(buttons={"clear_dl_43": True})
+    node = SimpleNamespace(
+        start_date=None,
+        deadline=datetime(2026, 3, 1, 18, 0),
+    )
+    reruns = []
+
+    def _update_task(_node_id, **kwargs):
+        if "deadline" in kwargs and kwargs["deadline"] is None:
+            raise PermissionError("denied")
+
+    aborted = inspector_form_helpers.render_task_schedule_section(
+        st_module=fake_st,
+        node=node,
+        node_type_upper="TASK",
+        node_id=43,
+        username="alice",
+        update_task_fn=_update_task,
+        datetime_cls=datetime,
+        get_deadline_status_fn=lambda _node: ("at_risk", "At Risk", 40),
+        rerun_fn=lambda: reruns.append("rerun"),
+        logger=None,
+    )
+
+    assert aborted is True
+    assert fake_st.error_calls == ["denied"]
+    assert reruns == []
+
+
+def test_render_task_schedule_section_deadline_status_display_and_debug_fallback():
+    fake_st = _FakeScheduleSt()
+    logger = _FakeScheduleLogger()
+    node = SimpleNamespace(
+        start_date=None,
+        deadline=datetime(2026, 3, 5, 10, 0),
+    )
+
+    aborted = inspector_form_helpers.render_task_schedule_section(
+        st_module=fake_st,
+        node=node,
+        node_type_upper="TASK",
+        node_id=44,
+        username="alice",
+        update_task_fn=lambda *_args, **_kwargs: None,
+        datetime_cls=datetime,
+        get_deadline_status_fn=lambda _node: ("on_track", "On Track", 80),
+        rerun_fn=lambda: None,
+        logger=logger,
+    )
+
+    assert aborted is False
+    assert fake_st.metric_calls == [("Deadline Status", "On Track")]
+    assert fake_st.progress_calls == [0.8]
+    assert logger.debug_calls == []
+
+    # Failure branch logs debug without crashing
+    fake_st2 = _FakeScheduleSt()
+    logger2 = _FakeScheduleLogger()
+    _ = inspector_form_helpers.render_task_schedule_section(
+        st_module=fake_st2,
+        node=node,
+        node_type_upper="TASK",
+        node_id=45,
+        username="alice",
+        update_task_fn=lambda *_args, **_kwargs: None,
+        datetime_cls=datetime,
+        get_deadline_status_fn=lambda _node: (_ for _ in ()).throw(RuntimeError("boom")),
+        rerun_fn=lambda: None,
+        logger=logger2,
+    )
+    assert any("Failed to compute inspector deadline status for node 45" in msg for msg in logger2.debug_calls)
+
+class _WorkHistoryColumn:
+    def __init__(self, *, parent):
+        self._parent = parent
+
+    def write(self, value):
+        self._parent.write_calls.append(str(value))
+
+    def button(self, label, key=None, **_kwargs):
+        button_key = str(key) if key is not None else str(label)
+        return bool(self._parent.buttons.get(button_key, False))
+
+
+class _FakeWorkHistorySt:
+    def __init__(self, *, buttons=None):
+        self.buttons = dict(buttons or {})
+        self.markdown_calls = []
+        self.caption_calls = []
+        self.info_calls = []
+        self.error_calls = []
+        self.write_calls = []
+        self.columns_specs = []
+
+    def markdown(self, value, **_kwargs):
+        self.markdown_calls.append(str(value))
+
+    def caption(self, value):
+        self.caption_calls.append(str(value))
+
+    def info(self, value):
+        self.info_calls.append(str(value))
+
+    def error(self, value):
+        self.error_calls.append(str(value))
+
+    def button(self, label, key=None, **_kwargs):
+        button_key = str(key) if key is not None else str(label)
+        return bool(self.buttons.get(button_key, False))
+
+    def columns(self, spec, **_kwargs):
+        self.columns_specs.append(spec if isinstance(spec, int) else list(spec))
+        count = int(spec) if isinstance(spec, int) else len(spec)
+        return [_WorkHistoryColumn(parent=self) for _ in range(count)]
+
+
+def test_render_task_work_history_section_non_task_info():
+    fake_st = _FakeWorkHistorySt()
+    aborted = inspector_form_helpers.render_task_work_history_section(
+        st_module=fake_st,
+        node=SimpleNamespace(id=1),
+        node_type_upper="GOAL",
+        username="alice",
+        get_work_logs_fn=lambda _task_id: [],
+        delete_work_log_fn=lambda *_args, **_kwargs: None,
+        rerun_fn=lambda: None,
+        datetime_cls=datetime,
+    )
+    assert aborted is False
+    assert any("Work logs are attached to tasks" in text for text in fake_st.info_calls)
+
+
+def test_render_task_work_history_section_empty_logs_refresh():
+    fake_st = _FakeWorkHistorySt(buttons={"Refresh Work History": True})
+    reruns = []
+    aborted = inspector_form_helpers.render_task_work_history_section(
+        st_module=fake_st,
+        node=SimpleNamespace(id=2),
+        node_type_upper="TASK",
+        username="alice",
+        get_work_logs_fn=lambda _task_id: [],
+        delete_work_log_fn=lambda *_args, **_kwargs: None,
+        rerun_fn=lambda: reruns.append("rerun"),
+        datetime_cls=datetime,
+    )
+    assert aborted is False
+    assert fake_st.caption_calls == ["Work logs found: 0"]
+    assert reruns == ["rerun"]
+
+
+def test_render_task_work_history_section_delete_success():
+    fake_st = _FakeWorkHistorySt(buttons={"del_log_10": True})
+    deleted = []
+    reruns = []
+    logs = [
+        SimpleNamespace(id=10, end_time=datetime(2026, 2, 1, 10, 0), duration_minutes=12.4, summary="Done")
+    ]
+    aborted = inspector_form_helpers.render_task_work_history_section(
+        st_module=fake_st,
+        node=SimpleNamespace(id=3),
+        node_type_upper="TASK",
+        username="alice",
+        get_work_logs_fn=lambda _task_id: logs,
+        delete_work_log_fn=lambda log_id, **kwargs: deleted.append((log_id, kwargs)),
+        rerun_fn=lambda: reruns.append("rerun"),
+        datetime_cls=datetime,
+    )
+    assert aborted is False
+    assert deleted == [(10, {"actor_username": "alice"})]
+    assert reruns == ["rerun"]
+
+
+def test_render_task_work_history_section_delete_permission_error_aborts():
+    fake_st = _FakeWorkHistorySt(buttons={"del_log_10": True})
+    logs = [
+        SimpleNamespace(id=10, end_time=datetime(2026, 2, 1, 10, 0), duration_minutes=12.4, summary="Done")
+    ]
+
+    aborted = inspector_form_helpers.render_task_work_history_section(
+        st_module=fake_st,
+        node=SimpleNamespace(id=3),
+        node_type_upper="TASK",
+        username="alice",
+        get_work_logs_fn=lambda _task_id: logs,
+        delete_work_log_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("denied")),
+        rerun_fn=lambda: None,
+        datetime_cls=datetime,
+    )
+    assert aborted is True
+    assert fake_st.error_calls == ["denied"]
+
+class _FakeDeleteSt:
+    def __init__(self, *, buttons=None):
+        self.buttons = dict(buttons or {})
+        self.markdown_calls = []
+        self.error_calls = []
+
+    def markdown(self, value, **_kwargs):
+        self.markdown_calls.append(str(value))
+
+    def error(self, value):
+        self.error_calls.append(str(value))
+
+    def button(self, label, key=None, **_kwargs):
+        button_key = str(key) if key is not None else str(label)
+        return bool(self.buttons.get(button_key, False))
+
+
+def test_render_delete_entity_section_no_username_noop():
+    fake_st = _FakeDeleteSt()
+    session_state = {}
+    aborted = inspector_form_helpers.render_delete_entity_section(
+        st_module=fake_st,
+        session_state=session_state,
+        node_type_upper="TASK",
+        node_id=7,
+        username="",
+        delete_goal_fn=lambda *_args, **_kwargs: None,
+        delete_objective_fn=lambda *_args, **_kwargs: None,
+        delete_key_result_fn=lambda *_args, **_kwargs: None,
+        delete_task_fn=lambda *_args, **_kwargs: None,
+        rerun_fn=lambda: None,
+    )
+    assert aborted is False
+    assert fake_st.markdown_calls == ["---"]
+
+
+def test_render_delete_entity_section_permission_error_aborts():
+    fake_st = _FakeDeleteSt(buttons={"del_insp_8": True})
+    session_state = {"active_inspector_id": "task_8"}
+
+    aborted = inspector_form_helpers.render_delete_entity_section(
+        st_module=fake_st,
+        session_state=session_state,
+        node_type_upper="TASK",
+        node_id=8,
+        username="alice",
+        delete_goal_fn=lambda *_args, **_kwargs: None,
+        delete_objective_fn=lambda *_args, **_kwargs: None,
+        delete_key_result_fn=lambda *_args, **_kwargs: None,
+        delete_task_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("denied")),
+        rerun_fn=lambda: None,
+    )
+    assert aborted is True
+    assert fake_st.error_calls == ["denied"]
+    assert "active_inspector_id" in session_state
+
+
+def test_render_delete_entity_section_success_clears_state_and_reruns():
+    fake_st = _FakeDeleteSt(buttons={"del_insp_9": True})
+    session_state = {
+        "okr_data_cache_a": 1,
+        "okr_data_cache_b": 2,
+        "nav_stack": ["goal_1", "task_9", 9, "objective_2"],
+        "active_inspector_id": "task_9",
+        "keep_me": "x",
+    }
+    deleted = []
+    reruns = []
+
+    aborted = inspector_form_helpers.render_delete_entity_section(
+        st_module=fake_st,
+        session_state=session_state,
+        node_type_upper="TASK",
+        node_id=9,
+        username="alice",
+        delete_goal_fn=lambda *_args, **_kwargs: None,
+        delete_objective_fn=lambda *_args, **_kwargs: None,
+        delete_key_result_fn=lambda *_args, **_kwargs: None,
+        delete_task_fn=lambda node_id, **kwargs: deleted.append((node_id, kwargs)),
+        rerun_fn=lambda: reruns.append("rerun"),
+    )
+
+    assert aborted is False
+    assert deleted == [(9, {"actor_username": "alice"})]
+    assert reruns == ["rerun"]
+    assert "okr_data_cache_a" not in session_state
+    assert "okr_data_cache_b" not in session_state
+    assert "active_inspector_id" not in session_state
+    assert session_state["nav_stack"] == ["goal_1", "objective_2"]
+    assert session_state["keep_me"] == "x"

@@ -437,3 +437,316 @@ def resolve_lifecycle_section(
         or ""
     )
     return new_state, new_reflection
+
+
+def render_task_schedule_section(
+    *,
+    st_module: Any,
+    node: Any,
+    node_type_upper: str,
+    node_id: int,
+    username: str,
+    update_task_fn: Callable[..., Any],
+    datetime_cls: Any,
+    get_deadline_status_fn: Callable[[Any], tuple[Any, str, Any]],
+    rerun_fn: Callable[[], Any],
+    logger: Any,
+) -> bool:
+    """Render task scheduling/deadline controls.
+
+    Returns True when caller should abort due to an error.
+    """
+    if node_type_upper != "TASK":
+        return False
+
+    st_module.markdown("---")
+    st_module.write("### Schedule")
+
+    curr_sd = (
+        node.start_date.date()
+        if isinstance(getattr(node, "start_date", None), datetime_cls)
+        else None
+    )
+    curr_d = (
+        node.deadline.date()
+        if isinstance(getattr(node, "deadline", None), datetime_cls)
+        else None
+    )
+
+    col_sch1, col_sch2 = st_module.columns(2)
+    with col_sch1:
+        new_sd = st_module.date_input("Start Date", value=curr_sd, key=f"sd_inp_{node_id}")
+        if st_module.button("Save Start Date", key=f"save_sd_{node_id}"):
+            new_sd_dt = (
+                datetime_cls.combine(new_sd, datetime_cls.min.time()) if new_sd else None
+            )
+            try:
+                update_task_fn(node_id, start_date=new_sd_dt, actor_username=username)
+            except PermissionError as exc:
+                st_module.error(str(exc))
+                return True
+            rerun_fn()
+
+    with col_sch2:
+        new_d = st_module.date_input("Due Date", value=curr_d, key=f"dl_inp_{node_id}")
+        if st_module.button("Save Due Date", key=f"save_dl_{node_id}"):
+            new_dl_dt = (
+                datetime_cls.combine(new_d, datetime_cls.max.time()) if new_d else None
+            )
+            try:
+                update_task_fn(node_id, deadline=new_dl_dt, actor_username=username)
+            except PermissionError as exc:
+                st_module.error(str(exc))
+                return True
+            rerun_fn()
+
+    clr1, clr2 = st_module.columns(2)
+    if curr_sd and clr1.button("Clear Start", key=f"clear_sd_{node_id}"):
+        try:
+            update_task_fn(node_id, start_date=None, actor_username=username)
+        except PermissionError as exc:
+            st_module.error(str(exc))
+            return True
+        rerun_fn()
+
+    has_deadline = getattr(node, "deadline", None) is not None
+    if has_deadline and clr2.button("Clear Due", key=f"clear_dl_{node_id}"):
+        try:
+            update_task_fn(node_id, deadline=None, actor_username=username)
+        except PermissionError as exc:
+            st_module.error(str(exc))
+            return True
+        rerun_fn()
+
+    if has_deadline:
+        try:
+            _status_code, status_label, health = get_deadline_status_fn(node)
+            st_module.metric("Deadline Status", status_label)
+            st_module.progress(float(health) / 100.0)
+        except Exception as exc:
+            if logger is not None:
+                logger.debug(
+                    "Failed to compute inspector deadline status for node %s: %s",
+                    node_id,
+                    exc,
+                )
+
+    return False
+
+
+def render_task_work_history_section(
+    *,
+    st_module: Any,
+    node: Any,
+    node_type_upper: str,
+    username: str,
+    get_work_logs_fn: Callable[[Any], list[Any]],
+    delete_work_log_fn: Callable[..., Any],
+    rerun_fn: Callable[[], Any],
+    datetime_cls: Any,
+) -> bool:
+    """Render task work-history list and delete actions.
+
+    Returns True when caller should abort due to an error.
+    """
+    if node_type_upper != "TASK":
+        st_module.markdown("---")
+        st_module.info(
+            "Work logs are attached to tasks. Select a task in Focus Map to view its Work History."
+        )
+        return False
+
+    st_module.markdown("---")
+    st_module.markdown("### Work History")
+    work_logs = list(get_work_logs_fn(getattr(node, "id", None)) or [])
+    st_module.caption(f"Work logs found: {len(work_logs)}")
+
+    if not work_logs:
+        st_module.info("No work logs found for this task.")
+        if st_module.button("Refresh Work History"):
+            rerun_fn()
+        return False
+
+    sorted_logs = sorted(
+        work_logs,
+        key=lambda item: getattr(item, "end_time", None) or datetime_cls.min,
+        reverse=True,
+    )
+    for log_item in sorted_logs:
+        end_time_value = getattr(log_item, "end_time", None)
+        ended_at = (
+            end_time_value.strftime("%Y-%m-%d %H:%M")
+            if end_time_value
+            else "Running"
+        )
+        duration_minutes = round(float(getattr(log_item, "duration_minutes", 0) or 0), 1)
+        summary_text = getattr(log_item, "summary", None) or "-"
+
+        col_l1, col_l2 = st_module.columns([0.9, 0.1])
+        col_l1.write(f"**{ended_at}** | {duration_minutes}m | {summary_text}")
+        if col_l2.button("Delete", key=f"del_log_{getattr(log_item, 'id', '')}"):
+            try:
+                delete_work_log_fn(
+                    getattr(log_item, "id", None),
+                    actor_username=username,
+                )
+            except PermissionError as exc:
+                st_module.error(str(exc))
+                return True
+            rerun_fn()
+
+    return False
+
+
+def render_key_result_ai_analysis_section(
+    *,
+    st_module: Any,
+    node: Any,
+    node_type_upper: str,
+    node_id: int,
+    username: str,
+    analyze_node_fn: Callable[..., dict[str, Any]],
+    update_key_result_fn: Callable[..., Any],
+    json_loads_fn: Callable[[str], Any],
+    literal_eval_fn: Callable[[str], Any],
+    rerun_fn: Callable[[], Any],
+    logger: Any,
+) -> None:
+    if node_type_upper != "KEY_RESULT":
+        return
+
+    st_module.markdown("---")
+    st_module.markdown("### AI Strategic Analysis")
+    if st_module.button("Run Analysis", type="primary", key=f"run_ai_insp_{node_id}"):
+        with st_module.spinner("Analyzing..."):
+            result = analyze_node_fn(node_id, "KEY_RESULT", actor_username=username)
+            if "error" not in result:
+                update_key_result_fn(
+                    node_id,
+                    gemini_analysis=result,
+                    actor_username=username,
+                )
+                rerun_fn()
+
+    analysis_raw = getattr(node, "gemini_analysis", None)
+    if not analysis_raw:
+        return
+
+    analysis_data = None
+    if isinstance(analysis_raw, str):
+        try:
+            parsed = json_loads_fn(analysis_raw)
+            analysis_data = parsed if isinstance(parsed, dict) else None
+        except Exception as exc:
+            if logger is not None:
+                logger.debug("Failed to parse KR analysis JSON for node %s: %s", node_id, exc)
+            try:
+                fallback = literal_eval_fn(analysis_raw)
+                if isinstance(fallback, dict):
+                    analysis_data = fallback
+                    update_key_result_fn(
+                        node_id,
+                        gemini_analysis=analysis_data,
+                        actor_username=username,
+                    )
+            except Exception as nested_exc:
+                if logger is not None:
+                    logger.debug(
+                        "Failed to normalize KR analysis payload for node %s: %s",
+                        node_id,
+                        nested_exc,
+                    )
+                analysis_data = None
+    elif isinstance(analysis_raw, dict):
+        analysis_data = analysis_raw
+
+    if not analysis_data:
+        st_module.code(str(analysis_raw))
+        return
+
+    c_m1, c_m2, c_m3 = st_module.columns(3)
+    if analysis_data.get("efficiency_score") is not None:
+        c_m1.metric("Efficiency", f"{analysis_data.get('efficiency_score')}%")
+    if analysis_data.get("effectiveness_score") is not None:
+        c_m2.metric("Effectiveness", f"{analysis_data.get('effectiveness_score')}%")
+    if analysis_data.get("overall_score") is not None:
+        c_m3.metric("Overall", f"{analysis_data.get('overall_score')}%")
+
+    if analysis_data.get("summary"):
+        st_module.info(analysis_data["summary"])
+
+    for warning_item in (analysis_data.get("deadline_warnings") or []):
+        st_module.warning(warning_item)
+
+    gap_analysis = analysis_data.get("gap_analysis")
+    quality_assessment = analysis_data.get("quality_assessment")
+    if gap_analysis or quality_assessment:
+        c_g, c_q = st_module.columns(2)
+        if gap_analysis:
+            c_g.markdown("**Gap Analysis**")
+            c_g.write(gap_analysis)
+        if quality_assessment:
+            c_q.markdown("**Quality Assessment**")
+            c_q.write(quality_assessment)
+
+    proposed_tasks = analysis_data.get("proposed_tasks") or []
+    if proposed_tasks:
+        st_module.markdown("**Proposed Tasks**")
+        for item in proposed_tasks:
+            st_module.markdown(f"- {item}")
+
+
+def render_delete_entity_section(
+    *,
+    st_module: Any,
+    session_state: dict[str, Any],
+    node_type_upper: str,
+    node_id: int,
+    username: str,
+    delete_goal_fn: Callable[..., Any],
+    delete_objective_fn: Callable[..., Any],
+    delete_key_result_fn: Callable[..., Any],
+    delete_task_fn: Callable[..., Any],
+    rerun_fn: Callable[[], Any],
+) -> bool:
+    """Render inspector delete action and cleanup.
+
+    Returns True when caller should abort due to an error.
+    """
+    st_module.markdown("---")
+    can_delete = bool(username)
+    if not can_delete:
+        return False
+
+    if st_module.button("Delete Entity", type="primary", key=f"del_insp_{node_id}"):
+        try:
+            if node_type_upper == "GOAL":
+                delete_goal_fn(node_id, actor_username=username)
+            elif node_type_upper == "OBJECTIVE":
+                delete_objective_fn(node_id, actor_username=username)
+            elif node_type_upper == "KEY_RESULT":
+                delete_key_result_fn(node_id, actor_username=username)
+            elif node_type_upper == "TASK":
+                delete_task_fn(node_id, actor_username=username)
+        except PermissionError as exc:
+            st_module.error(str(exc))
+            return True
+
+        keys_to_clear = [
+            key for key in session_state.keys() if str(key).startswith("okr_data_cache_")
+        ]
+        for key in keys_to_clear:
+            del session_state[key]
+
+        if "nav_stack" in session_state:
+            nav_stack = session_state.get("nav_stack") or []
+            session_state["nav_stack"] = [
+                item for item in nav_stack if not str(item).endswith(str(node_id))
+            ]
+
+        if "active_inspector_id" in session_state:
+            del session_state["active_inspector_id"]
+
+        rerun_fn()
+
+    return False
