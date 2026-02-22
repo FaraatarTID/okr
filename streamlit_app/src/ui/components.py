@@ -6,7 +6,6 @@ import json
 import hashlib
 import logging
 from datetime import datetime
-from types import SimpleNamespace
 import plotly.graph_objects as go
 from sqlalchemy import inspect as sa_inspect
 from src.config_runtime import get_bool_config
@@ -57,22 +56,20 @@ from src.ui.atlas_helpers import (
     _atlas_timer_owner_id,
 )
 from src.ui import atlas_treemap_helpers
-from src.ui import atlas_focus_panel_helpers
-from src.ui import atlas_map_tab_helpers
-from src.ui import atlas_inspector_helpers
-from src.ui import atlas_navigation_helpers
-from src.ui import atlas_focus_map_shell_helpers
-from src.ui import atlas_focus_task_view_helpers
-from src.ui import atlas_focus_selection_helpers
-from src.ui import atlas_focus_running_helpers
+from src.ui import atlas_focus_section_helpers
 from src.ui import atlas_workspace_helpers
+from src.ui import atlas_workspace_bootstrap_helpers
+from src.ui import atlas_workspace_tabs_helpers
 from src.ui import strategy_pulse_helpers
 from src.ui import report_helpers
 from src.ui import report_export_helpers
 from src.ui import report_kr_status_helpers
+from src.ui import atlas_index_helpers
+from src.ui import atlas_priority_helpers
 from src.ui import inspector_shell_helpers
 from src.ui import inspector_form_helpers
 from src.ui import inspector_alignment_helpers
+from src.ui import inspector_navigation_helpers
 
 # Keep Atlas helper symbols available from this module for existing tests/imports.
 _ATLAS_HELPER_REEXPORTS = (
@@ -1974,65 +1971,39 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             rerun_fn=st.rerun,
         )
 
-        user_role_perm = st.session_state.get("user_role")
         can_save_insp = bool(username)
 
-        if st.form_submit_button("💾 Save Changes", disabled=not can_save_insp):
-            updates = {
-                "title": new_title_insp,
-                "description": new_desc_insp,
-                "progress": new_progress_insp,
-            }
-
-            try:
-                if node_type_insp == "GOAL":
-                    updates.update(
-                        {
-                            "cycle_id": new_cycle_id_insp,
-                            "strategy_tags": [
-                                t.strip()
-                                for t in new_strat_tags_input.split(",")
-                                if t.strip()
-                            ],
-                        }
-                    )
-                    update_goal(node_id, actor_username=username, **updates)
-                elif node_type_insp == "OBJECTIVE":
-                    updates.update({
-                        "score_mode": new_score_mode,
-                        "weight": new_obj_weight_insp,
-                        "state": new_state,
-                        "final_reflection": new_reflection,
-                    })
-                    update_objective(node_id, actor_username=username, **updates)
-                elif node_type_insp == "KEY_RESULT":
-                    updates.update(
-                        {
-                            "start_value": new_start_insp,
-                            "target_value": new_target_insp,
-                            "current_value": new_curr_insp,
-                            "unit": new_unit_insp,
-                            "metric_type": new_metric_type,
-                            "weight": new_weight_insp,
-                            "state": new_state,
-                            "final_reflection": new_reflection,
-                            "initiative_tags": [
-                                t.strip()
-                                for t in new_init_tags_input.split(",")
-                                if t.strip()
-                            ],
-                        }
-                    )
-                    update_key_result(node_id, actor_username=username, **updates)
-                elif node_type_insp == "TASK":
-                    updates.update({"assignee_id": new_assignee_id_insp})
-                    update_task(node_id, actor_username=username, **updates)
-            except PermissionError as e:
-                st.error(str(e))
-                return
-            st.success("Saved!")
-            st.rerun()
-
+        should_abort_save = inspector_form_helpers.handle_save_changes(
+            st_module=st,
+            can_save=can_save_insp,
+            node_type_upper=node_type_insp,
+            node_id=node_id,
+            username=username,
+            new_title=new_title_insp,
+            new_description=new_desc_insp,
+            new_progress=int(new_progress_insp),
+            new_cycle_id=new_cycle_id_insp,
+            new_strat_tags_input=new_strat_tags_input,
+            new_score_mode=new_score_mode,
+            new_obj_weight=float(new_obj_weight_insp),
+            new_state=new_state,
+            new_reflection=new_reflection,
+            new_start=float(new_start_insp),
+            new_target=float(new_target_insp),
+            new_current=float(new_curr_insp),
+            new_unit=new_unit_insp,
+            new_metric_type=new_metric_type,
+            new_weight=float(new_weight_insp),
+            new_init_tags_input=new_init_tags_input,
+            new_assignee_id=new_assignee_id_insp,
+            update_goal_fn=update_goal,
+            update_objective_fn=update_objective,
+            update_key_result_fn=update_key_result,
+            update_task_fn=update_task,
+            rerun_fn=st.rerun,
+        )
+        if should_abort_save:
+            return
     from src.utils.deadline_utils import get_deadline_status
 
     should_abort_task_schedule = inspector_form_helpers.render_task_schedule_section(
@@ -2105,245 +2076,12 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
     if should_abort_delete:
         return
 
-def _normalize_node_type(raw_type: str) -> str:
-    node_type = str(raw_type or "").upper()
-    if node_type == "KEYRESULT":
-        return "KEY_RESULT"
-    return node_type
-
-
-def _typed_ref_for_node(node) -> str:
-    tab = str(getattr(node, "__tablename__", "") or "").lower()
-    if tab == "keyresult":
-        tab = "key_result"
-    return f"{tab}_{getattr(node, 'id', '')}"
-
-
 def _parse_typed_ref(node_ref: str):
-    if not isinstance(node_ref, str) or "_" not in node_ref:
-        return None, None
-    parts = node_ref.split("_")
-    tab = "_".join(parts[:-1]).lower()
-    try:
-        node_id = int(parts[-1])
-    except Exception as exc:
-        logger.debug("Failed to parse typed ref '%s': %s", node_ref, exc)
-        return None, None
-
-    if tab == "goal":
-        return "GOAL", node_id
-    if tab == "objective":
-        return "OBJECTIVE", node_id
-    if tab in ("key_result", "keyresult"):
-        return "KEY_RESULT", node_id
-    if tab == "task":
-        return "TASK", node_id
-    return None, None
-
-
-def _children_for_node(node, node_type: str):
-    if node_type == "GOAL":
-        return sorted(
-            list(getattr(node, "objectives", []) or []),
-            key=lambda item: (item.title or "").lower(),
-        )
-    if node_type == "OBJECTIVE":
-        return sorted(
-            list(getattr(node, "key_results", []) or []),
-            key=lambda item: (item.title or "").lower(),
-        )
-    if node_type == "KEY_RESULT":
-        return sorted(
-            list(getattr(node, "tasks", []) or []),
-            key=lambda item: (item.title or "").lower(),
-        )
-    return []
-
-
-def _build_atlas_index(goals, users_map):
-    index = {}
-    roots = []
-
-    def visit(node, parent_ref=None, path=None, timer_owner_id=None):
-        node_type = _normalize_node_type(getattr(node, "__tablename__", ""))
-        node_ref = _typed_ref_for_node(node)
-        title = (getattr(node, "title", None) or "Untitled").strip()
-        progress = int(getattr(node, "progress", 0) or 0)
-        resolved_timer_owner = (
-            timer_owner_id
-            if timer_owner_id is not None
-            else getattr(node, "owner_id", None)
-        )
-        node_owner_id = getattr(node, "owner_id", None)
-        next_path = list(path or [])
-        next_path.append(node_ref)
-        children = _children_for_node(node, node_type)
-        child_refs = [_typed_ref_for_node(child) for child in children]
-
-        index[node_ref] = {
-            "ref": node_ref,
-            "id": getattr(node, "id", None),
-            "node": node,
-            "type": node_type,
-            "title": title,
-            "title_l": title.lower(),
-            "description": (getattr(node, "description", None) or "").strip(),
-            "progress": progress,
-            "depth": len(next_path) - 1,
-            "parent": parent_ref,
-            "path": next_path,
-            "children": child_refs,
-            "owner_id": resolved_timer_owner,
-            "node_owner_id": node_owner_id,
-            "timer_owner_id": resolved_timer_owner,
-            "owner_name": users_map.get(resolved_timer_owner, "Unknown"),
-        }
-
-        for child in children:
-            visit(
-                child,
-                parent_ref=node_ref,
-                path=next_path,
-                timer_owner_id=resolved_timer_owner,
-            )
-
-    for goal in goals:
-        goal_ref = _typed_ref_for_node(goal)
-        roots.append(goal_ref)
-        visit(
-            goal,
-            parent_ref=None,
-            path=[],
-            timer_owner_id=getattr(goal, "owner_id", None),
-        )
-
-    return index, roots
-
-
-def _typed_ref_for_type_and_id(node_type: str, node_id) -> str | None:
-    if node_id is None:
-        return None
-    norm_type = _normalize_node_type(node_type)
-    table_name = {
-        "GOAL": "goal",
-        "OBJECTIVE": "objective",
-        "KEY_RESULT": "key_result",
-        "TASK": "task",
-    }.get(norm_type)
-    if not table_name:
-        return None
-    return f"{table_name}_{int(node_id)}"
+    return inspector_navigation_helpers.parse_typed_ref(node_ref, logger=logger)
 
 
 def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
-    index = {}
-    roots = []
-
-    def visit(
-        node_type: str,
-        payload: dict,
-        parent_ref=None,
-        path=None,
-        timer_owner_id=None,
-    ):
-        node_ref = _typed_ref_for_type_and_id(node_type, payload.get("id"))
-        if not node_ref:
-            return
-
-        title = (payload.get("title") or "Untitled").strip()
-        progress = int(payload.get("progress", 0) or 0)
-        resolved_timer_owner = (
-            timer_owner_id if timer_owner_id is not None else payload.get("owner_id")
-        )
-        node_owner_id = payload.get("owner_id")
-        next_path = list(path or [])
-        next_path.append(node_ref)
-
-        if node_type == "GOAL":
-            child_type = "OBJECTIVE"
-            children_payload = list(payload.get("objectives") or [])
-        elif node_type == "OBJECTIVE":
-            child_type = "KEY_RESULT"
-            children_payload = list(payload.get("key_results") or [])
-        elif node_type == "KEY_RESULT":
-            child_type = "TASK"
-            children_payload = list(payload.get("tasks") or [])
-        else:
-            child_type = None
-            children_payload = []
-
-        child_refs = []
-        if child_type:
-            for child in children_payload:
-                child_ref = _typed_ref_for_type_and_id(child_type, child.get("id"))
-                if child_ref:
-                    child_refs.append(child_ref)
-
-        node = SimpleNamespace(
-            id=payload.get("id"),
-            title=title,
-            description=payload.get("description"),
-            progress=progress,
-            deadline=payload.get("deadline"),
-            timer_started_at=payload.get("timer_started_at"),
-            status=payload.get("status"),
-            total_time_spent=int(payload.get("total_time_spent", 0) or 0),
-            ai_overall_score=payload.get("ai_overall_score"),
-            ai_deadline_state=payload.get("ai_deadline_state"),
-            gemini_analysis=payload.get("gemini_analysis"),
-            # Scoring fields
-            start_value=payload.get("start_value", 0.0),
-            target_value=payload.get("target_value", 100.0),
-            current_value=payload.get("current_value", 0.0),
-            metric_type=payload.get("metric_type", "NUMERIC"),
-            score_mode=payload.get("score_mode", "UNWEIGHTED"),
-            weight=payload.get("weight", 1.0),
-            unit=payload.get("unit"),
-        )
-
-        index[node_ref] = {
-            "ref": node_ref,
-            "id": payload.get("id"),
-            "node": node,
-            "type": node_type,
-            "title": title,
-            "title_l": title.lower(),
-            "description": (payload.get("description") or "").strip(),
-            "progress": progress,
-            "depth": len(next_path) - 1,
-            "parent": parent_ref,
-            "path": next_path,
-            "children": child_refs,
-            "owner_id": resolved_timer_owner,
-            "node_owner_id": node_owner_id,
-            "timer_owner_id": resolved_timer_owner,
-            "owner_name": users_map.get(resolved_timer_owner, "Unknown"),
-        }
-
-        if child_type:
-            for child in children_payload:
-                visit(
-                    child_type,
-                    child,
-                    parent_ref=node_ref,
-                    path=next_path,
-                    timer_owner_id=resolved_timer_owner,
-                )
-
-    for goal in goals_snapshot:
-        root_ref = _typed_ref_for_type_and_id("GOAL", goal.get("id"))
-        if not root_ref:
-            continue
-        roots.append(root_ref)
-        visit(
-            "GOAL",
-            goal,
-            parent_ref=None,
-            path=[],
-            timer_owner_id=goal.get("owner_id"),
-        )
-
-    return index, roots
+    return atlas_index_helpers.build_atlas_index_from_snapshot(goals_snapshot, users_map)
 
 
 def _atlas_fire_browser_notification(title: str, body: str):
@@ -2355,42 +2093,25 @@ def _atlas_is_mobile_request() -> bool:
 
 
 def _atlas_suggested_next_score(meta, actor_id: int, index=None, health=None):
-    running = getattr(meta.get("node"), "timer_started_at", None) is not None
-    if health is None:
-        health = _atlas_health_state(meta, index=index)
-    attention_kind = str((health or {}).get("kind") or "on_track")
-    attention_rank = {
-        "overdue": 0,
-        "risk": 1,
-        "low_progress": 2,
-        "inherited": 2,
-        "on_track": 3,
-        "done": 4,
-    }.get(attention_kind, 3)
-    owner_rank = 0 if _atlas_timer_owner_id(meta) == actor_id else 1
-    progress = int(meta.get("progress", 0) or 0)
-    return (
-        0 if running else 1,
-        attention_rank,
-        owner_rank,
-        progress,
-        meta.get("title_l", ""),
+    return atlas_priority_helpers.atlas_suggested_next_score(
+        meta,
+        actor_id,
+        index=index,
+        health=health,
+        health_state_fn=_atlas_health_state,
+        timer_owner_id_fn=_atlas_timer_owner_id,
     )
 
 
 def _atlas_suggested_next_reason(meta, actor_id: int, index=None, health=None) -> str:
-    if getattr(meta.get("node"), "timer_started_at", None) is not None:
-        return "Already running"
-    if health is None:
-        health = _atlas_health_state(meta, index=index)
-    attention_kind = str((health or {}).get("kind") or "on_track")
-    if attention_kind in {"overdue", "risk", "low_progress", "inherited"}:
-        return "Needs care"
-    if int(meta.get("progress", 0) or 0) >= 100:
-        return "Complete"
-    if _atlas_timer_owner_id(meta) != actor_id:
-        return "Ready to coordinate"
-    return "Continue momentum"
+    return atlas_priority_helpers.atlas_suggested_next_reason(
+        meta,
+        actor_id,
+        index=index,
+        health=health,
+        health_state_fn=_atlas_health_state,
+        timer_owner_id_fn=_atlas_timer_owner_id,
+    )
 
 
 _ATLAS_TREEMAP_CACHE_STATE_KEY = atlas_treemap_helpers.ATLAS_TREEMAP_CACHE_STATE_KEY
@@ -2467,71 +2188,39 @@ def render_atlas_workspace(username):
     inject_atlas_styles()
     is_mobile_request = _atlas_is_mobile_request()
 
-    cycle_id = st.session_state.get("active_cycle_id")
-    if not cycle_id:
-        st.info("Select a cycle to load the OKR workspace.")
-        return
-
-    actor_id, role_value = atlas_workspace_helpers.resolve_actor_context(
-        st.session_state,
+    workspace_ctx = atlas_workspace_bootstrap_helpers.resolve_workspace_bootstrap(
+        st_module=st,
+        session_state=st.session_state,
+        username=username,
         logger=logger,
-    )
-    if actor_id is None or not role_value:
-        st.error("User context is unavailable. Please log in again.")
-        return
-
-    scope_options = atlas_workspace_helpers.build_scope_options(
-        actor_id=int(actor_id),
-        role_value=role_value,
+        resolve_actor_context_fn=atlas_workspace_helpers.resolve_actor_context,
+        build_scope_options_fn=atlas_workspace_helpers.build_scope_options,
+        ensure_scope_selection_fn=atlas_workspace_helpers.ensure_scope_selection,
+        resolve_scope_runtime_fn=atlas_workspace_helpers.resolve_scope_runtime,
+        ensure_selected_ref_fn=atlas_workspace_helpers.ensure_selected_ref,
+        sync_selected_navigation_fn=atlas_workspace_helpers.sync_selected_navigation,
         team_members_loader=_cached_get_team_members,
         all_users_loader=_cached_get_all_users,
-    )
-    selected_scope = atlas_workspace_helpers.ensure_scope_selection(
-        st.session_state,
-        scope_options,
-    )
-    scope_labels = list(scope_options.keys())
-
-    runtime_data = atlas_workspace_helpers.resolve_scope_runtime(
-        cycle_id=int(cycle_id),
-        selected_scope=selected_scope,
-        scope_options=scope_options,
         runtime_loader=_cached_get_atlas_scope_runtime,
-        canonical_owner_ids_key=_canonical_owner_ids_key,
-        health_index_builder=_atlas_health_index,
-        actor_username=username,
+        canonical_owner_ids_key_fn=_canonical_owner_ids_key,
+        health_index_builder_fn=_atlas_health_index,
+        rerun_fn=st.rerun,
     )
-    owner_ids = runtime_data.get("owner_ids")
-    owner_ids_key = runtime_data.get("owner_ids_key")
-    index = runtime_data.get("index", {})
-    roots = list(runtime_data.get("roots") or [])
-    node_lookup = runtime_data.get("node_lookup") or {}
-    health_index = runtime_data.get("health_index")
-    runtime_token = runtime_data.get("runtime_token")
-    st.session_state["atlas_node_lookup"] = node_lookup
-    if not roots:
-        st.info("No goals found for this cycle and scope.")
-        if st.button("Create Goal", key="atlas_create_goal_empty", type="primary"):
-            st.session_state["add_mode_parent"] = None
-            st.session_state["add_mode_type"] = "GOAL"
-            st.rerun()
+    if workspace_ctx is None:
         return
 
-    selected_ref = atlas_workspace_helpers.ensure_selected_ref(
-        st.session_state,
-        index,
-        roots,
-    )
-    if selected_ref is None:
-        st.info("No selectable nodes found in this scope.")
-        return
-
-    selected_meta = index[selected_ref]
-    selected_path_refs = atlas_workspace_helpers.sync_selected_navigation(
-        st.session_state,
-        selected_ref=selected_ref,
-        selected_meta=selected_meta,
-    )
+    actor_id = int(workspace_ctx["actor_id"])
+    role_value = str(workspace_ctx["role_value"])
+    selected_scope = str(workspace_ctx["selected_scope"])
+    scope_labels = list(workspace_ctx["scope_labels"])
+    index = workspace_ctx.get("index", {})
+    roots = list(workspace_ctx.get("roots") or [])
+    node_lookup = workspace_ctx.get("node_lookup") or {}
+    health_index = workspace_ctx.get("health_index")
+    runtime_token = workspace_ctx.get("runtime_token")
+    selected_ref = str(workspace_ctx["selected_ref"])
+    selected_meta = dict(workspace_ctx["selected_meta"] or {})
+    selected_path_refs = workspace_ctx.get("selected_path_refs") or set()
 
     from src.services.timer_service import start_timer, stop_timer
 
@@ -2553,259 +2242,80 @@ def render_atlas_workspace(username):
         suggested_task_ref=suggested_task_ref,
     )
 
-    with st.container(border=True):
-        st.markdown("<div class='atlas-luxe-strip'></div>", unsafe_allow_html=True)
-        st.markdown(
-            "<div class='atlas-kicker'>Focus Task</div>", unsafe_allow_html=True
-        )
-        st.markdown(
-            "<div class='atlas-human-note'>Choose one task, set a sprint, and start before navigating the map.</div>",
-            unsafe_allow_html=True,
-        )
+    focus_task_ref = atlas_focus_section_helpers.render_focus_section(
+        st_module=st,
+        session_state=st.session_state,
+        index=index,
+        task_refs=task_refs,
+        selected_scope=selected_scope,
+        actor_id=actor_id,
+        health_index=health_index,
+        type_icons=TYPE_ICONS,
+        escape_html_fn=escape_html,
+        suggested_next_score_fn=_atlas_suggested_next_score,
+        suggested_next_reason_fn=_atlas_suggested_next_reason,
+        health_state_fn=_atlas_health_state,
+        timer_owner_id_fn=_atlas_timer_owner_id,
+        can_track_task_timer_fn=can_track_task_timer,
+        health_source_explanation_fn=_atlas_health_source_explanation,
+        commit_target_minutes_fn=_atlas_commit_target_minutes,
+        sprint_run_key_fn=_atlas_sprint_run_key,
+        should_show_soft_reminder_fn=_atlas_should_show_soft_reminder,
+        should_emit_target_notification_fn=_atlas_should_emit_target_notification,
+        fire_browser_notification_fn=_atlas_fire_browser_notification,
+        clean_work_summary_fn=_atlas_clean_work_summary,
+        ensure_utc_fn=ensure_utc,
+        utc_now_naive_fn=utc_now_naive,
+        username=username,
+        is_mobile_request=is_mobile_request,
+        focus_task_ref=focus_task_ref,
+        start_timer_fn=start_timer,
+        stop_timer_fn=stop_timer,
+        error_fn=st.error,
+        rerun_fn=st.rerun,
+        logger=logger,
+    )
 
-        (
-            suggested_focus_ref,
-            suggested_focus_reason,
-            suggested_focus_confidence,
-            suggested_focus_is_ai,
-        ) = atlas_focus_selection_helpers.resolve_suggested_focus_candidate(
-            session_state=st.session_state,
-            task_refs=task_refs,
-            index=index,
-            selected_scope=selected_scope,
-            actor_id=actor_id,
-            health_index=health_index,
-            next_score_fn=_atlas_suggested_next_score,
-        )
-        atlas_focus_selection_helpers.render_suggested_focus_banner(
-            st_module=st,
-            session_state=st.session_state,
-            suggested_focus_ref=suggested_focus_ref,
-            suggested_focus_reason=suggested_focus_reason,
-            suggested_focus_confidence=suggested_focus_confidence,
-            suggested_focus_is_ai=suggested_focus_is_ai,
-            index=index,
-            actor_id=actor_id,
-            health_index=health_index,
-            type_icons=TYPE_ICONS,
-            escape_html_fn=escape_html,
-            suggested_reason_fn=_atlas_suggested_next_reason,
-            rerun_fn=st.rerun,
-        )
-        focus_task_ref = atlas_focus_selection_helpers.render_focus_task_picker(
-            st_module=st,
-            session_state=st.session_state,
-            focus_task_ref=focus_task_ref,
-            task_refs=task_refs,
-            index=index,
-            type_icons=TYPE_ICONS,
-            rerun_fn=st.rerun,
-        )
-
-        if focus_task_ref and focus_task_ref in index:
-            focus_meta = index[focus_task_ref]
-            focus_task = focus_meta["node"]
-            focus_health = health_index.get(focus_task_ref)
-            if focus_health is None:
-                focus_health = _atlas_health_state(focus_meta, index=index)
-            focus_running = getattr(focus_task, "timer_started_at", None) is not None
-            can_track_focus = atlas_workspace_helpers.can_track_task(
-                actor_user_id=actor_id,
-                task_meta=focus_meta,
-                timer_owner_resolver=_atlas_timer_owner_id,
-                can_track_fn=can_track_task_timer,
-            )
-            stop_capture_key = "atlas_stop_capture_task_ref"
-            stop_draft_key = f"atlas_stop_summary_draft_{focus_task_ref}"
-            stop_composer_open = atlas_workspace_helpers.should_open_stop_composer(
-                st.session_state,
-                focus_task_ref=focus_task_ref,
-                focus_running=focus_running,
-                can_track_focus=can_track_focus,
-                stop_capture_key=stop_capture_key,
-            )
-
-            atlas_focus_task_view_helpers.render_focus_identity(
-                st_module=st,
-                focus_meta=focus_meta,
-                focus_task=focus_task,
-                index=index,
-                type_icons=TYPE_ICONS,
-                escape_html_fn=escape_html,
-            )
-            spotlight_cols, target_minutes = (
-                atlas_focus_task_view_helpers.render_focus_status_and_commit_controls(
-                    st_module=st,
-                    session_state=st.session_state,
-                    focus_meta=focus_meta,
-                    focus_health=focus_health,
-                    index=index,
-                    health_index=health_index,
-                    health_state_fn=_atlas_health_state,
-                    attention_chip_html_fn=atlas_workspace_helpers.attention_chip_html,
-                    health_source_explanation_fn=_atlas_health_source_explanation,
-                    escape_html_fn=escape_html,
-                    commit_target_minutes_fn=_atlas_commit_target_minutes,
-                )
-            )
-
-            if focus_running:
-                atlas_focus_running_helpers.render_running_status_and_reminder(
-                    st_module=st,
-                    spotlight_col=spotlight_cols[0],
-                    session_state=st.session_state,
-                    focus_task=focus_task,
-                    focus_task_ref=focus_task_ref,
-                    focus_title=str(focus_meta.get("title") or ""),
-                    can_track_focus=can_track_focus,
-                    stop_capture_key=stop_capture_key,
-                    compute_elapsed_minutes_fn=atlas_workspace_helpers.compute_elapsed_minutes,
-                    ensure_utc_fn=ensure_utc,
-                    utc_now_naive_fn=utc_now_naive,
-                    resolve_target_for_focus_fn=atlas_workspace_helpers.resolve_target_for_focus,
-                    build_sprint_reminder_state_fn=atlas_workspace_helpers.build_sprint_reminder_state,
-                    sprint_run_key_fn=_atlas_sprint_run_key,
-                    should_show_soft_reminder_fn=_atlas_should_show_soft_reminder,
-                    should_emit_target_notification_fn=_atlas_should_emit_target_notification,
-                    fire_browser_notification_fn=_atlas_fire_browser_notification,
-                    mark_sprint_notification_sent_fn=atlas_workspace_helpers.mark_sprint_notification_sent,
-                    mark_stop_capture_fn=atlas_workspace_helpers.mark_stop_capture,
-                    dismiss_sprint_reminder_fn=atlas_workspace_helpers.dismiss_sprint_reminder,
-                    rerun_fn=st.rerun,
-                    logger=logger,
-                )
-            atlas_workspace_helpers.clear_stop_capture_if_not_running(
-                st.session_state,
-                focus_task_ref=focus_task_ref,
-                focus_running=focus_running,
-                stop_capture_key=stop_capture_key,
-            )
-
-            action_container = st.container()
-            atlas_focus_panel_helpers.render_focus_primary_action(
-                action_container=action_container,
-                focus_running=focus_running,
-                stop_composer_open=stop_composer_open,
-                can_track_focus=can_track_focus,
-                focus_task_ref=focus_task_ref,
-                focus_task=focus_task,
-                username=username,
-                target_minutes=int(target_minutes),
-                session_state=st.session_state,
-                stop_capture_key=stop_capture_key,
-                start_timer_fn=start_timer,
-                error_fn=st.error,
-                rerun_fn=st.rerun,
-            )
-
-            if stop_composer_open:
-                atlas_focus_panel_helpers.render_stop_composer(
-                    action_container=action_container,
-                    is_mobile_request=is_mobile_request,
-                    focus_task=focus_task,
-                    focus_task_ref=focus_task_ref,
-                    username=username,
-                    session_state=st.session_state,
-                    stop_capture_key=stop_capture_key,
-                    stop_draft_key=stop_draft_key,
-                    stop_timer_fn=stop_timer,
-                    clean_summary_fn=_atlas_clean_work_summary,
-                    rerun_fn=st.rerun,
-                )
-
-            if not can_track_focus:
-                action_container.caption(
-                    "Timer is available for the owner of this task."
-                )
-
-            session_summary = st.session_state.get("atlas_last_session_summary")
-            if isinstance(session_summary, dict):
-                session_feedback = atlas_workspace_helpers.build_recent_session_feedback(
-                    session_summary=session_summary,
-                    index=index,
-                    clean_summary_fn=_atlas_clean_work_summary,
-                )
-                if bool(session_feedback.get("visible")):
-                    st.success(str(session_feedback.get("message") or ""))
-                    caption_text = str(session_feedback.get("caption") or "").strip()
-                    if caption_text:
-                        st.caption(caption_text)
-                elif bool(session_feedback.get("stale")):
-                    del st.session_state["atlas_last_session_summary"]
-        else:
-            st.info("Select a branch with tasks to start a focus sprint.")
-
-    query, selected_scope = atlas_navigation_helpers.render_scope_toolbar(
+    atlas_workspace_tabs_helpers.render_workspace_tabs(
         st_module=st,
         session_state=st.session_state,
         scope_labels=scope_labels,
-    )
-    jump_matches = atlas_navigation_helpers.find_jump_matches(
-        query=query,
-        index=index,
-    )
-    atlas_navigation_helpers.render_jump_results(
-        st_module=st,
-        matches=jump_matches,
         index=index,
         type_icons=TYPE_ICONS,
-        session_state=st.session_state,
-        rerun_fn=st.rerun,
-    )
-
-    focus_map_tab, inspector_tab = atlas_focus_map_shell_helpers.create_workspace_tabs(st)
-
-    with focus_map_tab:
-        atlas_map_tab_helpers.render_focus_map_tab_content(
-            st_module=st,
-            session_state=st.session_state,
-            username=username,
-            selected_meta=selected_meta,
-            node_lookup=node_lookup,
-            type_icons=TYPE_ICONS,
-            get_node_details_fn=_atlas_get_node_details_from_lookup,
-            escape_html_fn=escape_html,
-            is_mobile_request=is_mobile_request,
-            child_type_map=CHILD_TYPE_MAP,
-            selected_ref=selected_ref,
-            roots=roots,
-            index=index,
-            scope_refs_fn=_atlas_scope_refs,
-            descendant_refs_fn=_atlas_descendant_refs,
-            role_value=role_value,
-            health_index=health_index,
-            health_debug_rows_fn=_atlas_health_debug_rows,
-            actor_id=actor_id,
-            selected_scope=selected_scope,
-            focus_task_ref=focus_task_ref,
-            selected_path_refs=selected_path_refs,
-            runtime_token=runtime_token,
-            cached_treemap_fn=_atlas_cached_treemap,
-            plotly_events_fn=plotly_events,
-            extract_selection_points_fn=_atlas_extract_selection_points,
-            extract_clicked_ref_from_points_fn=_atlas_extract_clicked_ref_from_points,
-            health_state_fn=_atlas_health_state,
-            ai_progress_decision_fn=_atlas_ai_progress_decision,
-            ai_overall_score_fn=_atlas_ai_overall_score,
-            next_score_fn=_atlas_suggested_next_score,
-            from_epoch_millis_fn=from_epoch_millis,
-            from_epoch_seconds_fn=from_epoch_seconds,
-            logger=logger,
-            rerun_fn=st.rerun,
-        )
-
-    atlas_inspector_helpers.render_inspector_tab(
-        st_module=st,
-        inspector_tab=inspector_tab,
         selected_meta=selected_meta,
+        node_lookup=node_lookup,
+        is_mobile_request=is_mobile_request,
+        child_type_map=CHILD_TYPE_MAP,
         selected_ref=selected_ref,
-        index=index,
+        roots=roots,
+        role_value=role_value,
         health_index=health_index,
+        actor_id=actor_id,
+        selected_scope=selected_scope,
+        focus_task_ref=focus_task_ref,
+        selected_path_refs=selected_path_refs,
+        runtime_token=runtime_token,
+        username=username,
+        get_node_details_fn=_atlas_get_node_details_from_lookup,
+        escape_html_fn=escape_html,
+        scope_refs_fn=_atlas_scope_refs,
+        descendant_refs_fn=_atlas_descendant_refs,
+        health_debug_rows_fn=_atlas_health_debug_rows,
+        cached_treemap_fn=_atlas_cached_treemap,
+        plotly_events_fn=plotly_events,
+        extract_selection_points_fn=_atlas_extract_selection_points,
+        extract_clicked_ref_from_points_fn=_atlas_extract_clicked_ref_from_points,
         health_state_fn=_atlas_health_state,
+        ai_progress_decision_fn=_atlas_ai_progress_decision,
+        ai_overall_score_fn=_atlas_ai_overall_score,
+        next_score_fn=_atlas_suggested_next_score,
+        from_epoch_millis_fn=from_epoch_millis,
+        from_epoch_seconds_fn=from_epoch_seconds,
         health_source_explanation_fn=_atlas_health_source_explanation,
         parse_typed_ref_fn=_parse_typed_ref,
         render_inspector_content_fn=render_inspector_content,
-        username=username,
+        logger=logger,
+        rerun_fn=st.rerun,
     )
 
 
@@ -2836,6 +2346,7 @@ def render_level(username):
     if "active_inspector_id" in st.session_state:
         del st.session_state.active_inspector_id
     return render_atlas_workspace(username)
+
 
 
 

@@ -1127,3 +1127,147 @@ def test_render_delete_entity_section_success_clears_state_and_reruns():
     assert "active_inspector_id" not in session_state
     assert session_state["nav_stack"] == ["goal_1", "objective_2"]
     assert session_state["keep_me"] == "x"
+
+class _FakeSaveSt:
+    def __init__(self, *, submit=False):
+        self.submit = bool(submit)
+        self.form_submit_calls = []
+        self.error_calls = []
+        self.success_calls = []
+
+    def form_submit_button(self, label, disabled=False):
+        self.form_submit_calls.append({"label": str(label), "disabled": bool(disabled)})
+        return bool(self.submit)
+
+    def error(self, value):
+        self.error_calls.append(str(value))
+
+    def success(self, value):
+        self.success_calls.append(str(value))
+
+
+def test_handle_save_changes_no_submit_no_updates():
+    fake_st = _FakeSaveSt(submit=False)
+    calls = []
+
+    aborted = inspector_form_helpers.handle_save_changes(
+        st_module=fake_st,
+        can_save=True,
+        node_type_upper="GOAL",
+        node_id=1,
+        username="alice",
+        new_title="T",
+        new_description="D",
+        new_progress=10,
+        new_cycle_id=3,
+        new_strat_tags_input="a, b",
+        new_score_mode="unused",
+        new_obj_weight=1.0,
+        new_state="unused",
+        new_reflection="",
+        new_start=0.0,
+        new_target=1.0,
+        new_current=0.0,
+        new_unit="%",
+        new_metric_type="unused",
+        new_weight=1.0,
+        new_init_tags_input="",
+        new_assignee_id=None,
+        update_goal_fn=lambda *_args, **_kwargs: calls.append("goal"),
+        update_objective_fn=lambda *_args, **_kwargs: calls.append("objective"),
+        update_key_result_fn=lambda *_args, **_kwargs: calls.append("kr"),
+        update_task_fn=lambda *_args, **_kwargs: calls.append("task"),
+        rerun_fn=lambda: calls.append("rerun"),
+    )
+
+    assert aborted is False
+    assert calls == []
+    assert fake_st.success_calls == []
+    assert fake_st.error_calls == []
+
+
+def test_handle_save_changes_goal_payload_and_rerun():
+    fake_st = _FakeSaveSt(submit=True)
+    updates = []
+    reruns = []
+
+    aborted = inspector_form_helpers.handle_save_changes(
+        st_module=fake_st,
+        can_save=True,
+        node_type_upper="GOAL",
+        node_id=11,
+        username="alice",
+        new_title="Goal",
+        new_description="Desc",
+        new_progress=20,
+        new_cycle_id=4,
+        new_strat_tags_input="alpha, beta, ",
+        new_score_mode="unused",
+        new_obj_weight=1.0,
+        new_state="unused",
+        new_reflection="",
+        new_start=0.0,
+        new_target=1.0,
+        new_current=0.0,
+        new_unit="%",
+        new_metric_type="unused",
+        new_weight=1.0,
+        new_init_tags_input="",
+        new_assignee_id=None,
+        update_goal_fn=lambda node_id, **kwargs: updates.append((node_id, kwargs)),
+        update_objective_fn=lambda *_args, **_kwargs: None,
+        update_key_result_fn=lambda *_args, **_kwargs: None,
+        update_task_fn=lambda *_args, **_kwargs: None,
+        rerun_fn=lambda: reruns.append("rerun"),
+    )
+
+    assert aborted is False
+    assert len(updates) == 1
+    assert updates[0][0] == 11
+    payload = updates[0][1]
+    assert payload["actor_username"] == "alice"
+    assert payload["title"] == "Goal"
+    assert payload["description"] == "Desc"
+    assert payload["progress"] == 20
+    assert payload["cycle_id"] == 4
+    assert payload["strategy_tags"] == ["alpha", "beta"]
+    assert fake_st.success_calls == ["Saved!"]
+    assert reruns == ["rerun"]
+
+
+def test_handle_save_changes_key_result_payload_and_permission_error():
+    fake_st = _FakeSaveSt(submit=True)
+
+    aborted = inspector_form_helpers.handle_save_changes(
+        st_module=fake_st,
+        can_save=True,
+        node_type_upper="KEY_RESULT",
+        node_id=12,
+        username="alice",
+        new_title="KR",
+        new_description="Desc",
+        new_progress=30,
+        new_cycle_id=None,
+        new_strat_tags_input="",
+        new_score_mode="unused",
+        new_obj_weight=1.0,
+        new_state="active",
+        new_reflection="notes",
+        new_start=5.0,
+        new_target=20.0,
+        new_current=10.0,
+        new_unit="pts",
+        new_metric_type="numeric",
+        new_weight=2.0,
+        new_init_tags_input="focus, quality",
+        new_assignee_id=None,
+        update_goal_fn=lambda *_args, **_kwargs: None,
+        update_objective_fn=lambda *_args, **_kwargs: None,
+        update_key_result_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("denied")),
+        update_task_fn=lambda *_args, **_kwargs: None,
+        rerun_fn=lambda: None,
+    )
+
+    assert aborted is True
+    assert fake_st.error_calls == ["denied"]
+    assert fake_st.success_calls == []
