@@ -42,6 +42,7 @@ def evaluate_runtime_preflight(
     backend_signing_secret: Optional[str] = None,
     bootstrap_admin_password: Optional[str] = None,
     allow_local_backend_fallback: bool = False,
+    backend_security_state_backend: str = "memory",
     runtime_env: str = "development",
 ) -> RuntimePreflightReport:
     """Evaluate runtime safety constraints for PDF and AI integrations."""
@@ -96,6 +97,14 @@ def evaluate_runtime_preflight(
     if is_production and backend_url and not str(backend_signing_secret or "").strip():
         report.errors.append(
             "Production backend mode requires OKR_BACKEND_SIGNING_SECRET."
+        )
+
+    security_state_backend = str(backend_security_state_backend or "").strip().lower()
+    if not security_state_backend:
+        security_state_backend = "memory"
+    if is_production and backend_url and security_state_backend != "database":
+        report.errors.append(
+            "Production backend mode requires OKR_BACKEND_SECURITY_STATE_BACKEND=database."
         )
 
     bootstrap_password = str(bootstrap_admin_password or "").strip()

@@ -108,6 +108,10 @@ def _run_pdf_preflight():
         backend_signing_secret=_cfg_value("OKR_BACKEND_SIGNING_SECRET", ""),
         bootstrap_admin_password=os.getenv("OKR_BOOTSTRAP_ADMIN_PASSWORD", ""),
         allow_local_backend_fallback=_env_bool("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False),
+        backend_security_state_backend=_cfg_value(
+            "OKR_BACKEND_SECURITY_STATE_BACKEND",
+            "memory",
+        ),
         runtime_env=(
             _cfg_value("OKR_ENV", "")
             or _cfg_value("OKR_RUNTIME_ENV", "development")

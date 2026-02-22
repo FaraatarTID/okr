@@ -56,6 +56,7 @@ B. چک‌لیست Self-hosted (Docker Compose + Nginx + TLS)
 - [ ] `OKR_BACKEND_SIGNING_SECRET` بین سرویس‌ها یکسان است.
 - [ ] `OKR_BOOTSTRAP_ADMIN_PASSWORD` قوی تنظیم شده است (حداقل 12 کاراکتر شامل uppercase/lowercase/number/symbol).
 - [ ] `OKR_BACKEND_PROXY_MUTATIONS=true` تنظیم شده است.
+- [ ] `OKR_BACKEND_SECURITY_STATE_BACKEND=database` در production تنظیم شده است.
 - [ ] `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` در production false/unset است.
 - [ ] `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` در production false/unset است (runtime در production fail-open override را نادیده می‌گیرد).
 - [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` تنظیم شده است.

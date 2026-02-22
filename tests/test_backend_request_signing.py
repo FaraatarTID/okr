@@ -26,11 +26,13 @@ def _make_client(monkeypatch):
     import backend_app.main as backend_main
     import backend_app.security as backend_security
 
+    monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "true")
     monkeypatch.setenv("OKR_BACKEND_SIGNING_SECRET", "test-signing-secret")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "memory")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
-    backend_security._NONCE_SEEN.clear()
+    backend_security._reset_security_state_for_tests()
 
     monkeypatch.setattr(
         backend_main,
@@ -117,3 +119,47 @@ def test_missing_signature_headers_are_rejected(monkeypatch):
         headers={"X-OKR-Actor": "alice"},
     )
     assert response.status_code == 401
+
+
+def test_production_requires_distributed_security_state_backend(monkeypatch):
+    import backend_app.main as backend_main
+    import backend_app.security as backend_security
+
+    monkeypatch.setenv("OKR_ENV", "production")
+    monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
+    monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "true")
+    monkeypatch.setenv("OKR_BACKEND_SIGNING_SECRET", "test-signing-secret")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
+    monkeypatch.delenv("OKR_DATABASE_URL", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setattr(backend_main, "init_database", lambda: None)
+    backend_security._reset_security_state_for_tests()
+
+    client = TestClient(backend_main.app)
+
+    payload = {"task_id": 9, "user_id": "alice"}
+    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    timestamp = str(int(time.time()))
+    nonce = "nonce-prod-db-required"
+    signature = _sign_request(
+        secret="test-signing-secret",
+        method="POST",
+        path="/v1/timer/start",
+        timestamp=timestamp,
+        nonce=nonce,
+        body=body,
+    )
+
+    response = client.post(
+        "/v1/timer/start",
+        content=body,
+        headers={
+            "Content-Type": "application/json",
+            "X-OKR-Actor": "alice",
+            "X-OKR-Timestamp": timestamp,
+            "X-OKR-Nonce": nonce,
+            "X-OKR-Signature": signature,
+        },
+    )
+    assert response.status_code == 503
+    assert "security state backend" in str(response.json().get("detail", "")).lower()

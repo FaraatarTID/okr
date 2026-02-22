@@ -59,6 +59,7 @@ Runtime preflight
 - read-heavy هنوز در Streamlit اجرا می‌شود.
 - write/timer/job در backend services مدیریت می‌شود وقتی `OKR_BACKEND_API_URL` فعال است.
 - در استقرار داخلی `OKR_BACKEND_PROXY_MUTATIONS=1` را فعال نگه دارید.
+- در production مقدار `OKR_BACKEND_SECURITY_STATE_BACKEND=database` را برای nonce/rate-limit توزیع‌شده نگه دارید.
 - در production `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` را false/unset نگه دارید.
 
 حاکمیت release

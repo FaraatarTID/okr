@@ -23,6 +23,13 @@ def _as_int(raw: str | None, *, default: int, minimum: int) -> int:
     return max(minimum, value)
 
 
+def _as_choice(raw: str | None, *, default: str, allowed: set[str]) -> str:
+    value = str(raw).strip().lower() if raw is not None else str(default).strip().lower()
+    if value not in allowed:
+        return str(default).strip().lower()
+    return value
+
+
 @dataclass(frozen=True)
 class BackendSettings:
     runtime_env: str
@@ -35,6 +42,8 @@ class BackendSettings:
     request_signing_window_seconds: int
     rate_limit_window_seconds: int
     rate_limit_max_requests: int
+    security_state_backend: str
+    security_state_cleanup_seconds: int
     job_user_window_seconds: int
     job_user_max_requests: int
     job_user_daily_max_requests: int
@@ -49,6 +58,7 @@ def get_backend_settings() -> BackendSettings:
         os.getenv("OKR_ENV", os.getenv("OKR_RUNTIME_ENV", "development"))
     ).strip().lower() or "development"
     is_production = runtime_env in {"prod", "production"}
+    security_state_backend_default = "database" if is_production else "memory"
     return BackendSettings(
         runtime_env=runtime_env,
         host=str(os.getenv("OKR_BACKEND_HOST", "0.0.0.0")).strip() or "0.0.0.0",
@@ -76,6 +86,16 @@ def get_backend_settings() -> BackendSettings:
         rate_limit_max_requests=_as_int(
             os.getenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS"),
             default=120,
+            minimum=1,
+        ),
+        security_state_backend=_as_choice(
+            os.getenv("OKR_BACKEND_SECURITY_STATE_BACKEND"),
+            default=security_state_backend_default,
+            allowed={"memory", "database"},
+        ),
+        security_state_cleanup_seconds=_as_int(
+            os.getenv("OKR_BACKEND_SECURITY_STATE_CLEANUP_SECONDS"),
+            default=60,
             minimum=1,
         ),
         job_user_window_seconds=_as_int(

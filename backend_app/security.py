@@ -6,15 +6,15 @@ import hashlib
 import hmac
 import secrets
 import time
-from threading import Lock
 from fastapi import Header, HTTPException, Request
 
 from backend_app.config import get_backend_settings
 from backend_app.rate_limiter import check_rate_limit
-
-
-_NONCE_SEEN: dict[str, int] = {}
-_NONCE_LOCK = Lock()
+from backend_app.security_state import (
+    SecurityStateUnavailableError,
+    register_nonce_once,
+    reset_security_state_for_tests,
+)
 
 
 def _body_digest_hex(body: bytes) -> str:
@@ -63,20 +63,20 @@ def _expected_signature(
     ).hexdigest()
 
 
-def _prune_nonce_cache(now_ts: int, window_seconds: int) -> None:
-    cutoff = int(now_ts) - int(window_seconds)
-    stale = [key for key, seen_at in _NONCE_SEEN.items() if int(seen_at) < cutoff]
-    for key in stale:
-        _NONCE_SEEN.pop(key, None)
-
-
 def _register_nonce_or_reject(*, nonce: str, now_ts: int, window_seconds: int) -> None:
-    with _NONCE_LOCK:
-        _prune_nonce_cache(now_ts, window_seconds)
-        seen_at = _NONCE_SEEN.get(nonce)
-        if seen_at is not None and int(seen_at) >= int(now_ts) - int(window_seconds):
-            raise HTTPException(status_code=401, detail="Replay request rejected.")
-        _NONCE_SEEN[nonce] = int(now_ts)
+    try:
+        accepted = register_nonce_once(
+            nonce=nonce,
+            now_ts=int(now_ts),
+            window_seconds=int(window_seconds),
+        )
+    except SecurityStateUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Security state backend is unavailable.",
+        ) from exc
+    if not accepted:
+        raise HTTPException(status_code=401, detail="Replay request rejected.")
 
 
 async def _verify_request_signature(
@@ -163,11 +163,17 @@ async def require_service_access(
 
     # Rate limit by client IP regardless of token mode.
     client_ip = request.client.host if request.client else "unknown"
-    rl_ok = check_rate_limit(
-        key=f"ip:{client_ip}",
-        limit=settings.rate_limit_max_requests,
-        window_seconds=settings.rate_limit_window_seconds,
-    )
+    try:
+        rl_ok = check_rate_limit(
+            key=f"ip:{client_ip}",
+            limit=settings.rate_limit_max_requests,
+            window_seconds=settings.rate_limit_window_seconds,
+        )
+    except SecurityStateUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Security state backend is unavailable.",
+        ) from exc
     if not rl_ok:
         raise HTTPException(status_code=429, detail="Rate limit exceeded.")
 
@@ -183,3 +189,8 @@ def resolve_actor_username(
     if len(actor) > 128:
         raise HTTPException(status_code=400, detail="Actor username is too long.")
     return actor
+
+
+def _reset_security_state_for_tests() -> None:
+    """Test-only helper to clear replay/rate state between test cases."""
+    reset_security_state_for_tests()

@@ -49,6 +49,7 @@ def _write_env(path: Path, *, placeholder_values: bool, include_throttle_key: bo
         f"OKR_BACKEND_SIGNING_SECRET={signing_secret}",
         f"OKR_BOOTSTRAP_ADMIN_PASSWORD={bootstrap_pw}",
         "OKR_BACKEND_PROXY_MUTATIONS=true",
+        "OKR_BACKEND_SECURITY_STATE_BACKEND=database",
         "OKR_ALLOW_LOCAL_BACKEND_FALLBACK=false",
         "OKR_ENFORCE_STRONG_PASSWORD_POLICY=true",
         "PDF_METHOD=pdfshift",

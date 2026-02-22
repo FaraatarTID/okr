@@ -22,6 +22,7 @@ Documentation HQ: [README](../README.md)
   - `OKR_BACKEND_SERVICE_TOKEN`
   - `OKR_BACKEND_SIGNING_SECRET`
   - `OKR_BACKEND_PROXY_MUTATIONS=true`
+  - `OKR_BACKEND_SECURITY_STATE_BACKEND=database`
   - `PDFSHIFT_API_KEY`
 - سرویس‌ها را بالا بیاورید:
   - `docker compose -f deploy/docker/docker-compose.yml up -d --build`
