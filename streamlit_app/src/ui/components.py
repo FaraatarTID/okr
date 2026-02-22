@@ -60,6 +60,7 @@ from src.ui import atlas_treemap_helpers
 from src.ui import atlas_focus_panel_helpers
 from src.ui import atlas_map_sidebar_helpers
 from src.ui import atlas_map_chart_helpers
+from src.ui import atlas_inspector_helpers
 from src.ui import atlas_workspace_helpers
 
 # Keep Atlas helper symbols available from this module for existing tests/imports.
@@ -3808,104 +3809,46 @@ def render_atlas_workspace(username):
                     ),
                 )
 
-                map_chart_height = 280 if is_mobile_request else 500
-                treemap = _atlas_cached_treemap(
-                    map_refs,
-                    index,
-                    selected_ref,
-                    focus_task_ref,
+                atlas_map_chart_helpers.render_map_chart_and_handle_navigation(
+                    map_chart_area=map_chart_area,
+                    session_state=st.session_state,
+                    map_refs=map_refs,
+                    index=index,
+                    selected_ref=selected_ref,
+                    focus_task_ref=focus_task_ref,
                     selected_path_refs=selected_path_refs,
-                    chart_height=map_chart_height,
                     health_index=health_index,
                     runtime_token=runtime_token,
+                    is_mobile_request=is_mobile_request,
+                    cached_treemap_fn=_atlas_cached_treemap,
+                    plotly_events_fn=plotly_events,
+                    extract_selection_points_fn=_atlas_extract_selection_points,
+                    extract_clicked_ref_from_points_fn=_atlas_extract_clicked_ref_from_points,
+                    collect_task_refs_fn=atlas_workspace_helpers.collect_task_refs,
+                    suggest_focus_task_fn=atlas_workspace_helpers.suggest_focus_task,
+                    health_state_fn=_atlas_health_state,
+                    rerun_fn=st.rerun,
+                    logger=logger,
                 )
-                if treemap is not None:
-                    chart_key = f"atlas_focus_treemap_{selected_ref}"
-                    chart_events_key = f"{chart_key}_events"
-                    point_refs, label_lookup = (
-                        atlas_map_chart_helpers.build_point_ref_label_lookup(
-                            treemap=treemap,
-                            map_refs=map_refs,
-                        )
-                    )
-                    points = atlas_map_chart_helpers.collect_treemap_points(
-                        session_state=st.session_state,
-                        chart_key=chart_key,
-                        chart_events_key=chart_events_key,
-                        render_plotly_events_fn=(
-                            (
-                                lambda: atlas_map_chart_helpers.render_plotly_events_points(
-                                    map_chart_area=map_chart_area,
-                                    plotly_events_fn=plotly_events,
-                                    treemap=treemap,
-                                    chart_events_key=chart_events_key,
-                                    map_chart_height=map_chart_height,
-                                )
-                            )
-                            if plotly_events is not None
-                            else None
-                        ),
-                        render_plotly_chart_fn=lambda: map_chart_area.plotly_chart(
-                            treemap,
-                            use_container_width=True,
-                            config={"displayModeBar": False},
-                            key=chart_key,
-                            on_select="rerun",
-                            selection_mode=("points",),
-                        ),
-                        extract_selection_points_fn=_atlas_extract_selection_points,
-                        logger=logger,
-                    )
-
-                    clicked_ref = _atlas_extract_clicked_ref_from_points(
-                        points,
-                        index=index,
-                        current_selected=selected_ref,
-                        point_refs=point_refs,
-                        label_lookup=label_lookup,
-                    )
-
-                    atlas_map_chart_helpers.apply_clicked_ref_navigation(
-                        clicked_ref=clicked_ref,
-                        selected_ref=selected_ref,
-                        index=index,
-                        session_state=st.session_state,
-                        health_index=health_index,
-                        collect_task_refs_fn=atlas_workspace_helpers.collect_task_refs,
-                        suggest_focus_task_fn=atlas_workspace_helpers.suggest_focus_task,
-                        health_state_fn=_atlas_health_state,
-                        rerun_fn=st.rerun,
-                    )
-                else:
-                    map_chart_area.info("No map data available.")
-
-                if not map_task_refs:
-                    if map_lens == "Scope":
-                        map_sidebar_area.info("No tasks available in current scope.")
-                    else:
-                        map_sidebar_area.info(
-                            "No tasks to choose focus from in this branch."
-                        )
-
-    with inspector_tab:
-        with st.container(border=True):
-            st.markdown(
-                "<div class='atlas-kicker'>Inspector</div>", unsafe_allow_html=True
-            )
-            st.caption(f"Selected from map: {selected_meta['title']}")
-            selected_health = health_index.get(selected_ref)
-            if selected_health is None:
-                selected_health = _atlas_health_state(selected_meta, index=index)
-            st.caption(
-                f"Status rationale: {_atlas_health_source_explanation(selected_health.get('source'))}"
-            )
-            selected_type, selected_id = _parse_typed_ref(selected_ref)
-            if not selected_type or selected_id is None:
-                st.info("Select a node to inspect.")
-            else:
-                render_inspector_content(
-                    selected_id, selected_type, username, show_close=False
+                atlas_map_chart_helpers.render_no_tasks_message(
+                    sidebar=map_sidebar_area,
+                    map_task_refs=map_task_refs,
+                    map_lens=map_lens,
                 )
+
+    atlas_inspector_helpers.render_inspector_tab(
+        st_module=st,
+        inspector_tab=inspector_tab,
+        selected_meta=selected_meta,
+        selected_ref=selected_ref,
+        index=index,
+        health_index=health_index,
+        health_state_fn=_atlas_health_state,
+        health_source_explanation_fn=_atlas_health_source_explanation,
+        parse_typed_ref_fn=_parse_typed_ref,
+        render_inspector_content_fn=render_inspector_content,
+        username=username,
+    )
 
 
 def render_strategy_pulse_content(username):

@@ -17,6 +17,9 @@ class _FakeChartArea:
     def __init__(self):
         self.entered = 0
         self.exited = 0
+        self.infos = []
+        self.plotly_calls = 0
+        self.next_plotly_payload = None
 
     def __enter__(self):
         self.entered += 1
@@ -25,6 +28,21 @@ class _FakeChartArea:
     def __exit__(self, exc_type, exc, tb):
         self.exited += 1
         return False
+
+    def info(self, value):
+        self.infos.append(str(value))
+
+    def plotly_chart(self, *_args, **_kwargs):
+        self.plotly_calls += 1
+        return self.next_plotly_payload
+
+
+class _FakeSidebar:
+    def __init__(self):
+        self.infos = []
+
+    def info(self, value):
+        self.infos.append(str(value))
 
 
 def test_build_point_ref_label_lookup_uses_trace_ids_and_labels():
@@ -144,3 +162,102 @@ def test_apply_clicked_ref_navigation_updates_branch_focus_from_tasks():
     assert session_state["atlas_selected_ref"] == "kr_1"
     assert session_state["atlas_focus_task_ref"] == "task_2"
     assert reruns == ["rerun"]
+
+
+def test_render_map_chart_and_handle_navigation_shows_no_data_message():
+    chart_area = _FakeChartArea()
+    handled = atlas_map_chart_helpers.render_map_chart_and_handle_navigation(
+        map_chart_area=chart_area,
+        session_state={},
+        map_refs=["goal_1"],
+        index={"goal_1": {"type": "GOAL"}},
+        selected_ref="goal_1",
+        focus_task_ref="task_1",
+        selected_path_refs={"goal_1"},
+        health_index={},
+        runtime_token="rt1",
+        is_mobile_request=False,
+        cached_treemap_fn=lambda *_args, **_kwargs: None,
+        plotly_events_fn=None,
+        extract_selection_points_fn=lambda *_args, **_kwargs: [],
+        extract_clicked_ref_from_points_fn=lambda *_args, **_kwargs: None,
+        collect_task_refs_fn=lambda **_kwargs: [],
+        suggest_focus_task_fn=lambda **_kwargs: None,
+        health_state_fn=lambda *_args, **_kwargs: {},
+        rerun_fn=lambda: None,
+        logger=None,
+    )
+    assert handled is False
+    assert chart_area.infos == ["No map data available."]
+
+
+def test_render_map_chart_and_handle_navigation_updates_clicked_task():
+    chart_area = _FakeChartArea()
+    chart_area.next_plotly_payload = {"selection": {"points": [{"id": "task_1"}]}}
+    session_state = {}
+    reruns = []
+    treemap = SimpleNamespace(
+        data=[SimpleNamespace(ids=["task_1"], labels=["Task 1"])]
+    )
+
+    handled = atlas_map_chart_helpers.render_map_chart_and_handle_navigation(
+        map_chart_area=chart_area,
+        session_state=session_state,
+        map_refs=["task_1"],
+        index={"task_1": {"type": "TASK"}},
+        selected_ref="goal_1",
+        focus_task_ref="task_0",
+        selected_path_refs={"goal_1"},
+        health_index={},
+        runtime_token="rt1",
+        is_mobile_request=False,
+        cached_treemap_fn=lambda *_args, **_kwargs: treemap,
+        plotly_events_fn=None,
+        extract_selection_points_fn=lambda payload: list(
+            ((payload or {}).get("selection") or {}).get("points") or []
+        ),
+        extract_clicked_ref_from_points_fn=lambda points, **_kwargs: (
+            str((points[0] or {}).get("id")) if points else None
+        ),
+        collect_task_refs_fn=lambda **_kwargs: [],
+        suggest_focus_task_fn=lambda **_kwargs: None,
+        health_state_fn=lambda *_args, **_kwargs: {},
+        rerun_fn=lambda: reruns.append("rerun"),
+        logger=None,
+    )
+
+    assert handled is True
+    assert session_state["atlas_selected_ref"] == "task_1"
+    assert session_state["atlas_breadcrumbs"] == "task_1"
+    assert session_state["atlas_focus_task_ref"] == "task_1"
+    assert chart_area.plotly_calls == 1
+    assert reruns == ["rerun"]
+
+
+def test_render_no_tasks_message_variants():
+    sidebar_scope = _FakeSidebar()
+    shown_scope = atlas_map_chart_helpers.render_no_tasks_message(
+        sidebar=sidebar_scope,
+        map_task_refs=[],
+        map_lens="Scope",
+    )
+    assert shown_scope is True
+    assert sidebar_scope.infos == ["No tasks available in current scope."]
+
+    sidebar_branch = _FakeSidebar()
+    shown_branch = atlas_map_chart_helpers.render_no_tasks_message(
+        sidebar=sidebar_branch,
+        map_task_refs=[],
+        map_lens="Branch",
+    )
+    assert shown_branch is True
+    assert sidebar_branch.infos == ["No tasks to choose focus from in this branch."]
+
+    sidebar_has_tasks = _FakeSidebar()
+    shown_none = atlas_map_chart_helpers.render_no_tasks_message(
+        sidebar=sidebar_has_tasks,
+        map_task_refs=["task_1"],
+        map_lens="Scope",
+    )
+    assert shown_none is False
+    assert sidebar_has_tasks.infos == []
