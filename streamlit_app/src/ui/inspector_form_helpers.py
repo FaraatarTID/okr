@@ -750,3 +750,100 @@ def render_delete_entity_section(
         rerun_fn()
 
     return False
+
+
+def handle_save_changes(
+    *,
+    st_module: Any,
+    can_save: bool,
+    node_type_upper: str,
+    node_id: int,
+    username: str,
+    new_title: str,
+    new_description: str,
+    new_progress: int,
+    new_cycle_id: Any,
+    new_strat_tags_input: str,
+    new_score_mode: Any,
+    new_obj_weight: float,
+    new_state: Any,
+    new_reflection: str,
+    new_start: float,
+    new_target: float,
+    new_current: float,
+    new_unit: str,
+    new_metric_type: Any,
+    new_weight: float,
+    new_init_tags_input: str,
+    new_assignee_id: Any,
+    update_goal_fn: Callable[..., Any],
+    update_objective_fn: Callable[..., Any],
+    update_key_result_fn: Callable[..., Any],
+    update_task_fn: Callable[..., Any],
+    rerun_fn: Callable[[], Any],
+) -> bool:
+    """Handle inspector Save Changes dispatch by node type.
+
+    Returns True when caller should abort due to an error.
+    """
+    if not st_module.form_submit_button("Save Changes", disabled=not can_save):
+        return False
+
+    updates: dict[str, Any] = {
+        "title": new_title,
+        "description": new_description,
+        "progress": new_progress,
+    }
+
+    try:
+        if node_type_upper == "GOAL":
+            updates.update(
+                {
+                    "cycle_id": new_cycle_id,
+                    "strategy_tags": [
+                        item.strip()
+                        for item in str(new_strat_tags_input or "").split(",")
+                        if item.strip()
+                    ],
+                }
+            )
+            update_goal_fn(node_id, actor_username=username, **updates)
+        elif node_type_upper == "OBJECTIVE":
+            updates.update(
+                {
+                    "score_mode": new_score_mode,
+                    "weight": new_obj_weight,
+                    "state": new_state,
+                    "final_reflection": new_reflection,
+                }
+            )
+            update_objective_fn(node_id, actor_username=username, **updates)
+        elif node_type_upper == "KEY_RESULT":
+            updates.update(
+                {
+                    "start_value": new_start,
+                    "target_value": new_target,
+                    "current_value": new_current,
+                    "unit": new_unit,
+                    "metric_type": new_metric_type,
+                    "weight": new_weight,
+                    "state": new_state,
+                    "final_reflection": new_reflection,
+                    "initiative_tags": [
+                        item.strip()
+                        for item in str(new_init_tags_input or "").split(",")
+                        if item.strip()
+                    ],
+                }
+            )
+            update_key_result_fn(node_id, actor_username=username, **updates)
+        elif node_type_upper == "TASK":
+            updates.update({"assignee_id": new_assignee_id})
+            update_task_fn(node_id, actor_username=username, **updates)
+    except PermissionError as exc:
+        st_module.error(str(exc))
+        return True
+
+    st_module.success("Saved!")
+    rerun_fn()
+    return False
