@@ -178,7 +178,7 @@ def test_create_user_endpoint_parses_role_and_team(monkeypatch):
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": "secret",
+            "password": "secret123",
             "role": "manager",
             "display_name": "Member One",
             "manager_id": 2,

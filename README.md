@@ -2,6 +2,8 @@
 
 A powerful Streamlit application for managing Objectives and Key Results (OKRs), featuring multi-user support, role-based access, AI-driven strategic analysis, and deadline tracking.
 
+Language quick switch: [EN](#start-here-guiding-map) | [FA](#راهنمای-سریع-فارسی)
+
 ---
 
 ## Documentation HQ
@@ -14,7 +16,8 @@ Use this section as the single entry point for all project docs.
 - **Learning Loop Workflow (EN+FA)**: [docs/learning-loop.md](docs/learning-loop.md)
 - **Architecture (Full System)**: [ARCHITECTURE.md](ARCHITECTURE.md)
 - **License**: [LICENSE](LICENSE)
-- **Deployment Guide**: [DEPLOYMENT.md](DEPLOYMENT.md)
+- **Deployment Guide (En)**: [DEPLOYMENT.md](DEPLOYMENT.md)
+- **Deployment Guide (Fa)**: [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md)
 - **Performance Budget**: [performance.md](performance.md)
 - **AI Features (En)**: [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md)
 - **AI Features (Fa)**: [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md)
@@ -29,21 +32,78 @@ Use this section as the single entry point for all project docs.
 
 ### 🛠️ Ops & Infrastructure
 
-- **Config Reference**: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
-- **Deployment Checklist**: [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
-- **Internal Deployment Checklist**: [docs/INTERNAL_DEPLOYMENT_CHECKLIST.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST.md)
-- **Docker Compose**: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
-- **Kubernetes**: [docs/KUBERNETES.md](docs/KUBERNETES.md)
-- **Reverse Proxy**: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
-- **Operations**: [docs/OPERATIONS.md](docs/OPERATIONS.md)
-- **Troubleshooting**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-- **First-Run Runbook**: [docs/RUNBOOK.md](docs/RUNBOOK.md)
+- **Config Reference (En)**: [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
+- **Config Reference (Fa)**: [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md)
+- **Deployment Checklist (En)**: [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
+- **Deployment Checklist (Fa)**: [docs/DEPLOY_CHECKLIST_FA.md](docs/DEPLOY_CHECKLIST_FA.md)
+- **Internal Deployment Checklist (En)**: [docs/INTERNAL_DEPLOYMENT_CHECKLIST.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST.md)
+- **Internal Deployment Checklist (Fa)**: [docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md)
+- **Docker Compose (En)**: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
+- **Docker Compose (Fa)**: [docs/DOCKER_COMPOSE_FA.md](docs/DOCKER_COMPOSE_FA.md)
+- **Kubernetes (En)**: [docs/KUBERNETES.md](docs/KUBERNETES.md)
+- **Kubernetes (Fa)**: [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md)
+- **Reverse Proxy (En)**: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
+- **Reverse Proxy (Fa)**: [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md)
+- **Operations (En)**: [docs/OPERATIONS.md](docs/OPERATIONS.md)
+- **Operations (Fa)**: [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md)
+- **Troubleshooting (En)**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- **Troubleshooting (Fa)**: [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md)
+- **First-Run Runbook (En)**: [docs/RUNBOOK.md](docs/RUNBOOK.md)
+- **First-Run Runbook (Fa)**: [docs/RUNBOOK_FA.md](docs/RUNBOOK_FA.md)
 
 ---
 
-- Operations guide: [docs/OPERATIONS.md](docs/OPERATIONS.md)
-- Troubleshooting guide: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-- First deployment runbook: [docs/RUNBOOK.md](docs/RUNBOOK.md)
+## Start Here: Guiding Map
+
+If you are not sure where to go, use this intent-based map.
+
+### Quick Routing by Goal
+
+| Your Goal | Read First | Then Read |
+| --- | --- | --- |
+| First production deploy on a server | [docs/RUNBOOK.md](docs/RUNBOOK.md) / [docs/RUNBOOK_FA.md](docs/RUNBOOK_FA.md) | [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) + [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md) / [docs/DEPLOY_CHECKLIST_FA.md](docs/DEPLOY_CHECKLIST_FA.md) |
+| Validate env + secrets before startup | [scripts/check_deploy_config.py](scripts/check_deploy_config.py) | [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md) / [docs/DOCKER_COMPOSE_FA.md](docs/DOCKER_COMPOSE_FA.md) |
+| Run day-2 operations safely | [docs/OPERATIONS.md](docs/OPERATIONS.md) / [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md) | [docs/INTERNAL_DEPLOYMENT_CHECKLIST.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST.md) / [docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md) |
+| Debug an outage or runtime error | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) / [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md) | [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md) / [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md) |
+| Understand any config key quickly | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) / [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) | [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) for full examples |
+| Deploy on Kubernetes | [docs/KUBERNETES.md](docs/KUBERNETES.md) / [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md) | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) / [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) |
+
+### Quick Routing by Role
+
+| You Are | Primary Guide |
+| --- | --- |
+| End user/member | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) / [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md) |
+| Manager | [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md) / [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md) |
+| Admin/operator | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) / [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md) |
+| AI/policy reviewer | [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md) / [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md) |
+| Lifecycle/process owner | [docs/OKR_LIFECYCLE_GUIDE.md](docs/OKR_LIFECYCLE_GUIDE.md) / [docs/OKR_LIFECYCLE_GUIDE_FA.md](docs/OKR_LIFECYCLE_GUIDE_FA.md) |
+
+## راهنمای سریع فارسی
+
+اگر سریع می‌خواهید به سند درست برسید، از این نقشه استفاده کنید.
+
+### مسیر بر اساس نیاز
+
+| نیاز شما | سند شروع |
+| --- | --- |
+| استقرار اولیه روی سرور | [docs/RUNBOOK_FA.md](docs/RUNBOOK_FA.md) |
+| استقرار کامل سازمانی | [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) |
+| چک‌لیست go-live | [docs/DEPLOY_CHECKLIST_FA.md](docs/DEPLOY_CHECKLIST_FA.md) |
+| تنظیم Docker Compose | [docs/DOCKER_COMPOSE_FA.md](docs/DOCKER_COMPOSE_FA.md) |
+| بررسی/عیب‌یابی خطاها | [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md) |
+| عملیات روزانه و نگهداری | [docs/OPERATIONS_FA.md](docs/OPERATIONS_FA.md) |
+| مرجع کلیدهای تنظیمات | [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) |
+| استقرار Kubernetes | [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md) |
+| تنظیم Reverse Proxy | [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md) |
+
+### مسیر بر اساس نقش
+
+| نقش | سند پیشنهادی |
+| --- | --- |
+| کاربر نهایی | [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md) |
+| مدیر | [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md) |
+| ادمین | [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md) |
+| بررسی AI و سیاست‌ها | [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md) |
 
 ---
 

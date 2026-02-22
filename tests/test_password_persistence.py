@@ -14,6 +14,9 @@ def isolated_db(monkeypatch, tmp_path):
 
     monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
     monkeypatch.setattr(database, "_engine", engine, raising=False)
+    monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.delenv("OKR_RUNTIME_ENV", raising=False)
+    monkeypatch.delenv("OKR_BOOTSTRAP_ADMIN_PASSWORD", raising=False)
 
     SQLModel.metadata.create_all(engine)
     try:
@@ -118,3 +121,52 @@ def test_ensure_admin_exists_does_not_retry_non_transient_operational_error(monk
     with pytest.raises(OperationalError):
         crud.ensure_admin_exists()
     assert attempts["count"] == 1
+
+
+def test_ensure_admin_exists_requires_bootstrap_password_in_production(
+    isolated_db, monkeypatch
+):
+    import src.crud as crud
+
+    monkeypatch.setenv("OKR_ENV", "production")
+    monkeypatch.delenv("OKR_BOOTSTRAP_ADMIN_PASSWORD", raising=False)
+
+    with pytest.raises(RuntimeError):
+        crud.ensure_admin_exists()
+
+
+def test_ensure_admin_exists_uses_configured_bootstrap_password_in_production(
+    isolated_db, monkeypatch
+):
+    from src.crud import authenticate_user_detailed, ensure_admin_exists
+
+    monkeypatch.setenv("OKR_ENV", "production")
+    monkeypatch.setenv("OKR_BOOTSTRAP_ADMIN_PASSWORD", "ProdAdmin123!")
+
+    assert ensure_admin_exists() is True
+    assert authenticate_user_detailed("admin", "admin")["success"] is False
+    assert authenticate_user_detailed("admin", "ProdAdmin123!")["success"] is True
+
+
+def test_create_user_rejects_weak_password_when_strict_policy_enabled(
+    isolated_db, monkeypatch
+):
+    from src.crud import create_user
+
+    monkeypatch.setenv("OKR_ENFORCE_STRONG_PASSWORD_POLICY", "true")
+    with pytest.raises(ValueError):
+        create_user("weak_user", "weakpass")
+
+
+def test_reset_password_rejects_weak_password_when_strict_policy_enabled(
+    isolated_db, monkeypatch
+):
+    from src.crud import ensure_admin_exists, get_user_by_username, reset_user_password
+
+    ensure_admin_exists()
+    admin = get_user_by_username("admin")
+    assert admin is not None
+
+    monkeypatch.setenv("OKR_ENFORCE_STRONG_PASSWORD_POLICY", "true")
+    with pytest.raises(ValueError):
+        reset_user_password(admin.id, "weakpass")

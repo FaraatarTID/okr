@@ -106,6 +106,7 @@ def _run_pdf_preflight():
         backend_proxy_mutations=backend_proxy_mutations,
         backend_service_token=_cfg_value("OKR_BACKEND_SERVICE_TOKEN", ""),
         backend_signing_secret=_cfg_value("OKR_BACKEND_SIGNING_SECRET", ""),
+        bootstrap_admin_password=os.getenv("OKR_BOOTSTRAP_ADMIN_PASSWORD", ""),
         allow_local_backend_fallback=_env_bool("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False),
         runtime_env=(
             _cfg_value("OKR_ENV", "")
@@ -472,11 +473,17 @@ def render_login():
                     st.success(f"Welcome, {user.display_name}!")
                     st.rerun()
                 else:
-                    if str(auth.get("error_code", "")).startswith("AUTH_LOCKED"):
+                    error_code = str(auth.get("error_code", ""))
+                    if error_code.startswith("AUTH_LOCKED"):
                         retry_after = int(auth.get("retry_after_seconds") or 0)
                         minutes = max(1, (retry_after + 59) // 60)
                         st.error(
                             f"Too many failed attempts. Try again in about {minutes} minute(s)."
+                        )
+                    elif error_code == "AUTH_TEMP_UNAVAILABLE":
+                        st.error(
+                            "Login is temporarily unavailable due to authentication safeguards. "
+                            "Please try again shortly."
                         )
                     else:
                         st.error("Invalid username or password.")

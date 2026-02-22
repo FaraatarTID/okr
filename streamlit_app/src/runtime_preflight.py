@@ -38,6 +38,7 @@ def evaluate_runtime_preflight(
     backend_proxy_mutations: bool = False,
     backend_service_token: Optional[str] = None,
     backend_signing_secret: Optional[str] = None,
+    bootstrap_admin_password: Optional[str] = None,
     allow_local_backend_fallback: bool = False,
     runtime_env: str = "development",
 ) -> RuntimePreflightReport:
@@ -93,6 +94,11 @@ def evaluate_runtime_preflight(
     if is_production and backend_url and not str(backend_signing_secret or "").strip():
         report.errors.append(
             "Production backend mode requires OKR_BACKEND_SIGNING_SECRET."
+        )
+
+    if is_production and not str(bootstrap_admin_password or "").strip():
+        report.errors.append(
+            "Production requires OKR_BOOTSTRAP_ADMIN_PASSWORD for secure admin bootstrap."
         )
 
     if is_production and allow_local_backend_fallback:

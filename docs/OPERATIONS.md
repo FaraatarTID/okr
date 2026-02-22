@@ -4,7 +4,10 @@ Operations guide
 
 First run
 - App runs migrations automatically
-- Default admin admin/admin is created; change password immediately
+- Empty DB bootstrap account is `admin`
+- Production password source: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required)
+- Non-production fallback password: `admin` (local/dev convenience only)
+- Initial admin is forced to change password on first login
 
 Backups
 - Supabase PostgreSQL: enable automated backups/snapshots and test restore
@@ -38,6 +41,7 @@ Security hardening
 - Set firewall rules so only the proxy can reach the app port
 - Keep backend API port private (`127.0.0.1` bind by default in compose)
 - Enable request signing for internal service calls (`OKR_BACKEND_SIGNING_SECRET`)
+- Keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production
 - Keep DB credentials in secret manager and rotate regularly
 
 Incident response
@@ -60,5 +64,6 @@ Release governance
 - Protect main branch with required CI checks.
 - Required checks:
   - Docs HQ link checker
+  - Deploy config template gate
   - RBAC regression gate
   - Full pytest suite
