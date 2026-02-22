@@ -72,6 +72,7 @@ from src.ui import report_export_helpers
 from src.ui import report_kr_status_helpers
 from src.ui import inspector_shell_helpers
 from src.ui import inspector_form_helpers
+from src.ui import inspector_alignment_helpers
 
 # Keep Atlas helper symbols available from this module for existing tests/imports.
 _ATLAS_HELPER_REEXPORTS = (
@@ -1892,302 +1893,86 @@ def render_inspector_content(node_id, node_type, username, show_close=True):
             new_type_insp = node_type_insp
 
         # OBJECTIVE Specific Score Mode and Weight
-        new_score_mode = getattr(node, "score_mode", ScoreMode.UNWEIGHTED)
-        new_obj_weight_insp = getattr(node, "weight", 1.0)
-        if node_type_insp == "OBJECTIVE":
-            st.markdown("---")
-            st.caption("🎯 Objective Scoring & Weight")
-            oc1, oc2 = st.columns(2)
-            new_obj_weight_insp = oc1.number_input(
-                "Weight", value=float(new_obj_weight_insp), min_value=0.0, step=0.1, key=f"obj_weight_{node_id}"
+        from src.domain.scoring import calculate_objective_score
+
+        new_score_mode, new_obj_weight_insp = (
+            inspector_form_helpers.resolve_objective_scoring_section(
+                st_module=st,
+                node=node,
+                node_type_upper=node_type_insp,
+                node_id=node_id,
+                score_mode_enum=ScoreMode,
+                calculate_kr_score_fn=calculate_kr_score,
+                get_score_label_fn=get_score_label,
+                get_score_color_band_fn=get_score_color_band,
+                calculate_objective_score_fn=calculate_objective_score,
             )
-            mode_options = [m.value for m in ScoreMode]
-            curr_mode = getattr(node, "score_mode", ScoreMode.UNWEIGHTED).value
-            new_mode_val = oc2.selectbox(
-                "Score Mode",
-                options=mode_options,
-                index=mode_options.index(curr_mode),
-                key=f"score_mode_{node_id}"
-            )
-            new_score_mode = ScoreMode(new_mode_val)
-            
-            # Calculate and show current score if possible
-            if hasattr(node, "key_results") and node.key_results:
-                from src.domain.scoring import calculate_objective_score
-                kr_scores = []
-                kr_weights = []
-                for kr in node.key_results:
-                    s = calculate_kr_score(kr.current_value, kr.target_value, kr.start_value, kr.metric_type)
-                    kr_scores.append(s)
-                    kr_weights.append(kr.weight)
-                
-                obj_score = calculate_objective_score(
-                    kr_scores, 
-                    kr_weights if new_score_mode == ScoreMode.WEIGHTED else None,
-                    weighted=(new_score_mode == ScoreMode.WEIGHTED)
-                )
-                score_label = get_score_label(obj_score)
-                band_class = get_score_color_band(obj_score)
-                st.markdown(
-                    f"**Current Score:** <span class='atlas-attn-chip {band_class}'>{obj_score:.2f} ({score_label})</span>",
-                    unsafe_allow_html=True
-                )
+        )
 
         # GOAL Specific Cycle Assignment and Tags
-        new_cycle_id_insp = getattr(node, "cycle_id", None)
-        new_strat_tags_input = ""
-        if node_type_insp == "GOAL":
-            st.markdown("---")
-            st.caption("📅 Cycle Assignment")
-            all_cycles_insp = get_all_cycles()
-            cycle_titles_insp = [c.title for c in all_cycles_insp]
-            cycle_ids_insp = [c.id for c in all_cycles_insp]
-
-            try:
-                curr_idx_cyc = cycle_ids_insp.index(new_cycle_id_insp)
-            except Exception as exc:
-                logger.debug("Failed to resolve current cycle index for node %s: %s", node_id, exc)
-                curr_idx_cyc = 0
-
-            sel_cyc = st.selectbox(
-                "Assign to Cycle",
-                options=cycle_titles_insp,
-                index=curr_idx_cyc,
-                key=f"cyc_assign_{node_id}",
+        new_cycle_id_insp, new_strat_tags_input = (
+            inspector_form_helpers.resolve_goal_cycle_and_strategy_tags(
+                st_module=st,
+                node=node,
+                node_type_upper=node_type_insp,
+                node_id=node_id,
+                get_all_cycles_fn=get_all_cycles,
+                json_loads_fn=json.loads,
+                logger=logger,
             )
-            new_cycle_id_insp = all_cycles_insp[cycle_titles_insp.index(sel_cyc)].id
-
-            st.caption("♟️ Strategy Tags")
-            # Handle potential JSON string or list
-            raw_strats = getattr(node, "strategy_tags", "[]")
-            curr_strats = []
-            if isinstance(raw_strats, str):
-                try:
-                    curr_strats = json.loads(raw_strats)
-                except Exception as exc:
-                    logger.debug("Failed to parse strategy_tags JSON for node %s: %s", node_id, exc)
-                    curr_strats = [
-                        t.strip() for t in raw_strats.split(",") if t.strip()
-                    ]
-            elif isinstance(raw_strats, list):
-                curr_strats = raw_strats
-
-            new_strat_tags_input = st.text_input(
-                "Add Strategy Tags (comma-separated)",
-                value=", ".join(curr_strats),
-                key=f"strat_tags_{node_id}",
-            )
+        )
 
         # KEY_RESULT Specific Metrics
-        new_target_insp = getattr(node, "target_value", 100.0)
-        new_curr_insp = getattr(node, "current_value", 0.0)
-        new_unit_insp = getattr(node, "unit", "%")
-        new_init_tags_input = ""
-
-        if node_type_insp == "KEY_RESULT":
-            st.markdown("---")
-            st.caption("📈 Progress Metrics")
-            mc0_in, mc1_in, mc2_in, mc3_in = st.columns(4)
-            new_start_insp = mc0_in.number_input(
-                "Start Value", value=float(getattr(node, "start_value", 0.0)), key=f"start_{node_id}"
-            )
-            new_target_insp = mc1_in.number_input(
-                "Target Value", value=float(new_target_insp), key=f"target_{node_id}"
-            )
-            new_curr_insp = mc2_in.number_input(
-                "Current Value", value=float(new_curr_insp), key=f"curr_val_{node_id}"
-            )
-            new_unit_insp = mc3_in.text_input(
-                "Unit", value=new_unit_insp, key=f"unit_{node_id}"
-            )
-
-            # Calculate and show current score
-            curr_score = calculate_kr_score(
-                current=new_curr_insp,
-                target=new_target_insp,
-                start=new_start_insp,
-                metric_type=getattr(node, "metric_type", MetricType.NUMERIC)
-            )
-            score_label = get_score_label(curr_score)
-            band_class = get_score_color_band(curr_score)
-            st.markdown(
-                f"**Current Score:** <span class='atlas-attn-chip {band_class}'>{curr_score:.2f} ({score_label})</span>",
-                unsafe_allow_html=True
-            )
-
-            if new_target_insp > 0:
-                calc_p = int((new_curr_insp / new_target_insp) * 100)
-                calc_p = max(0, min(100, calc_p))
-                if not has_children_insp:
-                    new_progress_insp = calc_p
-                    st.info(f"Calculated Progress: {new_progress_insp}%")
-
-            st.caption("⚡ Initiative Tags")
-            raw_inits = getattr(node, "initiative_tags", "[]")
-            curr_inits = []
-            if isinstance(raw_inits, str):
-                try:
-                    curr_inits = json.loads(raw_inits)
-                except Exception as exc:
-                    logger.debug("Failed to parse initiative_tags JSON for node %s: %s", node_id, exc)
-                    curr_inits = [t.strip() for t in raw_inits.split(",") if t.strip()]
-            elif isinstance(raw_inits, list):
-                curr_inits = raw_inits
-
-            new_init_tags_input = st.text_input(
-                "Add Initiative Tags (comma-separated)",
-                value=", ".join(curr_inits),
-                key=f"init_tags_{node_id}",
-            )
-
-            st.markdown("---")
-            st.caption("⚖️ KR Weight & Metric Type")
-            w_col1, w_col2 = st.columns(2)
-            new_weight_insp = w_col1.number_input(
-                "Weight", value=float(getattr(node, "weight", 1.0)), min_value=0.0, step=0.1, key=f"weight_{node_id}"
-            )
-            metric_type_options = [mt.value for mt in MetricType]
-            curr_metric_type = getattr(node, "metric_type", MetricType.NUMERIC).value
-            new_metric_type_val = w_col2.selectbox(
-                "Metric Type",
-                options=metric_type_options,
-                index=metric_type_options.index(curr_metric_type),
-                key=f"metric_type_{node_id}"
-            )
-            new_metric_type = MetricType(new_metric_type_val)
+        kr_metrics = inspector_form_helpers.resolve_key_result_metrics_section(
+            st_module=st,
+            node=node,
+            node_type_upper=node_type_insp,
+            node_id=node_id,
+            has_children=has_children_insp,
+            new_progress_value=int(new_progress_insp),
+            metric_type_enum=MetricType,
+            calculate_kr_score_fn=calculate_kr_score,
+            get_score_label_fn=get_score_label,
+            get_score_color_band_fn=get_score_color_band,
+            json_loads_fn=json.loads,
+            logger=logger,
+        )
+        new_start_insp = float(kr_metrics.get("new_start", 0.0) or 0.0)
+        new_target_insp = float(kr_metrics.get("new_target", 100.0) or 100.0)
+        new_curr_insp = float(kr_metrics.get("new_current", 0.0) or 0.0)
+        new_unit_insp = str(kr_metrics.get("new_unit", "%") or "%")
+        new_init_tags_input = str(kr_metrics.get("new_init_tags_input", "") or "")
+        new_weight_insp = float(kr_metrics.get("new_weight", 1.0) or 1.0)
+        new_metric_type = kr_metrics.get("new_metric_type", MetricType.NUMERIC)
+        new_progress_insp = int(kr_metrics.get("new_progress", new_progress_insp) or new_progress_insp)
 
         # Phase 2: Lifecycle State & Reflection
-        new_state = getattr(node, "state", LifecycleState.DRAFT)
-        new_reflection = getattr(node, "final_reflection", "")
-        if node_type_insp in ["OBJECTIVE", "KEY_RESULT"]:
-            st.markdown("---")
-            st.caption("🔄 Lifecycle & Closing")
-            s_col1, s_col2 = st.columns(2)
-            
-            curr_state = getattr(node, "state", LifecycleState.DRAFT)
-            allowed_next = get_allowed_transitions(curr_state)
-            # Add current state to options so it shows as selected
-            options = [curr_state] + [s for s in allowed_next if s != curr_state]
-            
-            # Label map with icons
-            label_map = {s.value: f"{STATE_ICONS.get(s, '')} {s.value.title()}" for s in options}
-            
-            new_state_val = s_col1.selectbox(
-                "Lifecycle State",
-                options=[s.value for s in options],
-                format_func=lambda x: label_map.get(x, x),
-                index=0,
-                key=f"state_sel_{node_id}",
-                help="Transition rules are enforced. Draft -> Active -> Grading -> Archived."
-            )
-            new_state = LifecycleState(new_state_val)
-            
-            # Show hint
-            st.info(f"💡 **{new_state.value.title()}**: {STATE_HINTS.get(new_state, '')}")
-            
-            # Show cascade warning
-            if node_type_insp == "OBJECTIVE" and new_state != curr_state:
-                st.warning(f"⚠️ Changing this Objective to **{new_state.value.title()}** will also update all its Key Results.")
-            
-            new_reflection = st.text_area(
-                "Final Reflection",
-                value=new_reflection or "",
-                placeholder="What did we learn? Why did we (or didn't we) achieve this?",
-                key=f"reflection_{node_id}"
-            )
+        new_state, new_reflection = inspector_form_helpers.resolve_lifecycle_section(
+            st_module=st,
+            node=node,
+            node_type_upper=node_type_insp,
+            node_id=node_id,
+            lifecycle_state_enum=LifecycleState,
+            get_allowed_transitions_fn=get_allowed_transitions,
+            state_icons=STATE_ICONS,
+            state_hints=STATE_HINTS,
+        )
 
         # Phase 3: Alignment Graph (Vertical/Horizontal Links)
-        if node_type_insp == "OBJECTIVE":
-            st.markdown("---")
-            st.caption("🔗 Organizational Alignment")
-            
-            from src.domain.alignment import get_alignment_neighbors
-            from src.crud import create_alignment, delete_alignment
-            
-            with get_session_context() as session:
-                parents, children = get_alignment_neighbors(session, node_id)
-                
-            # Render existing alignments
-            if parents:
-                st.write("**Supports (Parents):**")
-                for p in parents:
-                    p_col1, p_col2 = st.columns([0.8, 0.2])
-                    p_col1.write(f"⬆️ {p.title}")
-                    # Find edge ID to delete
-                    with get_session_context() as session:
-                        edge = session.exec(select(AlignmentEdge).where(AlignmentEdge.parent_id == p.id).where(AlignmentEdge.child_id == node_id)).first()
-                        if edge:
-                            with p_col2:
-                                if st.form_submit_button("🗑️", key=f"del_align_p_{edge.id}"):
-                                    delete_alignment(edge.id, actor_username=username)
-                                    st.rerun()
+        from src.domain.alignment import get_alignment_neighbors
+        from src.crud import create_alignment, delete_alignment
 
-            if children:
-                st.write("**Supported by (Children):**")
-                for c in children:
-                    c_col1, c_col2 = st.columns([0.8, 0.2])
-                    c_col1.write(f"⬇️ {c.title}")
-                    with get_session_context() as session:
-                        edge = session.exec(select(AlignmentEdge).where(AlignmentEdge.parent_id == node_id).where(AlignmentEdge.child_id == c.id)).first()
-                        if edge:
-                            with c_col2:
-                                if st.form_submit_button("🗑️", key=f"del_align_c_{edge.id}"):
-                                    delete_alignment(edge.id, actor_username=username)
-                                    st.rerun()
-            
-            if not parents and not children:
-                st.info("No active alignments. This objective is currently isolated.")
-
-            # Add new alignment
-            with st.expander("➕ Add Alignment Link"):
-                # Fetch all objectives (except self)
-                with get_session_context() as session:
-                    # Limit to objectives in same cycle for now or keep global? Keep global for cross-cycle alignment if desired.
-                    all_objs = session.exec(select(Objective).where(Objective.id != node_id)).all()
-                
-                if all_objs:
-                    objective_ids: list[int] = []
-                    objective_labels: dict[int, str] = {}
-                    for objective in all_objs:
-                        objective_id = getattr(objective, "id", None)
-                        if objective_id is None:
-                            continue
-                        objective_id = int(objective_id)
-                        objective_ids.append(objective_id)
-                        objective_title = (objective.title or "").strip() or "Untitled objective"
-                        objective_owner = (objective.created_by or "system").strip() or "system"
-                        objective_labels[objective_id] = (
-                            f"{objective_title} (@{objective_owner}) | #{objective_id}"
-                        )
-
-                    if not objective_ids:
-                        st.write("No other objectives available to link.")
-                    else:
-                        target_id = int(
-                            st.selectbox(
-                                "Select Objective",
-                                options=objective_ids,
-                                format_func=lambda oid: objective_labels.get(
-                                    oid, f"Objective #{oid}"
-                                ),
-                                key=f"align_sel_{node_id}",
-                            )
-                        )
-                        
-                        align_type_sel = st.radio("Relationship", ["This objective SUPPORTS the target", "The target SUPPORTS this objective"], key=f"align_type_{node_id}")
-                        
-                        if st.form_submit_button("🔗 Link Objectives", use_container_width=True):
-                            try:
-                                if align_type_sel == "This objective SUPPORTS the target":
-                                    create_alignment(parent_id=target_id, child_id=node_id, actor_username=username)
-                                else:
-                                    create_alignment(parent_id=node_id, child_id=target_id, actor_username=username)
-                                st.success("Alignment linked!")
-                                st.rerun()
-                            except ValueError as e:
-                                st.error(str(e))
-                else:
-                    st.write("No other objectives available to link.")
+        inspector_alignment_helpers.render_objective_alignment_section(
+            st_module=st,
+            node_type_upper=node_type_insp,
+            node_id=node_id,
+            username=username,
+            get_session_context_fn=get_session_context,
+            get_alignment_neighbors_fn=get_alignment_neighbors,
+            create_alignment_fn=create_alignment,
+            delete_alignment_fn=delete_alignment,
+            rerun_fn=st.rerun,
+        )
 
         user_role_perm = st.session_state.get("user_role")
         can_save_insp = bool(username)
@@ -3232,6 +3017,11 @@ def render_level(username):
     if "active_inspector_id" in st.session_state:
         del st.session_state.active_inspector_id
     return render_atlas_workspace(username)
+
+
+
+
+
 
 
 
