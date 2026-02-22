@@ -17,6 +17,8 @@ Monitoring
 - Backend uptime check: GET /healthz (backend-api)
 - Reverse proxy logs (Nginx) for access and errors
 - Container logs for `okr`, `backend-api`, and `backend-worker`
+- Track `POST /v1/jobs` rejection rates (`429`) and `Retry-After` values to detect quota pressure.
+- Review audit events (`job_submit_accepted`, `job_submit_rejected`) in `streamlit_app/logs/audit.log` for user/team job usage trends.
 - AI provider check:
   - Run `python streamlit_app/scripts/ai_provider_health_check.py`
   - Config-only validation: `python streamlit_app/scripts/ai_provider_health_check.py --no-probe`

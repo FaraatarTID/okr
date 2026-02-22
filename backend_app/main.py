@@ -107,6 +107,7 @@ from src.models import (
     UserRole,
     VariationType,
 )
+from src.audit import audit_log, error_log
 
 
 @asynccontextmanager
@@ -412,6 +413,57 @@ def _status_for_value_error(message: str, default: int = 400) -> int:
     return int(default)
 
 
+def _quota_error_code(detail: Any) -> Optional[str]:
+    if isinstance(detail, dict):
+        value = detail.get("error_code")
+        if value is not None:
+            text = str(value).strip()
+            if text:
+                return text
+    return None
+
+
+def _safe_audit_job_submit(
+    *,
+    action: str,
+    actor: str,
+    kind: str,
+    idempotency_key: Optional[str],
+    status_code: int,
+    job_id: Optional[str] = None,
+    team_id: Optional[int] = None,
+    job_status: Optional[str] = None,
+    error_code: Optional[str] = None,
+    rejection_detail: Optional[Any] = None,
+) -> None:
+    details: dict[str, Any] = {
+        "kind": str(kind),
+        "status_code": int(status_code),
+        "idempotency_key_present": bool(str(idempotency_key or "").strip()),
+    }
+    if idempotency_key:
+        details["idempotency_key"] = str(idempotency_key).strip()[:255]
+    if job_id:
+        details["job_id"] = str(job_id)
+    if team_id is not None:
+        details["team_id"] = int(team_id)
+    if job_status:
+        details["job_status"] = str(job_status)
+    if error_code:
+        details["error_code"] = str(error_code)
+    if rejection_detail is not None:
+        details["rejection"] = rejection_detail
+    try:
+        audit_log(
+            action=str(action),
+            entity="async_job",
+            actor=str(actor),
+            details=details,
+        )
+    except Exception as exc:
+        error_log("backend_job_submit_audit_failed", exc)
+
+
 @app.get("/healthz")
 def healthz() -> dict:
     return {"status": "ok"}
@@ -481,17 +533,41 @@ def api_submit_job(
         header_actor=x_okr_actor,
         payload_actor=payload.actor_username,
     )
-    enforce_job_submit_limits(
-        kind=payload.kind,
-        actor_username=actor,
-        idempotency_key=x_okr_idempotency_key,
-    )
+    normalized_idempotency_key = str(x_okr_idempotency_key or "").strip() or None
+    try:
+        enforce_job_submit_limits(
+            kind=payload.kind,
+            actor_username=actor,
+            idempotency_key=normalized_idempotency_key,
+        )
+    except HTTPException as exc:
+        if int(exc.status_code) == 429:
+            _safe_audit_job_submit(
+                action="job_submit_rejected",
+                actor=actor,
+                kind=payload.kind,
+                idempotency_key=normalized_idempotency_key,
+                status_code=429,
+                error_code=_quota_error_code(exc.detail),
+                rejection_detail=exc.detail,
+            )
+        raise
     job = enqueue_job(
         kind=payload.kind,
         payload=payload.payload,
         actor_username=actor,
         max_attempts=payload.max_attempts,
-        idempotency_key=x_okr_idempotency_key,
+        idempotency_key=normalized_idempotency_key,
+    )
+    _safe_audit_job_submit(
+        action="job_submit_accepted",
+        actor=actor,
+        kind=payload.kind,
+        idempotency_key=normalized_idempotency_key,
+        status_code=status.HTTP_202_ACCEPTED,
+        job_id=str(getattr(job, "id", "") or ""),
+        team_id=getattr(job, "team_id", None),
+        job_status=str(getattr(getattr(job, "status", None), "value", getattr(job, "status", ""))),
     )
     return JobView(**serialize_job(job))
 

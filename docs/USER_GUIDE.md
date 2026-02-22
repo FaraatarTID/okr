@@ -15,6 +15,7 @@ The main execution workspace is Atlas (`render_atlas_workspace`), composed of:
 ### Focus Task strip
 - Shows a suggested next task based on urgency and execution context.
 - Lets you start/stop timer sessions and capture a short session summary.
+- Timer authorization follows canonical goal-owner scope.
 - Supports sprint presets (`25m`, `50m`, `Custom`).
 - `Use Suggested` sets both focus task and current selection.
 
