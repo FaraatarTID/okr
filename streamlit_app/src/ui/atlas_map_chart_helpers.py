@@ -121,3 +121,110 @@ def apply_clicked_ref_navigation(
             )
     rerun_fn()
     return True
+
+
+def render_map_chart_and_handle_navigation(
+    *,
+    map_chart_area: Any,
+    session_state: dict[str, Any],
+    map_refs: list[str],
+    index: dict[str, Any],
+    selected_ref: str,
+    focus_task_ref: str,
+    selected_path_refs: set[str] | list[str] | None,
+    health_index: dict[str, Any] | None,
+    runtime_token: Any,
+    is_mobile_request: bool,
+    cached_treemap_fn: Callable[..., Any],
+    plotly_events_fn: Callable[..., list[Any] | None] | None,
+    extract_selection_points_fn: Callable[[Any], list[dict[str, Any]]],
+    extract_clicked_ref_from_points_fn: Callable[..., str | None],
+    collect_task_refs_fn: Callable[..., list[str]],
+    suggest_focus_task_fn: Callable[..., str | None],
+    health_state_fn: Callable[..., dict[str, Any]],
+    rerun_fn: Callable[[], Any],
+    logger: Any,
+) -> bool:
+    map_chart_height = 280 if is_mobile_request else 500
+    treemap = cached_treemap_fn(
+        map_refs,
+        index,
+        selected_ref,
+        focus_task_ref,
+        selected_path_refs=selected_path_refs,
+        chart_height=map_chart_height,
+        health_index=health_index,
+        runtime_token=runtime_token,
+    )
+    if treemap is None:
+        map_chart_area.info("No map data available.")
+        return False
+
+    chart_key = f"atlas_focus_treemap_{selected_ref}"
+    chart_events_key = f"{chart_key}_events"
+    point_refs, label_lookup = build_point_ref_label_lookup(
+        treemap=treemap,
+        map_refs=map_refs,
+    )
+    points = collect_treemap_points(
+        session_state=session_state,
+        chart_key=chart_key,
+        chart_events_key=chart_events_key,
+        render_plotly_events_fn=(
+            (
+                lambda: render_plotly_events_points(
+                    map_chart_area=map_chart_area,
+                    plotly_events_fn=plotly_events_fn,
+                    treemap=treemap,
+                    chart_events_key=chart_events_key,
+                    map_chart_height=map_chart_height,
+                )
+            )
+            if plotly_events_fn is not None
+            else None
+        ),
+        render_plotly_chart_fn=lambda: map_chart_area.plotly_chart(
+            treemap,
+            use_container_width=True,
+            config={"displayModeBar": False},
+            key=chart_key,
+            on_select="rerun",
+            selection_mode=("points",),
+        ),
+        extract_selection_points_fn=extract_selection_points_fn,
+        logger=logger,
+    )
+    clicked_ref = extract_clicked_ref_from_points_fn(
+        points,
+        index=index,
+        current_selected=selected_ref,
+        point_refs=point_refs,
+        label_lookup=label_lookup,
+    )
+    apply_clicked_ref_navigation(
+        clicked_ref=clicked_ref,
+        selected_ref=selected_ref,
+        index=index,
+        session_state=session_state,
+        health_index=health_index,
+        collect_task_refs_fn=collect_task_refs_fn,
+        suggest_focus_task_fn=suggest_focus_task_fn,
+        health_state_fn=health_state_fn,
+        rerun_fn=rerun_fn,
+    )
+    return True
+
+
+def render_no_tasks_message(
+    *,
+    sidebar: Any,
+    map_task_refs: list[str],
+    map_lens: str,
+) -> bool:
+    if map_task_refs:
+        return False
+    if map_lens == "Scope":
+        sidebar.info("No tasks available in current scope.")
+    else:
+        sidebar.info("No tasks to choose focus from in this branch.")
+    return True
