@@ -146,14 +146,20 @@ Backend API (recommended for scale)
     - `OKR_BACKEND_JOB_USER_WINDOW_SECONDS` (default: `60`)
     - `OKR_BACKEND_JOB_USER_MAX_REQUESTS` (default: `8`)
     - `OKR_BACKEND_JOB_USER_DAILY_MAX_REQUESTS` (default: `200`)
+    - `OKR_BACKEND_JOB_USER_PENDING_MAX_REQUESTS` (default: `3`; max active `pending`/`running` jobs per user)
     - `OKR_BACKEND_JOB_TEAM_WINDOW_SECONDS` (default: `60`)
     - `OKR_BACKEND_JOB_TEAM_MAX_REQUESTS` (default: `60`)
     - `OKR_BACKEND_JOB_TEAM_DAILY_MAX_REQUESTS` (default: `1200`)
+    - `OKR_BACKEND_JOB_TEAM_PENDING_MAX_REQUESTS` (default: `40`; max active `pending`/`running` jobs per team)
+    - `OKR_BACKEND_JOB_BACKOFF_BASE_SECONDS` (default: `3`; minimum spacing between new submissions per actor; set `0` to disable)
 - Backend worker runtime:
   - `OKR_BACKEND_WORKER_POLL_SECONDS` (default: `2`)
 - Notes:
   - With `OKR_BACKEND_API_URL` set, frontend write flows (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes) and heavy AI/PDF workflows run through backend services.
   - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API.
+  - Job submit endpoint (`POST /v1/jobs`) supports idempotency via `X-OKR-Idempotency-Key`.
+  - Quota/backoff rejections return deterministic `429` payloads with `detail.error_code`, `detail.retry_after_seconds`, and `Retry-After` header.
+  - Job submit accepted/rejected events are written to audit log for usage reporting and incident review.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
   - If backend transport fails, production default is fail-closed unless `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` is explicitly set.

@@ -33,13 +33,17 @@ def can_track_task_by_owner(
     actor_user_id: Optional[int],
     task_owner_id: Optional[int],
 ) -> bool:
-    """Timer tracking is allowed only for the propagated goal owner."""
-    if actor_user_id is None or task_owner_id is None:
-        return False
-    try:
-        return int(actor_user_id) == int(task_owner_id)
-    except Exception:
-        return False
+    """
+    Backward-compatible wrapper around centralized timer policy.
+
+    Canonical policy implementation now lives in `src.domain.authorization`.
+    """
+    from src.domain.authorization import can_track_task_timer
+
+    return can_track_task_timer(
+        actor_user_id=actor_user_id,
+        timer_owner_user_id=task_owner_id,
+    )
 
 
 def _is_team_manager(user: User, resource: ResourceProtocol, session: Any = None) -> bool:

@@ -126,3 +126,21 @@ Documentation HQ: [README](../README.md)
 - App health: `GET /`
 - Backend health: `GET /healthz`
 - لاگ‌ها: stdout سرویس‌ها (container/service logs)
+
+## Job Quotas (Phase 3)
+
+- `OKR_BACKEND_JOB_USER_WINDOW_SECONDS` (پیش‌فرض `60`)
+- `OKR_BACKEND_JOB_USER_MAX_REQUESTS` (پیش‌فرض `8`)
+- `OKR_BACKEND_JOB_USER_DAILY_MAX_REQUESTS` (پیش‌فرض `200`)
+- `OKR_BACKEND_JOB_USER_PENDING_MAX_REQUESTS` (پیش‌فرض `3`)
+- `OKR_BACKEND_JOB_TEAM_WINDOW_SECONDS` (پیش‌فرض `60`)
+- `OKR_BACKEND_JOB_TEAM_MAX_REQUESTS` (پیش‌فرض `60`)
+- `OKR_BACKEND_JOB_TEAM_DAILY_MAX_REQUESTS` (پیش‌فرض `1200`)
+- `OKR_BACKEND_JOB_TEAM_PENDING_MAX_REQUESTS` (پیش‌فرض `40`)
+- `OKR_BACKEND_JOB_BACKOFF_BASE_SECONDS` (پیش‌فرض `3`)
+
+Notes:
+- `POST /v1/jobs` از `X-OKR-Idempotency-Key` پشتیبانی می‌کند.
+- در quota/backoff reject، پاسخ `429` با `detail.error_code` و `detail.retry_after_seconds` برمی‌گردد.
+- header `Retry-After` در همان پاسخ ارسال می‌شود.
+- رویدادهای accepted/rejected submit در audit log ثبت می‌شوند.

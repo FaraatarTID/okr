@@ -20,6 +20,12 @@ Phase 1: Preparation
 - [ ] Set `OKR_BACKEND_SIGNING_SECRET` and keep `OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true`.
 - [ ] Keep `OKR_BACKEND_SECURITY_STATE_BACKEND` set to `database` or `redis` in production so nonce replay and backend API rate limits are shared across replicas.
 - [ ] If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, set `OKR_BACKEND_SECURITY_STATE_REDIS_URL`.
+- [ ] Set job quota/backlog controls for AI/PDF endpoints:
+  - `OKR_BACKEND_JOB_USER_WINDOW_SECONDS`, `OKR_BACKEND_JOB_USER_MAX_REQUESTS`, `OKR_BACKEND_JOB_USER_DAILY_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_USER_PENDING_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_TEAM_WINDOW_SECONDS`, `OKR_BACKEND_JOB_TEAM_MAX_REQUESTS`, `OKR_BACKEND_JOB_TEAM_DAILY_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_TEAM_PENDING_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_BACKOFF_BASE_SECONDS`
 - [ ] Review and execute `docs/ACCEPTED_FINDINGS_IMPLEMENTATION_PLAN.md` before production rollout.
 - [ ] Review `DEPLOYMENT.md` and `docs/CONFIG_REFERENCE.md`.
 
@@ -59,6 +65,9 @@ Phase 4: Testing and Go-Live
 - [ ] Verify frontend mutation flows succeed with backend API enabled (node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments).
 - [ ] Validate PDF/report behavior with `PDF_METHOD=pdfshift` (the only supported runtime mode).
 - [ ] Validate backend job flow (`backend-worker` processes AI/PDF requests successfully).
+- [ ] Validate deterministic quota behavior on `/v1/jobs`: `429` includes `detail.error_code`, `detail.retry_after_seconds`, and `Retry-After`.
+- [ ] Validate idempotent retries on `/v1/jobs` with `X-OKR-Idempotency-Key` do not enqueue duplicate jobs.
+- [ ] Validate audit trail includes `job_submit_accepted` and `job_submit_rejected` entries.
 - [ ] Pilot with a limited team and collect feedback.
 - [ ] Monitor app and reverse-proxy logs during pilot.
 

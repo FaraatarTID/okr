@@ -39,8 +39,8 @@ from sqlmodel import select
 from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from src.models import Goal, Objective, KeyResult, Task, User, WorkLog, CheckIn, MetricType, ScoreMode, LifecycleState
+from src.domain.authorization import can_track_task_timer
 from src.domain.lifecycle import get_allowed_transitions, get_state_color, STATE_HINTS, STATE_ICONS
-from src.domain.permissions import can_track_task_by_owner
 from src.domain.scoring import calculate_kr_score, get_score_color_band, get_score_label
 from src.crud import (
     get_goal_tree,
@@ -2681,14 +2681,17 @@ def _build_atlas_index(goals, users_map):
     index = {}
     roots = []
 
-    def visit(node, parent_ref=None, path=None, owner_id=None):
+    def visit(node, parent_ref=None, path=None, timer_owner_id=None):
         node_type = _normalize_node_type(getattr(node, "__tablename__", ""))
         node_ref = _typed_ref_for_node(node)
         title = (getattr(node, "title", None) or "Untitled").strip()
         progress = int(getattr(node, "progress", 0) or 0)
-        resolved_owner = (
-            owner_id if owner_id is not None else getattr(node, "owner_id", None)
+        resolved_timer_owner = (
+            timer_owner_id
+            if timer_owner_id is not None
+            else getattr(node, "owner_id", None)
         )
+        node_owner_id = getattr(node, "owner_id", None)
         next_path = list(path or [])
         next_path.append(node_ref)
         children = _children_for_node(node, node_type)
@@ -2707,17 +2710,29 @@ def _build_atlas_index(goals, users_map):
             "parent": parent_ref,
             "path": next_path,
             "children": child_refs,
-            "owner_id": resolved_owner,
-            "owner_name": users_map.get(resolved_owner, "Unknown"),
+            "owner_id": resolved_timer_owner,
+            "node_owner_id": node_owner_id,
+            "timer_owner_id": resolved_timer_owner,
+            "owner_name": users_map.get(resolved_timer_owner, "Unknown"),
         }
 
         for child in children:
-            visit(child, parent_ref=node_ref, path=next_path, owner_id=resolved_owner)
+            visit(
+                child,
+                parent_ref=node_ref,
+                path=next_path,
+                timer_owner_id=resolved_timer_owner,
+            )
 
     for goal in goals:
         goal_ref = _typed_ref_for_node(goal)
         roots.append(goal_ref)
-        visit(goal, parent_ref=None, path=[], owner_id=getattr(goal, "owner_id", None))
+        visit(
+            goal,
+            parent_ref=None,
+            path=[],
+            timer_owner_id=getattr(goal, "owner_id", None),
+        )
 
     return index, roots
 
@@ -2741,14 +2756,23 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
     index = {}
     roots = []
 
-    def visit(node_type: str, payload: dict, parent_ref=None, path=None, owner_id=None):
+    def visit(
+        node_type: str,
+        payload: dict,
+        parent_ref=None,
+        path=None,
+        timer_owner_id=None,
+    ):
         node_ref = _typed_ref_for_type_and_id(node_type, payload.get("id"))
         if not node_ref:
             return
 
         title = (payload.get("title") or "Untitled").strip()
         progress = int(payload.get("progress", 0) or 0)
-        resolved_owner = owner_id if owner_id is not None else payload.get("owner_id")
+        resolved_timer_owner = (
+            timer_owner_id if timer_owner_id is not None else payload.get("owner_id")
+        )
+        node_owner_id = payload.get("owner_id")
         next_path = list(path or [])
         next_path.append(node_ref)
 
@@ -2807,8 +2831,10 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
             "parent": parent_ref,
             "path": next_path,
             "children": child_refs,
-            "owner_id": resolved_owner,
-            "owner_name": users_map.get(resolved_owner, "Unknown"),
+            "owner_id": resolved_timer_owner,
+            "node_owner_id": node_owner_id,
+            "timer_owner_id": resolved_timer_owner,
+            "owner_name": users_map.get(resolved_timer_owner, "Unknown"),
         }
 
         if child_type:
@@ -2818,7 +2844,7 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
                     child,
                     parent_ref=node_ref,
                     path=next_path,
-                    owner_id=resolved_owner,
+                    timer_owner_id=resolved_timer_owner,
                 )
 
     for goal in goals_snapshot:
@@ -2826,7 +2852,13 @@ def _build_atlas_index_from_snapshot(goals_snapshot, users_map):
         if not root_ref:
             continue
         roots.append(root_ref)
-        visit("GOAL", goal, parent_ref=None, path=[], owner_id=goal.get("owner_id"))
+        visit(
+            "GOAL",
+            goal,
+            parent_ref=None,
+            path=[],
+            timer_owner_id=goal.get("owner_id"),
+        )
 
     return index, roots
 
@@ -3429,6 +3461,18 @@ def _atlas_clean_work_summary(summary: str | None) -> str | None:
     return cleaned if cleaned else None
 
 
+def _atlas_timer_owner_id(meta) -> int | None:
+    if not isinstance(meta, dict):
+        return None
+    owner_id = meta.get("timer_owner_id", meta.get("owner_id"))
+    if owner_id is None:
+        return None
+    try:
+        return int(owner_id)
+    except Exception:
+        return None
+
+
 def _atlas_suggested_next_score(meta, actor_id: int, index=None, health=None):
     running = getattr(meta.get("node"), "timer_started_at", None) is not None
     if health is None:
@@ -3442,7 +3486,7 @@ def _atlas_suggested_next_score(meta, actor_id: int, index=None, health=None):
         "on_track": 3,
         "done": 4,
     }.get(attention_kind, 3)
-    owner_rank = 0 if meta.get("owner_id") == actor_id else 1
+    owner_rank = 0 if _atlas_timer_owner_id(meta) == actor_id else 1
     progress = int(meta.get("progress", 0) or 0)
     return (
         0 if running else 1,
@@ -3463,7 +3507,7 @@ def _atlas_suggested_next_reason(meta, actor_id: int, index=None, health=None) -
         return "Needs care"
     if int(meta.get("progress", 0) or 0) >= 100:
         return "Complete"
-    if meta.get("owner_id") != actor_id:
+    if _atlas_timer_owner_id(meta) != actor_id:
         return "Ready to coordinate"
     return "Continue momentum"
 
@@ -4084,9 +4128,9 @@ def render_atlas_workspace(username):
     def _can_track_task(task_meta) -> bool:
         if not task_meta:
             return False
-        return can_track_task_by_owner(
+        return can_track_task_timer(
             actor_user_id=actor_id,
-            task_owner_id=task_meta.get("owner_id"),
+            timer_owner_user_id=_atlas_timer_owner_id(task_meta),
         )
 
     def _atlas_attention_chip_html(meta) -> str:

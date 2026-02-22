@@ -70,3 +70,7 @@ Runtime preflight
   - Deploy config template gate
   - RBAC regression gate
   - Full pytest suite
+
+Phase 3 monitoring (job quotas)
+- نرخ خطاهای `429` روی `POST /v1/jobs` و مقدار `Retry-After` را پایش کنید.
+- رویدادهای `job_submit_accepted` و `job_submit_rejected` را در `streamlit_app/logs/audit.log` بررسی کنید.

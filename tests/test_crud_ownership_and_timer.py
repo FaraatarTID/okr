@@ -11,6 +11,7 @@ def _utc_now_naive() -> datetime:
 @pytest.fixture()
 def isolated_db(monkeypatch, tmp_path):
     import src.database as database
+    import src.models  # noqa: F401
 
     db_path = tmp_path / "okr_test.db"
     db_url = f"sqlite:///{db_path}"
@@ -173,6 +174,73 @@ def test_timer_start_stop_enforces_task_ownership(isolated_db):
     stopped = stop_timer(task.id, user_id="alice")
     assert stopped is not None
     assert stopped.end_time is not None
+
+
+def test_timer_policy_uses_goal_owner_scope_not_task_row_owner(isolated_db):
+    from src.crud import (
+        create_cycle,
+        create_goal,
+        create_key_result,
+        create_objective,
+        create_task,
+        create_user,
+        start_timer,
+        stop_timer,
+    )
+    from src.database import get_session_context
+    from src.models import Task, UserRole
+
+    manager = create_user("manager_timer", "manager-pass", role=UserRole.MANAGER)
+    member = create_user(
+        "member_timer",
+        "member-pass",
+        manager_id=manager.id,
+    )
+    cycle = create_cycle(
+        "Q3B",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+    )
+
+    goal = create_goal(
+        member.username,
+        title="Member Goal",
+        cycle_id=cycle.id,
+        actor_username=member.username,
+    )
+    objective = create_objective(
+        goal.id,
+        "Manager-authored Objective",
+        actor_username=manager.username,
+    )
+    key_result = create_key_result(
+        objective.id,
+        "Manager-authored KR",
+        actor_username=manager.username,
+    )
+    task = create_task(
+        key_result.id,
+        "Manager-authored Task",
+        actor_username=manager.username,
+    )
+
+    with get_session_context() as session:
+        task_row = session.get(Task, task.id)
+        assert task_row is not None
+        # Task row owner differs from goal owner in this setup.
+        assert int(task_row.owner_id) == int(manager.id)
+        assert int(goal.owner_id) == int(member.id)
+
+    started = start_timer(task.id, member.username)
+    assert started is not None
+    assert int(started.task_id) == int(task.id)
+
+    with pytest.raises(ValueError):
+        start_timer(task.id, manager.username)
+
+    assert stop_timer(task.id, user_id=manager.username) is None
+    stopped = stop_timer(task.id, user_id=member.username)
+    assert stopped is not None
 
 
 def test_start_timer_is_idempotent_for_same_task(isolated_db):

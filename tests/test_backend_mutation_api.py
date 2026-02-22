@@ -105,6 +105,70 @@ def test_submit_job_endpoint_returns_429_when_quota_exceeded(monkeypatch):
     assert "quota" in str(response.json().get("detail", "")).lower()
 
 
+def test_submit_job_endpoint_returns_429_with_retry_metadata(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _raise_quota(*args, **kwargs):
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error_code": "JOB_LIMIT_USER_RATE",
+                "message": "User job rate limit exceeded.",
+                "retry_after_seconds": 60,
+            },
+            headers={"Retry-After": "60"},
+        )
+
+    monkeypatch.setattr(backend_main, "enforce_job_submit_limits", _raise_quota)
+
+    response = client.post(
+        "/v1/jobs",
+        headers={"X-OKR-Actor": "alice"},
+        json={"kind": "ai.generate_json", "payload": {"prompt": "hello"}},
+    )
+
+    assert response.status_code == 429
+    assert response.headers.get("Retry-After") == "60"
+    assert response.json().get("detail", {}).get("error_code") == "JOB_LIMIT_USER_RATE"
+
+
+def test_submit_job_endpoint_audits_rejected_submission(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = []
+
+    def _raise_quota(*args, **kwargs):
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error_code": "JOB_LIMIT_USER_PENDING",
+                "message": "User pending job limit exceeded.",
+                "retry_after_seconds": 5,
+            },
+            headers={"Retry-After": "5"},
+        )
+
+    monkeypatch.setattr(backend_main, "enforce_job_submit_limits", _raise_quota)
+    monkeypatch.setattr(
+        backend_main,
+        "_safe_audit_job_submit",
+        lambda **kwargs: captured.append(kwargs),
+    )
+
+    response = client.post(
+        "/v1/jobs",
+        headers={
+            "X-OKR-Actor": "alice",
+            "X-OKR-Idempotency-Key": "idem-reject-1",
+        },
+        json={"kind": "ai.generate_json", "payload": {"prompt": "hello"}},
+    )
+
+    assert response.status_code == 429
+    assert len(captured) == 1
+    assert captured[0].get("action") == "job_submit_rejected"
+    assert captured[0].get("error_code") == "JOB_LIMIT_USER_PENDING"
+
+
 def test_submit_job_endpoint_forwards_idempotency_key(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
     captured = {}
@@ -152,6 +216,62 @@ def test_submit_job_endpoint_forwards_idempotency_key(monkeypatch):
 
     assert response.status_code == 202
     assert captured.get("idempotency_key") == "abc-123"
+
+
+def test_submit_job_endpoint_audits_accepted_submission(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = []
+
+    monkeypatch.setattr(
+        backend_main,
+        "enforce_job_submit_limits",
+        lambda **kwargs: None,
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "_safe_audit_job_submit",
+        lambda **kwargs: captured.append(kwargs),
+    )
+
+    def _fake_enqueue_job(**kwargs):
+        return SimpleNamespace(
+            id="job-accept-1",
+            team_id=3,
+            status="pending",
+        )
+
+    monkeypatch.setattr(backend_main, "enqueue_job", _fake_enqueue_job)
+    monkeypatch.setattr(
+        backend_main,
+        "serialize_job",
+        lambda job: {
+            "id": "job-accept-1",
+            "kind": "ai.generate_json",
+            "status": "pending",
+            "actor_username": "alice",
+            "team_id": 3,
+            "attempts": 0,
+            "max_attempts": 2,
+            "cancel_requested": False,
+            "idempotency_key": None,
+            "created_at": datetime.now(timezone.utc).replace(tzinfo=None),
+            "started_at": None,
+            "finished_at": None,
+            "result": None,
+            "error_text": None,
+        },
+    )
+
+    response = client.post(
+        "/v1/jobs",
+        headers={"X-OKR-Actor": "alice"},
+        json={"kind": "ai.generate_json", "payload": {"prompt": "hello"}},
+    )
+
+    assert response.status_code == 202
+    assert len(captured) == 1
+    assert captured[0].get("action") == "job_submit_accepted"
+    assert captured[0].get("job_id") == "job-accept-1"
 
 
 def test_create_user_endpoint_parses_role_and_team(monkeypatch):

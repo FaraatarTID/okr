@@ -58,6 +58,16 @@ B. Self-hosted checklist (Docker Compose + Nginx + TLS)
 - [ ] `OKR_BACKEND_PROXY_MUTATIONS=true` is set (recommended for backend-owned writes).
 - [ ] `OKR_BACKEND_SECURITY_STATE_BACKEND` is set to `database` or `redis` for production distributed nonce/rate-limit state.
 - [ ] If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, `OKR_BACKEND_SECURITY_STATE_REDIS_URL` is set.
+- [ ] Job quota and backlog controls are set and reviewed for expected traffic:
+  - `OKR_BACKEND_JOB_USER_WINDOW_SECONDS`
+  - `OKR_BACKEND_JOB_USER_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_USER_DAILY_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_USER_PENDING_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_TEAM_WINDOW_SECONDS`
+  - `OKR_BACKEND_JOB_TEAM_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_TEAM_DAILY_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_TEAM_PENDING_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_BACKOFF_BASE_SECONDS`
 - [ ] `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` is unset/false in production.
 - [ ] `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` is unset/false in production (production runtime ignores fail-open overrides).
 - [ ] `OKR_STRICT_RUNTIME_PREFLIGHT=1` is set (recommended for production).

@@ -49,9 +49,12 @@ class BackendSettings:
     job_user_window_seconds: int
     job_user_max_requests: int
     job_user_daily_max_requests: int
+    job_user_pending_max_requests: int
     job_team_window_seconds: int
     job_team_max_requests: int
     job_team_daily_max_requests: int
+    job_team_pending_max_requests: int
+    job_actor_backoff_base_seconds: int
     worker_poll_seconds: int
 
 
@@ -124,6 +127,11 @@ def get_backend_settings() -> BackendSettings:
             default=200,
             minimum=1,
         ),
+        job_user_pending_max_requests=_as_int(
+            os.getenv("OKR_BACKEND_JOB_USER_PENDING_MAX_REQUESTS"),
+            default=3,
+            minimum=1,
+        ),
         job_team_window_seconds=_as_int(
             os.getenv("OKR_BACKEND_JOB_TEAM_WINDOW_SECONDS"),
             default=60,
@@ -138,6 +146,16 @@ def get_backend_settings() -> BackendSettings:
             os.getenv("OKR_BACKEND_JOB_TEAM_DAILY_MAX_REQUESTS"),
             default=1200,
             minimum=1,
+        ),
+        job_team_pending_max_requests=_as_int(
+            os.getenv("OKR_BACKEND_JOB_TEAM_PENDING_MAX_REQUESTS"),
+            default=40,
+            minimum=1,
+        ),
+        job_actor_backoff_base_seconds=_as_int(
+            os.getenv("OKR_BACKEND_JOB_BACKOFF_BASE_SECONDS"),
+            default=3,
+            minimum=0,
         ),
         worker_poll_seconds=_as_int(
             os.getenv("OKR_BACKEND_WORKER_POLL_SECONDS"),

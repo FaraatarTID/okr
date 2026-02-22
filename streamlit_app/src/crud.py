@@ -48,7 +48,6 @@ from src.database import get_session_context as _database_get_session_context
 from src.domain import analytics as domain_analytics
 from src.domain import authorization as domain_auth
 from src.domain.password_policy import is_production_runtime, validate_password_policy
-from src.domain.permissions import can_track_task_by_owner
 from src.audit import audit_log
 from src.utils.cache_utils import clear_cache_safe
 from src.domain.progress import (
@@ -394,6 +393,10 @@ def _goal_owner_predicate_by_user_id(user_id: int):
     return domain_auth._goal_owner_predicate_by_user_id(user_id)
 
 
+def _timer_owner_predicate_by_username(username: str):
+    return domain_auth._timer_owner_predicate_by_username(username)
+
+
 def _can_manage_goal(session: Session, actor: User, goal: Goal) -> bool:
     return domain_auth._can_manage_goal(session, actor, goal)
 
@@ -402,26 +405,44 @@ def _can_manage_owner(session: Session, actor: User, owner_id: Optional[int]) ->
     return domain_auth._can_manage_owner(session, actor, owner_id)
 
 
-def _authorize_goal_mutation(
-    session: Session, goal: Optional[Goal], actor_username: Optional[str]
-) -> None:
-    domain_auth._authorize_goal_mutation(session, goal, actor_username)
+def _resolve_goal_for_node(
+    session: Session, node_id: int, node_type_upper: str
+) -> Optional[Goal]:
+    return domain_auth._resolve_goal_for_node(
+        session,
+        node_type=node_type_upper,
+        node_id=node_id,
+    )
 
 
-def _get_goal_for_objective(session: Session, objective_id: int) -> Optional[Goal]:
-    return domain_auth._get_goal_for_objective(session, objective_id)
+def _authorize_node_mutation(
+    session: Session,
+    *,
+    node_type: str,
+    node_id: int,
+    actor_username: Optional[str],
+) -> Goal:
+    return domain_auth._authorize_node_mutation(
+        session,
+        node_type=node_type,
+        node_id=node_id,
+        actor_username=actor_username,
+    )
 
 
-def _get_goal_for_key_result(session: Session, key_result_id: int) -> Optional[Goal]:
-    return domain_auth._get_goal_for_key_result(session, key_result_id)
-
-
-def _get_goal_for_task(session: Session, task_id: int) -> Optional[Goal]:
-    return domain_auth._get_goal_for_task(session, task_id)
-
-
-def _get_goal_for_work_log(session: Session, work_log_id: int) -> Optional[Goal]:
-    return domain_auth._get_goal_for_work_log(session, work_log_id)
+def _authorize_node_scoped_access(
+    session: Session,
+    *,
+    node_type: str,
+    node_id: int,
+    actor_username: Optional[str],
+) -> Goal:
+    return domain_auth._authorize_node_scoped_access(
+        session,
+        node_type=node_type,
+        node_id=node_id,
+        actor_username=actor_username,
+    )
 
 
 def get_user_goals(username: str, cycle_id: int):
@@ -450,13 +471,7 @@ def get_user_by_id(user_id: int) -> Optional[User]:
 
 
 def _require_actor_user(session: Session, actor_username: Optional[str]) -> User:
-    actor_name = str(actor_username or "").strip()
-    if not actor_name:
-        raise PermissionError("Actor username is required for this operation")
-    actor = session.exec(select(User).where(User.username == actor_name)).first()
-    if not actor or not actor.is_active:
-        raise PermissionError("Actor is not authorized")
-    return actor
+    return domain_auth._require_actor_user(session, actor_username)
 
 
 def _require_admin_actor(session: Session, actor_username: Optional[str]) -> User:
@@ -472,12 +487,11 @@ def _authorize_self_or_admin(
     actor_username: Optional[str],
     target_user_id: int,
 ) -> User:
-    actor = _require_actor_user(session, actor_username)
-    if actor.role == UserRole.ADMIN:
-        return actor
-    if int(actor.id or 0) == int(target_user_id):
-        return actor
-    raise PermissionError("Only the user or an admin can perform this operation")
+    return domain_auth._authorize_self_or_admin(
+        session,
+        actor_username=actor_username,
+        target_user_id=target_user_id,
+    )
 
 
 def _normalize_throttle_username(username: str) -> str:
@@ -1217,8 +1231,12 @@ def create_check_in(
         _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
-        goal = _get_goal_for_key_result(session, kr_id)
-        _authorize_goal_mutation(session, goal, actor_username)
+        _authorize_node_mutation(
+            session,
+            node_type="KEY_RESULT",
+            node_id=kr_id,
+            actor_username=actor_username,
+        )
 
         # === ENFORCEMENT: variation_type is required for new check-ins ===
         if variation_type is None:
@@ -1351,8 +1369,12 @@ def create_experiment(
         _enforce_backend_mutation_failure_policy(backend_result)
 
     with get_session_context() as session:
-        goal = _get_goal_for_key_result(session, key_result_id)
-        _authorize_goal_mutation(session, goal, actor_username)
+        goal = _authorize_node_mutation(
+            session,
+            node_type="KEY_RESULT",
+            node_id=key_result_id,
+            actor_username=actor_username,
+        )
 
         # Validate cycle_id matches the KR's goal cycle
         if goal.cycle_id != cycle_id:
@@ -1394,8 +1416,12 @@ def list_experiments_for_kr(
 ) -> List[Experiment]:
     """List all experiments for a KR. Enforces goal-scoped read access."""
     with get_session_context() as session:
-        goal = _get_goal_for_key_result(session, key_result_id)
-        domain_auth._authorize_goal_scoped_access(session, goal, actor_username)
+        _authorize_node_scoped_access(
+            session,
+            node_type="KEY_RESULT",
+            node_id=key_result_id,
+            actor_username=actor_username,
+        )
 
         statement = (
             select(Experiment)
@@ -1411,8 +1437,12 @@ def get_active_experiments_for_kr(
 ) -> List[Experiment]:
     """Get RUNNING experiments for a KR. Enforces goal-scoped read access."""
     with get_session_context() as session:
-        goal = _get_goal_for_key_result(session, key_result_id)
-        domain_auth._authorize_goal_scoped_access(session, goal, actor_username)
+        _authorize_node_scoped_access(
+            session,
+            node_type="KEY_RESULT",
+            node_id=key_result_id,
+            actor_username=actor_username,
+        )
 
         statement = (
             select(Experiment)
@@ -1449,8 +1479,12 @@ def update_experiment(
         if not experiment:
             return None
 
-        goal = _get_goal_for_key_result(session, experiment.key_result_id)
-        _authorize_goal_mutation(session, goal, actor_username)
+        _authorize_node_mutation(
+            session,
+            node_type="KEY_RESULT",
+            node_id=experiment.key_result_id,
+            actor_username=actor_username,
+        )
 
         _validate_update_fields(
             "experiment", updates, _ALLOWED_EXPERIMENT_UPDATE_FIELDS
@@ -1534,8 +1568,12 @@ def list_experiments_for_retro_window(
         allowed = []
         for e in exps:
             try:
-                goal = _get_goal_for_key_result(session, e.key_result_id)
-                domain_auth._authorize_goal_scoped_access(session, goal, actor_username)
+                _authorize_node_scoped_access(
+                    session,
+                    node_type="KEY_RESULT",
+                    node_id=e.key_result_id,
+                    actor_username=actor_username,
+                )
                 allowed.append(e)
             except PermissionError:
                 pass
@@ -1823,17 +1861,11 @@ def create_goal(
             raise ValueError(f"User '{user_id}' not found")
         owner_id = user_obj.id
 
-        if actor_username is None:
-            raise PermissionError("Actor username is required for this operation")
-        actor = session.exec(
-            select(User).where(User.username == actor_username)
-        ).first()
-        if not actor or not actor.is_active:
-            raise PermissionError("Actor is not authorized")
-        if not _can_manage_owner(session, actor, owner_id):
-            raise PermissionError(
-                "Insufficient permissions to create goals for this user"
-            )
+        actor = domain_auth._require_manage_owner_actor(
+            session,
+            actor_username=actor_username,
+            owner_id=owner_id,
+        )
 
         # Get sibling count for auto-numbering
         statement = select(Goal).where(Goal.owner_id == owner_id)
@@ -1898,10 +1930,13 @@ def create_objective(
         goal = session.get(Goal, goal_id)
         if not goal:
             raise ValueError(f"Goal {goal_id} not found")
-        _authorize_goal_mutation(session, goal, actor_username)
-        actor = session.exec(
-            select(User).where(User.username == actor_username)
-        ).first()
+        _authorize_node_mutation(
+            session,
+            node_type="GOAL",
+            node_id=goal_id,
+            actor_username=actor_username,
+        )
+        actor = _require_actor_user(session, actor_username)
 
         existing = session.exec(
             select(Objective).where(Objective.goal_id == goal_id)
@@ -1975,11 +2010,13 @@ def create_key_result(
         objective = session.get(Objective, objective_id)
         if not objective:
             raise ValueError(f"Objective {objective_id} not found")
-        goal = session.get(Goal, objective.goal_id)
-        _authorize_goal_mutation(session, goal, actor_username)
-        actor = session.exec(
-            select(User).where(User.username == actor_username)
-        ).first()
+        _authorize_node_mutation(
+            session,
+            node_type="OBJECTIVE",
+            node_id=objective_id,
+            actor_username=actor_username,
+        )
+        actor = _require_actor_user(session, actor_username)
 
         existing = session.exec(
             select(KeyResult).where(KeyResult.objective_id == objective_id)
@@ -2050,11 +2087,13 @@ def create_task(
             raise ValueError(f"KeyResult {key_result_id} not found")
         if estimated_minutes < 0:
             raise ValueError("estimated_minutes must be >= 0")
-        goal = _get_goal_for_key_result(session, key_result_id)
-        _authorize_goal_mutation(session, goal, actor_username)
-        actor = session.exec(
-            select(User).where(User.username == actor_username)
-        ).first()
+        _authorize_node_mutation(
+            session,
+            node_type="KEY_RESULT",
+            node_id=key_result_id,
+            actor_username=actor_username,
+        )
+        actor = _require_actor_user(session, actor_username)
 
         existing = session.exec(
             select(Task).where(Task.key_result_id == key_result_id)
@@ -2135,7 +2174,12 @@ def update_goal(
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
         if goal:
-            _authorize_goal_mutation(session, goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="GOAL",
+                node_id=goal_id,
+                actor_username=actor_username,
+            )
             _validate_update_fields("goal", updates, _ALLOWED_GOAL_UPDATE_FIELDS)
             for key, value in updates.items():
                 if hasattr(goal, key):
@@ -2168,8 +2212,12 @@ def update_key_result_analysis(
     with get_session_context() as session:
         kr = session.get(KeyResult, key_result_id)
         if kr:
-            goal = _get_goal_for_key_result(session, key_result_id)
-            _authorize_goal_mutation(session, goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="KEY_RESULT",
+                node_id=key_result_id,
+                actor_username=actor_username,
+            )
             kr.gemini_analysis = analysis_json
             kr.analysis_updated_at = utc_now_naive()
             session.add(kr)
@@ -2198,8 +2246,12 @@ def update_objective(
     with get_session_context() as session:
         item = session.get(Objective, objective_id)
         if item:
-            goal = _get_goal_for_objective(session, objective_id)
-            _authorize_goal_mutation(session, goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="OBJECTIVE",
+                node_id=objective_id,
+                actor_username=actor_username,
+            )
             _validate_update_fields(
                 "objective", updates, _ALLOWED_OBJECTIVE_UPDATE_FIELDS
             )
@@ -2283,11 +2335,20 @@ def create_alignment(
         if not parent or not child:
             raise ValueError("Target objectives not found.")
 
-        parent_goal = _get_goal_for_objective(session, parent_id)
-        child_goal = _get_goal_for_objective(session, child_id)
-        _authorize_goal_mutation(session, parent_goal, actor_username)
+        parent_goal = _authorize_node_mutation(
+            session,
+            node_type="OBJECTIVE",
+            node_id=parent_id,
+            actor_username=actor_username,
+        )
+        child_goal = _resolve_goal_for_node(session, child_id, "OBJECTIVE")
         if child_goal and parent_goal and child_goal.id != parent_goal.id:
-            _authorize_goal_mutation(session, child_goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="OBJECTIVE",
+                node_id=child_id,
+                actor_username=actor_username,
+            )
 
         if check_for_cycle(session, parent_id, child_id):
             raise ValueError(
@@ -2347,11 +2408,20 @@ def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
     with get_session_context() as session:
         edge = session.get(AlignmentEdge, edge_id)
         if edge:
-            parent_goal = _get_goal_for_objective(session, edge.parent_id)
-            child_goal = _get_goal_for_objective(session, edge.child_id)
-            _authorize_goal_mutation(session, parent_goal, actor_username)
+            parent_goal = _authorize_node_mutation(
+                session,
+                node_type="OBJECTIVE",
+                node_id=edge.parent_id,
+                actor_username=actor_username,
+            )
+            child_goal = _resolve_goal_for_node(session, edge.child_id, "OBJECTIVE")
             if child_goal and parent_goal and child_goal.id != parent_goal.id:
-                _authorize_goal_mutation(session, child_goal, actor_username)
+                _authorize_node_mutation(
+                    session,
+                    node_type="OBJECTIVE",
+                    node_id=edge.child_id,
+                    actor_username=actor_username,
+                )
             session.delete(edge)
             session.commit()
             audit_log("delete", "alignment_edge", details={"edge_id": edge_id})
@@ -2391,8 +2461,12 @@ def update_key_result(
     with get_session_context() as session:
         item = session.get(KeyResult, key_result_id)
         if item:
-            goal = _get_goal_for_key_result(session, key_result_id)
-            _authorize_goal_mutation(session, goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="KEY_RESULT",
+                node_id=key_result_id,
+                actor_username=actor_username,
+            )
             import json
 
             _validate_update_fields(
@@ -2495,8 +2569,12 @@ def update_task(
         task = session.get(Task, task_id)
         if not task:
             return None
-        goal = _get_goal_for_task(session, task_id)
-        _authorize_goal_mutation(session, goal, actor_username)
+        _authorize_node_mutation(
+            session,
+            node_type="TASK",
+            node_id=task_id,
+            actor_username=actor_username,
+        )
         _validate_update_fields("task", kwargs, _ALLOWED_TASK_UPDATE_KWARGS)
 
         if title is not None:
@@ -2552,7 +2630,12 @@ def delete_goal(goal_id: int, actor_username: Optional[str] = None) -> bool:
     with get_session_context() as session:
         goal = session.get(Goal, goal_id)
         if goal:
-            _authorize_goal_mutation(session, goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="GOAL",
+                node_id=goal_id,
+                actor_username=actor_username,
+            )
             # SQLModel/SQLAlchemy will cascade delete if configured
             # Otherwise, manually delete children
             session.delete(goal)
@@ -2580,8 +2663,12 @@ def delete_task(task_id: int, actor_username: Optional[str] = None) -> bool:
     with get_session_context() as session:
         task = session.get(Task, task_id)
         if task:
-            goal = _get_goal_for_task(session, task_id)
-            _authorize_goal_mutation(session, goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="TASK",
+                node_id=task_id,
+                actor_username=actor_username,
+            )
             session.delete(task)
             session.commit()
             audit_log("delete", "task", details={"task_id": task_id})
@@ -2606,8 +2693,12 @@ def delete_objective(objective_id: int, actor_username: Optional[str] = None) ->
     with get_session_context() as session:
         item = session.get(Objective, objective_id)
         if item:
-            goal = _get_goal_for_objective(session, objective_id)
-            _authorize_goal_mutation(session, goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="OBJECTIVE",
+                node_id=objective_id,
+                actor_username=actor_username,
+            )
             session.delete(item)
             session.commit()
             audit_log("delete", "objective", details={"objective_id": objective_id})
@@ -2632,8 +2723,12 @@ def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
     with get_session_context() as session:
         item = session.get(KeyResult, kr_id)
         if item:
-            goal = _get_goal_for_key_result(session, kr_id)
-            _authorize_goal_mutation(session, goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="KEY_RESULT",
+                node_id=kr_id,
+                actor_username=actor_username,
+            )
             session.delete(item)
             session.commit()
             audit_log("delete", "key_result", details={"key_result_id": kr_id})
@@ -2646,22 +2741,6 @@ def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
             clear_cache_safe()
             return True
         return False
-
-
-def _resolve_goal_for_node(
-    session: Session, node_id: int, node_type_upper: str
-) -> Optional[Goal]:
-    """Resolve ancestor goal for a node type/id pair."""
-    if node_type_upper == "GOAL":
-        return session.get(Goal, node_id)
-    if node_type_upper == "OBJECTIVE":
-        return _get_goal_for_objective(session, node_id)
-    if node_type_upper in {"KEY_RESULT", "KEYRESULT"}:
-        return _get_goal_for_key_result(session, node_id)
-    if node_type_upper == "TASK":
-        return _get_goal_for_task(session, node_id)
-    return None
-
 
 def get_node(node_id: int, node_type: str, actor_username: Optional[str] = None):
     """Fetch a node by ID and Type string (GOAL, OBJECTIVE, KEY_RESULT, TASK)."""
@@ -2704,20 +2783,12 @@ def get_node(node_id: int, node_type: str, actor_username: Optional[str] = None)
             node = session.exec(statement).first()
 
         if node and actor_username:
-            from src.domain.permissions import Action, check_permission
-
-            actor = session.exec(
-                select(User).where(User.username == actor_username)
-            ).first()
-            if not actor or not actor.is_active:
-                raise PermissionError("Actor is not authorized")
-
-            goal = _resolve_goal_for_node(session, node_id, nt)
-            if goal is None:
-                raise ValueError("Target goal not found")
-
-            if not check_permission(actor, Action.READ, goal, session):
-                raise PermissionError("Insufficient permissions to read this node")
+            _authorize_node_scoped_access(
+                session,
+                node_type=nt,
+                node_id=node_id,
+                actor_username=actor_username,
+            )
 
         return node
     return None
@@ -2751,7 +2822,7 @@ def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
             .join(KeyResult)
             .join(Objective)
             .join(Goal)
-            .where(_goal_owner_predicate_by_username(user_id))
+            .where(_timer_owner_predicate_by_username(user_id))
             .where(Task.timer_started_at.isnot(None))
             .options(selectinload(Task.key_result).selectinload(KeyResult.objective))
         )
@@ -2777,31 +2848,11 @@ def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
 def _query_owned_task_for_timer(
     session: Session, task_id: int, user_id: str
 ) -> Optional[Task]:
-    actor_user_id = session.exec(
-        select(User.id).where(User.username == str(user_id)).limit(1)
-    ).first()
-    if actor_user_id is None:
-        return None
-
-    statement = (
-        select(Task, Goal.owner_id)
-        .join(KeyResult)
-        .join(Objective)
-        .join(Goal)
-        .where(Task.id == task_id)
-        .where(Goal.owner_id == int(actor_user_id))
+    return domain_auth.get_timer_task_for_actor(
+        session,
+        task_id=int(task_id),
+        actor_username=str(user_id),
     )
-    row = session.exec(statement).first()
-    if not row:
-        return None
-
-    task, task_owner_id = row
-    if not can_track_task_by_owner(
-        actor_user_id=int(actor_user_id),
-        task_owner_id=task_owner_id,
-    ):
-        return None
-    return task
 
 
 def _get_active_work_log_for_task(session: Session, task_id: int) -> Optional[WorkLog]:
@@ -2944,7 +2995,7 @@ def _stop_all_active_timers(
         .join(KeyResult)
         .join(Objective)
         .join(Goal)
-        .where(_goal_owner_predicate_by_username(user_id))
+        .where(_timer_owner_predicate_by_username(user_id))
         .where(Task.timer_started_at.isnot(None))
     )
     if exclude_task_id is not None:
@@ -2987,7 +3038,7 @@ def force_stop_active_timers(user_id: str) -> int:
             .join(KeyResult)
             .join(Objective)
             .join(Goal)
-            .where(_goal_owner_predicate_by_username(user_id))
+            .where(_timer_owner_predicate_by_username(user_id))
             .where(TableTask.timer_started_at.isnot(None))
         ).all()
 
@@ -3031,8 +3082,12 @@ def add_manual_log(
         task = session.get(Task, task_id)
         if not task:
             raise ValueError(f"Task {task_id} not found")
-        goal = _get_goal_for_task(session, task_id)
-        _authorize_goal_mutation(session, goal, actor_username)
+        _authorize_node_mutation(
+            session,
+            node_type="TASK",
+            node_id=task_id,
+            actor_username=actor_username,
+        )
 
         start_time = ensure_utc(log_date) if log_date else utc_now_naive()
         end_time = start_time + timedelta(minutes=duration_minutes)
@@ -3089,8 +3144,12 @@ def delete_work_log(log_id: int, actor_username: Optional[str] = None) -> bool:
     with get_session_context() as session:
         work_log = session.get(WorkLog, log_id)
         if work_log:
-            goal = _get_goal_for_work_log(session, log_id)
-            _authorize_goal_mutation(session, goal, actor_username)
+            _authorize_node_mutation(
+                session,
+                node_type="WORK_LOG",
+                node_id=log_id,
+                actor_username=actor_username,
+            )
             task = session.get(Task, work_log.task_id)
             if task:
                 task.total_time_spent = max(

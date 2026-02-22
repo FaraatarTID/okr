@@ -76,3 +76,18 @@ Documentation HQ: [README](../README.md)
 - [ ] وابستگی‌ها به‌صورت دوره‌ای به‌روزرسانی شوند.
 - [ ] credentialها و API keyها بر اساس برنامه rotate شوند.
 - [ ] بعد از تغییرات بزرگ زیرساخت/provider، policy AI دوباره بررسی شود.
+
+Phase 3 checks (job quotas and idempotency)
+- [ ] تنظیمات quota/backlog/backoff برای jobها اعمال شده‌اند:
+  - `OKR_BACKEND_JOB_USER_WINDOW_SECONDS`
+  - `OKR_BACKEND_JOB_USER_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_USER_DAILY_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_USER_PENDING_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_TEAM_WINDOW_SECONDS`
+  - `OKR_BACKEND_JOB_TEAM_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_TEAM_DAILY_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_TEAM_PENDING_MAX_REQUESTS`
+  - `OKR_BACKEND_JOB_BACKOFF_BASE_SECONDS`
+- [ ] رفتار `429` روی `/v1/jobs` بررسی شده است (`detail.error_code` + `detail.retry_after_seconds` + `Retry-After`).
+- [ ] idempotency با `X-OKR-Idempotency-Key` بررسی شده و submit تکراری job جدید نمی‌سازد.
+- [ ] رخدادهای `job_submit_accepted` و `job_submit_rejected` در audit log ثبت می‌شوند.
