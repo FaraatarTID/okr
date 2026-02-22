@@ -246,6 +246,134 @@ def can_track_task(
     )
 
 
+def resolve_target_for_focus(
+    session_state: dict[str, Any],
+    *,
+    focus_task_ref: str,
+    sprint_task_ref_key: str = "atlas_sprint_task_ref",
+    sprint_target_minutes_key: str = "atlas_sprint_target_minutes",
+) -> int:
+    if session_state.get(sprint_task_ref_key) != focus_task_ref:
+        return 0
+    return int(session_state.get(sprint_target_minutes_key) or 0)
+
+
+def should_open_stop_composer(
+    session_state: dict[str, Any],
+    *,
+    focus_task_ref: str,
+    focus_running: bool,
+    can_track_focus: bool,
+    stop_capture_key: str,
+) -> bool:
+    return bool(
+        session_state.get(stop_capture_key) == focus_task_ref
+        and focus_running
+        and can_track_focus
+    )
+
+
+def mark_stop_capture(
+    session_state: dict[str, Any],
+    *,
+    focus_task_ref: str,
+    stop_capture_key: str,
+) -> None:
+    session_state[stop_capture_key] = focus_task_ref
+
+
+def clear_stop_capture_if_not_running(
+    session_state: dict[str, Any],
+    *,
+    focus_task_ref: str,
+    focus_running: bool,
+    stop_capture_key: str,
+) -> bool:
+    if not focus_running and session_state.get(stop_capture_key) == focus_task_ref:
+        del session_state[stop_capture_key]
+        return True
+    return False
+
+
+def dismiss_sprint_reminder(
+    session_state: dict[str, Any],
+    *,
+    sprint_key: str | None,
+    dismissed_key: str = "atlas_sprint_reminder_dismissed_for",
+) -> None:
+    session_state[dismissed_key] = sprint_key
+
+
+def apply_focus_start_success(
+    session_state: dict[str, Any],
+    *,
+    focus_task_ref: str,
+    target_minutes: int,
+    stop_capture_key: str,
+    now_fn: Callable[[], float] = time.time,
+) -> None:
+    session_state["atlas_sprint_target_minutes"] = int(target_minutes)
+    session_state["atlas_sprint_task_ref"] = focus_task_ref
+    session_state["atlas_sprint_started_at_epoch"] = float(now_fn())
+    for state_key in [
+        stop_capture_key,
+        "atlas_sprint_reminder_dismissed_for",
+        "atlas_sprint_notification_sent_for",
+    ]:
+        if state_key in session_state:
+            del session_state[state_key]
+
+
+def build_sprint_reminder_state(
+    session_state: dict[str, Any],
+    *,
+    focus_task_ref: str,
+    elapsed_minutes: int,
+    target_for_focus: int,
+    sprint_run_key_fn: Callable[..., str | None],
+    should_show_soft_reminder_fn: Callable[..., bool],
+    should_emit_target_notification_fn: Callable[..., bool],
+    sprint_started_at_epoch_key: str = "atlas_sprint_started_at_epoch",
+    reminder_dismissed_key: str = "atlas_sprint_reminder_dismissed_for",
+    notification_sent_key: str = "atlas_sprint_notification_sent_for",
+) -> dict[str, Any]:
+    sprint_key = sprint_run_key_fn(
+        focus_task_ref if target_for_focus > 0 else None,
+        target_for_focus,
+        session_state.get(sprint_started_at_epoch_key),
+    )
+    dismissed_key = session_state.get(reminder_dismissed_key)
+    show = bool(
+        should_show_soft_reminder_fn(
+            elapsed_minutes=elapsed_minutes,
+            target_minutes=target_for_focus,
+            sprint_key=sprint_key,
+            dismissed_key=dismissed_key,
+        )
+    )
+    should_emit = False
+    if show:
+        emitted_key = session_state.get(notification_sent_key)
+        should_emit = bool(
+            should_emit_target_notification_fn(sprint_key, emitted_key)
+        )
+    return {
+        "show": show,
+        "sprint_key": sprint_key,
+        "should_emit_notification": should_emit,
+        "overtime_minutes": max(0, int(elapsed_minutes) - int(target_for_focus)),
+    }
+
+
+def mark_sprint_notification_sent(
+    session_state: dict[str, Any],
+    *,
+    sprint_key: str | None,
+    notification_sent_key: str = "atlas_sprint_notification_sent_for",
+) -> None:
+    session_state[notification_sent_key] = sprint_key
+
+
 def attention_chip_html(
     *,
     meta: dict[str, Any],
@@ -304,6 +432,63 @@ def stop_focus_session(
         if state_key in session_state:
             del session_state[state_key]
     return worklog_local
+
+
+def compute_elapsed_minutes(
+    *,
+    started_at,
+    ensure_utc_fn: Callable[[Any], datetime],
+    utc_now_naive_fn: Callable[[], datetime],
+    logger: logging.Logger | None = None,
+) -> int:
+    if started_at is None:
+        return 0
+    try:
+        return int(
+            (
+                ensure_utc_fn(utc_now_naive_fn())
+                - ensure_utc_fn(started_at)
+            ).total_seconds()
+            // 60
+        )
+    except Exception as exc:
+        if logger is not None:
+            logger.debug("Failed to compute focus task elapsed minutes: %s", exc)
+        return 0
+
+
+def build_recent_session_feedback(
+    *,
+    session_summary: dict[str, Any],
+    index: dict[str, Any],
+    clean_summary_fn: Callable[[str | None], str | None],
+    now_fn: Callable[[], float] = time.time,
+    max_age_seconds: float = 10.0,
+    summary_preview_limit: int = 180,
+) -> dict[str, Any]:
+    summary_age = float(now_fn() - float(session_summary.get("at") or 0))
+    if summary_age > float(max_age_seconds):
+        return {"visible": False, "stale": True}
+
+    summary_ref = session_summary.get("task_ref")
+    summary_title = index.get(summary_ref, {}).get("title", "task")
+    summary_minutes = session_summary.get("minutes", 0)
+    message = f"Session logged: {summary_minutes}m on {summary_title}."
+
+    caption = None
+    summary_text = clean_summary_fn(session_summary.get("summary"))
+    if summary_text:
+        if len(summary_text) > int(summary_preview_limit):
+            keep = max(0, int(summary_preview_limit) - 3)
+            summary_text = f"{summary_text[:keep].rstrip()}..."
+        caption = f"Summary: {summary_text}"
+
+    return {
+        "visible": True,
+        "stale": False,
+        "message": message,
+        "caption": caption,
+    }
 
 
 def deadline_to_iso(
@@ -472,6 +657,111 @@ def build_ai_sync_report(
         "ai_suggested_confidence": payload.get("confidence"),
         "ai_suggest_error": ai_suggest_error,
         "at": float(now_fn()),
+    }
+
+
+def build_ai_sync_sidebar_messages(
+    *,
+    sync_report: dict[str, Any],
+    index: dict[str, Any],
+) -> dict[str, Any]:
+    synced = int(sync_report.get("synced") or 0)
+    total = int(sync_report.get("total") or 0)
+    preview_mode = bool(sync_report.get("preview_mode"))
+    apply_progress = bool(sync_report.get("apply_progress"))
+
+    if preview_mode:
+        primary_level = "info"
+        primary_message = (
+            f"AI preview analyzed {synced}/{total} key results. "
+            "No updates were written."
+        )
+        if apply_progress:
+            planned = int(sync_report.get("planned_progress") or 0)
+            missing = int(sync_report.get("missing_ai_score") or 0)
+            skipped_delta = int(sync_report.get("skipped_delta_cap") or 0)
+            skipped_down = int(sync_report.get("skipped_decrease") or 0)
+            unchanged = int(sync_report.get("unchanged_progress") or 0)
+            delta_cap = int(sync_report.get("max_progress_delta") or 0)
+            primary_message += (
+                f" Planned updates: {planned}. Progress policy: max delta {delta_cap}%"
+            )
+            if not bool(sync_report.get("allow_progress_decrease")):
+                primary_message += ", decreases blocked."
+            else:
+                primary_message += ", decreases allowed."
+            if missing > 0:
+                primary_message += f" ({missing} missing AI score.)"
+            if skipped_delta > 0:
+                primary_message += f" ({skipped_delta} blocked by delta cap.)"
+            if skipped_down > 0:
+                primary_message += (
+                    f" ({skipped_down} blocked because decreases are off.)"
+                )
+            if unchanged > 0:
+                primary_message += f" ({unchanged} unchanged.)"
+    elif apply_progress:
+        primary_level = "success"
+        applied = int(sync_report.get("applied_progress") or 0)
+        missing = int(sync_report.get("missing_ai_score") or 0)
+        skipped_delta = int(sync_report.get("skipped_delta_cap") or 0)
+        skipped_down = int(sync_report.get("skipped_decrease") or 0)
+        unchanged = int(sync_report.get("unchanged_progress") or 0)
+        primary_message = (
+            f"AI sync updated analysis on {synced}/{total} KRs "
+            f"and applied progress on {applied}."
+        )
+        if missing > 0:
+            primary_message += f" ({missing} had no usable AI score.)"
+        if skipped_delta > 0:
+            primary_message += f" ({skipped_delta} blocked by delta cap.)"
+        if skipped_down > 0:
+            primary_message += f" ({skipped_down} blocked because decreases are off.)"
+        if unchanged > 0:
+            primary_message += f" ({unchanged} unchanged.)"
+    else:
+        primary_level = "success"
+        primary_message = (
+            f"AI sync updated {synced}/{total} key result analysis records."
+        )
+
+    failed_items = list(sync_report.get("failed") or [])
+    ai_suggest_line = None
+    ai_suggest_reason = None
+    ai_suggest_warning = None
+    ai_suggest_ref = str(sync_report.get("ai_suggested_ref") or "")
+    if ai_suggest_ref in index:
+        ai_title = index[ai_suggest_ref].get("title", ai_suggest_ref)
+        ai_conf = sync_report.get("ai_suggested_confidence")
+        ai_suggest_line = f"AI suggested next: {ai_title}"
+        if ai_conf is not None:
+            ai_suggest_line += f" (confidence: {ai_conf}%)"
+        ai_suggest_reason = str(sync_report.get("ai_suggested_reason") or "").strip()
+    elif sync_report.get("ai_suggest_error"):
+        ai_suggest_warning = (
+            f"AI task suggestion skipped: {sync_report.get('ai_suggest_error')}"
+        )
+
+    return {
+        "primary_level": primary_level,
+        "primary_message": primary_message,
+        "failed_items": failed_items,
+        "ai_suggest_line": ai_suggest_line,
+        "ai_suggest_reason": ai_suggest_reason,
+        "ai_suggest_warning": ai_suggest_warning,
+        "trace_rows": list(sync_report.get("trace_rows") or []),
+    }
+
+
+def build_ai_undo_sidebar_messages(
+    *,
+    undo_report: dict[str, Any],
+) -> dict[str, Any]:
+    restored = int(undo_report.get("restored") or 0)
+    failed_items = list(undo_report.get("failed") or [])
+    return {
+        "primary_message": f"Rollback restored progress on {restored} key result(s).",
+        "failed_items": failed_items,
     }
 
 

@@ -57,6 +57,9 @@ from src.ui.atlas_helpers import (
     _atlas_timer_owner_id,
 )
 from src.ui import atlas_treemap_helpers
+from src.ui import atlas_focus_panel_helpers
+from src.ui import atlas_map_sidebar_helpers
+from src.ui import atlas_map_chart_helpers
 from src.ui import atlas_workspace_helpers
 
 # Keep Atlas helper symbols available from this module for existing tests/imports.
@@ -3394,10 +3397,12 @@ def render_atlas_workspace(username):
             )
             stop_capture_key = "atlas_stop_capture_task_ref"
             stop_draft_key = f"atlas_stop_summary_draft_{focus_task_ref}"
-            stop_composer_open = (
-                st.session_state.get(stop_capture_key) == focus_task_ref
-                and focus_running
-                and can_track_focus
+            stop_composer_open = atlas_workspace_helpers.should_open_stop_composer(
+                st.session_state,
+                focus_task_ref=focus_task_ref,
+                focus_running=focus_running,
+                can_track_focus=can_track_focus,
+                stop_capture_key=stop_capture_key,
             )
 
             focus_path_labels = [
@@ -3479,24 +3484,17 @@ def render_atlas_workspace(username):
                 target_minutes = _atlas_commit_target_minutes("Custom", custom_minutes)
 
             if focus_running:
-                elapsed_minutes = 0
-                try:
-                    elapsed_minutes = int(
-                        (
-                            ensure_utc(utc_now_naive())
-                            - ensure_utc(focus_task.timer_started_at)
-                        ).total_seconds()
-                        // 60
-                    )
-                except Exception as exc:
-                    logger.debug("Failed to compute focus task elapsed minutes: %s", exc)
-                    elapsed_minutes = 0
+                elapsed_minutes = atlas_workspace_helpers.compute_elapsed_minutes(
+                    started_at=getattr(focus_task, "timer_started_at", None),
+                    ensure_utc_fn=ensure_utc,
+                    utc_now_naive_fn=utc_now_naive,
+                    logger=logger,
+                )
 
-                target_for_focus = 0
-                if st.session_state.get("atlas_sprint_task_ref") == focus_task_ref:
-                    target_for_focus = int(
-                        st.session_state.get("atlas_sprint_target_minutes") or 0
-                    )
+                target_for_focus = atlas_workspace_helpers.resolve_target_for_focus(
+                    st.session_state,
+                    focus_task_ref=focus_task_ref,
+                )
 
                 if target_for_focus > 0:
                     sprint_ratio = min(
@@ -3509,24 +3507,20 @@ def render_atlas_workspace(username):
                 else:
                     spotlight_cols[0].caption(f"Running now: {elapsed_minutes}m")
 
-                sprint_key = _atlas_sprint_run_key(
-                    focus_task_ref if target_for_focus > 0 else None,
-                    target_for_focus,
-                    st.session_state.get("atlas_sprint_started_at_epoch"),
-                )
-                dismissed_key = st.session_state.get(
-                    "atlas_sprint_reminder_dismissed_for"
-                )
-                if _atlas_should_show_soft_reminder(
+                reminder_state = atlas_workspace_helpers.build_sprint_reminder_state(
+                    st.session_state,
+                    focus_task_ref=focus_task_ref,
                     elapsed_minutes=elapsed_minutes,
-                    target_minutes=target_for_focus,
-                    sprint_key=sprint_key,
-                    dismissed_key=dismissed_key,
-                ):
-                    emitted_key = st.session_state.get(
-                        "atlas_sprint_notification_sent_for"
-                    )
-                    if _atlas_should_emit_target_notification(sprint_key, emitted_key):
+                    target_for_focus=target_for_focus,
+                    sprint_run_key_fn=_atlas_sprint_run_key,
+                    should_show_soft_reminder_fn=_atlas_should_show_soft_reminder,
+                    should_emit_target_notification_fn=(
+                        _atlas_should_emit_target_notification
+                    ),
+                )
+                if bool(reminder_state.get("show")):
+                    sprint_key = reminder_state.get("sprint_key")
+                    if bool(reminder_state.get("should_emit_notification")):
                         st.toast(
                             f"Sprint target reached: {target_for_focus}m on {focus_meta['title']}",
                             icon="⏱️",
@@ -3535,10 +3529,11 @@ def render_atlas_workspace(username):
                             "Sprint target reached",
                             f"{focus_meta['title']} hit {target_for_focus}m. Stop now or keep running.",
                         )
-                        st.session_state["atlas_sprint_notification_sent_for"] = (
-                            sprint_key
+                        atlas_workspace_helpers.mark_sprint_notification_sent(
+                            st.session_state,
+                            sprint_key=sprint_key if isinstance(sprint_key, str) else None,
                         )
-                    overtime_minutes = max(0, elapsed_minutes - target_for_focus)
+                    overtime_minutes = int(reminder_state.get("overtime_minutes") or 0)
                     spotlight_cols[0].warning(
                         f"Sprint target reached ({target_for_focus}m). "
                         f"You are {overtime_minutes}m over target."
@@ -3550,179 +3545,61 @@ def render_atlas_workspace(username):
                         disabled=not can_track_focus,
                         use_container_width=True,
                     ):
-                        st.session_state[stop_capture_key] = focus_task_ref
+                        atlas_workspace_helpers.mark_stop_capture(
+                            st.session_state,
+                            focus_task_ref=focus_task_ref,
+                            stop_capture_key=stop_capture_key,
+                        )
                         st.rerun()
                     if reminder_cols[1].button(
                         "Keep running",
                         key=f"atlas_soft_reminder_keep_{focus_task_ref}",
                         use_container_width=True,
                     ):
-                        st.session_state["atlas_sprint_reminder_dismissed_for"] = (
-                            sprint_key
+                        atlas_workspace_helpers.dismiss_sprint_reminder(
+                            st.session_state,
+                            sprint_key=sprint_key if isinstance(sprint_key, str) else None,
                         )
                         st.rerun()
 
-            if not focus_running and st.session_state.get(stop_capture_key) == focus_task_ref:
-                del st.session_state[stop_capture_key]
+            atlas_workspace_helpers.clear_stop_capture_if_not_running(
+                st.session_state,
+                focus_task_ref=focus_task_ref,
+                focus_running=focus_running,
+                stop_capture_key=stop_capture_key,
+            )
 
             action_container = st.container()
-            if focus_running:
-                if (not stop_composer_open) and action_container.button(
-                    "Stop & Log",
-                    key=f"atlas_spotlight_stop_{focus_task_ref}",
-                    type="primary",
-                    disabled=not can_track_focus,
-                    use_container_width=True,
-                ):
-                    st.session_state[stop_capture_key] = focus_task_ref
-                    st.rerun()
-            else:
-                if action_container.button(
-                    "Start",
-                    key=f"atlas_spotlight_start_{focus_task_ref}",
-                    type="primary",
-                    disabled=not can_track_focus,
-                    use_container_width=True,
-                ):
-                    try:
-                        start_timer(focus_task.id, username)
-                    except ValueError as exc:
-                        st.error(str(exc))
-                    else:
-                        st.session_state["atlas_sprint_target_minutes"] = int(
-                            target_minutes
-                        )
-                        st.session_state["atlas_sprint_task_ref"] = focus_task_ref
-                        st.session_state["atlas_sprint_started_at_epoch"] = float(
-                            time.time()
-                        )
-                        if stop_capture_key in st.session_state:
-                            del st.session_state[stop_capture_key]
-                        if "atlas_sprint_reminder_dismissed_for" in st.session_state:
-                            del st.session_state["atlas_sprint_reminder_dismissed_for"]
-                        if "atlas_sprint_notification_sent_for" in st.session_state:
-                            del st.session_state["atlas_sprint_notification_sent_for"]
-                        st.rerun()
+            atlas_focus_panel_helpers.render_focus_primary_action(
+                action_container=action_container,
+                focus_running=focus_running,
+                stop_composer_open=stop_composer_open,
+                can_track_focus=can_track_focus,
+                focus_task_ref=focus_task_ref,
+                focus_task=focus_task,
+                username=username,
+                target_minutes=int(target_minutes),
+                session_state=st.session_state,
+                stop_capture_key=stop_capture_key,
+                start_timer_fn=start_timer,
+                error_fn=st.error,
+                rerun_fn=st.rerun,
+            )
 
             if stop_composer_open:
-                action_container.markdown(
-                    (
-                        "<div class='atlas-stop-composer'>"
-                        "<div class='atlas-stop-composer-title'>Log this sprint before you stop</div>"
-                        "<div class='atlas-stop-composer-hint'>"
-                        "Capture what moved forward, any blocker, and the next step."
-                        "</div>"
-                        "</div>"
-                    ),
-                    unsafe_allow_html=True,
+                atlas_focus_panel_helpers.render_stop_composer(
+                    action_container=action_container,
+                    is_mobile_request=is_mobile_request,
+                    focus_task=focus_task,
+                    focus_task_ref=focus_task_ref,
+                    username=username,
+                    session_state=st.session_state,
+                    stop_capture_key=stop_capture_key,
+                    stop_draft_key=stop_draft_key,
+                    stop_timer_fn=stop_timer,
+                    clean_summary_fn=_atlas_clean_work_summary,
+                    rerun_fn=st.rerun,
                 )
-                stop_summary = action_container.text_area(
-                    "Work summary",
-                    key=stop_draft_key,
-                    label_visibility="collapsed",
-                    placeholder=(
-                        "e.g. Finished API error handling for objective check-ins; "
-                        "blocked by QA env config; next: validate edge cases and open PR."
-                    ),
-                    height=110,
-                    max_chars=500,
-                )
-                cleaned_stop_summary = _atlas_clean_work_summary(stop_summary)
-                if is_mobile_request:
-                    if action_container.button(
-                        "Save & Stop",
-                        key=f"atlas_stop_with_summary_{focus_task_ref}",
-                        type="primary",
-                        use_container_width=True,
-                        disabled=not bool(cleaned_stop_summary),
-                    ):
-                        atlas_workspace_helpers.stop_focus_session(
-                            session_state=st.session_state,
-                            focus_task=focus_task,
-                            focus_task_ref=focus_task_ref,
-                            username=username,
-                            summary=stop_summary,
-                            stop_timer_fn=stop_timer,
-                            clean_summary_fn=_atlas_clean_work_summary,
-                            stop_capture_key=stop_capture_key,
-                            stop_draft_key=stop_draft_key,
-                        )
-                        st.rerun()
-                    if action_container.button(
-                        "Stop without summary",
-                        key=f"atlas_stop_without_summary_{focus_task_ref}",
-                        use_container_width=True,
-                    ):
-                        atlas_workspace_helpers.stop_focus_session(
-                            session_state=st.session_state,
-                            focus_task=focus_task,
-                            focus_task_ref=focus_task_ref,
-                            username=username,
-                            summary=None,
-                            stop_timer_fn=stop_timer,
-                            clean_summary_fn=_atlas_clean_work_summary,
-                            stop_capture_key=stop_capture_key,
-                            stop_draft_key=stop_draft_key,
-                        )
-                        st.rerun()
-                    if action_container.button(
-                        "Cancel",
-                        key=f"atlas_stop_cancel_{focus_task_ref}",
-                        use_container_width=True,
-                    ):
-                        if stop_capture_key in st.session_state:
-                            del st.session_state[stop_capture_key]
-                        st.rerun()
-                else:
-                    composer_actions = action_container.columns([1.7, 1.55, 1.0], gap="small")
-                    if composer_actions[0].button(
-                        "Save & Stop",
-                        key=f"atlas_stop_with_summary_{focus_task_ref}",
-                        type="primary",
-                        use_container_width=True,
-                        disabled=not bool(cleaned_stop_summary),
-                    ):
-                        atlas_workspace_helpers.stop_focus_session(
-                            session_state=st.session_state,
-                            focus_task=focus_task,
-                            focus_task_ref=focus_task_ref,
-                            username=username,
-                            summary=stop_summary,
-                            stop_timer_fn=stop_timer,
-                            clean_summary_fn=_atlas_clean_work_summary,
-                            stop_capture_key=stop_capture_key,
-                            stop_draft_key=stop_draft_key,
-                        )
-                        st.rerun()
-                    if composer_actions[1].button(
-                        "Stop without summary",
-                        key=f"atlas_stop_without_summary_{focus_task_ref}",
-                        use_container_width=True,
-                    ):
-                        atlas_workspace_helpers.stop_focus_session(
-                            session_state=st.session_state,
-                            focus_task=focus_task,
-                            focus_task_ref=focus_task_ref,
-                            username=username,
-                            summary=None,
-                            stop_timer_fn=stop_timer,
-                            clean_summary_fn=_atlas_clean_work_summary,
-                            stop_capture_key=stop_capture_key,
-                            stop_draft_key=stop_draft_key,
-                        )
-                        st.rerun()
-                    if composer_actions[2].button(
-                        "Cancel",
-                        key=f"atlas_stop_cancel_{focus_task_ref}",
-                        use_container_width=True,
-                    ):
-                        if stop_capture_key in st.session_state:
-                            del st.session_state[stop_capture_key]
-                        st.rerun()
-                if not cleaned_stop_summary:
-                    action_container.caption(
-                        "Add a short summary, or use 'Stop without summary'."
-                    )
 
             if not can_track_focus:
                 action_container.caption(
@@ -3731,22 +3608,17 @@ def render_atlas_workspace(username):
 
             session_summary = st.session_state.get("atlas_last_session_summary")
             if isinstance(session_summary, dict):
-                summary_age = float(time.time() - float(session_summary.get("at") or 0))
-                if summary_age <= 10:
-                    summary_ref = session_summary.get("task_ref")
-                    summary_title = index.get(summary_ref, {}).get("title", "task")
-                    summary_minutes = session_summary.get("minutes", 0)
-                    st.success(
-                        f"Session logged: {summary_minutes}m on {summary_title}."
-                    )
-                    summary_text = _atlas_clean_work_summary(
-                        session_summary.get("summary")
-                    )
-                    if summary_text:
-                        if len(summary_text) > 180:
-                            summary_text = f"{summary_text[:177].rstrip()}..."
-                        st.caption(f"Summary: {summary_text}")
-                else:
+                session_feedback = atlas_workspace_helpers.build_recent_session_feedback(
+                    session_summary=session_summary,
+                    index=index,
+                    clean_summary_fn=_atlas_clean_work_summary,
+                )
+                if bool(session_feedback.get("visible")):
+                    st.success(str(session_feedback.get("message") or ""))
+                    caption_text = str(session_feedback.get("caption") or "").strip()
+                    if caption_text:
+                        st.caption(caption_text)
+                elif bool(session_feedback.get("stale")):
                     del st.session_state["atlas_last_session_summary"]
         else:
             st.info("Select a branch with tasks to start a focus sprint.")
@@ -3819,388 +3691,122 @@ def render_atlas_workspace(username):
                     map_chart_area = map_cols[0]
                     map_sidebar_area = map_cols[1]
 
-                map_sidebar_area.markdown(
-                    "<div class='atlas-kicker'>Map Key</div>", unsafe_allow_html=True
-                )
-                map_sidebar_area.markdown(
-                    (
-                        "<div style='margin-bottom: 0.3rem;'><st-caption><b>Performance (OKR)</b></st-caption></div>"
-                        "<div class='atlas-attn-legend' style='margin-bottom: 0.8rem;'>"
-                        "<span class='atlas-map-chip atlas-score-band-red'>0.0 - 0.3 Missed</span>"
-                        "<span class='atlas-map-chip atlas-score-band-yellow'>0.4 - 0.6 At Risk</span>"
-                        "<span class='atlas-map-chip atlas-score-band-green'>0.7 - 0.9 On Track</span>"
-                        "<span class='atlas-map-chip atlas-score-band-blue'>1.0 superstar</span>"
-                        "</div>"
-                        "<div style='margin-bottom: 0.3rem;'><st-caption><b>Health (Tasks)</b></st-caption></div>"
-                        "<div class='atlas-attn-legend' style='margin-bottom: 0.8rem;'>"
-                        "<span class='atlas-map-chip atlas-map-needs'>Needs care</span>"
-                        "<span class='atlas-map-chip atlas-map-ontrack'>On track</span>"
-                        "<span class='atlas-map-chip atlas-map-done'>Complete</span>"
-                        "</div>"
-                        "<div class='atlas-map-state-legend'>"
-                        "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-focus'></span>Focused task</span>"
-                        "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-selected'></span>Selected node</span>"
-                        "<span class='atlas-map-state-item'><span class='atlas-map-ring atlas-map-ring-path'></span>Path context</span>"
-                        "</div>"
-                    ),
-                    unsafe_allow_html=True,
-                )
-                map_sidebar_area.markdown("**Create**")
-                if map_sidebar_area.button(
-                    "Add Goal", key="atlas_add_goal_focus_map", use_container_width=True
-                ):
-                    st.session_state["add_mode_parent"] = None
-                    st.session_state["add_mode_type"] = "GOAL"
-                    st.rerun()
                 child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
-                if child_type and map_sidebar_area.button(
-                    f"Add {child_type.replace('_', ' ').title()}",
-                    key=f"atlas_add_child_map_{selected_ref}",
-                    use_container_width=True,
-                ):
-                    st.session_state["add_mode_parent"] = selected_ref
-                    st.session_state["add_mode_type"] = child_type
-                    st.rerun()
-
-                map_lens_options = ["Scope", "Branch"]
-                if st.session_state.get("atlas_map_lens") not in map_lens_options:
-                    st.session_state["atlas_map_lens"] = "Scope"
-                map_lens = map_sidebar_area.segmented_control(
-                    "Map Lens",
-                    options=map_lens_options,
-                    key="atlas_map_lens",
-                    selection_mode="single",
-                    label_visibility="collapsed",
+                atlas_map_sidebar_helpers.render_map_key_and_create_actions(
+                    sidebar=map_sidebar_area,
+                    session_state=st.session_state,
+                    selected_ref=selected_ref,
+                    child_type=child_type,
+                    rerun_fn=st.rerun,
                 )
-                if map_lens not in map_lens_options:
-                    map_lens = "Scope"
-
-                map_refs = (
-                    _atlas_scope_refs(roots, index, limit=800)
-                    if map_lens == "Scope"
-                    else _atlas_descendant_refs(selected_ref, index, limit=400)
-                )
-                map_kr_refs = [
-                    ref
-                    for ref in map_refs
-                    if ref in index and index[ref].get("type") == "KEY_RESULT"
-                ]
-                map_task_refs = [
-                    ref
-                    for ref in map_refs
-                    if ref in index and index[ref].get("type") == "TASK"
-                ]
-                show_health_debug = False
-                if role_value == "admin":
-                    show_health_debug = map_sidebar_area.toggle(
-                        "Show Health Debug",
-                        key="atlas_show_health_debug",
-                        value=False,
-                    )
-                elif "atlas_show_health_debug" in st.session_state:
-                    st.session_state["atlas_show_health_debug"] = False
-                if show_health_debug:
-                    debug_rows = _atlas_health_debug_rows(
-                        map_refs,
-                        index,
-                        health_index=health_index,
-                        limit=120,
-                    )
-                    if debug_rows:
-                        map_sidebar_area.dataframe(
-                            debug_rows,
-                            use_container_width=True,
-                            hide_index=True,
-                            height=260,
-                        )
-
-                map_sidebar_area.markdown("**AI**")
-                if "atlas_ai_apply_overall_to_progress" not in st.session_state:
-                    st.session_state["atlas_ai_apply_overall_to_progress"] = False
-                apply_ai_score_to_progress = map_sidebar_area.toggle(
-                    "Apply AI overall score to KR progress",
-                    key="atlas_ai_apply_overall_to_progress",
-                    disabled=not map_kr_refs,
-                )
-                if "atlas_ai_sync_preview_mode" not in st.session_state:
-                    st.session_state["atlas_ai_sync_preview_mode"] = False
-                preview_ai_sync = map_sidebar_area.toggle(
-                    "Preview mode (no writes)",
-                    key="atlas_ai_sync_preview_mode",
-                    disabled=not map_kr_refs,
-                )
-
-                if "atlas_ai_progress_max_delta" not in st.session_state:
-                    st.session_state["atlas_ai_progress_max_delta"] = 25
-                if "atlas_ai_progress_allow_decrease" not in st.session_state:
-                    st.session_state["atlas_ai_progress_allow_decrease"] = False
-
-                max_progress_delta = int(
-                    st.session_state.get("atlas_ai_progress_max_delta") or 25
-                )
-                allow_progress_decrease = bool(
-                    st.session_state.get("atlas_ai_progress_allow_decrease", False)
-                )
-                if apply_ai_score_to_progress:
-                    max_progress_delta = int(
-                        map_sidebar_area.slider(
-                            "Max KR progress delta",
-                            min_value=5,
-                            max_value=100,
-                            step=5,
-                            value=max_progress_delta,
-                            key="atlas_ai_progress_max_delta",
-                        )
-                    )
-                    allow_progress_decrease = map_sidebar_area.toggle(
-                        "Allow progress decreases",
-                        key="atlas_ai_progress_allow_decrease",
-                        value=allow_progress_decrease,
-                    )
-
-                undo_payload = st.session_state.get("atlas_ai_progress_undo")
-                if isinstance(undo_payload, dict):
-                    undo_items = list(undo_payload.get("items") or [])
-                    if undo_items:
-                        undo_age_seconds = float(
-                            time.time() - float(undo_payload.get("at") or 0)
-                        )
-                        if undo_age_seconds <= 1800:
-                            if map_sidebar_area.button(
-                                "Undo Last AI Progress Apply",
-                                key="atlas_ai_progress_undo_btn",
-                                use_container_width=True,
-                            ):
-                                from src.crud import (
-                                    update_key_result,
-                                    recalculate_rollup_for_key_results,
-                                )
-                                undo_result = atlas_workspace_helpers.apply_ai_progress_undo(
-                                    undo_items=undo_items,
-                                    username=username,
-                                    update_key_result_fn=update_key_result,
-                                    recalculate_rollup_for_key_results_fn=(
-                                        recalculate_rollup_for_key_results
-                                    ),
-                                )
-                                st.session_state["atlas_ai_undo_report"] = {
-                                    "restored": int(undo_result.get("restored") or 0),
-                                    "failed": list(undo_result.get("failed") or []),
-                                    "at": float(time.time()),
-                                }
-                                st.session_state.pop("atlas_ai_progress_undo", None)
-                                st.rerun()
-                        else:
-                            st.session_state.pop("atlas_ai_progress_undo", None)
-
-                if map_sidebar_area.button(
-                    "AI Progress Sync",
-                    key="atlas_ai_progress_sync_btn",
-                    use_container_width=True,
-                    disabled=not map_kr_refs,
-                ):
-                    from src.services.ai_service import (
-                        analyze_node,
-                        suggest_critical_task,
-                    )
-                    from src.crud import (
-                        update_key_result,
-                        recalculate_rollup_for_key_results,
-                    )
-                    total_kr = len(map_kr_refs)
-                    progress_bar = map_sidebar_area.progress(
-                        0.0,
-                        text=f"Syncing AI analysis for {total_kr} key result(s)...",
-                    )
-                    sync_result = atlas_workspace_helpers.run_ai_progress_sync(
-                        map_kr_refs=map_kr_refs,
-                        map_task_refs=map_task_refs,
+                map_lens, map_refs, map_kr_refs, map_task_refs = (
+                    atlas_map_sidebar_helpers.resolve_map_lens_and_refs(
+                        sidebar=map_sidebar_area,
+                        session_state=st.session_state,
+                        roots=roots,
                         index=index,
-                        health_index=health_index,
-                        actor_id=actor_id,
-                        selected_scope=selected_scope,
-                        map_lens=map_lens,
-                        selected_node_title=str(selected_meta.get("title") or ""),
-                        username=username,
-                        apply_ai_score_to_progress=apply_ai_score_to_progress,
-                        preview_ai_sync=preview_ai_sync,
-                        max_progress_delta=max_progress_delta,
-                        allow_progress_decrease=allow_progress_decrease,
-                        analyze_node_fn=analyze_node,
-                        suggest_critical_task_fn=suggest_critical_task,
-                        update_key_result_fn=update_key_result,
-                        recalculate_rollup_for_key_results_fn=(
-                            recalculate_rollup_for_key_results
-                        ),
-                        ai_progress_decision_fn=_atlas_ai_progress_decision,
-                        health_state_fn=_atlas_health_state,
-                        ai_overall_score_fn=_atlas_ai_overall_score,
-                        next_score_fn=_atlas_suggested_next_score,
-                        deadline_to_iso_fn=lambda deadline_raw: (
-                            atlas_workspace_helpers.deadline_to_iso(
-                                deadline_raw,
-                                from_epoch_millis_fn=from_epoch_millis,
-                                from_epoch_seconds_fn=from_epoch_seconds,
-                                logger=logger,
-                            )
-                        ),
-                        logger=logger,
-                        progress_callback=lambda idx, total, text: progress_bar.progress(
-                            min(1.0, float(idx) / max(1, int(total))),
-                            text=text,
-                        ),
+                        selected_ref=selected_ref,
+                        scope_refs_fn=_atlas_scope_refs,
+                        descendant_refs_fn=_atlas_descendant_refs,
                     )
-                    progress_bar.empty()
-                    ai_suggested_payload = sync_result.get("ai_suggested_payload")
-                    if ai_suggested_payload:
-                        st.session_state["atlas_ai_suggested_next"] = ai_suggested_payload
-                    else:
-                        st.session_state.pop("atlas_ai_suggested_next", None)
-                    progress_undo_items = list(
-                        sync_result.get("progress_undo_items") or []
-                    )
-                    if not preview_ai_sync and apply_ai_score_to_progress and progress_undo_items:
-                        st.session_state["atlas_ai_progress_undo"] = {
-                            "items": progress_undo_items,
-                            "at": float(time.time()),
-                        }
-                    st.session_state["atlas_ai_sync_report"] = dict(
-                        sync_result.get("sync_report") or {}
-                    )
-                    st.rerun()
+                )
+                atlas_map_sidebar_helpers.render_health_debug_panel(
+                    sidebar=map_sidebar_area,
+                    session_state=st.session_state,
+                    role_value=role_value,
+                    map_refs=map_refs,
+                    index=index,
+                    health_index=health_index,
+                    health_debug_rows_fn=_atlas_health_debug_rows,
+                )
+                (
+                    apply_ai_score_to_progress,
+                    preview_ai_sync,
+                    max_progress_delta,
+                    allow_progress_decrease,
+                ) = atlas_map_sidebar_helpers.render_ai_control_panel(
+                    sidebar=map_sidebar_area,
+                    session_state=st.session_state,
+                    has_kr_refs=bool(map_kr_refs),
+                )
 
-                sync_report = st.session_state.get("atlas_ai_sync_report")
-                if isinstance(sync_report, dict):
-                    sync_age = float(time.time() - float(sync_report.get("at") or 0))
-                    if sync_age <= 45:
-                        synced = int(sync_report.get("synced") or 0)
-                        total = int(sync_report.get("total") or 0)
-                        preview_mode = bool(sync_report.get("preview_mode"))
-                        if preview_mode:
-                            analyzed_msg = (
-                                f"AI preview analyzed {synced}/{total} key results. "
-                                "No updates were written."
-                            )
-                            if bool(sync_report.get("apply_progress")):
-                                planned = int(sync_report.get("planned_progress") or 0)
-                                missing = int(sync_report.get("missing_ai_score") or 0)
-                                skipped_delta = int(
-                                    sync_report.get("skipped_delta_cap") or 0
-                                )
-                                skipped_down = int(
-                                    sync_report.get("skipped_decrease") or 0
-                                )
-                                unchanged = int(
-                                    sync_report.get("unchanged_progress") or 0
-                                )
-                                delta_cap = int(
-                                    sync_report.get("max_progress_delta") or 0
-                                )
-                                analyzed_msg += (
-                                    f" Planned updates: {planned}. Progress policy: max delta {delta_cap}%"
-                                )
-                                if not bool(
-                                    sync_report.get("allow_progress_decrease")
-                                ):
-                                    analyzed_msg += ", decreases blocked."
-                                else:
-                                    analyzed_msg += ", decreases allowed."
-                                if missing > 0:
-                                    analyzed_msg += f" ({missing} missing AI score.)"
-                                if skipped_delta > 0:
-                                    analyzed_msg += (
-                                        f" ({skipped_delta} blocked by delta cap.)"
-                                    )
-                                if skipped_down > 0:
-                                    analyzed_msg += (
-                                        f" ({skipped_down} blocked because decreases are off.)"
-                                    )
-                                if unchanged > 0:
-                                    analyzed_msg += f" ({unchanged} unchanged.)"
-                            map_sidebar_area.info(analyzed_msg)
-                        elif bool(sync_report.get("apply_progress")):
-                            applied = int(sync_report.get("applied_progress") or 0)
-                            missing = int(sync_report.get("missing_ai_score") or 0)
-                            skipped_delta = int(
-                                sync_report.get("skipped_delta_cap") or 0
-                            )
-                            skipped_down = int(
-                                sync_report.get("skipped_decrease") or 0
-                            )
-                            unchanged = int(sync_report.get("unchanged_progress") or 0)
-                            msg = (
-                                f"AI sync updated analysis on {synced}/{total} KRs "
-                                f"and applied progress on {applied}."
-                            )
-                            if missing > 0:
-                                msg += f" ({missing} had no usable AI score.)"
-                            if skipped_delta > 0:
-                                msg += f" ({skipped_delta} blocked by delta cap.)"
-                            if skipped_down > 0:
-                                msg += (
-                                    f" ({skipped_down} blocked because decreases are off.)"
-                                )
-                            if unchanged > 0:
-                                msg += f" ({unchanged} unchanged.)"
-                            map_sidebar_area.success(msg)
-                        else:
-                            map_sidebar_area.success(
-                                f"AI sync updated {synced}/{total} key result analysis records."
-                            )
-                        failed_items = list(sync_report.get("failed") or [])
-                        if failed_items:
-                            map_sidebar_area.warning(
-                                "Some items failed:\n- " + "\n- ".join(failed_items)
-                            )
-                        ai_suggest_ref = str(sync_report.get("ai_suggested_ref") or "")
-                        if ai_suggest_ref in index:
-                            ai_title = index[ai_suggest_ref].get(
-                                "title", ai_suggest_ref
-                            )
-                            ai_reason = str(
-                                sync_report.get("ai_suggested_reason") or ""
-                            ).strip()
-                            ai_conf = sync_report.get("ai_suggested_confidence")
-                            ai_line = f"AI suggested next: {ai_title}"
-                            if ai_conf is not None:
-                                ai_line += f" (confidence: {ai_conf}%)"
-                            map_sidebar_area.info(ai_line)
-                            if ai_reason:
-                                map_sidebar_area.caption(ai_reason)
-                        elif sync_report.get("ai_suggest_error"):
-                            map_sidebar_area.warning(
-                                f"AI task suggestion skipped: {sync_report.get('ai_suggest_error')}"
-                            )
-                        trace_rows = list(sync_report.get("trace_rows") or [])
-                        if trace_rows:
-                            with map_sidebar_area.expander(
-                                "Last AI Sync Details", expanded=False
-                            ):
-                                st.dataframe(
-                                    trace_rows,
-                                    use_container_width=True,
-                                    hide_index=True,
-                                    height=240,
-                                )
-                    else:
-                        del st.session_state["atlas_ai_sync_report"]
+                from src.crud import (
+                    update_key_result,
+                    recalculate_rollup_for_key_results,
+                )
+                atlas_map_sidebar_helpers.handle_ai_progress_undo_action(
+                    sidebar=map_sidebar_area,
+                    session_state=st.session_state,
+                    username=username,
+                    apply_ai_progress_undo_fn=(
+                        atlas_workspace_helpers.apply_ai_progress_undo
+                    ),
+                    update_key_result_fn=update_key_result,
+                    recalculate_rollup_for_key_results_fn=(
+                        recalculate_rollup_for_key_results
+                    ),
+                    rerun_fn=st.rerun,
+                )
 
-                undo_report = st.session_state.get("atlas_ai_undo_report")
-                if isinstance(undo_report, dict):
-                    undo_age = float(time.time() - float(undo_report.get("at") or 0))
-                    if undo_age <= 20:
-                        restored = int(undo_report.get("restored") or 0)
-                        map_sidebar_area.success(
-                            f"Rollback restored progress on {restored} key result(s)."
+                from src.services.ai_service import (
+                    analyze_node,
+                    suggest_critical_task,
+                )
+                atlas_map_sidebar_helpers.handle_ai_progress_sync_action(
+                    sidebar=map_sidebar_area,
+                    session_state=st.session_state,
+                    map_kr_refs=map_kr_refs,
+                    map_task_refs=map_task_refs,
+                    index=index,
+                    health_index=health_index,
+                    actor_id=actor_id,
+                    selected_scope=selected_scope,
+                    map_lens=map_lens,
+                    selected_node_title=str(selected_meta.get("title") or ""),
+                    username=username,
+                    apply_ai_score_to_progress=apply_ai_score_to_progress,
+                    preview_ai_sync=preview_ai_sync,
+                    max_progress_delta=max_progress_delta,
+                    allow_progress_decrease=allow_progress_decrease,
+                    run_ai_progress_sync_fn=atlas_workspace_helpers.run_ai_progress_sync,
+                    analyze_node_fn=analyze_node,
+                    suggest_critical_task_fn=suggest_critical_task,
+                    update_key_result_fn=update_key_result,
+                    recalculate_rollup_for_key_results_fn=(
+                        recalculate_rollup_for_key_results
+                    ),
+                    ai_progress_decision_fn=_atlas_ai_progress_decision,
+                    health_state_fn=_atlas_health_state,
+                    ai_overall_score_fn=_atlas_ai_overall_score,
+                    next_score_fn=_atlas_suggested_next_score,
+                    deadline_to_iso_fn=lambda deadline_raw: (
+                        atlas_workspace_helpers.deadline_to_iso(
+                            deadline_raw,
+                            from_epoch_millis_fn=from_epoch_millis,
+                            from_epoch_seconds_fn=from_epoch_seconds,
+                            logger=logger,
                         )
-                        undo_failed = list(undo_report.get("failed") or [])
-                        if undo_failed:
-                            map_sidebar_area.warning(
-                                "Some rollback items failed:\n- "
-                                + "\n- ".join(undo_failed)
-                            )
-                    else:
-                        st.session_state.pop("atlas_ai_undo_report", None)
+                    ),
+                    logger=logger,
+                    rerun_fn=st.rerun,
+                )
+
+                atlas_map_sidebar_helpers.render_ai_sync_report_feedback(
+                    sidebar=map_sidebar_area,
+                    session_state=st.session_state,
+                    index=index,
+                    build_ai_sync_sidebar_messages_fn=(
+                        atlas_workspace_helpers.build_ai_sync_sidebar_messages
+                    ),
+                    dataframe_fn=st.dataframe,
+                )
+                atlas_map_sidebar_helpers.render_ai_undo_report_feedback(
+                    sidebar=map_sidebar_area,
+                    session_state=st.session_state,
+                    build_ai_undo_sidebar_messages_fn=(
+                        atlas_workspace_helpers.build_ai_undo_sidebar_messages
+                    ),
+                )
 
                 map_chart_height = 280 if is_mobile_request else 500
                 treemap = _atlas_cached_treemap(
@@ -4216,62 +3822,40 @@ def render_atlas_workspace(username):
                 if treemap is not None:
                     chart_key = f"atlas_focus_treemap_{selected_ref}"
                     chart_events_key = f"{chart_key}_events"
-                    trace = treemap.data[0] if treemap.data else None
-                    point_refs = (
-                        [str(ref) for ref in (trace.ids or [])]
-                        if trace is not None
-                        else [str(ref) for ref in map_refs]
+                    point_refs, label_lookup = (
+                        atlas_map_chart_helpers.build_point_ref_label_lookup(
+                            treemap=treemap,
+                            map_refs=map_refs,
+                        )
                     )
-                    point_labels = (
-                        [str(lbl) for lbl in (trace.labels or [])]
-                        if trace is not None
-                        else []
-                    )
-                    label_lookup = {}
-                    for idx, label in enumerate(point_labels):
-                        if idx < len(point_refs):
-                            label_lookup.setdefault(label, []).append(point_refs[idx])
-
-                    points = []
-                    rendered_with_events = False
-                    if plotly_events is not None:
-                        try:
-                            with map_chart_area:
-                                points = (
-                                    plotly_events(
-                                        treemap,
-                                        click_event=True,
-                                        select_event=False,
-                                        hover_event=False,
-                                        override_height=map_chart_height + 12,
-                                        override_width="100%",
-                                        key=chart_events_key,
-                                    )
-                                    or []
+                    points = atlas_map_chart_helpers.collect_treemap_points(
+                        session_state=st.session_state,
+                        chart_key=chart_key,
+                        chart_events_key=chart_events_key,
+                        render_plotly_events_fn=(
+                            (
+                                lambda: atlas_map_chart_helpers.render_plotly_events_points(
+                                    map_chart_area=map_chart_area,
+                                    plotly_events_fn=plotly_events,
+                                    treemap=treemap,
+                                    chart_events_key=chart_events_key,
+                                    map_chart_height=map_chart_height,
                                 )
-                            rendered_with_events = True
-                        except Exception as exc:
-                            logger.warning("plotly_events interaction failed; falling back to plotly selection: %s", exc)
-                            points = []
-
-                    if not rendered_with_events:
-                        treemap_event = map_chart_area.plotly_chart(
+                            )
+                            if plotly_events is not None
+                            else None
+                        ),
+                        render_plotly_chart_fn=lambda: map_chart_area.plotly_chart(
                             treemap,
                             use_container_width=True,
                             config={"displayModeBar": False},
                             key=chart_key,
                             on_select="rerun",
                             selection_mode=("points",),
-                        )
-                        points = _atlas_extract_selection_points(treemap_event)
-                        if not points:
-                            points = _atlas_extract_selection_points(
-                                st.session_state.get(chart_key)
-                            )
-                    elif not points:
-                        points = _atlas_extract_selection_points(
-                            st.session_state.get(chart_events_key)
-                        )
+                        ),
+                        extract_selection_points_fn=_atlas_extract_selection_points,
+                        logger=logger,
+                    )
 
                     clicked_ref = _atlas_extract_clicked_ref_from_points(
                         points,
@@ -4281,29 +3865,17 @@ def render_atlas_workspace(username):
                         label_lookup=label_lookup,
                     )
 
-                    if clicked_ref in index and clicked_ref != selected_ref:
-                        st.session_state["atlas_selected_ref"] = clicked_ref
-                        st.session_state["atlas_breadcrumbs"] = clicked_ref
-                        clicked_meta = index[clicked_ref]
-                        if clicked_meta["type"] == "TASK":
-                            st.session_state["atlas_focus_task_ref"] = clicked_ref
-                        else:
-                            branch_tasks = atlas_workspace_helpers.collect_task_refs(
-                                index=index,
-                                root_ref=clicked_ref,
-                                limit=200,
-                            )
-                            if branch_tasks:
-                                st.session_state["atlas_focus_task_ref"] = (
-                                    atlas_workspace_helpers.suggest_focus_task(
-                                        task_refs=branch_tasks,
-                                        index=index,
-                                        health_index=health_index,
-                                        health_state_fn=_atlas_health_state,
-                                    )
-                                    or branch_tasks[0]
-                                )
-                        st.rerun()
+                    atlas_map_chart_helpers.apply_clicked_ref_navigation(
+                        clicked_ref=clicked_ref,
+                        selected_ref=selected_ref,
+                        index=index,
+                        session_state=st.session_state,
+                        health_index=health_index,
+                        collect_task_refs_fn=atlas_workspace_helpers.collect_task_refs,
+                        suggest_focus_task_fn=atlas_workspace_helpers.suggest_focus_task,
+                        health_state_fn=_atlas_health_state,
+                        rerun_fn=st.rerun,
+                    )
                 else:
                     map_chart_area.info("No map data available.")
 
