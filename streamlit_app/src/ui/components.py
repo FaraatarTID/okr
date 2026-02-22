@@ -58,12 +58,13 @@ from src.ui.atlas_helpers import (
 )
 from src.ui import atlas_treemap_helpers
 from src.ui import atlas_focus_panel_helpers
-from src.ui import atlas_map_sidebar_helpers
-from src.ui import atlas_map_chart_helpers
+from src.ui import atlas_map_tab_helpers
 from src.ui import atlas_inspector_helpers
 from src.ui import atlas_navigation_helpers
 from src.ui import atlas_focus_map_shell_helpers
 from src.ui import atlas_focus_task_view_helpers
+from src.ui import atlas_focus_selection_helpers
+from src.ui import atlas_focus_running_helpers
 from src.ui import atlas_workspace_helpers
 
 # Keep Atlas helper symbols available from this module for existing tests/imports.
@@ -3288,103 +3289,44 @@ def render_atlas_workspace(username):
             unsafe_allow_html=True,
         )
 
-        suggested_focus_ref = None
-        suggested_focus_reason = None
-        suggested_focus_confidence = None
-        suggested_focus_is_ai = False
-        ai_suggested_state = st.session_state.get("atlas_ai_suggested_next")
-        if isinstance(ai_suggested_state, dict):
-            ai_ref = str(ai_suggested_state.get("task_ref") or "")
-            ai_scope = str(ai_suggested_state.get("scope") or "")
-            if ai_ref in task_refs and ai_scope == str(selected_scope):
-                suggested_focus_ref = ai_ref
-                suggested_focus_reason = (
-                    str(ai_suggested_state.get("reason") or "").strip() or None
-                )
-                suggested_focus_confidence = ai_suggested_state.get("confidence")
-                suggested_focus_is_ai = True
-            elif ai_ref and ai_ref not in task_refs:
-                st.session_state.pop("atlas_ai_suggested_next", None)
-
-        if task_refs:
-            if suggested_focus_ref is None:
-                actionable_refs = [
-                    ref
-                    for ref in task_refs
-                    if int(index.get(ref, {}).get("progress", 0) or 0) < 100
-                ]
-                candidate_refs = actionable_refs or task_refs
-                ranked_refs = sorted(
-                    candidate_refs,
-                    key=lambda ref: _atlas_suggested_next_score(
-                        index[ref],
-                        actor_id,
-                        index,
-                        health=health_index.get(ref),
-                    ),
-                )
-                if ranked_refs:
-                    suggested_focus_ref = ranked_refs[0]
-
-        if suggested_focus_ref and suggested_focus_ref in index:
-            suggested_meta = index[suggested_focus_ref]
-            suggested_label = (
-                "AI Suggested Next" if suggested_focus_is_ai else "Suggested Next"
-            )
-            suggested_row = st.columns([1.9, 3.6], gap="small")
-            if suggested_row[0].button(
-                "Use Suggested",
-                key=f"atlas_top_suggest_focus_{suggested_focus_ref}",
-                use_container_width=False,
-            ):
-                st.session_state["atlas_focus_task_ref"] = suggested_focus_ref
-                st.session_state["atlas_selected_ref"] = suggested_focus_ref
-                st.rerun()
-            suggested_row[1].markdown(
-                (
-                    "<div class='atlas-suggested-line'>"
-                    f"<span class='atlas-suggested-label'>{escape_html(suggested_label)}:</span> "
-                    f"{TYPE_ICONS.get('TASK', '')} {escape_html(suggested_meta['title'])}"
-                    "</div>"
-                ),
-                unsafe_allow_html=True,
-            )
-            reason_text = suggested_focus_reason or _atlas_suggested_next_reason(
-                suggested_meta,
-                actor_id,
-                index,
-                health=health_index.get(suggested_focus_ref),
-            )
-            if suggested_focus_confidence is not None:
-                reason_text = (
-                    f"{reason_text} (AI confidence: {suggested_focus_confidence}%)"
-                )
-            st.markdown(
-                f"<div class='atlas-suggested-reason'>{escape_html(reason_text)}</div>",
-                unsafe_allow_html=True,
-            )
-
-        if focus_task_ref and task_refs:
-            st.markdown(
-                "<div class='atlas-field-label'>Choose Focus Task</div>",
-                unsafe_allow_html=True,
-            )
-            picked_ref = st.selectbox(
-                "Choose Focus Task",
-                options=task_refs,
-                index=task_refs.index(focus_task_ref)
-                if focus_task_ref in task_refs
-                else 0,
-                key="atlas_focus_task_picker",
-                label_visibility="collapsed",
-                format_func=lambda ref: (
-                    f"{TYPE_ICONS.get('TASK', '')} {index[ref]['title']} ({index[ref]['owner_name']})"
-                ),
-            )
-            if picked_ref != focus_task_ref:
-                st.session_state["atlas_focus_task_ref"] = picked_ref
-                st.rerun()
-            focus_task_ref = picked_ref
+        (
+            suggested_focus_ref,
+            suggested_focus_reason,
+            suggested_focus_confidence,
+            suggested_focus_is_ai,
+        ) = atlas_focus_selection_helpers.resolve_suggested_focus_candidate(
+            session_state=st.session_state,
+            task_refs=task_refs,
+            index=index,
+            selected_scope=selected_scope,
+            actor_id=actor_id,
+            health_index=health_index,
+            next_score_fn=_atlas_suggested_next_score,
+        )
+        atlas_focus_selection_helpers.render_suggested_focus_banner(
+            st_module=st,
+            session_state=st.session_state,
+            suggested_focus_ref=suggested_focus_ref,
+            suggested_focus_reason=suggested_focus_reason,
+            suggested_focus_confidence=suggested_focus_confidence,
+            suggested_focus_is_ai=suggested_focus_is_ai,
+            index=index,
+            actor_id=actor_id,
+            health_index=health_index,
+            type_icons=TYPE_ICONS,
+            escape_html_fn=escape_html,
+            suggested_reason_fn=_atlas_suggested_next_reason,
+            rerun_fn=st.rerun,
+        )
+        focus_task_ref = atlas_focus_selection_helpers.render_focus_task_picker(
+            st_module=st,
+            session_state=st.session_state,
+            focus_task_ref=focus_task_ref,
+            task_refs=task_refs,
+            index=index,
+            type_icons=TYPE_ICONS,
+            rerun_fn=st.rerun,
+        )
 
         if focus_task_ref and focus_task_ref in index:
             focus_meta = index[focus_task_ref]
@@ -3434,84 +3376,30 @@ def render_atlas_workspace(username):
             )
 
             if focus_running:
-                elapsed_minutes = atlas_workspace_helpers.compute_elapsed_minutes(
-                    started_at=getattr(focus_task, "timer_started_at", None),
+                atlas_focus_running_helpers.render_running_status_and_reminder(
+                    st_module=st,
+                    spotlight_col=spotlight_cols[0],
+                    session_state=st.session_state,
+                    focus_task=focus_task,
+                    focus_task_ref=focus_task_ref,
+                    focus_title=str(focus_meta.get("title") or ""),
+                    can_track_focus=can_track_focus,
+                    stop_capture_key=stop_capture_key,
+                    compute_elapsed_minutes_fn=atlas_workspace_helpers.compute_elapsed_minutes,
                     ensure_utc_fn=ensure_utc,
                     utc_now_naive_fn=utc_now_naive,
-                    logger=logger,
-                )
-
-                target_for_focus = atlas_workspace_helpers.resolve_target_for_focus(
-                    st.session_state,
-                    focus_task_ref=focus_task_ref,
-                )
-
-                if target_for_focus > 0:
-                    sprint_ratio = min(
-                        1.0, max(0.0, elapsed_minutes / target_for_focus)
-                    )
-                    spotlight_cols[0].progress(
-                        sprint_ratio,
-                        text=f"Sprint: {elapsed_minutes}m / {target_for_focus}m",
-                    )
-                else:
-                    spotlight_cols[0].caption(f"Running now: {elapsed_minutes}m")
-
-                reminder_state = atlas_workspace_helpers.build_sprint_reminder_state(
-                    st.session_state,
-                    focus_task_ref=focus_task_ref,
-                    elapsed_minutes=elapsed_minutes,
-                    target_for_focus=target_for_focus,
+                    resolve_target_for_focus_fn=atlas_workspace_helpers.resolve_target_for_focus,
+                    build_sprint_reminder_state_fn=atlas_workspace_helpers.build_sprint_reminder_state,
                     sprint_run_key_fn=_atlas_sprint_run_key,
                     should_show_soft_reminder_fn=_atlas_should_show_soft_reminder,
-                    should_emit_target_notification_fn=(
-                        _atlas_should_emit_target_notification
-                    ),
+                    should_emit_target_notification_fn=_atlas_should_emit_target_notification,
+                    fire_browser_notification_fn=_atlas_fire_browser_notification,
+                    mark_sprint_notification_sent_fn=atlas_workspace_helpers.mark_sprint_notification_sent,
+                    mark_stop_capture_fn=atlas_workspace_helpers.mark_stop_capture,
+                    dismiss_sprint_reminder_fn=atlas_workspace_helpers.dismiss_sprint_reminder,
+                    rerun_fn=st.rerun,
+                    logger=logger,
                 )
-                if bool(reminder_state.get("show")):
-                    sprint_key = reminder_state.get("sprint_key")
-                    if bool(reminder_state.get("should_emit_notification")):
-                        st.toast(
-                            f"Sprint target reached: {target_for_focus}m on {focus_meta['title']}",
-                            icon="⏱️",
-                        )
-                        _atlas_fire_browser_notification(
-                            "Sprint target reached",
-                            f"{focus_meta['title']} hit {target_for_focus}m. Stop now or keep running.",
-                        )
-                        atlas_workspace_helpers.mark_sprint_notification_sent(
-                            st.session_state,
-                            sprint_key=sprint_key if isinstance(sprint_key, str) else None,
-                        )
-                    overtime_minutes = int(reminder_state.get("overtime_minutes") or 0)
-                    spotlight_cols[0].warning(
-                        f"Sprint target reached ({target_for_focus}m). "
-                        f"You are {overtime_minutes}m over target."
-                    )
-                    reminder_cols = spotlight_cols[0].columns([1.2, 1.4, 2.0])
-                    if reminder_cols[0].button(
-                        "Stop & Log",
-                        key=f"atlas_soft_reminder_stop_{focus_task_ref}",
-                        disabled=not can_track_focus,
-                        use_container_width=True,
-                    ):
-                        atlas_workspace_helpers.mark_stop_capture(
-                            st.session_state,
-                            focus_task_ref=focus_task_ref,
-                            stop_capture_key=stop_capture_key,
-                        )
-                        st.rerun()
-                    if reminder_cols[1].button(
-                        "Keep running",
-                        key=f"atlas_soft_reminder_keep_{focus_task_ref}",
-                        use_container_width=True,
-                    ):
-                        atlas_workspace_helpers.dismiss_sprint_reminder(
-                            st.session_state,
-                            sprint_key=sprint_key if isinstance(sprint_key, str) else None,
-                        )
-                        st.rerun()
-
             atlas_workspace_helpers.clear_stop_capture_if_not_running(
                 st.session_state,
                 focus_task_ref=focus_task_ref,
@@ -3594,162 +3482,43 @@ def render_atlas_workspace(username):
     focus_map_tab, inspector_tab = atlas_focus_map_shell_helpers.create_workspace_tabs(st)
 
     with focus_map_tab:
-        with st.container(border=True):
-            map_chart_area, map_sidebar_area = (
-                atlas_focus_map_shell_helpers.render_focus_map_shell(
-                    st_module=st,
-                    selected_meta=selected_meta,
-                    node_lookup=node_lookup,
-                    type_icons=TYPE_ICONS,
-                    get_node_details_fn=_atlas_get_node_details_from_lookup,
-                    escape_html_fn=escape_html,
-                    is_mobile_request=is_mobile_request,
-                )
-            )
-
-            child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
-            atlas_map_sidebar_helpers.render_map_key_and_create_actions(
-                sidebar=map_sidebar_area,
-                session_state=st.session_state,
-                selected_ref=selected_ref,
-                child_type=child_type,
-                rerun_fn=st.rerun,
-            )
-            map_lens, map_refs, map_kr_refs, map_task_refs = (
-                atlas_map_sidebar_helpers.resolve_map_lens_and_refs(
-                    sidebar=map_sidebar_area,
-                    session_state=st.session_state,
-                    roots=roots,
-                    index=index,
-                    selected_ref=selected_ref,
-                    scope_refs_fn=_atlas_scope_refs,
-                    descendant_refs_fn=_atlas_descendant_refs,
-                )
-            )
-            atlas_map_sidebar_helpers.render_health_debug_panel(
-                sidebar=map_sidebar_area,
-                session_state=st.session_state,
-                role_value=role_value,
-                map_refs=map_refs,
-                index=index,
-                health_index=health_index,
-                health_debug_rows_fn=_atlas_health_debug_rows,
-            )
-            (
-                apply_ai_score_to_progress,
-                preview_ai_sync,
-                max_progress_delta,
-                allow_progress_decrease,
-            ) = atlas_map_sidebar_helpers.render_ai_control_panel(
-                sidebar=map_sidebar_area,
-                session_state=st.session_state,
-                has_kr_refs=bool(map_kr_refs),
-            )
-
-            from src.crud import (
-                update_key_result,
-                recalculate_rollup_for_key_results,
-            )
-            atlas_map_sidebar_helpers.handle_ai_progress_undo_action(
-                sidebar=map_sidebar_area,
-                session_state=st.session_state,
-                username=username,
-                apply_ai_progress_undo_fn=(
-                    atlas_workspace_helpers.apply_ai_progress_undo
-                ),
-                update_key_result_fn=update_key_result,
-                recalculate_rollup_for_key_results_fn=(
-                    recalculate_rollup_for_key_results
-                ),
-                rerun_fn=st.rerun,
-            )
-
-            from src.services.ai_service import (
-                analyze_node,
-                suggest_critical_task,
-            )
-            atlas_map_sidebar_helpers.handle_ai_progress_sync_action(
-                sidebar=map_sidebar_area,
-                session_state=st.session_state,
-                map_kr_refs=map_kr_refs,
-                map_task_refs=map_task_refs,
-                index=index,
-                health_index=health_index,
-                actor_id=actor_id,
-                selected_scope=selected_scope,
-                map_lens=map_lens,
-                selected_node_title=str(selected_meta.get("title") or ""),
-                username=username,
-                apply_ai_score_to_progress=apply_ai_score_to_progress,
-                preview_ai_sync=preview_ai_sync,
-                max_progress_delta=max_progress_delta,
-                allow_progress_decrease=allow_progress_decrease,
-                run_ai_progress_sync_fn=atlas_workspace_helpers.run_ai_progress_sync,
-                analyze_node_fn=analyze_node,
-                suggest_critical_task_fn=suggest_critical_task,
-                update_key_result_fn=update_key_result,
-                recalculate_rollup_for_key_results_fn=(
-                    recalculate_rollup_for_key_results
-                ),
-                ai_progress_decision_fn=_atlas_ai_progress_decision,
-                health_state_fn=_atlas_health_state,
-                ai_overall_score_fn=_atlas_ai_overall_score,
-                next_score_fn=_atlas_suggested_next_score,
-                deadline_to_iso_fn=lambda deadline_raw: (
-                    atlas_workspace_helpers.deadline_to_iso(
-                        deadline_raw,
-                        from_epoch_millis_fn=from_epoch_millis,
-                        from_epoch_seconds_fn=from_epoch_seconds,
-                        logger=logger,
-                    )
-                ),
-                logger=logger,
-                rerun_fn=st.rerun,
-            )
-
-            atlas_map_sidebar_helpers.render_ai_sync_report_feedback(
-                sidebar=map_sidebar_area,
-                session_state=st.session_state,
-                index=index,
-                build_ai_sync_sidebar_messages_fn=(
-                    atlas_workspace_helpers.build_ai_sync_sidebar_messages
-                ),
-                dataframe_fn=st.dataframe,
-            )
-            atlas_map_sidebar_helpers.render_ai_undo_report_feedback(
-                sidebar=map_sidebar_area,
-                session_state=st.session_state,
-                build_ai_undo_sidebar_messages_fn=(
-                    atlas_workspace_helpers.build_ai_undo_sidebar_messages
-                ),
-            )
-
-            atlas_map_chart_helpers.render_map_chart_and_handle_navigation(
-                map_chart_area=map_chart_area,
-                session_state=st.session_state,
-                map_refs=map_refs,
-                index=index,
-                selected_ref=selected_ref,
-                focus_task_ref=focus_task_ref,
-                selected_path_refs=selected_path_refs,
-                health_index=health_index,
-                runtime_token=runtime_token,
-                is_mobile_request=is_mobile_request,
-                cached_treemap_fn=_atlas_cached_treemap,
-                plotly_events_fn=plotly_events,
-                extract_selection_points_fn=_atlas_extract_selection_points,
-                extract_clicked_ref_from_points_fn=_atlas_extract_clicked_ref_from_points,
-                collect_task_refs_fn=atlas_workspace_helpers.collect_task_refs,
-                suggest_focus_task_fn=atlas_workspace_helpers.suggest_focus_task,
-                health_state_fn=_atlas_health_state,
-                rerun_fn=st.rerun,
-                logger=logger,
-            )
-            atlas_map_chart_helpers.render_no_tasks_message(
-                sidebar=map_sidebar_area,
-                map_task_refs=map_task_refs,
-                map_lens=map_lens,
-            )
+        atlas_map_tab_helpers.render_focus_map_tab_content(
+            st_module=st,
+            session_state=st.session_state,
+            username=username,
+            selected_meta=selected_meta,
+            node_lookup=node_lookup,
+            type_icons=TYPE_ICONS,
+            get_node_details_fn=_atlas_get_node_details_from_lookup,
+            escape_html_fn=escape_html,
+            is_mobile_request=is_mobile_request,
+            child_type_map=CHILD_TYPE_MAP,
+            selected_ref=selected_ref,
+            roots=roots,
+            index=index,
+            scope_refs_fn=_atlas_scope_refs,
+            descendant_refs_fn=_atlas_descendant_refs,
+            role_value=role_value,
+            health_index=health_index,
+            health_debug_rows_fn=_atlas_health_debug_rows,
+            actor_id=actor_id,
+            selected_scope=selected_scope,
+            focus_task_ref=focus_task_ref,
+            selected_path_refs=selected_path_refs,
+            runtime_token=runtime_token,
+            cached_treemap_fn=_atlas_cached_treemap,
+            plotly_events_fn=plotly_events,
+            extract_selection_points_fn=_atlas_extract_selection_points,
+            extract_clicked_ref_from_points_fn=_atlas_extract_clicked_ref_from_points,
+            health_state_fn=_atlas_health_state,
+            ai_progress_decision_fn=_atlas_ai_progress_decision,
+            ai_overall_score_fn=_atlas_ai_overall_score,
+            next_score_fn=_atlas_suggested_next_score,
+            from_epoch_millis_fn=from_epoch_millis,
+            from_epoch_seconds_fn=from_epoch_seconds,
+            logger=logger,
+            rerun_fn=st.rerun,
+        )
 
     atlas_inspector_helpers.render_inspector_tab(
         st_module=st,
