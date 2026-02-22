@@ -61,6 +61,9 @@ from src.ui import atlas_focus_panel_helpers
 from src.ui import atlas_map_sidebar_helpers
 from src.ui import atlas_map_chart_helpers
 from src.ui import atlas_inspector_helpers
+from src.ui import atlas_navigation_helpers
+from src.ui import atlas_focus_map_shell_helpers
+from src.ui import atlas_focus_task_view_helpers
 from src.ui import atlas_workspace_helpers
 
 # Keep Atlas helper symbols available from this module for existing tests/imports.
@@ -3406,83 +3409,29 @@ def render_atlas_workspace(username):
                 stop_capture_key=stop_capture_key,
             )
 
-            focus_path_labels = [
-                index[path_ref]["title"]
-                for path_ref in focus_meta["path"]
-                if path_ref in index
-            ]
-            focus_path = " > ".join(focus_path_labels)
-            st.markdown(
-                f"<div class='atlas-spotlight-path'>{escape_html(focus_path)}</div>",
-                unsafe_allow_html=True,
+            atlas_focus_task_view_helpers.render_focus_identity(
+                st_module=st,
+                focus_meta=focus_meta,
+                focus_task=focus_task,
+                index=index,
+                type_icons=TYPE_ICONS,
+                escape_html_fn=escape_html,
             )
-            st.markdown(
-                f"<div class='atlas-focus-entity'>{TYPE_ICONS.get('TASK', '')} {escape_html(focus_meta['title'])}</div>",
-                unsafe_allow_html=True,
-            )
-            focus_description = (
-                str(
-                    focus_meta.get("description")
-                    or getattr(focus_task, "description", "")
-                    or ""
-                ).strip()
-            )
-            if focus_description:
-                focus_description_html = escape_html(focus_description).replace(
-                    "\n", "<br>"
+            spotlight_cols, target_minutes = (
+                atlas_focus_task_view_helpers.render_focus_status_and_commit_controls(
+                    st_module=st,
+                    session_state=st.session_state,
+                    focus_meta=focus_meta,
+                    focus_health=focus_health,
+                    index=index,
+                    health_index=health_index,
+                    health_state_fn=_atlas_health_state,
+                    attention_chip_html_fn=atlas_workspace_helpers.attention_chip_html,
+                    health_source_explanation_fn=_atlas_health_source_explanation,
+                    escape_html_fn=escape_html,
+                    commit_target_minutes_fn=_atlas_commit_target_minutes,
                 )
-                st.markdown(
-                    f"<div class='atlas-focus-description'>{focus_description_html}</div>",
-                    unsafe_allow_html=True,
-                )
-
-            spotlight_cols = st.columns([4.8, 1.8], gap="small")
-            spotlight_cols[0].caption(f"Owned by {focus_meta['owner_name']}")
-            spotlight_cols[0].markdown(
-                (
-                    "<div class='atlas-chip-row'>"
-                    + atlas_workspace_helpers.attention_chip_html(
-                        meta=focus_meta,
-                        index=index,
-                        health_index=health_index,
-                        health_state_fn=_atlas_health_state,
-                        escape_html_fn=escape_html,
-                    )
-                    + "</div>"
-                ),
-                unsafe_allow_html=True,
             )
-            spotlight_cols[0].caption(
-                f"Why this status: {_atlas_health_source_explanation(focus_health.get('source'))}"
-            )
-
-            preset_options = ["25m", "50m", "Custom"]
-            if st.session_state.get("atlas_commit_preset") not in preset_options:
-                st.session_state["atlas_commit_preset"] = "25m"
-            preset_choice = spotlight_cols[1].segmented_control(
-                "Commit Preset",
-                options=preset_options,
-                key="atlas_commit_preset",
-                selection_mode="single",
-                label_visibility="collapsed",
-            )
-            if preset_choice not in preset_options:
-                preset_choice = "25m"
-
-            target_minutes = _atlas_commit_target_minutes(preset_choice)
-            if preset_choice == "Custom":
-                if "atlas_commit_custom_min" not in st.session_state:
-                    st.session_state["atlas_commit_custom_min"] = 35
-                custom_minutes = int(
-                    spotlight_cols[1].number_input(
-                        "Custom Sprint (min)",
-                        min_value=5,
-                        max_value=240,
-                        step=5,
-                        key="atlas_commit_custom_min",
-                    )
-                )
-                target_minutes = _atlas_commit_target_minutes("Custom", custom_minutes)
 
             if focus_running:
                 elapsed_minutes = atlas_workspace_helpers.compute_elapsed_minutes(
@@ -3624,217 +3573,183 @@ def render_atlas_workspace(username):
         else:
             st.info("Select a branch with tasks to start a focus sprint.")
 
-    toolbar = st.columns([2.9, 1.1], gap="small")
-    query = (
-        toolbar[0]
-        .text_input(
-            "Quick Jump",
-            value=st.session_state.get("atlas_jump_query", ""),
-            placeholder="Find any goal, objective, KR, or task",
-            key="atlas_jump_query",
-        )
-        .strip()
+    query, selected_scope = atlas_navigation_helpers.render_scope_toolbar(
+        st_module=st,
+        session_state=st.session_state,
+        scope_labels=scope_labels,
     )
-    selected_scope = toolbar[1].selectbox(
-        "Scope",
-        options=scope_labels,
-        key="atlas_scope_selector",
+    jump_matches = atlas_navigation_helpers.find_jump_matches(
+        query=query,
+        index=index,
+    )
+    atlas_navigation_helpers.render_jump_results(
+        st_module=st,
+        matches=jump_matches,
+        index=index,
+        type_icons=TYPE_ICONS,
+        session_state=st.session_state,
+        rerun_fn=st.rerun,
     )
 
-    if query:
-        matches = [
-            ref for ref, meta in index.items() if query.lower() in meta["title_l"]
-        ]
-        if matches:
-            with st.expander(f"Jump Results ({len(matches)})", expanded=True):
-                for ref in matches[:12]:
-                    meta = index[ref]
-                    label = (
-                        f"{TYPE_ICONS.get(meta['type'], '')} "
-                        f"{meta['title']} ({meta['type'].replace('_', ' ').title()})"
-                    )
-                    if st.button(
-                        label, key=f"atlas_jump_{ref}", use_container_width=True
-                    ):
-                        st.session_state["atlas_selected_ref"] = ref
-                        st.rerun()
-
-    focus_map_tab, inspector_tab = st.tabs(["Focus Map", "Inspector"])
+    focus_map_tab, inspector_tab = atlas_focus_map_shell_helpers.create_workspace_tabs(st)
 
     with focus_map_tab:
         with st.container(border=True):
-            st.markdown(
-                "<div class='atlas-kicker'>Focus Map</div>", unsafe_allow_html=True
-            )
-            st.caption("Navigate hierarchy and pick your next move.")
-
-            nav_labels = ["Home"]
-            for path_ref in selected_meta["path"]:
-                node_type, node_title = _atlas_get_node_details_from_lookup(
-                    path_ref, node_lookup=node_lookup
-                )
-                if not node_type:
-                    continue
-                nav_labels.append(f"{TYPE_ICONS.get(node_type, '')} {node_title}")
-            st.markdown(
-                f"<div class='atlas-nav-line'>{escape_html(' > '.join(nav_labels))}</div>",
-                unsafe_allow_html=True,
-            )
-
-            map_placeholder = st.empty()
-
-            with map_placeholder.container():
-                if is_mobile_request:
-                    map_chart_area = st.container()
-                    map_sidebar_area = st.container()
-                else:
-                    map_cols = st.columns([2.25, 1.05], gap="large")
-                    map_chart_area = map_cols[0]
-                    map_sidebar_area = map_cols[1]
-
-                child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
-                atlas_map_sidebar_helpers.render_map_key_and_create_actions(
-                    sidebar=map_sidebar_area,
-                    session_state=st.session_state,
-                    selected_ref=selected_ref,
-                    child_type=child_type,
-                    rerun_fn=st.rerun,
-                )
-                map_lens, map_refs, map_kr_refs, map_task_refs = (
-                    atlas_map_sidebar_helpers.resolve_map_lens_and_refs(
-                        sidebar=map_sidebar_area,
-                        session_state=st.session_state,
-                        roots=roots,
-                        index=index,
-                        selected_ref=selected_ref,
-                        scope_refs_fn=_atlas_scope_refs,
-                        descendant_refs_fn=_atlas_descendant_refs,
-                    )
-                )
-                atlas_map_sidebar_helpers.render_health_debug_panel(
-                    sidebar=map_sidebar_area,
-                    session_state=st.session_state,
-                    role_value=role_value,
-                    map_refs=map_refs,
-                    index=index,
-                    health_index=health_index,
-                    health_debug_rows_fn=_atlas_health_debug_rows,
-                )
-                (
-                    apply_ai_score_to_progress,
-                    preview_ai_sync,
-                    max_progress_delta,
-                    allow_progress_decrease,
-                ) = atlas_map_sidebar_helpers.render_ai_control_panel(
-                    sidebar=map_sidebar_area,
-                    session_state=st.session_state,
-                    has_kr_refs=bool(map_kr_refs),
-                )
-
-                from src.crud import (
-                    update_key_result,
-                    recalculate_rollup_for_key_results,
-                )
-                atlas_map_sidebar_helpers.handle_ai_progress_undo_action(
-                    sidebar=map_sidebar_area,
-                    session_state=st.session_state,
-                    username=username,
-                    apply_ai_progress_undo_fn=(
-                        atlas_workspace_helpers.apply_ai_progress_undo
-                    ),
-                    update_key_result_fn=update_key_result,
-                    recalculate_rollup_for_key_results_fn=(
-                        recalculate_rollup_for_key_results
-                    ),
-                    rerun_fn=st.rerun,
-                )
-
-                from src.services.ai_service import (
-                    analyze_node,
-                    suggest_critical_task,
-                )
-                atlas_map_sidebar_helpers.handle_ai_progress_sync_action(
-                    sidebar=map_sidebar_area,
-                    session_state=st.session_state,
-                    map_kr_refs=map_kr_refs,
-                    map_task_refs=map_task_refs,
-                    index=index,
-                    health_index=health_index,
-                    actor_id=actor_id,
-                    selected_scope=selected_scope,
-                    map_lens=map_lens,
-                    selected_node_title=str(selected_meta.get("title") or ""),
-                    username=username,
-                    apply_ai_score_to_progress=apply_ai_score_to_progress,
-                    preview_ai_sync=preview_ai_sync,
-                    max_progress_delta=max_progress_delta,
-                    allow_progress_decrease=allow_progress_decrease,
-                    run_ai_progress_sync_fn=atlas_workspace_helpers.run_ai_progress_sync,
-                    analyze_node_fn=analyze_node,
-                    suggest_critical_task_fn=suggest_critical_task,
-                    update_key_result_fn=update_key_result,
-                    recalculate_rollup_for_key_results_fn=(
-                        recalculate_rollup_for_key_results
-                    ),
-                    ai_progress_decision_fn=_atlas_ai_progress_decision,
-                    health_state_fn=_atlas_health_state,
-                    ai_overall_score_fn=_atlas_ai_overall_score,
-                    next_score_fn=_atlas_suggested_next_score,
-                    deadline_to_iso_fn=lambda deadline_raw: (
-                        atlas_workspace_helpers.deadline_to_iso(
-                            deadline_raw,
-                            from_epoch_millis_fn=from_epoch_millis,
-                            from_epoch_seconds_fn=from_epoch_seconds,
-                            logger=logger,
-                        )
-                    ),
-                    logger=logger,
-                    rerun_fn=st.rerun,
-                )
-
-                atlas_map_sidebar_helpers.render_ai_sync_report_feedback(
-                    sidebar=map_sidebar_area,
-                    session_state=st.session_state,
-                    index=index,
-                    build_ai_sync_sidebar_messages_fn=(
-                        atlas_workspace_helpers.build_ai_sync_sidebar_messages
-                    ),
-                    dataframe_fn=st.dataframe,
-                )
-                atlas_map_sidebar_helpers.render_ai_undo_report_feedback(
-                    sidebar=map_sidebar_area,
-                    session_state=st.session_state,
-                    build_ai_undo_sidebar_messages_fn=(
-                        atlas_workspace_helpers.build_ai_undo_sidebar_messages
-                    ),
-                )
-
-                atlas_map_chart_helpers.render_map_chart_and_handle_navigation(
-                    map_chart_area=map_chart_area,
-                    session_state=st.session_state,
-                    map_refs=map_refs,
-                    index=index,
-                    selected_ref=selected_ref,
-                    focus_task_ref=focus_task_ref,
-                    selected_path_refs=selected_path_refs,
-                    health_index=health_index,
-                    runtime_token=runtime_token,
+            map_chart_area, map_sidebar_area = (
+                atlas_focus_map_shell_helpers.render_focus_map_shell(
+                    st_module=st,
+                    selected_meta=selected_meta,
+                    node_lookup=node_lookup,
+                    type_icons=TYPE_ICONS,
+                    get_node_details_fn=_atlas_get_node_details_from_lookup,
+                    escape_html_fn=escape_html,
                     is_mobile_request=is_mobile_request,
-                    cached_treemap_fn=_atlas_cached_treemap,
-                    plotly_events_fn=plotly_events,
-                    extract_selection_points_fn=_atlas_extract_selection_points,
-                    extract_clicked_ref_from_points_fn=_atlas_extract_clicked_ref_from_points,
-                    collect_task_refs_fn=atlas_workspace_helpers.collect_task_refs,
-                    suggest_focus_task_fn=atlas_workspace_helpers.suggest_focus_task,
-                    health_state_fn=_atlas_health_state,
-                    rerun_fn=st.rerun,
-                    logger=logger,
                 )
-                atlas_map_chart_helpers.render_no_tasks_message(
+            )
+
+            child_type = CHILD_TYPE_MAP.get(selected_meta["type"])
+            atlas_map_sidebar_helpers.render_map_key_and_create_actions(
+                sidebar=map_sidebar_area,
+                session_state=st.session_state,
+                selected_ref=selected_ref,
+                child_type=child_type,
+                rerun_fn=st.rerun,
+            )
+            map_lens, map_refs, map_kr_refs, map_task_refs = (
+                atlas_map_sidebar_helpers.resolve_map_lens_and_refs(
                     sidebar=map_sidebar_area,
-                    map_task_refs=map_task_refs,
-                    map_lens=map_lens,
+                    session_state=st.session_state,
+                    roots=roots,
+                    index=index,
+                    selected_ref=selected_ref,
+                    scope_refs_fn=_atlas_scope_refs,
+                    descendant_refs_fn=_atlas_descendant_refs,
                 )
+            )
+            atlas_map_sidebar_helpers.render_health_debug_panel(
+                sidebar=map_sidebar_area,
+                session_state=st.session_state,
+                role_value=role_value,
+                map_refs=map_refs,
+                index=index,
+                health_index=health_index,
+                health_debug_rows_fn=_atlas_health_debug_rows,
+            )
+            (
+                apply_ai_score_to_progress,
+                preview_ai_sync,
+                max_progress_delta,
+                allow_progress_decrease,
+            ) = atlas_map_sidebar_helpers.render_ai_control_panel(
+                sidebar=map_sidebar_area,
+                session_state=st.session_state,
+                has_kr_refs=bool(map_kr_refs),
+            )
+
+            from src.crud import (
+                update_key_result,
+                recalculate_rollup_for_key_results,
+            )
+            atlas_map_sidebar_helpers.handle_ai_progress_undo_action(
+                sidebar=map_sidebar_area,
+                session_state=st.session_state,
+                username=username,
+                apply_ai_progress_undo_fn=(
+                    atlas_workspace_helpers.apply_ai_progress_undo
+                ),
+                update_key_result_fn=update_key_result,
+                recalculate_rollup_for_key_results_fn=(
+                    recalculate_rollup_for_key_results
+                ),
+                rerun_fn=st.rerun,
+            )
+
+            from src.services.ai_service import (
+                analyze_node,
+                suggest_critical_task,
+            )
+            atlas_map_sidebar_helpers.handle_ai_progress_sync_action(
+                sidebar=map_sidebar_area,
+                session_state=st.session_state,
+                map_kr_refs=map_kr_refs,
+                map_task_refs=map_task_refs,
+                index=index,
+                health_index=health_index,
+                actor_id=actor_id,
+                selected_scope=selected_scope,
+                map_lens=map_lens,
+                selected_node_title=str(selected_meta.get("title") or ""),
+                username=username,
+                apply_ai_score_to_progress=apply_ai_score_to_progress,
+                preview_ai_sync=preview_ai_sync,
+                max_progress_delta=max_progress_delta,
+                allow_progress_decrease=allow_progress_decrease,
+                run_ai_progress_sync_fn=atlas_workspace_helpers.run_ai_progress_sync,
+                analyze_node_fn=analyze_node,
+                suggest_critical_task_fn=suggest_critical_task,
+                update_key_result_fn=update_key_result,
+                recalculate_rollup_for_key_results_fn=(
+                    recalculate_rollup_for_key_results
+                ),
+                ai_progress_decision_fn=_atlas_ai_progress_decision,
+                health_state_fn=_atlas_health_state,
+                ai_overall_score_fn=_atlas_ai_overall_score,
+                next_score_fn=_atlas_suggested_next_score,
+                deadline_to_iso_fn=lambda deadline_raw: (
+                    atlas_workspace_helpers.deadline_to_iso(
+                        deadline_raw,
+                        from_epoch_millis_fn=from_epoch_millis,
+                        from_epoch_seconds_fn=from_epoch_seconds,
+                        logger=logger,
+                    )
+                ),
+                logger=logger,
+                rerun_fn=st.rerun,
+            )
+
+            atlas_map_sidebar_helpers.render_ai_sync_report_feedback(
+                sidebar=map_sidebar_area,
+                session_state=st.session_state,
+                index=index,
+                build_ai_sync_sidebar_messages_fn=(
+                    atlas_workspace_helpers.build_ai_sync_sidebar_messages
+                ),
+                dataframe_fn=st.dataframe,
+            )
+            atlas_map_sidebar_helpers.render_ai_undo_report_feedback(
+                sidebar=map_sidebar_area,
+                session_state=st.session_state,
+                build_ai_undo_sidebar_messages_fn=(
+                    atlas_workspace_helpers.build_ai_undo_sidebar_messages
+                ),
+            )
+
+            atlas_map_chart_helpers.render_map_chart_and_handle_navigation(
+                map_chart_area=map_chart_area,
+                session_state=st.session_state,
+                map_refs=map_refs,
+                index=index,
+                selected_ref=selected_ref,
+                focus_task_ref=focus_task_ref,
+                selected_path_refs=selected_path_refs,
+                health_index=health_index,
+                runtime_token=runtime_token,
+                is_mobile_request=is_mobile_request,
+                cached_treemap_fn=_atlas_cached_treemap,
+                plotly_events_fn=plotly_events,
+                extract_selection_points_fn=_atlas_extract_selection_points,
+                extract_clicked_ref_from_points_fn=_atlas_extract_clicked_ref_from_points,
+                collect_task_refs_fn=atlas_workspace_helpers.collect_task_refs,
+                suggest_focus_task_fn=atlas_workspace_helpers.suggest_focus_task,
+                health_state_fn=_atlas_health_state,
+                rerun_fn=st.rerun,
+                logger=logger,
+            )
+            atlas_map_chart_helpers.render_no_tasks_message(
+                sidebar=map_sidebar_area,
+                map_task_refs=map_task_refs,
+                map_lens=map_lens,
+            )
 
     atlas_inspector_helpers.render_inspector_tab(
         st_module=st,
