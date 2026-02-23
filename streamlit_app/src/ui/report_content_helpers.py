@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 
-from src.ui import dialog_chrome_helpers
+from src.ui import report_content_sections_helpers
 
 
 def render_report_content(
@@ -29,62 +29,24 @@ def render_report_content(
     report_kr_status_helpers_module,
     logger,
 ):
+    """Render report dialog content for daily/weekly modes."""
     if escape_html_fn is None:
         from src.ui.safe_html import escape_html as _escape_html
 
         escape_html_fn = _escape_html
 
-    # data parameter removed
-    # Filter logic
     now = time.time() * 1000
-    if mode == "Daily":
-        # Start of today
-        # Calculate midnight timestamp for today
-        dt_now = from_epoch_millis_fn(now)
-        dt_start = dt_now.replace(hour=0, minute=0, second=0, microsecond=0)
-        start_time = dt_start.timestamp() * 1000
-        period_label = "Today"
-    else:
-        # Weekly (7 days)
-        start_time = now - (7 * 24 * 60 * 60 * 1000)
-        period_label = "Last 7 Days"
-
-    dialog_chrome_helpers.apply_standard_dialog_chrome(st_module=st_module)
-    st_module.markdown(
-        """
-        <style>
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button:hover {
-            border-color: #ff4b4b;
-            color: #ff4b4b;
-            background-color: #fff5f5;
-        }
-        </style>
-    """,
-        unsafe_allow_html=True,
+    start_time, period_label = report_content_sections_helpers.resolve_report_window(
+        mode=mode,
+        now_millis=now,
+        from_epoch_millis_fn=from_epoch_millis_fn,
     )
 
-    # Header with Close Button
-    c_head, c_opts, c_close = st_module.columns([2, 1, 0.5])
-    c_head.caption(f"Tasks with work recorded for: {mode} ({period_label})")
-
-    # PDF Direction Toggle
-    if "report_direction" not in st_module.session_state:
-        st_module.session_state.report_direction = "LTR"
-
-    with c_opts:
-        st_module.session_state.report_direction = st_module.segmented_control(
-            "PDF Direction",
-            options=["LTR", "RTL"],
-            default=st_module.session_state.report_direction,
-            key=f"rep_dir_{mode}",
-            label_visibility="collapsed",
-        )
-
-    with c_close:
-        if st_module.button("✕", key=f"close_rep_{mode}"):
-            if "active_report_mode" in st_module.session_state:
-                del st_module.session_state.active_report_mode
-            st_module.rerun()
+    report_content_sections_helpers.render_report_header_controls(
+        st_module=st_module,
+        mode=mode,
+        period_label=period_label,
+    )
 
     user_obj = get_user_by_username_fn(username)
     if not user_obj:
@@ -113,128 +75,35 @@ def render_report_content(
     achievements = list(report_payload.get("achievements") or [])
     total = float(report_payload.get("total_minutes") or 0)
 
-    # === EXECUTIVE SUMMARY CARD ===
-    if mode != "Daily":
-        with st_module.container():
-            st_module.markdown("### 📋 Executive Summary")
-
-            # AI Summary
-            if "report_summary" not in st_module.session_state:
-                if st_module.button(
-                    "✨ Generate AI Weekly Brief", type="primary", key="report_gen_ai"
-                ):
-                    with st_module.spinner("Drafting executive summary..."):
-                        from src.services.ai_service import generate_weekly_summary
-
-                        # Prepare context
-                        krs_updated = len(set(i["KeyResult"] for i in report_items))
-                        obj_summary = [
-                            f"{k}: {int(v)}m" for k, v in objective_stats.items()
-                        ]
-
-                        stats = {
-                            "total_minutes": total,
-                            "tasks_completed": len(achievements),
-                            "krs_updated": krs_updated,
-                            "objectives_text": obj_summary,
-                            "key_achievements": achievements,
-                            "work_logs_text": "\n".join(
-                                [
-                                    f"{i['Task']}: {i['Summary']}"
-                                    for i in report_items[:30]
-                                ]
-                            ),
-                        }
-
-                        res = generate_weekly_summary(
-                            username,
-                            from_epoch_millis_fn(start_time).strftime("%Y-%m-%d"),
-                            utc_now_naive_fn().strftime("%Y-%m-%d"),
-                            stats,
-                        )
-
-                        if "error" not in res:
-                            st_module.session_state.report_summary = res
-                            st_module.rerun()
-                        else:
-                            st_module.error(res["error"])
-
-            summary_res = st_module.session_state.get("report_summary")
-            if summary_res:
-                st_module.markdown(summary_res.get("summary_markdown"))
-
-                # Metrics Row
-                m1, m2, m3 = st_module.columns(3)
-                m1.metric("Total Focus", format_time_fn(total))
-                m2.metric("Tasks Completed", len(achievements))
-                m3.metric("Key Highlights", len(summary_res.get("highlights", [])))
-
-                with st_module.expander("📌 Highlights"):
-                    for h in summary_res.get("highlights", []):
-                        st_module.markdown(f"- {h}")
-            else:
-                st_module.info(
-                    "Click above to generate an executive brief of your week."
-                )
+    report_content_sections_helpers.render_executive_summary_section(
+        st_module=st_module,
+        mode=mode,
+        username=username,
+        start_time_millis=start_time,
+        from_epoch_millis_fn=from_epoch_millis_fn,
+        utc_now_naive_fn=utc_now_naive_fn,
+        report_items=report_items,
+        objective_stats=objective_stats,
+        achievements=achievements,
+        total_minutes=total,
+        format_time_fn=format_time_fn,
+    )
 
     st_module.markdown("---")
 
-    # === TRENDS & ANALYSIS ===
-    c_trend, c_achieve = st_module.columns([1.5, 1])
-
-    with c_trend:
-        if mode != "Daily":
-            st_module.subheader("📈 Weekly Trends")
-            if daily_minutes:
-                # Sort dates
-                sorted_dates = sorted(daily_minutes.keys())
-                chart_data = {
-                    "Date": sorted_dates,
-                    "Hours": [daily_minutes[d] / 60 for d in sorted_dates],
-                }
-                st_module.bar_chart(chart_data, x="Date", y="Hours", color="#4CAF50")
-            else:
-                st_module.caption("No trend data available.")
-        else:
-            st_module.info("Trend analysis available in Weekly Report.")
-
-    with c_achieve:
-        st_module.subheader("🏆 Achievements")
-        if achievements:
-            for ach in achievements:
-                st_module.success(f"✅ {ach}")
-        else:
-            st_module.caption("No completed tasks this period.")
-
-    # Deadline Health
-    st_module.subheader("⚠️ Deadline Health")
-    cycle_id_dl = st_module.session_state.get("active_cycle_id")
-    task_scan_limit = cycle_task_scan_limit_fn()
-    tasks_dl = cached_get_all_tasks_by_cycle_fn(cycle_id_dl, limit=task_scan_limit)
-
-    warnings_dl = []
-    for t_dl in tasks_dl:
-        if t_dl.deadline and t_dl.progress < 100:
-            try:
-                _, label_dl, _ = get_deadline_status(t_dl)
-                if "Overdue" in label_dl or "At Risk" in label_dl:
-                    warnings_dl.append(f"{label_dl} - {t_dl.title}")
-            except Exception as exc:
-                logger.debug(
-                    "Failed to evaluate deadline warning for task %s: %s", t_dl.id, exc
-                )
-
-    if warnings_dl:
-        if len(tasks_dl) >= task_scan_limit:
-            st_module.caption(
-                f"Showing deadline warnings from first {task_scan_limit} tasks in this cycle."
-            )
-        for w in warnings_dl[:5]:
-            st_module.error(w)
-        if len(warnings_dl) > 5:
-            st_module.caption(f"...and {len(warnings_dl) - 5} more.")
-    else:
-        st_module.success("All tasks on track!", icon="🟢")
+    report_content_sections_helpers.render_trends_and_achievements_section(
+        st_module=st_module,
+        mode=mode,
+        daily_minutes=daily_minutes,
+        achievements=achievements,
+    )
+    report_content_sections_helpers.render_deadline_health_section(
+        st_module=st_module,
+        cycle_task_scan_limit_fn=cycle_task_scan_limit_fn,
+        cached_get_all_tasks_by_cycle_fn=cached_get_all_tasks_by_cycle_fn,
+        get_deadline_status_fn=get_deadline_status,
+        logger=logger,
+    )
 
     cycle_id_krs = st_module.session_state.get("active_cycle_id")
     krs_list = cached_get_all_krs_by_cycle_fn(cycle_id_krs)
@@ -268,83 +137,19 @@ def render_report_content(
         logger=logger,
     )
 
-    st_module.markdown("---")
-    st_module.subheader("📝 Detailed Work Log")
-
-    # Sort items for display
-    report_items.sort(key=lambda x: x["Date"] + x["Time"], reverse=True)
-
-    # Using HTML table to ensure font consistency
-    if report_items:
-        table_html = """<table style="width:100%; border-collapse: collapse; font-family: 'Vazirmatn', sans-serif; font-size: 0.85em;">
-            <thead>
-                <tr style="border-bottom: 2px solid #ddd; background-color: #f8f9fa;">
-                    <th style="padding: 8px; text-align: left; width: 20%;">Task</th>
-                    <th style="padding: 8px; text-align: left; width: 15%;">Objective</th>
-                    <th style="padding: 8px; text-align: left; width: 15%;">Key Result</th>
-                    <th style="padding: 8px; text-align: left;">Date</th>
-                    <th style="padding: 8px; text-align: right;">Time</th>
-                    <th style="padding: 8px; text-align: left; width: 25%;">Summary</th>
-                </tr>
-            </thead>
-            <tbody>"""
-        for itm in report_items:
-            summary_txt = escape_html_fn(itm.get("Summary", ""))
-            task_txt = escape_html_fn(itm.get("Task", ""))
-            objective_txt = escape_html_fn(itm.get("Objective", ""))
-            kr_txt = escape_html_fn(itm.get("KeyResult", ""))
-            date_txt = escape_html_fn(itm.get("Date", ""))
-            time_txt = escape_html_fn(itm.get("Time", ""))
-            duration_txt = escape_html_fn(itm.get("Duration (m)", "0"))
-
-            table_html += f"""
-                <tr style="border-bottom: 1px solid #eee;">
-                    <td style="padding: 8px;">{task_txt}</td>
-                     <td style="padding: 8px; color: #555;">{objective_txt}</td>
-                     <td style="padding: 8px; color: #555;">{kr_txt}</td>
-                    <td style="padding: 8px; white-space: nowrap;">{date_txt} {time_txt}</td>
-                    <td style="padding: 8px; text-align: right;">{duration_txt}m</td>
-                    <td style="padding: 8px; color: #555;">{summary_txt}</td>
-                </tr>"""
-        table_html += "</tbody></table>"
-        st_module.markdown(table_html, unsafe_allow_html=True)
-
-    st_module.metric(f"Total Time ({period_label})", format_time_fn(total))
-
-    st_module.markdown("---")
-    st_module.subheader("Time Distribution by Objective")
-
-    # Prepare data for chart/table
-    # Sort stats by minutes descending first
-    sorted_stats_obj = sorted(
-        objective_stats.items(), key=lambda item: item[1], reverse=True
+    report_content_sections_helpers.render_detailed_work_log_section(
+        st_module=st_module,
+        report_items=report_items,
+        escape_html_fn=escape_html_fn,
     )
-
-    # Using HTML table for objectives too
-    obj_table_h = """<table style="width:100%; border-collapse: collapse; font-family: 'Vazirmatn', sans-serif; font-size: 0.95em;">
-        <thead>
-            <tr style="border-bottom: 2px solid #ddd; background-color: #f8f9fa;">
-                <th style="padding: 8px; text-align: left;">Objective</th>
-                <th style="padding: 8px; text-align: right;">Time</th>
-                <th style="padding: 8px; text-align: right;">%</th>
-            </tr>
-        </thead>
-        <tbody>"""
-
-    for t_obj, mins_obj in sorted_stats_obj:
-        percentage_obj = (mins_obj / total * 100) if total > 0 else 0
-        p_str_obj = f"{percentage_obj:.1f}%"
-        t_str_obj = format_time_fn(mins_obj)
-        objective_txt = escape_html_fn(t_obj)
-
-        obj_table_h += f"""
-            <tr style="border-bottom: 1px solid #eee;">
-                <td style="padding: 8px;">{objective_txt}</td>
-                <td style="padding: 8px; text-align: right;">{t_str_obj}</td>
-                <td style="padding: 8px; text-align: right;">{p_str_obj}</td>
-            </tr>"""
-    obj_table_h += "</tbody></table>"
-    st_module.markdown(obj_table_h, unsafe_allow_html=True)
+    report_content_sections_helpers.render_objective_distribution_section(
+        st_module=st_module,
+        period_label=period_label,
+        total_minutes=total,
+        objective_stats=objective_stats,
+        format_time_fn=format_time_fn,
+        escape_html_fn=escape_html_fn,
+    )
 
     # --- SECTION: Key Result Strategic Status (Weekly Only) ---
     from src.crud import update_key_result
