@@ -136,9 +136,7 @@ def render_report_export_controls(
             report_summary=report_summary,
             achievements=achievements,
         )
-        st_module.info(
-            "PDF engine not available (PDFShift). Download the HTML report instead."
-        )
+        st_module.info("PDF engine not available. Download the HTML report instead.")
         st_module.download_button(
             label="📄 Export as HTML",
             data=fallback_html.encode("utf-8"),

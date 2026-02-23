@@ -156,11 +156,24 @@ def _resolve_chromium_executable_path() -> str:
     ).strip()
     if value:
         return value
-    return _get_secret_value(
+    secret_value = _get_secret_value(
         "OKR_CHROMIUM_EXECUTABLE_PATH",
         "CHROMIUM_EXECUTABLE_PATH",
         "chromium_executable_path",
     )
+    if secret_value:
+        return secret_value
+
+    # Best-effort auto-detection for managed Linux runtimes (for example, Streamlit Cloud).
+    for candidate in (
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+    ):
+        if os.path.exists(candidate):
+            return candidate
+    return ""
 
 
 def get_pdf_method() -> str:
@@ -662,7 +675,10 @@ def generate_pdf_with_chromium_bytes(html, *, executable_path: str = ""):
             )
             return pdf_bytes
     except Exception as exc:
-        print(f"Chromium PDF Exception: {exc}")
+        print(
+            "Chromium PDF Exception: "
+            f"{exc} (executable_path={str(executable_path or _resolve_chromium_executable_path() or 'auto')})"
+        )
         return None
     finally:
         try:
@@ -757,6 +773,34 @@ def get_pdf_generator_info():
     }
 
     return info
+
+
+def has_pdfshift_api_key() -> bool:
+    """Return True when a non-empty PDFShift API key is configured."""
+    return bool(str(_resolve_pdfshift_api_key() or "").strip())
+
+
+def get_chromium_executable_path() -> str:
+    """Return configured or auto-detected Chromium executable path."""
+    return str(_resolve_chromium_executable_path() or "").strip()
+
+
+def get_pdf_runtime_diagnostics() -> dict[str, object]:
+    """Return non-sensitive PDF runtime diagnostics for admin health panels."""
+    info = get_pdf_generator_info()
+    method = str(info.get("method") or "").strip().lower()
+    chromium_path = get_chromium_executable_path()
+
+    return {
+        **info,
+        "supported_method": method in _SUPPORTED_PDF_METHODS,
+        "pdfshift_api_key_configured": has_pdfshift_api_key(),
+        "chromium_executable_path": chromium_path,
+        "chromium_executable_detected": bool(chromium_path),
+        "streamlit_cloud_runtime": bool(
+            os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD")
+        ),
+    }
 
 
 def generate_achievement_portfolio_pdf(portfolio: dict, direction: str = "RTL"):
