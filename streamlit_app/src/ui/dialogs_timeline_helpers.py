@@ -13,30 +13,14 @@ from sqlmodel import select
 from src.crud import get_user_by_username
 from src.database import get_session_context
 from src.models import Goal, KeyResult, Objective, Task, User
+from src.ui import dialog_chrome_helpers
 from src.ui.visualizations import render_gantt_chart
 
 
 def render_timeline_dialog_content(username: str) -> None:
     """Render project timeline dialog body."""
-    st.markdown(
-        """
-        <style>
-        div[role="dialog"] button[aria-label="Close"] { display: none; }
-        div[data-baseweb="modal-backdrop"] { display: none; }
-        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
-        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
-        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
-        </style>
-    """,
-        unsafe_allow_html=True,
-    )
-
-    c_head, c_close = st.columns([0.92, 0.08])
-    if c_close.button("", icon=":material/close:", key="close_timeline"):
-        if "active_report_mode" in st.session_state:
-            del st.session_state.active_report_mode
-        st.rerun()
+    dialog_chrome_helpers.apply_standard_dialog_chrome()
+    dialog_chrome_helpers.render_dialog_header_with_close(close_key="close_timeline")
 
     cycle_id = st.session_state.get("active_cycle_id")
     role = str(st.session_state.get("user_role", "member")).strip().lower()

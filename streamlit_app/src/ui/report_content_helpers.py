@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import time
 
+from src.ui import dialog_chrome_helpers
+
 
 def render_report_content(
     username,
@@ -47,60 +49,10 @@ def render_report_content(
         start_time = now - (7 * 24 * 60 * 60 * 1000)
         period_label = "Last 7 Days"
 
-    # CSS: Style YOUR EXISTING custom button as a circle (Dialog specific)
+    dialog_chrome_helpers.apply_standard_dialog_chrome(st_module=st_module)
     st_module.markdown(
         """
         <style>
-        /* 1. Hide the Native Close Button */
-        div[role="dialog"] button[aria-label="Close"] {
-            display: none;
-        }
-
-        /* 2. Hide the Native Backdrop (the original close trigger) */
-        div[data-baseweb="modal-backdrop"] {
-            display: none;
-        }
-
-        /* 3. The Visual Background Layer */
-        div[data-baseweb="modal"] {
-            background-color: rgba(0, 0, 0, 0.5);
-            pointer-events: none; 
-        }
-
-        /* 4. The "Invisible Click Shield" */
-        div[role="dialog"]::before {
-            content: "";
-            position: absolute;
-            top: -500vh;
-            left: -500vw;
-            width: 1000vw;
-            height: 1000vh;
-            background: transparent;
-            z-index: -1;
-            cursor: default;
-            pointer-events: auto;
-        }
-
-        /* 5. Ensure the Dialog Box is Interactive */
-        div[role="dialog"] {
-            overflow: visible !important;
-            pointer-events: auto;
-        }
-
-        /* 6. Style YOUR Custom "X" Button as a Circle */
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
-            border-radius: 50%;
-            border: 1px solid #e0e0e0;
-            width: 35px;
-            height: 35px;
-            padding: 0 !important;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            background-color: white; 
-        }
-        
         div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button:hover {
             border-color: #ff4b4b;
             color: #ff4b4b;

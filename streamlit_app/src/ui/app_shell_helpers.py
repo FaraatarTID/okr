@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from src.ui import app_shell_navigation_helpers
+
 
 def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> None:
     """Render the authenticated app shell using dependencies from app_module."""
@@ -97,28 +99,10 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
         render_manage_cycles_dialog()
 
     if selected_cycle_id != active_cycle_id:
-        st.session_state.active_cycle_id = selected_cycle_id
-        st.session_state.nav_stack = []
-        for key in [
-            "atlas_selected_ref",
-            "atlas_jump_query",
-            "atlas_breadcrumbs",
-            "atlas_focus_task_ref",
-            "atlas_focus_task_picker",
-            "atlas_last_selected_ref",
-            "atlas_map_lens",
-            "atlas_map_last_click_ref",
-            "atlas_commit_preset",
-            "atlas_commit_custom_min",
-            "atlas_sprint_target_minutes",
-            "atlas_sprint_task_ref",
-            "atlas_sprint_started_at_epoch",
-            "atlas_sprint_reminder_dismissed_for",
-            "atlas_sprint_notification_sent_for",
-            "atlas_last_session_summary",
-        ]:
-            if key in st.session_state:
-                del st.session_state[key]
+        app_shell_navigation_helpers.handle_cycle_change(
+            session_state=st.session_state,
+            selected_cycle_id=selected_cycle_id,
+        )
         st.rerun()
 
     st.sidebar.markdown("---")
@@ -131,93 +115,66 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Navigation")
     if st.sidebar.button("Home / OKRs", use_container_width=True):
-        if "active_report_mode" in st.session_state:
-            del st.session_state.active_report_mode
-        st.session_state.nav_stack = []
-        for key in [
-            "atlas_selected_ref",
-            "atlas_breadcrumbs",
-            "atlas_focus_task_ref",
-            "atlas_focus_task_picker",
-            "atlas_last_selected_ref",
-            "atlas_map_lens",
-            "atlas_map_last_click_ref",
-            "atlas_commit_preset",
-            "atlas_commit_custom_min",
-            "atlas_sprint_target_minutes",
-            "atlas_sprint_task_ref",
-            "atlas_sprint_started_at_epoch",
-            "atlas_sprint_reminder_dismissed_for",
-            "atlas_sprint_notification_sent_for",
-            "atlas_last_session_summary",
-            "active_inspector_id",
-        ]:
-            if key in st.session_state:
-                del st.session_state[key]
+        app_shell_navigation_helpers.handle_home_navigation(
+            session_state=st.session_state
+        )
         st.rerun()
 
     st.sidebar.markdown("### Insights & Reports")
     dialog_active = False
 
-    if st.sidebar.button("Weekly Report", use_container_width=True):
-        st.session_state.active_report_mode = "Weekly"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button("Daily Report", use_container_width=True):
-        st.session_state.active_report_mode = "Daily"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button(
-        "Weekly Ritual",
+    app_shell_navigation_helpers.handle_report_button(
+        sidebar=st.sidebar,
+        session_state=st.session_state,
+        mode="Weekly",
+        label="Weekly Report",
+        rerun_fn=st.rerun,
+        use_container_width=True,
+    )
+    app_shell_navigation_helpers.handle_report_button(
+        sidebar=st.sidebar,
+        session_state=st.session_state,
+        mode="Daily",
+        label="Daily Report",
+        rerun_fn=st.rerun,
+        use_container_width=True,
+    )
+    app_shell_navigation_helpers.handle_report_button(
+        sidebar=st.sidebar,
+        session_state=st.session_state,
+        mode="Ritual",
+        label="Weekly Ritual",
+        rerun_fn=st.rerun,
         help="Guided check-in for your metrics",
         use_container_width=True,
-    ):
-        st.session_state.active_report_mode = "Ritual"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button(
-        "RetroBox", help="Weekly retrospectives", use_container_width=True
-    ):
-        st.session_state.active_report_mode = "RetroBox"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button(
-        "Project Timeline", help="Smart Gantt Chart", use_container_width=True
-    ):
-        st.session_state.active_report_mode = "Timeline"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
-
-    if st.sidebar.button(
-        "Strategic Dashboard",
+    )
+    app_shell_navigation_helpers.handle_report_button(
+        sidebar=st.sidebar,
+        session_state=st.session_state,
+        mode="RetroBox",
+        label="RetroBox",
+        rerun_fn=st.rerun,
+        help="Weekly retrospectives",
+        use_container_width=True,
+    )
+    app_shell_navigation_helpers.handle_report_button(
+        sidebar=st.sidebar,
+        session_state=st.session_state,
+        mode="Timeline",
+        label="Project Timeline",
+        rerun_fn=st.rerun,
+        help="Smart Gantt Chart",
+        use_container_width=True,
+    )
+    app_shell_navigation_helpers.handle_report_button(
+        sidebar=st.sidebar,
+        session_state=st.session_state,
+        mode="Dashboard",
+        label="Strategic Dashboard",
+        rerun_fn=st.rerun,
         help="Executive visibility",
         use_container_width=True,
-    ):
-        st.session_state.active_report_mode = "Dashboard"
-        if "active_timer_node_id" in st.session_state:
-            del st.session_state.active_timer_node_id
-        if "active_inspector_id" in st.session_state:
-            del st.session_state.active_inspector_id
-        st.rerun()
+    )
 
     if current_user_snapshot and weekly_plan:
         with st.container(border=True):
