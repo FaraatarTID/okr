@@ -62,7 +62,9 @@ Primary data/control flow in backend-assisted mode:
 - Production default: fail closed if backend is unavailable (optional local fallback only when explicitly enabled).
 
 6. PDF rendering:
-- Only supported binary renderer: `PDFShift` (`PDF_METHOD=pdfshift`).
+- Supported binary renderers:
+  - `PDFShift` (`PDF_METHOD=pdfshift`, requires API key)
+  - `Chromium` via Playwright (`PDF_METHOD=chromium`)
 - If PDF binary rendering is unavailable, UI falls back to HTML export.
 
 ## Security and Isolation Boundaries
@@ -213,7 +215,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Hot-path query budgets are tested in `tests/test_performance_hotpaths.py` to prevent N+1 regressions.
 - Runtime preflight defaults to strict (`OKR_STRICT_RUNTIME_PREFLIGHT=true`) for fail-fast misconfiguration detection.
 - Runtime preflight validates backend production wiring (API URL/token/signing secret/local-fallback policy) when backend mode is enabled.
-- `pdfshift` is the only supported PDF binary engine in secure runtime.
+- Supported secure-runtime PDF engines: `pdfshift`, `chromium`.
 
 ## Current Performance-Critical Paths
 

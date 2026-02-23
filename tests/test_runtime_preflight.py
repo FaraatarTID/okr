@@ -23,6 +23,30 @@ def test_pdfkit_mode_is_rejected_in_secure_runtime():
     assert any("removed for security hardening" in msg for msg in report.errors)
 
 
+def test_chromium_mode_requires_runtime_support():
+    report = evaluate_runtime_preflight(
+        pdf_method="chromium",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=False,
+        has_chromium_runtime=False,
+        gemini_api_key="valid-key",
+    )
+    assert report.errors
+    assert any("PDF_METHOD=chromium" in msg for msg in report.errors)
+
+
+def test_chromium_mode_does_not_require_pdfshift_key():
+    report = evaluate_runtime_preflight(
+        pdf_method="chromium",
+        is_streamlit_cloud=False,
+        has_pdfshift_key=False,
+        has_chromium_runtime=True,
+        gemini_api_key="valid-key",
+    )
+    assert not any("PDF_METHOD=pdfshift" in msg for msg in report.errors)
+    assert any("Chromium" in msg for msg in report.infos)
+
+
 def test_missing_or_placeholder_gemini_key_warns():
     missing = evaluate_runtime_preflight(
         pdf_method="pdfshift",

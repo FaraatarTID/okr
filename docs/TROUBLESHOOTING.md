@@ -8,14 +8,16 @@ Blank page or reconnecting loop
 
 PDF export fails
 - If using PDFShift: set pdfshift_api_key in secrets
-- Ensure `PDF_METHOD=pdfshift`
-- If backend mode is enabled, verify `backend-worker` is running and has access to `PDFSHIFT_API_KEY`
+- If using Chromium mode: set `PDF_METHOD=chromium`, install Playwright, and ensure Chromium is available.
+- If backend mode is enabled, verify `backend-worker` is running and has required PDF runtime access.
 
 Runtime preflight shows configuration errors
 - If preflight says `PDF_METHOD=pdfshift but PDFShift API key is missing`:
   - Add `pdfshift_api_key`
+- If preflight says `PDF_METHOD=chromium but Playwright/Chromium runtime is unavailable`:
+  - Install Playwright package and Chromium browser runtime.
 - If preflight says unsupported `PDF_METHOD`:
-  - Change `PDF_METHOD` to `pdfshift`
+  - Change `PDF_METHOD` to `pdfshift` or `chromium`
 - If preflight says `OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set` even after changing secrets:
   - Check the new `Config trace` info line in the UI; it shows effective value and source (`env`, `secrets_root`, `secrets_app`, `default`).
   - In Streamlit secrets TOML, prefer native booleans (avoid wrapping an entire block in quotes):

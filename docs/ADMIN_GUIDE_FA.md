@@ -128,7 +128,7 @@ Definition of done برای کیفیت پایش مدیر:
 زمان‌بندی گزارش:
 - `Daily Report`: پنجره امروز.
 - `Weekly Report`: پنجره ۷ روز اخیر.
-- هر دو بر اساس Work Log هستند و خروجی‌پذیرند (مسیر PDF با `pdfshift` و fallback به HTML).
+- هر دو بر اساس Work Log هستند و خروجی‌پذیرند (PDF با `pdfshift` یا `chromium`، با fallback به HTML).
 
 ## ۶. Playbook رخدادها
 
@@ -192,9 +192,10 @@ Definition of done برای کیفیت پایش مدیر:
 1. اطلاعات محرمانه AI را فقط در Streamlit secrets یا env امن نگه دارید و هرگز داخل repository قرار ندهید.
 2. `AI_PROVIDER` را صریح تنظیم کنید (`gemini` یا `openai_compatible`) و از مسیر `Admin Panel -> AI Health` یا دستور `python streamlit_app/scripts/ai_provider_health_check.py` وضعیت را بررسی کنید.
 3. اگر Gemini استفاده می‌کنید، `GEMINI_API_KEY` را تنظیم کنید.
-4. برای خروجی PDF فقط `PDF_METHOD=pdfshift` را با کلید معتبر PDFShift در secrets تنظیم کنید.
+4. برای خروجی PDF:
+   - `PDF_METHOD=pdfshift` با کلید معتبر PDFShift، یا
+   - `PDF_METHOD=chromium` با runtime مناسب Playwright/Chromium.
 5. در نبود پیکربندی PDF، خروجی HTML همچنان در دسترس است.
 6. در هر محیط فقط یک مسیر deployment/pdf را فعال نگه دارید (از ترکیب همزمان pipelineها پرهیز کنید).
 7. حالت fail-fast اختیاری: با `OKR_STRICT_RUNTIME_PREFLIGHT=1` در صورت خطای بحرانی runtime، startup برنامه متوقف می‌شود.
-
 

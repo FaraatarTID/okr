@@ -45,3 +45,19 @@ def test_pdf_method_falls_back_to_secrets_when_env_missing(monkeypatch):
     monkeypatch.setattr(pdf_service, "_load_file_secrets", lambda: {})
 
     assert pdf_service.is_deployed_environment() is True
+
+
+def test_pdf_method_supports_chromium_from_env(monkeypatch):
+    import src.services.pdf_service as pdf_service
+
+    monkeypatch.setenv("PDF_METHOD", "chromium")
+    monkeypatch.delenv("OKR_PDF_METHOD", raising=False)
+    monkeypatch.setattr(
+        pdf_service,
+        "st",
+        SimpleNamespace(secrets={"PDF_METHOD": "pdfshift", "app": {}}),
+    )
+    monkeypatch.setattr(pdf_service, "_load_file_secrets", lambda: {})
+
+    assert pdf_service.get_pdf_method() == "chromium"
+    assert pdf_service.is_deployed_environment() is True

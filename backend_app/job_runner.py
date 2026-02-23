@@ -11,7 +11,7 @@ from backend_app.path_setup import ensure_streamlit_app_on_path
 ensure_streamlit_app_on_path()
 
 from src.services.ai_provider import generate_json
-from src.services.pdf_service import generate_pdf_html, generate_pdf_with_pdfshift_bytes
+from src.services.pdf_service import generate_pdf_bytes, generate_pdf_html
 
 
 def _run_pdf_weekly_job(payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -36,7 +36,7 @@ def _run_pdf_weekly_job(payload: Dict[str, Any]) -> Dict[str, Any]:
         report_summary=report_summary,
         achievements=achievements,
     )
-    pdf_bytes = generate_pdf_with_pdfshift_bytes(html)
+    pdf_bytes = generate_pdf_bytes(html)
     if not pdf_bytes:
         raise RuntimeError("PDF generation failed.")
 

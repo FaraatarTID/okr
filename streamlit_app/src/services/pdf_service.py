@@ -1,6 +1,8 @@
 """
 Unified PDF generator in secure mode.
-Only PDFShift is supported for binary PDF rendering.
+Supported binary renderers:
+- PDFShift API (`PDF_METHOD=pdfshift`)
+- Chromium via Playwright (`PDF_METHOD=chromium`)
 """
 
 import os
@@ -23,6 +25,24 @@ try:
     PDFSHIFT_AVAILABLE = True
 except ImportError:
     requests = None
+
+# Optional Chromium renderer dependency.
+PLAYWRIGHT_AVAILABLE = False
+
+try:
+    from playwright.sync_api import sync_playwright
+
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    sync_playwright = None
+
+
+_PDF_METHOD_ALIASES = {
+    "shiftpdf": "pdfshift",
+    "chrome": "chromium",
+    "playwright": "chromium",
+}
+_SUPPORTED_PDF_METHODS = {"pdfshift", "chromium"}
 
 
 def _escape(value):
@@ -113,26 +133,50 @@ def _resolve_pdfshift_api_key() -> str:
     return ""
 
 
-def is_deployed_environment():
-    """
-    Resolve whether PDF binary generation is enabled in secure mode.
-    Returns True only when PDF_METHOD resolves to `pdfshift`.
-    """
+def _resolve_pdf_method() -> str:
     method = (
         str(os.getenv("PDF_METHOD", os.getenv("OKR_PDF_METHOD", ""))).strip().lower()
     )
-    if method == "shiftpdf":
-        method = "pdfshift"
     if method:
-        return method == "pdfshift"
+        return _PDF_METHOD_ALIASES.get(method, method)
 
     method = _get_secret_value("PDF_METHOD", "pdf_method").lower()
-    if method == "shiftpdf":
-        method = "pdfshift"
     if method:
-        return method == "pdfshift"
+        return _PDF_METHOD_ALIASES.get(method, method)
 
-    return True
+    return "pdfshift"
+
+
+def _resolve_chromium_executable_path() -> str:
+    value = str(
+        os.getenv(
+            "OKR_CHROMIUM_EXECUTABLE_PATH",
+            os.getenv("CHROMIUM_EXECUTABLE_PATH", ""),
+        )
+    ).strip()
+    if value:
+        return value
+    return _get_secret_value(
+        "OKR_CHROMIUM_EXECUTABLE_PATH",
+        "CHROMIUM_EXECUTABLE_PATH",
+        "chromium_executable_path",
+    )
+
+
+def get_pdf_method() -> str:
+    return _resolve_pdf_method()
+
+
+def is_chromium_runtime_available() -> bool:
+    return bool(PLAYWRIGHT_AVAILABLE)
+
+
+def is_deployed_environment():
+    """
+    Resolve whether PDF binary generation is enabled in secure mode.
+    Returns True when PDF_METHOD resolves to a supported secure renderer.
+    """
+    return _resolve_pdf_method() in _SUPPORTED_PDF_METHODS
 
 
 def get_base64_font(font_path):
@@ -578,6 +622,74 @@ def generate_pdf_with_pdfshift_bytes(html, *, api_key: str = ""):
         return None
 
 
+def generate_pdf_with_chromium(html):
+    """
+    Generate PDF using Chromium/Playwright (secure local renderer mode).
+    """
+    pdf_bytes = generate_pdf_with_chromium_bytes(html)
+    if pdf_bytes is None:
+        st.error("Chromium PDF rendering failed. PDF export is unavailable.")
+        return None
+    return BytesIO(pdf_bytes)
+
+
+def generate_pdf_with_chromium_bytes(html, *, executable_path: str = ""):
+    """
+    Backend-safe Chromium execution that returns raw PDF bytes.
+    """
+    if not PLAYWRIGHT_AVAILABLE:
+        return None
+    browser = None
+    context = None
+    try:
+        resolved_executable = str(executable_path or "").strip() or str(
+            _resolve_chromium_executable_path() or ""
+        ).strip()
+        launch_kwargs = {"headless": True}
+        if resolved_executable:
+            launch_kwargs["executable_path"] = resolved_executable
+
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(**launch_kwargs)
+            context = browser.new_context()
+            page = context.new_page()
+            page.set_content(str(html or ""), wait_until="networkidle")
+            pdf_bytes = page.pdf(
+                format="A4",
+                landscape=True,
+                print_background=True,
+                prefer_css_page_size=True,
+            )
+            return pdf_bytes
+    except Exception as exc:
+        print(f"Chromium PDF Exception: {exc}")
+        return None
+    finally:
+        try:
+            if context is not None:
+                context.close()
+        except Exception:
+            pass
+        try:
+            if browser is not None:
+                browser.close()
+        except Exception:
+            pass
+
+
+def generate_pdf_bytes(html, *, method: str = ""):
+    """
+    Generate PDF bytes using configured or explicitly supplied method.
+    """
+    resolved = str(method or "").strip().lower() or _resolve_pdf_method()
+    resolved = _PDF_METHOD_ALIASES.get(resolved, resolved)
+    if resolved == "pdfshift":
+        return generate_pdf_with_pdfshift_bytes(html)
+    if resolved == "chromium":
+        return generate_pdf_with_chromium_bytes(html)
+    return None
+
+
 def generate_weekly_pdf_v2(
     report_items,
     objective_stats,
@@ -595,8 +707,8 @@ def generate_weekly_pdf_v2(
     Returns: BytesIO object containing the PDF data, or None if generation fails
     """
 
-    # Detect configured method (secure mode supports PDFShift only).
-    is_deployed = is_deployed_environment()
+    method = _resolve_pdf_method()
+    is_deployed = method in _SUPPORTED_PDF_METHODS
 
     # Generate HTML (common for both methods)
     html = generate_pdf_html(
@@ -612,30 +724,35 @@ def generate_weekly_pdf_v2(
     )
 
     if not is_deployed:
-        st.error(
-            "Unsupported PDF_METHOD. Secure mode supports only PDFShift or HTML fallback."
-        )
+        st.error("Unsupported PDF_METHOD. Use one of: pdfshift, chromium.")
         return None
 
-    print("Using PDFShift (Secure Mode)")
-    if not PDFSHIFT_AVAILABLE:
-        st.error("PDFShift runtime dependency is missing. Install `requests`.")
+    pdf_bytes = generate_pdf_bytes(html, method=method)
+    if not pdf_bytes:
+        if method == "pdfshift":
+            st.error("PDFShift PDF rendering failed. Check API key/connectivity.")
+        elif method == "chromium":
+            st.error(
+                "Chromium PDF rendering failed. Install Playwright and Chromium browser."
+            )
+        else:
+            st.error("PDF rendering failed.")
         return None
-    return generate_pdf_with_pdfshift(html)
+    return BytesIO(pdf_bytes)
 
 
 def get_pdf_generator_info():
     """
     Return information about the current PDF generation setup
     """
-    is_deployed = is_deployed_environment()
+    method = _resolve_pdf_method()
+    is_deployed = method in _SUPPORTED_PDF_METHODS
 
     info = {
-        "environment": "Secure mode (PDFShift)"
-        if is_deployed
-        else "Unsupported PDF method",
-        "method": "PDFShift API (secure-only)",
+        "environment": "Secure mode" if is_deployed else "Unsupported PDF method",
+        "method": method,
         "pdfshift_available": PDFSHIFT_AVAILABLE,
+        "playwright_available": PLAYWRIGHT_AVAILABLE,
         "platform": platform.system(),
     }
 
@@ -776,8 +893,8 @@ def generate_achievement_portfolio_pdf(portfolio: dict, direction: str = "RTL"):
 </html>
 """
 
-    # Generate PDF using secure-mode infrastructure.
-    is_deployed = is_deployed_environment()
-    if not is_deployed or not PDFSHIFT_AVAILABLE:
+    method = _resolve_pdf_method()
+    pdf_bytes = generate_pdf_bytes(html, method=method)
+    if not pdf_bytes:
         return None
-    return generate_pdf_with_pdfshift(html)
+    return BytesIO(pdf_bytes)

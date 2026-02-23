@@ -35,6 +35,7 @@ def _write_env(
     include_throttle_key: bool = True,
     security_state_backend: str = "database",
     security_state_redis_url: str = "",
+    pdf_method: str = "pdfshift",
 ) -> None:
     service_token = "CHANGE_ME_SHARED_TOKEN" if placeholder_values else "tok_live_123"
     signing_secret = (
@@ -65,7 +66,7 @@ def _write_env(
         "OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false",
         "OKR_ALLOW_LOCAL_READ_FALLBACK=false",
         "OKR_ENFORCE_STRONG_PASSWORD_POLICY=true",
-        "PDF_METHOD=pdfshift",
+        f"PDF_METHOD={pdf_method}",
         f"PDFSHIFT_API_KEY={pdf_key}",
         "OKR_STRICT_RUNTIME_PREFLIGHT=true",
     ]
@@ -166,6 +167,31 @@ def test_runtime_mode_accepts_redis_backend_with_valid_redis_url(tmp_path: Path)
         security_state_redis_url="redis://redis.internal:6379/0",
     )
     _write_secrets(secrets_file)
+
+    result = _run_checker(env_file, secrets_file, mode="runtime")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Deploy config check passed (mode=runtime)" in result.stdout
+
+
+def test_runtime_mode_accepts_chromium_without_pdfshift_key(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    secrets_file = tmp_path / "secrets.toml"
+    _write_env(
+        env_file,
+        placeholder_values=False,
+        pdf_method="chromium",
+    )
+    _write_secrets(secrets_file)
+
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    lines = [
+        "PDFSHIFT_API_KEY="
+        if line.startswith("PDFSHIFT_API_KEY=")
+        else line
+        for line in lines
+    ]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     result = _run_checker(env_file, secrets_file, mode="runtime")
 

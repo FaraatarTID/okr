@@ -26,7 +26,6 @@ REQUIRED_ENV_KEYS = (
     "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN",
     "OKR_ENFORCE_STRONG_PASSWORD_POLICY",
     "PDF_METHOD",
-    "PDFSHIFT_API_KEY",
     "OKR_STRICT_RUNTIME_PREFLIGHT",
 )
 
@@ -36,11 +35,11 @@ SECURE_EXPECTED = {
     "OKR_ALLOW_LOCAL_READ_FALLBACK": "false",
     "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN": "false",
     "OKR_ENFORCE_STRONG_PASSWORD_POLICY": "true",
-    "PDF_METHOD": "pdfshift",
     "OKR_STRICT_RUNTIME_PREFLIGHT": "true",
 }
 
 ALLOWED_SECURITY_STATE_BACKENDS = {"database", "redis"}
+ALLOWED_PDF_METHODS = {"pdfshift", "chromium"}
 
 PLACEHOLDER_TOKENS = (
     "CHANGE_ME",
@@ -82,6 +81,15 @@ def _looks_placeholder(value: str) -> bool:
         return True
     upper = raw.upper()
     return any(token in upper for token in PLACEHOLDER_TOKENS)
+
+
+def _normalize_pdf_method(value: str) -> str:
+    method = _normalize(value)
+    if method == "shiftpdf":
+        return "pdfshift"
+    if method in {"chrome", "playwright"}:
+        return "chromium"
+    return method
 
 
 def _parse_dotenv(path: Path) -> dict[str, str]:
@@ -223,6 +231,15 @@ def validate(
                 f"'{key}' must be '{expected}', found '{env.get(key, '')}'."
             )
 
+    pdf_method = _normalize_pdf_method(env.get("PDF_METHOD", ""))
+    if not pdf_method:
+        report.errors.append(f"Missing value for 'PDF_METHOD' in {_display_path(env_file)}.")
+    elif pdf_method not in ALLOWED_PDF_METHODS:
+        report.errors.append(
+            f"'PDF_METHOD' must be one of: {', '.join(sorted(ALLOWED_PDF_METHODS))}; "
+            f"found '{env.get('PDF_METHOD', '')}'."
+        )
+
     _validate_database_url(
         env.get("OKR_DATABASE_URL", ""),
         report,
@@ -249,16 +266,13 @@ def validate(
         )
 
     if secrets:
-        if "pdfshift_api_key" not in secrets:
-            report.errors.append(
-                "Missing 'pdfshift_api_key' in secrets TOML root table."
-            )
-        secret_pdf_method = _normalize(
+        secret_pdf_method = _normalize_pdf_method(
             _secret_value(secrets, "PDF_METHOD", "pdf_method")
         )
-        if secret_pdf_method and secret_pdf_method != "pdfshift":
+        if secret_pdf_method and secret_pdf_method not in ALLOWED_PDF_METHODS:
             report.errors.append(
-                f"Secrets PDF method must be 'pdfshift', found '{secret_pdf_method}'."
+                "Secrets PDF method must be one of: "
+                f"{', '.join(sorted(ALLOWED_PDF_METHODS))}; found '{secret_pdf_method}'."
             )
 
         if "database" not in secrets:
@@ -283,17 +297,22 @@ def validate(
                     f"'{key}' appears to be a placeholder in runtime mode."
                 )
 
-        pdf_env = env.get("PDFSHIFT_API_KEY", "")
-        pdf_secret = _secret_value(secrets, "pdfshift_api_key", "PDFSHIFT_API_KEY")
-        provided_values = [v for v in [pdf_env, pdf_secret] if str(v).strip()]
-        if not provided_values:
-            report.errors.append(
-                "PDFShift API key is missing in both env and secrets runtime config."
-            )
-        elif all(_looks_placeholder(v) for v in provided_values):
-            report.errors.append(
-                "PDFShift API key appears to be a placeholder in runtime mode."
-            )
+        if pdf_method == "pdfshift":
+            pdf_env = env.get("PDFSHIFT_API_KEY", "")
+            pdf_secret = _secret_value(secrets, "pdfshift_api_key", "PDFSHIFT_API_KEY")
+            provided_values = [v for v in [pdf_env, pdf_secret] if str(v).strip()]
+            if not provided_values:
+                report.errors.append(
+                    "PDFShift API key is missing in both env and secrets runtime config."
+                )
+            elif all(_looks_placeholder(v) for v in provided_values):
+                report.errors.append(
+                    "PDFShift API key appears to be a placeholder in runtime mode."
+                )
+            if secrets and "pdfshift_api_key" not in secrets:
+                report.errors.append(
+                    "Missing 'pdfshift_api_key' in secrets TOML root table."
+                )
 
     return report
 

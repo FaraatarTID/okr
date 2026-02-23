@@ -26,7 +26,9 @@ Documentation HQ: [README](../README.md)
 - `OKR_ALLOW_LOCAL_READ_FALLBACK=false`
 - `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN=false`
 - `OKR_STRICT_RUNTIME_PREFLIGHT=true`
-- `PDF_METHOD=pdfshift` و `pdfshift_api_key` تنظیم باشد
+- تنظیم PDF:
+  - `PDF_METHOD=pdfshift` به‌همراه `pdfshift_api_key`، یا
+  - `PDF_METHOD=chromium` به‌همراه runtimeِ Playwright/Chromium
 
 اعتبارسنجی قبل از startup:
 ```bash

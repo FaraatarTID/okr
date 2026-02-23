@@ -75,6 +75,11 @@ def _has_pdfshift_api_key() -> bool:
     )
 
 
+def _has_chromium_runtime() -> bool:
+    """Check if Chromium renderer runtime dependencies are available."""
+    return app_preflight_helpers.has_chromium_runtime()
+
+
 def _runtime_preflight_strict_mode() -> bool:
     """Resolve strict-mode flag for runtime preflight policy."""
     return app_preflight_helpers.runtime_preflight_strict_mode(cfg_value_fn=_cfg_value)
@@ -122,6 +127,7 @@ def _run_pdf_preflight():
         is_external_ai_allowed_fn=is_external_ai_allowed,
         get_pdf_method_fn=_get_pdf_method,
         has_pdfshift_api_key_fn=_has_pdfshift_api_key,
+        has_chromium_runtime_fn=_has_chromium_runtime,
         is_streamlit_cloud_runtime_fn=_is_streamlit_cloud_runtime,
         runtime_preflight_strict_mode_fn=_runtime_preflight_strict_mode,
     )

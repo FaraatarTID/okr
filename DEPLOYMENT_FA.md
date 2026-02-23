@@ -21,7 +21,9 @@ Documentation HQ: [README](README.md)
 - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` یا `redis` در production (اگر `redis` است، `OKR_BACKEND_SECURITY_STATE_REDIS_URL` اجباری است)
 - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false` و `OKR_ALLOW_LOCAL_READ_FALLBACK=false` در production
 - `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN=false` در production (در production حتی اگر true شود، runtime همچنان fail-open را اعمال نمی‌کند)
-- `PDF_METHOD=pdfshift` و `PDFSHIFT_API_KEY`
+- PDF:
+  - `PDF_METHOD=pdfshift` و `PDFSHIFT_API_KEY`، یا
+  - `PDF_METHOD=chromium` با Playwright/Chromium runtime
 - `OKR_STRICT_RUNTIME_PREFLIGHT=true`
 
 گام‌های سریع

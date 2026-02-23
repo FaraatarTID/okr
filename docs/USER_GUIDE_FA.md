@@ -72,7 +72,7 @@ Weekly Report:
 هر دو نوع گزارش:
 - داده منبع: Work Logهای متصل به Task.
 - شامل جدول جزئیات کار، توزیع زمان بر اساس Objective و سلامت deadline.
-- خروجی: PDF فقط از مسیر `PDF_METHOD=pdfshift`؛ در نبود PDFShift خروجی HTML ارائه می‌شود.
+- خروجی: PDF از مسیر `PDF_METHOD=pdfshift` یا `PDF_METHOD=chromium`؛ در نبود renderer خروجی HTML ارائه می‌شود.
 
 نکته فنی:
 - در deploymentهای backend-assisted، جریان‌های نوشتنی فرانت‌اند (CRUD نودها، timer، مدیریت کاربران/چرخه‌ها/تیم‌ها و تغییرات Learning Loop) با `OKR_BACKEND_PROXY_MUTATIONS=true` از مسیر `backend-api` عبور می‌کنند.
@@ -176,5 +176,4 @@ Task:
 
 راهنمای اجرایی گام‌به‌گام مدیر:
 - [راهنمای عملیاتی مدیر](MANAGER_PLAYBOOK_FA.md)
-
 
