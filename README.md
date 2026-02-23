@@ -15,7 +15,7 @@ Use this section as the single entry point for all project docs.
 - **Architecture (Learning Loop Contract, EN+FA)**: [docs/LEARNING_LOOP_ARCHITECTURE.md](docs/LEARNING_LOOP_ARCHITECTURE.md)
 - **Learning Loop Workflow (EN+FA)**: [docs/learning-loop.md](docs/learning-loop.md)
 - **Architecture (Full System)**: [ARCHITECTURE.md](ARCHITECTURE.md)
-- **Architecture Improvement Plan**: [docs/ARCHITECTURE_IMPROVEMENT_PLAN.md](docs/ARCHITECTURE_IMPROVEMENT_PLAN.md)
+- **V2 Prioritized Issue List**: [docs/V2_PRIORITIZED_ISSUE_LIST.md](docs/V2_PRIORITIZED_ISSUE_LIST.md)
 - **License**: [LICENSE](LICENSE)
 - **Deployment Guide (En)**: [DEPLOYMENT.md](DEPLOYMENT.md)
 - **Deployment Guide (Fa)**: [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md)
@@ -37,22 +37,22 @@ Use this section as the single entry point for all project docs.
 - **Config Reference (Fa)**: [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md)
 - **Deployment + Operations (Consolidated, En)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
 - **Deployment + Operations (Consolidated, Fa)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
-- **Deployment Checklist (En)**: [docs/DEPLOY_CHECKLIST.md](docs/DEPLOY_CHECKLIST.md)
-- **Deployment Checklist (Fa, moved)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
-- **Internal Deployment Checklist (En)**: [docs/INTERNAL_DEPLOYMENT_CHECKLIST.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST.md)
-- **Internal Deployment Checklist (Fa)**: [docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md](docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md)
+- **Go-Live Checklist (En)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
+- **Go-Live Checklist (Fa)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
+- **Internal Pilot Security Gates (En)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
+- **Internal Pilot Security Gates (Fa)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
+- **First Deployment Workflow (En)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
+- **First Deployment Workflow (Fa)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
 - **Docker Compose (En)**: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
 - **Docker Compose (Fa)**: [docs/DOCKER_COMPOSE_FA.md](docs/DOCKER_COMPOSE_FA.md)
 - **Kubernetes (En)**: [docs/KUBERNETES.md](docs/KUBERNETES.md)
 - **Kubernetes (Fa)**: [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md)
 - **Reverse Proxy (En)**: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
 - **Reverse Proxy (Fa)**: [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md)
-- **Operations (En)**: [docs/OPERATIONS.md](docs/OPERATIONS.md)
-- **Operations (Fa, moved)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
+- **Day-2 Operations (En)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
+- **Day-2 Operations (Fa)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
 - **Troubleshooting (En)**: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - **Troubleshooting (Fa)**: [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md)
-- **First-Run Runbook (En)**: [docs/RUNBOOK.md](docs/RUNBOOK.md)
-- **First-Run Runbook (Fa, moved)**: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
 
 ---
 
@@ -572,5 +572,3 @@ python streamlit_app/scripts/perf_hotpaths.py
 ```
 
 See `performance.md` for current baselines and budgets.
-
-

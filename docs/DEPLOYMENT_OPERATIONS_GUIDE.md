@@ -4,11 +4,7 @@ Documentation HQ: [README](../README.md)
 
 This is the canonical English guide for deployment execution, go-live checks, internal rollout gates, and day-2 operations.
 
-It replaces duplicated content previously spread across:
-- `docs/RUNBOOK.md`
-- `docs/DEPLOY_CHECKLIST.md`
-- `docs/INTERNAL_DEPLOYMENT_CHECKLIST.md`
-- `docs/OPERATIONS.md`
+It consolidates the previously duplicated runbook/checklist/operations content into one maintained reference.
 
 Last updated: 2026-02-22
 
@@ -62,7 +58,7 @@ python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.e
 - Monitoring and log collection are active.
 
 ## 5. Internal Pilot Security Gates
-- Review and execute: `docs/ACCEPTED_FINDINGS_IMPLEMENTATION_PLAN.md`
+- Review and execute: `docs/V2_PRIORITIZED_ISSUE_LIST.md`
 - Confirm least-privilege DB role in runtime DSN (never `postgres`).
 - Keep backend API private/internal only.
 - Keep scoped fallback flags disabled in production.
@@ -100,4 +96,3 @@ python -m pytest tests/test_database_engine_pooling.py -q
 - Kubernetes specifics: `docs/KUBERNETES.md`
 - Reverse proxy specifics: `docs/REVERSE_PROXY.md`
 - Troubleshooting: `docs/TROUBLESHOOTING.md`
-

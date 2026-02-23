@@ -4,11 +4,7 @@ Documentation HQ: [README](../README.md)
 
 این سند مرجع اصلی فارسی برای استقرار، چک‌لیست go-live، الزامات پایلوت داخلی و عملیات روزانه است.
 
-این سند جایگزین محتوای تکراری این فایل‌ها شده است:
-- `docs/RUNBOOK_FA.md`
-- `docs/DEPLOY_CHECKLIST_FA.md`
-- `docs/INTERNAL_DEPLOYMENT_CHECKLIST_FA.md`
-- `docs/OPERATIONS_FA.md`
+این سند محتوای تکراری runbook/checklist/operations را در یک مرجع نگه‌داری‌شده یکپارچه می‌کند.
 
 آخرین به‌روزرسانی: 2026-02-22
 
@@ -62,7 +58,7 @@ python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.e
 - مانیتورینگ و جمع‌آوری لاگ فعال است
 
 ## 5) چک‌های پایلوت داخلی
-- بررسی/اجرای `docs/ACCEPTED_FINDINGS_IMPLEMENTATION_PLAN.md`
+- بررسی/اجرای `docs/V2_PRIORITIZED_ISSUE_LIST.md`
 - تایید DSN کم‌اختیار در runtime (هرگز `postgres`)
 - خصوصی ماندن backend API
 - غیرفعال‌بودن scoped fallbackها در production
@@ -100,4 +96,3 @@ python -m pytest tests/test_database_engine_pooling.py -q
 - جزئیات Kubernetes: `docs/KUBERNETES_FA.md`
 - جزئیات Reverse Proxy: `docs/REVERSE_PROXY_FA.md`
 - عیب‌یابی: `docs/TROUBLESHOOTING_FA.md`
-

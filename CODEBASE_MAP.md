@@ -1,3 +1,5 @@
+Documentation HQ: [README](README.md)
+
 # Codebase Map
 
 Maintainer-focused map for the primary files and helper boundaries.
@@ -95,4 +97,3 @@ Rule:
   - compatibility surface updates
   - cache boundary changes
 - Feature helper files should change for behavior.
-
