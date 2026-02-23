@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from src.ui import atlas_map_sidebar_ai_helpers
+
 
 def render_map_key_and_create_actions(
     *,
@@ -136,56 +138,10 @@ def render_ai_control_panel(
     session_state: dict[str, Any],
     has_kr_refs: bool,
 ) -> tuple[bool, bool, int, bool]:
-    sidebar.markdown("**AI**")
-
-    if "atlas_ai_apply_overall_to_progress" not in session_state:
-        session_state["atlas_ai_apply_overall_to_progress"] = False
-    apply_ai_score_to_progress = sidebar.toggle(
-        "Apply AI overall score to KR progress",
-        key="atlas_ai_apply_overall_to_progress",
-        disabled=not has_kr_refs,
-    )
-
-    if "atlas_ai_sync_preview_mode" not in session_state:
-        session_state["atlas_ai_sync_preview_mode"] = False
-    preview_ai_sync = sidebar.toggle(
-        "Preview mode (no writes)",
-        key="atlas_ai_sync_preview_mode",
-        disabled=not has_kr_refs,
-    )
-
-    if "atlas_ai_progress_max_delta" not in session_state:
-        session_state["atlas_ai_progress_max_delta"] = 25
-    if "atlas_ai_progress_allow_decrease" not in session_state:
-        session_state["atlas_ai_progress_allow_decrease"] = False
-
-    max_progress_delta = int(session_state.get("atlas_ai_progress_max_delta") or 25)
-    allow_progress_decrease = bool(
-        session_state.get("atlas_ai_progress_allow_decrease", False)
-    )
-
-    if apply_ai_score_to_progress:
-        max_progress_delta = int(
-            sidebar.slider(
-                "Max KR progress delta",
-                min_value=5,
-                max_value=100,
-                step=5,
-                value=max_progress_delta,
-                key="atlas_ai_progress_max_delta",
-            )
-        )
-        allow_progress_decrease = sidebar.toggle(
-            "Allow progress decreases",
-            key="atlas_ai_progress_allow_decrease",
-            value=allow_progress_decrease,
-        )
-
-    return (
-        bool(apply_ai_score_to_progress),
-        bool(preview_ai_sync),
-        int(max_progress_delta),
-        bool(allow_progress_decrease),
+    return atlas_map_sidebar_ai_helpers.render_ai_control_panel(
+        sidebar=sidebar,
+        session_state=session_state,
+        has_kr_refs=has_kr_refs,
     )
 
 
@@ -200,40 +156,16 @@ def handle_ai_progress_undo_action(
     rerun_fn: Callable[[], Any],
     now_fn: Callable[[], float] = time.time,
 ) -> bool:
-    undo_payload = session_state.get("atlas_ai_progress_undo")
-    if not isinstance(undo_payload, dict):
-        return False
-
-    undo_items = list(undo_payload.get("items") or [])
-    if not undo_items:
-        return False
-
-    undo_age_seconds = float(now_fn() - float(undo_payload.get("at") or 0))
-    if undo_age_seconds > 1800:
-        session_state.pop("atlas_ai_progress_undo", None)
-        return False
-
-    if not sidebar.button(
-        "Undo Last AI Progress Apply",
-        key="atlas_ai_progress_undo_btn",
-        use_container_width=True,
-    ):
-        return False
-
-    undo_result = apply_ai_progress_undo_fn(
-        undo_items=undo_items,
+    return atlas_map_sidebar_ai_helpers.handle_ai_progress_undo_action(
+        sidebar=sidebar,
+        session_state=session_state,
         username=username,
+        apply_ai_progress_undo_fn=apply_ai_progress_undo_fn,
         update_key_result_fn=update_key_result_fn,
         recalculate_rollup_for_key_results_fn=recalculate_rollup_for_key_results_fn,
+        rerun_fn=rerun_fn,
+        now_fn=now_fn,
     )
-    session_state["atlas_ai_undo_report"] = {
-        "restored": int(undo_result.get("restored") or 0),
-        "failed": list(undo_result.get("failed") or []),
-        "at": float(now_fn()),
-    }
-    session_state.pop("atlas_ai_progress_undo", None)
-    rerun_fn()
-    return True
 
 
 def handle_ai_progress_sync_action(
@@ -267,20 +199,9 @@ def handle_ai_progress_sync_action(
     rerun_fn: Callable[[], Any],
     now_fn: Callable[[], float] = time.time,
 ) -> bool:
-    if not sidebar.button(
-        "AI Progress Sync",
-        key="atlas_ai_progress_sync_btn",
-        use_container_width=True,
-        disabled=not map_kr_refs,
-    ):
-        return False
-
-    total_kr = len(map_kr_refs)
-    progress_bar = sidebar.progress(
-        0.0,
-        text=f"Syncing AI analysis for {total_kr} key result(s)...",
-    )
-    sync_result = run_ai_progress_sync_fn(
+    return atlas_map_sidebar_ai_helpers.handle_ai_progress_sync_action(
+        sidebar=sidebar,
+        session_state=session_state,
         map_kr_refs=map_kr_refs,
         map_task_refs=map_task_refs,
         index=index,
@@ -288,12 +209,13 @@ def handle_ai_progress_sync_action(
         actor_id=actor_id,
         selected_scope=selected_scope,
         map_lens=map_lens,
-        selected_node_title=str(selected_node_title or ""),
+        selected_node_title=selected_node_title,
         username=username,
         apply_ai_score_to_progress=apply_ai_score_to_progress,
         preview_ai_sync=preview_ai_sync,
         max_progress_delta=max_progress_delta,
         allow_progress_decrease=allow_progress_decrease,
+        run_ai_progress_sync_fn=run_ai_progress_sync_fn,
         analyze_node_fn=analyze_node_fn,
         suggest_critical_task_fn=suggest_critical_task_fn,
         update_key_result_fn=update_key_result_fn,
@@ -304,29 +226,9 @@ def handle_ai_progress_sync_action(
         next_score_fn=next_score_fn,
         deadline_to_iso_fn=deadline_to_iso_fn,
         logger=logger,
-        progress_callback=lambda idx, total, text: progress_bar.progress(
-            min(1.0, float(idx) / max(1, int(total))),
-            text=text,
-        ),
+        rerun_fn=rerun_fn,
+        now_fn=now_fn,
     )
-    progress_bar.empty()
-
-    ai_suggested_payload = sync_result.get("ai_suggested_payload")
-    if ai_suggested_payload:
-        session_state["atlas_ai_suggested_next"] = ai_suggested_payload
-    else:
-        session_state.pop("atlas_ai_suggested_next", None)
-
-    progress_undo_items = list(sync_result.get("progress_undo_items") or [])
-    if not preview_ai_sync and apply_ai_score_to_progress and progress_undo_items:
-        session_state["atlas_ai_progress_undo"] = {
-            "items": progress_undo_items,
-            "at": float(now_fn()),
-        }
-
-    session_state["atlas_ai_sync_report"] = dict(sync_result.get("sync_report") or {})
-    rerun_fn()
-    return True
 
 
 def render_ai_sync_report_feedback(
@@ -338,48 +240,14 @@ def render_ai_sync_report_feedback(
     dataframe_fn: Callable[..., Any],
     now_fn: Callable[[], float] = time.time,
 ) -> bool:
-    sync_report = session_state.get("atlas_ai_sync_report")
-    if not isinstance(sync_report, dict):
-        return False
-
-    sync_age = float(now_fn() - float(sync_report.get("at") or 0))
-    if sync_age > 45:
-        session_state.pop("atlas_ai_sync_report", None)
-        return False
-
-    sync_messages = build_ai_sync_sidebar_messages_fn(
-        sync_report=sync_report,
+    return atlas_map_sidebar_ai_helpers.render_ai_sync_report_feedback(
+        sidebar=sidebar,
+        session_state=session_state,
         index=index,
+        build_ai_sync_sidebar_messages_fn=build_ai_sync_sidebar_messages_fn,
+        dataframe_fn=dataframe_fn,
+        now_fn=now_fn,
     )
-    if sync_messages.get("primary_level") == "info":
-        sidebar.info(str(sync_messages.get("primary_message") or ""))
-    else:
-        sidebar.success(str(sync_messages.get("primary_message") or ""))
-
-    failed_items = list(sync_messages.get("failed_items") or [])
-    if failed_items:
-        sidebar.warning("Some items failed:\n- " + "\n- ".join(failed_items))
-
-    ai_suggest_line = str(sync_messages.get("ai_suggest_line") or "")
-    ai_suggest_reason = str(sync_messages.get("ai_suggest_reason") or "").strip()
-    ai_suggest_warning = str(sync_messages.get("ai_suggest_warning") or "").strip()
-    if ai_suggest_line:
-        sidebar.info(ai_suggest_line)
-        if ai_suggest_reason:
-            sidebar.caption(ai_suggest_reason)
-    elif ai_suggest_warning:
-        sidebar.warning(ai_suggest_warning)
-
-    trace_rows = list(sync_messages.get("trace_rows") or [])
-    if trace_rows:
-        with sidebar.expander("Last AI Sync Details", expanded=False):
-            dataframe_fn(
-                trace_rows,
-                use_container_width=True,
-                hide_index=True,
-                height=240,
-            )
-    return True
 
 
 def render_ai_undo_report_feedback(
@@ -389,18 +257,9 @@ def render_ai_undo_report_feedback(
     build_ai_undo_sidebar_messages_fn: Callable[..., dict[str, Any]],
     now_fn: Callable[[], float] = time.time,
 ) -> bool:
-    undo_report = session_state.get("atlas_ai_undo_report")
-    if not isinstance(undo_report, dict):
-        return False
-
-    undo_age = float(now_fn() - float(undo_report.get("at") or 0))
-    if undo_age > 20:
-        session_state.pop("atlas_ai_undo_report", None)
-        return False
-
-    undo_messages = build_ai_undo_sidebar_messages_fn(undo_report=undo_report)
-    sidebar.success(str(undo_messages.get("primary_message") or ""))
-    undo_failed = list(undo_messages.get("failed_items") or [])
-    if undo_failed:
-        sidebar.warning("Some rollback items failed:\n- " + "\n- ".join(undo_failed))
-    return True
+    return atlas_map_sidebar_ai_helpers.render_ai_undo_report_feedback(
+        sidebar=sidebar,
+        session_state=session_state,
+        build_ai_undo_sidebar_messages_fn=build_ai_undo_sidebar_messages_fn,
+        now_fn=now_fn,
+    )
