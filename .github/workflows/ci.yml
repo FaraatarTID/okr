@@ -25,6 +25,11 @@ jobs:
             streamlit_app/requirements.txt
             streamlit_app/requirements-dev.txt
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
       - name: Docs HQ Link Check
         run: python scripts/check_docs_hq_links.py
 
@@ -58,6 +63,16 @@ jobs:
             streamlit_app/scripts/perf_hotpaths.py \
             tests/test_deadline_utils.py \
             tests/test_performance_hotpaths.py
+
+      - name: Duplication Check (JSCPD <= 1%)
+        run: |
+          npx -y jscpd@4.0.5 \
+            --min-lines 20 \
+            --min-tokens 120 \
+            --threshold 1 \
+            --reporters console \
+            --ignore "**/__pycache__/**,**/.git/**,**/.venv/**,**/venv/**,**/.pytest_cache/**" \
+            streamlit_app backend_app tests
 
       - name: Type Check (Mypy)
         run: |
