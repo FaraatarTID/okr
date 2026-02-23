@@ -13,6 +13,7 @@ import sys
 import os
 import subprocess
 from datetime import datetime
+from types import SimpleNamespace
 
 # Keep `import app` stable for test/runtime contexts that execute from repo root.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -313,6 +314,32 @@ sys.excepthook = _excepthook
 # ---------------------------------------------------------------------------
 # Keep entry-level functions stable for imports/tests, but delegate all heavy
 # logic to focused helper modules.
+def _build_app_context():
+    """Build explicit helper dependency context (avoid fragile __main__ lookups)."""
+    return SimpleNamespace(
+        st=st,
+        # Entry flow contracts
+        render_login=render_login,
+        _resolve_app_shell_runtime=_resolve_app_shell_runtime,
+        error_log=error_log,
+        _clear_user_session=_clear_user_session,
+        render_password_reset_gate=render_password_reset_gate,
+        render_app=render_app,
+        # Auth flow contracts
+        prewarm_startup_ready_async=prewarm_startup_ready_async,
+        authenticate_user_detailed=authenticate_user_detailed,
+        _get_client_ip=_get_client_ip,
+        should_run_startup_recovery=should_run_startup_recovery,
+        ensure_startup_ready=ensure_startup_ready,
+        reset_user_password=reset_user_password,
+        # App shell contracts
+        _run_pdf_preflight=_run_pdf_preflight,
+        _bootstrap_default_cycle_if_needed=_bootstrap_default_cycle_if_needed,
+        _build_cycle_selector_payload=_build_cycle_selector_payload,
+        _get_build_fingerprint=_get_build_fingerprint,
+    )
+
+
 def _get_client_ip() -> str | None:
     """Extract best-effort client IP from Streamlit request context."""
     return app_network_helpers.get_client_ip_from_streamlit(st_module=st)
@@ -320,7 +347,7 @@ def _get_client_ip() -> str | None:
 
 def render_login():
     """Render login form and authentication flow."""
-    return app_auth_helpers.render_login_from_app(app_module=sys.modules[__name__])
+    return app_auth_helpers.render_login_from_app(app_module=_build_app_context())
 
 
 def _clear_user_session():
@@ -331,14 +358,14 @@ def _clear_user_session():
 def render_password_reset_gate():
     """Render forced password-reset flow for temporary/initial credentials."""
     return app_auth_helpers.render_password_reset_gate_from_app(
-        app_module=sys.modules[__name__]
+        app_module=_build_app_context()
     )
 
 
 def render_app(username, runtime_bundle=None):
     """Render authenticated workspace shell."""
     return app_shell_helpers.render_app_from_app(
-        app_module=sys.modules[__name__],
+        app_module=_build_app_context(),
         username=username,
         runtime_bundle=runtime_bundle,
     )
@@ -346,7 +373,7 @@ def render_app(username, runtime_bundle=None):
 
 def main():
     """Top-level app entrypoint."""
-    return app_entry_helpers.run_main_from_app(app_module=sys.modules[__name__])
+    return app_entry_helpers.run_main_from_app(app_module=_build_app_context())
 
 
 if __name__ == "__main__":
