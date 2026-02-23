@@ -222,11 +222,15 @@ def resolve_goal_cycle_and_strategy_tags(
                     node_id,
                     exc,
                 )
-            curr_strats = [item.strip() for item in raw_strats.split(",") if item.strip()]
+            curr_strats = [
+                item.strip() for item in raw_strats.split(",") if item.strip()
+            ]
     elif isinstance(raw_strats, list):
         curr_strats = [str(item) for item in raw_strats]
 
-    default_tags_value = ", ".join([item.strip() for item in curr_strats if item.strip()])
+    default_tags_value = ", ".join(
+        [item.strip() for item in curr_strats if item.strip()]
+    )
     new_strat_tags_input = st_module.text_input(
         "Add Strategy Tags (comma-separated)",
         value=default_tags_value,
@@ -404,7 +408,9 @@ def resolve_lifecycle_section(
     s_col1, _s_col2 = st_module.columns(2)
 
     allowed_next = list(get_allowed_transitions_fn(current_state) or [])
-    options = [current_state] + [state for state in allowed_next if state != current_state]
+    options = [current_state] + [
+        state for state in allowed_next if state != current_state
+    ]
     state_value_options = [state.value for state in options]
     label_map = {
         state.value: f"{state_icons.get(state, '')} {state.value.title()}"
@@ -475,10 +481,14 @@ def render_task_schedule_section(
 
     col_sch1, col_sch2 = st_module.columns(2)
     with col_sch1:
-        new_sd = st_module.date_input("Start Date", value=curr_sd, key=f"sd_inp_{node_id}")
+        new_sd = st_module.date_input(
+            "Start Date", value=curr_sd, key=f"sd_inp_{node_id}"
+        )
         if st_module.button("Save Start Date", key=f"save_sd_{node_id}"):
             new_sd_dt = (
-                datetime_cls.combine(new_sd, datetime_cls.min.time()) if new_sd else None
+                datetime_cls.combine(new_sd, datetime_cls.min.time())
+                if new_sd
+                else None
             )
             try:
                 update_task_fn(node_id, start_date=new_sd_dt, actor_username=username)
@@ -575,11 +585,11 @@ def render_task_work_history_section(
     for log_item in sorted_logs:
         end_time_value = getattr(log_item, "end_time", None)
         ended_at = (
-            end_time_value.strftime("%Y-%m-%d %H:%M")
-            if end_time_value
-            else "Running"
+            end_time_value.strftime("%Y-%m-%d %H:%M") if end_time_value else "Running"
         )
-        duration_minutes = round(float(getattr(log_item, "duration_minutes", 0) or 0), 1)
+        duration_minutes = round(
+            float(getattr(log_item, "duration_minutes", 0) or 0), 1
+        )
         summary_text = getattr(log_item, "summary", None) or "-"
 
         col_l1, col_l2 = st_module.columns([0.9, 0.1])
@@ -639,7 +649,9 @@ def render_key_result_ai_analysis_section(
             analysis_data = parsed if isinstance(parsed, dict) else None
         except Exception as exc:
             if logger is not None:
-                logger.debug("Failed to parse KR analysis JSON for node %s: %s", node_id, exc)
+                logger.debug(
+                    "Failed to parse KR analysis JSON for node %s: %s", node_id, exc
+                )
             try:
                 fallback = literal_eval_fn(analysis_raw)
                 if isinstance(fallback, dict):
@@ -675,7 +687,7 @@ def render_key_result_ai_analysis_section(
     if analysis_data.get("summary"):
         st_module.info(analysis_data["summary"])
 
-    for warning_item in (analysis_data.get("deadline_warnings") or []):
+    for warning_item in analysis_data.get("deadline_warnings") or []:
         st_module.warning(warning_item)
 
     gap_analysis = analysis_data.get("gap_analysis")
@@ -733,7 +745,9 @@ def render_delete_entity_section(
             return True
 
         keys_to_clear = [
-            key for key in session_state.keys() if str(key).startswith("okr_data_cache_")
+            key
+            for key in session_state.keys()
+            if str(key).startswith("okr_data_cache_")
         ]
         for key in keys_to_clear:
             del session_state[key]
@@ -780,13 +794,17 @@ def handle_save_changes(
     update_objective_fn: Callable[..., Any],
     update_key_result_fn: Callable[..., Any],
     update_task_fn: Callable[..., Any],
+    submit_button_fn: Callable[..., bool] | None = None,
     rerun_fn: Callable[[], Any],
 ) -> bool:
     """Handle inspector Save Changes dispatch by node type.
 
     Returns True when caller should abort due to an error.
     """
-    if not st_module.form_submit_button("Save Changes", disabled=not can_save):
+    if submit_button_fn is None:
+        submit_button_fn = getattr(st_module, "form_submit_button")
+
+    if not submit_button_fn("Save Changes", disabled=not can_save):
         return False
 
     updates: dict[str, Any] = {

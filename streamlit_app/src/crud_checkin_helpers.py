@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Optional
 
 from sqlmodel import col
+from src.domain import analytics as domain_analytics
 from src.domain.progress import refresh_hierarchy_progress
+
 
 def create_check_in_from_crud(
     *,
@@ -120,7 +122,7 @@ def get_check_ins_from_crud(*, crud_module, kr_id: int):
 
 
 def get_latest_checkins_by_kr_from_crud(*, crud_module, session, kr_ids):
-    return crud_module.domain_analytics._get_latest_checkins_by_kr(session, kr_ids)
+    return domain_analytics._get_latest_checkins_by_kr(session, kr_ids)
 
 
 def get_krs_needing_checkin_from_crud(
@@ -130,7 +132,7 @@ def get_krs_needing_checkin_from_crud(
     cycle_id: int,
     days_threshold: int = 7,
 ):
-    return crud_module.domain_analytics.get_krs_needing_checkin(
+    return domain_analytics.get_krs_needing_checkin(
         user_id,
         cycle_id,
         days_threshold,

@@ -1,4 +1,4 @@
-﻿"""Inspector content rendering helper."""
+"""Inspector content rendering helper."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from src.models import ScoreMode, MetricType, LifecycleState
 from src.ui import inspector_alignment_helpers
 from src.ui import inspector_form_helpers
 from src.ui import inspector_shell_helpers
+
 
 def render_inspector_content(
     node_id,
@@ -44,7 +45,6 @@ def render_inspector_content(
         delete_work_log,
         get_all_cycles,
     )
-    from src.models import Goal, Objective, KeyResult, Task, WorkLog
 
     inspector_shell_helpers.inject_dialog_css(st_module=st_module)
 
@@ -114,7 +114,6 @@ def render_inspector_content(
                 disabled=True,
                 key=f"type_disp_{node_id}",
             )
-            new_type_insp = node_type_insp
 
         # OBJECTIVE Specific Score Mode and Weight
         from src.domain.scoring import calculate_objective_score
@@ -168,7 +167,9 @@ def render_inspector_content(
         new_init_tags_input = str(kr_metrics.get("new_init_tags_input", "") or "")
         new_weight_insp = float(kr_metrics.get("new_weight", 1.0) or 1.0)
         new_metric_type = kr_metrics.get("new_metric_type", MetricType.NUMERIC)
-        new_progress_insp = int(kr_metrics.get("new_progress", new_progress_insp) or new_progress_insp)
+        new_progress_insp = int(
+            kr_metrics.get("new_progress", new_progress_insp) or new_progress_insp
+        )
 
         # Phase 2: Lifecycle State & Reflection
         new_state, new_reflection = inspector_form_helpers.resolve_lifecycle_section(
@@ -227,6 +228,7 @@ def render_inspector_content(
             update_objective_fn=update_objective,
             update_key_result_fn=update_key_result,
             update_task_fn=update_task,
+            submit_button_fn=st_module.form_submit_button,
             rerun_fn=st_module.rerun,
         )
         if should_abort_save:
@@ -248,8 +250,6 @@ def render_inspector_content(
     if should_abort_task_schedule:
         return
 
-    from src.crud import delete_work_log
-
     should_abort_task_history = inspector_form_helpers.render_task_work_history_section(
         st_module=st_module,
         node=node,
@@ -263,7 +263,6 @@ def render_inspector_content(
     if should_abort_task_history:
         return
 
-    from src.crud import update_key_result
     from src.services.ai_service import analyze_node
     import ast
 
@@ -281,13 +280,6 @@ def render_inspector_content(
         logger=logger,
     )
 
-    from src.crud import (
-        delete_goal,
-        delete_key_result,
-        delete_objective,
-        delete_task,
-    )
-
     should_abort_delete = inspector_form_helpers.render_delete_entity_section(
         st_module=st_module,
         session_state=st_module.session_state,
@@ -302,4 +294,3 @@ def render_inspector_content(
     )
     if should_abort_delete:
         return
-
