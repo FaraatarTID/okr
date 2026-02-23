@@ -4,14 +4,20 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui.session_keys import (
+    ATLAS_JUMP_QUERY,
+    ATLAS_SCOPE_SELECTOR,
+    ATLAS_SELECTED_REF,
+)
+
 
 def render_scope_toolbar(
     *,
     st_module: Any,
     session_state: dict[str, Any],
     scope_labels: list[str],
-    jump_query_key: str = "atlas_jump_query",
-    scope_selector_key: str = "atlas_scope_selector",
+    jump_query_key: str = ATLAS_JUMP_QUERY,
+    scope_selector_key: str = ATLAS_SCOPE_SELECTOR,
 ) -> tuple[str, str]:
     toolbar = st_module.columns([2.9, 1.1], gap="small")
     query = str(
@@ -81,7 +87,7 @@ def render_jump_results(
             if st_module.button(
                 label, key=f"atlas_jump_{ref}", use_container_width=True
             ):
-                session_state["atlas_selected_ref"] = ref
+                session_state[ATLAS_SELECTED_REF] = ref
                 rerun_fn()
                 return True
     return False

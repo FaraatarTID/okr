@@ -6,6 +6,7 @@ import time
 from typing import Any, Callable
 
 from src.ui import atlas_map_sidebar_ai_helpers
+from src.ui.session_keys import ATLAS_MAP_LENS, ATLAS_SHOW_HEALTH_DEBUG
 
 
 def render_map_key_and_create_actions(
@@ -68,12 +69,12 @@ def resolve_map_lens_and_refs(
     descendant_refs_fn: Callable[..., list[str]],
 ) -> tuple[str, list[str], list[str], list[str]]:
     map_lens_options = ["Scope", "Branch"]
-    if session_state.get("atlas_map_lens") not in map_lens_options:
-        session_state["atlas_map_lens"] = "Scope"
+    if session_state.get(ATLAS_MAP_LENS) not in map_lens_options:
+        session_state[ATLAS_MAP_LENS] = "Scope"
     map_lens = sidebar.segmented_control(
         "Map Lens",
         options=map_lens_options,
-        key="atlas_map_lens",
+        key=ATLAS_MAP_LENS,
         selection_mode="single",
         label_visibility="collapsed",
     )
@@ -110,11 +111,11 @@ def render_health_debug_panel(
     if role_value == "admin":
         show_health_debug = sidebar.toggle(
             "Show Health Debug",
-            key="atlas_show_health_debug",
+            key=ATLAS_SHOW_HEALTH_DEBUG,
             value=False,
         )
-    elif "atlas_show_health_debug" in session_state:
-        session_state["atlas_show_health_debug"] = False
+    elif ATLAS_SHOW_HEALTH_DEBUG in session_state:
+        session_state[ATLAS_SHOW_HEALTH_DEBUG] = False
 
     if show_health_debug:
         debug_rows = health_debug_rows_fn(

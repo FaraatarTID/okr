@@ -10,6 +10,18 @@ from typing import Any, Callable
 from src.ui import atlas_workspace_ai_helpers
 from src.ui import atlas_workspace_focus_helpers
 from src.ui import atlas_workspace_scope_helpers
+from src.ui.session_keys import (
+    ATLAS_BREADCRUMBS,
+    ATLAS_FOCUS_TASK_REF,
+    ATLAS_LAST_SELECTED_REF,
+    ATLAS_SCOPE_SELECTOR,
+    ATLAS_SELECTED_REF,
+    ATLAS_SPRINT_NOTIFICATION_SENT_FOR,
+    ATLAS_SPRINT_REMINDER_DISMISSED_FOR,
+    ATLAS_SPRINT_STARTED_AT_EPOCH,
+    ATLAS_SPRINT_TARGET_MINUTES,
+    ATLAS_SPRINT_TASK_REF,
+)
 
 
 def resolve_actor_context(
@@ -46,7 +58,7 @@ def ensure_scope_selection(
     session_state: dict[str, Any],
     scope_options: dict[str, list[int] | None],
     *,
-    selector_key: str = "atlas_scope_selector",
+    selector_key: str = ATLAS_SCOPE_SELECTOR,
 ) -> str:
     return atlas_workspace_scope_helpers.ensure_scope_selection(
         session_state,
@@ -81,7 +93,7 @@ def ensure_selected_ref(
     index: dict[str, Any],
     roots: list[str],
     *,
-    selected_ref_key: str = "atlas_selected_ref",
+    selected_ref_key: str = ATLAS_SELECTED_REF,
     nav_stack_key: str = "nav_stack",
 ) -> str | None:
     return atlas_workspace_scope_helpers.ensure_selected_ref(
@@ -99,8 +111,8 @@ def sync_selected_navigation(
     selected_ref: str,
     selected_meta: dict[str, Any],
     nav_stack_key: str = "nav_stack",
-    last_selected_key: str = "atlas_last_selected_ref",
-    breadcrumbs_key: str = "atlas_breadcrumbs",
+    last_selected_key: str = ATLAS_LAST_SELECTED_REF,
+    breadcrumbs_key: str = ATLAS_BREADCRUMBS,
 ) -> set[str]:
     return atlas_workspace_scope_helpers.sync_selected_navigation(
         session_state,
@@ -145,7 +157,7 @@ def resolve_focus_task_ref(
     *,
     task_refs: list[str],
     suggested_task_ref: str | None,
-    focus_task_key: str = "atlas_focus_task_ref",
+    focus_task_key: str = ATLAS_FOCUS_TASK_REF,
 ) -> str | None:
     return atlas_workspace_scope_helpers.resolve_focus_task_ref(
         session_state,
@@ -174,8 +186,8 @@ def resolve_target_for_focus(
     session_state: dict[str, Any],
     *,
     focus_task_ref: str,
-    sprint_task_ref_key: str = "atlas_sprint_task_ref",
-    sprint_target_minutes_key: str = "atlas_sprint_target_minutes",
+    sprint_task_ref_key: str = ATLAS_SPRINT_TASK_REF,
+    sprint_target_minutes_key: str = ATLAS_SPRINT_TARGET_MINUTES,
 ) -> int:
     return atlas_workspace_focus_helpers.resolve_target_for_focus(
         session_state,
@@ -234,7 +246,7 @@ def dismiss_sprint_reminder(
     session_state: dict[str, Any],
     *,
     sprint_key: str | None,
-    dismissed_key: str = "atlas_sprint_reminder_dismissed_for",
+    dismissed_key: str = ATLAS_SPRINT_REMINDER_DISMISSED_FOR,
 ) -> None:
     atlas_workspace_focus_helpers.dismiss_sprint_reminder(
         session_state,
@@ -269,9 +281,9 @@ def build_sprint_reminder_state(
     sprint_run_key_fn: Callable[..., str | None],
     should_show_soft_reminder_fn: Callable[..., bool],
     should_emit_target_notification_fn: Callable[..., bool],
-    sprint_started_at_epoch_key: str = "atlas_sprint_started_at_epoch",
-    reminder_dismissed_key: str = "atlas_sprint_reminder_dismissed_for",
-    notification_sent_key: str = "atlas_sprint_notification_sent_for",
+    sprint_started_at_epoch_key: str = ATLAS_SPRINT_STARTED_AT_EPOCH,
+    reminder_dismissed_key: str = ATLAS_SPRINT_REMINDER_DISMISSED_FOR,
+    notification_sent_key: str = ATLAS_SPRINT_NOTIFICATION_SENT_FOR,
 ) -> dict[str, Any]:
     return atlas_workspace_focus_helpers.build_sprint_reminder_state(
         session_state,
@@ -291,7 +303,7 @@ def mark_sprint_notification_sent(
     session_state: dict[str, Any],
     *,
     sprint_key: str | None,
-    notification_sent_key: str = "atlas_sprint_notification_sent_for",
+    notification_sent_key: str = ATLAS_SPRINT_NOTIFICATION_SENT_FOR,
 ) -> None:
     atlas_workspace_focus_helpers.mark_sprint_notification_sent(
         session_state,

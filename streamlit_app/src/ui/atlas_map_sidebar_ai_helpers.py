@@ -5,6 +5,19 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from src.ui.session_keys import (
+    ATLAS_AI_APPLY_OVERALL_TO_PROGRESS,
+    ATLAS_AI_PROGRESS_ALLOW_DECREASE,
+    ATLAS_AI_PROGRESS_MAX_DELTA,
+    ATLAS_AI_PROGRESS_SYNC_BUTTON,
+    ATLAS_AI_PROGRESS_UNDO,
+    ATLAS_AI_PROGRESS_UNDO_BUTTON,
+    ATLAS_AI_SUGGESTED_NEXT,
+    ATLAS_AI_SYNC_PREVIEW_MODE,
+    ATLAS_AI_SYNC_REPORT,
+    ATLAS_AI_UNDO_REPORT,
+)
+
 
 def render_ai_control_panel(
     *,
@@ -14,30 +27,30 @@ def render_ai_control_panel(
 ) -> tuple[bool, bool, int, bool]:
     sidebar.markdown("**AI**")
 
-    if "atlas_ai_apply_overall_to_progress" not in session_state:
-        session_state["atlas_ai_apply_overall_to_progress"] = False
+    if ATLAS_AI_APPLY_OVERALL_TO_PROGRESS not in session_state:
+        session_state[ATLAS_AI_APPLY_OVERALL_TO_PROGRESS] = False
     apply_ai_score_to_progress = sidebar.toggle(
         "Apply AI overall score to KR progress",
-        key="atlas_ai_apply_overall_to_progress",
+        key=ATLAS_AI_APPLY_OVERALL_TO_PROGRESS,
         disabled=not has_kr_refs,
     )
 
-    if "atlas_ai_sync_preview_mode" not in session_state:
-        session_state["atlas_ai_sync_preview_mode"] = False
+    if ATLAS_AI_SYNC_PREVIEW_MODE not in session_state:
+        session_state[ATLAS_AI_SYNC_PREVIEW_MODE] = False
     preview_ai_sync = sidebar.toggle(
         "Preview mode (no writes)",
-        key="atlas_ai_sync_preview_mode",
+        key=ATLAS_AI_SYNC_PREVIEW_MODE,
         disabled=not has_kr_refs,
     )
 
-    if "atlas_ai_progress_max_delta" not in session_state:
-        session_state["atlas_ai_progress_max_delta"] = 25
-    if "atlas_ai_progress_allow_decrease" not in session_state:
-        session_state["atlas_ai_progress_allow_decrease"] = False
+    if ATLAS_AI_PROGRESS_MAX_DELTA not in session_state:
+        session_state[ATLAS_AI_PROGRESS_MAX_DELTA] = 25
+    if ATLAS_AI_PROGRESS_ALLOW_DECREASE not in session_state:
+        session_state[ATLAS_AI_PROGRESS_ALLOW_DECREASE] = False
 
-    max_progress_delta = int(session_state.get("atlas_ai_progress_max_delta") or 25)
+    max_progress_delta = int(session_state.get(ATLAS_AI_PROGRESS_MAX_DELTA) or 25)
     allow_progress_decrease = bool(
-        session_state.get("atlas_ai_progress_allow_decrease", False)
+        session_state.get(ATLAS_AI_PROGRESS_ALLOW_DECREASE, False)
     )
 
     if apply_ai_score_to_progress:
@@ -48,12 +61,12 @@ def render_ai_control_panel(
                 max_value=100,
                 step=5,
                 value=max_progress_delta,
-                key="atlas_ai_progress_max_delta",
+                key=ATLAS_AI_PROGRESS_MAX_DELTA,
             )
         )
         allow_progress_decrease = sidebar.toggle(
             "Allow progress decreases",
-            key="atlas_ai_progress_allow_decrease",
+            key=ATLAS_AI_PROGRESS_ALLOW_DECREASE,
             value=allow_progress_decrease,
         )
 
@@ -76,7 +89,7 @@ def handle_ai_progress_undo_action(
     rerun_fn: Callable[[], Any],
     now_fn: Callable[[], float] = time.time,
 ) -> bool:
-    undo_payload = session_state.get("atlas_ai_progress_undo")
+    undo_payload = session_state.get(ATLAS_AI_PROGRESS_UNDO)
     if not isinstance(undo_payload, dict):
         return False
 
@@ -86,12 +99,12 @@ def handle_ai_progress_undo_action(
 
     undo_age_seconds = float(now_fn() - float(undo_payload.get("at") or 0))
     if undo_age_seconds > 1800:
-        session_state.pop("atlas_ai_progress_undo", None)
+        session_state.pop(ATLAS_AI_PROGRESS_UNDO, None)
         return False
 
     if not sidebar.button(
         "Undo Last AI Progress Apply",
-        key="atlas_ai_progress_undo_btn",
+        key=ATLAS_AI_PROGRESS_UNDO_BUTTON,
         use_container_width=True,
     ):
         return False
@@ -102,12 +115,12 @@ def handle_ai_progress_undo_action(
         update_key_result_fn=update_key_result_fn,
         recalculate_rollup_for_key_results_fn=recalculate_rollup_for_key_results_fn,
     )
-    session_state["atlas_ai_undo_report"] = {
+    session_state[ATLAS_AI_UNDO_REPORT] = {
         "restored": int(undo_result.get("restored") or 0),
         "failed": list(undo_result.get("failed") or []),
         "at": float(now_fn()),
     }
-    session_state.pop("atlas_ai_progress_undo", None)
+    session_state.pop(ATLAS_AI_PROGRESS_UNDO, None)
     rerun_fn()
     return True
 
@@ -145,7 +158,7 @@ def handle_ai_progress_sync_action(
 ) -> bool:
     if not sidebar.button(
         "AI Progress Sync",
-        key="atlas_ai_progress_sync_btn",
+        key=ATLAS_AI_PROGRESS_SYNC_BUTTON,
         use_container_width=True,
         disabled=not map_kr_refs,
     ):
@@ -189,18 +202,18 @@ def handle_ai_progress_sync_action(
 
     ai_suggested_payload = sync_result.get("ai_suggested_payload")
     if ai_suggested_payload:
-        session_state["atlas_ai_suggested_next"] = ai_suggested_payload
+        session_state[ATLAS_AI_SUGGESTED_NEXT] = ai_suggested_payload
     else:
-        session_state.pop("atlas_ai_suggested_next", None)
+        session_state.pop(ATLAS_AI_SUGGESTED_NEXT, None)
 
     progress_undo_items = list(sync_result.get("progress_undo_items") or [])
     if not preview_ai_sync and apply_ai_score_to_progress and progress_undo_items:
-        session_state["atlas_ai_progress_undo"] = {
+        session_state[ATLAS_AI_PROGRESS_UNDO] = {
             "items": progress_undo_items,
             "at": float(now_fn()),
         }
 
-    session_state["atlas_ai_sync_report"] = dict(sync_result.get("sync_report") or {})
+    session_state[ATLAS_AI_SYNC_REPORT] = dict(sync_result.get("sync_report") or {})
     rerun_fn()
     return True
 
@@ -214,13 +227,13 @@ def render_ai_sync_report_feedback(
     dataframe_fn: Callable[..., Any],
     now_fn: Callable[[], float] = time.time,
 ) -> bool:
-    sync_report = session_state.get("atlas_ai_sync_report")
+    sync_report = session_state.get(ATLAS_AI_SYNC_REPORT)
     if not isinstance(sync_report, dict):
         return False
 
     sync_age = float(now_fn() - float(sync_report.get("at") or 0))
     if sync_age > 45:
-        session_state.pop("atlas_ai_sync_report", None)
+        session_state.pop(ATLAS_AI_SYNC_REPORT, None)
         return False
 
     sync_messages = build_ai_sync_sidebar_messages_fn(
@@ -265,13 +278,13 @@ def render_ai_undo_report_feedback(
     build_ai_undo_sidebar_messages_fn: Callable[..., dict[str, Any]],
     now_fn: Callable[[], float] = time.time,
 ) -> bool:
-    undo_report = session_state.get("atlas_ai_undo_report")
+    undo_report = session_state.get(ATLAS_AI_UNDO_REPORT)
     if not isinstance(undo_report, dict):
         return False
 
     undo_age = float(now_fn() - float(undo_report.get("at") or 0))
     if undo_age > 20:
-        session_state.pop("atlas_ai_undo_report", None)
+        session_state.pop(ATLAS_AI_UNDO_REPORT, None)
         return False
 
     undo_messages = build_ai_undo_sidebar_messages_fn(undo_report=undo_report)

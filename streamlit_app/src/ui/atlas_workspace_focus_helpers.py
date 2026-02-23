@@ -7,6 +7,15 @@ import logging
 import time
 from typing import Any, Callable
 
+from src.ui.session_keys import (
+    ATLAS_LAST_SESSION_SUMMARY,
+    ATLAS_SPRINT_NOTIFICATION_SENT_FOR,
+    ATLAS_SPRINT_REMINDER_DISMISSED_FOR,
+    ATLAS_SPRINT_STARTED_AT_EPOCH,
+    ATLAS_SPRINT_TARGET_MINUTES,
+    ATLAS_SPRINT_TASK_REF,
+)
+
 
 def can_track_task(
     *,
@@ -29,8 +38,8 @@ def resolve_target_for_focus(
     session_state: dict[str, Any],
     *,
     focus_task_ref: str,
-    sprint_task_ref_key: str = "atlas_sprint_task_ref",
-    sprint_target_minutes_key: str = "atlas_sprint_target_minutes",
+    sprint_task_ref_key: str = ATLAS_SPRINT_TASK_REF,
+    sprint_target_minutes_key: str = ATLAS_SPRINT_TARGET_MINUTES,
 ) -> int:
     if session_state.get(sprint_task_ref_key) != focus_task_ref:
         return 0
@@ -78,7 +87,7 @@ def dismiss_sprint_reminder(
     session_state: dict[str, Any],
     *,
     sprint_key: str | None,
-    dismissed_key: str = "atlas_sprint_reminder_dismissed_for",
+    dismissed_key: str = ATLAS_SPRINT_REMINDER_DISMISSED_FOR,
 ) -> None:
     session_state[dismissed_key] = sprint_key
 
@@ -91,13 +100,13 @@ def apply_focus_start_success(
     stop_capture_key: str,
     now_fn: Callable[[], float] = time.time,
 ) -> None:
-    session_state["atlas_sprint_target_minutes"] = int(target_minutes)
-    session_state["atlas_sprint_task_ref"] = focus_task_ref
-    session_state["atlas_sprint_started_at_epoch"] = float(now_fn())
+    session_state[ATLAS_SPRINT_TARGET_MINUTES] = int(target_minutes)
+    session_state[ATLAS_SPRINT_TASK_REF] = focus_task_ref
+    session_state[ATLAS_SPRINT_STARTED_AT_EPOCH] = float(now_fn())
     for state_key in [
         stop_capture_key,
-        "atlas_sprint_reminder_dismissed_for",
-        "atlas_sprint_notification_sent_for",
+        ATLAS_SPRINT_REMINDER_DISMISSED_FOR,
+        ATLAS_SPRINT_NOTIFICATION_SENT_FOR,
     ]:
         if state_key in session_state:
             del session_state[state_key]
@@ -112,9 +121,9 @@ def build_sprint_reminder_state(
     sprint_run_key_fn: Callable[..., str | None],
     should_show_soft_reminder_fn: Callable[..., bool],
     should_emit_target_notification_fn: Callable[..., bool],
-    sprint_started_at_epoch_key: str = "atlas_sprint_started_at_epoch",
-    reminder_dismissed_key: str = "atlas_sprint_reminder_dismissed_for",
-    notification_sent_key: str = "atlas_sprint_notification_sent_for",
+    sprint_started_at_epoch_key: str = ATLAS_SPRINT_STARTED_AT_EPOCH,
+    reminder_dismissed_key: str = ATLAS_SPRINT_REMINDER_DISMISSED_FOR,
+    notification_sent_key: str = ATLAS_SPRINT_NOTIFICATION_SENT_FOR,
 ) -> dict[str, Any]:
     sprint_key = sprint_run_key_fn(
         focus_task_ref if target_for_focus > 0 else None,
@@ -146,7 +155,7 @@ def mark_sprint_notification_sent(
     session_state: dict[str, Any],
     *,
     sprint_key: str | None,
-    notification_sent_key: str = "atlas_sprint_notification_sent_for",
+    notification_sent_key: str = ATLAS_SPRINT_NOTIFICATION_SENT_FOR,
 ) -> None:
     session_state[notification_sent_key] = sprint_key
 
@@ -171,7 +180,7 @@ def stop_focus_session(
         user_id=username,
     )
     if worklog_local:
-        session_state["atlas_last_session_summary"] = {
+        session_state[ATLAS_LAST_SESSION_SUMMARY] = {
             "task_ref": focus_task_ref,
             "minutes": round(
                 float(getattr(worklog_local, "duration_minutes", 0) or 0), 1
@@ -180,11 +189,11 @@ def stop_focus_session(
             "at": float(now_fn()),
         }
     for state_key in [
-        "atlas_sprint_target_minutes",
-        "atlas_sprint_task_ref",
-        "atlas_sprint_started_at_epoch",
-        "atlas_sprint_reminder_dismissed_for",
-        "atlas_sprint_notification_sent_for",
+        ATLAS_SPRINT_TARGET_MINUTES,
+        ATLAS_SPRINT_TASK_REF,
+        ATLAS_SPRINT_STARTED_AT_EPOCH,
+        ATLAS_SPRINT_REMINDER_DISMISSED_FOR,
+        ATLAS_SPRINT_NOTIFICATION_SENT_FOR,
         stop_capture_key,
         stop_draft_key,
     ]:

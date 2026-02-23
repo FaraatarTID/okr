@@ -41,12 +41,16 @@ TYPE_SIZES = {
 }
 
 
+def _inject_style_block(style_block: str) -> None:
+    st.markdown(style_block, unsafe_allow_html=True)
+
+
 def inject_dialog_styles():
     """
     CSS to prevent dialog from closing on backdrop click (by hiding the close button backdrop)
     and styling elements inside.
     """
-    st.markdown(
+    _inject_style_block(
         """
         <style>
             /* This is a hacky way to prevent backdrop clicks in Streamlit 1.34+ */
@@ -63,8 +67,7 @@ def inject_dialog_styles():
                 border-radius: 4px;
             }
         </style>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -72,7 +75,7 @@ def apply_custom_fonts():
     """
     Injects CSS to enforce Vazirmatn font across the application.
     """
-    st.markdown(
+    _inject_style_block(
         """
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@100..900&display=swap');
@@ -164,14 +167,13 @@ def apply_custom_fonts():
             margin-bottom: 2rem;
         }
         </style>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
 def inject_atlas_styles():
     """Styling tokens for the Atlas timer-first workspace."""
-    st.markdown(
+    _inject_style_block(
         """
         <style>
         :root {
@@ -681,6 +683,5 @@ def inject_atlas_styles():
             }
         }
         </style>
-        """,
-        unsafe_allow_html=True,
+        """
     )
