@@ -3,6 +3,8 @@ Documentation HQ: [README](../README.md)
 
 This playbook is a manager-operating guide for the current implementation in `streamlit_app/src/ui/*`, `streamlit_app/src/crud.py`, and `streamlit_app/src/services/ai_service.py`.
 
+For organization-wide rollout design, also use `docs/OKR_ROLLOUT_GUIDE.md`.
+
 ## 1. Manager Role in This System
 
 Manager role is expected to own three responsibilities:
@@ -94,7 +96,29 @@ Ritual vs Retro:
 - KR updates happen in Weekly Ritual step 2.
 - RetroBox is review-only for saved retrospectives.
 
-## 8. Dummy Manager UAT Script (Step-by-Step)
+## 8. Manager Role During Enterprise Rollout (Pilot -> Scale)
+
+When the company is introducing OKRs beyond one team, managers should run an explicit pilot-to-scale discipline.
+
+Pre-pilot manager checks:
+1. Confirm direct reports are correctly linked (`manager_id`) and visible in `My Team`.
+2. Confirm team Objectives/KRs are ready to move from `DRAFT` to `ACTIVE` at kickoff.
+3. Confirm weekly check-in, review, and retrospective meetings are scheduled before cycle start.
+4. Confirm training/coaching plan is complete for your team members.
+
+Pilot-cycle execution responsibilities:
+1. Keep Weekly Ritual completion rate high and resolve stale check-ins immediately.
+2. Use Inspector to maintain KR metric quality (`start/current/target`, confidence comments, deadlines).
+3. Convert risk signals from dashboard into concrete interventions (ownership, scope, deadline, unblockers).
+4. Capture objective/KR closure reflections to produce reusable learning for next cycle.
+
+Scale recommendation package (what managers should hand upward after pilot):
+1. Evidence of adoption (ritual completion, check-in freshness, participation quality).
+2. Evidence of outcome quality (risk trend, confidence trend, KR attainment signals).
+3. Top blockers that require leadership or cross-team decisions.
+4. Clear recommendation: keep scope, expand to next teams, or extend pilot.
+
+## 9. Dummy Manager UAT Script (Step-by-Step)
 
 1. Admin setup: create one dummy manager and 3-5 direct reports (`manager_id` linked).
 2. Seed active cycle: ensure each member has Goal -> Objective -> KR -> Task chain.
@@ -116,7 +140,7 @@ Ritual vs Retro:
    - export Weekly Report
    - keep one summary artifact for admin review
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 If manager cannot see team nodes:
 1. Verify `manager_id` links on users.
