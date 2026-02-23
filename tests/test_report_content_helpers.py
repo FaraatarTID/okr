@@ -73,12 +73,19 @@ def _base_kwargs(st_module):
         "cached_get_all_tasks_by_cycle_fn": lambda *_args, **_kwargs: [],
         "cached_get_all_krs_by_cycle_fn": lambda *_args, **_kwargs: [],
         "format_time_fn": lambda minutes: f"{int(minutes)}m",
+        "escape_html_fn": lambda value: str(value),
         "calculate_kr_score_fn": lambda *_args, **_kwargs: 0.0,
         "get_score_label_fn": lambda *_args, **_kwargs: "label",
         "get_score_color_band_fn": lambda *_args, **_kwargs: "band",
-        "report_helpers_module": SimpleNamespace(build_report_payload=lambda **_kwargs: {}),
-        "report_export_helpers_module": SimpleNamespace(render_report_export_controls=lambda **_kwargs: None),
-        "report_kr_status_helpers_module": SimpleNamespace(render_weekly_kr_strategic_status=lambda **_kwargs: False),
+        "report_helpers_module": SimpleNamespace(
+            build_report_payload=lambda **_kwargs: {}
+        ),
+        "report_export_helpers_module": SimpleNamespace(
+            render_report_export_controls=lambda **_kwargs: None
+        ),
+        "report_kr_status_helpers_module": SimpleNamespace(
+            render_weekly_kr_strategic_status=lambda **_kwargs: False
+        ),
         "logger": None,
     }
 
@@ -88,7 +95,7 @@ def test_render_report_content_cycle_missing_still_handles_empty_logs():
     kwargs = _base_kwargs(fake_st)
     report_content_helpers.render_report_content("alice", "Weekly", **kwargs)
     assert fake_st.warning_calls == []
-    assert fake_st.info_calls == ["No work recorded in the this period."]
+    assert fake_st.info_calls == ["No work recorded in this period."]
 
 
 def test_render_report_content_errors_when_user_missing():
@@ -107,4 +114,4 @@ def test_render_report_content_informs_when_no_logs():
     kwargs["get_user_by_username_fn"] = lambda _username: SimpleNamespace(id=55)
     kwargs["cached_get_work_logs_by_range_fn"] = lambda *_args, **_kwargs: []
     report_content_helpers.render_report_content("alice", "Daily", **kwargs)
-    assert fake_st.info_calls == ["No work recorded in the this period."]
+    assert fake_st.info_calls == ["No work recorded in this period."]

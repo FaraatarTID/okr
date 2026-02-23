@@ -35,6 +35,9 @@ def render_objective_alignment_section(
 
     st_module.markdown("---")
     st_module.caption("Organizational Alignment")
+    click_button_fn = getattr(st_module, "button", None)
+    if click_button_fn is None:
+        click_button_fn = getattr(st_module, "form_submit_button")
 
     with get_session_context_fn() as session:
         parents, children = get_alignment_neighbors_fn(session, node_id)
@@ -45,18 +48,16 @@ def render_objective_alignment_section(
             p_col1, p_col2 = st_module.columns([0.8, 0.2])
             p_col1.write(f"{getattr(parent, 'title', '')}")
             with get_session_context_fn() as session:
-                edge = (
-                    session.exec(
-                        select_fn(alignment_edge_model)
-                        .where(
-                            alignment_edge_model.parent_id == getattr(parent, "id", None)
-                        )
-                        .where(alignment_edge_model.child_id == node_id)
-                    ).first()
-                )
+                edge = session.exec(
+                    select_fn(alignment_edge_model)
+                    .where(
+                        alignment_edge_model.parent_id == getattr(parent, "id", None)
+                    )
+                    .where(alignment_edge_model.child_id == node_id)
+                ).first()
                 if edge:
                     with p_col2:
-                        if st_module.form_submit_button(
+                        if click_button_fn(
                             "🗑️",
                             key=f"del_align_p_{getattr(edge, 'id', '')}",
                         ):
@@ -72,18 +73,14 @@ def render_objective_alignment_section(
             c_col1, c_col2 = st_module.columns([0.8, 0.2])
             c_col1.write(f"{getattr(child, 'title', '')}")
             with get_session_context_fn() as session:
-                edge = (
-                    session.exec(
-                        select_fn(alignment_edge_model)
-                        .where(alignment_edge_model.parent_id == node_id)
-                        .where(
-                            alignment_edge_model.child_id == getattr(child, "id", None)
-                        )
-                    ).first()
-                )
+                edge = session.exec(
+                    select_fn(alignment_edge_model)
+                    .where(alignment_edge_model.parent_id == node_id)
+                    .where(alignment_edge_model.child_id == getattr(child, "id", None))
+                ).first()
                 if edge:
                     with c_col2:
-                        if st_module.form_submit_button(
+                        if click_button_fn(
                             "🗑️",
                             key=f"del_align_c_{getattr(edge, 'id', '')}",
                         ):
@@ -114,8 +111,12 @@ def render_objective_alignment_section(
                 continue
             objective_id = int(objective_id)
             objective_ids.append(objective_id)
-            objective_title = (getattr(objective, "title", "") or "").strip() or "Untitled objective"
-            objective_owner = (getattr(objective, "created_by", "") or "system").strip() or "system"
+            objective_title = (
+                getattr(objective, "title", "") or ""
+            ).strip() or "Untitled objective"
+            objective_owner = (
+                getattr(objective, "created_by", "") or "system"
+            ).strip() or "system"
             objective_labels[objective_id] = (
                 f"{objective_title} (@{objective_owner}) | #{objective_id}"
             )
@@ -142,7 +143,7 @@ def render_objective_alignment_section(
             key=f"align_type_{node_id}",
         )
 
-        if st_module.form_submit_button(
+        if click_button_fn(
             "🔗 Link Objectives",
             use_container_width=True,
         ):

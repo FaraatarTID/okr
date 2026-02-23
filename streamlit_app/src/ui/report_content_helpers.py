@@ -1,8 +1,9 @@
-﻿"""Report content rendering helpers."""
+"""Report content rendering helpers."""
 
 from __future__ import annotations
 
 import time
+
 
 def render_report_content(
     username,
@@ -17,7 +18,7 @@ def render_report_content(
     cached_get_all_tasks_by_cycle_fn,
     cached_get_all_krs_by_cycle_fn,
     format_time_fn,
-    escape_html_fn,
+    escape_html_fn=None,
     calculate_kr_score_fn,
     get_score_label_fn,
     get_score_color_band_fn,
@@ -26,6 +27,11 @@ def render_report_content(
     report_kr_status_helpers_module,
     logger,
 ):
+    if escape_html_fn is None:
+        from src.ui.safe_html import escape_html as _escape_html
+
+        escape_html_fn = _escape_html
+
     # data parameter removed
     # Filter logic
     now = time.time() * 1000
@@ -190,9 +196,7 @@ def render_report_content(
 
                         res = generate_weekly_summary(
                             username,
-                            from_epoch_millis_fn(start_time).strftime(
-                                "%Y-%m-%d"
-                            ),
+                            from_epoch_millis_fn(start_time).strftime("%Y-%m-%d"),
                             utc_now_naive_fn().strftime("%Y-%m-%d"),
                             stats,
                         )
@@ -217,7 +221,9 @@ def render_report_content(
                     for h in summary_res.get("highlights", []):
                         st_module.markdown(f"- {h}")
             else:
-                st_module.info("Click above to generate an executive brief of your week.")
+                st_module.info(
+                    "Click above to generate an executive brief of your week."
+                )
 
     st_module.markdown("---")
 
@@ -262,7 +268,9 @@ def render_report_content(
                 if "Overdue" in label_dl or "At Risk" in label_dl:
                     warnings_dl.append(f"{label_dl} - {t_dl.title}")
             except Exception as exc:
-                logger.debug("Failed to evaluate deadline warning for task %s: %s", t_dl.id, exc)
+                logger.debug(
+                    "Failed to evaluate deadline warning for task %s: %s", t_dl.id, exc
+                )
 
     if warnings_dl:
         if len(tasks_dl) >= task_scan_limit:
@@ -390,18 +398,20 @@ def render_report_content(
     from src.crud import update_key_result
     from src.services.ai_service import analyze_node
 
-    should_abort_report = report_kr_status_helpers_module.render_weekly_kr_strategic_status(
-        st_module=st_module,
-        mode=mode,
-        krs_list=list(krs_list),
-        username=username,
-        calculate_kr_score_fn=calculate_kr_score_fn,
-        get_score_label_fn=get_score_label_fn,
-        get_score_color_band_fn=get_score_color_band_fn,
-        analyze_node_fn=analyze_node,
-        update_key_result_fn=update_key_result,
-        json_loads_fn=json.loads,
-        logger=logger,
+    should_abort_report = (
+        report_kr_status_helpers_module.render_weekly_kr_strategic_status(
+            st_module=st_module,
+            mode=mode,
+            krs_list=list(krs_list),
+            username=username,
+            calculate_kr_score_fn=calculate_kr_score_fn,
+            get_score_label_fn=get_score_label_fn,
+            get_score_color_band_fn=get_score_color_band_fn,
+            analyze_node_fn=analyze_node,
+            update_key_result_fn=update_key_result,
+            json_loads_fn=json.loads,
+            logger=logger,
+        )
     )
     if should_abort_report:
         return

@@ -1,8 +1,9 @@
-﻿"""Leadership dashboard rendering helpers."""
+"""Leadership dashboard rendering helpers."""
 
 from __future__ import annotations
 
 import plotly.graph_objects as go
+
 
 def render_leadership_dashboard_content(
     username,
@@ -31,7 +32,9 @@ def render_leadership_dashboard_content(
         ):
             # Clear session state data cache
             keys_to_clear = [
-                k for k in st_module.session_state.keys() if k.startswith("okr_data_cache_")
+                k
+                for k in st_module.session_state.keys()
+                if k.startswith("okr_data_cache_")
             ]
             for k in keys_to_clear:
                 del st_module.session_state[k]
@@ -44,7 +47,9 @@ def render_leadership_dashboard_content(
 
     # === TEAM MEMBER FILTER (Admin/Manager only) ===
     selected_members = [username]  # Default to current user
-    member_display_map = {username: st_module.session_state.get("display_name", username)}
+    member_display_map = {
+        username: st_module.session_state.get("display_name", username)
+    }
 
     if user_role in ["admin", "manager"]:
         st_module.markdown("#### 👥 Team Filter")
@@ -89,7 +94,7 @@ def render_leadership_dashboard_content(
         st_module.markdown("---")
 
     # === AGGREGATE METRICS FROM SELECTED MEMBERS ===
-    from src.utils.deadline_utils import get_deadline_summary, get_deadline_status
+    from src.utils.deadline_utils import get_deadline_status
 
     # === FETCH AGGREGATED METRICS ===
     metrics = cached_get_leadership_metrics_fn(
@@ -201,7 +206,9 @@ def render_leadership_dashboard_content(
             template="simple_white",
         )
 
-        st_module.plotly_chart(fig_progress, key="dash_bar_progress", use_container_width=True)
+        st_module.plotly_chart(
+            fig_progress, key="dash_bar_progress", use_container_width=True
+        )
         st_module.markdown("---")
 
     # === DEADLINE HEALTH BY MEMBER ===
@@ -321,7 +328,9 @@ def render_leadership_dashboard_content(
             template="simple_white",
         )
 
-        st_module.plotly_chart(fig, key="dash_scatter_strategic", use_container_width=True)
+        st_module.plotly_chart(
+            fig, key="dash_scatter_strategic", use_container_width=True
+        )
     else:
         st_module.info(
             "Not enough AI analysis data yet. Run AI analysis on Key Results to populate this chart."
@@ -376,7 +385,9 @@ def render_leadership_dashboard_content(
                             user_obj = users_map[goal_owner_id]
                             owner_disp = user_obj.display_name or user_obj.username
                 except Exception as exc:
-                    logger.debug("Failed to resolve overdue task owner display: %s", exc)
+                    logger.debug(
+                        "Failed to resolve overdue task owner display: %s", exc
+                    )
                     owner_disp = "Unknown"
 
                 overdue_tasks.append(
@@ -413,7 +424,9 @@ def render_leadership_dashboard_content(
     if user_role in ["admin", "manager"]:
         st_module.markdown("---")
         st_module.markdown("#### 🧠 AI Team Coach")
-        st_module.caption("Get strategic coaching tips based on your team's performance data")
+        st_module.caption(
+            "Get strategic coaching tips based on your team's performance data"
+        )
 
         # Prepare team data for AI
         team_coaching_data = {
@@ -533,7 +546,9 @@ def render_leadership_dashboard_content(
                             st_module.warning(status_str, icon="⚠️")
 
                 # Expandable insights per dimension
-                with st_module.expander("💡 Detailed Insights & Actions", expanded=False):
+                with st_module.expander(
+                    "💡 Detailed Insights & Actions", expanded=False
+                ):
                     for key, label in dim_labels.items():
                         dim = dimensions.get(key, {})
                         st_module.markdown(f"**{label}**")
@@ -560,5 +575,3 @@ def render_leadership_dashboard_content(
             if watch_out:
                 st_module.markdown("##### ⚠️ Risk Alert")
                 st_module.warning(f"🔔 {watch_out}")
-
-
