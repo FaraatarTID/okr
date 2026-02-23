@@ -1,5 +1,7 @@
 # OKR Rollout Charter Template
 
+Documentation HQ: [README](../../README.md)
+
 Use this template to define the rollout contract before pilot launch.
 
 ## 1. Transformation Scope

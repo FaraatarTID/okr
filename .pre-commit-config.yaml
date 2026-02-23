@@ -15,6 +15,9 @@ repos:
         files: \.(md|ya?ml)$
       - id: end-of-file-fixer
         files: \.(md|ya?ml)$
+      - id: mixed-line-ending
+        args: [--fix=lf]
+        files: \.(py|md|txt|toml|ya?ml|json|ini|cfg|sh|sql|css|js|ts|tsx|html|xml)$
       - id: check-merge-conflict
       - id: check-added-large-files
 
