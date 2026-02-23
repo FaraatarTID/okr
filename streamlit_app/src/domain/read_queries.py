@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from typing import Any, Callable, Iterable, Optional
 
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -56,7 +56,10 @@ def build_atlas_scope_snapshot(
     cycle_id: int,
     owner_ids: Optional[Iterable[int]],
     include_analysis: bool = False,
+    extract_ai_snapshot_fields_fn: Callable[[Any], tuple[int | None, str | None]]
+    | None = None,
 ) -> dict:
+    extractor = extract_ai_snapshot_fields_fn or _atlas_extract_ai_snapshot_fields
     canonical_owner_ids = _normalize_owner_ids(owner_ids)
     goal_stmt = (
         select(
@@ -204,9 +207,7 @@ def build_atlas_scope_snapshot(
             key_result_id_int = int(key_result_id)
             objective_id_int = int(objective_id)
             key_result_ids.append(key_result_id_int)
-            ai_overall_score, ai_deadline_state = _atlas_extract_ai_snapshot_fields(
-                gemini_analysis
-            )
+            ai_overall_score, ai_deadline_state = extractor(gemini_analysis)
             payload = {
                 "id": key_result_id_int,
                 "title": title,

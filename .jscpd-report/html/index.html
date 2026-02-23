@@ -1,0 +1,401 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Copy/Paste Detector Report</title><link href="styles/tailwind.css" rel="stylesheet"><link href="styles/prism.css" rel="stylesheet"></head><body class="bg-gray-100"><header class="bg-white shadow py-4"><div class="container mx-auto px-4"><h1 class="text-3xl font-semibold text-gray-800">jscpd - copy/paste report</h1></div></header><main class="container mx-auto my-8 p-4 bg-white shadow rounded"><section class="mb-8" id="dashboard"><h2 class="text-2xl font-semibold text-gray-700 mb-4">Dashboard</h2><div class="grid grid-cols-4 gap-4"><div class="bg-blue-200 p-4 rounded text-center"><h3 class="text-lg font-semibold text-blue-800 mb-2">Total Files</h3><span class="text-4xl font-bold text-blue-800">290</span></div><div class="bg-green-200 p-4 rounded text-center"><h3 class="text-lg font-semibold text-green-800 mb-2">Total Lines of Code</h3><span class="text-4xl font-bold text-green-800">50399</span></div><div class="bg-yellow-200 p-4 rounded text-center"><h3 class="text-lg font-semibold text-yellow-800 mb-2">Number of Clones</h3><span class="text-4xl font-bold text-yellow-800">12</span></div><div class="bg-red-200 p-4 rounded text-center"><h3 class="text-lg font-semibold text-red-800 mb-2">Duplicated Lines</h3><span class="text-4xl font-bold text-red-800">392 (0.78%)</span></div></div></section><section class="mb-8" id="formats"><h2 class="text-2xl font-semibold text-gray-700 mb-4">Formats with Duplications</h2><table class="w-full table-auto"><thead><tr class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal"><th class="py-3 px-6 text-left">Format</th><th class="py-3 px-6 text-left">Files</th><th class="py-3 px-6 text-left">Lines</th><th class="py-3 px-6 text-left">Clones</th><th class="py-3 px-6 text-left">Duplicated Lines</th><th class="py-3 px-6 text-left">Duplicated Tokens</th></tr></thead><tbody><tr class="bg-white border-b border-gray-200 text-gray-800 text-sm"><td class="py-3 px-6"><a class="text-blue-600 hover:underline" href="#python-clones">python</a></td><td class="py-3 px-6">287</td><td class="py-3 px-6">49659</td><td class="py-3 px-6">12</td><td class="py-3 px-6">392</td><td class="py-3 px-6">3631</td></tr><tr class="bg-white border-b border-gray-200 text-gray-800 text-sm"><td class="py-3 px-6"><a class="text-blue-600 hover:underline" href="#css-clones">css</a></td><td class="py-3 px-6">2</td><td class="py-3 px-6">592</td><td class="py-3 px-6">0</td><td class="py-3 px-6">0</td><td class="py-3 px-6">0</td></tr><tr class="bg-white border-b border-gray-200 text-gray-800 text-sm"><td class="py-3 px-6"><a class="text-blue-600 hover:underline" href="#ini-clones">ini</a></td><td class="py-3 px-6">1</td><td class="py-3 px-6">148</td><td class="py-3 px-6">0</td><td class="py-3 px-6">0</td><td class="py-3 px-6">0</td></tr></tbody></table></section><section class="mb-8" id="txt-clones"><a name="python-clones"></a><h2 class="text-2xl font-semibold text-gray-700 mb-4">python</h2><div class="divide-y divide-gray-200 border-b-2"><div class="py-4"><p class="text-gray-600">tests\test_inspector_content_split_helpers.py (Line 200:5 - Line 228:6), tests\test_inspector_content_split_helpers.py (Line 117:6 - Line 145:5)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn0" onclick="toggleCodeBlock('cloneGroup0', 'expandBtn0', 'collapseBtn0')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn0" onclick="toggleCodeBlock('cloneGroup0', 'expandBtn0', 'collapseBtn0')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup0"><code class="language-python text-sm text-gray-800">,
+        username=&quot;alice&quot;,
+        logger=None,
+        cached_get_all_users_fn=lambda: [],
+        cached_get_user_by_id_fn=lambda _uid: None,
+        cached_get_team_members_fn=lambda _uid: [],
+        score_mode_enum=SimpleNamespace(UNWEIGHTED=&quot;unweighted&quot;),
+        metric_type_enum=SimpleNamespace(NUMERIC=&quot;numeric&quot;),
+        lifecycle_state_enum=SimpleNamespace(DRAFT=&quot;draft&quot;),
+        calculate_kr_score_fn=lambda **_kwargs: 0.0,
+        calculate_objective_score_fn=lambda *_args, **_kwargs: 0.0,
+        get_score_label_fn=lambda _score: &quot;N/A&quot;,
+        get_score_color_band_fn=lambda _score: &quot;band&quot;,
+        get_allowed_transitions_fn=lambda _state: [],
+        state_icons={},
+        state_hints={},
+        get_all_cycles_fn=lambda: [],
+        get_session_context_fn=lambda **_kwargs: None,
+        get_alignment_neighbors_fn=lambda **_kwargs: None,
+        create_alignment_fn=lambda **_kwargs: None,
+        delete_alignment_fn=lambda **_kwargs: None,
+        update_goal_fn=lambda *_args, **_kwargs: None,
+        update_objective_fn=lambda *_args, **_kwargs: None,
+        update_key_result_fn=lambda *_args, **_kwargs: None,
+        update_task_fn=lambda *_args, **_kwargs: None,
+        rerun_fn=lambda: None,
+    )
+
+    assert should_abort is False</code></pre></div><div class="py-4"><p class="text-gray-600">tests\test_atlas_cache_performance.py (Line 18:5 - Line 47:17), tests\test_latency_audit_fixes.py (Line 19:5 - Line 46:17)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn1" onclick="toggleCodeBlock('cloneGroup1', 'expandBtn1', 'collapseBtn1')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn1" onclick="toggleCodeBlock('cloneGroup1', 'expandBtn1', 'collapseBtn1')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup1"><code class="language-python text-sm text-gray-800">db_url = f&quot;sqlite:///{db_path}&quot;
+    engine = database._create_engine(db_url)
+
+    monkeypatch.setattr(database, &quot;DATABASE_URL&quot;, db_url, raising=False)
+    monkeypatch.setattr(database, &quot;_engine&quot;, engine, raising=False)
+
+    SQLModel.metadata.create_all(engine)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+
+
+def _count_queries(engine, fn) -&gt; int:
+    counter = {&quot;count&quot;: 0}
+
+    def _before_cursor_execute(
+        conn, cursor, statement, parameters, context, executemany
+    ):
+        counter[&quot;count&quot;] += 1
+
+    event.listen(engine, &quot;before_cursor_execute&quot;, _before_cursor_execute)
+    try:
+        fn()
+    finally:
+        event.remove(engine, &quot;before_cursor_execute&quot;, _before_cursor_execute)
+    return counter[&quot;count&quot;]
+
+
+def _seed_small_tree</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\src\ui\inspector_form_helpers.py (Line 245:1 - Line 276:59), streamlit_app\src\ui\inspector_mutation_helpers.py (Line 168:1 - Line 202:8)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn2" onclick="toggleCodeBlock('cloneGroup2', 'expandBtn2', 'collapseBtn2')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn2" onclick="toggleCodeBlock('cloneGroup2', 'expandBtn2', 'collapseBtn2')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup2"><code class="language-python text-sm text-gray-800">def handle_save_changes(
+    *,
+    st_module: Any,
+    can_save: bool,
+    node_type_upper: str,
+    node_id: int,
+    username: str,
+    new_title: str,
+    new_description: str,
+    new_progress: int,
+    new_cycle_id: Any,
+    new_strat_tags_input: str,
+    new_score_mode: Any,
+    new_obj_weight: float,
+    new_state: Any,
+    new_reflection: str,
+    new_start: float,
+    new_target: float,
+    new_current: float,
+    new_unit: str,
+    new_metric_type: Any,
+    new_weight: float,
+    new_init_tags_input: str,
+    new_assignee_id: Any,
+    update_goal_fn: Callable[..., Any],
+    update_objective_fn: Callable[..., Any],
+    update_key_result_fn: Callable[..., Any],
+    update_task_fn: Callable[..., Any],
+    submit_button_fn: Callable[..., bool] | None = None,
+    rerun_fn: Callable[[], Any],
+) -&gt; bool:
+    &quot;&quot;&quot;Handle inspector Save Changes dispatch by node type.&quot;&quot;&quot;</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\src\ui\atlas_workspace_ai_sync_helpers.py (Line 53:1 - Line 80:9), streamlit_app\src\ui\atlas_workspace_helpers.py (Line 529:1 - Line 556:7)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn3" onclick="toggleCodeBlock('cloneGroup3', 'expandBtn3', 'collapseBtn3')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn3" onclick="toggleCodeBlock('cloneGroup3', 'expandBtn3', 'collapseBtn3')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup3"><code class="language-python text-sm text-gray-800">def run_ai_progress_sync(
+    *,
+    map_kr_refs: list[str],
+    map_task_refs: list[str],
+    index: dict[str, Any],
+    health_index: dict[str, Any] | None,
+    actor_id: int,
+    selected_scope: str,
+    map_lens: str,
+    selected_node_title: str,
+    username: str,
+    apply_ai_score_to_progress: bool,
+    preview_ai_sync: bool,
+    max_progress_delta: int,
+    allow_progress_decrease: bool,
+    analyze_node_fn: Callable[..., Any],
+    suggest_critical_task_fn: Callable[..., Any],
+    update_key_result_fn: Callable[..., Any],
+    recalculate_rollup_for_key_results_fn: Callable[[list[int]], Any],
+    ai_progress_decision_fn: Callable[..., dict[str, Any]],
+    health_state_fn: Callable[..., dict[str, Any]],
+    ai_overall_score_fn: Callable[[dict[str, Any]], int | None],
+    next_score_fn: Callable[..., Any],
+    deadline_to_iso_fn: Callable[[Any], str | None],
+    logger: logging.Logger | None = None,
+    progress_callback: Callable[[int, int, str], Any] | None = None,
+) -&gt; dict[str, Any]:
+    total_kr</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\src\ui\atlas_workspace_ai_helpers.py (Line 62:38 - Line 92:37), streamlit_app\src\ui\atlas_workspace_helpers.py (Line 443:27 - Line 473:27)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn4" onclick="toggleCodeBlock('cloneGroup4', 'expandBtn4', 'collapseBtn4')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn4" onclick="toggleCodeBlock('cloneGroup4', 'expandBtn4', 'collapseBtn4')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup4"><code class="language-python text-sm text-gray-800">.build_ai_suggested_payload(
+        ai_pick=ai_pick,
+        map_task_refs=map_task_refs,
+        index=index,
+        selected_scope=selected_scope,
+        map_lens=map_lens,
+        now_fn=now_fn,
+    )
+
+
+def build_ai_sync_report(
+    *,
+    synced: int,
+    failed: list[str],
+    total_kr: int,
+    preview_ai_sync: bool,
+    apply_ai_score_to_progress: bool,
+    planned_progress: int,
+    applied_progress: int,
+    missing_ai_score: int,
+    skipped_delta_cap: int,
+    skipped_decrease: int,
+    unchanged_progress: int,
+    max_progress_delta: int,
+    allow_progress_decrease: bool,
+    trace_rows: list[dict[str, Any]],
+    ai_suggested_payload: dict[str, Any] | None,
+    ai_suggest_error: str | None,
+    now_fn: Callable[[], float] = time.time,
+) -&gt; dict[str, Any]:
+    return atlas_workspace_ai_reporting_helpers</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\src\ui\atlas_workspace_ai_helpers.py (Line 140:32 - Line 175:32), streamlit_app\src\ui\atlas_workspace_helpers.py (Line 521:27 - Line 556:27)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn5" onclick="toggleCodeBlock('cloneGroup5', 'expandBtn5', 'collapseBtn5')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn5" onclick="toggleCodeBlock('cloneGroup5', 'expandBtn5', 'collapseBtn5')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup5"><code class="language-python text-sm text-gray-800">.apply_ai_progress_undo(
+        undo_items=undo_items,
+        username=username,
+        update_key_result_fn=update_key_result_fn,
+        recalculate_rollup_for_key_results_fn=recalculate_rollup_for_key_results_fn,
+    )
+
+
+def run_ai_progress_sync(
+    *,
+    map_kr_refs: list[str],
+    map_task_refs: list[str],
+    index: dict[str, Any],
+    health_index: dict[str, Any] | None,
+    actor_id: int,
+    selected_scope: str,
+    map_lens: str,
+    selected_node_title: str,
+    username: str,
+    apply_ai_score_to_progress: bool,
+    preview_ai_sync: bool,
+    max_progress_delta: int,
+    allow_progress_decrease: bool,
+    analyze_node_fn: Callable[..., Any],
+    suggest_critical_task_fn: Callable[..., Any],
+    update_key_result_fn: Callable[..., Any],
+    recalculate_rollup_for_key_results_fn: Callable[[list[int]], Any],
+    ai_progress_decision_fn: Callable[..., dict[str, Any]],
+    health_state_fn: Callable[..., dict[str, Any]],
+    ai_overall_score_fn: Callable[[dict[str, Any]], int | None],
+    next_score_fn: Callable[..., Any],
+    deadline_to_iso_fn: Callable[[Any], str | None],
+    logger: logging.Logger | None = None,
+    progress_callback: Callable[[int, int, str], Any] | None = None,
+) -&gt; dict[str, Any]:
+    return atlas_workspace_ai_sync_helpers</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\src\ui\atlas_map_sidebar_ai_helpers.py (Line 128:1 - Line 159:3), streamlit_app\src\ui\atlas_map_sidebar_helpers.py (Line 172:1 - Line 203:7)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn6" onclick="toggleCodeBlock('cloneGroup6', 'expandBtn6', 'collapseBtn6')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn6" onclick="toggleCodeBlock('cloneGroup6', 'expandBtn6', 'collapseBtn6')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup6"><code class="language-python text-sm text-gray-800">def handle_ai_progress_sync_action(
+    *,
+    sidebar: Any,
+    session_state: dict[str, Any],
+    map_kr_refs: list[str],
+    map_task_refs: list[str],
+    index: dict[str, Any],
+    health_index: dict[str, Any] | None,
+    actor_id: int,
+    selected_scope: str,
+    map_lens: str,
+    selected_node_title: str,
+    username: str,
+    apply_ai_score_to_progress: bool,
+    preview_ai_sync: bool,
+    max_progress_delta: int,
+    allow_progress_decrease: bool,
+    run_ai_progress_sync_fn: Callable[..., dict[str, Any]],
+    analyze_node_fn: Callable[..., Any],
+    suggest_critical_task_fn: Callable[..., Any],
+    update_key_result_fn: Callable[..., Any],
+    recalculate_rollup_for_key_results_fn: Callable[..., Any],
+    ai_progress_decision_fn: Callable[..., dict[str, Any]],
+    health_state_fn: Callable[..., dict[str, Any]],
+    ai_overall_score_fn: Callable[..., Any],
+    next_score_fn: Callable[..., Any],
+    deadline_to_iso_fn: Callable[[Any], str | None],
+    logger: Any,
+    rerun_fn: Callable[[], Any],
+    now_fn: Callable[[], float] = time.time,
+) -&gt; bool:
+    if</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\src\domain\read_queries.py (Line 248:3 - Line 278:4), streamlit_app\src\ui\atlas_scope_snapshot_helpers.py (Line 225:17 - Line 255:2)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn7" onclick="toggleCodeBlock('cloneGroup7', 'expandBtn7', 'collapseBtn7')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn7" onclick="toggleCodeBlock('cloneGroup7', 'expandBtn7', 'collapseBtn7')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup7"><code class="language-python text-sm text-gray-800">)
+            ).all()
+        )
+        for (
+            task_id,
+            key_result_id,
+            title,
+            description,
+            progress,
+            deadline,
+            timer_started_at,
+            status,
+            total_time_spent,
+            assignee_id,
+        ) in task_rows:
+            if task_id is None or key_result_id is None:
+                continue
+            key_result_payload = key_result_payload_by_id.get(int(key_result_id))
+            if key_result_payload is None:
+                continue
+            key_result_payload[&quot;tasks&quot;].append(
+                {
+                    &quot;id&quot;: int(task_id),
+                    &quot;title&quot;: title,
+                    &quot;description&quot;: description or &quot;&quot;,
+                    &quot;progress&quot;: int(progress or 0),
+                    &quot;deadline&quot;: deadline,
+                    &quot;timer_started_at&quot;: timer_started_at,
+                    &quot;status&quot;: str(getattr(status, &quot;value&quot;, status)),
+                    &quot;total_time_spent&quot;: int(total_time_spent or 0),
+                    &quot;assignee_id&quot;: int</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\alembic\versions\h8b9c0d1e2f3_add_auth_throttle_state_table.py (Line 18:1 - Line 52:22), streamlit_app\alembic\versions\j0d1e2f3a4b5_drop_sync_retry_event_table.py (Line 18:1 - Line 52:19)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn8" onclick="toggleCodeBlock('cloneGroup8', 'expandBtn8', 'collapseBtn8')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn8" onclick="toggleCodeBlock('cloneGroup8', 'expandBtn8', 'collapseBtn8')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup8"><code class="language-python text-sm text-gray-800">branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def _table_names() -&gt; set:
+    inspector = inspect(op.get_bind())
+    try:
+        return set(inspector.get_table_names())
+    except Exception:
+        return set()
+
+
+def _index_names(table_name: str) -&gt; set:
+    inspector = inspect(op.get_bind())
+    try:
+        return {idx[&quot;name&quot;] for idx in inspector.get_indexes(table_name)}
+    except Exception:
+        return set()
+
+
+def _check_names(table_name: str) -&gt; set:
+    inspector = inspect(op.get_bind())
+    try:
+        names = set()
+        for ck in inspector.get_check_constraints(table_name):
+            name = ck.get(&quot;name&quot;)
+            if name:
+                names.add(name)
+        return names
+    except Exception:
+        return set()
+
+
+def upgrade() -&gt; None:
+    if &quot;auth_throttle_state&quot;</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\alembic\versions\g7b8c9d0e1f2_add_sync_retry_event_table.py (Line 18:1 - Line 53:3), streamlit_app\alembic\versions\j0d1e2f3a4b5_drop_sync_retry_event_table.py (Line 18:1 - Line 53:7)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn9" onclick="toggleCodeBlock('cloneGroup9', 'expandBtn9', 'collapseBtn9')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn9" onclick="toggleCodeBlock('cloneGroup9', 'expandBtn9', 'collapseBtn9')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup9"><code class="language-python text-sm text-gray-800">branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def _table_names() -&gt; set:
+    inspector = inspect(op.get_bind())
+    try:
+        return set(inspector.get_table_names())
+    except Exception:
+        return set()
+
+
+def _index_names(table_name: str) -&gt; set:
+    inspector = inspect(op.get_bind())
+    try:
+        return {idx[&quot;name&quot;] for idx in inspector.get_indexes(table_name)}
+    except Exception:
+        return set()
+
+
+def _check_names(table_name: str) -&gt; set:
+    inspector = inspect(op.get_bind())
+    try:
+        names = set()
+        for ck in inspector.get_check_constraints(table_name):
+            name = ck.get(&quot;name&quot;)
+            if name:
+                names.add(name)
+        return names
+    except Exception:
+        return set()
+
+
+def upgrade() -&gt; None:
+    if &quot;sync_retry_event&quot; not in _table_names():
+        op</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\scripts\perf_atlas_rerun.py (Line 54:5 - Line 96:4), streamlit_app\scripts\perf_hotpaths.py (Line 53:5 - Line 94:9)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn10" onclick="toggleCodeBlock('cloneGroup10', 'expandBtn10', 'collapseBtn10')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn10" onclick="toggleCodeBlock('cloneGroup10', 'expandBtn10', 'collapseBtn10')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup10"><code class="language-python text-sm text-gray-800">db_url = f&quot;sqlite:///{db_path}&quot;
+    engine = database._create_engine(db_url)
+    database.DATABASE_URL = db_url
+    database._engine = engine
+    SQLModel.metadata.create_all(engine)
+    return engine
+
+
+def _seed(engine):
+    now = datetime.now()
+    with Session(engine, expire_on_commit=False) as session:
+        users = []
+        for i in range(1, 9):
+            role = UserRole.MANAGER if i == 1 else UserRole.MEMBER
+            manager_id = None if i == 1 else 1
+            users.append(
+                User(
+                    username=f&quot;user{i}&quot;,
+                    password_hash=&quot;x&quot;,
+                    display_name=f&quot;User {i}&quot;,
+                    role=role,
+                    manager_id=manager_id,
+                    is_active=True,
+                )
+            )
+        session.add_all(users)
+        session.flush()
+
+        cycle = Cycle(
+            title=&quot;Q1 2026&quot;,
+            start_date=now - timedelta(days=30),
+            end_date=now + timedelta(days=60),
+            is_active=True,
+        )
+        session.add(cycle)
+        session.flush()
+
+        goals = []
+        objectives = []
+        key_results = []
+        tasks = []
+
+        for</code></pre></div><div class="py-4"><p class="text-gray-600">streamlit_app\scripts\perf_atlas_rerun.py (Line 94:2 - Line 134:16), streamlit_app\scripts\perf_hotpaths.py (Line 95:2 - Line 135:19)</p><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2" id="expandBtn11" onclick="toggleCodeBlock('cloneGroup11', 'expandBtn11', 'collapseBtn11')">Show code</button><button class="bg-gray-500 text-white px-1 py-0.5 text-xs rounded focus:outline-none ml-2 hidden" id="collapseBtn11" onclick="toggleCodeBlock('cloneGroup11', 'expandBtn11', 'collapseBtn11')">Hide code</button><pre class="bg-gray-100 border border-gray-200 p-4 rounded mt-2 hidden" id="cloneGroup11"><code class="language-python text-sm text-gray-800">= []
+
+        for user in users:
+            for g in range(5):
+                goals.append(
+                    Goal(
+                        owner_id=user.id,
+                        cycle_id=cycle.id,
+                        title=f&quot;Goal {user.id}-{g}&quot;,
+                        progress=0,
+                        created_at=now - timedelta(days=60),
+                    )
+                )
+        session.add_all(goals)
+        session.flush()
+
+        for goal in goals:
+            for o in range(3):
+                objectives.append(
+                    Objective(
+                        goal_id=goal.id,
+                        title=f&quot;Obj {goal.id}-{o}&quot;,
+                        progress=0,
+                        created_at=now - timedelta(days=50),
+                    )
+                )
+        session.add_all(objectives)
+        session.flush()
+
+        for objective in objectives:
+            for k in range(4):
+                key_results.append(
+                    KeyResult(
+                        objective_id=objective.id,
+                        title=f&quot;KR {objective.id}-{k}&quot;,
+                        progress=0,
+                        target_value=100.0,
+                        current_value=float((k * 17) % 100),
+                        gemini_analysis=json.dumps(
+                            {
+                                &quot;overall_score&quot;</code></pre></div><!-- Add more clone groups for .txt format as needed         // Add more clone groups for .txt format as needed--></div><a name="css-clones"></a><h2 class="text-2xl font-semibold text-gray-700 mb-4">css</h2><div class="divide-y divide-gray-200 border-b-2"><!-- Add more clone groups for .txt format as needed         // Add more clone groups for .txt format as needed--></div><a name="ini-clones"></a><h2 class="text-2xl font-semibold text-gray-700 mb-4">ini</h2><div class="divide-y divide-gray-200 border-b-2"><!-- Add more clone groups for .txt format as needed         // Add more clone groups for .txt format as needed--></div></section><!-- Add more sections for other formats and clone groups as needed--></main><footer class="bg-white shadow mt-8 py-4"><div class="container mx-auto px-4 text-center"><p class="text-sm text-gray-600">This report is generated by jscpd, an open-source copy/paste detector.</p><p class="text-sm text-gray-600">jscpd is licensed under the MIT License.</p><a class="text-blue-500 text-sm" href="https://github.com/kucherenko/jscpd" target="_blank" rel="noopener noreferrer">View jscpd on GitHub</a></div></footer><script src="js/prism.js"></script><script>function toggleCodeBlock(codeBlockId, expandBtnId, collapseBtnId) {
+  const codeBlock = document.getElementById(codeBlockId);
+  const expandBtn = document.getElementById(expandBtnId);
+  const collapseBtn = document.getElementById(collapseBtnId);
+
+  codeBlock.classList.toggle('hidden');
+  expandBtn.classList.toggle('hidden');
+  collapseBtn.classList.toggle('hidden');
+}</script></body></html>

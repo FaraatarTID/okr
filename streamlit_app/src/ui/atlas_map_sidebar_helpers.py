@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any, Callable
 
 from src.ui import atlas_map_sidebar_ai_helpers
@@ -133,134 +132,16 @@ def render_health_debug_panel(
             )
 
 
-def render_ai_control_panel(
-    *,
-    sidebar: Any,
-    session_state: dict[str, Any],
-    has_kr_refs: bool,
-) -> tuple[bool, bool, int, bool]:
-    return atlas_map_sidebar_ai_helpers.render_ai_control_panel(
-        sidebar=sidebar,
-        session_state=session_state,
-        has_kr_refs=has_kr_refs,
-    )
-
-
-def handle_ai_progress_undo_action(
-    *,
-    sidebar: Any,
-    session_state: dict[str, Any],
-    username: str,
-    apply_ai_progress_undo_fn: Callable[..., dict[str, Any]],
-    update_key_result_fn: Callable[..., Any],
-    recalculate_rollup_for_key_results_fn: Callable[..., Any],
-    rerun_fn: Callable[[], Any],
-    now_fn: Callable[[], float] = time.time,
-) -> bool:
-    return atlas_map_sidebar_ai_helpers.handle_ai_progress_undo_action(
-        sidebar=sidebar,
-        session_state=session_state,
-        username=username,
-        apply_ai_progress_undo_fn=apply_ai_progress_undo_fn,
-        update_key_result_fn=update_key_result_fn,
-        recalculate_rollup_for_key_results_fn=recalculate_rollup_for_key_results_fn,
-        rerun_fn=rerun_fn,
-        now_fn=now_fn,
-    )
-
-
-def handle_ai_progress_sync_action(
-    *,
-    sidebar: Any,
-    session_state: dict[str, Any],
-    map_kr_refs: list[str],
-    map_task_refs: list[str],
-    index: dict[str, Any],
-    health_index: dict[str, Any] | None,
-    actor_id: int,
-    selected_scope: str,
-    map_lens: str,
-    selected_node_title: str,
-    username: str,
-    apply_ai_score_to_progress: bool,
-    preview_ai_sync: bool,
-    max_progress_delta: int,
-    allow_progress_decrease: bool,
-    run_ai_progress_sync_fn: Callable[..., dict[str, Any]],
-    analyze_node_fn: Callable[..., Any],
-    suggest_critical_task_fn: Callable[..., Any],
-    update_key_result_fn: Callable[..., Any],
-    recalculate_rollup_for_key_results_fn: Callable[..., Any],
-    ai_progress_decision_fn: Callable[..., dict[str, Any]],
-    health_state_fn: Callable[..., dict[str, Any]],
-    ai_overall_score_fn: Callable[..., Any],
-    next_score_fn: Callable[..., Any],
-    deadline_to_iso_fn: Callable[[Any], str | None],
-    logger: Any,
-    rerun_fn: Callable[[], Any],
-    now_fn: Callable[[], float] = time.time,
-) -> bool:
-    return atlas_map_sidebar_ai_helpers.handle_ai_progress_sync_action(
-        sidebar=sidebar,
-        session_state=session_state,
-        map_kr_refs=map_kr_refs,
-        map_task_refs=map_task_refs,
-        index=index,
-        health_index=health_index,
-        actor_id=actor_id,
-        selected_scope=selected_scope,
-        map_lens=map_lens,
-        selected_node_title=selected_node_title,
-        username=username,
-        apply_ai_score_to_progress=apply_ai_score_to_progress,
-        preview_ai_sync=preview_ai_sync,
-        max_progress_delta=max_progress_delta,
-        allow_progress_decrease=allow_progress_decrease,
-        run_ai_progress_sync_fn=run_ai_progress_sync_fn,
-        analyze_node_fn=analyze_node_fn,
-        suggest_critical_task_fn=suggest_critical_task_fn,
-        update_key_result_fn=update_key_result_fn,
-        recalculate_rollup_for_key_results_fn=recalculate_rollup_for_key_results_fn,
-        ai_progress_decision_fn=ai_progress_decision_fn,
-        health_state_fn=health_state_fn,
-        ai_overall_score_fn=ai_overall_score_fn,
-        next_score_fn=next_score_fn,
-        deadline_to_iso_fn=deadline_to_iso_fn,
-        logger=logger,
-        rerun_fn=rerun_fn,
-        now_fn=now_fn,
-    )
-
-
-def render_ai_sync_report_feedback(
-    *,
-    sidebar: Any,
-    session_state: dict[str, Any],
-    index: dict[str, Any],
-    build_ai_sync_sidebar_messages_fn: Callable[..., dict[str, Any]],
-    dataframe_fn: Callable[..., Any],
-    now_fn: Callable[[], float] = time.time,
-) -> bool:
-    return atlas_map_sidebar_ai_helpers.render_ai_sync_report_feedback(
-        sidebar=sidebar,
-        session_state=session_state,
-        index=index,
-        build_ai_sync_sidebar_messages_fn=build_ai_sync_sidebar_messages_fn,
-        dataframe_fn=dataframe_fn,
-        now_fn=now_fn,
-    )
-
-
-def render_ai_undo_report_feedback(
-    *,
-    sidebar: Any,
-    session_state: dict[str, Any],
-    build_ai_undo_sidebar_messages_fn: Callable[..., dict[str, Any]],
-    now_fn: Callable[[], float] = time.time,
-) -> bool:
-    return atlas_map_sidebar_ai_helpers.render_ai_undo_report_feedback(
-        sidebar=sidebar,
-        session_state=session_state,
-        build_ai_undo_sidebar_messages_fn=build_ai_undo_sidebar_messages_fn,
-        now_fn=now_fn,
-    )
+render_ai_control_panel = atlas_map_sidebar_ai_helpers.render_ai_control_panel
+handle_ai_progress_undo_action = (
+    atlas_map_sidebar_ai_helpers.handle_ai_progress_undo_action
+)
+handle_ai_progress_sync_action = (
+    atlas_map_sidebar_ai_helpers.handle_ai_progress_sync_action
+)
+render_ai_sync_report_feedback = (
+    atlas_map_sidebar_ai_helpers.render_ai_sync_report_feedback
+)
+render_ai_undo_report_feedback = (
+    atlas_map_sidebar_ai_helpers.render_ai_undo_report_feedback
+)
