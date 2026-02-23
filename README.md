@@ -30,6 +30,10 @@ Use this section as the single entry point for all project docs.
 - **Manager Playbook (Fa)**: [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md)
 - **OKR Lifecycle (En)**: [docs/OKR_LIFECYCLE_GUIDE.md](docs/OKR_LIFECYCLE_GUIDE.md)
 - **OKR Lifecycle (Fa)**: [docs/OKR_LIFECYCLE_GUIDE_FA.md](docs/OKR_LIFECYCLE_GUIDE_FA.md)
+- **OKR Rollout (Enterprise, En)**: [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md)
+- **OKR Rollout (Enterprise, Fa)**: [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md)
+- **OKR Rollout Templates (En)**: [docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE.md](docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE.md), [Readiness Checklist](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md), [Pilot Retro Survey](docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE.md)
+- **OKR Rollout Templates (Fa)**: [docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE_FA.md](docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE_FA.md), [Readiness Checklist](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST_FA.md), [Pilot Retro Survey](docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE_FA.md)
 
 ### 🛠️ Ops & Infrastructure
 
@@ -70,6 +74,7 @@ If you are not sure where to go, use this intent-based map.
 | Debug an outage or runtime error | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) / [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md) | [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md) / [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md) |
 | Understand any config key quickly | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) / [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) | [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) for full examples |
 | Deploy on Kubernetes | [docs/KUBERNETES.md](docs/KUBERNETES.md) / [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md) | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) / [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) |
+| Introduce OKRs across departments | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) / [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md) | [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md) / [docs/OKR_LIFECYCLE_GUIDE.md](docs/OKR_LIFECYCLE_GUIDE.md) |
 
 ### Quick Routing by Role
 
@@ -80,6 +85,7 @@ If you are not sure where to go, use this intent-based map.
 | Admin/operator | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) / [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md) |
 | AI/policy reviewer | [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md) / [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md) |
 | Lifecycle/process owner | [docs/OKR_LIFECYCLE_GUIDE.md](docs/OKR_LIFECYCLE_GUIDE.md) / [docs/OKR_LIFECYCLE_GUIDE_FA.md](docs/OKR_LIFECYCLE_GUIDE_FA.md) |
+| OKR transformation lead | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) / [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md) |
 
 ## راهنمای سریع فارسی
 
@@ -98,6 +104,7 @@ If you are not sure where to go, use this intent-based map.
 | مرجع کلیدهای تنظیمات | [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) |
 | استقرار Kubernetes | [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md) |
 | تنظیم Reverse Proxy | [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md) |
+| استقرار OKR در چند دپارتمان | [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md) |
 
 ### مسیر بر اساس نقش
 
@@ -107,6 +114,7 @@ If you are not sure where to go, use this intent-based map.
 | مدیر | [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md) |
 | ادمین | [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md) |
 | بررسی AI و سیاست‌ها | [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md) |
+| رهبر تحول OKR | [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md) |
 
 ---
 

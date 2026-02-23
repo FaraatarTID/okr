@@ -3,6 +3,8 @@ Documentation HQ: [README](../README.md)
 
 This guide reflects the lifecycle logic currently implemented in `streamlit_app/src/models.py`, `streamlit_app/src/domain/lifecycle.py`, and `streamlit_app/src/crud.py`.
 
+For enterprise rollout sequencing and change-management guidance, see `docs/OKR_ROLLOUT_GUIDE.md`.
+
 ## 1. Lifecycle States
 
 Objectives and Key Results use four states:
@@ -70,3 +72,23 @@ Use `Final Reflection` on Objective/KR for:
 - decisions for next cycle.
 
 This keeps end-of-cycle reasoning auditable for future planning.
+
+## 8. Lifecycle State to Ceremony Mapping
+
+The lifecycle state model should be operated together with the OKR ceremony cadence:
+
+| Lifecycle state | Typical ceremony focus | Expected operating behavior |
+|---|---|---|
+| `DRAFT` | Planning | Draft Objectives/KRs, align dependencies, confirm metric quality before activation. |
+| `ACTIVE` | Weekly check-ins | Execute work, submit KR updates, and resolve blockers transparently. |
+| `GRADING` | Review + retrospective | Evaluate final status, capture reflections, and agree on improvements. |
+| `ARCHIVED` | Post-cycle learning | Preserve historical outcomes and reactivate only when strategically needed. |
+
+## 9. Rollout Guardrails for New OKR Programs
+
+The following rollout practices are recommended for enterprise adoption (process guidance, not hard-enforced by code):
+- Start with a pilot group of roughly 100-250 participants.
+- Run at least two full cycles before scaling broadly.
+- Schedule weekly check-ins, review, and retrospective dates before cycle kickoff.
+- Use retrospective output to define concrete process changes for the next cycle.
+- Scale only after evidence shows both adoption quality and outcome quality.
