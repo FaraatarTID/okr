@@ -4,6 +4,8 @@ Documentation HQ: [README](README.md)
 
 Learning Loop specific architecture contract (EN+FA, canonical): [docs/LEARNING_LOOP_ARCHITECTURE.md](docs/LEARNING_LOOP_ARCHITECTURE.md)
 
+Maintainer file ownership and change map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
+
 ## System Overview
 
 This repository is a Streamlit-based OKR product with a SQLModel persistence layer on Supabase PostgreSQL.
