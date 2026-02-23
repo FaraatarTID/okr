@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
+from src.domain import analytics as domain_analytics
 from src.utils.time_utils import to_epoch_millis
 
 
@@ -146,12 +149,8 @@ def get_user_data_from_sql_from_crud(
                             for log in task.work_logs:
                                 work_log.append(
                                     {
-                                        "startedAt": to_epoch_millis(
-                                            log.start_time
-                                        ),
-                                        "endedAt": to_epoch_millis(
-                                            log.end_time
-                                        ),
+                                        "startedAt": to_epoch_millis(log.start_time),
+                                        "endedAt": to_epoch_millis(log.end_time),
                                         "durationMinutes": log.duration_minutes,
                                         "summary": log.summary,
                                     }
@@ -169,9 +168,7 @@ def get_user_data_from_sql_from_crud(
                             "isExpanded": task.is_expanded,
                             "status": task.status.value,
                             "timeSpent": task.total_time_spent,
-                            "timerStartedAt": to_epoch_millis(
-                                task.timer_started_at
-                            ),
+                            "timerStartedAt": to_epoch_millis(task.timer_started_at),
                             "deadline": to_epoch_millis(task.deadline),
                             "workLog": work_log,
                         }
@@ -196,3 +193,37 @@ def get_sql_id_by_external_from_crud(*, crud_module, external_id: str, model_cla
         )
         result = session.exec(statement).first()
         return result.id if result else None
+
+
+def get_leadership_metrics_from_crud(*, usernames, cycle_id: int):
+    return domain_analytics.get_leadership_metrics(usernames, cycle_id)
+
+
+def get_work_logs_by_date_range_from_crud(
+    *, user_id: int, start_date: datetime, end_date: datetime
+):
+    return domain_analytics.get_work_logs_by_date_range(user_id, start_date, end_date)
+
+
+def get_all_krs_by_cycle_from_crud(*, cycle_id: int, limit=None, offset: int = 0):
+    return domain_analytics.get_all_krs_by_cycle(
+        cycle_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def get_all_tasks_by_cycle_from_crud(*, cycle_id: int, limit=None, offset: int = 0):
+    return domain_analytics.get_all_tasks_by_cycle(
+        cycle_id,
+        limit=limit,
+        offset=offset,
+    )
+
+
+def get_hours_by_goal_from_crud(*, user_id: int, days: int = 7) -> dict:
+    return domain_analytics.get_hours_by_goal(user_id, days)
+
+
+def get_daily_work_trend_from_crud(*, user_id: int, days: int = 7) -> dict:
+    return domain_analytics.get_daily_work_trend(user_id, days)

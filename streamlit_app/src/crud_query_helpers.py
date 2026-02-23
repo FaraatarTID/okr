@@ -83,3 +83,45 @@ def get_node_by_external_id_from_crud(*, crud_module, external_id: str):
                 return node, model_class
     return None, None
 
+
+def get_dashboard_data_from_crud(
+    *, crud_module, user_id: str, cycle_id: Optional[int] = None
+):
+    with crud_module.get_session_context() as session:
+        statement = crud_module.select(crud_module.Goal).where(
+            crud_module._goal_owner_predicate_by_username(user_id)
+        )
+        if cycle_id:
+            statement = statement.where(crud_module.Goal.cycle_id == cycle_id)
+
+        statement = statement.options(
+            crud_module.selectinload(crud_module.Goal.objectives)
+        )
+        goals = session.exec(statement).all()
+
+        dashboard_goals = []
+        for goal in goals:
+            dashboard_goals.append(
+                crud_module.DashboardGoal(
+                    id=goal.id,
+                    title=goal.title,
+                    progress=goal.progress,
+                    objectives_count=len(goal.objectives),
+                )
+            )
+        return dashboard_goals
+
+
+def get_goal_tree_from_crud(*, crud_module, goal_id: int):
+    with crud_module.get_session_context() as session:
+        statement = (
+            crud_module.select(crud_module.Goal)
+            .where(crud_module.Goal.id == goal_id)
+            .options(
+                crud_module.selectinload(crud_module.Goal.objectives)
+                .selectinload(crud_module.Objective.key_results)
+                .selectinload(crud_module.KeyResult.tasks)
+                .selectinload(crud_module.Task.work_logs)
+            )
+        )
+        return session.exec(statement).first()

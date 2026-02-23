@@ -3,19 +3,15 @@ CRUD operations for OKR Application.
 Provides efficient data access with JOINs for dashboard and tree loading.
 """
 
-from contextlib import contextmanager
-
-from sqlmodel import Session, select
-from sqlalchemy import inspect as sa_inspect
-from sqlalchemy.orm import selectinload
+from sqlmodel import Session, select  # noqa: F401
+from sqlalchemy.orm import selectinload  # noqa: F401
 from sqlalchemy.exc import OperationalError
 import os
 import logging
 import sys
-from types import SimpleNamespace
 from typing import Any, Dict, Optional, List
 from datetime import datetime
-from src.utils.time_utils import utc_now_naive
+from src.utils.time_utils import utc_now_naive  # noqa: F401
 
 from src.models import (
     Goal,
@@ -41,14 +37,15 @@ from src.models import (
     Experiment,
     RetroExperimentOutcome,
 )
-from src.config_runtime import get_bool_config, get_config_value
-from src.database import get_session_context as _database_get_session_context
-from src.domain import analytics as domain_analytics
-from src.domain import authorization as domain_auth
-from src.audit import audit_log
-from src.utils.cache_utils import clear_cache_safe
+from src.config_runtime import get_bool_config, get_config_value  # noqa: F401
+from src.database import get_session_context as _database_get_session_context  # noqa: F401
+from src.domain import authorization as domain_auth  # noqa: F401
+from src.audit import audit_log  # noqa: F401
+from src.utils.cache_utils import clear_cache_safe  # noqa: F401
 from src import crud_auth_helpers
 from src import crud_alignment_helpers
+from src import crud_core_helpers
+from src import crud_create_helpers
 from src import crud_cycle_helpers
 from src import crud_delete_helpers
 from src import crud_progress_helpers
@@ -60,7 +57,6 @@ from src import crud_update_helpers
 from src import crud_experiment_helpers
 from src import crud_data_helpers
 from src import crud_checkin_helpers
-import bcrypt
 
 logger = logging.getLogger(__name__)
 
@@ -162,135 +158,62 @@ _MODEL_BINDING_NAMES = (
 
 
 def _ensure_model_bindings_current() -> None:
-    """Refresh class bindings after hot-reload if registry classes were replaced."""
-    import src.models as _models
-
-    bindings_are_current = True
-    for name in _MODEL_BINDING_NAMES:
-        latest = getattr(_models, name, None)
-        if latest is None:
-            continue
-        if globals().get(name) is not latest:
-            bindings_are_current = False
-            break
-
-    if bindings_are_current:
-        try:
-            sa_inspect(User)
-            return
-        except Exception as exc:
-            logger.debug("Model binding inspect failed in CRUD; forcing refresh: %s", exc)
-            bindings_are_current = False
-
-    if bindings_are_current:
-        return
-
-    for name in _MODEL_BINDING_NAMES:
-        value = getattr(_models, name, None)
-        if value is not None:
-            globals()[name] = value
+    return crud_core_helpers.ensure_model_bindings_current_from_crud(
+        crud_module=sys.modules[__name__]
+    )
 
 
-@contextmanager
 def get_session_context():
-    _ensure_model_bindings_current()
-    with _database_get_session_context() as session:
-        yield session
+    return crud_core_helpers.get_session_context_from_crud(
+        crud_module=sys.modules[__name__]
+    )
 
 
 def _backend_mutation_proxy_enabled() -> bool:
-    if not get_bool_config("OKR_BACKEND_PROXY_MUTATIONS", True):
-        return False
-    try:
-        from src.services.backend_client import is_backend_enabled
-
-        return bool(is_backend_enabled())
-    except Exception as exc:
-        logger.debug("Backend mutation proxy availability check failed: %s", exc)
-        return False
+    return crud_core_helpers.backend_mutation_proxy_enabled_from_crud(
+        crud_module=sys.modules[__name__]
+    )
 
 
 def _local_backend_fallback_allowed() -> bool:
-    scoped_raw = str(get_config_value("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", "")).strip()
-    if scoped_raw:
-        return scoped_raw.lower() in {"1", "true", "yes", "on"}
-    return get_bool_config("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False)
+    return crud_core_helpers.local_backend_fallback_allowed_from_crud(
+        crud_module=sys.modules[__name__]
+    )
 
 
 def _is_transient_backend_mutation_error(payload: Dict[str, Any]) -> bool:
-    try:
-        code = int(payload.get("status_code") or 0)
-    except Exception as exc:
-        logger.debug(
-            "Failed to parse backend mutation status_code '%s': %s",
-            payload.get("status_code"),
-            exc,
-        )
-        code = 0
-    if code == 0 or code in {500, 502, 503, 504}:
-        return True
-    message = str(payload.get("error") or "").strip().lower()
-    return any(
-        token in message
-        for token in {
-            "connection",
-            "timed out",
-            "timeout",
-            "temporar",
-            "unavailable",
-            "refused",
-        }
+    return crud_core_helpers.is_transient_backend_mutation_error_from_crud(
+        crud_module=sys.modules[__name__],
+        payload=payload,
     )
 
 
 def _raise_backend_mutation_error(payload: Dict[str, Any]) -> None:
-    message = str(payload.get("error") or "Backend mutation failed.").strip()
-    try:
-        code = int(payload.get("status_code") or 0)
-    except Exception as exc:
-        logger.debug(
-            "Failed to parse backend mutation status_code for raise '%s': %s",
-            payload.get("status_code"),
-            exc,
-        )
-        code = 0
-    if code in {401, 403}:
-        raise PermissionError(message)
-    if code == 404:
-        raise ValueError(message or "Target not found.")
-    raise ValueError(message)
+    return crud_core_helpers.raise_backend_mutation_error_from_crud(
+        crud_module=sys.modules[__name__],
+        payload=payload,
+    )
 
 
 def _enforce_backend_mutation_failure_policy(payload: Dict[str, Any]) -> None:
-    if not _is_transient_backend_mutation_error(payload):
-        _raise_backend_mutation_error(payload)
-    if not _local_backend_fallback_allowed():
-        message = str(
-            payload.get("error") or "Backend mutation request failed."
-        ).strip()
-        raise ValueError(
-            f"{message} Local backend fallback is disabled; retry when backend is healthy."
-        )
+    return crud_core_helpers.enforce_backend_mutation_failure_policy_from_crud(
+        crud_module=sys.modules[__name__],
+        payload=payload,
+    )
 
 
 def _node_from_backend_payload(payload: Dict[str, Any]):
-    node_data = payload.get("node")
-    if isinstance(node_data, dict):
-        return SimpleNamespace(**node_data)
-    return SimpleNamespace(**{k: v for k, v in payload.items() if k != "status_code"})
+    return crud_core_helpers.node_from_backend_payload_from_crud(payload=payload)
 
 
 def _validate_update_fields(
     entity_name: str, updates: dict, allowed_fields: set
 ) -> None:
-    """Raise on update keys that are not explicitly allowed."""
-    invalid_fields = sorted(
-        [key for key in updates.keys() if key not in allowed_fields]
+    return crud_core_helpers.validate_update_fields_from_crud(
+        entity_name=entity_name,
+        updates=updates,
+        allowed_fields=allowed_fields,
     )
-    if invalid_fields:
-        raise ValueError(
-            f"Unsupported {entity_name} update fields: {', '.join(invalid_fields)}"
-        )
 
 
 # ============================================================================
@@ -312,12 +235,15 @@ def _resolve_bootstrap_admin_password() -> str:
 
 def hash_password(password: str) -> str:
     """Hash a password using bcrypt."""
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    return crud_auth_helpers.hash_password_from_crud(password=password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     """Verify a password against its hash."""
-    return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    return crud_auth_helpers.verify_password_from_crud(
+        password=password,
+        password_hash=password_hash,
+    )
 
 
 def create_user(
@@ -617,14 +543,17 @@ def authenticate_user(
     username: str, password: str, client_ip: Optional[str] = None
 ) -> Optional[User]:
     """Authenticate a user and return the User object if successful."""
-    return authenticate_user_detailed(username, password, client_ip=client_ip)["user"]
+    return crud_auth_helpers.authenticate_user_from_crud(
+        crud_module=sys.modules[__name__],
+        username=username,
+        password=password,
+        client_ip=client_ip,
+    )
 
 
 def get_all_users() -> List[User]:
     """Get all users."""
-    return crud_auth_helpers.get_all_users_from_crud(
-        crud_module=sys.modules[__name__]
-    )
+    return crud_auth_helpers.get_all_users_from_crud(crud_module=sys.modules[__name__])
 
 
 def get_team_members(manager_id: int) -> List[User]:
@@ -922,28 +851,11 @@ def get_dashboard_data(
     Get lightweight goal data for dashboard display.
     Uses JOINs to count strategies and objectives without loading full tree.
     """
-    with get_session_context() as session:
-        statement = select(Goal).where(_goal_owner_predicate_by_username(user_id))
-        if cycle_id:
-            statement = statement.where(Goal.cycle_id == cycle_id)
-
-        statement = statement.options(selectinload(Goal.objectives))
-        goals = session.exec(statement).all()
-
-        dashboard_goals = []
-        for goal in goals:
-            objectives_count = len(goal.objectives)
-
-            dashboard_goals.append(
-                DashboardGoal(
-                    id=goal.id,
-                    title=goal.title,
-                    progress=goal.progress,
-                    objectives_count=objectives_count,
-                )
-            )
-
-        return dashboard_goals
+    return crud_query_helpers.get_dashboard_data_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+        cycle_id=cycle_id,
+    )
 
 
 def get_goal_tree(goal_id: int) -> Optional[Goal]:
@@ -951,19 +863,10 @@ def get_goal_tree(goal_id: int) -> Optional[Goal]:
     Load complete hierarchy for a goal with all nested relationships.
     Uses eager loading for efficiency.
     """
-    with get_session_context() as session:
-        statement = (
-            select(Goal)
-            .where(Goal.id == goal_id)
-            .options(
-                selectinload(Goal.objectives)
-                .selectinload(Objective.key_results)
-                .selectinload(KeyResult.tasks)
-                .selectinload(Task.work_logs)
-            )
-        )
-        goal = session.exec(statement).first()
-        return goal
+    return crud_query_helpers.get_goal_tree_from_crud(
+        crud_module=sys.modules[__name__],
+        goal_id=goal_id,
+    )
 
 
 def get_user_goals_simple(user_id: str, cycle_id: Optional[int] = None) -> List[Goal]:
@@ -991,75 +894,17 @@ def create_goal(
     actor_username: Optional[str] = None,
 ) -> Goal:
     """Create a new goal."""
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import create_goal as backend_create_goal
-
-        backend_result = backend_create_goal(
-            user_id=user_id,
-            title=title,
-            description=description,
-            cycle_id=cycle_id,
-            strategy_tags=strategy_tags,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    if isinstance(strategy_tags, list):
-        import json
-
-        strategy_tags = json.dumps(
-            [str(item).strip() for item in strategy_tags if str(item).strip()],
-            ensure_ascii=False,
-        )
-
-    with get_session_context() as session:
-        # Get owner_id from username
-        user_obj = session.exec(select(User).where(User.username == user_id)).first()
-        if not user_obj or user_obj.id is None:
-            raise ValueError(f"User '{user_id}' not found")
-        owner_id = user_obj.id
-
-        actor = domain_auth._require_manage_owner_actor(
-            session,
-            actor_username=actor_username,
-            owner_id=owner_id,
-        )
-
-        # Get sibling count for auto-numbering
-        statement = select(Goal).where(Goal.owner_id == owner_id)
-        if cycle_id:
-            statement = statement.where(Goal.cycle_id == cycle_id)
-
-        existing = session.exec(statement).all()
-
-        if not title or title.startswith("New "):
-            title = f"Goal #{len(existing) + 1}"
-
-        goal = Goal(
-            owner_id=owner_id,
-            team_id=actor.team_id,
-            title=title,
-            description=description,
-            cycle_id=cycle_id,
-            external_id=external_id,
-            created_at=created_at or utc_now_naive(),
-            strategy_tags=strategy_tags,
-            created_by=actor.username,
-            updated_by=actor.username,
-        )
-        session.add(goal)
-        session.commit()
-        session.refresh(goal)
-        audit_log(
-            "create",
-            "goal",
-            actor=actor_username,
-            details={"goal_id": goal.id, "cycle_id": cycle_id},
-        )
-        clear_cache_safe()
-        return goal
+    return crud_create_helpers.create_goal_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+        title=title,
+        description=description,
+        cycle_id=cycle_id,
+        external_id=external_id,
+        created_at=created_at,
+        strategy_tags=strategy_tags,
+        actor_username=actor_username,
+    )
 
 
 def create_objective(
@@ -1071,61 +916,15 @@ def create_objective(
     actor_username: Optional[str] = None,
 ) -> Objective:
     """Create a new objective under a goal."""
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import (
-            create_objective as backend_create_objective,
-        )
-
-        backend_result = backend_create_objective(
-            goal_id=goal_id,
-            title=title,
-            description=description,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        goal = session.get(Goal, goal_id)
-        if not goal:
-            raise ValueError(f"Goal {goal_id} not found")
-        _authorize_node_mutation(
-            session,
-            node_type="GOAL",
-            node_id=goal_id,
-            actor_username=actor_username,
-        )
-        actor = _require_actor_user(session, actor_username)
-
-        existing = session.exec(
-            select(Objective).where(Objective.goal_id == goal_id)
-        ).all()
-
-        if not title or title.startswith("New "):
-            title = f"Objective #{len(existing) + 1}"
-
-        objective = Objective(
-            goal_id=goal_id,
-            owner_id=actor.id,
-            team_id=actor.team_id,
-            title=title,
-            description=description,
-            external_id=external_id,
-            created_at=created_at or utc_now_naive(),
-            created_by=actor.username,
-            updated_by=actor.username,
-        )
-        session.add(objective)
-        session.commit()
-        session.refresh(objective)
-        audit_log(
-            "create",
-            "objective",
-            details={"objective_id": objective.id, "goal_id": goal_id},
-        )
-        clear_cache_safe()
-        return objective
+    return crud_create_helpers.create_objective_from_crud(
+        crud_module=sys.modules[__name__],
+        goal_id=goal_id,
+        title=title,
+        description=description,
+        external_id=external_id,
+        created_at=created_at,
+        actor_username=actor_username,
+    )
 
 
 def create_key_result(
@@ -1140,75 +939,18 @@ def create_key_result(
     actor_username: Optional[str] = None,
 ) -> KeyResult:
     """Create a new key result under an objective."""
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import (
-            create_key_result as backend_create_key_result,
-        )
-
-        backend_result = backend_create_key_result(
-            objective_id=objective_id,
-            title=title,
-            description=description,
-            target_value=target_value,
-            unit=unit,
-            initiative_tags=initiative_tags,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    if isinstance(initiative_tags, list):
-        import json
-
-        initiative_tags = json.dumps(
-            [str(item).strip() for item in initiative_tags if str(item).strip()],
-            ensure_ascii=False,
-        )
-
-    with get_session_context() as session:
-        objective = session.get(Objective, objective_id)
-        if not objective:
-            raise ValueError(f"Objective {objective_id} not found")
-        _authorize_node_mutation(
-            session,
-            node_type="OBJECTIVE",
-            node_id=objective_id,
-            actor_username=actor_username,
-        )
-        actor = _require_actor_user(session, actor_username)
-
-        existing = session.exec(
-            select(KeyResult).where(KeyResult.objective_id == objective_id)
-        ).all()
-
-        if not title or title.startswith("New "):
-            title = f"Key Result #{len(existing) + 1}"
-
-        key_result = KeyResult(
-            objective_id=objective_id,
-            owner_id=actor.id,
-            team_id=actor.team_id,
-            title=title,
-            description=description,
-            target_value=target_value,
-            unit=unit,
-            external_id=external_id,
-            created_at=created_at or utc_now_naive(),
-            initiative_tags=initiative_tags,
-            created_by=actor.username,
-            updated_by=actor.username,
-        )
-        session.add(key_result)
-        session.commit()
-        session.refresh(key_result)
-        audit_log(
-            "create",
-            "key_result",
-            details={"key_result_id": key_result.id, "objective_id": objective_id},
-        )
-        clear_cache_safe()
-        return key_result
+    return crud_create_helpers.create_key_result_from_crud(
+        crud_module=sys.modules[__name__],
+        objective_id=objective_id,
+        title=title,
+        description=description,
+        target_value=target_value,
+        unit=unit,
+        external_id=external_id,
+        created_at=created_at,
+        initiative_tags=initiative_tags,
+        actor_username=actor_username,
+    )
 
 
 def create_task(
@@ -1224,69 +966,19 @@ def create_task(
     actor_username: Optional[str] = None,
 ) -> Task:
     """Create a new task under a key result."""
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import create_task as backend_create_task
-
-        backend_result = backend_create_task(
-            key_result_id=key_result_id,
-            title=title,
-            description=description,
-            estimated_minutes=estimated_minutes,
-            start_date=start_date,
-            deadline=deadline,
-            assignee_id=assignee_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        parent_check = session.get(KeyResult, key_result_id)
-        if not parent_check:
-            raise ValueError(f"KeyResult {key_result_id} not found")
-        if estimated_minutes < 0:
-            raise ValueError("estimated_minutes must be >= 0")
-        _authorize_node_mutation(
-            session,
-            node_type="KEY_RESULT",
-            node_id=key_result_id,
-            actor_username=actor_username,
-        )
-        actor = _require_actor_user(session, actor_username)
-
-        existing = session.exec(
-            select(Task).where(Task.key_result_id == key_result_id)
-        ).all()
-
-        if not title or title.startswith("New "):
-            title = f"Task #{len(existing) + 1}"
-
-        task = Task(
-            key_result_id=key_result_id,
-            owner_id=actor.id,
-            team_id=actor.team_id,
-            title=title,
-            description=description,
-            estimated_minutes=estimated_minutes,
-            external_id=external_id,
-            created_at=created_at or utc_now_naive(),
-            start_date=start_date,
-            deadline=deadline,
-            assignee_id=assignee_id,
-            created_by=actor.username,
-            updated_by=actor.username,
-        )
-        session.add(task)
-        session.commit()
-        session.refresh(task)
-        audit_log(
-            "create",
-            "task",
-            details={"task_id": task.id, "key_result_id": key_result_id},
-        )
-        clear_cache_safe()
-        return task
+    return crud_create_helpers.create_task_from_crud(
+        crud_module=sys.modules[__name__],
+        key_result_id=key_result_id,
+        title=title,
+        description=description,
+        estimated_minutes=estimated_minutes,
+        external_id=external_id,
+        created_at=created_at,
+        start_date=start_date,
+        deadline=deadline,
+        assignee_id=assignee_id,
+        actor_username=actor_username,
+    )
 
 
 # ============================================================================
@@ -1330,22 +1022,12 @@ def update_key_result_analysis(
     actor_username: Optional[str] = None,
 ) -> Optional[KeyResult]:
     """Update AI analysis cache for a key result."""
-    with get_session_context() as session:
-        kr = session.get(KeyResult, key_result_id)
-        if kr:
-            _authorize_node_mutation(
-                session,
-                node_type="KEY_RESULT",
-                node_id=key_result_id,
-                actor_username=actor_username,
-            )
-            kr.gemini_analysis = analysis_json
-            kr.analysis_updated_at = utc_now_naive()
-            session.add(kr)
-            session.commit()
-            session.refresh(kr)
-            clear_cache_safe()
-        return kr
+    return crud_update_helpers.update_key_result_analysis_from_crud(
+        crud_module=sys.modules[__name__],
+        key_result_id=key_result_id,
+        analysis_json=analysis_json,
+        actor_username=actor_username,
+    )
 
 
 def update_objective(
@@ -1454,6 +1136,7 @@ def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
         kr_id=kr_id,
         actor_username=actor_username,
     )
+
 
 def get_node(node_id: int, node_type: str, actor_username: Optional[str] = None):
     """Fetch a node by ID and Type string (GOAL, OBJECTIVE, KEY_RESULT, TASK)."""
@@ -1578,13 +1261,20 @@ def delete_work_log(log_id: int, actor_username: Optional[str] = None) -> bool:
 
 
 def get_leadership_metrics(usernames: List[str], cycle_id: int):
-    return domain_analytics.get_leadership_metrics(usernames, cycle_id)
+    return crud_data_helpers.get_leadership_metrics_from_crud(
+        usernames=usernames,
+        cycle_id=cycle_id,
+    )
 
 
 def get_work_logs_by_date_range(
     user_id: int, start_date: datetime, end_date: datetime
 ) -> List[WorkLog]:
-    return domain_analytics.get_work_logs_by_date_range(user_id, start_date, end_date)
+    return crud_data_helpers.get_work_logs_by_date_range_from_crud(
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 def get_all_krs_by_cycle(
@@ -1593,8 +1283,8 @@ def get_all_krs_by_cycle(
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> List[KeyResult]:
-    return domain_analytics.get_all_krs_by_cycle(
-        cycle_id,
+    return crud_data_helpers.get_all_krs_by_cycle_from_crud(
+        cycle_id=cycle_id,
         limit=limit,
         offset=offset,
     )
@@ -1606,19 +1296,22 @@ def get_all_tasks_by_cycle(
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> List[Task]:
-    return domain_analytics.get_all_tasks_by_cycle(
-        cycle_id,
+    return crud_data_helpers.get_all_tasks_by_cycle_from_crud(
+        cycle_id=cycle_id,
         limit=limit,
         offset=offset,
     )
 
 
 def get_hours_by_goal(user_id: int, days: int = 7) -> dict:
-    return domain_analytics.get_hours_by_goal(user_id, days)
+    return crud_data_helpers.get_hours_by_goal_from_crud(user_id=user_id, days=days)
 
 
 def get_daily_work_trend(user_id: int, days: int = 7) -> dict:
-    return domain_analytics.get_daily_work_trend(user_id, days)
+    return crud_data_helpers.get_daily_work_trend_from_crud(
+        user_id=user_id,
+        days=days,
+    )
 
 
 # ============================================================================

@@ -12,6 +12,7 @@ import os
 import time
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
+import bcrypt
 from sqlalchemy import or_
 
 from src.domain.password_policy import is_production_runtime, validate_password_policy
@@ -44,6 +45,28 @@ def resolve_bootstrap_admin_password_from_crud(*, crud_module) -> str:
         )
 
     return "admin"
+
+
+def hash_password_from_crud(*, password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password_from_crud(*, password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+
+
+def authenticate_user_from_crud(
+    *,
+    crud_module,
+    username: str,
+    password: str,
+    client_ip: Optional[str] = None,
+):
+    return crud_module.authenticate_user_detailed(
+        username,
+        password,
+        client_ip=client_ip,
+    )["user"]
 
 
 def normalize_throttle_username_from_crud(*, username: str) -> str:
@@ -84,9 +107,7 @@ def get_auth_throttle_states_from_crud(
 
     states = list(
         session.exec(
-            crud_module.select(crud_module.AuthThrottleState).where(
-                or_(*clauses)
-            )
+            crud_module.select(crud_module.AuthThrottleState).where(or_(*clauses))
         ).all()
     )
     user_state = None
@@ -142,9 +163,7 @@ def prepare_throttle_state_for_check_from_crud(
         return 0
 
     window_started = state.window_started_at or now
-    if (
-        ensure_utc(now) - ensure_utc(window_started)
-    ).total_seconds() >= window_seconds:
+    if (ensure_utc(now) - ensure_utc(window_started)).total_seconds() >= window_seconds:
         state.failed_attempts = 0
         state.window_started_at = now
         state.updated_at = now
@@ -247,9 +266,15 @@ def authenticate_user_without_throttle_from_crud(
     normalized_ip: Optional[str],
 ) -> Dict[str, Any]:
     user = session.exec(
-        crud_module.select(crud_module.User).where(crud_module.User.username == username)
+        crud_module.select(crud_module.User).where(
+            crud_module.User.username == username
+        )
     ).first()
-    if user and user.is_active and crud_module.verify_password(password, user.password_hash):
+    if (
+        user
+        and user.is_active
+        and crud_module.verify_password(password, user.password_hash)
+    ):
         crud_module.audit_log(
             "login",
             "user",
@@ -397,7 +422,10 @@ def get_user_goals_from_crud(*, crud_module, username: str, cycle_id: int):
 
         statement = (
             crud_module.select(crud_module.Goal)
-            .where(crud_module.Goal.owner_id == user.id, crud_module.Goal.cycle_id == cycle_id)
+            .where(
+                crud_module.Goal.owner_id == user.id,
+                crud_module.Goal.cycle_id == cycle_id,
+            )
             .options(
                 crud_module.selectinload(crud_module.Goal.objectives).selectinload(
                     crud_module.Objective.key_results
@@ -439,7 +467,9 @@ def can_manage_goal_from_crud(*, crud_module, session, actor, goal) -> bool:
     return crud_module.domain_auth._can_manage_goal(session, actor, goal)
 
 
-def can_manage_owner_from_crud(*, crud_module, session, actor, owner_id: Optional[int]) -> bool:
+def can_manage_owner_from_crud(
+    *, crud_module, session, actor, owner_id: Optional[int]
+) -> bool:
     return crud_module.domain_auth._can_manage_owner(session, actor, owner_id)
 
 
@@ -489,11 +519,15 @@ def authorize_node_scoped_access_from_crud(
     )
 
 
-def require_actor_user_from_crud(*, crud_module, session, actor_username: Optional[str]):
+def require_actor_user_from_crud(
+    *, crud_module, session, actor_username: Optional[str]
+):
     return crud_module.domain_auth._require_actor_user(session, actor_username)
 
 
-def require_admin_actor_from_crud(*, crud_module, session, actor_username: Optional[str]):
+def require_admin_actor_from_crud(
+    *, crud_module, session, actor_username: Optional[str]
+):
     actor = crud_module._require_actor_user(session, actor_username)
     if actor.role != crud_module.UserRole.ADMIN:
         raise PermissionError("Admin privileges are required for this operation")
@@ -591,8 +625,10 @@ def authenticate_user_detailed_from_crud(
                     crud_module.User.username == username
                 )
             ).first()
-            if user and user.is_active and crud_module.verify_password(
-                password, user.password_hash
+            if (
+                user
+                and user.is_active
+                and crud_module.verify_password(password, user.password_hash)
             ):
                 user_state_changed = crud_module._clear_auth_throttle_state(
                     user_state, now
@@ -975,9 +1011,7 @@ def ensure_admin_exists_from_crud(*, crud_module) -> bool:
                 or not crud_module._is_transient_connection_operational_error(exc)
             ):
                 raise
-            time.sleep(
-                crud_module.ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS * attempt
-            )
+            time.sleep(crud_module.ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS * attempt)
     if last_exc is not None:
         raise last_exc
     return False
