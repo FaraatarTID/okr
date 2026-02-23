@@ -156,7 +156,7 @@ Browser
       -> Read paths: CRUD + Domain logic -> Supabase PostgreSQL
       -> Mutation/API paths: backend-api (internal) -> CRUD -> Supabase PostgreSQL
       -> backend-api (internal) -> async_job table -> backend-worker
-                                      -> AI provider / PDFShift
+                                      -> AI provider / PDF renderer
 ```
 
 Key technical points:
@@ -164,7 +164,9 @@ Key technical points:
 - Backend write/timer/job paths fail closed by default if backend is unavailable. Optional emergency fallback is opt-in via `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true` (non-production only).
 - Read-heavy hierarchy traversal still executes in-process via Streamlit + SQLModel in the current MVP.
 - AI-heavy and PDF-heavy flows route via backend job services.
-- Only supported PDF binary engine is `pdfshift` (`PDF_METHOD=pdfshift`).
+- Supported PDF binary engines:
+  - `PDF_METHOD=pdfshift` (requires `PDFSHIFT_API_KEY`)
+  - `PDF_METHOD=chromium` (requires Playwright + Chromium runtime)
 - For internal production, keep `backend-api` private, enable signed internal requests (`OKR_BACKEND_SIGNING_SECRET`), and prefer `ALLOW_EXTERNAL_AI=false` unless approved.
 
 ---
@@ -396,7 +398,7 @@ Access via **Daily Report** or **Weekly Report** buttons.
 #### PDF Export
 
 Click **📄 Export as PDF** to generate a formatted report.
-- Runtime PDF mode is `PDF_METHOD=pdfshift` (only supported PDF engine).
+- Runtime PDF mode supports `PDF_METHOD=pdfshift` or `PDF_METHOD=chromium`.
 
 ---
 
@@ -469,7 +471,7 @@ python streamlit_app/scripts/ai_provider_health_check.py
 | Database  | SQLModel + Supabase PostgreSQL               |
 | Storage   | Supabase PostgreSQL (single source of truth) |
 | AI        | Provider abstraction (Gemini or OpenAI-compatible local/self-hosted) |
-| PDF       | PDFShift API (HTML export fallback only; no local PDF engine) |
+| PDF       | PDFShift API or Chromium (Playwright) |
 
 ---
 

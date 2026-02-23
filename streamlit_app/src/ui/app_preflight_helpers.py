@@ -15,12 +15,14 @@ def get_pdf_method(
             cfg_value_fn("PDF_METHOD", "")
             or cfg_value_fn("OKR_PDF_METHOD", "")
             or cfg_value_fn("pdf_method", "")
-        )
+    )
         .strip()
         .lower()
     )
     if method == "shiftpdf":
         method = "pdfshift"
+    if method in {"chrome", "playwright"}:
+        method = "chromium"
     if method:
         return method
     if has_pdfshift_api_key_fn():
@@ -39,6 +41,15 @@ def has_pdfshift_api_key(*, cfg_value_fn: Callable[[str, str], str]) -> bool:
         cfg_value_fn("PDFSHIFT_API_KEY", "").strip()
         or cfg_value_fn("pdfshift_api_key", "").strip()
     )
+
+
+def has_chromium_runtime() -> bool:
+    try:
+        from src.services.pdf_service import is_chromium_runtime_available
+
+        return bool(is_chromium_runtime_available())
+    except Exception:
+        return False
 
 
 def runtime_preflight_strict_mode(*, cfg_value_fn: Callable[[str, str], str]) -> bool:
@@ -78,6 +89,7 @@ def run_pdf_preflight(
     is_external_ai_allowed_fn: Callable[[], bool],
     get_pdf_method_fn: Callable[[], str],
     has_pdfshift_api_key_fn: Callable[[], bool],
+    has_chromium_runtime_fn: Callable[[], bool],
     is_streamlit_cloud_runtime_fn: Callable[[], bool],
     runtime_preflight_strict_mode_fn: Callable[[], bool],
 ) -> None:
@@ -86,6 +98,7 @@ def run_pdf_preflight(
 
     pdf_method = get_pdf_method_fn()
     has_pdfshift_key = has_pdfshift_api_key_fn()
+    has_chromium_runtime = has_chromium_runtime_fn()
     is_cloud = is_streamlit_cloud_runtime_fn()
     ai_status = get_ai_provider_runtime_status_fn()
 
@@ -116,6 +129,7 @@ def run_pdf_preflight(
         pdf_method=pdf_method,
         is_streamlit_cloud=is_cloud,
         has_pdfshift_key=has_pdfshift_key,
+        has_chromium_runtime=has_chromium_runtime,
         gemini_api_key=get_api_key_fn(),
         external_ai_allowed=is_external_ai_allowed_fn(),
         ai_provider=ai_status.provider,

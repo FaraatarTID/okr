@@ -28,10 +28,12 @@ Documentation HQ: [README](../README.md)
 
 ## PDF
 
-- فقط `pdfshift` پشتیبانی می‌شود.
-- کلیدها:
+- حالت‌های پشتیبانی‌شده:
   - `PDF_METHOD=pdfshift`
-  - `pdfshift_api_key` (در secrets) یا `PDFSHIFT_API_KEY` (env)
+  - `PDF_METHOD=chromium`
+- کلیدها:
+  - برای `pdfshift`: `pdfshift_api_key` (در secrets) یا `PDFSHIFT_API_KEY` (env)
+  - برای `chromium`: نصب Playwright + Chromium (اختیاری: `OKR_CHROMIUM_EXECUTABLE_PATH`)
 
 ## AI
 

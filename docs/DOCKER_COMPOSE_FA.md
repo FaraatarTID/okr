@@ -24,7 +24,9 @@ Documentation HQ: [README](../README.md)
   - `OKR_BACKEND_PROXY_MUTATIONS=true`
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` (پیش‌فرض production؛ یا `redis`)
   - اگر `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` است، `OKR_BACKEND_SECURITY_STATE_REDIS_URL` اجباری است.
-  - `PDFSHIFT_API_KEY`
+  - PDF:
+    - `PDF_METHOD=pdfshift` + `PDFSHIFT_API_KEY`
+    - یا `PDF_METHOD=chromium` (با Playwright/Chromium runtime)
 - سرویس‌ها را بالا بیاورید:
   - `docker compose -f deploy/docker/docker-compose.yml up -d --build`
 - Nginx را جلوی سرویس قرار دهید (TLS روی proxy).

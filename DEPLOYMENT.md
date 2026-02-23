@@ -150,6 +150,9 @@ OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN=false
 OKR_ENFORCE_STRONG_PASSWORD_POLICY=true
 PDF_METHOD=pdfshift
 PDFSHIFT_API_KEY=CHANGE_ME_PDFSHIFT_KEY
+# Optional for Chromium mode:
+# PDF_METHOD=chromium
+# OKR_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 ALLOW_EXTERNAL_AI=false
 OKR_STRICT_RUNTIME_PREFLIGHT=true
 
@@ -308,7 +311,7 @@ Confirm manually:
 - Create Goal/Objectives/KRs/Tasks
 - Timer starts/stops
 - Reports load
-- PDF export works (via PDFShift)
+- PDF export works (via configured renderer: PDFShift or Chromium)
 - No websocket reconnect loops in browser
 
 ---

@@ -130,7 +130,7 @@ Process distinction:
 Report timing:
 - `Daily Report`: today window.
 - `Weekly Report`: last 7 days window.
-- Both are work-log based and exportable (`pdfshift` PDF path with HTML fallback).
+- Both are work-log based and exportable (PDF via `pdfshift` or `chromium`, with HTML fallback).
 
 ## 6. Incident Playbooks
 
@@ -194,7 +194,9 @@ For production stability:
 1. Keep AI credentials in Streamlit secrets or secure environment variables, never in repository files.
 2. Set `AI_PROVIDER` explicitly (`gemini` or `openai_compatible`) and verify via `Admin Panel -> AI Health` or `python streamlit_app/scripts/ai_provider_health_check.py`.
 3. If using Gemini, set `GEMINI_API_KEY`.
-4. For PDF export, use `PDF_METHOD=pdfshift` with a valid PDFShift API key from secrets.
+4. For PDF export:
+   - `PDF_METHOD=pdfshift` with a valid PDFShift API key, or
+   - `PDF_METHOD=chromium` with Playwright/Chromium runtime available.
 5. HTML export remains available when PDF rendering is not configured.
 6. Keep one deployment mode active per environment (avoid mixed pipelines in the same runtime).
 7. Optional fail-fast mode: set `OKR_STRICT_RUNTIME_PREFLIGHT=1` to stop app startup when runtime preflight detects critical runtime misconfiguration.

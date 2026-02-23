@@ -32,6 +32,7 @@ def evaluate_runtime_preflight(
     is_streamlit_cloud: bool,
     has_pdfshift_key: bool,
     gemini_api_key: Optional[str],
+    has_chromium_runtime: bool = False,
     external_ai_allowed: bool = True,
     ai_provider: str = "gemini",
     ai_provider_ready: Optional[bool] = None,
@@ -52,17 +53,26 @@ def evaluate_runtime_preflight(
     """Evaluate runtime safety constraints for PDF and AI integrations."""
     report = RuntimePreflightReport()
     method = _normalize_pdf_method(pdf_method)
+    if method in {"chrome", "playwright"}:
+        method = "chromium"
 
-    if method not in {"pdfshift"}:
+    if method not in {"pdfshift", "chromium"}:
         report.errors.append(
-            "Unsupported PDF_METHOD. Use: pdfshift. Local pdfkit/wkhtmltopdf mode was removed for security hardening."
+            "Unsupported PDF_METHOD. Use: pdfshift or chromium. "
+            "Local pdfkit/wkhtmltopdf mode was removed for security hardening."
         )
         return report
 
-    if not has_pdfshift_key:
+    if method == "pdfshift" and not has_pdfshift_key:
         report.errors.append("PDF_METHOD=pdfshift but PDFShift API key is missing.")
-    else:
+    elif method == "pdfshift":
         report.infos.append("PDF provider is PDFShift (secure mode).")
+    elif method == "chromium" and not has_chromium_runtime:
+        report.errors.append(
+            "PDF_METHOD=chromium but Playwright/Chromium runtime is unavailable."
+        )
+    else:
+        report.infos.append("PDF provider is Chromium (Playwright, secure mode).")
 
     backend_url = str(backend_api_url or "").strip()
     env_name = str(runtime_env or "development").strip().lower()

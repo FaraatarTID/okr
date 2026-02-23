@@ -7,14 +7,16 @@ Documentation HQ: [README](../README.md)
 
 خرابی خروجی PDF
 - اگر PDFShift استفاده می‌کنید، `pdfshift_api_key` را در secrets بگذارید.
-- مطمئن شوید `PDF_METHOD=pdfshift` است.
-- اگر backend mode فعال است، `backend-worker` باید بالا باشد و `PDFSHIFT_API_KEY` داشته باشد.
+- اگر Chromium استفاده می‌کنید، `PDF_METHOD=chromium` بگذارید و Playwright + Chromium را نصب کنید.
+- اگر backend mode فعال است، `backend-worker` باید بالا باشد و runtime لازم برای PDF را داشته باشد.
 
 خطاهای Runtime preflight
 - اگر پیام `PDF_METHOD=pdfshift but PDFShift API key is missing` دیدید:
   - `pdfshift_api_key` را اضافه کنید.
+- اگر پیام `PDF_METHOD=chromium but Playwright/Chromium runtime is unavailable` دیدید:
+  - Playwright و Chromium runtime را نصب کنید.
 - اگر پیام unsupported `PDF_METHOD` دیدید:
-  - مقدار را `pdfshift` بگذارید.
+  - مقدار را `pdfshift` یا `chromium` بگذارید.
 - اگر پیام `OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set` دیدید:
   - در UI خط `Config trace` را بررسی کنید (source: `env`/`secrets_root`/`secrets_app`/`default`)
   - در TOML از boolean واقعی استفاده کنید:

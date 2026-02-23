@@ -130,7 +130,7 @@ Weekly Report:
 Both report types:
 - Source data: work logs tied to tasks.
 - Include detailed log table, objective time distribution, and deadline health.
-- Export: PDF via `PDF_METHOD=pdfshift`; if PDFShift is unavailable, HTML fallback is offered.
+- Export: PDF via `PDF_METHOD=pdfshift` or `PDF_METHOD=chromium`; if renderer is unavailable, HTML fallback is offered.
 
 Technical note:
 - In backend-assisted deployments, frontend write operations route through `backend-api` (`OKR_BACKEND_PROXY_MUTATIONS=true`) including node CRUD, timer, user/cycle/team admin actions, Learning Loop writes, alignments, and work-log deletes.

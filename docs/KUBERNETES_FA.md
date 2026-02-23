@@ -34,7 +34,9 @@ Documentation HQ: [README](../README.md)
   - `OKR_BACKEND_SIGNING_SECRET`
   - `OKR_BACKEND_PROXY_MUTATIONS=true`
   - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false` و `OKR_ALLOW_LOCAL_READ_FALLBACK=false`
-  - `PDF_METHOD=pdfshift`, `PDFSHIFT_API_KEY`
+  - PDF:
+    - `PDF_METHOD=pdfshift` + `PDFSHIFT_API_KEY`
+    - یا `PDF_METHOD=chromium` (با Playwright/Chromium runtime)
   - مقادیر AI (`ALLOW_EXTERNAL_AI`, `AI_PROVIDER`, credentialها)
 - بعد از baseline load test، HPA برای app/backend API
 

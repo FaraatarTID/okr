@@ -14,7 +14,7 @@ from src.services.backend_client import (
     submit_job,
 )
 from src.services.ai_provider import generate_json
-from src.services.pdf_service import generate_pdf_html, generate_pdf_with_pdfshift_bytes
+from src.services.pdf_service import generate_pdf_bytes, generate_pdf_html
 
 
 def _is_transient_backend_error(payload: Dict[str, Any]) -> bool:
@@ -56,7 +56,7 @@ def _run_local(kind: str, payload: Dict[str, Any]) -> Dict[str, Any]:
             report_summary=payload.get("report_summary"),
             achievements=payload.get("achievements"),
         )
-        pdf_bytes = generate_pdf_with_pdfshift_bytes(html)
+        pdf_bytes = generate_pdf_bytes(html)
         if not pdf_bytes:
             return {"error": "PDF generation failed."}
         import base64

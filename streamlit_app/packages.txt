@@ -1,1 +1,2 @@
-# No apt-level runtime packages required.
+# Required for PDF_METHOD=chromium renderer mode.
+chromium

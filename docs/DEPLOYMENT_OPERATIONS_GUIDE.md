@@ -26,7 +26,9 @@ Last updated: 2026-02-22
 - `OKR_ALLOW_LOCAL_READ_FALLBACK=false`
 - `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN=false`
 - `OKR_STRICT_RUNTIME_PREFLIGHT=true`
-- `PDF_METHOD=pdfshift` and `pdfshift_api_key` set
+- PDF renderer configured:
+  - `PDF_METHOD=pdfshift` + `pdfshift_api_key`, or
+  - `PDF_METHOD=chromium` + Playwright/Chromium runtime
 
 Validate before startup:
 ```bash

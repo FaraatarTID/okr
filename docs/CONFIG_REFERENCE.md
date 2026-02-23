@@ -65,15 +65,19 @@ Streamlit server
 PDF generation
 
 - Streamlit secrets keys:
-  - PDF_METHOD: pdfshift
-  - pdfshift_api_key: required for PDF binary export
+  - PDF_METHOD: `pdfshift` or `chromium`
+  - pdfshift_api_key: required only when `PDF_METHOD=pdfshift`
+  - chromium_executable_path: optional executable path when `PDF_METHOD=chromium`
 - Environment fallback:
   - PDF_METHOD
   - OKR_PDF_METHOD
   - PDFSHIFT_API_KEY
+  - OKR_CHROMIUM_EXECUTABLE_PATH
+  - CHROMIUM_EXECUTABLE_PATH
 - Behavior:
-  - `pdfshift` is the only supported PDF runtime mode.
-  - If PDFShift is unavailable/misconfigured, UI falls back to HTML export (no local PDF engine fallback).
+  - Supported runtime modes: `pdfshift`, `chromium`
+  - `pdfshift` requires API key; `chromium` requires Playwright + Chromium runtime.
+  - If configured PDF renderer is unavailable/misconfigured, UI falls back to HTML export.
 
 AI integration
 
@@ -180,12 +184,14 @@ Recommended deployment profiles
 
 - Streamlit Cloud:
   - MVP/demo only (not recommended for confidential internal company data)
-  - PDF_METHOD=pdfshift
+  - PDF_METHOD=pdfshift (recommended on hosted environments)
   - AI_PROVIDER=gemini (or your approved hosted gateway via `openai_compatible`)
   - pdfshift_api_key must be present
   - OKR_STRICT_RUNTIME_PREFLIGHT defaults to strict (recommended)
 - Self-hosted server (Docker/VM):
-  - PDF_METHOD=pdfshift
+  - PDF_METHOD=pdfshift or PDF_METHOD=chromium
+  - If `PDF_METHOD=pdfshift`: `pdfshift_api_key` must be present
+  - If `PDF_METHOD=chromium`: install Playwright and Chromium runtime
   - AI_PROVIDER=openai_compatible for local/self-hosted LLM routing
   - If openai_compatible: set AI_BASE_URL and AI_MODEL
   - Deploy `okr`, `backend-api`, and `backend-worker` services together

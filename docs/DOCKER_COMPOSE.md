@@ -26,7 +26,9 @@ Single host, subdomain (recommended)
   - `OKR_BACKEND_PROXY_MUTATIONS=true` (recommended)
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` (production default; may be `redis` with explicit Redis URL)
   - `OKR_BACKEND_SECURITY_STATE_REDIS_URL` (required when backend is `redis`)
-  - `PDFSHIFT_API_KEY` (required for PDF binary exports)
+  - PDF renderer:
+    - `PDF_METHOD=pdfshift` + `PDFSHIFT_API_KEY`, or
+    - `PDF_METHOD=chromium` (+ Playwright/Chromium runtime)
 - Build and start:
   - `docker compose -f deploy/docker/docker-compose.yml up -d --build`
 - Place Nginx in front using `deploy/nginx.conf` (TLS termination at proxy)
