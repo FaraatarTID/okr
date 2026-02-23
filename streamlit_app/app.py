@@ -8,12 +8,19 @@ This module intentionally stays small and declarative:
 Business logic should live in `src/ui/app_*_helpers.py` (or lower layers), not here.
 """
 
-import streamlit as st
-import sys
 import os
 import subprocess
+import sys
 from datetime import datetime
 from types import SimpleNamespace
+
+# Streamlit Cloud can hit watchdog race conditions that cause refresh loops.
+# Disable event-based file watching in managed cloud runtime only.
+if os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD"):
+    os.environ.setdefault("STREAMLIT_SERVER_FILE_WATCHER_TYPE", "none")
+    os.environ.setdefault("STREAMLIT_SERVER_RUN_ON_SAVE", "false")
+
+import streamlit as st
 
 # Keep `import app` stable for test/runtime contexts that execute from repo root.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))

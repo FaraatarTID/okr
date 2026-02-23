@@ -8,7 +8,9 @@ env/
 .env
 
 # Streamlit
-.streamlit/
+.streamlit/*
+!.streamlit/config.toml
+.streamlit/secrets.toml
 secrets.toml
 streamlit_app/.deps_hash
 streamlit_app/.deps_installed
