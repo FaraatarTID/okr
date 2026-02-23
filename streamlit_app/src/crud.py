@@ -5,17 +5,17 @@ Provides efficient data access with JOINs for dashboard and tree loading.
 
 from contextlib import contextmanager
 
-from sqlmodel import Session, col, select
+from sqlmodel import Session, select
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import selectinload
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import OperationalError
 import os
 import logging
 import sys
 from types import SimpleNamespace
 from typing import Any, Dict, Optional, List
 from datetime import datetime
-from src.utils.time_utils import to_epoch_millis, utc_now_naive
+from src.utils.time_utils import utc_now_naive
 
 from src.models import (
     Goal,
@@ -36,7 +36,6 @@ from src.models import (
     Team,
     AlignmentEdge,
     VariationType,
-    ExperimentStatus,
     ExperimentDecision,
     ExpectedEffectDirection,
     Experiment,
@@ -48,9 +47,6 @@ from src.domain import analytics as domain_analytics
 from src.domain import authorization as domain_auth
 from src.audit import audit_log
 from src.utils.cache_utils import clear_cache_safe
-from src.domain.progress import (
-    refresh_hierarchy_progress,
-)
 from src import crud_auth_helpers
 from src import crud_alignment_helpers
 from src import crud_cycle_helpers
@@ -58,8 +54,12 @@ from src import crud_delete_helpers
 from src import crud_progress_helpers
 from src import crud_query_helpers
 from src import crud_reflection_helpers
+from src import crud_team_helpers
 from src import crud_timer_helpers
 from src import crud_update_helpers
+from src import crud_experiment_helpers
+from src import crud_data_helpers
+from src import crud_checkin_helpers
 import bcrypt
 
 logger = logging.getLogger(__name__)
@@ -703,126 +703,44 @@ def create_check_in(
     experiment_id: Optional[int] = None,
 ) -> CheckIn:
     """Create a new check-in with learning loop fields."""
-    if _backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            create_check_in as backend_create_check_in,
-        )
-
-        backend_result = backend_create_check_in(
-            kr_id=kr_id,
-            value=value,
-            confidence=confidence,
-            comment=comment,
-            actor_username=actor_name,
-            variation_type=variation_type,
-            special_cause_note=special_cause_note,
-            experiment_id=experiment_id,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        _authorize_node_mutation(
-            session,
-            node_type="KEY_RESULT",
-            node_id=kr_id,
-            actor_username=actor_username,
-        )
-
-        # === ENFORCEMENT: variation_type is required for new check-ins ===
-        if variation_type is None:
-            raise ValueError(
-                "variation_type is required for new check-ins. "
-                "Classify as COMMON_CAUSE or SPECIAL_CAUSE."
-            )
-
-        # === LEARNING LOOP VALIDATION ===
-        if variation_type == VariationType.SPECIAL_CAUSE:
-            # Special cause: require meaningful note, clear experiment linkage
-            if not special_cause_note or len(special_cause_note.strip()) < 5:
-                raise ValueError(
-                    "Special cause variation requires a note (at least 5 characters)"
-                )
-            experiment_id = None  # Special causes don't link to experiments
-            special_cause_note = special_cause_note.strip()
-        elif variation_type == VariationType.COMMON_CAUSE:
-            # Common cause: clear special_cause_note
-            special_cause_note = None
-
-            # Validate experiment belongs to this KR if provided
-            if experiment_id is not None:
-                experiment = session.get(Experiment, experiment_id)
-                if not experiment:
-                    raise ValueError(f"Experiment {experiment_id} not found")
-                if experiment.key_result_id != kr_id:
-                    raise ValueError(
-                        f"Experiment {experiment_id} does not belong to KR {kr_id}"
-                    )
-
-        # Create CheckIn
-        check_in = CheckIn(
-            key_result_id=kr_id,
-            value=value,
-            confidence_score=confidence,
-            comment=comment,
-            variation_type=variation_type,
-            special_cause_note=special_cause_note,
-            experiment_id=experiment_id,
-        )
-        session.add(check_in)
-
-        # Update KeyResult current_value
-        # NOTE: Do NOT manually set kr.progress here - refresh_hierarchy_progress
-        # will calculate it correctly via calculate_kr_score for all metric types
-        kr = session.get(KeyResult, kr_id)
-        if kr:
-            kr.current_value = value
-            session.add(kr)
-
-        # Recalculate hierarchy (this correctly updates KR progress via scoring)
-        refresh_hierarchy_progress(session, kr_id, "KEY_RESULT")
-
-        session.commit()
-        session.refresh(check_in)
-        audit_log(
-            "create",
-            "check_in",
-            actor=actor_username,
-            details={
-                "kr_id": kr_id,
-                "value": value,
-                "confidence": confidence,
-                "variation_type": variation_type.value if variation_type else None,
-                "experiment_id": experiment_id,
-            },
-        )
-        clear_cache_safe()
-        return check_in
+    return crud_checkin_helpers.create_check_in_from_crud(
+        crud_module=sys.modules[__name__],
+        kr_id=kr_id,
+        value=value,
+        confidence=confidence,
+        comment=comment,
+        actor_username=actor_username,
+        variation_type=variation_type,
+        special_cause_note=special_cause_note,
+        experiment_id=experiment_id,
+    )
 
 
 def get_check_ins(kr_id: int) -> List[CheckIn]:
     """Get all check-ins for a KR, ordered by date desc."""
-    with get_session_context() as session:
-        statement = (
-            select(CheckIn)
-            .where(CheckIn.key_result_id == kr_id)
-            .order_by(col(CheckIn.created_at).desc())
-        )
-        return list(session.exec(statement).all())
+    return crud_checkin_helpers.get_check_ins_from_crud(
+        crud_module=sys.modules[__name__],
+        kr_id=kr_id,
+    )
 
 
 def _get_latest_checkins_by_kr(session: Session, kr_ids: List[int]) -> dict:
-    return domain_analytics._get_latest_checkins_by_kr(session, kr_ids)
+    return crud_checkin_helpers.get_latest_checkins_by_kr_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        kr_ids=kr_ids,
+    )
 
 
 def get_krs_needing_checkin(
     user_id: str, cycle_id: int, days_threshold: int = 7
 ) -> List[KeyResult]:
-    return domain_analytics.get_krs_needing_checkin(user_id, cycle_id, days_threshold)
+    return crud_checkin_helpers.get_krs_needing_checkin_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+        cycle_id=cycle_id,
+        days_threshold=days_threshold,
+    )
 
 
 # ============================================================================
@@ -841,68 +759,17 @@ def create_experiment(
     expected_effect_size: Optional[float] = None,
 ) -> Experiment:
     """Create a new experiment for a KR with authorization and cycle validation."""
-    if _backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            create_experiment as backend_create_experiment,
-        )
-
-        backend_result = backend_create_experiment(
-            key_result_id=key_result_id,
-            cycle_id=cycle_id,
-            hypothesis=hypothesis,
-            change_description=change_description,
-            actor_username=actor_name,
-            start_at=start_at,
-            expected_effect_direction=expected_effect_direction,
-            expected_effect_size=expected_effect_size,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        goal = _authorize_node_mutation(
-            session,
-            node_type="KEY_RESULT",
-            node_id=key_result_id,
-            actor_username=actor_username,
-        )
-
-        # Validate cycle_id matches the KR's goal cycle
-        if goal.cycle_id != cycle_id:
-            raise ValueError(
-                f"Experiment cycle_id ({cycle_id}) must match goal's cycle ({goal.cycle_id})"
-            )
-
-        experiment = Experiment(
-            key_result_id=key_result_id,
-            cycle_id=cycle_id,
-            created_by=actor_username,
-            hypothesis=hypothesis,
-            change_description=change_description,
-            start_at=start_at or utc_now_naive(),
-            expected_effect_direction=expected_effect_direction,
-            expected_effect_size=expected_effect_size,
-            status=ExperimentStatus.PLANNED,
-        )
-        session.add(experiment)
-        session.commit()
-        session.refresh(experiment)
-        audit_log(
-            "create",
-            "experiment",
-            actor=actor_username,
-            details={
-                "experiment_id": experiment.id,
-                "kr_id": key_result_id,
-                "cycle_id": cycle_id,
-            },
-        )
-        clear_cache_safe()
-        return experiment
+    return crud_experiment_helpers.create_experiment_from_crud(
+        crud_module=sys.modules[__name__],
+        key_result_id=key_result_id,
+        cycle_id=cycle_id,
+        hypothesis=hypothesis,
+        change_description=change_description,
+        actor_username=actor_username,
+        start_at=start_at,
+        expected_effect_direction=expected_effect_direction,
+        expected_effect_size=expected_effect_size,
+    )
 
 
 def list_experiments_for_kr(
@@ -910,20 +777,11 @@ def list_experiments_for_kr(
     actor_username: str,
 ) -> List[Experiment]:
     """List all experiments for a KR. Enforces goal-scoped read access."""
-    with get_session_context() as session:
-        _authorize_node_scoped_access(
-            session,
-            node_type="KEY_RESULT",
-            node_id=key_result_id,
-            actor_username=actor_username,
-        )
-
-        statement = (
-            select(Experiment)
-            .where(Experiment.key_result_id == key_result_id)
-            .order_by(col(Experiment.created_at).desc())
-        )
-        return list(session.exec(statement).all())
+    return crud_experiment_helpers.list_experiments_for_kr_from_crud(
+        crud_module=sys.modules[__name__],
+        key_result_id=key_result_id,
+        actor_username=actor_username,
+    )
 
 
 def get_active_experiments_for_kr(
@@ -931,75 +789,23 @@ def get_active_experiments_for_kr(
     actor_username: str,
 ) -> List[Experiment]:
     """Get RUNNING experiments for a KR. Enforces goal-scoped read access."""
-    with get_session_context() as session:
-        _authorize_node_scoped_access(
-            session,
-            node_type="KEY_RESULT",
-            node_id=key_result_id,
-            actor_username=actor_username,
-        )
-
-        statement = (
-            select(Experiment)
-            .where(Experiment.key_result_id == key_result_id)
-            .where(Experiment.status == ExperimentStatus.RUNNING)
-            .order_by(col(Experiment.created_at).desc())
-        )
-        return list(session.exec(statement).all())
+    return crud_experiment_helpers.get_active_experiments_for_kr_from_crud(
+        crud_module=sys.modules[__name__],
+        key_result_id=key_result_id,
+        actor_username=actor_username,
+    )
 
 
 def update_experiment(
     experiment_id: int, actor_username: str, **updates
 ) -> Optional[Experiment]:
     """Update experiment fields with authorization."""
-    if _backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            update_experiment as backend_update_experiment,
-        )
-
-        backend_result = backend_update_experiment(
-            experiment_id=experiment_id,
-            updates=dict(updates or {}),
-            actor_username=actor_name,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        experiment = session.get(Experiment, experiment_id)
-        if not experiment:
-            return None
-
-        _authorize_node_mutation(
-            session,
-            node_type="KEY_RESULT",
-            node_id=experiment.key_result_id,
-            actor_username=actor_username,
-        )
-
-        _validate_update_fields(
-            "experiment", updates, _ALLOWED_EXPERIMENT_UPDATE_FIELDS
-        )
-
-        for key, value in updates.items():
-            if hasattr(experiment, key):
-                setattr(experiment, key, value)
-
-        session.add(experiment)
-        session.commit()
-        session.refresh(experiment)
-        audit_log(
-            "update",
-            "experiment",
-            actor=actor_username,
-            details={"experiment_id": experiment_id, "fields": list(updates.keys())},
-        )
-        clear_cache_safe()
-        return experiment
+    return crud_experiment_helpers.update_experiment_from_crud(
+        crud_module=sys.modules[__name__],
+        experiment_id=experiment_id,
+        actor_username=actor_username,
+        updates=updates,
+    )
 
 
 def close_experiment(
@@ -1009,31 +815,12 @@ def close_experiment(
     actor_username: str,
 ) -> Optional[Experiment]:
     """Close an experiment with a decision."""
-    if _backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            close_experiment as backend_close_experiment,
-        )
-
-        backend_result = backend_close_experiment(
-            experiment_id=experiment_id,
-            decision=decision,
-            rationale=rationale,
-            actor_username=actor_name,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    return update_experiment(
-        experiment_id,
-        actor_username=actor_username,
-        status=ExperimentStatus.DECIDED,
+    return crud_experiment_helpers.close_experiment_from_crud(
+        crud_module=sys.modules[__name__],
+        experiment_id=experiment_id,
         decision=decision,
-        decision_rationale=rationale,
-        end_at=utc_now_naive(),
+        rationale=rationale,
+        actor_username=actor_username,
     )
 
 
@@ -1048,31 +835,13 @@ def list_experiments_for_retro_window(
     Returns experiments that ended in the window OR are still running.
     Enforces goal-scoped access per experiment.
     """
-    with get_session_context() as session:
-        stmt = (
-            select(Experiment)
-            .where(Experiment.cycle_id == cycle_id)
-            .where(
-                ((Experiment.end_at >= window_start) & (Experiment.end_at < window_end))
-                | (Experiment.status == ExperimentStatus.RUNNING)
-            )
-            .order_by(col(Experiment.created_at).desc())
-        )
-        exps = list(session.exec(stmt).all())
-
-        allowed = []
-        for e in exps:
-            try:
-                _authorize_node_scoped_access(
-                    session,
-                    node_type="KEY_RESULT",
-                    node_id=e.key_result_id,
-                    actor_username=actor_username,
-                )
-                allowed.append(e)
-            except PermissionError:
-                continue
-        return allowed
+    return crud_experiment_helpers.list_experiments_for_retro_window_from_crud(
+        crud_module=sys.modules[__name__],
+        cycle_id=cycle_id,
+        window_start=window_start,
+        window_end=window_end,
+        actor_username=actor_username,
+    )
 
 
 # ============================================================================
@@ -2000,178 +1769,23 @@ def get_user_data_from_sql(
     This allows the UI to continue using its existing logic while powered by SQL.
     (Updated to remove Initiative residues)
     """
-    with get_session_context() as session:
-        user = session.exec(select(User).where(User.username == username)).first()
-        if not user:
-            return {"nodes": {}, "rootIds": []}
-
-        statement = select(Goal).where(Goal.owner_id == user.id)
-        if cycle_id:
-            statement = statement.where(Goal.cycle_id == cycle_id)
-        statement = statement.order_by(Goal.id)
-
-        safe_goal_offset = max(0, int(goal_offset or 0))
-        if safe_goal_offset:
-            statement = statement.offset(safe_goal_offset)
-
-        safe_goal_limit: Optional[int] = None
-        if goal_limit is not None:
-            safe_goal_limit = max(1, int(goal_limit))
-            # Fetch one extra row to signal "has more" without COUNT(*).
-            statement = statement.limit(safe_goal_limit + 1)
-
-        eager_load = (
-            selectinload(Goal.objectives)
-            .selectinload(Objective.key_results)
-            .selectinload(KeyResult.tasks)
-        )
-        if include_work_logs:
-            eager_load = eager_load.selectinload(Task.work_logs)
-
-        statement = statement.options(eager_load)
-        goals = list(session.exec(statement).all())
-
-        has_more_goals = False
-        if safe_goal_limit is not None and len(goals) > safe_goal_limit:
-            has_more_goals = True
-            goals = goals[:safe_goal_limit]
-
-        nodes = {}
-        root_ids = []
-
-        for goal in goals:
-            g_id = goal.external_id or f"goal_{goal.id}"
-            root_ids.append(g_id)
-
-            import json
-
-            nodes[g_id] = {
-                "id": g_id,
-                "type": "GOAL",
-                "title": goal.title,
-                "description": goal.description,
-                "progress": goal.progress,
-                "children": [],
-                "createdAt": to_epoch_millis(goal.created_at),
-                "isExpanded": goal.is_expanded,
-                "cycle_id": goal.cycle_id,
-                "strategy_tags": json.loads(goal.strategy_tags)
-                if goal.strategy_tags
-                else [],
-                "owner_id": goal.owner_id,
-            }
-
-            for obj in goal.objectives:
-                o_id = obj.external_id or f"objective_{obj.id}"
-                nodes[g_id]["children"].append(o_id)
-                nodes[o_id] = {
-                    "id": o_id,
-                    "type": "OBJECTIVE",
-                    "title": obj.title,
-                    "description": obj.description,
-                    "progress": obj.progress,
-                    "children": [],
-                    "parentId": g_id,
-                    "createdAt": to_epoch_millis(obj.created_at),
-                    "isExpanded": obj.is_expanded,
-                }
-
-                for kr in obj.key_results:
-                    k_id = kr.external_id or f"key_result_{kr.id}"
-                    nodes[o_id]["children"].append(k_id)
-
-                    init_tags = []
-                    if kr.initiative_tags:
-                        try:
-                            init_tags = json.loads(kr.initiative_tags)
-                        except Exception as exc:
-                            logger.debug(
-                                "Failed to parse initiative_tags for key_result_id=%s: %s",
-                                kr.id,
-                                exc,
-                            )
-
-                    gemini_analysis = None
-                    if kr.gemini_analysis:
-                        try:
-                            gemini_analysis = json.loads(kr.gemini_analysis)
-                        except Exception as exc:
-                            logger.debug(
-                                "Failed to parse gemini_analysis for key_result_id=%s: %s",
-                                kr.id,
-                                exc,
-                            )
-
-                    nodes[k_id] = {
-                        "id": k_id,
-                        "type": "KEY_RESULT",
-                        "title": kr.title,
-                        "description": kr.description,
-                        "progress": kr.progress,
-                        "children": [],
-                        "parentId": o_id,
-                        "createdAt": to_epoch_millis(kr.created_at),
-                        "target_value": kr.target_value,
-                        "current_value": kr.current_value,
-                        "unit": kr.unit,
-                        "initiative_tags": init_tags,
-                        "geminiAnalysis": gemini_analysis,
-                    }
-
-                    for task in kr.tasks:
-                        t_id = task.external_id or f"task_{task.id}"
-                        nodes[k_id]["children"].append(t_id)
-
-                        # Reconstruct WorkLog
-                        work_log = []
-                        if include_work_logs:
-                            for log in task.work_logs:
-                                work_log.append(
-                                    {
-                                        "startedAt": to_epoch_millis(log.start_time),
-                                        "endedAt": to_epoch_millis(log.end_time),
-                                        "durationMinutes": log.duration_minutes,
-                                        "summary": log.summary,
-                                    }
-                                )
-
-                        nodes[t_id] = {
-                            "id": t_id,
-                            "type": "TASK",
-                            "title": task.title,
-                            "description": task.description,
-                            "progress": task.progress,
-                            "children": [],
-                            "parentId": k_id,
-                            "createdAt": to_epoch_millis(task.created_at),
-                            "isExpanded": task.is_expanded,
-                            "status": task.status.value,
-                            "timeSpent": task.total_time_spent,
-                            "timerStartedAt": to_epoch_millis(task.timer_started_at),
-                            "deadline": to_epoch_millis(task.deadline),
-                            "workLog": work_log,
-                        }
-
-        payload = {"nodes": nodes, "rootIds": root_ids}
-        if safe_goal_limit is not None:
-            payload["meta"] = {
-                "goal_offset": safe_goal_offset,
-                "goal_limit": safe_goal_limit,
-                "has_more_goals": has_more_goals,
-                "next_goal_offset": (
-                    safe_goal_offset + safe_goal_limit if has_more_goals else None
-                ),
-            }
-        return payload
+    return crud_data_helpers.get_user_data_from_sql_from_crud(
+        crud_module=sys.modules[__name__],
+        username=username,
+        cycle_id=cycle_id,
+        goal_limit=goal_limit,
+        goal_offset=goal_offset,
+        include_work_logs=include_work_logs,
+    )
 
 
 def get_sql_id_by_external(external_id: str, model_class) -> Optional[int]:
     """Helper to get SQL internal ID from JSON external UUID/ID."""
-    with get_session_context() as session:
-        # Select the whole model to avoid Pydantic metaclass issues with .id access on the class
-        statement = select(model_class).where(model_class.external_id == external_id)
-        result = session.exec(statement).first()
-        return result.id if result else None
+    return crud_data_helpers.get_sql_id_by_external_from_crud(
+        crud_module=sys.modules[__name__],
+        external_id=external_id,
+        model_class=model_class,
+    )
 
 
 # ============================================================================
@@ -2185,56 +1799,27 @@ def create_team(
     actor_username: Optional[str] = None,
 ) -> Team:
     """Create a new team."""
-    if _backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import create_team as backend_create_team
-
-        backend_result = backend_create_team(
-            name=name,
-            description=description,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    if not str(name or "").strip():
-        raise ValueError("Team name is required.")
-
-    with get_session_context() as session:
-        if actor_username:
-            _require_admin_actor(session, actor_username)
-        elif _backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
-
-        team = Team(name=name, description=description)
-        session.add(team)
-        try:
-            session.commit()
-            session.refresh(team)
-            audit_log(
-                "create_team",
-                "team",
-                actor=actor_username,
-                details={"name": name, "id": team.id},
-            )
-            return team
-        except IntegrityError:
-            session.rollback()
-            raise ValueError(f"Team with name '{name}' already exists.")
+    return crud_team_helpers.create_team_from_crud(
+        crud_module=sys.modules[__name__],
+        name=name,
+        description=description,
+        actor_username=actor_username,
+    )
 
 
 def get_all_teams() -> List[Team]:
     """Retrieve all teams."""
-    with get_session_context() as session:
-        return session.exec(select(Team)).all()
+    return crud_team_helpers.get_all_teams_from_crud(
+        crud_module=sys.modules[__name__],
+    )
 
 
 def get_team_by_id(team_id: int) -> Optional[Team]:
     """Retrieve a team by ID."""
-    with get_session_context() as session:
-        return session.get(Team, team_id)
+    return crud_team_helpers.get_team_by_id_from_crud(
+        crud_module=sys.modules[__name__],
+        team_id=team_id,
+    )
 
 
 def update_team(
@@ -2243,85 +1828,18 @@ def update_team(
     **updates,
 ) -> Optional[Team]:
     """Update team details."""
-    if _backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import update_team as backend_update_team
-
-        backend_result = backend_update_team(
-            team_id=team_id,
-            actor_username=actor_username,
-            name=updates.get("name"),
-            description=updates.get("description"),
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        if actor_username:
-            _require_admin_actor(session, actor_username)
-        elif _backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
-
-        team = session.get(Team, team_id)
-        if not team:
-            return None
-
-        for key, value in updates.items():
-            if hasattr(team, key):
-                setattr(team, key, value)
-
-        session.add(team)
-        try:
-            session.commit()
-            session.refresh(team)
-            audit_log(
-                "update_team",
-                "team",
-                actor=actor_username,
-                details={"id": team_id, "updates": updates},
-            )
-            return team
-        except IntegrityError:
-            session.rollback()
-            raise ValueError("Update failed, likely duplicate name.")
+    return crud_team_helpers.update_team_from_crud(
+        crud_module=sys.modules[__name__],
+        team_id=team_id,
+        actor_username=actor_username,
+        updates=updates,
+    )
 
 
 def delete_team(team_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a team. Fails if it has members."""
-    if _backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import delete_team as backend_delete_team
-
-        backend_result = backend_delete_team(
-            team_id=team_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return bool(backend_result.get("deleted", True))
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        if actor_username:
-            _require_admin_actor(session, actor_username)
-        elif _backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
-
-        team = session.get(Team, team_id)
-        if not team:
-            return False
-
-        # Check for members - need to load relationship or query User
-        # Since we are in a new session, lazy loading might work if bound, but robust way is direct query
-        member_check = session.exec(select(User).where(User.team_id == team_id)).first()
-        if member_check:
-            raise ValueError(
-                "Cannot delete team with assigned members. Reassign them first."
-            )
-
-        session.delete(team)
-        session.commit()
-        audit_log("delete_team", "team", actor=actor_username, details={"id": team_id})
-        return True
+    return crud_team_helpers.delete_team_from_crud(
+        crud_module=sys.modules[__name__],
+        team_id=team_id,
+        actor_username=actor_username,
+    )
