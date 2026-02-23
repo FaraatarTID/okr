@@ -145,3 +145,39 @@ def test_run_main_from_app_renders_workspace_for_active_user():
     assert st.session_state["user_role"] == "member"
     assert st.session_state["manager_id"] == 5
     assert st.session_state["must_change_password"] is False
+
+
+def test_run_main_from_app_recovers_when_app_module_missing_st(monkeypatch):
+    fake_st = _FakeStreamlit(session_state={"user_id": 10})
+    calls = {"render_app": 0}
+    runtime_bundle = {
+        "user": {
+            "username": "alice",
+            "display_name": "Alice",
+            "role": "member",
+            "manager_id": 5,
+            "must_change_password": False,
+            "is_active": True,
+        }
+    }
+
+    app_module = SimpleNamespace(
+        render_login=lambda: None,
+        _resolve_app_shell_runtime=lambda _user_id: runtime_bundle,
+        error_log=lambda *_args, **_kwargs: None,
+        _clear_user_session=lambda: None,
+        render_password_reset_gate=lambda: None,
+        render_app=lambda *_args, **_kwargs: calls.__setitem__(
+            "render_app", calls["render_app"] + 1
+        ),
+    )
+    monkeypatch.setattr(
+        app_entry_helpers,
+        "_resolve_streamlit_from_app",
+        lambda *, app_module: fake_st,
+    )
+
+    app_entry_helpers.run_main_from_app(app_module=app_module)
+
+    assert calls["render_app"] == 1
+    assert fake_st.session_state["username"] == "alice"

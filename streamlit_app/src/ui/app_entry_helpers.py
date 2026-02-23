@@ -3,6 +3,22 @@
 from __future__ import annotations
 
 
+def _resolve_streamlit_from_app(*, app_module):
+    """Resolve Streamlit module from app module with resilient fallback."""
+    st_module = getattr(app_module, "st", None)
+    if st_module is not None:
+        return st_module
+
+    import streamlit as st_module
+
+    # Keep downstream helpers stable if they read app_module.st later in the flow.
+    try:
+        setattr(app_module, "st", st_module)
+    except Exception:
+        pass
+    return st_module
+
+
 def sync_user_session_from_snapshot(session_state, user_snapshot: dict) -> None:
     """Populate session identity fields from runtime user snapshot."""
     session_state["username"] = user_snapshot.get("username")
@@ -16,7 +32,7 @@ def sync_user_session_from_snapshot(session_state, user_snapshot: dict) -> None:
 
 def run_main_from_app(*, app_module) -> None:
     """Run app entry flow using dependencies provided by app_module."""
-    st = app_module.st
+    st = _resolve_streamlit_from_app(app_module=app_module)
 
     if "user_id" not in st.session_state:
         app_module.render_login()
