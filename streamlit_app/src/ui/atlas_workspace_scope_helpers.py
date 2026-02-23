@@ -5,6 +5,15 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
+from src.ui.session_keys import (
+    ATLAS_BREADCRUMBS,
+    ATLAS_FOCUS_TASK_REF,
+    ATLAS_LAST_SELECTED_REF,
+    ATLAS_SCOPE_SELECTOR,
+    ATLAS_SELECTED_REF,
+    NAV_STACK,
+)
+
 
 def resolve_actor_context(
     session_state: dict[str, Any],
@@ -63,7 +72,7 @@ def ensure_scope_selection(
     session_state: dict[str, Any],
     scope_options: dict[str, list[int] | None],
     *,
-    selector_key: str = "atlas_scope_selector",
+    selector_key: str = ATLAS_SCOPE_SELECTOR,
 ) -> str:
     scope_labels = list(scope_options.keys())
     if not scope_labels:
@@ -115,8 +124,8 @@ def ensure_selected_ref(
     index: dict[str, Any],
     roots: list[str],
     *,
-    selected_ref_key: str = "atlas_selected_ref",
-    nav_stack_key: str = "nav_stack",
+    selected_ref_key: str = ATLAS_SELECTED_REF,
+    nav_stack_key: str = NAV_STACK,
 ) -> str | None:
     selected_ref = session_state.get(selected_ref_key)
     if selected_ref not in index:
@@ -135,9 +144,9 @@ def sync_selected_navigation(
     *,
     selected_ref: str,
     selected_meta: dict[str, Any],
-    nav_stack_key: str = "nav_stack",
-    last_selected_key: str = "atlas_last_selected_ref",
-    breadcrumbs_key: str = "atlas_breadcrumbs",
+    nav_stack_key: str = NAV_STACK,
+    last_selected_key: str = ATLAS_LAST_SELECTED_REF,
+    breadcrumbs_key: str = ATLAS_BREADCRUMBS,
 ) -> set[str]:
     path = list(selected_meta.get("path") or [])
     session_state[nav_stack_key] = path
@@ -221,7 +230,7 @@ def resolve_focus_task_ref(
     *,
     task_refs: list[str],
     suggested_task_ref: str | None,
-    focus_task_key: str = "atlas_focus_task_ref",
+    focus_task_key: str = ATLAS_FOCUS_TASK_REF,
 ) -> str | None:
     focus_task_ref = session_state.get(focus_task_key)
     if focus_task_ref not in task_refs:

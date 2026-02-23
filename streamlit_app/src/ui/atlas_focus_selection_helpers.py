@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui.session_keys import (
+    ATLAS_AI_SUGGESTED_NEXT,
+    ATLAS_FOCUS_TASK_PICKER,
+    ATLAS_FOCUS_TASK_REF,
+    ATLAS_SELECTED_REF,
+)
+
 
 def resolve_suggested_focus_candidate(
     *,
@@ -14,7 +21,7 @@ def resolve_suggested_focus_candidate(
     actor_id: int | None,
     health_index: dict[str, Any] | None,
     next_score_fn: Callable[..., Any],
-    ai_state_key: str = "atlas_ai_suggested_next",
+    ai_state_key: str = ATLAS_AI_SUGGESTED_NEXT,
 ) -> tuple[str | None, str | None, Any, bool]:
     suggested_focus_ref: str | None = None
     suggested_focus_reason: str | None = None
@@ -91,8 +98,8 @@ def render_suggested_focus_banner(
         key=f"atlas_top_suggest_focus_{suggested_focus_ref}",
         use_container_width=False,
     ):
-        session_state["atlas_focus_task_ref"] = suggested_focus_ref
-        session_state["atlas_selected_ref"] = suggested_focus_ref
+        session_state[ATLAS_FOCUS_TASK_REF] = suggested_focus_ref
+        session_state[ATLAS_SELECTED_REF] = suggested_focus_ref
         rerun_fn()
     suggested_row[1].markdown(
         (
@@ -140,13 +147,13 @@ def render_focus_task_picker(
         "Choose Focus Task",
         options=task_refs,
         index=task_refs.index(focus_task_ref) if focus_task_ref in task_refs else 0,
-        key="atlas_focus_task_picker",
+        key=ATLAS_FOCUS_TASK_PICKER,
         label_visibility="collapsed",
         format_func=lambda ref: (
             f"{type_icons.get('TASK', '')} {index[ref]['title']} ({index[ref]['owner_name']})"
         ),
     )
     if picked_ref != focus_task_ref:
-        session_state["atlas_focus_task_ref"] = picked_ref
+        session_state[ATLAS_FOCUS_TASK_REF] = picked_ref
         rerun_fn()
     return picked_ref

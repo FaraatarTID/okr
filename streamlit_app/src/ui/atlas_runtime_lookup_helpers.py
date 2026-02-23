@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui.session_keys import ATLAS_NODE_LOOKUP
+
 
 def extract_ai_snapshot_fields(
     raw_analysis: Any,
@@ -59,7 +61,7 @@ def get_node_details_from_lookup(
 ) -> tuple[str | None, str | None]:
     lookup = node_lookup
     if lookup is None and isinstance(session_state, dict):
-        candidate = session_state.get("atlas_node_lookup")
+        candidate = session_state.get(ATLAS_NODE_LOOKUP)
         lookup = candidate if isinstance(candidate, dict) else {}
     if not isinstance(lookup, dict):
         return None, None

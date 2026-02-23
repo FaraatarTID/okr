@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui.session_keys import (
+    ATLAS_BREADCRUMBS,
+    ATLAS_FOCUS_TASK_REF,
+    ATLAS_SELECTED_REF,
+)
+
 
 def build_point_ref_label_lookup(
     *,
@@ -100,11 +106,11 @@ def apply_clicked_ref_navigation(
     if not clicked_ref or clicked_ref not in index or clicked_ref == selected_ref:
         return False
 
-    session_state["atlas_selected_ref"] = clicked_ref
-    session_state["atlas_breadcrumbs"] = clicked_ref
+    session_state[ATLAS_SELECTED_REF] = clicked_ref
+    session_state[ATLAS_BREADCRUMBS] = clicked_ref
     clicked_meta = index[clicked_ref]
     if clicked_meta.get("type") == "TASK":
-        session_state["atlas_focus_task_ref"] = clicked_ref
+        session_state[ATLAS_FOCUS_TASK_REF] = clicked_ref
     else:
         branch_tasks = collect_task_refs_fn(
             index=index,
@@ -112,7 +118,7 @@ def apply_clicked_ref_navigation(
             limit=200,
         )
         if branch_tasks:
-            session_state["atlas_focus_task_ref"] = (
+            session_state[ATLAS_FOCUS_TASK_REF] = (
                 suggest_focus_task_fn(
                     task_refs=branch_tasks,
                     index=index,

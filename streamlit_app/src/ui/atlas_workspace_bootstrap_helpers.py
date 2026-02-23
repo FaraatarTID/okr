@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
+from src.ui.session_keys import ATLAS_NODE_LOOKUP
+
 
 def resolve_workspace_bootstrap(
     *,
@@ -62,7 +64,7 @@ def resolve_workspace_bootstrap(
     index = runtime_data.get("index", {})
     roots = list(runtime_data.get("roots") or [])
     node_lookup = runtime_data.get("node_lookup") or {}
-    session_state["atlas_node_lookup"] = node_lookup
+    session_state[ATLAS_NODE_LOOKUP] = node_lookup
 
     if not roots:
         st_module.info("No goals found for this cycle and scope.")
