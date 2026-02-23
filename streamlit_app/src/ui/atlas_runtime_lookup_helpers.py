@@ -33,7 +33,9 @@ def extract_ai_snapshot_fields(
 
     warnings_list = analysis.get("deadline_warnings") or []
     if isinstance(warnings_list, list) and warnings_list:
-        joined = " ".join(str(item) for item in warnings_list if item is not None).lower()
+        joined = " ".join(
+            str(item) for item in warnings_list if item is not None
+        ).lower()
         ai_deadline_state = "overdue" if "overdue" in joined else "risk"
 
     return ai_overall_score, ai_deadline_state

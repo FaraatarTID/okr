@@ -30,7 +30,9 @@ def date_label(value) -> str:
         return str(value)
 
 
-def format_cycle_label(cycle_snapshot: dict, *, date_label_fn: Callable[[Any], str]) -> str:
+def format_cycle_label(
+    cycle_snapshot: dict, *, date_label_fn: Callable[[Any], str]
+) -> str:
     cycle_id = int(cycle_snapshot.get("id"))
     title = str(cycle_snapshot.get("title", "") or "").strip() or "Untitled cycle"
     start_label = date_label_fn(cycle_snapshot.get("start_date"))

@@ -32,4 +32,6 @@ def test_no_duplicate_top_level_function_names() -> None:
                     f"(first defined at line {first_line})"
                 )
 
-    assert not issues, "Duplicate top-level function definitions found:\n" + "\n".join(issues)
+    assert not issues, "Duplicate top-level function definitions found:\n" + "\n".join(
+        issues
+    )

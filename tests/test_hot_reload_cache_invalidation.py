@@ -4,9 +4,10 @@ import sys
 import types
 
 
-def test_model_refresh_clears_streamlit_cache_once_on_identity_change(monkeypatch) -> None:
+def test_model_refresh_clears_streamlit_cache_once_on_identity_change(
+    monkeypatch,
+) -> None:
     import src.database as database
-    import src.models as models
 
     clear_calls = {"count": 0}
 

@@ -63,7 +63,9 @@ def _get_config_value(keys: Sequence[str]) -> Optional[str]:
                 if value is not None:
                     return str(value)
     except (AttributeError, KeyError, RuntimeError, FileNotFoundError, OSError) as exc:
-        _LOGGER.debug("Unable to read AI provider config from Streamlit secrets: %s", exc)
+        _LOGGER.debug(
+            "Unable to read AI provider config from Streamlit secrets: %s", exc
+        )
     return None
 
 
@@ -166,8 +168,7 @@ def get_ai_provider_runtime_status() -> AIProviderStatus:
         provider=provider,
         ready=False,
         message=(
-            f"Unsupported AI_PROVIDER '{provider}'. "
-            "Use: gemini, openai_compatible."
+            f"Unsupported AI_PROVIDER '{provider}'. Use: gemini, openai_compatible."
         ),
     )
 
@@ -256,13 +257,9 @@ def _call_openai_compatible_json(prompt: str) -> Dict[str, Any]:
     base_url = get_openai_base_url()
     model = get_openai_model()
     if not base_url:
-        return {
-            "error": "AI provider 'openai_compatible' requires AI_BASE_URL."
-        }
+        return {"error": "AI provider 'openai_compatible' requires AI_BASE_URL."}
     if not model:
-        return {
-            "error": "AI provider 'openai_compatible' requires AI_MODEL."
-        }
+        return {"error": "AI provider 'openai_compatible' requires AI_MODEL."}
 
     url = _openai_chat_completions_url(base_url)
     headers = {"Content-Type": "application/json"}
@@ -337,8 +334,7 @@ def generate_json(prompt: str) -> Dict[str, Any]:
 
     return {
         "error": (
-            f"Unsupported AI_PROVIDER '{provider}'. "
-            "Use: gemini, openai_compatible."
+            f"Unsupported AI_PROVIDER '{provider}'. Use: gemini, openai_compatible."
         )
     }
 

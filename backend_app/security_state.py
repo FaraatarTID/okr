@@ -72,7 +72,11 @@ class InMemorySecurityStateStore:
         cutoff = int(now_ts) - max(1, int(window_seconds))
 
         with self._lock:
-            stale = [key for key, seen_at in self._nonce_seen.items() if int(seen_at) < cutoff]
+            stale = [
+                key
+                for key, seen_at in self._nonce_seen.items()
+                if int(seen_at) < cutoff
+            ]
             for key in stale:
                 self._nonce_seen.pop(key, None)
 
@@ -108,7 +112,9 @@ class InMemorySecurityStateStore:
 class DatabaseSecurityStateStore:
     """Distributed security state backed by the shared application database."""
 
-    def __init__(self, *, database_url: str, cleanup_interval_seconds: int = 60) -> None:
+    def __init__(
+        self, *, database_url: str, cleanup_interval_seconds: int = 60
+    ) -> None:
         safe_database_url = str(database_url or "").strip()
         if not safe_database_url:
             raise SecurityStateUnavailableError(
@@ -184,10 +190,14 @@ class DatabaseSecurityStateStore:
             self._schema_ready = True
 
     def _cleanup_if_due(self, now_dt: datetime, now_ts: float) -> None:
-        if (now_ts - float(self._last_cleanup_at)) < float(self._cleanup_interval_seconds):
+        if (now_ts - float(self._last_cleanup_at)) < float(
+            self._cleanup_interval_seconds
+        ):
             return
         with self._cleanup_lock:
-            if (now_ts - float(self._last_cleanup_at)) < float(self._cleanup_interval_seconds):
+            if (now_ts - float(self._last_cleanup_at)) < float(
+                self._cleanup_interval_seconds
+            ):
                 return
             try:
                 with self._engine.begin() as conn:
@@ -440,13 +450,7 @@ def _utc_naive_from_epoch(epoch_seconds: float | int) -> datetime:
 
 
 def _resolve_database_url() -> str:
-    return (
-        str(
-            os.getenv("OKR_DATABASE_URL")
-            or os.getenv("DATABASE_URL")
-            or ""
-        ).strip()
-    )
+    return str(os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL") or "").strip()
 
 
 def _is_production(settings: BackendSettings) -> bool:
@@ -499,7 +503,9 @@ def _get_store() -> SecurityStateStore:
     with _store_lock:
         if _cached_store is not None and _cached_signature == signature:
             return _cached_store
-        if isinstance(_cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)):
+        if isinstance(
+            _cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)
+        ):
             _cached_store.dispose()
         _cached_store = _build_store(settings)
         _cached_signature = signature
@@ -509,7 +515,9 @@ def _get_store() -> SecurityStateStore:
 def _fallback_to_memory_store() -> InMemorySecurityStateStore:
     global _cached_store, _cached_signature
     with _store_lock:
-        if isinstance(_cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)):
+        if isinstance(
+            _cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)
+        ):
             _cached_store.dispose()
         _cached_store = _memory_store
         _cached_signature = None
@@ -569,7 +577,9 @@ def check_rate_limit_window(
 def reset_security_state_for_tests() -> None:
     global _cached_store, _cached_signature
     with _store_lock:
-        if isinstance(_cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)):
+        if isinstance(
+            _cached_store, (DatabaseSecurityStateStore, RedisSecurityStateStore)
+        ):
             _cached_store.dispose()
         _cached_store = None
         _cached_signature = None

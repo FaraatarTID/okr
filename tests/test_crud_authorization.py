@@ -11,7 +11,6 @@ def _utc_now_naive() -> datetime:
 @pytest.fixture()
 def isolated_db(monkeypatch, tmp_path):
     import src.database as database
-    import src.models  # Register models
 
     db_path = tmp_path / "okr_auth_test.db"
     db_url = f"sqlite:///{db_path}"
@@ -30,7 +29,9 @@ def isolated_db(monkeypatch, tmp_path):
 def _build_task_tree_for_user(username: str, cycle_id: int):
     from src.crud import create_goal, create_key_result, create_objective, create_task
 
-    goal = create_goal(username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username)
+    goal = create_goal(
+        username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username
+    )
     objective = create_objective(goal.id, "Objective", actor_username=username)
     key_result = create_key_result(objective.id, "KR", actor_username=username)
     task = create_task(key_result.id, "Task", actor_username=username)
@@ -66,7 +67,9 @@ def test_member_cannot_mutate_other_users_nodes(isolated_db):
         update_task(alice_task.id, title="hijack", actor_username="bob")
 
     with pytest.raises(PermissionError):
-        add_manual_log(alice_task.id, duration_minutes=5, note="bad", actor_username="bob")
+        add_manual_log(
+            alice_task.id, duration_minutes=5, note="bad", actor_username="bob"
+        )
 
     with pytest.raises(PermissionError):
         delete_work_log(alice_log.id, actor_username="bob")
@@ -88,12 +91,21 @@ def test_manager_can_mutate_team_member_but_not_outsider(isolated_db):
         end_date=_utc_now_naive() + timedelta(days=90),
     )
 
-    member_goal = create_goal("member1", title="team goal", cycle_id=cycle.id, actor_username="member1")
-    updated = update_goal(member_goal.id, title="manager updated", actor_username="manager1")
+    member_goal = create_goal(
+        "member1", title="team goal", cycle_id=cycle.id, actor_username="member1"
+    )
+    updated = update_goal(
+        member_goal.id, title="manager updated", actor_username="manager1"
+    )
     assert updated is not None
     assert updated.title == "manager updated"
 
-    outsider_goal = create_goal("outsider1", title="outsider goal", cycle_id=cycle.id, actor_username="outsider1")
+    outsider_goal = create_goal(
+        "outsider1",
+        title="outsider goal",
+        cycle_id=cycle.id,
+        actor_username="outsider1",
+    )
     with pytest.raises(PermissionError):
         update_goal(outsider_goal.id, title="should fail", actor_username="manager1")
 
@@ -152,7 +164,9 @@ def test_actor_identity_is_required_for_goal_scoped_mutations(isolated_db):
     with pytest.raises(PermissionError):
         create_goal("alice", title="No actor goal", cycle_id=cycle.id)
 
-    goal = create_goal("alice", title="Actor goal", cycle_id=cycle.id, actor_username="alice")
+    goal = create_goal(
+        "alice", title="Actor goal", cycle_id=cycle.id, actor_username="alice"
+    )
     objective = create_objective(goal.id, "Actor objective", actor_username="alice")
     key_result = create_key_result(objective.id, "Actor KR", actor_username="alice")
 
@@ -222,7 +236,9 @@ def test_update_operations_reject_protected_fields(isolated_db):
         update_objective(objective.id, goal_id=goal.id + 1, actor_username="alice")
 
     with pytest.raises(ValueError):
-        update_key_result(key_result.id, objective_id=objective.id + 1, actor_username="alice")
+        update_key_result(
+            key_result.id, objective_id=objective.id + 1, actor_username="alice"
+        )
 
     with pytest.raises(ValueError):
         update_task(task.id, key_result_id=key_result.id + 1, actor_username="alice")
@@ -252,7 +268,9 @@ def test_manual_log_and_estimates_validate_non_negative_values(isolated_db):
         add_manual_log(task.id, duration_minutes=-5, actor_username="alice")
 
     with pytest.raises(ValueError):
-        create_task(key_result.id, "Bad estimate", estimated_minutes=-1, actor_username="alice")
+        create_task(
+            key_result.id, "Bad estimate", estimated_minutes=-1, actor_username="alice"
+        )
 
     with pytest.raises(ValueError):
         update_task(task.id, estimated_minutes=-10, actor_username="alice")
@@ -299,10 +317,17 @@ def test_alignment_mutations_require_authorization(isolated_db):
     )
 
     member_goal = create_goal(
-        "member_align", title="member goal", cycle_id=cycle.id, actor_username="member_align"
+        "member_align",
+        title="member goal",
+        cycle_id=cycle.id,
+        actor_username="member_align",
     )
-    member_obj_a = create_objective(member_goal.id, "member obj a", actor_username="member_align")
-    member_obj_b = create_objective(member_goal.id, "member obj b", actor_username="member_align")
+    member_obj_a = create_objective(
+        member_goal.id, "member obj a", actor_username="member_align"
+    )
+    member_obj_b = create_objective(
+        member_goal.id, "member obj b", actor_username="member_align"
+    )
 
     outsider_goal = create_goal(
         "outsider_align",
@@ -356,10 +381,17 @@ def test_get_node_enforces_read_scope_when_actor_is_provided(isolated_db):
     )
 
     member_goal = create_goal(
-        "member_read", title="member goal", cycle_id=cycle.id, actor_username="member_read"
+        "member_read",
+        title="member goal",
+        cycle_id=cycle.id,
+        actor_username="member_read",
     )
-    member_obj = create_objective(member_goal.id, "member obj", actor_username="member_read")
-    member_kr = create_key_result(member_obj.id, "member kr", actor_username="member_read")
+    member_obj = create_objective(
+        member_goal.id, "member obj", actor_username="member_read"
+    )
+    member_kr = create_key_result(
+        member_obj.id, "member kr", actor_username="member_read"
+    )
     member_task = create_task(member_kr.id, "member task", actor_username="member_read")
 
     outsider_goal = create_goal(

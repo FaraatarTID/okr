@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Durable async job queue helpers backed by the primary application database."""
 
 from __future__ import annotations
@@ -136,7 +137,11 @@ def request_job_cancel(job_id: str, actor_username: str) -> Optional[AsyncJob]:
         if job.actor_username and job.actor_username != actor_username:
             return None
 
-        if job.status in {AsyncJobStatus.SUCCEEDED, AsyncJobStatus.FAILED, AsyncJobStatus.CANCELLED}:
+        if job.status in {
+            AsyncJobStatus.SUCCEEDED,
+            AsyncJobStatus.FAILED,
+            AsyncJobStatus.CANCELLED,
+        }:
             return job
 
         if job.status == AsyncJobStatus.PENDING:
@@ -168,10 +173,18 @@ def claim_next_pending_job(worker_id: str) -> Optional[AsyncJob]:
         # Postgres workers should claim with SKIP LOCKED to avoid queue head contention.
         try:
             bind = session.get_bind()
-            dialect_name = str(getattr(getattr(bind, "dialect", None), "name", "")).lower()
+            dialect_name = str(
+                getattr(getattr(bind, "dialect", None), "name", "")
+            ).lower()
             if dialect_name == "postgresql":
                 stmt = stmt.with_for_update(skip_locked=True)
-        except (AttributeError, SQLAlchemyError, RuntimeError, TypeError, ValueError) as exc:
+        except (
+            AttributeError,
+            SQLAlchemyError,
+            RuntimeError,
+            TypeError,
+            ValueError,
+        ) as exc:
             _LOGGER.debug("Falling back to non-locking pending-job claim: %s", exc)
 
         candidate = session.exec(stmt).first()
@@ -233,7 +246,9 @@ def mark_job_failed(job_id: str, error_text: str) -> None:
             session.commit()
             return
 
-        job.status = AsyncJobStatus.CANCELLED if job.cancel_requested else AsyncJobStatus.FAILED
+        job.status = (
+            AsyncJobStatus.CANCELLED if job.cancel_requested else AsyncJobStatus.FAILED
+        )
         job.error_text = str(error_text)[:2000]
         job.finished_at = now
         job.updated_at = now
@@ -281,9 +296,7 @@ def prune_terminal_jobs(*, retention_days: int, batch_size: int = 200) -> int:
         if not candidate_ids:
             return 0
 
-        result = session.exec(
-            delete(AsyncJob).where(AsyncJob.id.in_(candidate_ids))
-        )
+        result = session.exec(delete(AsyncJob).where(AsyncJob.id.in_(candidate_ids)))
         deleted = int(getattr(result, "rowcount", 0) or 0)
         session.commit()
         return deleted

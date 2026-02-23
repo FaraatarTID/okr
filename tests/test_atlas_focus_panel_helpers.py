@@ -111,7 +111,7 @@ def test_render_stop_composer_mobile_save_stops_and_records_summary():
         stop_capture_key="atlas_stop_capture_task_ref",
         stop_draft_key="atlas_stop_summary_draft_task_1",
         stop_timer_fn=lambda *_args, **_kwargs: SimpleNamespace(duration_minutes=12.5),
-        clean_summary_fn=lambda value: (str(value).strip() if value else None),
+        clean_summary_fn=lambda value: str(value).strip() if value else None,
         rerun_fn=lambda: reruns.append("rerun"),
     )
 

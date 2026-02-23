@@ -4,7 +4,9 @@ import src.database as database
 
 
 def _enforce_supabase_validation(monkeypatch):
-    monkeypatch.setattr(database, "_allow_non_supabase_url", lambda: False, raising=True)
+    monkeypatch.setattr(
+        database, "_allow_non_supabase_url", lambda: False, raising=True
+    )
     monkeypatch.delenv("OKR_ALLOW_SUPABASE_SESSION_POOLER", raising=False)
     monkeypatch.delenv("OKR_ALLOW_SUPABASE_DIRECT_CONNECTION", raising=False)
     monkeypatch.delenv("OKR_ALLOW_SUPABASE_SUPERUSER", raising=False)

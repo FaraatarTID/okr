@@ -55,7 +55,12 @@ def upgrade() -> None:
             sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
             sa.Column("scope", sa.String(), nullable=False),
             sa.Column("identifier", sa.String(), nullable=False),
-            sa.Column("failed_attempts", sa.Integer(), nullable=False, server_default=sa.text("0")),
+            sa.Column(
+                "failed_attempts",
+                sa.Integer(),
+                nullable=False,
+                server_default=sa.text("0"),
+            ),
             sa.Column("window_started_at", sa.DateTime(), nullable=False),
             sa.Column("locked_until", sa.DateTime(), nullable=True),
             sa.Column("last_failed_at", sa.DateTime(), nullable=True),
@@ -78,7 +83,9 @@ def upgrade() -> None:
             unique=False,
         )
 
-    if "ck_auth_throttle_failed_attempts_non_negative" not in _check_names("auth_throttle_state"):
+    if "ck_auth_throttle_failed_attempts_non_negative" not in _check_names(
+        "auth_throttle_state"
+    ):
         with op.batch_alter_table("auth_throttle_state") as batch_op:
             batch_op.create_check_constraint(
                 "ck_auth_throttle_failed_attempts_non_negative",
@@ -94,11 +101,16 @@ def downgrade() -> None:
     if "ix_auth_throttle_locked_until" in existing_indexes:
         op.drop_index("ix_auth_throttle_locked_until", table_name="auth_throttle_state")
     if "ux_auth_throttle_scope_identifier" in existing_indexes:
-        op.drop_index("ux_auth_throttle_scope_identifier", table_name="auth_throttle_state")
+        op.drop_index(
+            "ux_auth_throttle_scope_identifier", table_name="auth_throttle_state"
+        )
 
-    if "ck_auth_throttle_failed_attempts_non_negative" in _check_names("auth_throttle_state"):
+    if "ck_auth_throttle_failed_attempts_non_negative" in _check_names(
+        "auth_throttle_state"
+    ):
         with op.batch_alter_table("auth_throttle_state") as batch_op:
-            batch_op.drop_constraint("ck_auth_throttle_failed_attempts_non_negative", type_="check")
+            batch_op.drop_constraint(
+                "ck_auth_throttle_failed_attempts_non_negative", type_="check"
+            )
 
     op.drop_table("auth_throttle_state")
-

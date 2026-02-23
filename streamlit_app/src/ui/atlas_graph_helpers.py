@@ -38,7 +38,9 @@ def build_graph_from_node(
         nodes_list.append(Node(id=nid, label=f"{icon} {title}", size=25, color=color))
 
         if parent_id:
-            edges_list.append(Edge(source=parent_id, target=nid, label="", color="#CCCCCC"))
+            edges_list.append(
+                Edge(source=parent_id, target=nid, label="", color="#CCCCCC")
+            )
 
         children = []
         if hasattr(obj, "objectives"):

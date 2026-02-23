@@ -75,7 +75,11 @@ def test_leadership_read_uses_local_fallback_when_enabled(monkeypatch):
     monkeypatch.setattr(
         crud,
         "get_leadership_metrics",
-        lambda usernames, cycle_id: {"hygiene_pct": 100.0, "usernames": list(usernames), "cycle_id": cycle_id},
+        lambda usernames, cycle_id: {
+            "hygiene_pct": 100.0,
+            "usernames": list(usernames),
+            "cycle_id": cycle_id,
+        },
     )
 
     payload = components._cached_get_leadership_metrics(

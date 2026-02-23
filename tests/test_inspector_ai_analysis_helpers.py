@@ -102,7 +102,9 @@ def test_render_key_result_ai_analysis_section_run_updates_and_reruns():
         node_id=7,
         username="alice",
         analyze_node_fn=lambda *_args, **_kwargs: {"overall_score": 88},
-        update_key_result_fn=lambda node_id, **kwargs: updates.append((node_id, kwargs)),
+        update_key_result_fn=lambda node_id, **kwargs: updates.append(
+            (node_id, kwargs)
+        ),
         json_loads_fn=lambda _raw: {},
         literal_eval_fn=lambda _raw: {},
         rerun_fn=lambda: reruns.append("rerun"),
@@ -166,7 +168,9 @@ def test_render_key_result_ai_analysis_section_literal_eval_normalizes():
         node_id=9,
         username="alice",
         analyze_node_fn=lambda *_args, **_kwargs: {},
-        update_key_result_fn=lambda node_id, **kwargs: updates.append((node_id, kwargs)),
+        update_key_result_fn=lambda node_id, **kwargs: updates.append(
+            (node_id, kwargs)
+        ),
         json_loads_fn=lambda _raw: (_ for _ in ()).throw(ValueError("bad json")),
         literal_eval_fn=lambda _raw: analysis_dict,
         rerun_fn=lambda: None,
@@ -177,7 +181,10 @@ def test_render_key_result_ai_analysis_section_literal_eval_normalizes():
         (9, {"gemini_analysis": analysis_dict, "actor_username": "alice"})
     ]
     assert fake_st.info_calls == ["Recovered"]
-    assert any("Failed to parse KR analysis JSON for node 9" in msg for msg in logger.debug_calls)
+    assert any(
+        "Failed to parse KR analysis JSON for node 9" in msg
+        for msg in logger.debug_calls
+    )
 
 
 def test_render_key_result_ai_analysis_section_fallback_code_when_unparseable():
@@ -200,4 +207,7 @@ def test_render_key_result_ai_analysis_section_fallback_code_when_unparseable():
     )
 
     assert fake_st.code_calls == [raw_payload]
-    assert any("Failed to normalize KR analysis payload for node 10" in msg for msg in logger.debug_calls)
+    assert any(
+        "Failed to normalize KR analysis payload for node 10" in msg
+        for msg in logger.debug_calls
+    )

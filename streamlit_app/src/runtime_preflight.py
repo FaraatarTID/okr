@@ -60,9 +60,7 @@ def evaluate_runtime_preflight(
         return report
 
     if not has_pdfshift_key:
-        report.errors.append(
-            "PDF_METHOD=pdfshift but PDFShift API key is missing."
-        )
+        report.errors.append("PDF_METHOD=pdfshift but PDFShift API key is missing.")
     else:
         report.infos.append("PDF provider is PDFShift (secure mode).")
 
@@ -82,9 +80,7 @@ def evaluate_runtime_preflight(
     )
 
     if is_production and not backend_proxy_mutations:
-        report.errors.append(
-            "Production requires OKR_BACKEND_PROXY_MUTATIONS=true."
-        )
+        report.errors.append("Production requires OKR_BACKEND_PROXY_MUTATIONS=true.")
 
     if is_production and not backend_url:
         report.errors.append(
@@ -92,18 +88,14 @@ def evaluate_runtime_preflight(
         )
 
     if backend_proxy_mutations and not backend_url:
-        message = (
-            "OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set."
-        )
+        message = "OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set."
         if is_production:
             report.errors.append(message)
         else:
             report.warnings.append(message)
 
     if backend_url and not str(backend_service_token or "").strip():
-        message = (
-            "OKR_BACKEND_API_URL is configured but OKR_BACKEND_SERVICE_TOKEN is missing."
-        )
+        message = "OKR_BACKEND_API_URL is configured but OKR_BACKEND_SERVICE_TOKEN is missing."
         if is_production:
             report.errors.append(message)
         else:
@@ -118,7 +110,11 @@ def evaluate_runtime_preflight(
     if not security_state_backend:
         security_state_backend = "memory"
     distributed_backends = {"database", "redis"}
-    if is_production and backend_url and security_state_backend not in distributed_backends:
+    if (
+        is_production
+        and backend_url
+        and security_state_backend not in distributed_backends
+    ):
         report.errors.append(
             "Production backend mode requires OKR_BACKEND_SECURITY_STATE_BACKEND=database or redis."
         )

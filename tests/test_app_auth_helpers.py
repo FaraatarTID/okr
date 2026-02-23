@@ -151,7 +151,10 @@ def test_render_login_locked_message_is_shown():
 
 def test_render_password_reset_gate_success_clears_session_and_reruns(monkeypatch):
     st = _FakeStreamlit(
-        text_inputs={"New Password": "StrongerPass1!", "Confirm Password": "StrongerPass1!"},
+        text_inputs={
+            "New Password": "StrongerPass1!",
+            "Confirm Password": "StrongerPass1!",
+        },
         buttons={"Logout": False},
         form_submit=True,
         session_state={"user_id": 7, "username": "alice"},

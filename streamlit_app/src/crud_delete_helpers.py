@@ -6,6 +6,7 @@ from typing import Optional
 
 from src.domain.progress import refresh_hierarchy_progress
 
+
 def delete_goal_from_crud(
     *,
     crud_module,
@@ -143,7 +144,9 @@ def delete_key_result_from_crud(
             objective_id = item.objective_id
             session.delete(item)
             session.commit()
-            crud_module.audit_log("delete", "key_result", details={"key_result_id": kr_id})
+            crud_module.audit_log(
+                "delete", "key_result", details={"key_result_id": kr_id}
+            )
 
             crud_module.calculate_objective_progress(session, objective_id)
             refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")

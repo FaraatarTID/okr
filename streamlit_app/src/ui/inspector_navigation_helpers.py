@@ -19,7 +19,9 @@ def typed_ref_for_node(node: Any) -> str:
     return f"{table_name}_{getattr(node, 'id', '')}"
 
 
-def parse_typed_ref(node_ref: str, *, logger: Any | None = None) -> tuple[str | None, int | None]:
+def parse_typed_ref(
+    node_ref: str, *, logger: Any | None = None
+) -> tuple[str | None, int | None]:
     if not isinstance(node_ref, str) or "_" not in node_ref:
         return None, None
 

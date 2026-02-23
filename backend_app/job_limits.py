@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Job submission quotas for AI/PDF async workloads."""
 
 from __future__ import annotations
@@ -96,7 +97,9 @@ def _count_active_jobs(
         stmt = (
             select(func.count())
             .select_from(AsyncJob)
-            .where(AsyncJob.status.in_([AsyncJobStatus.PENDING, AsyncJobStatus.RUNNING]))
+            .where(
+                AsyncJob.status.in_([AsyncJobStatus.PENDING, AsyncJobStatus.RUNNING])
+            )
         )
         if actor_username:
             stmt = stmt.where(AsyncJob.actor_username == actor_username)
@@ -109,15 +112,18 @@ def _count_active_jobs(
 def _latest_actor_job_created_at(actor_username: str) -> datetime | None:
     with get_session_context() as session:
         raw = session.exec(
-            select(func.max(AsyncJob.created_at))
-            .where(AsyncJob.actor_username == str(actor_username).strip())
+            select(func.max(AsyncJob.created_at)).where(
+                AsyncJob.actor_username == str(actor_username).strip()
+            )
         ).one()
         return _scalar_to_datetime(raw)
 
 
 def _resolve_actor_team_id(actor_username: str) -> int | None:
     with get_session_context() as session:
-        actor = session.exec(select(User).where(User.username == actor_username)).first()
+        actor = session.exec(
+            select(User).where(User.username == actor_username)
+        ).first()
         if not actor:
             return None
         return actor.team_id

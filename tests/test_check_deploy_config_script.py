@@ -5,12 +5,12 @@ import sys
 from pathlib import Path
 
 
-SCRIPT = (
-    Path(__file__).resolve().parents[1] / "scripts" / "check_deploy_config.py"
-)
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_deploy_config.py"
 
 
-def _run_checker(env_file: Path, secrets_file: Path, mode: str) -> subprocess.CompletedProcess[str]:
+def _run_checker(
+    env_file: Path, secrets_file: Path, mode: str
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             sys.executable,
@@ -37,8 +37,12 @@ def _write_env(
     security_state_redis_url: str = "",
 ) -> None:
     service_token = "CHANGE_ME_SHARED_TOKEN" if placeholder_values else "tok_live_123"
-    signing_secret = "CHANGE_ME_SIGNING_SECRET" if placeholder_values else "sign_live_123"
-    bootstrap_pw = "CHANGE_ME_BOOTSTRAP_PASSWORD" if placeholder_values else "Admin!Passw0rd"
+    signing_secret = (
+        "CHANGE_ME_SIGNING_SECRET" if placeholder_values else "sign_live_123"
+    )
+    bootstrap_pw = (
+        "CHANGE_ME_BOOTSTRAP_PASSWORD" if placeholder_values else "Admin!Passw0rd"
+    )
     db_url = (
         "postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"
         if placeholder_values

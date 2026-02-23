@@ -93,7 +93,9 @@ def test_ensure_admin_exists_retries_transient_operational_error(monkeypatch):
             )
         return False
 
-    monkeypatch.setattr(crud, "_ensure_admin_exists_once", _flaky_bootstrap, raising=True)
+    monkeypatch.setattr(
+        crud, "_ensure_admin_exists_once", _flaky_bootstrap, raising=True
+    )
     monkeypatch.setattr(crud, "ADMIN_BOOTSTRAP_MAX_RETRIES", 2, raising=True)
     monkeypatch.setattr(crud, "ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", 0.0, raising=True)
 
@@ -101,7 +103,9 @@ def test_ensure_admin_exists_retries_transient_operational_error(monkeypatch):
     assert attempts["count"] == 2
 
 
-def test_ensure_admin_exists_does_not_retry_non_transient_operational_error(monkeypatch):
+def test_ensure_admin_exists_does_not_retry_non_transient_operational_error(
+    monkeypatch,
+):
     import src.crud as crud
 
     attempts = {"count": 0}
@@ -114,7 +118,9 @@ def test_ensure_admin_exists_does_not_retry_non_transient_operational_error(monk
             orig=Exception("password authentication failed for user"),
         )
 
-    monkeypatch.setattr(crud, "_ensure_admin_exists_once", _failing_bootstrap, raising=True)
+    monkeypatch.setattr(
+        crud, "_ensure_admin_exists_once", _failing_bootstrap, raising=True
+    )
     monkeypatch.setattr(crud, "ADMIN_BOOTSTRAP_MAX_RETRIES", 3, raising=True)
     monkeypatch.setattr(crud, "ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", 0.0, raising=True)
 

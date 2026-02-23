@@ -24,7 +24,9 @@ def _as_int(raw: str | None, *, default: int, minimum: int) -> int:
 
 
 def _as_choice(raw: str | None, *, default: str, allowed: set[str]) -> str:
-    value = str(raw).strip().lower() if raw is not None else str(default).strip().lower()
+    value = (
+        str(raw).strip().lower() if raw is not None else str(default).strip().lower()
+    )
     if value not in allowed:
         return str(default).strip().lower()
     return value
@@ -62,9 +64,12 @@ class BackendSettings:
 
 
 def get_backend_settings() -> BackendSettings:
-    runtime_env = str(
-        os.getenv("OKR_ENV", os.getenv("OKR_RUNTIME_ENV", "development"))
-    ).strip().lower() or "development"
+    runtime_env = (
+        str(os.getenv("OKR_ENV", os.getenv("OKR_RUNTIME_ENV", "development")))
+        .strip()
+        .lower()
+        or "development"
+    )
     is_production = runtime_env in {"prod", "production"}
     security_state_backend_default = "database" if is_production else "memory"
     return BackendSettings(

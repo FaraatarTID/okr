@@ -1,14 +1,14 @@
 """
 Tests for Phase 4: Strategic Analysis & Reporting Engine.
 """
-import pytest
+
 from unittest.mock import patch, MagicMock
-from datetime import datetime, timedelta
 
 
 # ---------------------------------------------------------------------------
 # 1. Burnout Risk Tests
 # ---------------------------------------------------------------------------
+
 
 class TestBurnoutRisk:
     """Tests for calculate_burnout_risk logic."""
@@ -23,6 +23,7 @@ class TestBurnoutRisk:
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         from src.domain.analysis import calculate_burnout_risk
+
         result = calculate_burnout_risk(user_id=1, days=14)
 
         assert result["risk_label"] == "Healthy"
@@ -33,6 +34,7 @@ class TestBurnoutRisk:
 # ---------------------------------------------------------------------------
 # 2. Strategy Gap Tests
 # ---------------------------------------------------------------------------
+
 
 class TestStrategyGaps:
     """Tests for detect_strategy_gaps logic."""
@@ -49,16 +51,17 @@ class TestStrategyGaps:
         mock_ctx.return_value = ctx_instance
 
         from src.domain.analysis import detect_strategy_gaps
+
         result = detect_strategy_gaps(cycle_id=1)
 
         assert isinstance(result, list)
         assert len(result) == 0
 
 
-
 # ---------------------------------------------------------------------------
 # 3. Achievement Aggregation Tests
 # ---------------------------------------------------------------------------
+
 
 class TestAchievementAggregation:
     """Tests for aggregate_achievements logic."""
@@ -72,6 +75,7 @@ class TestAchievementAggregation:
         mock_ctx.return_value.__exit__ = MagicMock(return_value=False)
 
         from src.domain.analysis import aggregate_achievements
+
         result = aggregate_achievements(user_id=1, cycle_id=1)
 
         assert isinstance(result, list)
@@ -81,6 +85,7 @@ class TestAchievementAggregation:
 # ---------------------------------------------------------------------------
 # 4. Reporting Tests
 # ---------------------------------------------------------------------------
+
 
 class TestReporting:
     """Tests for reporting.py portfolio generation."""
@@ -99,6 +104,7 @@ class TestReporting:
         }
 
         from src.domain.reporting import generate_achievement_portfolio
+
         portfolio = generate_achievement_portfolio(
             user_id=1, cycle_id=1, user_display_name="Test User"
         )

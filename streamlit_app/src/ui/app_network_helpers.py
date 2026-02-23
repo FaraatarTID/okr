@@ -11,7 +11,9 @@ def get_client_ip_from_streamlit(*, st_module) -> str | None:
         if headers is None:
             return None
 
-        header_map = {str(key).lower(): str(value) for key, value in dict(headers).items()}
+        header_map = {
+            str(key).lower(): str(value) for key, value in dict(headers).items()
+        }
         for key in [
             "x-forwarded-for",
             "x-real-ip",

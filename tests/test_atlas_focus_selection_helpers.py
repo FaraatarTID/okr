@@ -47,14 +47,16 @@ def test_resolve_suggested_focus_candidate_prefers_valid_ai_state():
         "task_1": {"progress": 10},
         "task_2": {"progress": 40},
     }
-    ref, reason, conf, is_ai = atlas_focus_selection_helpers.resolve_suggested_focus_candidate(
-        session_state=session_state,
-        task_refs=["task_1", "task_2"],
-        index=index,
-        selected_scope="My OKRs",
-        actor_id=1,
-        health_index={},
-        next_score_fn=lambda *_args, **_kwargs: 0,
+    ref, reason, conf, is_ai = (
+        atlas_focus_selection_helpers.resolve_suggested_focus_candidate(
+            session_state=session_state,
+            task_refs=["task_1", "task_2"],
+            index=index,
+            selected_scope="My OKRs",
+            actor_id=1,
+            health_index={},
+            next_score_fn=lambda *_args, **_kwargs: 0,
+        )
     )
     assert ref == "task_2"
     assert reason == "AI hint"
@@ -73,14 +75,18 @@ def test_resolve_suggested_focus_candidate_removes_stale_ai_and_falls_back():
         "task_1": {"progress": 100},
         "task_2": {"progress": 20},
     }
-    ref, reason, conf, is_ai = atlas_focus_selection_helpers.resolve_suggested_focus_candidate(
-        session_state=session_state,
-        task_refs=["task_1", "task_2"],
-        index=index,
-        selected_scope="My OKRs",
-        actor_id=1,
-        health_index={},
-        next_score_fn=lambda meta, *_args, **_kwargs: int(meta.get("progress") or 0),
+    ref, reason, conf, is_ai = (
+        atlas_focus_selection_helpers.resolve_suggested_focus_candidate(
+            session_state=session_state,
+            task_refs=["task_1", "task_2"],
+            index=index,
+            selected_scope="My OKRs",
+            actor_id=1,
+            health_index={},
+            next_score_fn=lambda meta, *_args, **_kwargs: int(
+                meta.get("progress") or 0
+            ),
+        )
     )
     assert ref == "task_2"
     assert reason is None

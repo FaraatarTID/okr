@@ -124,7 +124,9 @@ def ensure_selected_ref(
     if selected_ref not in index:
         stack = session_state.get(nav_stack_key, [])
         candidate = stack[-1] if stack else None
-        selected_ref = candidate if candidate in index else (roots[0] if roots else None)
+        selected_ref = (
+            candidate if candidate in index else (roots[0] if roots else None)
+        )
         if selected_ref is not None:
             session_state[selected_ref_key] = selected_ref
     return selected_ref
@@ -193,7 +195,9 @@ def suggest_focus_task(
             running_refs.append(ref)
             continue
         progress = int(meta.get("progress", 0) or 0)
-        health = (health_index or {}).get(ref) if isinstance(health_index, dict) else None
+        health = (
+            (health_index or {}).get(ref) if isinstance(health_index, dict) else None
+        )
         if health is None:
             health = health_state_fn(meta, index=index)
         kind = str(health.get("kind") or "on_track")
@@ -354,9 +358,7 @@ def build_sprint_reminder_state(
     should_emit = False
     if show:
         emitted_key = session_state.get(notification_sent_key)
-        should_emit = bool(
-            should_emit_target_notification_fn(sprint_key, emitted_key)
-        )
+        should_emit = bool(should_emit_target_notification_fn(sprint_key, emitted_key))
     return {
         "show": show,
         "sprint_key": sprint_key,
@@ -416,7 +418,9 @@ def stop_focus_session(
     if worklog_local:
         session_state["atlas_last_session_summary"] = {
             "task_ref": focus_task_ref,
-            "minutes": round(float(getattr(worklog_local, "duration_minutes", 0) or 0), 1),
+            "minutes": round(
+                float(getattr(worklog_local, "duration_minutes", 0) or 0), 1
+            ),
             "summary": cleaned_summary,
             "at": float(now_fn()),
         }
@@ -446,8 +450,7 @@ def compute_elapsed_minutes(
     try:
         return int(
             (
-                ensure_utc_fn(utc_now_naive_fn())
-                - ensure_utc_fn(started_at)
+                ensure_utc_fn(utc_now_naive_fn()) - ensure_utc_fn(started_at)
             ).total_seconds()
             // 60
         )
@@ -509,7 +512,9 @@ def deadline_to_iso(
         return from_epoch_seconds_fn(ts).isoformat()
     except Exception as exc:
         if logger is not None:
-            logger.debug("Failed to coerce task deadline '%s' to ISO: %s", deadline_raw, exc)
+            logger.debug(
+                "Failed to coerce task deadline '%s' to ISO: %s", deadline_raw, exc
+            )
         try:
             return str(deadline_raw)
         except Exception as nested_exc:
@@ -539,14 +544,20 @@ def build_ai_task_candidates(
             index[ref],
             actor_id,
             index,
-            health=(health_index or {}).get(ref) if isinstance(health_index, dict) else None,
+            health=(health_index or {}).get(ref)
+            if isinstance(health_index, dict)
+            else None,
         ),
     )
     task_candidates: list[dict[str, Any]] = []
     for task_ref in ranked_task_refs[:80]:
         task_meta = index.get(task_ref, {})
         task_node = task_meta.get("node")
-        task_health = (health_index or {}).get(task_ref) if isinstance(health_index, dict) else None
+        task_health = (
+            (health_index or {}).get(task_ref)
+            if isinstance(health_index, dict)
+            else None
+        )
         if task_health is None:
             task_health = health_state_fn(task_meta, index=index)
         parent_ref = task_meta.get("parent")
@@ -909,9 +920,7 @@ def run_ai_progress_sync(
                             planned_progress += 1
                         else:
                             action = "progress_update"
-                        detail_reason = str(
-                            decision.get("reason") or "within_policy"
-                        )
+                        detail_reason = str(decision.get("reason") or "within_policy")
                     else:
                         reason = str(decision.get("reason") or "policy_blocked")
                         detail_reason = reason

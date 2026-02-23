@@ -54,11 +54,13 @@ class _FakeSidebar:
 
 class _FakeStreamlit:
     def __init__(self):
-        self.session_state = _SessionState({
-            "user_id": 99,
-            "display_name": "Alice",
-            "user_role": "member",
-        })
+        self.session_state = _SessionState(
+            {
+                "user_id": 99,
+                "display_name": "Alice",
+                "user_role": "member",
+            }
+        )
         self.sidebar = _FakeSidebar()
         self.errors: list[str] = []
         self.rerun_count = 0
@@ -119,7 +121,9 @@ def test_render_app_from_app_shows_no_cycle_error(monkeypatch):
 
     app_module = SimpleNamespace(
         st=st,
-        _run_pdf_preflight=lambda: calls.__setitem__("preflight", calls["preflight"] + 1),
+        _run_pdf_preflight=lambda: calls.__setitem__(
+            "preflight", calls["preflight"] + 1
+        ),
         _resolve_app_shell_runtime=lambda _user_id: {
             "user": None,
             "cycles": [],

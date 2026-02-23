@@ -1,55 +1,64 @@
 import pytest
-from sqlmodel import Session, select, SQLModel, create_engine
-from src.models import Objective, LifecycleState, User, Goal, KeyResult
-from src.database import get_engine
-from src.crud import update_objective, create_user, create_goal, create_objective as crud_create_objective, create_key_result, update_key_result
-from src.database import get_session_context
+from sqlmodel import Session, SQLModel, create_engine
+from src.models import LifecycleState, Goal, KeyResult
+from src.crud import (
+    update_objective,
+    create_user,
+    create_goal,
+    create_objective as crud_create_objective,
+    create_key_result,
+    update_key_result,
+)
+
 
 @pytest.fixture()
 def isolated_db(monkeypatch, tmp_path):
     import src.database as database
-    import src.crud as crud
+
     db_path = tmp_path / "okr_lifecycle_smoke.db"
     db_url = f"sqlite:///{db_path}"
     engine = create_engine(db_url, connect_args={"check_same_thread": False})
-    
+
     # 🚨 CRITICAL: Monkeypatch get_engine to return our test engine
     monkeypatch.setattr(database, "get_engine", lambda: engine)
     monkeypatch.setattr(database, "_engine", engine)
     monkeypatch.setattr(database, "DATABASE_URL", db_url)
-    
+
     SQLModel.metadata.create_all(engine)
     try:
         yield engine
     finally:
         engine.dispose()
 
+
 def test_lifecycle_transitions(isolated_db):
     engine = isolated_db
     # Setup: Create a user and an objective in DRAFT state
-    admin = create_user("admin", "pass")
+    create_user("admin", "pass")
     goal = create_goal("admin", "Test Goal", actor_username="admin")
     obj = crud_create_objective(goal.id, "Test Objective", actor_username="admin")
-    
+
     print(f"Testing objective {obj.id} (Current State: {obj.state})")
     assert obj.state == LifecycleState.DRAFT
-    
+
     # 1. Test valid transition: DRAFT -> ACTIVE (Fails if no KR)
     print("Trying transition: DRAFT -> ACTIVE (should fail due to missing KRs)")
     try:
-        update_objective(obj.id, actor_username='admin', state=LifecycleState.ACTIVE)
+        update_objective(obj.id, actor_username="admin", state=LifecycleState.ACTIVE)
         pytest.fail("Should have blocked DRAFT -> ACTIVE for objective with no KRs")
     except ValueError as e:
         print(f"Correctly blocked: {e}")
 
     # Add a KR
     kr = create_key_result(obj.id, "Test KR", actor_username="admin")
-    
+
     # 2. Test valid transition: DRAFT -> ACTIVE
     print("Trying valid transition: DRAFT -> ACTIVE")
-    updated = update_objective(obj.id, actor_username='admin', state=LifecycleState.ACTIVE)
+    updated = update_objective(
+        obj.id, actor_username="admin", state=LifecycleState.ACTIVE
+    )
     assert updated.state == LifecycleState.ACTIVE
-    
+
     # Verify cascade
     with Session(engine) as session:
         kr_db = session.get(KeyResult, kr.id)
@@ -58,9 +67,11 @@ def test_lifecycle_transitions(isolated_db):
 
     # 3. Test GRADING transition
     print("Trying valid transition: ACTIVE -> GRADING")
-    updated = update_objective(obj.id, actor_username='admin', state=LifecycleState.GRADING)
+    updated = update_objective(
+        obj.id, actor_username="admin", state=LifecycleState.GRADING
+    )
     assert updated.state == LifecycleState.GRADING
-    
+
     # Verify cascade
     with Session(engine) as session:
         kr_db = session.get(KeyResult, kr.id)
@@ -69,31 +80,33 @@ def test_lifecycle_transitions(isolated_db):
     # 4. Test invalid transition: ACTIVE -> DRAFT (blocked by rules)
     print("Trying invalid transition: GRADING -> DRAFT")
     try:
-        update_objective(obj.id, actor_username='admin', state=LifecycleState.DRAFT)
+        update_objective(obj.id, actor_username="admin", state=LifecycleState.DRAFT)
         pytest.fail("Should have raised ValueError for invalid transition")
     except ValueError as e:
         print(f"Correctly caught invalid transition: {e}")
 
+
 def test_progress_alignment(isolated_db):
     engine = isolated_db
-    admin = create_user("admin", "pass")
+    create_user("admin", "pass")
     goal = create_goal("admin", "Goal", actor_username="admin")
-    obj1 = crud_create_objective(goal.id, "Obj 1", actor_username="admin") # DRAFT
+    obj1 = crud_create_objective(goal.id, "Obj 1", actor_username="admin")  # DRAFT
     kr1 = create_key_result(obj1.id, "KR 1", actor_username="admin")
     update_key_result(kr1.id, progress=50, actor_username="admin")
-    
+
     # Verify goal progress remains 0 because obj1 is DRAFT
     with Session(engine) as session:
-        goal_db = session.get(Goal, goal.id)
+        session.get(Goal, goal.id)
         # We need to force a rollup or check the calc
         from src.domain.progress import calculate_goal_progress
+
         progress = calculate_goal_progress(session, goal.id)
         assert progress == 0
     print("DRAFT objective excluded from Goal progress: OK")
 
     # Activate obj1
     update_objective(obj1.id, state=LifecycleState.ACTIVE, actor_username="admin")
-    
+
     # Verify goal progress is now > 0
     with Session(engine) as session:
         progress = calculate_goal_progress(session, goal.id)

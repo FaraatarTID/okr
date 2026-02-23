@@ -43,7 +43,9 @@ def start_timer(task_id: int, user_id: str):
     return local_start_timer(int(task_id), str(user_id))
 
 
-def stop_timer(task_id: int, summary: Optional[str] = None, user_id: Optional[str] = None):
+def stop_timer(
+    task_id: int, summary: Optional[str] = None, user_id: Optional[str] = None
+):
     from src.crud import stop_timer as local_stop_timer
 
     actor = str(user_id or "").strip()
@@ -69,6 +71,8 @@ def stop_timer(task_id: int, summary: Optional[str] = None, user_id: Optional[st
             summary=result.get("summary"),
         )
     if is_backend_enabled() and not actor:
-        raise ValueError("Actor username is required when backend timer API is enabled.")
+        raise ValueError(
+            "Actor username is required when backend timer API is enabled."
+        )
 
     return local_stop_timer(int(task_id), summary=summary, user_id=user_id)

@@ -60,7 +60,9 @@ def create_cycle_from_crud(
 
 def get_active_cycles_from_crud(*, crud_module):
     with crud_module.get_session_context() as session:
-        statement = crud_module.select(crud_module.Cycle).where(crud_module.Cycle.is_active)
+        statement = crud_module.select(crud_module.Cycle).where(
+            crud_module.Cycle.is_active
+        )
         return list(session.exec(statement).all())
 
 
@@ -160,7 +162,9 @@ def delete_cycle_from_crud(
             return False
 
         goals = session.exec(
-            crud_module.select(crud_module.Goal).where(crud_module.Goal.cycle_id == cycle_id)
+            crud_module.select(crud_module.Goal).where(
+                crud_module.Goal.cycle_id == cycle_id
+            )
         ).all()
         if goals:
             raise ValueError("Cannot delete cycle with existing goals.")

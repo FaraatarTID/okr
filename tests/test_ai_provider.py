@@ -99,13 +99,7 @@ def test_generate_json_openai_compatible_success_path(monkeypatch):
     monkeypatch.setenv("AI_MODEL", "llama3.1")
 
     response_payload = {
-        "choices": [
-            {
-                "message": {
-                    "content": '{"ok": true, "score": 87}'
-                }
-            }
-        ]
+        "choices": [{"message": {"content": '{"ok": true, "score": 87}'}}]
     }
     fake_response = SimpleNamespace(
         status_code=200,

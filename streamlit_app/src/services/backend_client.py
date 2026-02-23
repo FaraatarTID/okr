@@ -177,7 +177,9 @@ def _transport_error(exc: Exception) -> Dict[str, Any]:
 def _json_body(payload: Optional[Dict[str, Any]]) -> Optional[bytes]:
     if payload is None:
         return None
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def _request_json(
@@ -255,7 +257,9 @@ def start_timer(task_id: int, actor_username: str) -> Dict[str, Any]:
     )
 
 
-def stop_timer(task_id: int, actor_username: str, summary: Optional[str] = None) -> Dict[str, Any]:
+def stop_timer(
+    task_id: int, actor_username: str, summary: Optional[str] = None
+) -> Dict[str, Any]:
     return _request_json(
         method="POST",
         path="/v1/timer/stop",
@@ -317,7 +321,9 @@ def fetch_atlas_scope_snapshot(
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "cycle_id": int(cycle_id),
-        "owner_ids": [int(owner_id) for owner_id in (owner_ids or [])] if owner_ids is not None else None,
+        "owner_ids": [int(owner_id) for owner_id in (owner_ids or [])]
+        if owner_ids is not None
+        else None,
         "include_analysis": bool(include_analysis),
         "actor_username": str(actor_username),
     }
@@ -339,7 +345,9 @@ def fetch_leadership_metrics(
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "cycle_id": int(cycle_id),
-        "usernames": [str(value).strip() for value in (usernames or []) if str(value).strip()],
+        "usernames": [
+            str(value).strip() for value in (usernames or []) if str(value).strip()
+        ],
         "actor_username": str(actor_username),
     }
     return _request_json(
@@ -509,7 +517,9 @@ def create_user(
             "username": str(username or "").strip(),
             "password": str(password or ""),
             "role": str(_json_safe(role) or "member"),
-            "display_name": str(display_name).strip() if display_name is not None else None,
+            "display_name": str(display_name).strip()
+            if display_name is not None
+            else None,
             "manager_id": int(manager_id) if manager_id else None,
             "team_id": int(team_id) if team_id else None,
             "must_change_password": bool(must_change_password),

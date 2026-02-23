@@ -49,14 +49,16 @@ def render_focus_map_tab_content(
     rerun_fn: Callable[[], Any],
 ) -> None:
     with st_module.container(border=True):
-        map_chart_area, map_sidebar_area = atlas_focus_map_shell_helpers.render_focus_map_shell(
-            st_module=st_module,
-            selected_meta=selected_meta,
-            node_lookup=node_lookup,
-            type_icons=type_icons,
-            get_node_details_fn=get_node_details_fn,
-            escape_html_fn=escape_html_fn,
-            is_mobile_request=is_mobile_request,
+        map_chart_area, map_sidebar_area = (
+            atlas_focus_map_shell_helpers.render_focus_map_shell(
+                st_module=st_module,
+                selected_meta=selected_meta,
+                node_lookup=node_lookup,
+                type_icons=type_icons,
+                get_node_details_fn=get_node_details_fn,
+                escape_html_fn=escape_html_fn,
+                is_mobile_request=is_mobile_request,
+            )
         )
 
         child_type = child_type_map.get(selected_meta["type"])

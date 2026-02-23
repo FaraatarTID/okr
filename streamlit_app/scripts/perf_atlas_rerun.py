@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Atlas workspace rerun benchmark.
 
@@ -132,7 +133,9 @@ def _seed(engine):
                             {
                                 "overall_score": 45 + (k % 4) * 10,
                                 "deadline_warnings": (
-                                    ["Potentially overdue next week"] if k % 4 == 0 else []
+                                    ["Potentially overdue next week"]
+                                    if k % 4 == 0
+                                    else []
                                 ),
                             }
                         ),
@@ -184,7 +187,9 @@ def _query_counter(engine):
         event.remove(engine, "before_cursor_execute", _before_cursor_execute)
 
 
-def _simulate_atlas_data_path(cycle_id: int, owner_ids: List[int]) -> Dict[str, float | int]:
+def _simulate_atlas_data_path(
+    cycle_id: int, owner_ids: List[int]
+) -> Dict[str, float | int]:
     t0 = time.perf_counter()
     owner_ids_key = components._canonical_owner_ids_key(owner_ids)
     cache_key_ms = (time.perf_counter() - t0) * 1000.0
@@ -204,7 +209,9 @@ def _simulate_atlas_data_path(cycle_id: int, owner_ids: List[int]) -> Dict[str, 
     )
 
     t2 = time.perf_counter()
-    index, roots = components._build_atlas_index_from_snapshot(goals_snapshot, users_map)
+    index, roots = components._build_atlas_index_from_snapshot(
+        goals_snapshot, users_map
+    )
     node_lookup = components._atlas_build_node_lookup(index)
     index_and_lookup_ms = (time.perf_counter() - t2) * 1000.0
 
@@ -226,7 +233,9 @@ def _simulate_atlas_data_path(cycle_id: int, owner_ids: List[int]) -> Dict[str, 
         )
         if not node_type:
             continue
-        breadcrumb_labels.append(f"{components.TYPE_ICONS.get(node_type, '')} {node_title}")
+        breadcrumb_labels.append(
+            f"{components.TYPE_ICONS.get(node_type, '')} {node_title}"
+        )
     for ref in nav_stack:
         components.get_node_details(ref, node_lookup=node_lookup)
     breadcrumb_ms = (time.perf_counter() - t3) * 1000.0

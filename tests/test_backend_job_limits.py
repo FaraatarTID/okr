@@ -24,7 +24,9 @@ def _settings():
 def _patch_baseline(monkeypatch, job_limits):
     monkeypatch.setattr(job_limits, "get_backend_settings", _settings)
     monkeypatch.setattr(job_limits, "_resolve_actor_team_id", lambda actor: 7)
-    monkeypatch.setattr(job_limits, "_has_existing_idempotent_job", lambda **kwargs: False)
+    monkeypatch.setattr(
+        job_limits, "_has_existing_idempotent_job", lambda **kwargs: False
+    )
     monkeypatch.setattr(job_limits, "_count_active_jobs", lambda **kwargs: 0)
     monkeypatch.setattr(job_limits, "_latest_actor_job_created_at", lambda actor: None)
 
@@ -35,7 +37,9 @@ def test_job_limits_allow_submission_when_under_threshold(monkeypatch):
     _patch_baseline(monkeypatch, job_limits)
     monkeypatch.setattr(job_limits, "_count_jobs_since", lambda **kwargs: 0)
 
-    job_limits.enforce_job_submit_limits(kind="ai.generate_json", actor_username="alice")
+    job_limits.enforce_job_submit_limits(
+        kind="ai.generate_json", actor_username="alice"
+    )
 
 
 def test_job_limits_reject_user_rate_limit(monkeypatch):
@@ -85,7 +89,9 @@ def test_job_limits_bypass_when_idempotency_key_already_exists(monkeypatch):
 
     monkeypatch.setattr(job_limits, "get_backend_settings", _settings)
     monkeypatch.setattr(job_limits, "_resolve_actor_team_id", lambda actor: 7)
-    monkeypatch.setattr(job_limits, "_has_existing_idempotent_job", lambda **kwargs: True)
+    monkeypatch.setattr(
+        job_limits, "_has_existing_idempotent_job", lambda **kwargs: True
+    )
 
     def _should_not_count(**kwargs):
         raise AssertionError("quota counters should not run for idempotent replay")

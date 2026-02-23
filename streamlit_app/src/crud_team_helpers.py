@@ -147,10 +147,14 @@ def delete_team_from_crud(
             return False
 
         member_check = session.exec(
-            crud_module.select(crud_module.User).where(crud_module.User.team_id == team_id)
+            crud_module.select(crud_module.User).where(
+                crud_module.User.team_id == team_id
+            )
         ).first()
         if member_check:
-            raise ValueError("Cannot delete team with assigned members. Reassign them first.")
+            raise ValueError(
+                "Cannot delete team with assigned members. Reassign them first."
+            )
 
         session.delete(team)
         session.commit()
@@ -161,4 +165,3 @@ def delete_team_from_crud(
             details={"id": team_id},
         )
         return True
-

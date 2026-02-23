@@ -41,14 +41,18 @@ def test_user_lockout_applies_after_threshold(isolated_db):
     create_user("alice", "alice-pass")
 
     for _ in range(2):
-        failed = authenticate_user_detailed("alice", "wrong-pass", client_ip="203.0.113.10")
+        failed = authenticate_user_detailed(
+            "alice", "wrong-pass", client_ip="203.0.113.10"
+        )
         assert failed["error_code"] == "AUTH_INVALID_CREDENTIALS"
 
     locked = authenticate_user_detailed("alice", "wrong-pass", client_ip="203.0.113.10")
     assert locked["error_code"] == "AUTH_LOCKED_USER"
     assert locked["retry_after_seconds"] > 0
 
-    still_locked = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
+    still_locked = authenticate_user_detailed(
+        "alice", "alice-pass", client_ip="203.0.113.10"
+    )
     assert still_locked["error_code"] == "AUTH_LOCKED_USER"
     assert still_locked["user"] is None
 
@@ -65,8 +69,14 @@ def test_ip_lockout_blocks_other_accounts_for_same_ip(isolated_db, monkeypatch):
     create_user("bob", "bob-pass")
 
     shared_ip = "198.51.100.25"
-    assert authenticate_user_detailed("alice", "bad", client_ip=shared_ip)["error_code"] == "AUTH_INVALID_CREDENTIALS"
-    assert authenticate_user_detailed("bob", "bad", client_ip=shared_ip)["error_code"] == "AUTH_INVALID_CREDENTIALS"
+    assert (
+        authenticate_user_detailed("alice", "bad", client_ip=shared_ip)["error_code"]
+        == "AUTH_INVALID_CREDENTIALS"
+    )
+    assert (
+        authenticate_user_detailed("bob", "bad", client_ip=shared_ip)["error_code"]
+        == "AUTH_INVALID_CREDENTIALS"
+    )
 
     locked = authenticate_user_detailed("unknown", "bad", client_ip=shared_ip)
     assert locked["error_code"] == "AUTH_LOCKED_IP"
@@ -75,7 +85,9 @@ def test_ip_lockout_blocks_other_accounts_for_same_ip(isolated_db, monkeypatch):
     assert blocked["error_code"] == "AUTH_LOCKED_IP"
     assert blocked["user"] is None
 
-    allowed = authenticate_user_detailed("alice", "alice-pass", client_ip="198.51.100.26")
+    allowed = authenticate_user_detailed(
+        "alice", "alice-pass", client_ip="198.51.100.26"
+    )
     assert allowed["success"] is True
     assert allowed["user"] is not None
 
@@ -138,7 +150,11 @@ def test_lockout_expires_after_configured_duration(isolated_db, monkeypatch):
     monkeypatch.setattr(crud, "AUTH_IP_MAX_ATTEMPTS", 100, raising=True)
     monkeypatch.setattr(crud, "AUTH_LOCKOUT_SECONDS", 120, raising=True)
 
-    now = {"value": datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc).replace(tzinfo=None)}
+    now = {
+        "value": datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc).replace(
+            tzinfo=None
+        )
+    }
     monkeypatch.setattr(crud, "utc_now_naive", lambda: now["value"], raising=True)
 
     create_user("alice", "alice-pass")
@@ -172,7 +188,9 @@ def test_authentication_falls_back_when_throttle_table_missing(isolated_db):
     assert failed["success"] is False
     assert failed["error_code"] == "AUTH_INVALID_CREDENTIALS"
 
-    success = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
+    success = authenticate_user_detailed(
+        "alice", "alice-pass", client_ip="203.0.113.10"
+    )
     assert success["success"] is True
     assert success["user"] is not None
 
@@ -200,7 +218,9 @@ def test_authentication_falls_back_on_generic_throttle_operational_error(
     assert failed["success"] is False
     assert failed["error_code"] == "AUTH_INVALID_CREDENTIALS"
 
-    success = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
+    success = authenticate_user_detailed(
+        "alice", "alice-pass", client_ip="203.0.113.10"
+    )
     assert success["success"] is True
     assert success["user"] is not None
 

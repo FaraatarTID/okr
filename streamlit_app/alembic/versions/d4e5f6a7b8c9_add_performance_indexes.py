@@ -32,17 +32,33 @@ def upgrade() -> None:
     existing_work_log = _index_names("work_log")
 
     if "ix_check_in_kr_created" not in existing_check_in:
-        op.create_index("ix_check_in_kr_created", "check_in", ["key_result_id", "created_at"], unique=False)
+        op.create_index(
+            "ix_check_in_kr_created",
+            "check_in",
+            ["key_result_id", "created_at"],
+            unique=False,
+        )
 
     if "ix_task_timer_started_at" not in existing_task:
-        op.create_index("ix_task_timer_started_at", "task", ["timer_started_at"], unique=False)
+        op.create_index(
+            "ix_task_timer_started_at", "task", ["timer_started_at"], unique=False
+        )
     if "ix_task_deadline_progress" not in existing_task:
-        op.create_index("ix_task_deadline_progress", "task", ["deadline", "progress"], unique=False)
+        op.create_index(
+            "ix_task_deadline_progress", "task", ["deadline", "progress"], unique=False
+        )
 
     if "ix_work_log_task_start" not in existing_work_log:
-        op.create_index("ix_work_log_task_start", "work_log", ["task_id", "start_time"], unique=False)
+        op.create_index(
+            "ix_work_log_task_start",
+            "work_log",
+            ["task_id", "start_time"],
+            unique=False,
+        )
     if "ix_work_log_start_time" not in existing_work_log:
-        op.create_index("ix_work_log_start_time", "work_log", ["start_time"], unique=False)
+        op.create_index(
+            "ix_work_log_start_time", "work_log", ["start_time"], unique=False
+        )
 
 
 def downgrade() -> None:

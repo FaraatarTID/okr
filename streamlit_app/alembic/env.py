@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 from logging.config import fileConfig
 import os
 import sys
@@ -26,7 +27,8 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 from sqlmodel import SQLModel
-from src.models import * # Import all models to register them
+import src.models  # noqa: F401  # register SQLModel metadata via model import side effects
+
 target_metadata = SQLModel.metadata
 
 # other values from the config, defined by the needs of env.py,
@@ -69,7 +71,7 @@ def run_migrations_online() -> None:
     # Override sqlalchemy.url with the one from src.database or env vars
     # This ensures consistency with the app's connection logic
     from src.database import _get_database_url
-    
+
     section = config.get_section(config.config_ini_section, {})
     try:
         url = _get_database_url()
@@ -86,9 +88,7 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, 
-            target_metadata=target_metadata,
-            render_as_batch=True
+            connection=connection, target_metadata=target_metadata, render_as_batch=True
         )
 
         with context.begin_transaction():

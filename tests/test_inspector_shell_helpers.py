@@ -43,7 +43,7 @@ def test_inject_dialog_css_writes_modal_style():
     fake_st = _FakeSt()
     inspector_shell_helpers.inject_dialog_css(st_module=fake_st)
     assert len(fake_st.markdown_calls) == 1
-    assert "div[role=\"dialog\"]" in fake_st.markdown_calls[0]
+    assert 'div[role="dialog"]' in fake_st.markdown_calls[0]
     assert fake_st.markdown_kwargs[0]["unsafe_allow_html"] is True
 
 
@@ -85,12 +85,18 @@ def test_derive_node_context_resolves_children_flags():
     kr_node = SimpleNamespace(title="KR", progress=30, tasks=[object()])
     task_node = SimpleNamespace(title="T", progress=40)
 
-    goal_ctx = inspector_shell_helpers.derive_node_context(node=goal_node, node_type="GOAL")
+    goal_ctx = inspector_shell_helpers.derive_node_context(
+        node=goal_node, node_type="GOAL"
+    )
     obj_ctx = inspector_shell_helpers.derive_node_context(
         node=objective_node, node_type="OBJECTIVE"
     )
-    kr_ctx = inspector_shell_helpers.derive_node_context(node=kr_node, node_type="KEY_RESULT")
-    task_ctx = inspector_shell_helpers.derive_node_context(node=task_node, node_type="TASK")
+    kr_ctx = inspector_shell_helpers.derive_node_context(
+        node=kr_node, node_type="KEY_RESULT"
+    )
+    task_ctx = inspector_shell_helpers.derive_node_context(
+        node=task_node, node_type="TASK"
+    )
 
     assert goal_ctx["has_children"] is True
     assert obj_ctx["has_children"] is False

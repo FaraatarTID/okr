@@ -77,9 +77,7 @@ def _has_pdfshift_api_key() -> bool:
 
 def _runtime_preflight_strict_mode() -> bool:
     """Resolve strict-mode flag for runtime preflight policy."""
-    return app_preflight_helpers.runtime_preflight_strict_mode(
-        cfg_value_fn=_cfg_value
-    )
+    return app_preflight_helpers.runtime_preflight_strict_mode(cfg_value_fn=_cfg_value)
 
 
 def _cfg_value(name: str, default: str = "") -> str:
@@ -111,6 +109,7 @@ def _run_pdf_preflight():
         get_ai_provider_runtime_status,
         is_external_ai_allowed,
     )
+
     return app_preflight_helpers.run_pdf_preflight(
         st_module=st,
         environ=os.environ,
@@ -150,7 +149,9 @@ def _format_cycle_label(cycle_snapshot: dict) -> str:
     )
 
 
-def _build_cycle_selector_payload(cycles: list[dict]) -> tuple[list[int], dict[int, str]]:
+def _build_cycle_selector_payload(
+    cycles: list[dict],
+) -> tuple[list[int], dict[int, str]]:
     """Return ID-backed selector options plus display labels."""
     return app_runtime_helpers.build_cycle_selector_payload(
         cycles,

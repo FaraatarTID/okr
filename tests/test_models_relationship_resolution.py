@@ -18,8 +18,12 @@ def test_models_use_lambda_relationship_resolution() -> None:
             and node.func.id == "Relationship"
         ):
             continue
-        has_back_populates = any(keyword.arg == "back_populates" for keyword in node.keywords)
-        has_sa_relationship = any(keyword.arg == "sa_relationship" for keyword in node.keywords)
+        has_back_populates = any(
+            keyword.arg == "back_populates" for keyword in node.keywords
+        )
+        has_sa_relationship = any(
+            keyword.arg == "sa_relationship" for keyword in node.keywords
+        )
         if has_back_populates and not has_sa_relationship:
             issues.append(
                 f"{models_path.relative_to(repo_root)}:{node.lineno} "
@@ -44,7 +48,11 @@ def test_models_avoid_string_based_relationship_kwargs() -> None:
         ):
             continue
         for keyword in node.keywords:
-            if keyword.arg == "foreign_keys" and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, str):
+            if (
+                keyword.arg == "foreign_keys"
+                and isinstance(keyword.value, ast.Constant)
+                and isinstance(keyword.value.value, str)
+            ):
                 issues.append(
                     f"{models_path.relative_to(repo_root)}:{node.lineno} "
                     "uses string foreign_keys in relationship(...); prefer callable/list refs"

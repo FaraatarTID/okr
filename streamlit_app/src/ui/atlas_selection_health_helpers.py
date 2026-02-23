@@ -19,7 +19,9 @@ def parse_typed_ref(node_ref: str, *, logger):
 
 
 def build_atlas_index_from_snapshot(goals_snapshot, users_map):
-    return atlas_index_helpers.build_atlas_index_from_snapshot(goals_snapshot, users_map)
+    return atlas_index_helpers.build_atlas_index_from_snapshot(
+        goals_snapshot, users_map
+    )
 
 
 def atlas_suggested_next_score(

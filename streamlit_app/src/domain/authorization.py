@@ -4,6 +4,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
+from src.domain.permissions import Action, check_permission
 from src.models import Goal, KeyResult, Objective, Task, User, UserRole, WorkLog
 
 
@@ -210,9 +211,6 @@ def _can_manage_owner(session: Session, actor: User, owner_id: Optional[int]) ->
     return False
 
 
-from src.domain.permissions import Action, check_permission
-
-
 def _authorize_goal_mutation(
     session: Session, goal: Optional[Goal], actor_username: Optional[str]
 ) -> None:
@@ -228,7 +226,7 @@ def _authorize_goal_mutation(
     # Mutations map to UPDATE on the goal in the current simple model
     # (since editing children is effectively editing goal scope)
     # or should we be specific?
-    # For now, existing logic was "can_manage_goal". 
+    # For now, existing logic was "can_manage_goal".
     # check_permission(actor, Action.UPDATE, goal) aligns with this.
     if not check_permission(actor, Action.UPDATE, goal, session):
         raise PermissionError("Insufficient permissions for this goal")
@@ -239,12 +237,12 @@ def _authorize_goal_scoped_access(
 ) -> None:
     """
     Enforce access to goal-scoped data (experiments, check-ins, etc.).
-    
+
     Currently implements goal-scoped access where read equals mutation scope:
     - Goal owner can access
-    - Manager of goal owner can access  
+    - Manager of goal owner can access
     - Admins can access
-    
+
     If broader read visibility is needed in the future, implement a separate
     _authorize_goal_read with relaxed rules without modifying this function.
     """

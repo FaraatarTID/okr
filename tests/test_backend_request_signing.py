@@ -8,7 +8,9 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 
-def _sign_request(*, secret: str, method: str, path: str, timestamp: str, nonce: str, body: bytes) -> str:
+def _sign_request(
+    *, secret: str, method: str, path: str, timestamp: str, nonce: str, body: bytes
+) -> str:
     body_digest = hashlib.sha256(body or b"").hexdigest()
     payload = "\n".join(
         [
@@ -19,7 +21,9 @@ def _sign_request(*, secret: str, method: str, path: str, timestamp: str, nonce:
             body_digest,
         ]
     )
-    return hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    return hmac.new(
+        secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
 
 
 def _make_client(monkeypatch):
@@ -51,7 +55,9 @@ def test_signed_request_is_accepted(monkeypatch):
     secret = "test-signing-secret"
 
     payload = {"task_id": 42, "user_id": "alice"}
-    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     timestamp = str(int(time.time()))
     nonce = "nonce-a1"
     signature = _sign_request(
@@ -83,7 +89,9 @@ def test_replay_nonce_is_rejected(monkeypatch):
     secret = "test-signing-secret"
 
     payload = {"task_id": 7, "user_id": "alice"}
-    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     timestamp = str(int(time.time()))
     nonce = "nonce-replay-1"
     signature = _sign_request(
@@ -138,7 +146,9 @@ def test_production_requires_distributed_security_state_backend(monkeypatch):
     client = TestClient(backend_main.app)
 
     payload = {"task_id": 9, "user_id": "alice"}
-    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     timestamp = str(int(time.time()))
     nonce = "nonce-prod-db-required"
     signature = _sign_request(

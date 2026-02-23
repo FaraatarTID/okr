@@ -39,7 +39,9 @@ def render_strategy_pulse_content(
         return
 
     st_module.markdown("### Strategy Pulse")
-    st_module.caption("Advanced insights into execution health and strategic alignment.")
+    st_module.caption(
+        "Advanced insights into execution health and strategic alignment."
+    )
 
     col1, col2 = st_module.columns([1, 1])
 
@@ -53,12 +55,12 @@ def render_strategy_pulse_content(
         color = _risk_color(risk_label)
         st_module.markdown(
             (
-                f"<div style=\"padding: 20px; border-radius: 10px; background: {color}11; border: 1px solid {color}33;\">"
-                f"<h2 style=\"color: {color}; margin: 0;\">{risk_label}</h2>"
-                f"<p style=\"margin: 5px 0; color: #666;\">Burnout Risk Score: <strong>{risk_score}/100</strong></p>"
-                "<div style=\"margin-top: 10px;\">"
-                f"<span style=\"font-size: 13px; margin-right: 15px;\">Avg Daily: <strong>{int(burnout.get('avg_daily_minutes', 0) or 0)}m</strong></span>"
-                f"<span style=\"font-size: 13px;\">14d Output: <strong>{int(burnout.get('completed_tasks', 0) or 0)} tasks</strong></span>"
+                f'<div style="padding: 20px; border-radius: 10px; background: {color}11; border: 1px solid {color}33;">'
+                f'<h2 style="color: {color}; margin: 0;">{risk_label}</h2>'
+                f'<p style="margin: 5px 0; color: #666;">Burnout Risk Score: <strong>{risk_score}/100</strong></p>'
+                '<div style="margin-top: 10px;">'
+                f'<span style="font-size: 13px; margin-right: 15px;">Avg Daily: <strong>{int(burnout.get("avg_daily_minutes", 0) or 0)}m</strong></span>'
+                f'<span style="font-size: 13px;">14d Output: <strong>{int(burnout.get("completed_tasks", 0) or 0)} tasks</strong></span>'
                 "</div>"
                 "</div>"
             ),
@@ -106,14 +108,20 @@ def render_strategy_pulse_content(
     outlook = session_state.get("strategy_outlook")
     if outlook:
         with st_module.container(border=True):
-            st_module.markdown(f"**Confidence:** {outlook.get('confidence_level', 'N/A')}")
+            st_module.markdown(
+                f"**Confidence:** {outlook.get('confidence_level', 'N/A')}"
+            )
             st_module.markdown(
                 outlook.get("outlook_markdown")
                 or outlook.get("outlook_summary")
                 or "No forecast generated."
             )
             with st_module.expander("Risk Mitigation Steps"):
-                for step in (outlook.get("mitigation_steps") or outlook.get("risk_mitigation") or []):
+                for step in (
+                    outlook.get("mitigation_steps")
+                    or outlook.get("risk_mitigation")
+                    or []
+                ):
                     st_module.markdown(f"- {step}")
             pivots = outlook.get("strategic_pivots") or []
             if pivots:
@@ -145,7 +153,9 @@ def render_strategy_pulse_content(
                     )
                     st_module.success("Portfolio ready!")
                 else:
-                    st_module.error("Failed to generate PDF. Check PDF engine configuration.")
+                    st_module.error(
+                        "Failed to generate PDF. Check PDF engine configuration."
+                    )
 
     if "portfolio_pdf" in session_state:
         st_module.download_button(

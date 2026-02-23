@@ -3,24 +3,26 @@ Timer Component for OKR Application.
 Deprecated: this module is retained for compatibility, but periodic
 fragment reruns are disabled to avoid accidental high-frequency polling.
 """
+
 import streamlit as st
 from datetime import datetime
 from typing import Optional, Callable
 
 from src.utils.time_utils import ensure_utc, utc_now_naive
 
+
 def format_elapsed_time(start_time: datetime) -> str:
     """Format elapsed time as HH:MM:SS."""
     if not start_time:
         return "00:00:00"
-    
+
     elapsed = ensure_utc(utc_now_naive()) - ensure_utc(start_time)
     total_seconds = int(elapsed.total_seconds())
-    
+
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60
     seconds = total_seconds % 60
-    
+
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
@@ -39,7 +41,9 @@ try:
     HAS_FRAGMENT = True
 except AttributeError:
     HAS_FRAGMENT = False
-    _fragment_decorator = lambda run_every=None: lambda fn: fn
+
+    def _fragment_decorator(run_every=None):
+        return lambda fn: fn
 
 
 @_fragment_decorator(run_every=None)
@@ -49,14 +53,14 @@ def render_timer_display(
     timer_started_at: Optional[datetime],
     total_time_spent: int,
     on_stop: Callable[[int, str], None],
-    on_start: Callable[[int], None]
+    on_start: Callable[[int], None],
 ):
     """
     Render the timer component with isolated refresh.
-    
+
     This component uses st.fragment to update every second
     without causing full page reloads.
-    
+
     Args:
         task_id: ID of the task being timed
         task_title: Title of the task
@@ -66,17 +70,18 @@ def render_timer_display(
         on_start: Callback when start is clicked (task_id)
     """
     is_running = timer_started_at is not None
-    
+
     with st.container():
         # Header
         st.markdown(f"### ⏱️ Timer: {task_title}")
-        
+
         col1, col2, col3 = st.columns([2, 1, 1])
-        
+
         with col1:
             if is_running:
                 elapsed = format_elapsed_time(timer_started_at)
-                st.markdown(f"""
+                st.markdown(
+                    f"""
                 <div style="
                     font-size: 2.5rem;
                     font-weight: bold;
@@ -89,9 +94,12 @@ def render_timer_display(
                 ">
                     {elapsed}
                 </div>
-                """, unsafe_allow_html=True)
+                """,
+                    unsafe_allow_html=True,
+                )
             else:
-                st.markdown(f"""
+                st.markdown(
+                    """
                 <div style="
                     font-size: 2.5rem;
                     font-weight: bold;
@@ -104,28 +112,40 @@ def render_timer_display(
                 ">
                     00:00:00
                 </div>
-                """, unsafe_allow_html=True)
-        
+                """,
+                    unsafe_allow_html=True,
+                )
+
         with col2:
             st.metric("Total Logged", format_minutes(total_time_spent))
-        
+
         with col3:
             if is_running:
-                if st.button("⏹️ Stop", key=f"stop_timer_{task_id}", type="primary", use_container_width=True):
+                if st.button(
+                    "⏹️ Stop",
+                    key=f"stop_timer_{task_id}",
+                    type="primary",
+                    use_container_width=True,
+                ):
                     note = st.session_state.get(f"timer_note_{task_id}", "")
                     on_stop(task_id, note)
                     st.rerun()
             else:
-                if st.button("▶️ Start", key=f"start_timer_{task_id}", type="primary", use_container_width=True):
+                if st.button(
+                    "▶️ Start",
+                    key=f"start_timer_{task_id}",
+                    type="primary",
+                    use_container_width=True,
+                ):
                     on_start(task_id)
                     st.rerun()
-        
+
         # Note input (only when running)
         if is_running:
             st.text_input(
                 "Work summary (optional)",
                 key=f"timer_note_{task_id}",
-                placeholder="What are you working on?"
+                placeholder="What are you working on?",
             )
 
 
@@ -136,11 +156,11 @@ def render_timer_card(
     total_time_spent: int,
     context_info: str = "",
     on_stop: Callable[[int, str], None] = None,
-    on_start: Callable[[int], None] = None
+    on_start: Callable[[int], None] = None,
 ):
     """
     Render a compact timer card for display in task lists.
-    
+
     Args:
         task_id: Task ID
         task_title: Task title
@@ -151,28 +171,28 @@ def render_timer_card(
         on_start: Start callback
     """
     is_running = timer_started_at is not None
-    
+
     with st.container():
         cols = st.columns([0.5, 3, 1.5, 1])
-        
+
         with cols[0]:
             if is_running:
                 st.markdown("🔴")  # Recording indicator
             else:
                 st.markdown("⭕")
-        
+
         with cols[1]:
             st.markdown(f"**{task_title}**")
             if context_info:
                 st.caption(context_info)
-        
+
         with cols[2]:
             if is_running:
                 elapsed = format_elapsed_time(timer_started_at)
                 st.markdown(f"⏱️ `{elapsed}`")
             else:
                 st.markdown(f"📊 {format_minutes(total_time_spent)}")
-        
+
         with cols[3]:
             if is_running:
                 if on_stop and st.button("Stop", key=f"card_stop_{task_id}"):
@@ -182,13 +202,10 @@ def render_timer_card(
                     on_start(task_id)
 
 
-def render_quick_add_dialog(
-    tasks: list,
-    on_add: Callable[[int, int, str], None]
-):
+def render_quick_add_dialog(tasks: list, on_add: Callable[[int, int, str], None]):
     """
     Render a "Quick Add" dialog for manually logging time.
-    
+
     Args:
         tasks: List of task dicts with id and title
         on_add: Callback (task_id, duration_minutes, note)
@@ -197,7 +214,7 @@ def render_quick_add_dialog(
         if not tasks:
             st.info("No tasks available. Create tasks first to log time.")
             return
-        
+
         task_option_ids: list[int] = []
         task_option_labels: dict[int, str] = {}
         for task in tasks:
@@ -211,9 +228,9 @@ def render_quick_add_dialog(
         if not task_option_ids:
             st.info("No tasks available. Create tasks first to log time.")
             return
-        
+
         col1, col2 = st.columns(2)
-        
+
         with col1:
             selected_task_id = st.selectbox(
                 "Select Task",
@@ -221,24 +238,22 @@ def render_quick_add_dialog(
                 format_func=lambda task_id: task_option_labels.get(
                     task_id, f"Task #{task_id}"
                 ),
-                key="quick_add_task"
+                key="quick_add_task",
             )
-        
+
         with col2:
             duration = st.number_input(
                 "Duration (minutes)",
                 min_value=1,
                 max_value=480,
                 value=30,
-                key="quick_add_duration"
+                key="quick_add_duration",
             )
-        
+
         note = st.text_input(
-            "Note (optional)",
-            key="quick_add_note",
-            placeholder="What did you work on?"
+            "Note (optional)", key="quick_add_note", placeholder="What did you work on?"
         )
-        
+
         if st.button("Add Log", type="primary"):
             if selected_task_id is not None:
                 task_id = int(selected_task_id)

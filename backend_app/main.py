@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Internal backend API for secured mutations, timers, and async jobs."""
 
 from __future__ import annotations
@@ -240,7 +241,9 @@ def _normalize_updates(node_type: str, updates: dict) -> dict:
     clean = dict(updates or {})
     for date_field in ("start_date", "deadline"):
         if date_field in clean:
-            clean[date_field] = _coerce_datetime(clean.get(date_field), field_name=date_field)
+            clean[date_field] = _coerce_datetime(
+                clean.get(date_field), field_name=date_field
+            )
 
     if node_type == "GOAL" and "strategy_tags" in clean:
         clean["strategy_tags"] = _normalize_tags(clean.get("strategy_tags"))
@@ -499,7 +502,9 @@ def _coerce_experiment_updates(updates: dict) -> dict:
     clean = dict(updates or {})
     for date_field in ("start_at", "end_at"):
         if date_field in clean:
-            clean[date_field] = _coerce_datetime(clean.get(date_field), field_name=date_field)
+            clean[date_field] = _coerce_datetime(
+                clean.get(date_field), field_name=date_field
+            )
 
     if "status" in clean:
         clean["status"] = _coerce_enum(
@@ -605,7 +610,9 @@ def api_read_atlas_snapshot(
             owner_ids = requested_owner_ids or None
         else:
             if requested_owner_ids:
-                owner_ids = sorted(allowed_owner_ids.intersection(set(requested_owner_ids)))
+                owner_ids = sorted(
+                    allowed_owner_ids.intersection(set(requested_owner_ids))
+                )
             else:
                 owner_ids = sorted(allowed_owner_ids)
         snapshot = build_atlas_scope_snapshot(
@@ -630,17 +637,23 @@ def api_read_leadership_metrics(
         payload_actor=payload.actor_username,
     )
     requested_usernames = {
-        str(value).strip()
-        for value in (payload.usernames or [])
-        if str(value).strip()
+        str(value).strip() for value in (payload.usernames or []) if str(value).strip()
     }
     with get_session_context() as session:
         scope = _resolve_actor_scope(session, actor)
         allowed_usernames = {str(value) for value in (scope.get("usernames") or set())}
     if bool(scope.get("is_admin", False)):
-        usernames = sorted(requested_usernames) if requested_usernames else sorted(allowed_usernames)
+        usernames = (
+            sorted(requested_usernames)
+            if requested_usernames
+            else sorted(allowed_usernames)
+        )
     else:
-        usernames = sorted(allowed_usernames.intersection(requested_usernames)) if requested_usernames else sorted(allowed_usernames)
+        usernames = (
+            sorted(allowed_usernames.intersection(requested_usernames))
+            if requested_usernames
+            else sorted(allowed_usernames)
+        )
     if not usernames:
         return {}
     return get_leadership_metrics(usernames, int(payload.cycle_id))
@@ -744,7 +757,9 @@ def api_submit_job(
         status_code=status.HTTP_202_ACCEPTED,
         job_id=str(getattr(job, "id", "") or ""),
         team_id=getattr(job, "team_id", None),
-        job_status=str(getattr(getattr(job, "status", None), "value", getattr(job, "status", ""))),
+        job_status=str(
+            getattr(getattr(job, "status", None), "value", getattr(job, "status", ""))
+        ),
     )
     return JobView(**serialize_job(job))
 
@@ -844,7 +859,9 @@ def api_create_objective(
     payload: ObjectiveCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         objective = create_objective(
             goal_id=payload.goal_id,
@@ -869,7 +886,9 @@ def api_create_key_result(
     payload: KeyResultCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         key_result = create_key_result(
             objective_id=payload.objective_id,
@@ -897,7 +916,9 @@ def api_create_task(
     payload: TaskCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         task = create_task(
             key_result_id=payload.key_result_id,
@@ -928,7 +949,9 @@ def api_update_node(
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
     normalized_type = _normalize_node_type(node_type)
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     updates = _normalize_updates(normalized_type, payload.updates)
 
     try:
@@ -994,7 +1017,9 @@ def api_create_user(
     payload: UserCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> UserMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         user = create_user(
             username=payload.username,
@@ -1026,7 +1051,9 @@ def api_update_user(
     payload: UserUpdateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> UserMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     role = None
     if payload.role is not None:
         role = _coerce_enum(payload.role, UserRole, field_name="role")
@@ -1062,7 +1089,9 @@ def api_reset_user_password(
     payload: UserPasswordResetRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> UserPasswordResetResponse:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         reset_ok = reset_user_password(
             user_id=int(user_id),
@@ -1092,7 +1121,9 @@ def api_create_cycle(
     payload: CycleCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> CycleMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         cycle = create_cycle(
             title=payload.title,
@@ -1118,7 +1149,9 @@ def api_update_cycle(
     payload: CycleUpdateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> CycleMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         cycle = update_cycle(
             cycle_id=int(cycle_id),
@@ -1168,7 +1201,9 @@ def api_create_team(
     payload: TeamCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> TeamMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         team = create_team(
             name=payload.name,
@@ -1192,7 +1227,9 @@ def api_update_team(
     payload: TeamUpdateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> TeamMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     updates = {}
     if payload.name is not None:
         updates["name"] = payload.name
@@ -1244,7 +1281,9 @@ def api_create_check_in(
     payload: CheckInCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> CheckInMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         check_in = create_check_in(
             kr_id=payload.kr_id,
@@ -1280,7 +1319,9 @@ def api_create_experiment(
     payload: ExperimentCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> ExperimentMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         experiment = create_experiment(
             key_result_id=payload.key_result_id,
@@ -1316,7 +1357,9 @@ def api_update_experiment(
     payload: ExperimentUpdateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> ExperimentMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     updates = _coerce_experiment_updates(payload.updates)
     try:
         experiment = update_experiment(
@@ -1346,7 +1389,9 @@ def api_close_experiment(
     payload: ExperimentCloseRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> ExperimentMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         experiment = close_experiment(
             experiment_id=int(experiment_id),
@@ -1380,7 +1425,9 @@ def api_create_retrospective(
     payload: RetrospectiveCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> RetrospectiveMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         retro = create_retrospective(
             user_id=payload.user_id,
@@ -1410,7 +1457,9 @@ def api_upsert_retro_experiment_outcome(
     payload: RetroExperimentOutcomeUpsertRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> RetroExperimentOutcomeView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         outcome = upsert_retro_experiment_outcome(
             retrospective_id=int(retrospective_id),
@@ -1443,7 +1492,9 @@ def api_create_weekly_plan(
     payload: WeeklyPlanCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> WeeklyPlanMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     try:
         plan = create_weekly_plan(
             user_id=payload.user_id,
@@ -1474,7 +1525,9 @@ def api_create_alignment(
     payload: AlignmentCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> AlignmentMutationView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=payload.actor_username)
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
     alignment_type = _coerce_enum(
         payload.alignment_type,
         AlignmentType,

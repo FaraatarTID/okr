@@ -10,7 +10,11 @@ import plotly.graph_objects as go
 import streamlit as st
 import streamlit.components.v1 as components
 
-from src.domain.scoring import calculate_kr_score, calculate_objective_score, get_score_label
+from src.domain.scoring import (
+    calculate_kr_score,
+    calculate_objective_score,
+    get_score_label,
+)
 from src.ui.atlas_helpers import (
     _atlas_health_fill_color,
     _atlas_health_source_explanation,

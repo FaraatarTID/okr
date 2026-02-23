@@ -28,7 +28,13 @@ def isolated_db(monkeypatch, tmp_path):
 
 
 def test_owner_id_goals_are_visible_in_user_queries(isolated_db):
-    from src.crud import create_user, create_cycle, get_dashboard_data, get_user_data_from_sql, get_user_goals
+    from src.crud import (
+        create_user,
+        create_cycle,
+        get_dashboard_data,
+        get_user_data_from_sql,
+        get_user_goals,
+    )
     from src.database import get_session_context
     from src.models import Goal
 
@@ -56,7 +62,11 @@ def test_owner_id_goals_are_visible_in_user_queries(isolated_db):
     assert any(goal.title == "Owned Goal" for goal in goals)
 
     user_data = get_user_data_from_sql(user.username, cycle.id)
-    goal_titles = [node.get("title") for node in user_data["nodes"].values() if node.get("type") == "GOAL"]
+    goal_titles = [
+        node.get("title")
+        for node in user_data["nodes"].values()
+        if node.get("type") == "GOAL"
+    ]
     assert "Owned Goal" in goal_titles
 
 
@@ -137,7 +147,9 @@ def test_cycle_task_windowing_returns_stable_slices(isolated_db):
         start_date=_utc_now_naive(),
         end_date=_utc_now_naive() + timedelta(days=90),
     )
-    goal = create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
+    goal = create_goal(
+        "alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice"
+    )
     objective = create_objective(goal.id, "Objective A", actor_username="alice")
     kr = create_key_result(objective.id, "KR A", actor_username="alice")
 
@@ -169,7 +181,9 @@ def test_user_data_goal_nodes_emit_owner_id_only(isolated_db):
     create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
 
     payload = get_user_data_from_sql("alice", cycle.id)
-    goal_nodes = [node for node in payload["nodes"].values() if node.get("type") == "GOAL"]
+    goal_nodes = [
+        node for node in payload["nodes"].values() if node.get("type") == "GOAL"
+    ]
     assert goal_nodes
     assert all("owner_id" in node for node in goal_nodes)
     assert all("user_id" not in node for node in goal_nodes)
@@ -224,7 +238,9 @@ def test_timer_start_stop_enforces_task_ownership(isolated_db):
         end_date=_utc_now_naive() + timedelta(days=90),
     )
 
-    goal = create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
+    goal = create_goal(
+        "alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice"
+    )
     objective = create_objective(goal.id, "Alice Objective", actor_username="alice")
     key_result = create_key_result(objective.id, "Alice KR", actor_username="alice")
     task = create_task(key_result.id, "Alice Task", actor_username="alice")
@@ -329,7 +345,9 @@ def test_start_timer_is_idempotent_for_same_task(isolated_db):
         start_date=_utc_now_naive(),
         end_date=_utc_now_naive() + timedelta(days=90),
     )
-    goal = create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
+    goal = create_goal(
+        "alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice"
+    )
     objective = create_objective(goal.id, "Alice Objective", actor_username="alice")
     key_result = create_key_result(objective.id, "Alice KR", actor_username="alice")
     task = create_task(key_result.id, "Alice Task", actor_username="alice")
@@ -341,7 +359,9 @@ def test_start_timer_is_idempotent_for_same_task(isolated_db):
 
     with get_session_context() as session:
         open_logs = session.exec(
-            select(WorkLog).where(WorkLog.task_id == task.id).where(WorkLog.end_time.is_(None))
+            select(WorkLog)
+            .where(WorkLog.task_id == task.id)
+            .where(WorkLog.end_time.is_(None))
         ).all()
         assert len(open_logs) == 1
 
@@ -367,7 +387,9 @@ def test_stop_timer_recovers_stale_running_task_without_open_log(isolated_db):
         start_date=_utc_now_naive(),
         end_date=_utc_now_naive() + timedelta(days=90),
     )
-    goal = create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
+    goal = create_goal(
+        "alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice"
+    )
     objective = create_objective(goal.id, "Alice Objective", actor_username="alice")
     key_result = create_key_result(objective.id, "Alice KR", actor_username="alice")
     task = create_task(key_result.id, "Alice Task", actor_username="alice")

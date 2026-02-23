@@ -66,7 +66,9 @@ def resolve_workspace_bootstrap(
 
     if not roots:
         st_module.info("No goals found for this cycle and scope.")
-        if st_module.button("Create Goal", key="atlas_create_goal_empty", type="primary"):
+        if st_module.button(
+            "Create Goal", key="atlas_create_goal_empty", type="primary"
+        ):
             session_state["add_mode_parent"] = None
             session_state["add_mode_type"] = "GOAL"
             rerun_fn()

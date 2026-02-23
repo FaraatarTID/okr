@@ -5,6 +5,7 @@ Revises: 9aa9ae459f5b
 Create Date: 2026-02-03 15:00:00.000000
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
@@ -14,8 +15,8 @@ from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'b2c3d4e5f6a7'
-down_revision: Union[str, Sequence[str], None] = '9aa9ae459f5b'
+revision: str = "b2c3d4e5f6a7"
+down_revision: Union[str, Sequence[str], None] = "9aa9ae459f5b"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -29,7 +30,10 @@ def upgrade() -> None:
         column_names = set()
 
     if "summary" not in column_names:
-        op.add_column("work_log", sa.Column("summary", sqlmodel.sql.sqltypes.AutoString(), nullable=True))
+        op.add_column(
+            "work_log",
+            sa.Column("summary", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
+        )
 
 
 def downgrade() -> None:

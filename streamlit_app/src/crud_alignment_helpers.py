@@ -54,7 +54,9 @@ def create_alignment_from_crud(
             )
 
         if check_for_cycle(session, parent_id, child_id):
-            raise ValueError("Adding this alignment would create a circular dependency.")
+            raise ValueError(
+                "Adding this alignment would create a circular dependency."
+            )
 
         existing = session.exec(
             crud_module.select(crud_module.AlignmentEdge)
@@ -130,8 +132,9 @@ def delete_alignment_from_crud(
                 )
             session.delete(edge)
             session.commit()
-            crud_module.audit_log("delete", "alignment_edge", details={"edge_id": edge_id})
+            crud_module.audit_log(
+                "delete", "alignment_edge", details={"edge_id": edge_id}
+            )
             crud_module.clear_cache_safe()
             return True
     return False
-

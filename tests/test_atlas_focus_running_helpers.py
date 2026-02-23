@@ -107,9 +107,15 @@ def test_render_running_status_and_reminder_emits_notification_and_stop_action()
         sprint_run_key_fn=lambda *_args, **_kwargs: None,
         should_show_soft_reminder_fn=lambda **_kwargs: True,
         should_emit_target_notification_fn=lambda *_args, **_kwargs: True,
-        fire_browser_notification_fn=lambda title, body: notifications.append((title, body)),
-        mark_sprint_notification_sent_fn=lambda *_args, **kwargs: marked_sent.append(kwargs.get("sprint_key")),
-        mark_stop_capture_fn=lambda *_args, **kwargs: marked_stop.append(kwargs.get("focus_task_ref")),
+        fire_browser_notification_fn=lambda title, body: notifications.append(
+            (title, body)
+        ),
+        mark_sprint_notification_sent_fn=lambda *_args, **kwargs: marked_sent.append(
+            kwargs.get("sprint_key")
+        ),
+        mark_stop_capture_fn=lambda *_args, **kwargs: marked_stop.append(
+            kwargs.get("focus_task_ref")
+        ),
         dismiss_sprint_reminder_fn=lambda *_args, **_kwargs: None,
         rerun_fn=lambda: reruns.append("rerun"),
         logger=None,
@@ -155,7 +161,9 @@ def test_render_running_status_and_reminder_keep_running_dismisses():
         fire_browser_notification_fn=lambda *_args, **_kwargs: None,
         mark_sprint_notification_sent_fn=lambda *_args, **_kwargs: None,
         mark_stop_capture_fn=lambda *_args, **_kwargs: None,
-        dismiss_sprint_reminder_fn=lambda *_args, **kwargs: dismissed.append(kwargs.get("sprint_key")),
+        dismiss_sprint_reminder_fn=lambda *_args, **kwargs: dismissed.append(
+            kwargs.get("sprint_key")
+        ),
         rerun_fn=lambda: reruns.append("rerun"),
         logger=None,
     )

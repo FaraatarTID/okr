@@ -177,7 +177,9 @@ def create_retrospective_from_crud(
         return retro
 
 
-def get_user_retrospectives_from_crud(*, crud_module, user_id: int, cycle_id: int = None):
+def get_user_retrospectives_from_crud(
+    *, crud_module, user_id: int, cycle_id: int = None
+):
     with crud_module.get_session_context() as session:
         stmt = crud_module.select(crud_module.Retrospective).where(
             crud_module.Retrospective.user_id == user_id

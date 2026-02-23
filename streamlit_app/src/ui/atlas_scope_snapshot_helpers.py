@@ -8,7 +8,9 @@ from typing import Any, Callable
 def canonical_owner_ids_key(owner_ids):
     if owner_ids is None:
         return None
-    canonical = sorted({int(owner_id) for owner_id in owner_ids if owner_id is not None})
+    canonical = sorted(
+        {int(owner_id) for owner_id in owner_ids if owner_id is not None}
+    )
     return tuple(canonical)
 
 
@@ -105,7 +107,15 @@ def build_scope_snapshot_payload(
 
     objective_payload_by_id = {}
     objective_ids = []
-    for objective_id, goal_id, title, description, progress, score_mode, weight in objective_rows:
+    for (
+        objective_id,
+        goal_id,
+        title,
+        description,
+        progress,
+        score_mode,
+        weight,
+    ) in objective_rows:
         if objective_id is None or goal_id is None:
             continue
         objective_ids.append(int(objective_id))

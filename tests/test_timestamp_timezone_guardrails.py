@@ -43,6 +43,8 @@ def test_fromtimestamp_usage_is_centralized() -> None:
             rel = path.relative_to(repo_root)
             for node in ast.walk(tree):
                 if _is_datetime_fromtimestamp_call(node):
-                    issues.append(f"{rel}:{node.lineno} uses datetime.fromtimestamp directly")
+                    issues.append(
+                        f"{rel}:{node.lineno} uses datetime.fromtimestamp directly"
+                    )
 
     assert not issues, "Unsafe timestamp conversion usage:\n" + "\n".join(issues)

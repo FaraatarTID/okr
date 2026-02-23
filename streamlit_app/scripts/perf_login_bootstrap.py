@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Login bootstrap latency benchmark.
 

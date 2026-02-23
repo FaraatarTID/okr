@@ -166,7 +166,9 @@ def test_render_weekly_kr_status_updates_and_rerenders_scores():
         get_score_label_fn=lambda _score: "At Risk",
         get_score_color_band_fn=lambda _score: "atlas-score-band-yellow",
         analyze_node_fn=lambda *_args, **_kwargs: dict(updated_analysis),
-        update_key_result_fn=lambda kr_id, **kwargs: update_calls.append((kr_id, kwargs)),
+        update_key_result_fn=lambda kr_id, **kwargs: update_calls.append(
+            (kr_id, kwargs)
+        ),
         json_loads_fn=json.loads,
         logger=logger,
     )
@@ -206,4 +208,6 @@ def test_render_weekly_kr_status_permission_error_aborts():
 
     assert aborted is True
     assert fake_st.error_calls[-1] == "denied"
-    assert any("Failed to parse KR analysis score payload" in m for m in logger.debug_messages)
+    assert any(
+        "Failed to parse KR analysis score payload" in m for m in logger.debug_messages
+    )

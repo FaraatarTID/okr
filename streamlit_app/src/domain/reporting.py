@@ -7,8 +7,7 @@ Provides:
 """
 
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict
 
 from src.domain.analysis import aggregate_achievements, calculate_burnout_risk
 from src.utils.time_utils import utc_now_naive
@@ -57,7 +56,7 @@ def generate_achievement_portfolio(
         summary = (
             f"{user_display_name} completed {len(achievements)} high-impact "
             f"task(s) totalling {total_high_impact_hours}h, with strongest "
-            f"contribution toward \"{top_obj}\"."
+            f'contribution toward "{top_obj}".'
         )
 
     return {
@@ -109,9 +108,15 @@ def format_portfolio_as_markdown(portfolio: Dict) -> str:
     if burnout:
         lines.append("## Health Snapshot")
         lines.append("")
-        lines.append(f"- **Burnout Risk**: {burnout.get('risk_label', '—')} ({burnout.get('risk_score', 0)})")
-        lines.append(f"- **Avg Daily Focus**: {burnout.get('avg_daily_minutes', 0)} min")
-        lines.append(f"- **Tasks Completed (14d)**: {burnout.get('completed_tasks', 0)}")
+        lines.append(
+            f"- **Burnout Risk**: {burnout.get('risk_label', '—')} ({burnout.get('risk_score', 0)})"
+        )
+        lines.append(
+            f"- **Avg Daily Focus**: {burnout.get('avg_daily_minutes', 0)} min"
+        )
+        lines.append(
+            f"- **Tasks Completed (14d)**: {burnout.get('completed_tasks', 0)}"
+        )
         lines.append("")
 
     lines.append("---")

@@ -27,7 +27,9 @@ def resolve_suggested_focus_candidate(
         ai_scope = str(ai_suggested_state.get("scope") or "")
         if ai_ref in task_refs and ai_scope == str(selected_scope):
             suggested_focus_ref = ai_ref
-            suggested_focus_reason = str(ai_suggested_state.get("reason") or "").strip() or None
+            suggested_focus_reason = (
+                str(ai_suggested_state.get("reason") or "").strip() or None
+            )
             suggested_focus_confidence = ai_suggested_state.get("confidence")
             suggested_focus_is_ai = True
         elif ai_ref and ai_ref not in task_refs:
@@ -35,7 +37,9 @@ def resolve_suggested_focus_candidate(
 
     if task_refs and suggested_focus_ref is None:
         actionable_refs = [
-            ref for ref in task_refs if int(index.get(ref, {}).get("progress", 0) or 0) < 100
+            ref
+            for ref in task_refs
+            if int(index.get(ref, {}).get("progress", 0) or 0) < 100
         ]
         candidate_refs = actionable_refs or task_refs
         ranked_refs = sorted(
@@ -44,7 +48,9 @@ def resolve_suggested_focus_candidate(
                 index[ref],
                 actor_id,
                 index,
-                health=(health_index or {}).get(ref) if isinstance(health_index, dict) else None,
+                health=(health_index or {}).get(ref)
+                if isinstance(health_index, dict)
+                else None,
             ),
         )
         if ranked_refs:
@@ -127,7 +133,9 @@ def render_focus_task_picker(
     if not focus_task_ref or not task_refs:
         return focus_task_ref
 
-    st_module.markdown("<div class='atlas-field-label'>Choose Focus Task</div>", unsafe_allow_html=True)
+    st_module.markdown(
+        "<div class='atlas-field-label'>Choose Focus Task</div>", unsafe_allow_html=True
+    )
     picked_ref = st_module.selectbox(
         "Choose Focus Task",
         options=task_refs,

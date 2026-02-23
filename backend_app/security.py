@@ -106,7 +106,9 @@ async def _verify_request_signature(
     try:
         timestamp_int = int(timestamp_raw)
     except Exception as exc:
-        raise HTTPException(status_code=401, detail="Invalid request timestamp.") from exc
+        raise HTTPException(
+            status_code=401, detail="Invalid request timestamp."
+        ) from exc
 
     now_ts = int(time.time())
     if abs(now_ts - timestamp_int) > int(settings.request_signing_window_seconds):

@@ -37,7 +37,12 @@ def _get_error_logger() -> logging.Logger:
     return logger
 
 
-def audit_log(action: str, entity: str, actor: Optional[str] = None, details: Optional[dict] = None):
+def audit_log(
+    action: str,
+    entity: str,
+    actor: Optional[str] = None,
+    details: Optional[dict] = None,
+):
     logger = _get_logger()
     observability = current_observability_fields()
     payload = {
@@ -56,7 +61,9 @@ def error_log(message: str, exc: Optional[Exception] = None):
     observability = current_observability_fields()
     scoped_message = str(message)
     if observability:
-        scoped_message = f"{scoped_message} | ctx={json.dumps(observability, ensure_ascii=False)}"
+        scoped_message = (
+            f"{scoped_message} | ctx={json.dumps(observability, ensure_ascii=False)}"
+        )
     if exc:
         logger.exception(scoped_message, exc_info=exc)
     else:

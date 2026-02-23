@@ -46,14 +46,19 @@ def test_parse_typed_ref_invalid_payload_logs_debug_and_returns_none():
         None,
         None,
     )
-    assert any("Failed to parse typed ref 'goal_bad'" in msg for msg in logger.debug_calls)
+    assert any(
+        "Failed to parse typed ref 'goal_bad'" in msg for msg in logger.debug_calls
+    )
 
 
 def test_children_for_node_sorts_titles_for_known_hierarchies():
     task_b = SimpleNamespace(title="beta")
     task_a = SimpleNamespace(title="Alpha")
     kr = SimpleNamespace(tasks=[task_b, task_a])
-    assert inspector_navigation_helpers.children_for_node(kr, "KEY_RESULT") == [task_a, task_b]
+    assert inspector_navigation_helpers.children_for_node(kr, "KEY_RESULT") == [
+        task_a,
+        task_b,
+    ]
 
     obj = SimpleNamespace(
         key_results=[SimpleNamespace(title="zeta"), SimpleNamespace(title="Eta")]

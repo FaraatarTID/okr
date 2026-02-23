@@ -62,7 +62,9 @@ def test_external_ai_policy_disables_key_requirement():
         external_ai_allowed=False,
     )
     assert not any("Gemini API key is not configured" in msg for msg in report.warnings)
-    assert any("External AI calls are disabled by policy" in msg for msg in report.infos)
+    assert any(
+        "External AI calls are disabled by policy" in msg for msg in report.infos
+    )
 
 
 def test_openai_compatible_provider_does_not_require_gemini_key():
@@ -292,9 +294,7 @@ def test_production_requires_redis_url_when_redis_backend_selected():
         backend_security_state_redis_url="",
         runtime_env="production",
     )
-    assert any(
-        "OKR_BACKEND_SECURITY_STATE_REDIS_URL" in msg for msg in report.errors
-    )
+    assert any("OKR_BACKEND_SECURITY_STATE_REDIS_URL" in msg for msg in report.errors)
 
 
 def test_production_accepts_redis_security_state_backend_with_url():

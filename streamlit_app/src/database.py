@@ -2,6 +2,7 @@
 Database connection and session management for OKR Application.
 Supabase/PostgreSQL only.
 """
+
 from sqlmodel import create_engine, Session, SQLModel
 from contextlib import contextmanager
 import os
@@ -39,6 +40,7 @@ def _get_database_url() -> str:
     # 3: Streamlit secrets (optional)
     try:
         import streamlit as st
+
         direct_secret_url = st.secrets.get("OKR_DATABASE_URL") or st.secrets.get(
             "DATABASE_URL"
         )
@@ -59,7 +61,9 @@ def _get_database_url() -> str:
                 port_part = f":{port}" if port else ""
                 return f"{driver}://{user}:{password}@{host}{port_part}/{name}"
     except Exception as exc:
-        logger.debug("Streamlit secrets unavailable while resolving database URL: %s", exc)
+        logger.debug(
+            "Streamlit secrets unavailable while resolving database URL: %s", exc
+        )
 
     raise RuntimeError(
         "Database URL is required. Set OKR_DATABASE_URL, DATABASE_URL, or "
@@ -135,19 +139,28 @@ def _validate_database_url(url: str) -> str:
     port = int(parsed.port or 0)
     username = str(parsed.username or "")
 
-    is_pooler_host = host.endswith(".pooler.supabase.com") or host.endswith(".pooler.supabase.co")
+    is_pooler_host = host.endswith(".pooler.supabase.com") or host.endswith(
+        ".pooler.supabase.co"
+    )
     if not is_pooler_host and not _allow_supabase_direct_connection():
-        raise RuntimeError("Supabase pooler URL is required for runtime database connections.")
+        raise RuntimeError(
+            "Supabase pooler URL is required for runtime database connections."
+        )
 
     if is_pooler_host and port != 6543 and not _allow_supabase_session_pooler():
-        raise RuntimeError("Supabase transaction pooler must use port 6543 (session pooler requires explicit override).")
+        raise RuntimeError(
+            "Supabase transaction pooler must use port 6543 (session pooler requires explicit override)."
+        )
 
     if username.lower().startswith("postgres") and not _allow_supabase_superuser_url():
-        raise RuntimeError("Least-privilege Supabase DB user is required (do not run runtime traffic as postgres).")
+        raise RuntimeError(
+            "Least-privilege Supabase DB user is required (do not run runtime traffic as postgres)."
+        )
     return normalized
 
 
 DATABASE_URL: Optional[str] = os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL")
+
 
 def _create_engine(url: str):
     """Create SQLModel engine with dialect-aware options."""
@@ -260,7 +273,9 @@ def _database_url_advisory(url: str) -> Optional[str]:
     parsed = urlparse(normalized)
     host = str(parsed.hostname or "").lower()
     port = int(parsed.port or 0)
-    is_supabase_pooler = host.endswith(".pooler.supabase.com") or host.endswith(".pooler.supabase.co")
+    is_supabase_pooler = host.endswith(".pooler.supabase.com") or host.endswith(
+        ".pooler.supabase.co"
+    )
 
     if is_supabase_pooler and port == 5432:
         return (
@@ -341,7 +356,11 @@ def get_engine():
 
 
 def _is_benign_alembic_config_keyerror(exc: BaseException) -> bool:
-    return isinstance(exc, KeyError) and len(getattr(exc, "args", ())) == 1 and exc.args[0] == "config"
+    return (
+        isinstance(exc, KeyError)
+        and len(getattr(exc, "args", ())) == 1
+        and exc.args[0] == "config"
+    )
 
 
 def _database_is_at_migration_head(alembic_cfg) -> bool:
@@ -361,7 +380,6 @@ def _database_is_at_migration_head(alembic_cfg) -> bool:
     except Exception as exc:
         logger.debug("Failed to verify migration head status: %s", exc)
         return False
-
 
 
 def run_migrations():
@@ -395,8 +413,12 @@ def run_migrations():
         except Exception as exc:
             # Alembic can raise KeyError('config') during cleanup when multiple
             # script threads race through init. If DB is already at head, continue.
-            if _is_benign_alembic_config_keyerror(exc) and _database_is_at_migration_head(alembic_cfg):
-                logger.warning("Alembic reported KeyError('config') after reaching head; continuing.")
+            if _is_benign_alembic_config_keyerror(
+                exc
+            ) and _database_is_at_migration_head(alembic_cfg):
+                logger.warning(
+                    "Alembic reported KeyError('config') after reaching head; continuing."
+                )
             else:
                 raise
 
@@ -419,9 +441,8 @@ def create_db_and_tables():
         )
         logger.error("Migration failed: %s", sanitized_message)
         logger.error("%s", traceback.format_exc())
-        raise RuntimeError(
-            f"Database migration failed. {sanitized_message}"
-        ) from e
+        raise RuntimeError(f"Database migration failed. {sanitized_message}") from e
+
 
 def get_session() -> Session:
     """Get a new database session."""
@@ -461,7 +482,10 @@ def _json_backup_encode_value(value):
     if isinstance(value, Decimal):
         return {"__okr_type__": "decimal", "value": str(value)}
     if isinstance(value, bytes):
-        return {"__okr_type__": "bytes", "value": base64.b64encode(value).decode("ascii")}
+        return {
+            "__okr_type__": "bytes",
+            "value": base64.b64encode(value).decode("ascii"),
+        }
     return value
 
 
@@ -487,7 +511,11 @@ def _backup_table_names() -> list[str]:
     # Ensure all table metadata is registered.
     import src.models  # noqa: F401
 
-    return [table.name for table in SQLModel.metadata.sorted_tables if table.name != "alembic_version"]
+    return [
+        table.name
+        for table in SQLModel.metadata.sorted_tables
+        if table.name != "alembic_version"
+    ]
 
 
 def _sanitize_url_for_backup(url: str) -> str:
@@ -520,7 +548,10 @@ def export_database_backup() -> bytes:
                     continue
                 rows = conn.execute(table.select()).mappings().all()
                 payload["tables"][table_name] = [
-                    {key: _json_backup_encode_value(value) for key, value in row.items()}
+                    {
+                        key: _json_backup_encode_value(value)
+                        for key, value in row.items()
+                    }
                     for row in rows
                 ]
 
@@ -597,7 +628,9 @@ def import_database_backup(backup_content: bytes | str | Mapping) -> dict:
                     continue
                 raw_rows = tables_payload.get(table_name) or []
                 if not isinstance(raw_rows, list):
-                    raise ValueError(f"Backup table '{table_name}' must be a list of rows.")
+                    raise ValueError(
+                        f"Backup table '{table_name}' must be a list of rows."
+                    )
 
                 allowed_columns = {column.name for column in table.columns}
                 decoded_rows = []

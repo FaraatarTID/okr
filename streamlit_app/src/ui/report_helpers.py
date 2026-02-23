@@ -48,7 +48,9 @@ def build_report_payload(
                 "Time": log.start_time.strftime("%H:%M"),
                 "Duration (m)": round(duration, 2),
                 "Deadline": deadline_status,
-                "Summary": str(getattr(log, "summary", None) or getattr(log, "note", None) or "-"),
+                "Summary": str(
+                    getattr(log, "summary", None) or getattr(log, "note", None) or "-"
+                ),
                 "Objective": obj_title,
                 "KeyResult": kr_title,
             }
@@ -57,7 +59,10 @@ def build_report_payload(
         objective_stats[obj_title] = objective_stats.get(obj_title, 0) + duration
         daily_minutes[log_date] = daily_minutes.get(log_date, 0) + duration
 
-        if getattr(task, "status", None) == "done" or int(getattr(task, "progress", 0) or 0) == 100:
+        if (
+            getattr(task, "status", None) == "done"
+            or int(getattr(task, "progress", 0) or 0) == 100
+        ):
             achievements.add(str(getattr(task, "title", "")))
 
     total = sum(float(item.get("Duration (m)", 0) or 0) for item in report_items)
