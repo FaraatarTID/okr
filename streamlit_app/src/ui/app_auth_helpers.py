@@ -79,8 +79,7 @@ def clear_user_session(session_state, *, keys=None) -> None:
 
 def render_login_from_app(*, app_module) -> None:
     st = app_module.st
-    st.markdown("## Login to OKR Tracker")
-    st.info("Welcome! Please enter your credentials to access your data.")
+    st.markdown("## 🔐 Login to OKR Tracker")
     try:
         app_module.prewarm_startup_ready_async()
     except Exception as exc:

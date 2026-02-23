@@ -58,11 +58,6 @@ from src.ui import (
 from src.utils.time_utils import utc_now_naive
 
 
-# ---------------------------------------------------------------------------
-# Runtime Preflight Adapters
-# ---------------------------------------------------------------------------
-# These adapter functions pass app-local dependencies into the dedicated
-# preflight helper module. This keeps orchestration here, policy there.
 def _get_pdf_method() -> str:
     """Resolve effective PDF backend method."""
     return app_preflight_helpers.get_pdf_method(
@@ -141,10 +136,6 @@ def _run_pdf_preflight():
     )
 
 
-# ---------------------------------------------------------------------------
-# Runtime Snapshot / Cache Adapters
-# ---------------------------------------------------------------------------
-# These wrappers define cache boundaries and adapter wiring for runtime helpers.
 def _cycle_to_snapshot(cycle) -> dict | None:
     """Convert ORM cycle object into cache-safe primitive snapshot."""
     return app_runtime_helpers.cycle_to_snapshot(cycle)
@@ -300,11 +291,9 @@ def _get_build_fingerprint() -> str:
     return "unknown"
 
 
-# Modular UI Components (lazy import in render_app to speed initial load)
 st.set_page_config(page_title="OKR Tracker", layout="wide")
 
 
-# Basic error reporting hook
 def _excepthook(exc_type, exc, tb):
     try:
         error_log("Uncaught exception", exc)
@@ -316,11 +305,6 @@ def _excepthook(exc_type, exc, tb):
 sys.excepthook = _excepthook
 
 
-# ---------------------------------------------------------------------------
-# Thin Delegation Wrappers
-# ---------------------------------------------------------------------------
-# Keep entry-level functions stable for imports/tests, but delegate all heavy
-# logic to focused helper modules.
 def _build_app_context():
     """Build explicit helper dependency context (avoid fragile __main__ lookups)."""
     return SimpleNamespace(
