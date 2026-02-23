@@ -1,5 +1,7 @@
 import json
 
+from sqlmodel import select
+
 
 class _StubAuditLogger:
     def __init__(self):
@@ -55,3 +57,46 @@ def test_error_log_includes_observability_context(monkeypatch):
     message = stub_logger.messages[0]
     assert "corr-e" in message
     assert "req-e" in message
+
+
+def test_audit_log_persists_event_to_database(monkeypatch, tmp_path):
+    import src.audit as audit
+    import src.database as database
+    from src.models import AuditEvent
+    from src.observability import observability_context
+
+    db_path = tmp_path / "audit_events.db"
+    db_url = f"sqlite:///{db_path}"
+
+    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
+    monkeypatch.setattr(database, "_engine", None, raising=False)
+    database.run_migrations()
+
+    stub_logger = _StubAuditLogger()
+    monkeypatch.setattr(audit, "_get_logger", lambda: stub_logger)
+    monkeypatch.setattr(audit, "_AUDIT_DB_FAILURE_REPORTED", False, raising=False)
+
+    with observability_context(correlation_id="corr-db", request_id="req-db"):
+        audit.audit_log(
+            action="create",
+            entity="goal",
+            actor="alice",
+            details={"success": True, "goal_id": 7},
+        )
+
+    with database.get_session_context() as session:
+        event = session.exec(
+            select(AuditEvent).where(
+                AuditEvent.action == "create", AuditEvent.entity == "goal"
+            )
+        ).first()
+
+    assert event is not None
+    assert event.actor == "alice"
+    assert event.result == "success"
+    assert event.correlation_id == "corr-db"
+    assert event.request_id == "req-db"
+    assert json.loads(event.details_json).get("goal_id") == 7
+
+    database.get_engine().dispose()
+    monkeypatch.setattr(database, "_engine", None, raising=False)

@@ -15,6 +15,7 @@ from backend_app.jobs import (
     mark_job_cancelled,
     mark_job_failed,
     mark_job_succeeded,
+    prune_audit_events,
     prune_terminal_jobs,
 )
 from backend_app.path_setup import ensure_streamlit_app_on_path
@@ -76,19 +77,29 @@ def run_worker_loop() -> None:
         now_ts = float(time.time())
         if (now_ts - last_prune_at) >= float(settings.job_prune_interval_seconds):
             try:
-                deleted = prune_terminal_jobs(
+                deleted_jobs = prune_terminal_jobs(
                     retention_days=settings.job_retention_days,
                     batch_size=settings.job_prune_batch_size,
                 )
-                if deleted:
+                deleted_audit = prune_audit_events(
+                    retention_days=settings.audit_retention_days,
+                    batch_size=settings.job_prune_batch_size,
+                )
+                if deleted_jobs:
                     logger.info(
                         "Pruned async jobs (deleted=%s, retention_days=%s)",
-                        deleted,
+                        deleted_jobs,
                         settings.job_retention_days,
+                    )
+                if deleted_audit:
+                    logger.info(
+                        "Pruned audit events (deleted=%s, retention_days=%s)",
+                        deleted_audit,
+                        settings.audit_retention_days,
                     )
             except Exception as exc:
                 logger.exception(
-                    "Async job pruning failed (worker_id=%s): %s",
+                    "Background pruning failed (worker_id=%s): %s",
                     worker_id,
                     exc,
                 )

@@ -60,7 +60,9 @@ def _write_env(
         f"OKR_BACKEND_SERVICE_TOKEN={service_token}",
         f"OKR_BACKEND_SIGNING_SECRET={signing_secret}",
         f"OKR_BOOTSTRAP_ADMIN_PASSWORD={bootstrap_pw}",
+        "OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true",
         "OKR_BACKEND_PROXY_MUTATIONS=true",
+        "OKR_BACKEND_PROXY_READS=true",
         f"OKR_BACKEND_SECURITY_STATE_BACKEND={security_state_backend}",
         f"OKR_BACKEND_SECURITY_STATE_REDIS_URL={security_state_redis_url}",
         "OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false",
@@ -197,3 +199,45 @@ def test_runtime_mode_accepts_chromium_without_pdfshift_key(tmp_path: Path):
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Deploy config check passed (mode=runtime)" in result.stdout
+
+
+def test_template_mode_rejects_disabled_request_signing(tmp_path: Path):
+    env_file = tmp_path / ".env.example"
+    secrets_file = tmp_path / "secrets.toml.example"
+    _write_env(env_file, placeholder_values=True)
+    _write_secrets(secrets_file)
+
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    lines = [
+        "OKR_BACKEND_ENFORCE_REQUEST_SIGNING=false"
+        if line.startswith("OKR_BACKEND_ENFORCE_REQUEST_SIGNING=")
+        else line
+        for line in lines
+    ]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = _run_checker(env_file, secrets_file, mode="template")
+
+    assert result.returncode == 1
+    assert "OKR_BACKEND_ENFORCE_REQUEST_SIGNING" in result.stdout
+
+
+def test_template_mode_rejects_disabled_backend_read_proxy(tmp_path: Path):
+    env_file = tmp_path / ".env.example"
+    secrets_file = tmp_path / "secrets.toml.example"
+    _write_env(env_file, placeholder_values=True)
+    _write_secrets(secrets_file)
+
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    lines = [
+        "OKR_BACKEND_PROXY_READS=false"
+        if line.startswith("OKR_BACKEND_PROXY_READS=")
+        else line
+        for line in lines
+    ]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = _run_checker(env_file, secrets_file, mode="template")
+
+    assert result.returncode == 1
+    assert "OKR_BACKEND_PROXY_READS" in result.stdout

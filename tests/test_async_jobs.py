@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import inspect as sa_inspect
-from sqlmodel import SQLModel
+from sqlmodel import SQLModel, select
 
 
 def _utc_now_naive() -> datetime:
@@ -186,3 +186,39 @@ def test_async_job_prune_index_exists(isolated_db):
     indexes = inspector.get_indexes("async_job")
     index_names = {str(index.get("name", "")) for index in indexes}
     assert "ix_async_job_status_finished" in index_names
+
+
+def test_prune_audit_events_removes_old_rows(isolated_db):
+    from backend_app.jobs import prune_audit_events
+    from src.audit import audit_log
+    from src.database import get_session_context
+    from src.models import AuditEvent
+
+    audit_log("test_old", "unit", actor="alice", details={"success": True})
+    audit_log("test_fresh", "unit", actor="alice", details={"success": True})
+
+    with get_session_context() as session:
+        old_event = session.exec(
+            select(AuditEvent).where(AuditEvent.action == "test_old")
+        ).first()
+        fresh_event = session.exec(
+            select(AuditEvent).where(AuditEvent.action == "test_fresh")
+        ).first()
+        assert old_event is not None
+        assert fresh_event is not None
+        old_event.created_at = _utc_now_naive() - timedelta(days=500)
+        session.add(old_event)
+
+    deleted = prune_audit_events(retention_days=365, batch_size=100)
+    assert deleted >= 1
+
+    with get_session_context() as session:
+        remaining_old = session.exec(
+            select(AuditEvent).where(AuditEvent.action == "test_old")
+        ).first()
+        remaining_fresh = session.exec(
+            select(AuditEvent).where(AuditEvent.action == "test_fresh")
+        ).first()
+
+    assert remaining_old is None
+    assert remaining_fresh is not None

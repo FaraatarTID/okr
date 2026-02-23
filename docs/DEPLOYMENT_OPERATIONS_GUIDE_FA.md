@@ -78,9 +78,46 @@ python -m pytest tests/test_database_engine_pooling.py -q
 ## 6) عملیات روزانه
 - پایش uptime (`/`, `/healthz`) و لاگ‌های proxy/container
 - پایش فشار quota روی `/v1/jobs` (`429` و `Retry-After`)
-- بررسی audit eventهای `job_submit_accepted` و `job_submit_rejected`
+- بررسی audit eventهای DB-backed در جدول `audit_event` (با fallback در `logs/audit.log`)
 - چرخش دوره‌ای credentialها
 - حفظ checkهای اجباری CI روی branch اصلی
+
+### 6.1) عملیات Audit Event (رخداد/Forensics)
+- مخزن اصلی: جدول `audit_event`
+- فیلدهای مرجع: `actor`, `action`, `entity`, `result`, `details_json`, `correlation_id`, `request_id`, `created_at`
+- fallback: `logs/audit.log` در صورت اختلال موقت sink دیتابیس
+
+پرس‌وجوهای رایج:
+```sql
+-- آخرین رخدادهای failure
+SELECT created_at, actor, action, entity, result, details_json
+FROM audit_event
+WHERE result = 'failure'
+ORDER BY created_at DESC
+LIMIT 200;
+```
+
+```sql
+-- روند accepted/rejected در 24 ساعت اخیر
+SELECT action, result, COUNT(*) AS total
+FROM audit_event
+WHERE action IN ('job_submit_accepted', 'job_submit_rejected')
+  AND created_at >= NOW() - INTERVAL '24 hours'
+GROUP BY action, result
+ORDER BY action, result;
+```
+
+```sql
+-- ردیابی رویدادهای مرتبط با request/correlation id
+SELECT created_at, actor, action, entity, result, request_id, correlation_id
+FROM audit_event
+WHERE request_id = :request_id OR correlation_id = :correlation_id
+ORDER BY created_at ASC;
+```
+
+نگه‌داری خودکار:
+- `backend-worker` براساس `OKR_BACKEND_AUDIT_RETENTION_DAYS` (پیش‌فرض `365`) جدول `audit_event` را prune می‌کند.
+- cadence و batch با prune مربوط به async job مشترک است (`OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS`, `OKR_BACKEND_JOB_PRUNE_BATCH_SIZE`).
 
 ## 7) پاسخ به رخداد
 - خطای startup ناشی از strict preflight را incident پیکربندی در نظر بگیرید

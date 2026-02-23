@@ -166,6 +166,7 @@ def test_run_migrations_bootstraps_fresh_database(monkeypatch, tmp_path):
         "work_log",
         "auth_throttle_state",
         "async_job",
+        "audit_event",
     }:
         assert table_name in tables
     goal_columns = {col["name"] for col in inspector.get_columns("goal")}
@@ -203,6 +204,7 @@ def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(tmp_path):
         "work_log",
         "auth_throttle_state",
         "async_job",
+        "audit_event",
     }:
         assert table_name in tables
     goal_columns = {col["name"] for col in inspector.get_columns("goal")}
@@ -236,6 +238,7 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(
     tables = set(inspector.get_table_names())
     assert "alembic_version" in tables
     assert "auth_throttle_state" in tables
+    assert "audit_event" in tables
     assert "sync_retry_event" not in tables
 
 

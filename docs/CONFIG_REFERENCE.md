@@ -164,6 +164,7 @@ Backend API (recommended for scale)
   - Backend worker runtime:
   - `OKR_BACKEND_WORKER_POLL_SECONDS` (default: `2`)
   - `OKR_BACKEND_JOB_RETENTION_DAYS` (default: `14`; terminal async job retention before prune)
+  - `OKR_BACKEND_AUDIT_RETENTION_DAYS` (default: `365`; `audit_event` retention before prune)
   - `OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS` (default: `300`; worker prune cadence)
   - `OKR_BACKEND_JOB_PRUNE_BATCH_SIZE` (default: `200`; max rows removed per prune pass)
 - Notes:
@@ -171,7 +172,7 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API.
   - Job submit endpoint (`POST /v1/jobs`) supports idempotency via `X-OKR-Idempotency-Key`.
   - Quota/backoff rejections return deterministic `429` payloads with `detail.error_code`, `detail.retry_after_seconds`, and `Retry-After` header.
-  - Job submit accepted/rejected events are written to audit log for usage reporting and incident review.
+  - Job submit accepted/rejected events are written to DB-backed `audit_event` (with file fallback) for usage reporting and incident review.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
   - If proxied backend transport fails, default behavior is fail-closed unless scoped fallback is explicitly enabled (`OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation paths, `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied reads).
@@ -231,3 +232,7 @@ Logging & health
 
 - HTTP health check: GET /
 - Logs: Streamlit stdout (container logs or service logs)
+- Audit trail:
+  - Primary: `audit_event` table (`actor`, `action`, `entity`, `result`, `details_json`, `created_at`, correlation/request ids).
+  - Fallback: `streamlit_app/logs/audit.log` when DB sink is temporarily unavailable.
+  - Worker-driven retention: `OKR_BACKEND_AUDIT_RETENTION_DAYS` (default `365`).

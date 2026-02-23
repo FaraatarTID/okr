@@ -222,6 +222,28 @@ class AsyncJob(SQLModel, table=True):
     updated_at: Optional[datetime] = None
 
 
+class AuditEvent(SQLModel, table=True):
+    """Structured audit trail event persisted in the database."""
+
+    __tablename__ = "audit_event"
+    __table_args__ = (
+        Index("ix_audit_event_actor_created", "actor", "created_at"),
+        Index("ix_audit_event_action_entity", "action", "entity"),
+        Index("ix_audit_event_result_created", "result", "created_at"),
+        {"extend_existing": True},
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    actor: Optional[str] = Field(default=None, index=True)
+    action: str = Field(index=True)
+    entity: str = Field(index=True)
+    result: str = Field(default="info", index=True)
+    details_json: str = Field(default="{}")
+    correlation_id: Optional[str] = Field(default=None, index=True)
+    request_id: Optional[str] = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utc_now_naive, index=True)
+
+
 # ============================================================================
 # BASE MODELS (shared fields)
 # ============================================================================
