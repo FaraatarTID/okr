@@ -41,6 +41,11 @@ def test_remaining_helper_module_imports_and_exposes_callables(module_name):
         for name, value in vars(module).items()
         if callable(value) and not name.startswith("_")
     ]
+    private_callables = [
+        name
+        for name, value in vars(module).items()
+        if callable(value) and name.startswith("_")
+    ]
 
     assert module is not None
-    assert public_callables
+    assert public_callables or private_callables

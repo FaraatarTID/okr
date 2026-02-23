@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from src.ui import dialog_chrome_helpers
+from src.ui import session_keys
 
 
 def resolve_report_window(
@@ -47,22 +48,24 @@ def render_report_header_controls(
     c_head, c_opts, c_close = st_module.columns([2, 1, 0.5])
     c_head.caption(f"Tasks with work recorded for: {mode} ({period_label})")
 
-    if "report_direction" not in st_module.session_state:
-        st_module.session_state.report_direction = "LTR"
+    if session_keys.REPORT_DIRECTION not in st_module.session_state:
+        st_module.session_state[session_keys.REPORT_DIRECTION] = "LTR"
 
     with c_opts:
-        st_module.session_state.report_direction = st_module.segmented_control(
-            "PDF Direction",
-            options=["LTR", "RTL"],
-            default=st_module.session_state.report_direction,
-            key=f"rep_dir_{mode}",
-            label_visibility="collapsed",
+        st_module.session_state[session_keys.REPORT_DIRECTION] = (
+            st_module.segmented_control(
+                "PDF Direction",
+                options=["LTR", "RTL"],
+                default=st_module.session_state[session_keys.REPORT_DIRECTION],
+                key=f"rep_dir_{mode}",
+                label_visibility="collapsed",
+            )
         )
 
     with c_close:
         if st_module.button("✕", key=f"close_rep_{mode}"):
-            if "active_report_mode" in st_module.session_state:
-                del st_module.session_state.active_report_mode
+            if session_keys.ACTIVE_REPORT_MODE in st_module.session_state:
+                del st_module.session_state[session_keys.ACTIVE_REPORT_MODE]
             st_module.rerun()
 
 
@@ -87,7 +90,7 @@ def render_executive_summary_section(
     with st_module.container():
         st_module.markdown("### 📋 Executive Summary")
 
-        if "report_summary" not in st_module.session_state:
+        if session_keys.REPORT_SUMMARY not in st_module.session_state:
             if st_module.button(
                 "✨ Generate AI Weekly Brief", type="primary", key="report_gen_ai"
             ):
@@ -124,12 +127,12 @@ def render_executive_summary_section(
                     )
 
                     if "error" not in result:
-                        st_module.session_state.report_summary = result
+                        st_module.session_state[session_keys.REPORT_SUMMARY] = result
                         st_module.rerun()
                     else:
                         st_module.error(result["error"])
 
-        summary_result = st_module.session_state.get("report_summary")
+        summary_result = st_module.session_state.get(session_keys.REPORT_SUMMARY)
         if summary_result:
             st_module.markdown(summary_result.get("summary_markdown"))
 

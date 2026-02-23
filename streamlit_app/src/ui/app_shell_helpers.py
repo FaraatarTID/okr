@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.ui import app_shell_navigation_helpers
+from src.ui import session_keys
 
 
 def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> None:
@@ -33,8 +34,8 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
     apply_custom_fonts()
     inject_dialog_styles()
 
-    if "nav_stack" not in st.session_state:
-        st.session_state.nav_stack = []
+    if session_keys.NAV_STACK not in st.session_state:
+        st.session_state[session_keys.NAV_STACK] = []
 
     runtime_bundle = runtime_bundle or app_module._resolve_app_shell_runtime(
         int(st.session_state.get("user_id"))
@@ -57,7 +58,7 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
                 "Default admin password is still active. Change it in Admin Panel."
             )
         if st.sidebar.button("Admin Panel", use_container_width=True):
-            st.session_state.active_report_mode = "Admin"
+            st.session_state[session_keys.ACTIVE_REPORT_MODE] = "Admin"
             st.rerun()
 
     st.sidebar.markdown("---")
@@ -208,8 +209,8 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
             render_timer_dialog(st.session_state.active_timer_node_id, username)
         elif "active_inspector_id" in st.session_state:
             render_inspector_dialog(st.session_state.active_inspector_id, username)
-        elif "active_report_mode" in st.session_state:
-            mode = st.session_state.active_report_mode
+        elif session_keys.ACTIVE_REPORT_MODE in st.session_state:
+            mode = st.session_state[session_keys.ACTIVE_REPORT_MODE]
             if mode == "Ritual":
                 render_weekly_ritual_dialog(username)
             elif mode == "Dashboard":

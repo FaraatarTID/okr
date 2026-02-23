@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 import streamlit as st
+from src.ui import session_keys
 
 _STANDARD_DIALOG_CHROME_CSS = """
 <style>
@@ -40,7 +41,7 @@ def render_dialog_header_with_close(
     *,
     close_key: str,
     title_markdown: str | None = None,
-    clear_state_keys: tuple[str, ...] = ("active_report_mode",),
+    clear_state_keys: tuple[str, ...] = (session_keys.ACTIVE_REPORT_MODE,),
     st_module: Any | None = None,
 ) -> None:
     """Render common dialog header with close button and session-key cleanup."""
