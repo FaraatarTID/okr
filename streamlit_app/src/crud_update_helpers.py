@@ -6,6 +6,7 @@ import json
 from typing import Optional
 
 from src.domain.progress import calculate_objective_progress
+from src.domain.progress import refresh_hierarchy_progress
 
 
 def update_goal_from_crud(
@@ -122,7 +123,7 @@ def update_objective_from_crud(
             session.add(item)
 
             calculate_objective_progress(session, objective_id)
-            crud_module.refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
+            refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
 
             session.commit()
             session.refresh(item)
@@ -213,7 +214,7 @@ def update_key_result_from_crud(
                 item.updated_by = actor_username
             session.add(item)
 
-            crud_module.refresh_hierarchy_progress(session, key_result_id, "KEY_RESULT")
+            refresh_hierarchy_progress(session, key_result_id, "KEY_RESULT")
 
             session.commit()
             session.refresh(item)

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import col
 
 
 def create_weekly_plan_from_crud(
@@ -97,7 +98,7 @@ def get_active_weekly_plan_from_crud(*, crud_module, user_id: int, date=None):
             .where(crud_module.WeeklyPlan.user_id == user_id)
             .where(crud_module.WeeklyPlan.week_start_date <= date)
             .where(crud_module.WeeklyPlan.week_end_date >= date)
-            .order_by(crud_module.col(crud_module.WeeklyPlan.created_at).desc())
+            .order_by(col(crud_module.WeeklyPlan.created_at).desc())
         )
         return session.exec(statement).first()
 
@@ -183,7 +184,7 @@ def get_user_retrospectives_from_crud(*, crud_module, user_id: int, cycle_id: in
         )
         if cycle_id:
             stmt = stmt.where(crud_module.Retrospective.cycle_id == cycle_id)
-        stmt = stmt.order_by(crud_module.col(crud_module.Retrospective.week_start_date).desc())
+        stmt = stmt.order_by(col(crud_module.Retrospective.week_start_date).desc())
         return list(session.exec(stmt).all())
 
 
@@ -201,7 +202,7 @@ def get_team_retrospectives_from_crud(
         )
         if cycle_id:
             stmt = stmt.where(crud_module.Retrospective.cycle_id == cycle_id)
-        stmt = stmt.order_by(crud_module.col(crud_module.Retrospective.week_start_date).desc())
+        stmt = stmt.order_by(col(crud_module.Retrospective.week_start_date).desc())
         return list(session.exec(stmt).all())
 
 
@@ -285,4 +286,3 @@ def upsert_retro_experiment_outcome_from_crud(
                 session.refresh(existing)
                 return existing
             raise
-

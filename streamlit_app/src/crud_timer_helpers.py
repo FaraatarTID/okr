@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import Optional
 
+from sqlmodel import col
 from src.utils.time_utils import ensure_utc
 
 
@@ -65,7 +66,7 @@ def get_active_work_log_for_task_from_crud(*, crud_module, session, task_id: int
         crud_module.select(crud_module.WorkLog)
         .where(crud_module.WorkLog.task_id == task_id)
         .where(crud_module.WorkLog.end_time.is_(None))
-        .order_by(crud_module.col(crud_module.WorkLog.start_time).desc())
+        .order_by(col(crud_module.WorkLog.start_time).desc())
     )
     return session.exec(statement).first()
 
