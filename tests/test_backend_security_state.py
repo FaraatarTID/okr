@@ -4,6 +4,7 @@ import pytest
 import sys
 import time
 import types
+import warnings
 
 
 @pytest.fixture(autouse=True)
@@ -58,6 +59,41 @@ def test_database_rate_limit_enforces_fixed_window(monkeypatch, tmp_path):
             key="ip:203.0.113.10", limit=2, window_seconds=60
         )
         is False
+    )
+
+
+def test_database_backend_avoids_sqlite_datetime_adapter_deprecation_warning(
+    monkeypatch, tmp_path
+):
+    import backend_app.security_state as security_state
+
+    db_path = tmp_path / "security_state_no_datetime_deprecation.db"
+    monkeypatch.setenv("OKR_ENV", "production")
+    monkeypatch.setenv("OKR_DATABASE_URL", f"sqlite:///{db_path}")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", DeprecationWarning)
+        assert (
+            security_state.register_nonce_once(
+                nonce="nonce-sqlite-adapter",
+                now_ts=1_700_000_000,
+                window_seconds=300,
+            )
+            is True
+        )
+        assert (
+            security_state.check_rate_limit_window(
+                key="ip:203.0.113.10",
+                limit=2,
+                window_seconds=60,
+            )
+            is True
+        )
+
+    assert not any(
+        "default datetime adapter is deprecated" in str(item.message).lower()
+        for item in caught
     )
 
 
