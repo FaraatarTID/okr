@@ -7,9 +7,285 @@ stable while allowing phased extraction of large logic blocks.
 
 from __future__ import annotations
 
+from datetime import timedelta
+import os
 import time
 from types import SimpleNamespace
 from typing import Any, Dict, Optional
+from sqlalchemy import or_
+
+from src.domain.password_policy import is_production_runtime, validate_password_policy
+from src.utils.time_utils import ensure_utc
+
+
+def auth_throttle_fail_open_allowed_from_crud(*, crud_module) -> bool:
+    if is_production_runtime():
+        return False
+    return crud_module.get_bool_config(
+        "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN",
+        default=True,
+    )
+
+
+def resolve_bootstrap_admin_password_from_crud(*, crud_module) -> str:
+    configured = str(os.getenv(crud_module._BOOTSTRAP_ADMIN_PASSWORD_ENV, "")).strip()
+    if configured:
+        validate_password_policy(
+            configured,
+            field_name="Bootstrap admin password",
+            strict=True,
+        )
+        return configured
+
+    if is_production_runtime():
+        raise RuntimeError(
+            "Production requires "
+            f"{crud_module._BOOTSTRAP_ADMIN_PASSWORD_ENV} with a strong password."
+        )
+
+    return "admin"
+
+
+def normalize_throttle_username_from_crud(*, username: str) -> str:
+    return (username or "").strip().lower()
+
+
+def normalize_client_ip_from_crud(*, client_ip: Optional[str]) -> Optional[str]:
+    if not client_ip:
+        return None
+    value = str(client_ip).strip()
+    if not value:
+        return None
+    if "," in value:
+        value = value.split(",", 1)[0].strip()
+    return value or None
+
+
+def get_auth_throttle_states_from_crud(
+    *,
+    crud_module,
+    session,
+    normalized_username: str,
+    normalized_ip: Optional[str],
+):
+    clauses = []
+    if normalized_username:
+        clauses.append(
+            (crud_module.AuthThrottleState.scope == "user")
+            & (crud_module.AuthThrottleState.identifier == normalized_username)
+        )
+    if normalized_ip:
+        clauses.append(
+            (crud_module.AuthThrottleState.scope == "ip")
+            & (crud_module.AuthThrottleState.identifier == normalized_ip)
+        )
+    if not clauses:
+        return None, None
+
+    states = list(
+        session.exec(
+            crud_module.select(crud_module.AuthThrottleState).where(
+                or_(*clauses)
+            )
+        ).all()
+    )
+    user_state = None
+    ip_state = None
+    for state in states:
+        scope = str(state.scope or "").lower()
+        if scope == "user":
+            user_state = state
+        elif scope == "ip":
+            ip_state = state
+    return user_state, ip_state
+
+
+def new_auth_throttle_state_from_crud(
+    *,
+    crud_module,
+    scope: str,
+    identifier: str,
+    now,
+):
+    return crud_module.AuthThrottleState(
+        scope=scope,
+        identifier=identifier,
+        failed_attempts=0,
+        window_started_at=now,
+    )
+
+
+def remaining_lockout_seconds_from_crud(*, crud_module, state, now) -> int:
+    if not state or not state.locked_until:
+        return 0
+    delta = ensure_utc(state.locked_until) - ensure_utc(now)
+    remaining = int(delta.total_seconds())
+    return remaining if remaining > 0 else 0
+
+
+def prepare_throttle_state_for_check_from_crud(
+    *,
+    crud_module,
+    state,
+    now,
+    window_seconds: int,
+) -> int:
+    remaining = crud_module._remaining_lockout_seconds(state, now)
+    if remaining > 0:
+        return remaining
+
+    if state.locked_until is not None:
+        state.locked_until = None
+        state.failed_attempts = 0
+        state.window_started_at = now
+        state.updated_at = now
+        return 0
+
+    window_started = state.window_started_at or now
+    if (
+        ensure_utc(now) - ensure_utc(window_started)
+    ).total_seconds() >= window_seconds:
+        state.failed_attempts = 0
+        state.window_started_at = now
+        state.updated_at = now
+    return 0
+
+
+def record_failed_auth_attempt_from_crud(
+    *,
+    crud_module,
+    state,
+    now,
+    window_seconds: int,
+    max_attempts: int,
+    lockout_seconds: int,
+) -> int:
+    crud_module._prepare_throttle_state_for_check(state, now, window_seconds)
+    state.failed_attempts = int(state.failed_attempts or 0) + 1
+    state.last_failed_at = now
+    state.updated_at = now
+    if state.failed_attempts >= max_attempts:
+        state.locked_until = now + timedelta(seconds=lockout_seconds)
+        state.failed_attempts = 0
+        state.window_started_at = now
+    return crud_module._remaining_lockout_seconds(state, now)
+
+
+def clear_auth_throttle_state_from_crud(*, state, now) -> bool:
+    if not state:
+        return False
+    if int(state.failed_attempts or 0) == 0 and state.locked_until is None:
+        return False
+    state.failed_attempts = 0
+    state.window_started_at = now
+    state.locked_until = None
+    state.updated_at = now
+    return True
+
+
+def is_auth_throttle_operational_error_from_crud(*, exc) -> bool:
+    statement = str(getattr(exc, "statement", "") or "").lower()
+    message = str(getattr(exc, "orig", exc) or exc).lower()
+    if "auth_throttle_state" in statement or "auth_throttle_state" in message:
+        return True
+    if "auth throttle" in message:
+        return True
+    schema_markers = (
+        "auth_throttle",
+        "ck_auth_throttle",
+        "ux_auth_throttle",
+        "ix_auth_throttle",
+    )
+    if any(marker in statement for marker in schema_markers):
+        return True
+    if any(marker in message for marker in schema_markers):
+        return True
+    return False
+
+
+def is_auth_throttle_schema_operational_error_from_crud(*, exc) -> bool:
+    statement = str(getattr(exc, "statement", "") or "").lower()
+    message = str(getattr(exc, "orig", exc) or exc).lower()
+    if "auth_throttle_state" not in statement and "auth_throttle_state" not in message:
+        return False
+    missing_schema_markers = (
+        "no such table",
+        "no such column",
+        "has no column named",
+        "does not exist",
+        "undefined table",
+        "undefined column",
+    )
+    return any(marker in message for marker in missing_schema_markers)
+
+
+def is_transient_connection_operational_error_from_crud(*, exc) -> bool:
+    message = str(getattr(exc, "orig", exc) or exc).lower()
+    transient_markers = (
+        "server closed the connection unexpectedly",
+        "closed the connection unexpectedly",
+        "connection reset by peer",
+        "terminating connection",
+        "could not connect to server",
+        "connection refused",
+        "connection timed out",
+        "timeout expired",
+        "too many connections",
+        "eof detected",
+        "ssl syscall error: eof detected",
+    )
+    return any(marker in message for marker in transient_markers)
+
+
+def authenticate_user_without_throttle_from_crud(
+    *,
+    crud_module,
+    session,
+    username: str,
+    password: str,
+    normalized_username: str,
+    normalized_ip: Optional[str],
+) -> Dict[str, Any]:
+    user = session.exec(
+        crud_module.select(crud_module.User).where(crud_module.User.username == username)
+    ).first()
+    if user and user.is_active and crud_module.verify_password(password, user.password_hash):
+        crud_module.audit_log(
+            "login",
+            "user",
+            actor=username,
+            details={
+                "success": True,
+                "client_ip": normalized_ip,
+                "auth_throttle_mode": "bypassed_due_to_schema_error",
+            },
+        )
+        return {
+            "user": user,
+            "success": True,
+            "error_code": None,
+            "retry_after_seconds": 0,
+            "lock_scope": None,
+        }
+
+    crud_module.audit_log(
+        "login",
+        "user",
+        actor=normalized_username or username,
+        details={
+            "success": False,
+            "reason": "invalid_credentials",
+            "client_ip": normalized_ip,
+            "auth_throttle_mode": "bypassed_due_to_schema_error",
+        },
+    )
+    return {
+        "user": None,
+        "success": False,
+        "error_code": "AUTH_INVALID_CREDENTIALS",
+        "retry_after_seconds": 0,
+        "lock_scope": None,
+    }
 
 
 def create_user_from_crud(
@@ -24,7 +300,7 @@ def create_user_from_crud(
     must_change_password: bool = False,
     actor_username: Optional[str] = None,
 ):
-    crud_module.validate_password_policy(password)
+    validate_password_policy(password)
 
     if crud_module._backend_mutation_proxy_enabled():
         if not actor_username:
@@ -78,6 +354,164 @@ def create_user_from_crud(
         )
         crud_module.clear_cache_safe()
         return user
+
+
+def get_user_by_username_from_crud(*, crud_module, username: str):
+    with crud_module.get_session_context() as session:
+        statement = crud_module.select(crud_module.User).where(
+            crud_module.User.username == username
+        )
+        return session.exec(statement).first()
+
+
+def get_user_by_id_from_crud(*, crud_module, user_id: int):
+    with crud_module.get_session_context() as session:
+        return session.get(crud_module.User, user_id)
+
+
+def get_all_users_from_crud(*, crud_module):
+    with crud_module.get_session_context() as session:
+        statement = crud_module.select(crud_module.User).order_by(
+            crud_module.User.username
+        )
+        return list(session.exec(statement).all())
+
+
+def get_team_members_from_crud(*, crud_module, manager_id: int):
+    with crud_module.get_session_context() as session:
+        statement = crud_module.select(crud_module.User).where(
+            crud_module.User.manager_id == manager_id
+        )
+        return list(session.exec(statement).all())
+
+
+def get_user_goals_from_crud(*, crud_module, username: str, cycle_id: int):
+    with crud_module.get_session_context() as session:
+        user = session.exec(
+            crud_module.select(crud_module.User).where(
+                crud_module.User.username == username
+            )
+        ).first()
+        if not user:
+            return []
+
+        statement = (
+            crud_module.select(crud_module.Goal)
+            .where(crud_module.Goal.owner_id == user.id, crud_module.Goal.cycle_id == cycle_id)
+            .options(
+                crud_module.selectinload(crud_module.Goal.objectives).selectinload(
+                    crud_module.Objective.key_results
+                )
+            )
+        )
+        return session.exec(statement).all()
+
+
+def get_user_goals_simple_from_crud(
+    *,
+    crud_module,
+    user_id: str,
+    cycle_id: Optional[int] = None,
+):
+    with crud_module.get_session_context() as session:
+        statement = crud_module.select(crud_module.Goal).where(
+            crud_module._goal_owner_predicate_by_username(user_id)
+        )
+        if cycle_id:
+            statement = statement.where(crud_module.Goal.cycle_id == cycle_id)
+        goals = session.exec(statement).all()
+        return list(goals)
+
+
+def goal_owner_predicate_by_username_from_crud(*, crud_module, username: str):
+    return crud_module.domain_auth._goal_owner_predicate_by_username(username)
+
+
+def goal_owner_predicate_by_user_id_from_crud(*, crud_module, user_id: int):
+    return crud_module.domain_auth._goal_owner_predicate_by_user_id(user_id)
+
+
+def timer_owner_predicate_by_username_from_crud(*, crud_module, username: str):
+    return crud_module.domain_auth._timer_owner_predicate_by_username(username)
+
+
+def can_manage_goal_from_crud(*, crud_module, session, actor, goal) -> bool:
+    return crud_module.domain_auth._can_manage_goal(session, actor, goal)
+
+
+def can_manage_owner_from_crud(*, crud_module, session, actor, owner_id: Optional[int]) -> bool:
+    return crud_module.domain_auth._can_manage_owner(session, actor, owner_id)
+
+
+def resolve_goal_for_node_from_crud(
+    *,
+    crud_module,
+    session,
+    node_id: int,
+    node_type_upper: str,
+):
+    return crud_module.domain_auth._resolve_goal_for_node(
+        session,
+        node_type=node_type_upper,
+        node_id=node_id,
+    )
+
+
+def authorize_node_mutation_from_crud(
+    *,
+    crud_module,
+    session,
+    node_type: str,
+    node_id: int,
+    actor_username: Optional[str],
+):
+    return crud_module.domain_auth._authorize_node_mutation(
+        session,
+        node_type=node_type,
+        node_id=node_id,
+        actor_username=actor_username,
+    )
+
+
+def authorize_node_scoped_access_from_crud(
+    *,
+    crud_module,
+    session,
+    node_type: str,
+    node_id: int,
+    actor_username: Optional[str],
+):
+    return crud_module.domain_auth._authorize_node_scoped_access(
+        session,
+        node_type=node_type,
+        node_id=node_id,
+        actor_username=actor_username,
+    )
+
+
+def require_actor_user_from_crud(*, crud_module, session, actor_username: Optional[str]):
+    return crud_module.domain_auth._require_actor_user(session, actor_username)
+
+
+def require_admin_actor_from_crud(*, crud_module, session, actor_username: Optional[str]):
+    actor = crud_module._require_actor_user(session, actor_username)
+    if actor.role != crud_module.UserRole.ADMIN:
+        raise PermissionError("Admin privileges are required for this operation")
+    return actor
+
+
+def authorize_self_or_admin_from_crud(
+    *,
+    crud_module,
+    session,
+    actor_username: Optional[str],
+    target_user_id: int,
+):
+    return crud_module.domain_auth._authorize_self_or_admin(
+        session,
+        actor_username=actor_username,
+        target_user_id=target_user_id,
+    )
 
 
 def authenticate_user_detailed_from_crud(
@@ -404,7 +838,7 @@ def reset_user_password_from_crud(
     require_change: bool = False,
     actor_username: Optional[str] = None,
 ) -> bool:
-    crud_module.validate_password_policy(new_password)
+    validate_password_policy(new_password)
 
     if crud_module._backend_mutation_proxy_enabled():
         if not actor_username:

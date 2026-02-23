@@ -6,7 +6,7 @@ Provides efficient data access with JOINs for dashboard and tree loading.
 from contextlib import contextmanager
 
 from sqlmodel import Session, col, select
-from sqlalchemy import inspect as sa_inspect, or_
+from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError, OperationalError
 import os
@@ -14,8 +14,8 @@ import logging
 import sys
 from types import SimpleNamespace
 from typing import Any, Dict, Optional, List
-from datetime import datetime, timedelta
-from src.utils.time_utils import ensure_utc, to_epoch_millis, utc_now_naive
+from datetime import datetime
+from src.utils.time_utils import to_epoch_millis, utc_now_naive
 
 from src.models import (
     Goal,
@@ -34,9 +34,7 @@ from src.models import (
     Retrospective,
     AuthThrottleState,
     Team,
-    LifecycleState,
     AlignmentEdge,
-    AlignmentType,
     VariationType,
     ExperimentStatus,
     ExperimentDecision,
@@ -48,15 +46,20 @@ from src.config_runtime import get_bool_config, get_config_value
 from src.database import get_session_context as _database_get_session_context
 from src.domain import analytics as domain_analytics
 from src.domain import authorization as domain_auth
-from src.domain.password_policy import is_production_runtime, validate_password_policy
 from src.audit import audit_log
 from src.utils.cache_utils import clear_cache_safe
 from src.domain.progress import (
     refresh_hierarchy_progress,
-    calculate_objective_progress,
-    calculate_goal_progress,
 )
 from src import crud_auth_helpers
+from src import crud_alignment_helpers
+from src import crud_cycle_helpers
+from src import crud_delete_helpers
+from src import crud_progress_helpers
+from src import crud_query_helpers
+from src import crud_reflection_helpers
+from src import crud_timer_helpers
+from src import crud_update_helpers
 import bcrypt
 
 logger = logging.getLogger(__name__)
@@ -296,30 +299,15 @@ def _validate_update_fields(
 
 
 def _auth_throttle_fail_open_allowed() -> bool:
-    if is_production_runtime():
-        return False
-    return get_bool_config(
-        "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN",
-        default=True,
+    return crud_auth_helpers.auth_throttle_fail_open_allowed_from_crud(
+        crud_module=sys.modules[__name__]
     )
 
 
 def _resolve_bootstrap_admin_password() -> str:
-    configured = str(os.getenv(_BOOTSTRAP_ADMIN_PASSWORD_ENV, "")).strip()
-    if configured:
-        validate_password_policy(
-            configured,
-            field_name="Bootstrap admin password",
-            strict=True,
-        )
-        return configured
-
-    if is_production_runtime():
-        raise RuntimeError(
-            f"Production requires {_BOOTSTRAP_ADMIN_PASSWORD_ENV} with a strong password."
-        )
-
-    return "admin"
+    return crud_auth_helpers.resolve_bootstrap_admin_password_from_crud(
+        crud_module=sys.modules[__name__]
+    )
 
 
 def hash_password(password: str) -> str:
@@ -358,38 +346,59 @@ def create_user(
 
 def get_user_by_username(username: str) -> Optional[User]:
     """Get a user by username."""
-    with get_session_context() as session:
-        statement = select(User).where(User.username == username)
-        return session.exec(statement).first()
+    return crud_auth_helpers.get_user_by_username_from_crud(
+        crud_module=sys.modules[__name__],
+        username=username,
+    )
 
 
 def _goal_owner_predicate_by_username(username: str):
-    return domain_auth._goal_owner_predicate_by_username(username)
+    return crud_auth_helpers.goal_owner_predicate_by_username_from_crud(
+        crud_module=sys.modules[__name__],
+        username=username,
+    )
 
 
 def _goal_owner_predicate_by_user_id(user_id: int):
-    return domain_auth._goal_owner_predicate_by_user_id(user_id)
+    return crud_auth_helpers.goal_owner_predicate_by_user_id_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+    )
 
 
 def _timer_owner_predicate_by_username(username: str):
-    return domain_auth._timer_owner_predicate_by_username(username)
+    return crud_auth_helpers.timer_owner_predicate_by_username_from_crud(
+        crud_module=sys.modules[__name__],
+        username=username,
+    )
 
 
 def _can_manage_goal(session: Session, actor: User, goal: Goal) -> bool:
-    return domain_auth._can_manage_goal(session, actor, goal)
+    return crud_auth_helpers.can_manage_goal_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        actor=actor,
+        goal=goal,
+    )
 
 
 def _can_manage_owner(session: Session, actor: User, owner_id: Optional[int]) -> bool:
-    return domain_auth._can_manage_owner(session, actor, owner_id)
+    return crud_auth_helpers.can_manage_owner_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        actor=actor,
+        owner_id=owner_id,
+    )
 
 
 def _resolve_goal_for_node(
     session: Session, node_id: int, node_type_upper: str
 ) -> Optional[Goal]:
-    return domain_auth._resolve_goal_for_node(
-        session,
-        node_type=node_type_upper,
+    return crud_auth_helpers.resolve_goal_for_node_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
         node_id=node_id,
+        node_type_upper=node_type_upper,
     )
 
 
@@ -400,8 +409,9 @@ def _authorize_node_mutation(
     node_id: int,
     actor_username: Optional[str],
 ) -> Goal:
-    return domain_auth._authorize_node_mutation(
-        session,
+    return crud_auth_helpers.authorize_node_mutation_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
         node_type=node_type,
         node_id=node_id,
         actor_username=actor_username,
@@ -415,8 +425,9 @@ def _authorize_node_scoped_access(
     node_id: int,
     actor_username: Optional[str],
 ) -> Goal:
-    return domain_auth._authorize_node_scoped_access(
-        session,
+    return crud_auth_helpers.authorize_node_scoped_access_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
         node_type=node_type,
         node_id=node_id,
         actor_username=actor_username,
@@ -425,38 +436,35 @@ def _authorize_node_scoped_access(
 
 def get_user_goals(username: str, cycle_id: int):
     """Fetch top-level Goals for a user in a specific cycle with eager loaded children."""
-    with get_session_context() as session:
-        # Get user
-        user = session.exec(select(User).where(User.username == username)).first()
-        if not user:
-            return []
-
-        # Query Goals with eager loading of Objectives
-        # We also load Key Results for those objectives so UI cards can show child counts
-        statement = (
-            select(Goal)
-            .where(Goal.owner_id == user.id, Goal.cycle_id == cycle_id)
-            .options(selectinload(Goal.objectives).selectinload(Objective.key_results))
-        )
-        results = session.exec(statement).all()
-        return results
+    return crud_auth_helpers.get_user_goals_from_crud(
+        crud_module=sys.modules[__name__],
+        username=username,
+        cycle_id=cycle_id,
+    )
 
 
 def get_user_by_id(user_id: int) -> Optional[User]:
     """Get a user by ID."""
-    with get_session_context() as session:
-        return session.get(User, user_id)
+    return crud_auth_helpers.get_user_by_id_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+    )
 
 
 def _require_actor_user(session: Session, actor_username: Optional[str]) -> User:
-    return domain_auth._require_actor_user(session, actor_username)
+    return crud_auth_helpers.require_actor_user_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        actor_username=actor_username,
+    )
 
 
 def _require_admin_actor(session: Session, actor_username: Optional[str]) -> User:
-    actor = _require_actor_user(session, actor_username)
-    if actor.role != UserRole.ADMIN:
-        raise PermissionError("Admin privileges are required for this operation")
-    return actor
+    return crud_auth_helpers.require_admin_actor_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        actor_username=actor_username,
+    )
 
 
 def _authorize_self_or_admin(
@@ -465,26 +473,20 @@ def _authorize_self_or_admin(
     actor_username: Optional[str],
     target_user_id: int,
 ) -> User:
-    return domain_auth._authorize_self_or_admin(
-        session,
+    return crud_auth_helpers.authorize_self_or_admin_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
         actor_username=actor_username,
         target_user_id=target_user_id,
     )
 
 
 def _normalize_throttle_username(username: str) -> str:
-    return (username or "").strip().lower()
+    return crud_auth_helpers.normalize_throttle_username_from_crud(username=username)
 
 
 def _normalize_client_ip(client_ip: Optional[str]) -> Optional[str]:
-    if not client_ip:
-        return None
-    value = str(client_ip).strip()
-    if not value:
-        return None
-    if "," in value:
-        value = value.split(",", 1)[0].strip()
-    return value or None
+    return crud_auth_helpers.normalize_client_ip_from_crud(client_ip=client_ip)
 
 
 def _get_auth_throttle_states(
@@ -492,30 +494,12 @@ def _get_auth_throttle_states(
     normalized_username: str,
     normalized_ip: Optional[str],
 ) -> tuple[Optional[AuthThrottleState], Optional[AuthThrottleState]]:
-    clauses = []
-    if normalized_username:
-        clauses.append(
-            (AuthThrottleState.scope == "user")
-            & (AuthThrottleState.identifier == normalized_username)
-        )
-    if normalized_ip:
-        clauses.append(
-            (AuthThrottleState.scope == "ip")
-            & (AuthThrottleState.identifier == normalized_ip)
-        )
-    if not clauses:
-        return None, None
-
-    states = list(session.exec(select(AuthThrottleState).where(or_(*clauses))).all())
-    user_state = None
-    ip_state = None
-    for state in states:
-        scope = str(state.scope or "").lower()
-        if scope == "user":
-            user_state = state
-        elif scope == "ip":
-            ip_state = state
-    return user_state, ip_state
+    return crud_auth_helpers.get_auth_throttle_states_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        normalized_username=normalized_username,
+        normalized_ip=normalized_ip,
+    )
 
 
 def _new_auth_throttle_state(
@@ -523,22 +507,22 @@ def _new_auth_throttle_state(
     identifier: str,
     now: datetime,
 ) -> AuthThrottleState:
-    return AuthThrottleState(
+    return crud_auth_helpers.new_auth_throttle_state_from_crud(
+        crud_module=sys.modules[__name__],
         scope=scope,
         identifier=identifier,
-        failed_attempts=0,
-        window_started_at=now,
+        now=now,
     )
 
 
 def _remaining_lockout_seconds(
     state: Optional[AuthThrottleState], now: datetime
 ) -> int:
-    if not state or not state.locked_until:
-        return 0
-    delta = ensure_utc(state.locked_until) - ensure_utc(now)
-    remaining = int(delta.total_seconds())
-    return remaining if remaining > 0 else 0
+    return crud_auth_helpers.remaining_lockout_seconds_from_crud(
+        crud_module=sys.modules[__name__],
+        state=state,
+        now=now,
+    )
 
 
 def _prepare_throttle_state_for_check(
@@ -546,24 +530,12 @@ def _prepare_throttle_state_for_check(
     now: datetime,
     window_seconds: int,
 ) -> int:
-    remaining = _remaining_lockout_seconds(state, now)
-    if remaining > 0:
-        return remaining
-
-    # Lockout expired: clear stale lock marker and reset window.
-    if state.locked_until is not None:
-        state.locked_until = None
-        state.failed_attempts = 0
-        state.window_started_at = now
-        state.updated_at = now
-        return 0
-
-    window_started = state.window_started_at or now
-    if (ensure_utc(now) - ensure_utc(window_started)).total_seconds() >= window_seconds:
-        state.failed_attempts = 0
-        state.window_started_at = now
-        state.updated_at = now
-    return 0
+    return crud_auth_helpers.prepare_throttle_state_for_check_from_crud(
+        crud_module=sys.modules[__name__],
+        state=state,
+        now=now,
+        window_seconds=window_seconds,
+    )
 
 
 def _record_failed_auth_attempt(
@@ -573,86 +545,39 @@ def _record_failed_auth_attempt(
     max_attempts: int,
     lockout_seconds: int,
 ) -> int:
-    _prepare_throttle_state_for_check(state, now, window_seconds)
-    state.failed_attempts = int(state.failed_attempts or 0) + 1
-    state.last_failed_at = now
-    state.updated_at = now
-    if state.failed_attempts >= max_attempts:
-        state.locked_until = now + timedelta(seconds=lockout_seconds)
-        state.failed_attempts = 0
-        state.window_started_at = now
-    return _remaining_lockout_seconds(state, now)
+    return crud_auth_helpers.record_failed_auth_attempt_from_crud(
+        crud_module=sys.modules[__name__],
+        state=state,
+        now=now,
+        window_seconds=window_seconds,
+        max_attempts=max_attempts,
+        lockout_seconds=lockout_seconds,
+    )
 
 
 def _clear_auth_throttle_state(
     state: Optional[AuthThrottleState], now: datetime
 ) -> bool:
-    if not state:
-        return False
-    if int(state.failed_attempts or 0) == 0 and state.locked_until is None:
-        return False
-    state.failed_attempts = 0
-    state.window_started_at = now
-    state.locked_until = None
-    state.updated_at = now
-    return True
+    return crud_auth_helpers.clear_auth_throttle_state_from_crud(
+        state=state,
+        now=now,
+    )
 
 
 def _is_auth_throttle_operational_error(exc: OperationalError) -> bool:
-    statement = str(getattr(exc, "statement", "") or "").lower()
-    message = str(getattr(exc, "orig", exc) or exc).lower()
-    if "auth_throttle_state" in statement or "auth_throttle_state" in message:
-        return True
-    # Common driver words that may appear in relation/table missing scenarios.
-    if "auth throttle" in message:
-        return True
-    schema_markers = (
-        "auth_throttle",
-        "ck_auth_throttle",
-        "ux_auth_throttle",
-        "ix_auth_throttle",
-    )
-    if any(marker in statement for marker in schema_markers):
-        return True
-    if any(marker in message for marker in schema_markers):
-        return True
-    # If the error text has no throttle identifiers, caller can still
-    # decide to try fallback auth and re-raise on failure.
-    return False
+    return crud_auth_helpers.is_auth_throttle_operational_error_from_crud(exc=exc)
 
 
 def _is_auth_throttle_schema_operational_error(exc: OperationalError) -> bool:
-    statement = str(getattr(exc, "statement", "") or "").lower()
-    message = str(getattr(exc, "orig", exc) or exc).lower()
-    if "auth_throttle_state" not in statement and "auth_throttle_state" not in message:
-        return False
-    missing_schema_markers = (
-        "no such table",
-        "no such column",
-        "has no column named",
-        "does not exist",
-        "undefined table",
-        "undefined column",
+    return crud_auth_helpers.is_auth_throttle_schema_operational_error_from_crud(
+        exc=exc
     )
-    return any(marker in message for marker in missing_schema_markers)
 
 
 def _is_transient_connection_operational_error(exc: OperationalError) -> bool:
-    message = str(getattr(exc, "orig", exc) or exc).lower()
-    transient_markers = (
-        "server closed the connection unexpectedly",
-        "closed the connection unexpectedly",
-        "connection reset by peer",
-        "terminating connection",
-        "could not connect to server",
-        "connection refused",
-        "connection timed out",
-        "timeout expired",
-        "too many connections",
-        "eof detected",
-        "ssl syscall error: eof detected",
+    return crud_auth_helpers.is_transient_connection_operational_error_from_crud(
+        exc=exc
     )
-    return any(marker in message for marker in transient_markers)
 
 
 def _authenticate_user_without_throttle(
@@ -662,44 +587,14 @@ def _authenticate_user_without_throttle(
     normalized_username: str,
     normalized_ip: Optional[str],
 ) -> Dict[str, Any]:
-    user = session.exec(select(User).where(User.username == username)).first()
-    if user and user.is_active and verify_password(password, user.password_hash):
-        audit_log(
-            "login",
-            "user",
-            actor=username,
-            details={
-                "success": True,
-                "client_ip": normalized_ip,
-                "auth_throttle_mode": "bypassed_due_to_schema_error",
-            },
-        )
-        return {
-            "user": user,
-            "success": True,
-            "error_code": None,
-            "retry_after_seconds": 0,
-            "lock_scope": None,
-        }
-
-    audit_log(
-        "login",
-        "user",
-        actor=normalized_username or username,
-        details={
-            "success": False,
-            "reason": "invalid_credentials",
-            "client_ip": normalized_ip,
-            "auth_throttle_mode": "bypassed_due_to_schema_error",
-        },
+    return crud_auth_helpers.authenticate_user_without_throttle_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        username=username,
+        password=password,
+        normalized_username=normalized_username,
+        normalized_ip=normalized_ip,
     )
-    return {
-        "user": None,
-        "success": False,
-        "error_code": "AUTH_INVALID_CREDENTIALS",
-        "retry_after_seconds": 0,
-        "lock_scope": None,
-    }
 
 
 def authenticate_user_detailed(
@@ -727,16 +622,17 @@ def authenticate_user(
 
 def get_all_users() -> List[User]:
     """Get all users."""
-    with get_session_context() as session:
-        statement = select(User).order_by(User.username)
-        return list(session.exec(statement).all())
+    return crud_auth_helpers.get_all_users_from_crud(
+        crud_module=sys.modules[__name__]
+    )
 
 
 def get_team_members(manager_id: int) -> List[User]:
     """Get all users managed by a specific manager."""
-    with get_session_context() as session:
-        statement = select(User).where(User.manager_id == manager_id)
-        return list(session.exec(statement).all())
+    return crud_auth_helpers.get_team_members_from_crud(
+        crud_module=sys.modules[__name__],
+        manager_id=manager_id,
+    )
 
 
 def update_user(
@@ -1192,63 +1088,28 @@ def create_cycle(
     actor_username: Optional[str] = None,
 ) -> Cycle:
     """Create a new OKR cycle."""
-    if _backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import create_cycle as backend_create_cycle
-
-        backend_result = backend_create_cycle(
-            title=title,
-            start_date=start_date,
-            end_date=end_date,
-            is_active=is_active,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    if start_date >= end_date:
-        raise ValueError("Cycle start_date must be before end_date.")
-
-    with get_session_context() as session:
-        if actor_username:
-            _require_admin_actor(session, actor_username)
-        elif _backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
-
-        cycle = Cycle(
-            title=title, start_date=start_date, end_date=end_date, is_active=is_active
-        )
-        session.add(cycle)
-        session.commit()
-        session.refresh(cycle)
-        audit_log(
-            "create",
-            "cycle",
-            actor=actor_username,
-            details={"cycle_id": cycle.id, "title": title},
-        )
-        clear_cache_safe()
-        return cycle
+    return crud_cycle_helpers.create_cycle_from_crud(
+        crud_module=sys.modules[__name__],
+        title=title,
+        start_date=start_date,
+        end_date=end_date,
+        is_active=is_active,
+        actor_username=actor_username,
+    )
 
 
 def get_active_cycles() -> List[Cycle]:
     """Get all active cycles."""
-    with get_session_context() as session:
-        from src.models import Cycle as TableCycle
-
-        statement = select(TableCycle).where(TableCycle.is_active == True)
-        return list(session.exec(statement).all())
+    return crud_cycle_helpers.get_active_cycles_from_crud(
+        crud_module=sys.modules[__name__]
+    )
 
 
 def get_all_cycles() -> List[Cycle]:
     """Get all cycles."""
-    with get_session_context() as session:
-        from src.models import Cycle as TableCycle
-
-        statement = select(TableCycle).order_by(TableCycle.start_date.desc())
-        return list(session.exec(statement).all())
+    return crud_cycle_helpers.get_all_cycles_from_crud(
+        crud_module=sys.modules[__name__]
+    )
 
 
 def update_cycle(
@@ -1260,92 +1121,24 @@ def update_cycle(
     actor_username: Optional[str] = None,
 ) -> Optional[Cycle]:
     """Update an existing cycle."""
-    if _backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import update_cycle as backend_update_cycle
-
-        backend_result = backend_update_cycle(
-            cycle_id=cycle_id,
-            title=title,
-            start_date=start_date,
-            end_date=end_date,
-            is_active=is_active,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    if start_date >= end_date:
-        raise ValueError("Cycle start_date must be before end_date.")
-
-    with get_session_context() as session:
-        if actor_username:
-            _require_admin_actor(session, actor_username)
-        elif _backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
-
-        cycle = session.get(Cycle, cycle_id)
-        if not cycle:
-            return None
-
-        cycle.title = title
-        cycle.start_date = start_date
-        cycle.end_date = end_date
-        cycle.is_active = is_active
-
-        session.add(cycle)
-        session.commit()
-        session.refresh(cycle)
-        audit_log(
-            "update",
-            "cycle",
-            actor=actor_username,
-            details={"cycle_id": cycle_id, "title": title},
-        )
-        clear_cache_safe()
-        return cycle
+    return crud_cycle_helpers.update_cycle_from_crud(
+        crud_module=sys.modules[__name__],
+        cycle_id=cycle_id,
+        title=title,
+        start_date=start_date,
+        end_date=end_date,
+        is_active=is_active,
+        actor_username=actor_username,
+    )
 
 
 def delete_cycle(cycle_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a cycle. Returns False if cycle has goals."""
-    if _backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import delete_cycle as backend_delete_cycle
-
-        backend_result = backend_delete_cycle(
-            cycle_id=cycle_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return bool(backend_result.get("deleted", True))
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        if actor_username:
-            _require_admin_actor(session, actor_username)
-        elif _backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
-
-        cycle = session.get(Cycle, cycle_id)
-        if not cycle:
-            return False
-
-        # Check for goals - simplistic check, relationship loading might differ
-        # Use a query to be safe
-        goals = session.exec(select(Goal).where(Goal.cycle_id == cycle_id)).all()
-        if goals:
-            raise ValueError("Cannot delete cycle with existing goals.")
-
-        session.delete(cycle)
-        session.commit()
-        audit_log(
-            "delete", "cycle", actor=actor_username, details={"cycle_id": cycle_id}
-        )
-        clear_cache_safe()
-        return True
+    return crud_cycle_helpers.delete_cycle_from_crud(
+        crud_module=sys.modules[__name__],
+        cycle_id=cycle_id,
+        actor_username=actor_username,
+    )
 
 
 # ============================================================================
@@ -1406,12 +1199,11 @@ def get_goal_tree(goal_id: int) -> Optional[Goal]:
 
 def get_user_goals_simple(user_id: str, cycle_id: Optional[int] = None) -> List[Goal]:
     """Get all goals for a user (without full tree)."""
-    with get_session_context() as session:
-        statement = select(Goal).where(_goal_owner_predicate_by_username(user_id))
-        if cycle_id:
-            statement = statement.where(Goal.cycle_id == cycle_id)
-        goals = session.exec(statement).all()
-        return list(goals)
+    return crud_auth_helpers.get_user_goals_simple_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+        cycle_id=cycle_id,
+    )
 
 
 # ============================================================================
@@ -1735,9 +1527,10 @@ def create_task(
 
 def get_total_time(task_id: int):
     """Get total time spent on a task (minutes)."""
-    with get_session_context() as session:
-        task = session.get(Task, task_id)
-        return task.total_time_spent if task else 0
+    return crud_timer_helpers.get_total_time_from_crud(
+        crud_module=sys.modules[__name__],
+        task_id=task_id,
+    )
 
 
 # ============================================================================
@@ -1745,52 +1538,12 @@ def update_goal(
     goal_id: int, actor_username: Optional[str] = None, **updates
 ) -> Optional[Goal]:
     """Update a goal's fields."""
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import update_node as backend_update_node
-
-        backend_result = backend_update_node(
-            node_type="GOAL",
-            node_id=goal_id,
-            updates=dict(updates or {}),
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    if isinstance(updates.get("strategy_tags"), list):
-        import json
-
-        updates["strategy_tags"] = json.dumps(
-            [
-                str(item).strip()
-                for item in updates["strategy_tags"]
-                if str(item).strip()
-            ],
-            ensure_ascii=False,
-        )
-
-    with get_session_context() as session:
-        goal = session.get(Goal, goal_id)
-        if goal:
-            _authorize_node_mutation(
-                session,
-                node_type="GOAL",
-                node_id=goal_id,
-                actor_username=actor_username,
-            )
-            _validate_update_fields("goal", updates, _ALLOWED_GOAL_UPDATE_FIELDS)
-            for key, value in updates.items():
-                if hasattr(goal, key):
-                    setattr(goal, key, value)
-            goal.updated_at = utc_now_naive()
-            if actor_username:
-                goal.updated_by = actor_username
-            session.add(goal)
-            session.commit()
-            session.refresh(goal)
-            clear_cache_safe()
-        return goal
+    return crud_update_helpers.update_goal_from_crud(
+        crud_module=sys.modules[__name__],
+        goal_id=goal_id,
+        actor_username=actor_username,
+        updates=updates,
+    )
 
 
 ## Legacy duplicate removed: use update_objective(objective_id: int, **updates) defined later
@@ -1829,77 +1582,12 @@ def update_key_result_analysis(
 def update_objective(
     objective_id: int, actor_username: Optional[str] = None, **updates
 ) -> Optional[Objective]:
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import update_node as backend_update_node
-
-        backend_result = backend_update_node(
-            node_type="OBJECTIVE",
-            node_id=objective_id,
-            updates=dict(updates or {}),
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        item = session.get(Objective, objective_id)
-        if item:
-            _authorize_node_mutation(
-                session,
-                node_type="OBJECTIVE",
-                node_id=objective_id,
-                actor_username=actor_username,
-            )
-            _validate_update_fields(
-                "objective", updates, _ALLOWED_OBJECTIVE_UPDATE_FIELDS
-            )
-            # [Lifecycle Logic] Enforce state machine rules
-            if "state" in updates:
-                from src.domain.lifecycle import (
-                    validate_transition,
-                    cascade_state_change,
-                )
-
-                new_state = updates["state"]
-
-                # Robustness check: Transition to ACTIVE requires children
-                if new_state == LifecycleState.ACTIVE:
-                    if not item.key_results:
-                        raise ValueError(
-                            "Cannot activate an Objective without at least one Key Result."
-                        )
-
-                if not validate_transition(item.state, new_state):
-                    raise ValueError(
-                        f"Invalid state transition from {item.state} to {new_state}"
-                    )
-
-                # Cascade to KRs
-                kr_state = cascade_state_change(new_state)
-                for kr in item.key_results:
-                    kr.state = kr_state
-                    kr.updated_at = utc_now_naive()
-                    if actor_username:
-                        kr.updated_by = actor_username
-                    session.add(kr)
-
-            for key, value in updates.items():
-                if hasattr(item, key):
-                    setattr(item, key, value)
-            item.updated_at = utc_now_naive()
-            if actor_username:
-                item.updated_by = actor_username
-            session.add(item)
-
-            # Recalculate hierarchy: Objective itself first, then parent Goal
-            calculate_objective_progress(session, objective_id)
-            refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
-
-            session.commit()
-            session.refresh(item)
-            clear_cache_safe()
-        return item
+    return crud_update_helpers.update_objective_from_crud(
+        crud_module=sys.modules[__name__],
+        objective_id=objective_id,
+        actor_username=actor_username,
+        updates=updates,
+    )
 
 
 def create_alignment(
@@ -1909,231 +1597,33 @@ def create_alignment(
     actor_username: Optional[str] = None,
 ) -> AlignmentEdge:
     """Create a link between objectives with cycle detection."""
-    if _backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            create_alignment as backend_create_alignment,
-        )
-
-        backend_result = backend_create_alignment(
-            parent_id=parent_id,
-            child_id=child_id,
-            alignment_type=alignment_type,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    from src.domain.alignment import check_for_cycle
-
-    with get_session_context() as session:
-        parent = session.get(Objective, parent_id)
-        child = session.get(Objective, child_id)
-        if not parent or not child:
-            raise ValueError("Target objectives not found.")
-
-        parent_goal = _authorize_node_mutation(
-            session,
-            node_type="OBJECTIVE",
-            node_id=parent_id,
-            actor_username=actor_username,
-        )
-        child_goal = _resolve_goal_for_node(session, child_id, "OBJECTIVE")
-        if child_goal and parent_goal and child_goal.id != parent_goal.id:
-            _authorize_node_mutation(
-                session,
-                node_type="OBJECTIVE",
-                node_id=child_id,
-                actor_username=actor_username,
-            )
-
-        if check_for_cycle(session, parent_id, child_id):
-            raise ValueError(
-                "Adding this alignment would create a circular dependency."
-            )
-
-        # Check if already exists
-        existing = session.exec(
-            select(AlignmentEdge)
-            .where(AlignmentEdge.parent_id == parent_id)
-            .where(AlignmentEdge.child_id == child_id)
-        ).first()
-        if existing:
-            return existing
-
-        edge = AlignmentEdge(
-            parent_id=parent_id,
-            child_id=child_id,
-            alignment_type=alignment_type,
-            created_by=actor_username,
-            created_at=utc_now_naive(),
-        )
-        session.add(edge)
-        session.commit()
-        session.refresh(edge)
-
-        audit_log(
-            "create",
-            "alignment_edge",
-            details={
-                "edge_id": edge.id,
-                "parent_id": parent_id,
-                "child_id": child_id,
-            },
-        )
-        clear_cache_safe()
-        return edge
+    return crud_alignment_helpers.create_alignment_from_crud(
+        crud_module=sys.modules[__name__],
+        parent_id=parent_id,
+        child_id=child_id,
+        alignment_type=alignment_type,
+        actor_username=actor_username,
+    )
 
 
 def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
     """Remove an alignment link."""
-    if _backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            delete_alignment as backend_delete_alignment,
-        )
-
-        backend_result = backend_delete_alignment(
-            edge_id=edge_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return bool(backend_result.get("deleted", True))
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        edge = session.get(AlignmentEdge, edge_id)
-        if edge:
-            parent_goal = _authorize_node_mutation(
-                session,
-                node_type="OBJECTIVE",
-                node_id=edge.parent_id,
-                actor_username=actor_username,
-            )
-            child_goal = _resolve_goal_for_node(session, edge.child_id, "OBJECTIVE")
-            if child_goal and parent_goal and child_goal.id != parent_goal.id:
-                _authorize_node_mutation(
-                    session,
-                    node_type="OBJECTIVE",
-                    node_id=edge.child_id,
-                    actor_username=actor_username,
-                )
-            session.delete(edge)
-            session.commit()
-            audit_log("delete", "alignment_edge", details={"edge_id": edge_id})
-            clear_cache_safe()
-            return True
-    return False
+    return crud_alignment_helpers.delete_alignment_from_crud(
+        crud_module=sys.modules[__name__],
+        edge_id=edge_id,
+        actor_username=actor_username,
+    )
 
 
 def update_key_result(
     key_result_id: int, actor_username: Optional[str] = None, **updates
 ) -> Optional[KeyResult]:
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import update_node as backend_update_node
-
-        backend_result = backend_update_node(
-            node_type="KEY_RESULT",
-            node_id=key_result_id,
-            updates=dict(updates or {}),
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    if isinstance(updates.get("initiative_tags"), list):
-        import json
-
-        updates["initiative_tags"] = json.dumps(
-            [
-                str(item).strip()
-                for item in updates["initiative_tags"]
-                if str(item).strip()
-            ],
-            ensure_ascii=False,
-        )
-
-    with get_session_context() as session:
-        item = session.get(KeyResult, key_result_id)
-        if item:
-            _authorize_node_mutation(
-                session,
-                node_type="KEY_RESULT",
-                node_id=key_result_id,
-                actor_username=actor_username,
-            )
-            import json
-
-            _validate_update_fields(
-                "key_result", updates, _ALLOWED_KEY_RESULT_UPDATE_FIELDS
-            )
-
-            # [Lifecycle Logic] Enforce state machine rules
-            if "state" in updates:
-                from src.domain.lifecycle import validate_transition
-
-                new_state = updates["state"]
-                if not validate_transition(item.state, new_state):
-                    raise ValueError(
-                        f"Invalid state transition from {item.state} to {new_state}"
-                    )
-
-            # [Sync Logic] If progress is updated but current_value is NOT,
-            # we must back-fill current_value to keep scoring engine consistent.
-            if "progress" in updates and "current_value" not in updates:
-                prog = int(updates["progress"])
-                m_type = updates.get(
-                    "metric_type", getattr(item, "metric_type", "NUMERIC")
-                )
-                start = float(
-                    updates.get("start_value", getattr(item, "start_value", 0.0))
-                )
-                target = float(
-                    updates.get("target_value", getattr(item, "target_value", 100.0))
-                )
-
-                if m_type == "PERCENT":
-                    updates["current_value"] = float(prog)
-                elif m_type == "BOOLEAN":
-                    updates["current_value"] = 1.0 if prog >= 100 else 0.0
-                else:  # NUMERIC
-                    # Interpolate
-                    delta = target - start
-                    updates["current_value"] = start + (delta * (prog / 100.0))
-
-            for key, value in updates.items():
-                if (
-                    key == "gemini_analysis"
-                    and value is not None
-                    and not isinstance(value, str)
-                ):
-                    try:
-                        value = json.dumps(value, ensure_ascii=False)
-                    except Exception as exc:
-                        logger.debug(
-                            "Failed to JSON-serialize KR gemini_analysis for key_result_id=%s: %s",
-                            key_result_id,
-                            exc,
-                        )
-                        value = str(value)
-                if hasattr(item, key):
-                    setattr(item, key, value)
-            item.updated_at = utc_now_naive()
-            if actor_username:
-                item.updated_by = actor_username
-            session.add(item)
-
-            # Recalculate hierarchy
-            refresh_hierarchy_progress(session, key_result_id, "KEY_RESULT")
-
-            session.commit()
-            session.refresh(item)
-            clear_cache_safe()
-        return item
+    return crud_update_helpers.update_key_result_from_crud(
+        crud_module=sys.modules[__name__],
+        key_result_id=key_result_id,
+        actor_username=actor_username,
+        updates=updates,
+    )
 
 
 def update_task(
@@ -2146,70 +1636,16 @@ def update_task(
     **kwargs,
 ) -> Optional[Task]:
     """Update task details."""
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import update_node as backend_update_node
-
-        remote_updates = dict(kwargs or {})
-        if title is not None:
-            remote_updates["title"] = title
-        if status is not None:
-            remote_updates["status"] = status
-        if estimated_minutes is not None:
-            remote_updates["estimated_minutes"] = estimated_minutes
-        if start_date is not _UNSET:
-            remote_updates["start_date"] = start_date
-
-        backend_result = backend_update_node(
-            node_type="TASK",
-            node_id=task_id,
-            updates=remote_updates,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        task = session.get(Task, task_id)
-        if not task:
-            return None
-        _authorize_node_mutation(
-            session,
-            node_type="TASK",
-            node_id=task_id,
-            actor_username=actor_username,
-        )
-        _validate_update_fields("task", kwargs, _ALLOWED_TASK_UPDATE_KWARGS)
-
-        if title is not None:
-            task.title = title
-        if status is not None:
-            task.status = status
-        if estimated_minutes is not None:
-            if estimated_minutes < 0:
-                raise ValueError("estimated_minutes must be >= 0")
-            task.estimated_minutes = estimated_minutes
-        if start_date is not _UNSET:
-            task.start_date = start_date
-
-        # Handle generic kwargs (e.g. deadline)
-        for key, value in kwargs.items():
-            if hasattr(task, key):
-                setattr(task, key, value)
-
-        # Keep status/progress reasonably in sync for completion semantics unless
-        # caller explicitly sets progress in kwargs.
-        if status == TaskStatus.DONE and "progress" not in kwargs:
-            task.progress = 100
-
-        task.updated_at = utc_now_naive()
-        if actor_username:
-            task.updated_by = actor_username
-        session.add(task)
-        session.commit()
-        session.refresh(task)
-        clear_cache_safe()
-        return task
+    return crud_update_helpers.update_task_from_crud(
+        crud_module=sys.modules[__name__],
+        task_id=task_id,
+        title=title,
+        status=status,
+        estimated_minutes=estimated_minutes,
+        start_date=start_date,
+        actor_username=actor_username,
+        kwargs=kwargs,
+    )
 
 
 # ============================================================================
@@ -2219,197 +1655,53 @@ def update_task(
 
 def delete_goal(goal_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a goal and all its children (cascade)."""
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import delete_node as backend_delete_node
-
-        backend_result = backend_delete_node(
-            node_type="GOAL",
-            node_id=goal_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return bool(backend_result.get("deleted", True))
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        goal = session.get(Goal, goal_id)
-        if goal:
-            _authorize_node_mutation(
-                session,
-                node_type="GOAL",
-                node_id=goal_id,
-                actor_username=actor_username,
-            )
-            # SQLModel/SQLAlchemy will cascade delete if configured
-            # Otherwise, manually delete children
-            session.delete(goal)
-            session.commit()
-            audit_log("delete", "goal", details={"goal_id": goal_id})
-            clear_cache_safe()
-            return True
-        return False
+    return crud_delete_helpers.delete_goal_from_crud(
+        crud_module=sys.modules[__name__],
+        goal_id=goal_id,
+        actor_username=actor_username,
+    )
 
 
 def delete_task(task_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a task and its work logs."""
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import delete_node as backend_delete_node
-
-        backend_result = backend_delete_node(
-            node_type="TASK",
-            node_id=task_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return bool(backend_result.get("deleted", True))
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        task = session.get(Task, task_id)
-        if task:
-            _authorize_node_mutation(
-                session,
-                node_type="TASK",
-                node_id=task_id,
-                actor_username=actor_username,
-            )
-            session.delete(task)
-            session.commit()
-            audit_log("delete", "task", details={"task_id": task_id})
-            clear_cache_safe()
-            return True
-        return False
+    return crud_delete_helpers.delete_task_from_crud(
+        crud_module=sys.modules[__name__],
+        task_id=task_id,
+        actor_username=actor_username,
+    )
 
 
 def delete_objective(objective_id: int, actor_username: Optional[str] = None) -> bool:
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import delete_node as backend_delete_node
-
-        backend_result = backend_delete_node(
-            node_type="OBJECTIVE",
-            node_id=objective_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return bool(backend_result.get("deleted", True))
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        item = session.get(Objective, objective_id)
-        if item:
-            _authorize_node_mutation(
-                session,
-                node_type="OBJECTIVE",
-                node_id=objective_id,
-                actor_username=actor_username,
-            )
-            session.delete(item)
-            session.commit()
-            audit_log("delete", "objective", details={"objective_id": objective_id})
-            clear_cache_safe()
-            return True
-        return False
+    return crud_delete_helpers.delete_objective_from_crud(
+        crud_module=sys.modules[__name__],
+        objective_id=objective_id,
+        actor_username=actor_username,
+    )
 
 
 def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
-    if _backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import delete_node as backend_delete_node
-
-        backend_result = backend_delete_node(
-            node_type="KEY_RESULT",
-            node_id=kr_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return bool(backend_result.get("deleted", True))
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        item = session.get(KeyResult, kr_id)
-        if item:
-            _authorize_node_mutation(
-                session,
-                node_type="KEY_RESULT",
-                node_id=kr_id,
-                actor_username=actor_username,
-            )
-            session.delete(item)
-            session.commit()
-            audit_log("delete", "key_result", details={"key_result_id": kr_id})
-
-            # Recalculate hierarchy (manual chain)
-            objective_id = item.objective_id
-            calculate_objective_progress(session, objective_id)
-            refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
-
-            clear_cache_safe()
-            return True
-        return False
+    return crud_delete_helpers.delete_key_result_from_crud(
+        crud_module=sys.modules[__name__],
+        kr_id=kr_id,
+        actor_username=actor_username,
+    )
 
 def get_node(node_id: int, node_type: str, actor_username: Optional[str] = None):
     """Fetch a node by ID and Type string (GOAL, OBJECTIVE, KEY_RESULT, TASK)."""
-    with get_session_context() as session:
-        nt = str(node_type or "KEY_RESULT").upper()
-        node = None
-        if nt == "GOAL":
-            statement = (
-                select(Goal)
-                .where(Goal.id == node_id)
-                .options(
-                    selectinload(Goal.objectives).selectinload(Objective.key_results)
-                )
-            )
-            node = session.exec(statement).first()
-        elif nt == "OBJECTIVE":
-            statement = (
-                select(Objective)
-                .where(Objective.id == node_id)
-                .options(
-                    selectinload(Objective.key_results).selectinload(KeyResult.tasks)
-                )
-            )
-            node = session.exec(statement).first()
-        elif nt == "KEY_RESULT" or nt == "KEYRESULT":
-            statement = (
-                select(KeyResult)
-                .where(KeyResult.id == node_id)
-                .options(
-                    selectinload(KeyResult.tasks), selectinload(KeyResult.check_ins)
-                )
-            )
-            node = session.exec(statement).first()
-        elif nt == "TASK":
-            statement = (
-                select(Task)
-                .where(Task.id == node_id)
-                .options(selectinload(Task.work_logs))
-            )
-            node = session.exec(statement).first()
-
-        if node and actor_username:
-            _authorize_node_scoped_access(
-                session,
-                node_type=nt,
-                node_id=node_id,
-                actor_username=actor_username,
-            )
-
-        return node
-    return None
+    return crud_query_helpers.get_node_from_crud(
+        crud_module=sys.modules[__name__],
+        node_id=node_id,
+        node_type=node_type,
+        actor_username=actor_username,
+    )
 
 
 def get_node_by_external_id(external_id: str):
     """Search all OKR tables for a node with the given external_id (UUID)."""
-    models = [Goal, Objective, KeyResult, Task]
-    with get_session_context() as session:
-        for model_class in models:
-            statement = select(model_class).where(
-                model_class.external_id == external_id
-            )
-            node = session.exec(statement).first()
-            if node:
-                return node, model_class
-    return None, None
+    return crud_query_helpers.get_node_by_external_id_from_crud(
+        crud_module=sys.modules[__name__],
+        external_id=external_id,
+    )
 
 
 # ============================================================================
@@ -2419,254 +1711,66 @@ def get_node_by_external_id(external_id: str):
 
 def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
     """Get any currently running timer for a user."""
-    with get_session_context() as session:
-        # Join through hierarchy to find active timer
-        statement = (
-            select(Task)
-            .join(KeyResult)
-            .join(Objective)
-            .join(Goal)
-            .where(_timer_owner_predicate_by_username(user_id))
-            .where(Task.timer_started_at.isnot(None))
-            .options(selectinload(Task.key_result).selectinload(KeyResult.objective))
-        )
-        task = session.exec(statement).first()
-
-        if task:
-            # KeyResult/Objective are eager loaded above to avoid follow-up queries.
-            kr = task.key_result
-            objective = kr.objective if kr else None
-
-            return TaskWithTimer(
-                id=task.id,
-                title=task.title,
-                status=task.status,
-                timer_started_at=task.timer_started_at,
-                total_time_spent=task.total_time_spent,
-                key_result_title=kr.title if kr else None,
-                objective_title=objective.title if objective else None,
-            )
-        return None
+    return crud_timer_helpers.get_active_timer_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+    )
 
 
 def _query_owned_task_for_timer(
     session: Session, task_id: int, user_id: str
 ) -> Optional[Task]:
-    return domain_auth.get_timer_task_for_actor(
-        session,
-        task_id=int(task_id),
-        actor_username=str(user_id),
+    return crud_timer_helpers.query_owned_task_for_timer_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        task_id=task_id,
+        user_id=user_id,
     )
 
 
 def _get_active_work_log_for_task(session: Session, task_id: int) -> Optional[WorkLog]:
-    statement = (
-        select(WorkLog)
-        .where(WorkLog.task_id == task_id)
-        .where(WorkLog.end_time.is_(None))
-        .order_by(col(WorkLog.start_time).desc())
+    return crud_timer_helpers.get_active_work_log_for_task_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        task_id=task_id,
     )
-    return session.exec(statement).first()
 
 
 def start_timer(task_id: int, user_id: str) -> WorkLog:
-    """
-    Start a timer for a task.
-    Creates a new WorkLog entry with start_time=now.
-    Stops any other running timer first (single active timer policy).
-    """
-    with get_session_context() as session:
-        # Enforce ownership on timer start before changing any timer state.
-        task = _query_owned_task_for_timer(session, task_id, user_id)
-        if not task:
-            raise ValueError(f"Task {task_id} not found for user '{user_id}'")
-
-        # Idempotency: duplicate "start" actions on a running task return the same open log.
-        active_work_log = _get_active_work_log_for_task(session, task_id)
-        if task.timer_started_at is not None and active_work_log:
-            return active_work_log
-
-        # Stop other running timers after target validation (single active timer policy).
-        _stop_all_active_timers(session, user_id, exclude_task_id=task_id)
-        start_time = task.timer_started_at or utc_now_naive()
-
-        # Mark timer as started on task
-        task.timer_started_at = start_time
-        session.add(task)
-
-        # Create new WorkLog entry
-        work_log = WorkLog(task_id=task_id, start_time=start_time)
-        session.add(work_log)
-
-        try:
-            session.commit()
-        except IntegrityError:
-            # Concurrency safety: if another request started it first, return that open log.
-            session.rollback()
-            task = _query_owned_task_for_timer(session, task_id, user_id)
-            active_work_log = _get_active_work_log_for_task(session, task_id)
-            if task and task.timer_started_at is not None and active_work_log:
-                return active_work_log
-            raise
-
-        session.refresh(work_log)
-
-        audit_log(
-            "start_timer",
-            "task",
-            actor=user_id,
-            details={"task_id": task_id, "work_log_id": work_log.id},
-        )
-        clear_cache_safe()
-
-        return work_log
+    return crud_timer_helpers.start_timer_from_crud(
+        crud_module=sys.modules[__name__],
+        task_id=task_id,
+        user_id=user_id,
+    )
 
 
 def stop_timer(
     task_id: int, summary: str = None, user_id: Optional[str] = None
 ) -> Optional[WorkLog]:
-    """
-    Stop the timer for a task.
-    Updates the WorkLog end_time, calculates duration,
-    and updates the parent Task's total_time_spent.
-    """
-    with get_session_context() as session:
-        if user_id:
-            task = _query_owned_task_for_timer(session, task_id, user_id)
-        else:
-            task = session.get(Task, task_id)
-
-        if not task:
-            return None
-
-        work_log = _get_active_work_log_for_task(session, task_id)
-        if not work_log:
-            # Recover stale state where task is marked running but has no open log.
-            if task.timer_started_at is not None:
-                task.timer_started_at = None
-                session.add(task)
-                session.commit()
-                audit_log(
-                    "timer_recover",
-                    "task",
-                    actor=user_id,
-                    details={"task_id": task_id, "reason": "missing_active_work_log"},
-                )
-                clear_cache_safe()
-            return None
-
-        now = utc_now_naive()
-        work_log.end_time = now
-
-        # Calculate duration in minutes (min 1 minute for non-zero elapsed)
-        elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
-        duration_minutes = max(0.0, elapsed.total_seconds() / 60)
-        credited_minutes = max(1, int(duration_minutes)) if duration_minutes > 0 else 0
-        work_log.duration_minutes = credited_minutes
-        work_log.summary = summary
-
-        # Update task's cached total time
-        task.total_time_spent += credited_minutes
-        task.timer_started_at = None
-
-        session.add(work_log)
-        session.add(task)
-        session.commit()
-        session.refresh(work_log)
-
-        audit_log(
-            "stop_timer",
-            "task",
-            actor=user_id,
-            details={
-                "task_id": task_id,
-                "work_log_id": work_log.id,
-                "credited_minutes": credited_minutes,
-            },
-        )
-        clear_cache_safe()
-
-        return work_log
+    return crud_timer_helpers.stop_timer_from_crud(
+        crud_module=sys.modules[__name__],
+        task_id=task_id,
+        summary=summary,
+        user_id=user_id,
+    )
 
 
 def _stop_all_active_timers(
     session: Session, user_id: str, exclude_task_id: Optional[int] = None
 ) -> int:
-    """Internal: Stop all active timers for a user. Returns count stopped."""
-    # Find all tasks with active timers for this user
-    statement = (
-        select(Task)
-        .join(KeyResult)
-        .join(Objective)
-        .join(Goal)
-        .where(_timer_owner_predicate_by_username(user_id))
-        .where(Task.timer_started_at.isnot(None))
+    return crud_timer_helpers.stop_all_active_timers_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        user_id=user_id,
+        exclude_task_id=exclude_task_id,
     )
-    if exclude_task_id is not None:
-        statement = statement.where(Task.id != exclude_task_id)
-    active_tasks = session.exec(statement).all()
-
-    count = 0
-    for task in active_tasks:
-        # Find and close open work logs
-        work_log = _get_active_work_log_for_task(session, task.id)
-
-        if work_log:
-            now = utc_now_naive()
-            work_log.end_time = now
-            elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
-            duration_minutes = max(0, int(elapsed.total_seconds() / 60))
-            work_log.duration_minutes = duration_minutes
-
-            task.total_time_spent += duration_minutes
-            session.add(work_log)
-
-        task.timer_started_at = None
-        session.add(task)
-        count += 1
-
-    return count
 
 
 def force_stop_active_timers(user_id: str) -> int:
-    """
-    EMERGENCY CLEANUP: Stops ALL active timers for a user regardless of hierarchy.
-    Use this when a timer is 'stuck' but doesn't appear in the normal tree joins.
-    """
-    with get_session_context() as session:
-        from src.models import Task as TableTask, WorkLog as TableWorkLog
-
-        # Stop active tasks owned by the requested user.
-        all_active_tasks = session.exec(
-            select(TableTask)
-            .join(KeyResult)
-            .join(Objective)
-            .join(Goal)
-            .where(_timer_owner_predicate_by_username(user_id))
-            .where(TableTask.timer_started_at.isnot(None))
-        ).all()
-
-        count = 0
-        for task in all_active_tasks:
-            task.timer_started_at = None
-            session.add(task)
-
-            # Close any dangling work logs
-            active_logs = session.exec(
-                select(TableWorkLog)
-                .where(TableWorkLog.task_id == task.id)
-                .where(TableWorkLog.end_time == None)
-            ).all()
-            for log in active_logs:
-                now = utc_now_naive()
-                log.end_time = now
-                delta = ensure_utc(now) - ensure_utc(log.start_time)
-                log.duration_minutes = int(delta.total_seconds() / 60)
-                session.add(log)
-            count += 1
-
-        session.commit()
-        return count
+    return crud_timer_helpers.force_stop_active_timers_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+    )
 
 
 def add_manual_log(
@@ -2676,96 +1780,32 @@ def add_manual_log(
     log_date: datetime = None,
     actor_username: Optional[str] = None,
 ) -> WorkLog:
-    """
-    Add a manual work log entry (Quick Add feature).
-    Updates the task's total_time_spent immediately.
-    """
-    with get_session_context() as session:
-        if duration_minutes <= 0:
-            raise ValueError("duration_minutes must be > 0")
-        task = session.get(Task, task_id)
-        if not task:
-            raise ValueError(f"Task {task_id} not found")
-        _authorize_node_mutation(
-            session,
-            node_type="TASK",
-            node_id=task_id,
-            actor_username=actor_username,
-        )
-
-        start_time = ensure_utc(log_date) if log_date else utc_now_naive()
-        end_time = start_time + timedelta(minutes=duration_minutes)
-
-        work_log = WorkLog(
-            task_id=task_id,
-            start_time=start_time,
-            end_time=end_time,
-            duration_minutes=duration_minutes,
-            note=note,
-        )
-
-        # Update cached total
-        task.total_time_spent += duration_minutes
-
-        session.add(work_log)
-        session.add(task)
-        session.commit()
-        session.refresh(work_log)
-        clear_cache_safe()
-        return work_log
+    return crud_timer_helpers.add_manual_log_from_crud(
+        crud_module=sys.modules[__name__],
+        task_id=task_id,
+        duration_minutes=duration_minutes,
+        note=note,
+        log_date=log_date,
+        actor_username=actor_username,
+    )
 
 
 def get_work_log_by_start_time(task_id: int, start_time: datetime) -> Optional[WorkLog]:
     """Find a work log by task_id and start_time (to match JSON data)."""
-    with get_session_context() as session:
-        # Use a small tolerance for timestamp comparison if needed,
-        # but normally JSON stores exact ms.
-        statement = (
-            select(WorkLog)
-            .where(WorkLog.task_id == task_id)
-            .where(WorkLog.start_time == start_time)
-        )
-        return session.exec(statement).first()
+    return crud_timer_helpers.get_work_log_by_start_time_from_crud(
+        crud_module=sys.modules[__name__],
+        task_id=task_id,
+        start_time=start_time,
+    )
 
 
 def delete_work_log(log_id: int, actor_username: Optional[str] = None) -> bool:
     """Delete a work log and update the task's total_time_spent."""
-    if _backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            delete_work_log as backend_delete_work_log,
-        )
-
-        backend_result = backend_delete_work_log(
-            work_log_id=log_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            return bool(backend_result.get("deleted", True))
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        work_log = session.get(WorkLog, log_id)
-        if work_log:
-            _authorize_node_mutation(
-                session,
-                node_type="WORK_LOG",
-                node_id=log_id,
-                actor_username=actor_username,
-            )
-            task = session.get(Task, work_log.task_id)
-            if task:
-                task.total_time_spent = max(
-                    0, task.total_time_spent - work_log.duration_minutes
-                )
-                session.add(task)
-
-            session.delete(work_log)
-            session.commit()
-            clear_cache_safe()
-            return True
-        return False
+    return crud_timer_helpers.delete_work_log_from_crud(
+        crud_module=sys.modules[__name__],
+        log_id=log_id,
+        actor_username=actor_username,
+    )
 
 
 def get_leadership_metrics(usernames: List[str], cycle_id: int):
@@ -2819,113 +1859,30 @@ def get_daily_work_trend(user_id: int, days: int = 7) -> dict:
 
 def calculate_progress(session: Session, node_type: str, node_id: int) -> int:
     """Calculate progress based on children's progress."""
-    if node_type == "task":
-        task = session.get(Task, node_id)
-        return 100 if task and task.status == TaskStatus.DONE else 0
-
-    elif node_type == "key_result":
-        kr = session.get(KeyResult, node_id)
-        if kr:
-            return (
-                int((kr.current_value / kr.target_value) * 100)
-                if kr.target_value
-                else 0
-            )
-        return 0
-
-    # For higher levels, average children's progress
-    return 0
+    return crud_progress_helpers.calculate_progress_from_crud(
+        crud_module=sys.modules[__name__],
+        session=session,
+        node_type=node_type,
+        node_id=node_id,
+    )
 
 
 def update_progress_chain(task_id: int):
     """Update progress for a task and all its ancestors."""
-    with get_session_context() as session:
-        task = session.get(Task, task_id)
-        if not task:
-            return
-
-        # Update ancestor progress
-        kr = session.get(KeyResult, task.key_result_id)
-        if kr:
-            # KR progress is based on current_value/target_value primarily,
-            # but if it uses manual/child tracking we might want to update it.
-            # In our 4-level model, KR progress often reflects Task completion if automated.
-            done_tasks = sum(1 for t in kr.tasks if t.status == TaskStatus.DONE)
-            pk = int((done_tasks / len(kr.tasks)) * 100) if kr.tasks else 0
-            # For simplicity, if dynamic: kr.progress = pk (or weighted update)
-            # But let's stick to the 4-level Chain: Objective -> KR -> Task
-
-            objective = session.get(Objective, kr.objective_id)
-            if objective:
-                total_kr = sum(k.progress for k in objective.key_results)
-                objective.progress = (
-                    int(total_kr / len(objective.key_results))
-                    if objective.key_results
-                    else 0
-                )
-                session.add(objective)
-
-                # Update Goal progress (average of Objectives)
-                goal = session.get(Goal, objective.goal_id)
-                if goal:
-                    total_obj = sum(o.progress for o in goal.objectives)
-                    goal.progress = (
-                        int(total_obj / len(goal.objectives)) if goal.objectives else 0
-                    )
-                    session.add(goal)
-
-        session.commit()
-        clear_cache_safe()
+    return crud_progress_helpers.update_progress_chain_from_crud(
+        crud_module=sys.modules[__name__],
+        task_id=task_id,
+    )
 
 
 def recalculate_rollup_for_key_results(key_result_ids: List[int]) -> None:
     """
     Recalculate Objective/Goal progress rollups for affected key results.
     """
-    unique_ids = sorted(
-        {int(kr_id) for kr_id in (key_result_ids or []) if kr_id is not None}
+    return crud_progress_helpers.recalculate_rollup_for_key_results_from_crud(
+        crud_module=sys.modules[__name__],
+        key_result_ids=key_result_ids,
     )
-    if not unique_ids:
-        return
-
-    with get_session_context() as session:
-        objective_ids = set()
-        for key_result_id in unique_ids:
-            kr = session.get(KeyResult, key_result_id)
-            if kr and kr.objective_id is not None:
-                objective_ids.add(int(kr.objective_id))
-
-        goal_ids = set()
-        for objective_id in objective_ids:
-            objective = session.get(Objective, objective_id)
-            if not objective:
-                continue
-            total_kr = sum(
-                int(getattr(kr, "progress", 0) or 0) for kr in objective.key_results
-            )
-            objective.progress = (
-                int(total_kr / len(objective.key_results))
-                if objective.key_results
-                else 0
-            )
-            session.add(objective)
-            if objective.goal_id is not None:
-                goal_ids.add(int(objective.goal_id))
-
-        for goal_id in goal_ids:
-            goal = session.get(Goal, goal_id)
-            if not goal:
-                continue
-            total_obj = sum(
-                int(getattr(obj, "progress", 0) or 0) for obj in goal.objectives
-            )
-            goal.progress = (
-                int(total_obj / len(goal.objectives)) if goal.objectives else 0
-            )
-            session.add(goal)
-
-        session.commit()
-        clear_cache_safe()
 
 
 # ============================================================================
@@ -2943,92 +1900,25 @@ def create_weekly_plan(
     actor_username: Optional[str] = None,
 ) -> WeeklyPlan:
     """Create a new weekly plan."""
-    if _backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            create_weekly_plan as backend_create_weekly_plan,
-        )
-
-        backend_result = backend_create_weekly_plan(
-            user_id=user_id,
-            start_date=start_date,
-            end_date=end_date,
-            p1=p1,
-            p2=p2,
-            p3=p3,
-            actor_username=actor_name,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    if not str(p1 or "").strip():
-        raise ValueError("Priority #1 is required.")
-    if start_date >= end_date:
-        raise ValueError("Week start_date must be before end_date.")
-
-    with get_session_context() as session:
-        if actor_username:
-            _authorize_self_or_admin(
-                session,
-                actor_username=actor_username,
-                target_user_id=int(user_id),
-            )
-        elif _backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
-
-        # Check if plan exists for this week start date
-        statement = (
-            select(WeeklyPlan)
-            .where(WeeklyPlan.user_id == user_id)
-            .where(WeeklyPlan.week_start_date == start_date)
-        )
-        existing = session.exec(statement).first()
-
-        if existing:
-            # Update existing
-            existing.priority_1 = p1
-            existing.priority_2 = p2
-            existing.priority_3 = p3
-            existing.week_end_date = end_date  # Ensure end date match
-            session.add(existing)
-            session.commit()
-            session.refresh(existing)
-            clear_cache_safe()
-            return existing
-        else:
-            plan = WeeklyPlan(
-                user_id=user_id,
-                week_start_date=start_date,
-                week_end_date=end_date,
-                priority_1=p1,
-                priority_2=p2,
-                priority_3=p3,
-            )
-            session.add(plan)
-            session.commit()
-            session.refresh(plan)
-            clear_cache_safe()
-            return plan
+    return crud_reflection_helpers.create_weekly_plan_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+        start_date=start_date,
+        end_date=end_date,
+        p1=p1,
+        p2=p2,
+        p3=p3,
+        actor_username=actor_username,
+    )
 
 
 def get_active_weekly_plan(user_id: int, date: datetime = None) -> Optional[WeeklyPlan]:
     """Get the weekly plan active for the given date (default: now)."""
-    if date is None:
-        date = utc_now_naive()
-
-    with get_session_context() as session:
-        # Find plan where date is between start and end
-        statement = (
-            select(WeeklyPlan)
-            .where(WeeklyPlan.user_id == user_id)
-            .where(WeeklyPlan.week_start_date <= date)
-            .where(WeeklyPlan.week_end_date >= date)
-            .order_by(col(WeeklyPlan.created_at).desc())
-        )
-        return session.exec(statement).first()
+    return crud_reflection_helpers.get_active_weekly_plan_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+        date=date,
+    )
 
 
 # ============================================================================
@@ -3045,92 +1935,35 @@ def create_retrospective(
     actor_username: Optional[str] = None,
 ) -> Retrospective:
     """Create a new retrospective entry."""
-    if _backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            create_retrospective as backend_create_retrospective,
-        )
-
-        backend_result = backend_create_retrospective(
-            user_id=user_id,
-            cycle_id=cycle_id,
-            week_start_date=week_start_date,
-            content=content,
-            sentiment=sentiment,
-            actor_username=actor_name,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    if not str(content or "").strip():
-        raise ValueError("Retrospective content is required.")
-
-    with get_session_context() as session:
-        if actor_username:
-            _authorize_self_or_admin(
-                session,
-                actor_username=actor_username,
-                target_user_id=int(user_id),
-            )
-        elif _backend_mutation_proxy_enabled():
-            raise PermissionError("Actor username is required for this operation")
-
-        # Check if exists for this week? Optional: Enforce one per week per user
-        statement = (
-            select(Retrospective)
-            .where(Retrospective.user_id == user_id)
-            .where(Retrospective.week_start_date == week_start_date)
-        )
-        existing = session.exec(statement).first()
-
-        if existing:
-            existing.content = content
-            existing.sentiment = sentiment
-            existing.created_at = utc_now_naive()
-            session.add(existing)
-            session.commit()
-            session.refresh(existing)
-            clear_cache_safe()
-            return existing
-        else:
-            retro = Retrospective(
-                user_id=user_id,
-                cycle_id=cycle_id,
-                week_start_date=week_start_date,
-                content=content,
-                sentiment=sentiment,
-            )
-            session.add(retro)
-            session.commit()
-            session.refresh(retro)
-            clear_cache_safe()
-            return retro
+    return crud_reflection_helpers.create_retrospective_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+        cycle_id=cycle_id,
+        week_start_date=week_start_date,
+        content=content,
+        sentiment=sentiment,
+        actor_username=actor_username,
+    )
 
 
 def get_user_retrospectives(user_id: int, cycle_id: int = None) -> List[Retrospective]:
     """Get all retrospectives for a user."""
-    with get_session_context() as session:
-        stmt = select(Retrospective).where(Retrospective.user_id == user_id)
-        if cycle_id:
-            stmt = stmt.where(Retrospective.cycle_id == cycle_id)
-        stmt = stmt.order_by(col(Retrospective.week_start_date).desc())
-        return list(session.exec(stmt).all())
+    return crud_reflection_helpers.get_user_retrospectives_from_crud(
+        crud_module=sys.modules[__name__],
+        user_id=user_id,
+        cycle_id=cycle_id,
+    )
 
 
 def get_team_retrospectives(
     manager_id: int, cycle_id: int = None
 ) -> List[Retrospective]:
     """Get retrospectives for all members of a manager's team."""
-    with get_session_context() as session:
-        # Join User to filter by manager_id
-        stmt = select(Retrospective).join(User).where(User.manager_id == manager_id)
-        if cycle_id:
-            stmt = stmt.where(Retrospective.cycle_id == cycle_id)
-        stmt = stmt.order_by(col(Retrospective.week_start_date).desc())
-        return list(session.exec(stmt).all())
+    return crud_reflection_helpers.get_team_retrospectives_from_crud(
+        crud_module=sys.modules[__name__],
+        manager_id=manager_id,
+        cycle_id=cycle_id,
+    )
 
 
 def upsert_retro_experiment_outcome(
@@ -3144,76 +1977,14 @@ def upsert_retro_experiment_outcome(
     Attach or update experiment outcome to retro.
     Only retro owner can modify. Handles concurrent upserts.
     """
-    if _backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            upsert_retro_experiment_outcome as backend_upsert_retro_experiment_outcome,
-        )
-
-        backend_result = backend_upsert_retro_experiment_outcome(
-            retrospective_id=retrospective_id,
-            experiment_id=experiment_id,
-            decision=decision,
-            rationale=rationale,
-            actor_username=actor_name,
-        )
-        if "error" not in backend_result:
-            return _node_from_backend_payload(backend_result)
-        _enforce_backend_mutation_failure_policy(backend_result)
-
-    with get_session_context() as session:
-        retro = session.get(Retrospective, retrospective_id)
-        if not retro:
-            raise ValueError(f"Retrospective {retrospective_id} not found")
-
-        # Authorization: only retro owner can attach outcomes
-        actor = session.exec(
-            select(User).where(User.username == actor_username)
-        ).first()
-        if not actor:
-            raise PermissionError("Actor not found")
-
-        if retro.user_id != actor.id:
-            raise PermissionError(
-                "Only the retrospective owner can attach experiment outcomes"
-            )
-
-        # Validate experiment exists
-        experiment = session.get(Experiment, experiment_id)
-        if not experiment:
-            raise ValueError(f"Experiment {experiment_id} not found")
-
-        # Attempt upsert with race condition handling
-        try:
-            # Try insert first
-            outcome = RetroExperimentOutcome(
-                retrospective_id=retrospective_id,
-                experiment_id=experiment_id,
-                decision=decision,
-                rationale=rationale,
-            )
-            session.add(outcome)
-            session.commit()
-            session.refresh(outcome)
-            return outcome
-        except IntegrityError:
-            # Unique constraint violated - re-select and update
-            session.rollback()
-            existing = session.exec(
-                select(RetroExperimentOutcome)
-                .where(RetroExperimentOutcome.retrospective_id == retrospective_id)
-                .where(RetroExperimentOutcome.experiment_id == experiment_id)
-            ).first()
-            if existing:
-                existing.decision = decision
-                existing.rationale = rationale
-                session.add(existing)
-                session.commit()
-                session.refresh(existing)
-                return existing
-            raise  # Re-raise if we can't find it after constraint error
+    return crud_reflection_helpers.upsert_retro_experiment_outcome_from_crud(
+        crud_module=sys.modules[__name__],
+        retrospective_id=retrospective_id,
+        experiment_id=experiment_id,
+        decision=decision,
+        rationale=rationale,
+        actor_username=actor_username,
+    )
 
 
 def get_user_data_from_sql(
