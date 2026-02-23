@@ -181,3 +181,20 @@ def test_run_main_from_app_recovers_when_app_module_missing_st(monkeypatch):
 
     assert calls["render_app"] == 1
     assert fake_st.session_state["username"] == "alice"
+
+
+def test_run_main_from_app_handles_missing_runtime_resolver_without_crash():
+    st = _FakeStreamlit(session_state={"user_id": 10})
+    app_module = SimpleNamespace(
+        st=st,
+        render_login=lambda: None,
+        error_log=lambda *_args, **_kwargs: None,
+        _clear_user_session=lambda: None,
+        render_password_reset_gate=lambda: None,
+        render_app=lambda *_args, **_kwargs: None,
+    )
+
+    app_entry_helpers.run_main_from_app(app_module=app_module)
+
+    assert st.errors
+    assert "startup wiring" in st.errors[0]

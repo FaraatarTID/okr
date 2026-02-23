@@ -33,20 +33,35 @@ def sync_user_session_from_snapshot(session_state, user_snapshot: dict) -> None:
 def run_main_from_app(*, app_module) -> None:
     """Run app entry flow using dependencies provided by app_module."""
     st = _resolve_streamlit_from_app(app_module=app_module)
+    render_login_fn = getattr(app_module, "render_login", None)
+    resolve_runtime_fn = getattr(app_module, "_resolve_app_shell_runtime", None)
+    error_log_fn = getattr(app_module, "error_log", None)
+    clear_session_fn = getattr(app_module, "_clear_user_session", None)
+    render_password_reset_gate_fn = getattr(app_module, "render_password_reset_gate", None)
+    render_app_fn = getattr(app_module, "render_app", None)
 
     if "user_id" not in st.session_state:
-        app_module.render_login()
+        if callable(render_login_fn):
+            render_login_fn()
+        else:
+            st.error("Login renderer is unavailable. Please refresh the app.")
         return
 
     # Keep compatibility for any flow still checking this sentinel.
     st.session_state["_bootstrap_ready"] = True
 
-    try:
-        runtime_bundle = app_module._resolve_app_shell_runtime(
-            int(st.session_state["user_id"])
+    if not callable(resolve_runtime_fn):
+        st.error(
+            "Workspace runtime is unavailable due to startup wiring. "
+            "Please refresh or redeploy."
         )
+        return
+
+    try:
+        runtime_bundle = resolve_runtime_fn(int(st.session_state["user_id"]))
     except Exception as exc:
-        app_module.error_log("Workspace runtime load failed", exc)
+        if callable(error_log_fn):
+            error_log_fn("Workspace runtime load failed", exc)
         st.error(
             "Workspace is temporarily unavailable due to a database issue. "
             "Please retry shortly."
@@ -55,13 +70,20 @@ def run_main_from_app(*, app_module) -> None:
 
     current_user = runtime_bundle.get("user")
     if not current_user or not current_user.get("is_active"):
-        app_module._clear_user_session()
+        if callable(clear_session_fn):
+            clear_session_fn()
         st.error("Your session is no longer valid. Please log in again.")
         return
 
     sync_user_session_from_snapshot(st.session_state, current_user)
     if st.session_state.get("must_change_password"):
-        app_module.render_password_reset_gate()
+        if callable(render_password_reset_gate_fn):
+            render_password_reset_gate_fn()
+        else:
+            st.error("Password reset flow is unavailable. Please log out and retry.")
         return
 
-    app_module.render_app(st.session_state["username"], runtime_bundle=runtime_bundle)
+    if callable(render_app_fn):
+        render_app_fn(st.session_state["username"], runtime_bundle=runtime_bundle)
+    else:
+        st.error("Workspace renderer is unavailable. Please refresh the app.")
