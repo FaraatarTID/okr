@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import os
+import sqlite3
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
@@ -19,6 +20,8 @@ from backend_app.config import BackendSettings, get_backend_settings
 
 
 _LOGGER = logging.getLogger(__name__)
+_SQLITE_ADAPTER_REGISTERED = False
+_SQLITE_ADAPTER_LOCK = Lock()
 
 
 class SecurityStateUnavailableError(RuntimeError):
@@ -120,6 +123,8 @@ class DatabaseSecurityStateStore:
             raise SecurityStateUnavailableError(
                 "Distributed security state backend requires OKR_DATABASE_URL."
             )
+        if safe_database_url.lower().startswith("sqlite"):
+            _ensure_sqlite_datetime_adapter()
         self._engine = create_engine(
             safe_database_url,
             pool_pre_ping=True,
@@ -447,6 +452,18 @@ def _utc_naive_from_epoch(epoch_seconds: float | int) -> datetime:
     return datetime.fromtimestamp(float(epoch_seconds), tz=timezone.utc).replace(
         tzinfo=None
     )
+
+
+def _ensure_sqlite_datetime_adapter() -> None:
+    """Register explicit sqlite datetime adapter to avoid deprecated default adapter."""
+    global _SQLITE_ADAPTER_REGISTERED
+    if _SQLITE_ADAPTER_REGISTERED:
+        return
+    with _SQLITE_ADAPTER_LOCK:
+        if _SQLITE_ADAPTER_REGISTERED:
+            return
+        sqlite3.register_adapter(datetime, lambda value: value.isoformat(" "))
+        _SQLITE_ADAPTER_REGISTERED = True
 
 
 def _resolve_database_url() -> str:
