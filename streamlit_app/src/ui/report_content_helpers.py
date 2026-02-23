@@ -17,6 +17,7 @@ def render_report_content(
     cached_get_all_tasks_by_cycle_fn,
     cached_get_all_krs_by_cycle_fn,
     format_time_fn,
+    escape_html_fn,
     calculate_kr_score_fn,
     get_score_label_fn,
     get_score_color_band_fn,
@@ -138,7 +139,7 @@ def render_report_content(
     logs = cached_get_work_logs_by_range_fn(user_obj.id, start_dt, end_dt)
 
     if not logs:
-        st_module.info(f"No work recorded in the this period.")
+        st_module.info("No work recorded in this period.")
         return
 
     from src.utils.deadline_utils import get_deadline_status
@@ -275,9 +276,6 @@ def render_report_content(
     else:
         st_module.success("All tasks on track!", icon="🟢")
 
-    # Filter Key Results (Needed for PDF)
-    from src.crud import get_all_krs_by_cycle
-
     cycle_id_krs = st_module.session_state.get("active_cycle_id")
     krs_list = cached_get_all_krs_by_cycle_fn(cycle_id_krs)
 
@@ -299,8 +297,8 @@ def render_report_content(
         krs_list=list(krs_list),
         achievements=list(achievements),
         username=username,
-        utc_now_naive_fn=utc_now_naive,
-        format_time_fn=format_time,
+        utc_now_naive_fn=utc_now_naive_fn,
+        format_time_fn=format_time_fn,
         is_backend_enabled_fn=is_backend_enabled,
         run_job_and_wait_fn=run_job_and_wait,
         generate_weekly_pdf_v2_fn=generate_weekly_pdf_v2,
@@ -407,4 +405,3 @@ def render_report_content(
     )
     if should_abort_report:
         return
-

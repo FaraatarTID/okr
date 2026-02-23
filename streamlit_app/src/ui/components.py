@@ -404,6 +404,7 @@ def render_report_content(username, mode):
         cached_get_all_tasks_by_cycle_fn=_cached_get_all_tasks_by_cycle,
         cached_get_all_krs_by_cycle_fn=_cached_get_all_krs_by_cycle,
         format_time_fn=format_time,
+        escape_html_fn=escape_html,
         calculate_kr_score_fn=calculate_kr_score,
         get_score_label_fn=get_score_label,
         get_score_color_band_fn=get_score_color_band,
