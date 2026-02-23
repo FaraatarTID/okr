@@ -4,11 +4,13 @@ import os
 from typing import Optional
 
 from src.observability import current_observability_fields
-from src.utils.time_utils import utc_now
+from src.utils.time_utils import utc_now, utc_now_naive
 
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 LOG_FILE = os.path.join(LOG_DIR, "audit.log")
 ERROR_LOG_FILE = os.path.join(LOG_DIR, "error.log")
+_MODULE_LOGGER = logging.getLogger(__name__)
+_AUDIT_DB_FAILURE_REPORTED = False
 
 
 def _get_logger() -> logging.Logger:
@@ -37,6 +39,53 @@ def _get_error_logger() -> logging.Logger:
     return logger
 
 
+def _json_dumps(payload: dict) -> str:
+    return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def _derive_audit_result(details: Optional[dict]) -> str:
+    if not isinstance(details, dict):
+        return "info"
+    success = details.get("success")
+    if success is True:
+        return "success"
+    if success is False:
+        return "failure"
+    explicit = details.get("result")
+    if isinstance(explicit, str) and explicit.strip():
+        return explicit.strip().lower()
+    return "info"
+
+
+def _write_audit_event_to_db(payload: dict) -> None:
+    global _AUDIT_DB_FAILURE_REPORTED
+    try:
+        from src.database import get_session_context
+        from src.models import AuditEvent
+
+        details = payload.get("details")
+        with get_session_context() as session:
+            session.add(
+                AuditEvent(
+                    actor=payload.get("actor"),
+                    action=str(payload.get("action") or ""),
+                    entity=str(payload.get("entity") or ""),
+                    result=str(payload.get("result") or "info"),
+                    details_json=_json_dumps(details if isinstance(details, dict) else {}),
+                    correlation_id=payload.get("correlation_id"),
+                    request_id=payload.get("request_id"),
+                    created_at=utc_now_naive(),
+                )
+            )
+    except Exception as exc:
+        if not _AUDIT_DB_FAILURE_REPORTED:
+            _AUDIT_DB_FAILURE_REPORTED = True
+            _MODULE_LOGGER.warning(
+                "Database-backed audit sink unavailable; continuing with file sink only."
+            )
+        _MODULE_LOGGER.debug("Audit DB write failure details", exc_info=exc)
+
+
 def audit_log(
     action: str,
     entity: str,
@@ -51,9 +100,11 @@ def audit_log(
         "entity": entity,
         "actor": actor,
         "details": details or {},
+        "result": _derive_audit_result(details),
         **observability,
     }
-    logger.info(json.dumps(payload, ensure_ascii=False))
+    logger.info(_json_dumps(payload))
+    _write_audit_event_to_db(payload)
 
 
 def error_log(message: str, exc: Optional[Exception] = None):
@@ -62,7 +113,7 @@ def error_log(message: str, exc: Optional[Exception] = None):
     scoped_message = str(message)
     if observability:
         scoped_message = (
-            f"{scoped_message} | ctx={json.dumps(observability, ensure_ascii=False)}"
+            f"{scoped_message} | ctx={_json_dumps(observability)}"
         )
     if exc:
         logger.exception(scoped_message, exc_info=exc)

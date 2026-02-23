@@ -58,6 +58,7 @@ class BackendSettings:
     job_team_pending_max_requests: int
     job_actor_backoff_base_seconds: int
     job_retention_days: int
+    audit_retention_days: int
     job_prune_interval_seconds: int
     job_prune_batch_size: int
     worker_poll_seconds: int
@@ -168,6 +169,11 @@ def get_backend_settings() -> BackendSettings:
         job_retention_days=_as_int(
             os.getenv("OKR_BACKEND_JOB_RETENTION_DAYS"),
             default=14,
+            minimum=1,
+        ),
+        audit_retention_days=_as_int(
+            os.getenv("OKR_BACKEND_AUDIT_RETENTION_DAYS"),
+            default=365,
             minimum=1,
         ),
         job_prune_interval_seconds=_as_int(

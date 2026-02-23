@@ -78,9 +78,53 @@ python -m pytest tests/test_database_engine_pooling.py -q
 ## 6. Day-2 Operations
 - Monitor uptime (`/`, `/healthz`) and reverse-proxy/container logs.
 - Track backend `/v1/jobs` quota pressure (`429`, `Retry-After`).
-- Review audit events: `job_submit_accepted`, `job_submit_rejected`.
+- Review DB-backed audit events in `audit_event` (with file-log fallback in `logs/audit.log`).
 - Rotate secrets on schedule.
 - Keep dependencies current and preserve CI required checks on main.
+
+### 6.1 Audit Event Operations (Incident Response + Forensics)
+- Primary store: `audit_event` table.
+- Canonical fields: `actor`, `action`, `entity`, `result`, `details_json`, `correlation_id`, `request_id`, `created_at`.
+- Keep `logs/audit.log` as secondary fallback evidence if DB sink is unavailable.
+
+Common queries:
+```sql
+-- Recent security-relevant failures
+SELECT created_at, actor, action, entity, result, details_json
+FROM audit_event
+WHERE result = 'failure'
+ORDER BY created_at DESC
+LIMIT 200;
+```
+
+```sql
+-- Backend job submit acceptance/rejection trend (last 24h)
+SELECT action, result, COUNT(*) AS total
+FROM audit_event
+WHERE action IN ('job_submit_accepted', 'job_submit_rejected')
+  AND created_at >= NOW() - INTERVAL '24 hours'
+GROUP BY action, result
+ORDER BY action, result;
+```
+
+```sql
+-- Correlated event trace by request/correlation id
+SELECT created_at, actor, action, entity, result, request_id, correlation_id
+FROM audit_event
+WHERE request_id = :request_id OR correlation_id = :correlation_id
+ORDER BY created_at ASC;
+```
+
+Automated retention:
+- `backend-worker` prunes old rows from `audit_event` using `OKR_BACKEND_AUDIT_RETENTION_DAYS` (default: `365`).
+- Prune cadence and batch size are shared with async job pruning (`OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS`, `OKR_BACKEND_JOB_PRUNE_BATCH_SIZE`).
+
+Manual emergency prune example:
+```sql
+-- Example policy: keep 365 days of audit events
+DELETE FROM audit_event
+WHERE created_at < NOW() - INTERVAL '365 days';
+```
 
 ## 7. Incident Response
 - Treat strict preflight startup blocks as config incidents.

@@ -19,7 +19,7 @@ Priority Queue
 | ID | Priority | Work Item | Current State | Impact | Effort | Why Now |
 | --- | --- | --- | --- | --- | --- | --- |
 | V2-01 | P0 | Migrate auth/session to Supabase Auth (GoTrue) | Custom bcrypt auth + local session handling | H | L | Removes highest long-term security and maintenance risk. |
-| V2-02 | P0 | Add database-backed audit trail (`audit_event` table) | Audit logs are file-based (`logs/audit.log`) | H | M | Enables reliable querying, retention, and compliance evidence. |
+| V2-02 | P0 | Add database-backed audit trail (`audit_event` table) | `audit_event` table + dual-write sink + worker-based retention pruning shipped | H | M | Enables reliable querying, retention, and compliance evidence. |
 | V2-03 | P1 | Make backend read proxy the production default and migrate remaining heavy reads | Backend read proxy exists but is optional | H | M | Reduces architecture split-brain and eases future non-Streamlit clients. |
 | V2-04 | P1 | Add local PDF renderer mode for air-gapped/privacy-first deployments | Runtime supports `pdfshift` binary path only | M | M | Removes third-party dependency for sensitive internal exports. |
 | V2-05 | P1 | Harden production invariants as startup/release gates | Many controls exist, but gate enforcement can be tightened | H | S | Prevents misconfig drift from weakening security posture. |

@@ -103,6 +103,10 @@ Documentation HQ: [README](../README.md)
 ## Worker
 
 - `OKR_BACKEND_WORKER_POLL_SECONDS` (پیش‌فرض `2`)
+- `OKR_BACKEND_JOB_RETENTION_DAYS` (پیش‌فرض `14`؛ نگه‌داری jobهای terminal قبل از prune)
+- `OKR_BACKEND_AUDIT_RETENTION_DAYS` (پیش‌فرض `365`؛ نگه‌داری `audit_event` قبل از prune)
+- `OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS` (پیش‌فرض `300`؛ تناوب prune توسط worker)
+- `OKR_BACKEND_JOB_PRUNE_BATCH_SIZE` (پیش‌فرض `200`؛ سقف حذف در هر نوبت prune)
 
 ## Bootstrap ادمین
 
@@ -147,4 +151,11 @@ Notes:
 - `POST /v1/jobs` از `X-OKR-Idempotency-Key` پشتیبانی می‌کند.
 - در quota/backoff reject، پاسخ `429` با `detail.error_code` و `detail.retry_after_seconds` برمی‌گردد.
 - header `Retry-After` در همان پاسخ ارسال می‌شود.
-- رویدادهای accepted/rejected submit در audit log ثبت می‌شوند.
+- رویدادهای accepted/rejected submit در جدول `audit_event` (با fallback فایل log) ثبت می‌شوند.
+
+## Audit Trail
+
+- مخزن اصلی: جدول `audit_event`
+- fallback: فایل `streamlit_app/logs/audit.log` وقتی sink دیتابیس موقتاً در دسترس نیست
+- retention خودکار توسط worker:
+  - `OKR_BACKEND_AUDIT_RETENTION_DAYS` (پیش‌فرض `365`)

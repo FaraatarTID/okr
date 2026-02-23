@@ -17,7 +17,7 @@ from backend_app.path_setup import ensure_streamlit_app_on_path
 ensure_streamlit_app_on_path()
 
 from src.database import get_session_context
-from src.models import AsyncJob, AsyncJobStatus, User
+from src.models import AsyncJob, AsyncJobStatus, AuditEvent, User
 from src.utils.time_utils import utc_now_naive
 
 
@@ -297,6 +297,30 @@ def prune_terminal_jobs(*, retention_days: int, batch_size: int = 200) -> int:
             return 0
 
         result = session.exec(delete(AsyncJob).where(AsyncJob.id.in_(candidate_ids)))
+        deleted = int(getattr(result, "rowcount", 0) or 0)
+        session.commit()
+        return deleted
+
+
+def prune_audit_events(*, retention_days: int, batch_size: int = 200) -> int:
+    """Delete old audit rows to keep audit_event table growth bounded."""
+    safe_days = max(1, int(retention_days))
+    safe_batch = max(1, int(batch_size))
+    cutoff = utc_now_naive() - timedelta(days=safe_days)
+    with get_session_context() as session:
+        raw_ids = list(
+            session.exec(
+                select(AuditEvent.id)
+                .where(AuditEvent.created_at < cutoff)
+                .order_by(AuditEvent.created_at.asc())
+                .limit(safe_batch)
+            ).all()
+        )
+        candidate_ids = [int(event_id) for event_id in raw_ids if event_id is not None]
+        if not candidate_ids:
+            return 0
+
+        result = session.exec(delete(AuditEvent).where(AuditEvent.id.in_(candidate_ids)))
         deleted = int(getattr(result, "rowcount", 0) or 0)
         session.commit()
         return deleted
