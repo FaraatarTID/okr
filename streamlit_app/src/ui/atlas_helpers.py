@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import ast
-import json
 import logging
 
 from src.domain.lifecycle import LifecycleState, STATE_ICONS
@@ -13,6 +11,8 @@ from src.domain.scoring import (
     get_score_color_band,
     get_score_label,
 )
+from src.ui import atlas_health_view_helpers
+from src.ui import atlas_logic_helpers
 from src.ui import atlas_selection_event_helpers
 
 logger = logging.getLogger(__name__)
@@ -24,95 +24,31 @@ def _atlas_ai_progress_decision(
     max_delta: int = 25,
     allow_decrease: bool = False,
 ):
-    """Policy gate for applying AI score to KR progress."""
-    try:
-        current_val = max(0, min(100, int(float(current_progress))))
-    except Exception as exc:
-        logger.debug("Invalid current_progress '%s': %s", current_progress, exc)
-        current_val = 0
-    try:
-        if ai_score is None:
-            raise ValueError("missing_ai_score")
-        proposed_val = max(0, min(100, int(float(ai_score))))
-    except Exception as exc:
-        logger.debug("Invalid ai_score '%s': %s", ai_score, exc)
-        return {
-            "action": "skip",
-            "reason": "missing_ai_score",
-            "current_progress": current_val,
-            "proposed_progress": None,
-            "delta": None,
-        }
-
-    delta = int(proposed_val - current_val)
-    bounded_delta = max(0, min(100, int(max_delta or 0)))
-
-    if delta == 0:
-        return {
-            "action": "skip",
-            "reason": "no_change",
-            "current_progress": current_val,
-            "proposed_progress": proposed_val,
-            "delta": 0,
-        }
-    if delta < 0 and not bool(allow_decrease):
-        return {
-            "action": "skip",
-            "reason": "decrease_blocked",
-            "current_progress": current_val,
-            "proposed_progress": proposed_val,
-            "delta": delta,
-        }
-    if abs(delta) > bounded_delta:
-        return {
-            "action": "skip",
-            "reason": "delta_cap",
-            "current_progress": current_val,
-            "proposed_progress": proposed_val,
-            "delta": delta,
-        }
-    return {
-        "action": "apply",
-        "reason": "within_policy",
-        "current_progress": current_val,
-        "proposed_progress": proposed_val,
-        "delta": delta,
-    }
+    return atlas_logic_helpers.atlas_ai_progress_decision(
+        current_progress,
+        ai_score,
+        max_delta=max_delta,
+        allow_decrease=allow_decrease,
+    )
 
 
 def _atlas_commit_target_minutes(
     preset_choice: str, custom_minutes: int | None = None
 ) -> int:
-    preset = str(preset_choice or "25m")
-    if preset == "50m":
-        return 50
-    if preset == "Custom":
-        if custom_minutes is None:
-            return 35
-        return max(5, min(240, int(custom_minutes)))
-    return 25
+    return atlas_logic_helpers.atlas_commit_target_minutes(
+        preset_choice,
+        custom_minutes,
+    )
 
 
 def _atlas_sprint_run_key(
     task_ref: str | None, target_minutes: int, started_at_epoch
 ) -> str | None:
-    if not task_ref:
-        return None
-    try:
-        target = int(target_minutes or 0)
-    except Exception as exc:
-        logger.debug("Invalid sprint target_minutes '%s': %s", target_minutes, exc)
-        target = 0
-    if target <= 0:
-        return None
-    try:
-        started = int(float(started_at_epoch or 0))
-    except Exception as exc:
-        logger.debug("Invalid sprint started_at_epoch '%s': %s", started_at_epoch, exc)
-        started = 0
-    if started <= 0:
-        return None
-    return f"{task_ref}|{target}|{started}"
+    return atlas_logic_helpers.atlas_sprint_run_key(
+        task_ref,
+        target_minutes,
+        started_at_epoch,
+    )
 
 
 def _atlas_should_show_soft_reminder(
@@ -121,116 +57,45 @@ def _atlas_should_show_soft_reminder(
     sprint_key: str | None,
     dismissed_key: str | None,
 ) -> bool:
-    if not sprint_key:
-        return False
-    if dismissed_key == sprint_key:
-        return False
-    try:
-        elapsed = int(elapsed_minutes or 0)
-        target = int(target_minutes or 0)
-    except Exception as exc:
-        logger.debug(
-            "Invalid reminder timing values elapsed='%s' target='%s': %s",
-            elapsed_minutes,
-            target_minutes,
-            exc,
-        )
-        return False
-    return target > 0 and elapsed >= target
+    return atlas_logic_helpers.atlas_should_show_soft_reminder(
+        elapsed_minutes,
+        target_minutes,
+        sprint_key,
+        dismissed_key,
+    )
 
 
 def _atlas_should_emit_target_notification(
     sprint_key: str | None, emitted_key: str | None
 ) -> bool:
-    return bool(sprint_key and sprint_key != emitted_key)
+    return atlas_logic_helpers.atlas_should_emit_target_notification(
+        sprint_key,
+        emitted_key,
+    )
 
 
 def _atlas_clean_work_summary(summary: str | None) -> str | None:
-    if summary is None:
-        return None
-    cleaned = str(summary).strip()
-    return cleaned if cleaned else None
+    return atlas_logic_helpers.atlas_clean_work_summary(summary)
 
 
 def _atlas_timer_owner_id(meta) -> int | None:
-    if not isinstance(meta, dict):
-        return None
-    owner_id = meta.get("timer_owner_id", meta.get("owner_id"))
-    if owner_id is None:
-        return None
-    try:
-        return int(owner_id)
-    except Exception as exc:
-        logger.debug("Invalid timer owner id '%s': %s", owner_id, exc)
-        return None
+    return atlas_logic_helpers.atlas_timer_owner_id(meta)
 
 
 def _atlas_parse_ai_analysis(raw_analysis):
-    if not raw_analysis:
-        return None
-    if isinstance(raw_analysis, dict):
-        return raw_analysis
-    if isinstance(raw_analysis, str):
-        try:
-            parsed = json.loads(raw_analysis)
-            return parsed if isinstance(parsed, dict) else None
-        except Exception as exc:
-            logger.debug("Failed JSON parse for gemini_analysis payload: %s", exc)
-            try:
-                parsed = ast.literal_eval(raw_analysis)
-                return parsed if isinstance(parsed, dict) else None
-            except Exception as nested_exc:
-                logger.debug(
-                    "Failed literal_eval parse for gemini_analysis payload: %s",
-                    nested_exc,
-                )
-                return None
-    return None
+    return atlas_logic_helpers.atlas_parse_ai_analysis(raw_analysis)
 
 
 def _atlas_ai_overall_score(meta):
-    node = meta.get("node")
-    precomputed = getattr(node, "ai_overall_score", None)
-    if precomputed is not None:
-        try:
-            return max(0, min(100, int(float(precomputed))))
-        except Exception as exc:
-            logger.debug(
-                "Invalid precomputed ai_overall_score '%s': %s",
-                precomputed,
-                exc,
-            )
-    analysis = _atlas_parse_ai_analysis(getattr(node, "gemini_analysis", None))
-    if not analysis:
-        return None
-    score_val = analysis.get("overall_score")
-    try:
-        return max(0, min(100, int(float(score_val))))
-    except Exception as exc:
-        logger.debug("Failed to parse atlas AI score value '%s': %s", score_val, exc)
-        return None
+    return atlas_logic_helpers.atlas_ai_overall_score(meta)
 
 
 def _atlas_ai_deadline_warnings(meta):
-    node = meta.get("node")
-    precomputed_state = str(getattr(node, "ai_deadline_state", "") or "").lower()
-    if precomputed_state == "overdue":
-        return ["Potentially overdue"]
-    if precomputed_state == "risk":
-        return ["At risk"]
-    analysis = _atlas_parse_ai_analysis(getattr(node, "gemini_analysis", None))
-    if not analysis:
-        return []
-    warnings_list = analysis.get("deadline_warnings") or []
-    if not isinstance(warnings_list, list):
-        return []
-    cleaned = [str(item).strip() for item in warnings_list if str(item).strip()]
-    return cleaned
+    return atlas_logic_helpers.atlas_ai_deadline_warnings(meta)
 
 
 def _is_weighted_mode(value) -> bool:
-    mode = str(getattr(value, "value", value) or "").strip().upper()
-    return mode == "WEIGHTED"
+    return atlas_logic_helpers.atlas_is_weighted_mode(value)
 
 
 def _atlas_health_state(meta, index=None, _visited_refs=None, _memo=None):
@@ -551,33 +416,39 @@ def _atlas_health_fill_color(health, progress: int, meta=None) -> str:
 
 
 def _atlas_health_source_explanation(source: str | None) -> str:
-    source_key = str(source or "").strip().lower()
-    mapping = {
-        "ai_deadline_warning": "AI detected deadline risk signals.",
-        "ai_overall_score": "AI overall score drove this assessment.",
-        "deadline_status": "Task deadline timing drove this assessment.",
-        "task_status": "Task workflow status drove this assessment.",
-        "inherited_rollup": "Inherited from child items that need care.",
-        "progress": "Progress threshold rules drove this assessment.",
-        "status_label": "Status label rules drove this assessment.",
-    }
-    return mapping.get(source_key, "Health rules drove this assessment.")
+    return atlas_health_view_helpers.atlas_health_source_explanation(source)
 
 
 def _atlas_status_label(meta, index=None):
-    return _atlas_health_state(meta, index=index).get("status_label", "In progress")
+    return atlas_health_view_helpers.atlas_status_label(
+        meta,
+        index=index,
+        health_state_fn=_atlas_health_state,
+    )
 
 
 def _atlas_attention_kind(meta, index=None) -> str:
-    return str(_atlas_health_state(meta, index=index).get("kind") or "on_track")
+    return atlas_health_view_helpers.atlas_attention_kind(
+        meta,
+        index=index,
+        health_state_fn=_atlas_health_state,
+    )
 
 
 def _atlas_needs_attention(meta, index=None) -> bool:
-    return bool(_atlas_health_state(meta, index=index).get("needs_attention"))
+    return atlas_health_view_helpers.atlas_needs_attention(
+        meta,
+        index=index,
+        health_state_fn=_atlas_health_state,
+    )
 
 
 def _atlas_attention_reason(meta, index=None) -> str:
-    return str(_atlas_health_state(meta, index=index).get("reason") or "On track")
+    return atlas_health_view_helpers.atlas_attention_reason(
+        meta,
+        index=index,
+        health_state_fn=_atlas_health_state,
+    )
 
 
 def _atlas_point_value(point, keys):
@@ -615,108 +486,37 @@ def _atlas_extract_selection_points(event_payload):
 
 
 def _atlas_task_rollup(task_refs, index, health_index=None):
-    rollup = {
-        "total": 0,
-        "running": 0,
-        "attention": 0,
-        "done": 0,
-    }
-    if health_index is None:
-        health_index = _atlas_health_index(index)
-
-    for ref in task_refs:
-        meta = index.get(ref)
-        if not meta or meta.get("type") != "TASK":
-            continue
-        rollup["total"] += 1
-
-        task = meta.get("node")
-        if getattr(task, "timer_started_at", None) is not None:
-            rollup["running"] += 1
-
-        progress = int(meta.get("progress", 0) or 0)
-        if progress >= 100:
-            rollup["done"] += 1
-        health = health_index.get(ref)
-        if health is None:
-            health = _atlas_health_state(meta, index=index)
-        if bool(health.get("needs_attention")):
-            rollup["attention"] += 1
-
-    return rollup
+    return atlas_health_view_helpers.atlas_task_rollup(
+        task_refs,
+        index,
+        health_index=health_index,
+        health_index_fn=_atlas_health_index,
+        health_state_fn=_atlas_health_state,
+    )
 
 
 def _atlas_health_debug_rows(refs, index, health_index=None, limit: int = 80):
-    rows = []
-    kind_rank = {
-        "overdue": 0,
-        "risk": 1,
-        "low_progress": 2,
-        "inherited": 2,
-        "on_track": 3,
-        "done": 4,
-    }
-    resolved_health = health_index or {}
-
-    for ref in refs:
-        meta = index.get(ref)
-        if not meta:
-            continue
-        health = resolved_health.get(ref)
-        if health is None:
-            health = _atlas_health_state(meta, index=index)
-        kind = str(health.get("kind") or "on_track")
-        rows.append(
-            {
-                "Ref": str(ref),
-                "Type": str(meta.get("type") or ""),
-                "Title": str(meta.get("title") or "Untitled"),
-                "Kind": kind,
-                "Reason": str(health.get("reason") or "On track"),
-                "Status": str(health.get("status_label") or "In progress"),
-                "Source": str(health.get("source") or "progress"),
-                "Progress": int(meta.get("progress", 0) or 0),
-                "NeedsAttention": bool(health.get("needs_attention")),
-                "_rank": int(kind_rank.get(kind, 5)),
-            }
-        )
-
-    rows.sort(key=lambda item: (item["_rank"], item["Progress"], item["Title"].lower()))
-    cleaned = []
-    for item in rows[: max(1, int(limit or 80))]:
-        clean_item = dict(item)
-        clean_item.pop("_rank", None)
-        cleaned.append(clean_item)
-    return cleaned
+    return atlas_health_view_helpers.atlas_health_debug_rows(
+        refs,
+        index,
+        health_index=health_index,
+        health_state_fn=_atlas_health_state,
+        limit=limit,
+    )
 
 
 def _atlas_descendant_refs(root_ref: str, index, limit: int = 350):
-    refs = []
-    pending = [root_ref]
-    seen = set()
-    while pending and len(refs) < limit:
-        node_ref = pending.pop()
-        if node_ref in seen:
-            continue
-        seen.add(node_ref)
-        refs.append(node_ref)
-        meta = index.get(node_ref)
-        if not meta:
-            continue
-        for child_ref in reversed(meta.get("children", [])):
-            pending.append(child_ref)
-    return refs
+    return atlas_health_view_helpers.atlas_descendant_refs(
+        root_ref,
+        index,
+        limit=limit,
+    )
 
 
 def _atlas_scope_refs(roots, index, limit: int = 800):
-    refs = []
-    seen = set()
-    for root_ref in roots:
-        for ref in _atlas_descendant_refs(root_ref, index, limit=limit):
-            if ref in seen:
-                continue
-            seen.add(ref)
-            refs.append(ref)
-            if len(refs) >= limit:
-                return refs
-    return refs
+    return atlas_health_view_helpers.atlas_scope_refs(
+        roots,
+        index,
+        descendant_refs_fn=_atlas_descendant_refs,
+        limit=limit,
+    )
