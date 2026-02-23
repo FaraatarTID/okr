@@ -9,6 +9,7 @@ from __future__ import annotations
 import streamlit as st
 
 from src.crud import get_team_members
+from src.ui import dialog_chrome_helpers
 
 
 def render_retrobox_dialog_content(
@@ -19,26 +20,11 @@ def render_retrobox_dialog_content(
     cached_get_team_retrospectives_fn,
 ) -> None:
     """Render personal and team retrospectives dialog body."""
-    st.markdown(
-        """
-        <style>
-        div[role="dialog"] button[aria-label="Close"] { display: none; }
-        div[data-baseweb="modal-backdrop"] { display: none; }
-        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
-        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
-        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
-        </style>
-    """,
-        unsafe_allow_html=True,
+    dialog_chrome_helpers.apply_standard_dialog_chrome()
+    dialog_chrome_helpers.render_dialog_header_with_close(
+        close_key="close_retrobox",
+        title_markdown="### 🗓️ Weekly Retrospectives",
     )
-
-    c_head, c_close = st.columns([0.92, 0.08])
-    c_head.markdown("### 🗓️ Weekly Retrospectives")
-    if c_close.button("", icon=":material/close:", key="close_retrobox"):
-        if "active_report_mode" in st.session_state:
-            del st.session_state.active_report_mode
-        st.rerun()
 
     current_user = cached_get_user_by_username_fn(username)
     if not current_user:

@@ -4,17 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.ui import dialog_chrome_helpers
+
 
 def inject_dialog_css(*, st_module: Any) -> None:
     st_module.markdown(
-        """
+        dialog_chrome_helpers.get_standard_dialog_chrome_css()
+        + """
         <style>
-        div[role="dialog"] button[aria-label="Close"] { display: none; }
-        div[data-baseweb="modal-backdrop"] { display: none; }
-        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
-        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
-        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
         div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button:hover { border-color: #ff4b4b; color: #ff4b4b; background-color: #fff5f5; }
         </style>
     """,

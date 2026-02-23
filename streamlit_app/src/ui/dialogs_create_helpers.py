@@ -17,6 +17,7 @@ from src.crud import (
     create_task,
     get_team_members,
 )
+from src.ui import dialogs_create_chrome_helpers
 
 
 def render_create_task_dialog_content(
@@ -125,45 +126,12 @@ def render_create_task_dialog_content(
 
 def render_create_goal_dialog_content(username):
     """Render create-goal dialog body."""
-    st.markdown(
-        """
-        <style>
-        div[role="dialog"] { position: relative; }
-        div[role="dialog"] button[aria-label="Close"] { display: none; }
-        div[data-baseweb="modal-backdrop"] { display: none; }
-        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
-        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
-        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
-
-        /* Align the header column and vertically center the custom close button */
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: flex-end !important;
-            padding: 0 !important;
-        }
-
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
-            border-radius: 50% !important;
-            border: 1px solid #e0e0e0 !important;
-            width: 36px !important;
-            height: 36px !important;
-            padding: 0 !important;
-            margin-left: 8px !important;
-            background-color: white !important;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
-        }
-        </style>
-    """,
-        unsafe_allow_html=True,
+    dialogs_create_chrome_helpers.apply_create_dialog_chrome(
+        floating_close_button=False
     )
-    c_head, c_close = st.columns([0.92, 0.08])
-    if c_close.button("", icon=":material/close:", key="close_create_goal"):
-        if "add_mode_type" in st.session_state:
-            del st.session_state["add_mode_type"]
-        if "add_mode_parent" in st.session_state:
-            del st.session_state["add_mode_parent"]
-        st.rerun()
+    dialogs_create_chrome_helpers.render_create_dialog_close_button(
+        close_key="close_create_goal"
+    )
     cycle_id = st.session_state.get("active_cycle_id")
 
     st.caption("Strategic high-level goal for the current cycle.")
@@ -188,51 +156,16 @@ def render_create_goal_dialog_content(username):
                     st.error(str(exc))
                     return
                 st.success("Goal created!")
-                if "add_mode_type" in st.session_state:
-                    del st.session_state["add_mode_type"]
+                dialogs_create_chrome_helpers.clear_create_add_mode_state()
                 st.rerun()
 
 
 def render_create_objective_dialog_content(parent_id):
     """Render create-objective dialog body."""
-    st.markdown(
-        """
-        <style>
-        div[role="dialog"] { position: relative; }
-        div[role="dialog"] button[aria-label="Close"] { display: none; }
-        div[data-baseweb="modal-backdrop"] { display: none; }
-        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
-        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
-        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
-            position: absolute !important;
-            top: 18px !important;
-            right: 18px !important;
-            z-index: 9999 !important;
-            border-radius: 50% !important;
-            border: 1px solid #e0e0e0 !important;
-            width: 36px !important;
-            height: 36px !important;
-            padding: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
-            background-color: white !important;
-        }
-        </style>
-    """,
-        unsafe_allow_html=True,
+    dialogs_create_chrome_helpers.apply_create_dialog_chrome(floating_close_button=True)
+    dialogs_create_chrome_helpers.render_create_dialog_close_button(
+        close_key=f"close_create_objective_{parent_id}"
     )
-    c_head, c_close = st.columns([0.92, 0.08])
-    if c_close.button(
-        "", icon=":material/close:", key=f"close_create_objective_{parent_id}"
-    ):
-        if "add_mode_type" in st.session_state:
-            del st.session_state["add_mode_type"]
-        if "add_mode_parent" in st.session_state:
-            del st.session_state["add_mode_parent"]
-        st.rerun()
     st.caption("Measurable objective to achieve the parent goal.")
 
     with st.form("create_objective_form"):
@@ -265,49 +198,16 @@ def render_create_objective_dialog_content(parent_id):
                     st.error(str(exc))
                     return
                 st.success("Objective created!")
-                if "add_mode_type" in st.session_state:
-                    del st.session_state["add_mode_type"]
+                dialogs_create_chrome_helpers.clear_create_add_mode_state()
                 st.rerun()
 
 
 def render_create_kr_dialog_content(parent_id):
     """Render create-key-result dialog body."""
-    st.markdown(
-        """
-        <style>
-        div[role="dialog"] { position: relative; }
-        div[role="dialog"] button[aria-label="Close"] { display: none; }
-        div[data-baseweb="modal-backdrop"] { display: none; }
-        div[data-baseweb="modal"] { background-color: rgba(0, 0, 0, 0.5); pointer-events: none; }
-        div[role="dialog"]::before { content: ""; position: absolute; top: -500vh; left: -500vw; width: 1000vw; height: 1000vh; background: transparent; z-index: -1; pointer-events: auto; }
-        div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
-        div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button {
-            position: absolute !important;
-            top: 18px !important;
-            right: 18px !important;
-            z-index: 9999 !important;
-            border-radius: 50% !important;
-            border: 1px solid #e0e0e0 !important;
-            width: 36px !important;
-            height: 36px !important;
-            padding: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
-            background-color: white !important;
-        }
-        </style>
-    """,
-        unsafe_allow_html=True,
+    dialogs_create_chrome_helpers.apply_create_dialog_chrome(floating_close_button=True)
+    dialogs_create_chrome_helpers.render_create_dialog_close_button(
+        close_key=f"close_create_kr_{parent_id}"
     )
-    c_head, c_close = st.columns([0.92, 0.08])
-    if c_close.button("", icon=":material/close:", key=f"close_create_kr_{parent_id}"):
-        if "add_mode_type" in st.session_state:
-            del st.session_state["add_mode_type"]
-        if "add_mode_parent" in st.session_state:
-            del st.session_state["add_mode_parent"]
-        st.rerun()
     st.caption("Specific, time-bound metric to measure success.")
 
     with st.form("create_kr_form"):
@@ -347,6 +247,5 @@ def render_create_kr_dialog_content(parent_id):
                     st.error(str(exc))
                     return
                 st.success("Key Result created!")
-                if "add_mode_type" in st.session_state:
-                    del st.session_state["add_mode_type"]
+                dialogs_create_chrome_helpers.clear_create_add_mode_state()
                 st.rerun()
