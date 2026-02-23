@@ -1,5 +1,7 @@
 # OKR Pilot Retrospective Survey Template
 
+Documentation HQ: [README](../../README.md)
+
 Use this survey at the end of each pilot cycle.
 
 Scale:

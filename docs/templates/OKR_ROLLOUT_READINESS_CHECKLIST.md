@@ -1,5 +1,7 @@
 # OKR Rollout Readiness Checklist
 
+Documentation HQ: [README](../../README.md)
+
 Use this checklist before pilot start and before each scale wave.
 
 ## 1. Organization Readiness

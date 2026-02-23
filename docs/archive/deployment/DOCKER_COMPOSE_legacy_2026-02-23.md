@@ -1,0 +1,69 @@
+Documentation HQ: [README](../../../README.md)
+
+Docker Compose deployment
+
+Stack services
+- `okr` (Streamlit UI)
+- `backend-api` (internal FastAPI service for secured frontend mutations, timer, and jobs)
+- `backend-worker` (async worker for AI/PDF jobs)
+
+Service interaction
+- `okr` sends authenticated backend calls using `OKR_BACKEND_SERVICE_TOKEN`.
+- With `OKR_BACKEND_PROXY_MUTATIONS=true` (default), frontend write flows route via `backend-api` (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes).
+- In production, keep `OKR_BACKEND_SECURITY_STATE_BACKEND` on a distributed backend (`database` or `redis`) so nonce replay and backend API rate-limit state is shared across replicas.
+- `backend-api` persists async jobs in primary DB (`async_job` table).
+- `backend-worker` executes queued job kinds (`ai.generate_json`, `pdf.weekly`).
+- Backend write/timer/job paths fail closed by default if backend is unavailable.
+- Optional emergency fallback is opt-in via scoped flags (non-production only): `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation/timer/job flows and `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied read flows.
+
+Single host, subdomain (recommended)
+- Copy `deploy/docker/.env.example` to `deploy/docker/.env`
+- Keep `BASE_URL_PATH` empty for subdomain mode
+- Set required values:
+  - `OKR_DATABASE_URL` (Supabase transaction pooler `:6543` + `sslmode=require`)
+  - `OKR_BACKEND_SERVICE_TOKEN` (shared token for UI -> backend-api auth)
+  - `OKR_BACKEND_SIGNING_SECRET` (recommended for signed internal requests)
+  - `OKR_BACKEND_PROXY_MUTATIONS=true` (recommended)
+  - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` (production default; may be `redis` with explicit Redis URL)
+  - `OKR_BACKEND_SECURITY_STATE_REDIS_URL` (required when backend is `redis`)
+  - PDF renderer:
+    - `PDF_METHOD=pdfshift` + `PDFSHIFT_API_KEY`, or
+    - `PDF_METHOD=chromium` (+ Playwright/Chromium runtime)
+- Build and start:
+  - `docker compose -f deploy/docker/docker-compose.yml up -d --build`
+- Place Nginx in front using `deploy/nginx.conf` (TLS termination at proxy)
+
+Single host, subpath
+- Set `BASE_URL_PATH` to desired prefix (for example `okr`)
+- Use the subpath location in deploy/nginx.conf (with rewrite removing the prefix)
+
+Starting with PostgreSQL
+- Required: Supabase PostgreSQL
+  - Set `OKR_DATABASE_URL` in environment (`.env`)
+  - Use the transaction pooler URL (`:6543`) with `sslmode=require`
+
+Secrets
+- Create a secrets file if using integrations and mount as:
+  - /app/streamlit_app/.streamlit/secrets.toml
+- Use deploy/secrets/secrets.toml.example as a template
+- If you do not mount secrets, set equivalent env vars in `.env` (PDF/AI settings).
+- Validate deploy config before go-live:
+  - `python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml`
+
+Persistence
+- All runtime data is stored in Supabase PostgreSQL
+- Ensure DB backups are enabled
+
+Health & logs
+- App health: `GET /` should return `200`
+- Backend health (host-local by default): `GET http://127.0.0.1:${OKR_BACKEND_HOST_PORT:-8100}/healthz`
+- Logs:
+  - `docker compose logs okr`
+  - `docker compose logs backend-api`
+  - `docker compose logs backend-worker`
+
+Upgrades
+- Pull code/image; rebuild and restart compose services
+
+Rollback
+- Recreate container with previous image tag
