@@ -87,9 +87,7 @@ curl -f http://127.0.0.1:8100/healthz
 اسناد مرتبط
 - `DEPLOYMENT.md`
 - `docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md`
-- `docs/DEPLOY_CHECKLIST.md`
-- `docs/DEPLOY_CHECKLIST_FA.md`
 - `docs/DOCKER_COMPOSE.md`
 - `docs/DOCKER_COMPOSE_FA.md`
-- `docs/RUNBOOK.md`
-- `docs/RUNBOOK_FA.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/TROUBLESHOOTING_FA.md`
