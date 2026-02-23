@@ -31,7 +31,11 @@ def update_goal_from_crud(
 
     if isinstance(updates.get("strategy_tags"), list):
         updates["strategy_tags"] = json.dumps(
-            [str(item).strip() for item in updates["strategy_tags"] if str(item).strip()],
+            [
+                str(item).strip()
+                for item in updates["strategy_tags"]
+                if str(item).strip()
+            ],
             ensure_ascii=False,
         )
 
@@ -94,10 +98,16 @@ def update_objective_from_crud(
             )
 
             if "state" in updates:
-                from src.domain.lifecycle import cascade_state_change, validate_transition
+                from src.domain.lifecycle import (
+                    cascade_state_change,
+                    validate_transition,
+                )
 
                 new_state = updates["state"]
-                if new_state == crud_module.LifecycleState.ACTIVE and not item.key_results:
+                if (
+                    new_state == crud_module.LifecycleState.ACTIVE
+                    and not item.key_results
+                ):
                     raise ValueError(
                         "Cannot activate an Objective without at least one Key Result."
                     )
@@ -153,7 +163,11 @@ def update_key_result_from_crud(
 
     if isinstance(updates.get("initiative_tags"), list):
         updates["initiative_tags"] = json.dumps(
-            [str(item).strip() for item in updates["initiative_tags"] if str(item).strip()],
+            [
+                str(item).strip()
+                for item in updates["initiative_tags"]
+                if str(item).strip()
+            ],
             ensure_ascii=False,
         )
 
@@ -182,8 +196,12 @@ def update_key_result_from_crud(
 
             if "progress" in updates and "current_value" not in updates:
                 prog = int(updates["progress"])
-                m_type = updates.get("metric_type", getattr(item, "metric_type", "NUMERIC"))
-                start = float(updates.get("start_value", getattr(item, "start_value", 0.0)))
+                m_type = updates.get(
+                    "metric_type", getattr(item, "metric_type", "NUMERIC")
+                )
+                start = float(
+                    updates.get("start_value", getattr(item, "start_value", 0.0))
+                )
                 target = float(
                     updates.get("target_value", getattr(item, "target_value", 100.0))
                 )
@@ -197,7 +215,11 @@ def update_key_result_from_crud(
                     updates["current_value"] = start + (delta * (prog / 100.0))
 
             for key, value in updates.items():
-                if key == "gemini_analysis" and value is not None and not isinstance(value, str):
+                if (
+                    key == "gemini_analysis"
+                    and value is not None
+                    and not isinstance(value, str)
+                ):
                     try:
                         value = json.dumps(value, ensure_ascii=False)
                     except Exception as exc:
@@ -297,3 +319,28 @@ def update_task_from_crud(
         session.refresh(task)
         crud_module.clear_cache_safe()
         return task
+
+
+def update_key_result_analysis_from_crud(
+    *,
+    crud_module,
+    key_result_id: int,
+    analysis_json: str,
+    actor_username: Optional[str] = None,
+):
+    with crud_module.get_session_context() as session:
+        kr = session.get(crud_module.KeyResult, key_result_id)
+        if kr:
+            crud_module._authorize_node_mutation(
+                session,
+                node_type="KEY_RESULT",
+                node_id=key_result_id,
+                actor_username=actor_username,
+            )
+            kr.gemini_analysis = analysis_json
+            kr.analysis_updated_at = crud_module.utc_now_naive()
+            session.add(kr)
+            session.commit()
+            session.refresh(kr)
+            crud_module.clear_cache_safe()
+        return kr
