@@ -78,7 +78,9 @@ def render_jump_results(
             if not isinstance(meta, dict):
                 continue
             label = build_jump_label(meta=meta, type_icons=type_icons)
-            if st_module.button(label, key=f"atlas_jump_{ref}", use_container_width=True):
+            if st_module.button(
+                label, key=f"atlas_jump_{ref}", use_container_width=True
+            ):
                 session_state["atlas_selected_ref"] = ref
                 rerun_fn()
                 return True

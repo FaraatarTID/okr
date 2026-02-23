@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 App-shell rerun benchmark for Atlas-first workspace flow.
 
@@ -20,7 +21,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
-from typing import Callable, Dict, List
+from typing import Callable, Dict
 
 from sqlalchemy import event
 from sqlmodel import SQLModel, Session
@@ -218,7 +219,9 @@ def main():
     username = seeded["username"]
 
     _clear_app_caches()
-    baseline_miss = _bench(engine, lambda: _simulate_baseline(user_id, username), runs=1)
+    baseline_miss = _bench(
+        engine, lambda: _simulate_baseline(user_id, username), runs=1
+    )
     baseline_hit = _bench(engine, lambda: _simulate_baseline(user_id, username), runs=8)
 
     _clear_app_caches()

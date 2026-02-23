@@ -136,7 +136,9 @@ def start_timer_from_crud(*, crud_module, task_id: int, user_id: str):
         except crud_module.IntegrityError:
             session.rollback()
             task = crud_module._query_owned_task_for_timer(session, task_id, user_id)
-            active_work_log = crud_module._get_active_work_log_for_task(session, task_id)
+            active_work_log = crud_module._get_active_work_log_for_task(
+                session, task_id
+            )
             if task and task.timer_started_at is not None and active_work_log:
                 return active_work_log
             raise
@@ -340,7 +342,9 @@ def delete_work_log_from_crud(
             )
             task = session.get(crud_module.Task, work_log.task_id)
             if task:
-                task.total_time_spent = max(0, task.total_time_spent - work_log.duration_minutes)
+                task.total_time_spent = max(
+                    0, task.total_time_spent - work_log.duration_minutes
+                )
                 session.add(task)
 
             session.delete(work_log)

@@ -113,7 +113,9 @@ def test_build_report_payload_uses_deadline_fallback_on_exception():
 
     payload = report_helpers.build_report_payload(
         logs=logs,
-        get_deadline_status_fn=lambda _task: (_ for _ in ()).throw(RuntimeError("boom")),
+        get_deadline_status_fn=lambda _task: (_ for _ in ()).throw(
+            RuntimeError("boom")
+        ),
         logger=logger,
     )
 

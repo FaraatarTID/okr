@@ -33,14 +33,25 @@ def upgrade() -> None:
     with op.batch_alter_table("user") as batch_op:
         if "must_change_password" not in user_columns:
             batch_op.add_column(
-                sa.Column("must_change_password", sa.Boolean(), nullable=False, server_default=sa.false())
+                sa.Column(
+                    "must_change_password",
+                    sa.Boolean(),
+                    nullable=False,
+                    server_default=sa.false(),
+                )
             )
         if "password_changed_at" not in user_columns:
-            batch_op.add_column(sa.Column("password_changed_at", sa.DateTime(), nullable=True))
+            batch_op.add_column(
+                sa.Column("password_changed_at", sa.DateTime(), nullable=True)
+            )
         if "ix_user_must_change_password" not in index_names:
-            batch_op.create_index("ix_user_must_change_password", ["must_change_password"], unique=False)
+            batch_op.create_index(
+                "ix_user_must_change_password", ["must_change_password"], unique=False
+            )
 
-    op.execute('UPDATE "user" SET must_change_password = TRUE WHERE username = \'admin\'')
+    op.execute(
+        "UPDATE \"user\" SET must_change_password = TRUE WHERE username = 'admin'"
+    )
 
 
 def downgrade() -> None:

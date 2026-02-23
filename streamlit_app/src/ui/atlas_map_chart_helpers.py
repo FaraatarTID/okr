@@ -16,7 +16,9 @@ def build_point_ref_label_lookup(
         if trace is not None
         else [str(ref) for ref in map_refs]
     )
-    point_labels = [str(lbl) for lbl in (trace.labels or [])] if trace is not None else []
+    point_labels = (
+        [str(lbl) for lbl in (trace.labels or [])] if trace is not None else []
+    )
     label_lookup: dict[str, list[str]] = {}
     for idx, label in enumerate(point_labels):
         if idx < len(point_refs):

@@ -24,7 +24,9 @@ def test_run_job_and_wait_falls_back_to_local_on_submit_transport_error(monkeypa
     assert result.get("answer") == "ok"
 
 
-def test_run_job_and_wait_fails_closed_on_submit_transport_error_when_fallback_disabled(monkeypatch):
+def test_run_job_and_wait_fails_closed_on_submit_transport_error_when_fallback_disabled(
+    monkeypatch,
+):
     import src.services.job_service as job_service
 
     monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")

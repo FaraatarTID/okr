@@ -82,7 +82,9 @@ def build_scope_snapshot_with_backend_fallback(
     canonical_owner_ids_key = canonical_owner_ids_key_fn(owner_ids_key)
     if backend_read_proxy_enabled_fn() and actor_username:
         owner_ids = (
-            list(canonical_owner_ids_key) if canonical_owner_ids_key is not None else None
+            list(canonical_owner_ids_key)
+            if canonical_owner_ids_key is not None
+            else None
         )
         try:
             from src.services.backend_client import fetch_atlas_scope_snapshot
@@ -143,10 +145,14 @@ def build_scope_runtime_payload(
         actor_username=actor_username,
     )
     users_map = snapshot.get("users_map", {})
-    index, roots = build_atlas_index_from_snapshot_fn(snapshot.get("goals", []), users_map)
+    index, roots = build_atlas_index_from_snapshot_fn(
+        snapshot.get("goals", []), users_map
+    )
     node_lookup = build_node_lookup_fn(index)
     health_index = health_index_fn(index)
-    snapshot_json = json.dumps(snapshot, default=str, sort_keys=True, separators=(",", ":"))
+    snapshot_json = json.dumps(
+        snapshot, default=str, sort_keys=True, separators=(",", ":")
+    )
     runtime_token = hashlib.sha1(snapshot_json.encode("utf-8")).hexdigest()
     return {
         "snapshot": snapshot,

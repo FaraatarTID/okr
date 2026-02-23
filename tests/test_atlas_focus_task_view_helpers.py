@@ -35,8 +35,12 @@ class _FakeSt:
 
     def columns(self, *_args, **_kwargs):
         self.cols = [
-            _FakeColumn(segmented_value=self._segmented_value, number_value=self._number_value),
-            _FakeColumn(segmented_value=self._segmented_value, number_value=self._number_value),
+            _FakeColumn(
+                segmented_value=self._segmented_value, number_value=self._number_value
+            ),
+            _FakeColumn(
+                segmented_value=self._segmented_value, number_value=self._number_value
+            ),
         ]
         return self.cols
 
@@ -53,7 +57,11 @@ def test_render_focus_identity_outputs_path_title_and_description():
     fake_st = _FakeSt()
     atlas_focus_task_view_helpers.render_focus_identity(
         st_module=fake_st,
-        focus_meta={"title": "Task X", "description": "Line1\nLine2", "path": ["task_1"]},
+        focus_meta={
+            "title": "Task X",
+            "description": "Line1\nLine2",
+            "path": ["task_1"],
+        },
         focus_task=SimpleNamespace(description=""),
         index={"task_1": {"title": "Task X"}},
         type_icons={"TASK": "📝"},
@@ -83,7 +91,13 @@ def test_render_focus_status_and_commit_controls_returns_target_minutes_custom()
             escape_html_fn=lambda text: text,
             commit_target_minutes_fn=lambda choice, custom=None: (
                 commit_calls.append((choice, custom))
-                or (25 if choice == "25m" else 50 if choice == "50m" else int(custom or 35))
+                or (
+                    25
+                    if choice == "25m"
+                    else 50
+                    if choice == "50m"
+                    else int(custom or 35)
+                )
             ),
         )
     )

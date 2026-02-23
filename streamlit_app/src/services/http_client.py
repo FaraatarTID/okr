@@ -19,7 +19,9 @@ def _build_session(total_retries: int, backoff_factor: float) -> requests.Sessio
         read=total_retries,
         backoff_factor=backoff_factor,
         status_forcelist=(408, 429, 500, 502, 503, 504),
-        allowed_methods=frozenset({"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}),
+        allowed_methods=frozenset(
+            {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+        ),
         raise_on_status=False,
     )
     adapter = HTTPAdapter(max_retries=retry)

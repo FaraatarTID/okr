@@ -301,10 +301,12 @@ def _cached_get_atlas_scope_snapshot(
         select_fn=select,
         func_obj=func,
         extract_ai_snapshot_fields_fn=(
-            lambda raw_analysis: atlas_runtime_lookup_helpers.extract_ai_snapshot_fields(
-                raw_analysis,
-                parse_ai_analysis_fn=_atlas_parse_ai_analysis,
-                logger=logger,
+            lambda raw_analysis: (
+                atlas_runtime_lookup_helpers.extract_ai_snapshot_fields(
+                    raw_analysis,
+                    parse_ai_analysis_fn=_atlas_parse_ai_analysis,
+                    logger=logger,
+                )
             )
         ),
     )

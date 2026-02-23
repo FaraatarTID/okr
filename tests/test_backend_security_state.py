@@ -23,8 +23,14 @@ def test_database_nonce_replay_guard_rejects_replay(monkeypatch, tmp_path):
     monkeypatch.setenv("OKR_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
 
-    assert register_nonce_once(nonce="nonce-1", now_ts=1_700_000_000, window_seconds=300) is True
-    assert register_nonce_once(nonce="nonce-1", now_ts=1_700_000_010, window_seconds=300) is False
+    assert (
+        register_nonce_once(nonce="nonce-1", now_ts=1_700_000_000, window_seconds=300)
+        is True
+    )
+    assert (
+        register_nonce_once(nonce="nonce-1", now_ts=1_700_000_010, window_seconds=300)
+        is False
+    )
 
 
 def test_database_rate_limit_enforces_fixed_window(monkeypatch, tmp_path):
@@ -35,12 +41,29 @@ def test_database_rate_limit_enforces_fixed_window(monkeypatch, tmp_path):
     monkeypatch.setenv("OKR_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
 
-    assert security_state.check_rate_limit_window(key="ip:203.0.113.10", limit=2, window_seconds=60) is True
-    assert security_state.check_rate_limit_window(key="ip:203.0.113.10", limit=2, window_seconds=60) is True
-    assert security_state.check_rate_limit_window(key="ip:203.0.113.10", limit=2, window_seconds=60) is False
+    assert (
+        security_state.check_rate_limit_window(
+            key="ip:203.0.113.10", limit=2, window_seconds=60
+        )
+        is True
+    )
+    assert (
+        security_state.check_rate_limit_window(
+            key="ip:203.0.113.10", limit=2, window_seconds=60
+        )
+        is True
+    )
+    assert (
+        security_state.check_rate_limit_window(
+            key="ip:203.0.113.10", limit=2, window_seconds=60
+        )
+        is False
+    )
 
 
-def test_development_falls_back_to_memory_when_database_backend_unavailable(monkeypatch):
+def test_development_falls_back_to_memory_when_database_backend_unavailable(
+    monkeypatch,
+):
     from backend_app.security_state import register_nonce_once
 
     monkeypatch.setenv("OKR_ENV", "development")
@@ -48,8 +71,18 @@ def test_development_falls_back_to_memory_when_database_backend_unavailable(monk
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
 
-    assert register_nonce_once(nonce="dev-fallback", now_ts=1_700_000_000, window_seconds=120) is True
-    assert register_nonce_once(nonce="dev-fallback", now_ts=1_700_000_010, window_seconds=120) is False
+    assert (
+        register_nonce_once(
+            nonce="dev-fallback", now_ts=1_700_000_000, window_seconds=120
+        )
+        is True
+    )
+    assert (
+        register_nonce_once(
+            nonce="dev-fallback", now_ts=1_700_000_010, window_seconds=120
+        )
+        is False
+    )
 
 
 def test_production_fails_closed_when_database_backend_unavailable(monkeypatch):
@@ -64,7 +97,9 @@ def test_production_fails_closed_when_database_backend_unavailable(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
 
     with pytest.raises(SecurityStateUnavailableError):
-        register_nonce_once(nonce="prod-no-db", now_ts=1_700_000_000, window_seconds=120)
+        register_nonce_once(
+            nonce="prod-no-db", now_ts=1_700_000_000, window_seconds=120
+        )
 
 
 def test_redis_nonce_and_rate_limit(monkeypatch):
@@ -107,34 +142,51 @@ def test_redis_nonce_and_rate_limit(monkeypatch):
     monkeypatch.setitem(sys.modules, "redis", types.SimpleNamespace(Redis=FakeRedis))
     monkeypatch.setenv("OKR_ENV", "production")
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "redis")
-    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://fake-redis:6379/0")
+    monkeypatch.setenv(
+        "OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://fake-redis:6379/0"
+    )
 
-    assert security_state.register_nonce_once(
-        nonce="nonce-redis-1",
-        now_ts=1_700_000_000,
-        window_seconds=300,
-    ) is True
-    assert security_state.register_nonce_once(
-        nonce="nonce-redis-1",
-        now_ts=1_700_000_010,
-        window_seconds=300,
-    ) is False
+    assert (
+        security_state.register_nonce_once(
+            nonce="nonce-redis-1",
+            now_ts=1_700_000_000,
+            window_seconds=300,
+        )
+        is True
+    )
+    assert (
+        security_state.register_nonce_once(
+            nonce="nonce-redis-1",
+            now_ts=1_700_000_010,
+            window_seconds=300,
+        )
+        is False
+    )
 
-    assert security_state.check_rate_limit_window(
-        key="ip:198.51.100.20",
-        limit=2,
-        window_seconds=60,
-    ) is True
-    assert security_state.check_rate_limit_window(
-        key="ip:198.51.100.20",
-        limit=2,
-        window_seconds=60,
-    ) is True
-    assert security_state.check_rate_limit_window(
-        key="ip:198.51.100.20",
-        limit=2,
-        window_seconds=60,
-    ) is False
+    assert (
+        security_state.check_rate_limit_window(
+            key="ip:198.51.100.20",
+            limit=2,
+            window_seconds=60,
+        )
+        is True
+    )
+    assert (
+        security_state.check_rate_limit_window(
+            key="ip:198.51.100.20",
+            limit=2,
+            window_seconds=60,
+        )
+        is True
+    )
+    assert (
+        security_state.check_rate_limit_window(
+            key="ip:198.51.100.20",
+            limit=2,
+            window_seconds=60,
+        )
+        is False
+    )
 
 
 def test_development_falls_back_to_memory_when_redis_backend_unavailable(monkeypatch):
@@ -148,10 +200,22 @@ def test_development_falls_back_to_memory_when_redis_backend_unavailable(monkeyp
     monkeypatch.setitem(sys.modules, "redis", types.SimpleNamespace(Redis=BrokenRedis))
     monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "redis")
-    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://fake-redis:6379/0")
+    monkeypatch.setenv(
+        "OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://fake-redis:6379/0"
+    )
 
-    assert register_nonce_once(nonce="dev-redis-fallback", now_ts=1_700_000_000, window_seconds=120) is True
-    assert register_nonce_once(nonce="dev-redis-fallback", now_ts=1_700_000_010, window_seconds=120) is False
+    assert (
+        register_nonce_once(
+            nonce="dev-redis-fallback", now_ts=1_700_000_000, window_seconds=120
+        )
+        is True
+    )
+    assert (
+        register_nonce_once(
+            nonce="dev-redis-fallback", now_ts=1_700_000_010, window_seconds=120
+        )
+        is False
+    )
 
 
 def test_production_fails_closed_when_redis_backend_unavailable(monkeypatch):
@@ -168,7 +232,11 @@ def test_production_fails_closed_when_redis_backend_unavailable(monkeypatch):
     monkeypatch.setitem(sys.modules, "redis", types.SimpleNamespace(Redis=BrokenRedis))
     monkeypatch.setenv("OKR_ENV", "production")
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "redis")
-    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://fake-redis:6379/0")
+    monkeypatch.setenv(
+        "OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://fake-redis:6379/0"
+    )
 
     with pytest.raises(SecurityStateUnavailableError):
-        register_nonce_once(nonce="prod-no-redis", now_ts=1_700_000_000, window_seconds=120)
+        register_nonce_once(
+            nonce="prod-no-redis", now_ts=1_700_000_000, window_seconds=120
+        )

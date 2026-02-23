@@ -10,11 +10,15 @@ def get_pdf_method(
     cfg_value_fn: Callable[[str, str], str],
     has_pdfshift_api_key_fn: Callable[[], bool],
 ) -> str:
-    method = str(
-        cfg_value_fn("PDF_METHOD", "")
-        or cfg_value_fn("OKR_PDF_METHOD", "")
-        or cfg_value_fn("pdf_method", "")
-    ).strip().lower()
+    method = (
+        str(
+            cfg_value_fn("PDF_METHOD", "")
+            or cfg_value_fn("OKR_PDF_METHOD", "")
+            or cfg_value_fn("pdf_method", "")
+        )
+        .strip()
+        .lower()
+    )
     if method == "shiftpdf":
         method = "pdfshift"
     if method:
@@ -25,7 +29,9 @@ def get_pdf_method(
 
 
 def is_streamlit_cloud_runtime(*, environ: Mapping[str, str]) -> bool:
-    return bool(environ.get("STREAMLIT_SHARING_MODE") or environ.get("IS_STREAMLIT_CLOUD"))
+    return bool(
+        environ.get("STREAMLIT_SHARING_MODE") or environ.get("IS_STREAMLIT_CLOUD")
+    )
 
 
 def has_pdfshift_api_key(*, cfg_value_fn: Callable[[str, str], str]) -> bool:

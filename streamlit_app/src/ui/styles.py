@@ -8,7 +8,7 @@ CHILD_TYPE_MAP = {
     "GOAL": "OBJECTIVE",
     "OBJECTIVE": "KEY_RESULT",
     "KEY_RESULT": "TASK",
-    "TASK": None 
+    "TASK": None,
 }
 
 TYPE_ICONS = {
@@ -17,17 +17,17 @@ TYPE_ICONS = {
     "OBJECTIVE": "🎯",
     "KEY_RESULT": "📊",
     "INITIATIVE": "⚡",
-    "TASK": "📋"
+    "TASK": "📋",
 }
 
 # Colors for mind map visualization
 TYPE_COLORS = {
-    "GOAL": "#E53935",       # Red
-    "STRATEGY": "#1E88E5",   # Blue
+    "GOAL": "#E53935",  # Red
+    "STRATEGY": "#1E88E5",  # Blue
     "OBJECTIVE": "#43A047",  # Green
-    "KEY_RESULT": "#FB8C00", # Orange
-    "INITIATIVE": "#8E24AA", # Purple
-    "TASK": "#757575"        # Gray
+    "KEY_RESULT": "#FB8C00",  # Orange
+    "INITIATIVE": "#8E24AA",  # Purple
+    "TASK": "#757575",  # Gray
 }
 
 # Size by hierarchy depth (larger for higher-level nodes)
@@ -37,13 +37,13 @@ TYPE_SIZES = {
     "OBJECTIVE": 25,
     "KEY_RESULT": 22,
     "INITIATIVE": 18,
-    "TASK": 15
+    "TASK": 15,
 }
 
 
 def inject_dialog_styles():
     """
-    CSS to prevent dialog from closing on backdrop click (by hiding the close button backdrop) 
+    CSS to prevent dialog from closing on backdrop click (by hiding the close button backdrop)
     and styling elements inside.
     """
     st.markdown(
@@ -64,8 +64,9 @@ def inject_dialog_styles():
             }
         </style>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
+
 
 def apply_custom_fonts():
     """
@@ -164,7 +165,7 @@ def apply_custom_fonts():
         }
         </style>
         """,
-        unsafe_allow_html=True
+        unsafe_allow_html=True,
     )
 
 

@@ -34,7 +34,9 @@ def resolve_node_details(
                 return None, "Unknown"
             row = session.get(model, node_id_int)
             if row:
-                return str(node_type or "").upper(), str(getattr(row, "title", "Unknown"))
+                return str(node_type or "").upper(), str(
+                    getattr(row, "title", "Unknown")
+                )
             return None, "Unknown"
 
         try:

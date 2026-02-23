@@ -121,7 +121,12 @@ def upgrade() -> None:
         # Keep lookup efficient for owner scoped reads.
         if {"owner_id", "cycle_id"}.issubset(goal_columns):
             if "ix_goal_owner_cycle" not in _index_names("goal"):
-                op.create_index("ix_goal_owner_cycle", "goal", ["owner_id", "cycle_id"], unique=False)
+                op.create_index(
+                    "ix_goal_owner_cycle",
+                    "goal",
+                    ["owner_id", "cycle_id"],
+                    unique=False,
+                )
 
         # Repair invalid owner links and backfill from legacy username ownership.
         if _has_table("user") and "owner_id" in goal_columns:
@@ -163,13 +168,29 @@ def upgrade() -> None:
                         ["id"],
                     )
 
-    _ensure_check_constraint("goal", "ck_goal_progress_range", "progress >= 0 AND progress <= 100")
-    _ensure_check_constraint("objective", "ck_objective_progress_range", "progress >= 0 AND progress <= 100")
-    _ensure_check_constraint("key_result", "ck_key_result_progress_range", "progress >= 0 AND progress <= 100")
-    _ensure_check_constraint("task", "ck_task_progress_range", "progress >= 0 AND progress <= 100")
-    _ensure_check_constraint("task", "ck_task_estimated_minutes_non_negative", "estimated_minutes >= 0")
-    _ensure_check_constraint("task", "ck_task_total_time_spent_non_negative", "total_time_spent >= 0")
-    _ensure_check_constraint("work_log", "ck_work_log_duration_non_negative", "duration_minutes >= 0")
+    _ensure_check_constraint(
+        "goal", "ck_goal_progress_range", "progress >= 0 AND progress <= 100"
+    )
+    _ensure_check_constraint(
+        "objective", "ck_objective_progress_range", "progress >= 0 AND progress <= 100"
+    )
+    _ensure_check_constraint(
+        "key_result",
+        "ck_key_result_progress_range",
+        "progress >= 0 AND progress <= 100",
+    )
+    _ensure_check_constraint(
+        "task", "ck_task_progress_range", "progress >= 0 AND progress <= 100"
+    )
+    _ensure_check_constraint(
+        "task", "ck_task_estimated_minutes_non_negative", "estimated_minutes >= 0"
+    )
+    _ensure_check_constraint(
+        "task", "ck_task_total_time_spent_non_negative", "total_time_spent >= 0"
+    )
+    _ensure_check_constraint(
+        "work_log", "ck_work_log_duration_non_negative", "duration_minutes >= 0"
+    )
     _ensure_check_constraint(
         "check_in",
         "ck_check_in_confidence_range",

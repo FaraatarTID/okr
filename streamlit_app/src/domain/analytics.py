@@ -17,7 +17,16 @@ from src.domain.authorization import (
     _goal_owner_predicate_by_user_id,
     _goal_owner_predicate_by_username,
 )
-from src.models import CheckIn, Goal, KeyResult, Objective, Task, User, WorkLog, LifecycleState
+from src.models import (
+    CheckIn,
+    Goal,
+    KeyResult,
+    Objective,
+    Task,
+    User,
+    WorkLog,
+    LifecycleState,
+)
 from src.utils.time_utils import ensure_utc, utc_now_naive
 
 
@@ -113,7 +122,11 @@ def _coerce_progress(value) -> int:
 
 
 def _deadline_status_code_fast(
-    *, progress: int, deadline: Optional[datetime], created_at: Optional[datetime], now_ms: int
+    *,
+    progress: int,
+    deadline: Optional[datetime],
+    created_at: Optional[datetime],
+    now_ms: int,
 ) -> str:
     if progress >= 100:
         return "completed"
@@ -179,8 +192,7 @@ def _get_latest_checkin_snapshot_by_kr(
 
     return {
         key_result_id: (created_at, confidence_score)
-        for key_result_id, (created_at, confidence_score, _)
-        in latest_map.items()
+        for key_result_id, (created_at, confidence_score, _) in latest_map.items()
     }
 
 
@@ -304,7 +316,9 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
             if not user_rows:
                 return _empty_leadership_payload()
 
-            selected_user_ids = [user_id for user_id, _, _ in user_rows if user_id is not None]
+            selected_user_ids = [
+                user_id for user_id, _, _ in user_rows if user_id is not None
+            ]
             if not selected_user_ids:
                 return _empty_leadership_payload()
 
@@ -346,7 +360,9 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 .join(Goal, Objective.goal_id == Goal.id)
                 .where(Goal.cycle_id == cycle_id)
                 .where(Goal.owner_id.in_(selected_user_ids))
-                .where(Objective.state.in_([LifecycleState.ACTIVE, LifecycleState.GRADING]))
+                .where(
+                    Objective.state.in_([LifecycleState.ACTIVE, LifecycleState.GRADING])
+                )
             ).all()
             trace.mark("task_query_ms")
 
@@ -385,7 +401,9 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
             for uname in selected_usernames:
                 stats = member_stats[uname]
                 task_count = stats["tasks"]
-                avg_progress = int(stats["progress_sum"] / task_count) if task_count else 0
+                avg_progress = (
+                    int(stats["progress_sum"] / task_count) if task_count else 0
+                )
                 display_name = member_display_map.get(uname, uname)
 
                 member_progress.append(
@@ -409,20 +427,17 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 )
             trace.mark("member_shape_ms")
 
-            latest_checkin_ranked = (
-                select(
-                    CheckIn.key_result_id.label("kr_id"),
-                    CheckIn.created_at.label("latest_created_at"),
-                    CheckIn.confidence_score.label("latest_confidence"),
-                    func.row_number()
-                    .over(
-                        partition_by=CheckIn.key_result_id,
-                        order_by=(CheckIn.created_at.desc(), CheckIn.id.desc()),
-                    )
-                    .label("rn"),
+            latest_checkin_ranked = select(
+                CheckIn.key_result_id.label("kr_id"),
+                CheckIn.created_at.label("latest_created_at"),
+                CheckIn.confidence_score.label("latest_confidence"),
+                func.row_number()
+                .over(
+                    partition_by=CheckIn.key_result_id,
+                    order_by=(CheckIn.created_at.desc(), CheckIn.id.desc()),
                 )
-                .subquery()
-            )
+                .label("rn"),
+            ).subquery()
 
             kr_rows = session.exec(
                 select(
@@ -446,7 +461,9 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 )
                 .where(Goal.cycle_id == cycle_id)
                 .where(Goal.owner_id.in_(selected_user_ids))
-                .where(Objective.state.in_([LifecycleState.ACTIVE, LifecycleState.GRADING]))
+                .where(
+                    Objective.state.in_([LifecycleState.ACTIVE, LifecycleState.GRADING])
+                )
             ).all()
             trace.mark("kr_query_ms")
 
@@ -541,7 +558,9 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
 
             payload = {
                 "hygiene_pct": (updated_count / len(kr_rows) * 100) if kr_rows else 0,
-                "avg_confidence": (total_confidence / conf_count) if conf_count > 0 else 0,
+                "avg_confidence": (total_confidence / conf_count)
+                if conf_count > 0
+                else 0,
                 "at_risk_count": len(at_risk_list),
                 "total_krs": len(kr_rows),
                 "at_risk": at_risk_list,
@@ -665,8 +684,7 @@ def get_hours_by_goal(user_id: int, days: int = 7) -> dict:
             trace.mark("query_ms")
 
             result = {
-                title: (float(total_minutes) / 60.0)
-                for title, total_minutes in rows
+                title: (float(total_minutes) / 60.0) for title, total_minutes in rows
             }
             trace.mark("shape_ms")
             return result
@@ -694,4 +712,3 @@ def get_daily_work_trend(user_id: int, days: int = 7) -> dict:
             daily_hours[day] += log.duration_minutes / 60
 
     return daily_hours
-

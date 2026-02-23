@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Login submit -> first Atlas render benchmark.
 
@@ -156,7 +157,9 @@ def _query_timing_counter(engine):
         bucket["count"] += 1
         started_at[id(context)] = time.perf_counter()
 
-    def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+    def _after_cursor_execute(
+        conn, cursor, statement, parameters, context, executemany
+    ):
         begin = started_at.pop(id(context), None)
         if begin is not None:
             bucket["db_ms"] += (time.perf_counter() - begin) * 1000.0
@@ -201,7 +204,9 @@ def _run_login_to_atlas_once(admin_id: int, cycle_id: int):
         )
         if not node_type:
             continue
-        breadcrumb_labels.append(f"{components.TYPE_ICONS.get(node_type, '')} {node_title}")
+        breadcrumb_labels.append(
+            f"{components.TYPE_ICONS.get(node_type, '')} {node_title}"
+        )
     for ref in nav_stack:
         components.get_node_details(ref, node_lookup=node_lookup)
     t4 = time.perf_counter()

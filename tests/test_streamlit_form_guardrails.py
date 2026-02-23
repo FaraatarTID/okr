@@ -27,13 +27,12 @@ class _FormButtonVisitor(ast.NodeVisitor):
         if not isinstance(node, ast.Call):
             return False
         func = node.func
-        return (
-            isinstance(func, ast.Attribute)
-            and func.attr == "button"
-        )
+        return isinstance(func, ast.Attribute) and func.attr == "button"
 
     def visit_With(self, node: ast.With) -> None:
-        entered_form = any(self._is_st_form_call(item.context_expr) for item in node.items)
+        entered_form = any(
+            self._is_st_form_call(item.context_expr) for item in node.items
+        )
         if entered_form:
             self._form_depth += 1
         for stmt in node.body:

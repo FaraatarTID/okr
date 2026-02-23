@@ -39,7 +39,9 @@ def render_map_key_and_create_actions(
         unsafe_allow_html=True,
     )
     sidebar.markdown("**Create**")
-    if sidebar.button("Add Goal", key="atlas_add_goal_focus_map", use_container_width=True):
+    if sidebar.button(
+        "Add Goal", key="atlas_add_goal_focus_map", use_container_width=True
+    ):
         session_state["add_mode_parent"] = None
         session_state["add_mode_type"] = "GOAL"
         rerun_fn()
@@ -82,7 +84,9 @@ def resolve_map_lens_and_refs(
         else descendant_refs_fn(selected_ref, index, limit=400)
     )
     map_kr_refs = [
-        ref for ref in map_refs if ref in index and index[ref].get("type") == "KEY_RESULT"
+        ref
+        for ref in map_refs
+        if ref in index and index[ref].get("type") == "KEY_RESULT"
     ]
     map_task_refs = [
         ref for ref in map_refs if ref in index and index[ref].get("type") == "TASK"

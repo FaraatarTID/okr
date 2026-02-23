@@ -27,6 +27,7 @@ def isolated_db(monkeypatch, tmp_path):
     monkeypatch.setattr(database, "_engine", engine, raising=False)
 
     import src.models as models  # noqa: F401
+
     SQLModel.metadata.create_all(engine)
     try:
         yield
@@ -37,7 +38,9 @@ def isolated_db(monkeypatch, tmp_path):
 def _build_task_tree_for_user(username: str, cycle_id: int):
     from src.crud import create_goal, create_key_result, create_objective, create_task
 
-    goal = create_goal(username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username)
+    goal = create_goal(
+        username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username
+    )
     objective = create_objective(goal.id, "Objective", actor_username=username)
     key_result = create_key_result(objective.id, "KR", actor_username=username)
     task = create_task(key_result.id, "Task", actor_username=username)
@@ -59,7 +62,13 @@ def test_db_enforces_check_constraints_and_foreign_keys(isolated_db):
 
     with pytest.raises(IntegrityError):
         with get_session_context() as session:
-            session.add(Task(key_result_id=key_result.id, title="bad estimate", estimated_minutes=-1))
+            session.add(
+                Task(
+                    key_result_id=key_result.id,
+                    title="bad estimate",
+                    estimated_minutes=-1,
+                )
+            )
 
     with pytest.raises(IntegrityError):
         with get_session_context() as session:
@@ -128,7 +137,9 @@ def test_sync_data_to_db_rolls_back_on_failure(isolated_db, monkeypatch):
         sync_module.sync_data_to_db("alice", payload)
 
     with get_session_context() as session:
-        persisted = session.exec(select(Goal).where(Goal.external_id == "goal_1")).first()
+        persisted = session.exec(
+            select(Goal).where(Goal.external_id == "goal_1")
+        ).first()
         assert persisted is None
 
 
@@ -200,7 +211,9 @@ def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(tmp_path):
     engine.dispose()
 
 
-def test_run_migrations_adopts_legacy_database_without_alembic_version(monkeypatch, tmp_path):
+def test_run_migrations_adopts_legacy_database_without_alembic_version(
+    monkeypatch, tmp_path
+):
     import src.database as database
     from sqlmodel import SQLModel
     import src.models  # noqa: F401
@@ -269,7 +282,11 @@ def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(tmp_path)
             )
         )
         conn.execute(sa_text("CREATE INDEX ix_goal_user_id ON goal (user_id)"))
-        conn.execute(sa_text("INSERT INTO \"user\" (id, username, password_hash) VALUES (1, 'alice', 'x')"))
+        conn.execute(
+            sa_text(
+                "INSERT INTO \"user\" (id, username, password_hash) VALUES (1, 'alice', 'x')"
+            )
+        )
         conn.execute(
             sa_text(
                 """
@@ -294,7 +311,9 @@ def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(tmp_path)
     assert "owner_id" in goal_columns
 
     with engine.begin() as conn:
-        owner_id = conn.execute(sa_text("SELECT owner_id FROM goal WHERE id = 1")).scalar_one()
+        owner_id = conn.execute(
+            sa_text("SELECT owner_id FROM goal WHERE id = 1")
+        ).scalar_one()
         assert owner_id == 1
 
     engine.dispose()
@@ -484,4 +503,3 @@ def test_auth_throttle_state_table_is_created_by_migration(tmp_path):
     table_names = set(sa_inspect(engine).get_table_names())
     assert "auth_throttle_state" in table_names
     engine.dispose()
-

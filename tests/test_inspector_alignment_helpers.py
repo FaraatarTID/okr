@@ -149,7 +149,9 @@ class _FakeSt:
                 "label": str(label),
                 "options": list(options),
                 "key": str(key),
-                "rendered": [format_func(opt) if format_func else opt for opt in options],
+                "rendered": [
+                    format_func(opt) if format_func else opt for opt in options
+                ],
             }
         )
         if self.selectbox_value is not None:

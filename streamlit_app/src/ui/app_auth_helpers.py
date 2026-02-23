@@ -70,7 +70,9 @@ def render_login_from_app(*, app_module) -> None:
                 except Exception as exc:
                     # Fast path: auth first. If startup bootstrap wasn't ready yet,
                     # run it once and retry auth.
-                    app_module.error_log("Authentication attempt failed before startup ready", exc)
+                    app_module.error_log(
+                        "Authentication attempt failed before startup ready", exc
+                    )
                     if not app_module.should_run_startup_recovery(exc):
                         st.error(
                             "Login is temporarily unavailable due to a database issue. "
@@ -85,7 +87,9 @@ def render_login_from_app(*, app_module) -> None:
                             client_ip=app_module._get_client_ip(),
                         )
                     except Exception as retry_exc:
-                        app_module.error_log("Authentication failed unexpectedly", retry_exc)
+                        app_module.error_log(
+                            "Authentication failed unexpectedly", retry_exc
+                        )
                         st.error(
                             "Login is temporarily unavailable due to a database issue. "
                             "Please contact your administrator."

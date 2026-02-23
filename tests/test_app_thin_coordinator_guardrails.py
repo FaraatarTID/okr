@@ -37,7 +37,9 @@ def test_app_py_stays_thin_and_delegates() -> None:
     for node in tree.body:
         if isinstance(node, ast.ImportFrom) and node.module in disallowed_modules:
             violations.append(f"{node.module}:{node.lineno}")
-    assert not violations, "app.py should not directly import heavy UI modules:\n" + "\n".join(violations)
+    assert not violations, (
+        "app.py should not directly import heavy UI modules:\n" + "\n".join(violations)
+    )
 
     expected_calls = {
         "_get_client_ip": "app_network_helpers.get_client_ip_from_streamlit",
@@ -60,9 +62,13 @@ def test_app_py_stays_thin_and_delegates() -> None:
             body = body[1:]
         assert len(body) == 1, f"{fn_name} should be a single-statement delegator"
         stmt = body[0]
-        assert isinstance(stmt, ast.Return), f"{fn_name} should return helper delegation"
-        assert isinstance(stmt.value, ast.Call), f"{fn_name} should call helper function"
+        assert isinstance(stmt, ast.Return), (
+            f"{fn_name} should return helper delegation"
+        )
+        assert isinstance(stmt.value, ast.Call), (
+            f"{fn_name} should call helper function"
+        )
         target = _dotted_name(stmt.value.func)
-        assert (
-            target == expected_call
-        ), f"{fn_name} should delegate to {expected_call}, got {target}"
+        assert target == expected_call, (
+            f"{fn_name} should delegate to {expected_call}, got {target}"
+        )

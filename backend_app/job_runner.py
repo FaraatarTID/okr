@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Execution logic for backend async jobs."""
 
 from __future__ import annotations

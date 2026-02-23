@@ -48,7 +48,9 @@ def render_inspector_tab(
 ) -> None:
     with inspector_tab:
         with st_module.container(border=True):
-            st_module.markdown("<div class='atlas-kicker'>Inspector</div>", unsafe_allow_html=True)
+            st_module.markdown(
+                "<div class='atlas-kicker'>Inspector</div>", unsafe_allow_html=True
+            )
             st_module.caption(f"Selected from map: {selected_meta['title']}")
 
             selected_health = resolve_selected_health(

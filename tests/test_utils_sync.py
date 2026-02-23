@@ -84,7 +84,8 @@ def test_sync_new_goal_sets_owner_id_for_normalized_ownership(isolated_db):
     sync_data_to_db("alice", payload)
 
     with get_session_context() as session:
-        goal = session.exec(select(Goal).where(Goal.external_id == "goal_ext_1")).first()
+        goal = session.exec(
+            select(Goal).where(Goal.external_id == "goal_ext_1")
+        ).first()
         assert goal is not None
         assert goal.owner_id == alice.id
-

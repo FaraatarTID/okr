@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 
-def calculate_progress_from_crud(*, crud_module, session, node_type: str, node_id: int) -> int:
+def calculate_progress_from_crud(
+    *, crud_module, session, node_type: str, node_id: int
+) -> int:
     if node_type == "task":
         task = session.get(crud_module.Task, node_id)
         return 100 if task and task.status == crud_module.TaskStatus.DONE else 0
@@ -11,7 +13,11 @@ def calculate_progress_from_crud(*, crud_module, session, node_type: str, node_i
     if node_type == "key_result":
         kr = session.get(crud_module.KeyResult, node_id)
         if kr:
-            return int((kr.current_value / kr.target_value) * 100) if kr.target_value else 0
+            return (
+                int((kr.current_value / kr.target_value) * 100)
+                if kr.target_value
+                else 0
+            )
         return 0
 
     return 0
@@ -38,7 +44,9 @@ def update_progress_chain_from_crud(*, crud_module, task_id: int):
                 goal = session.get(crud_module.Goal, objective.goal_id)
                 if goal:
                     total_obj = sum(o.progress for o in goal.objectives)
-                    goal.progress = int(total_obj / len(goal.objectives)) if goal.objectives else 0
+                    goal.progress = (
+                        int(total_obj / len(goal.objectives)) if goal.objectives else 0
+                    )
                     session.add(goal)
 
         session.commit()
@@ -46,7 +54,9 @@ def update_progress_chain_from_crud(*, crud_module, task_id: int):
 
 
 def recalculate_rollup_for_key_results_from_crud(*, crud_module, key_result_ids):
-    unique_ids = sorted({int(kr_id) for kr_id in (key_result_ids or []) if kr_id is not None})
+    unique_ids = sorted(
+        {int(kr_id) for kr_id in (key_result_ids or []) if kr_id is not None}
+    )
     if not unique_ids:
         return
 
@@ -78,10 +88,13 @@ def recalculate_rollup_for_key_results_from_crud(*, crud_module, key_result_ids)
             goal = session.get(crud_module.Goal, goal_id)
             if not goal:
                 continue
-            total_obj = sum(int(getattr(obj, "progress", 0) or 0) for obj in goal.objectives)
-            goal.progress = int(total_obj / len(goal.objectives)) if goal.objectives else 0
+            total_obj = sum(
+                int(getattr(obj, "progress", 0) or 0) for obj in goal.objectives
+            )
+            goal.progress = (
+                int(total_obj / len(goal.objectives)) if goal.objectives else 0
+            )
             session.add(goal)
 
         session.commit()
         crud_module.clear_cache_safe()
-

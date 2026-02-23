@@ -1,6 +1,7 @@
 """
 Role-Based Access Control (RBAC) and Permission verify logic.
 """
+
 from enum import Enum
 from typing import Any, Optional, Protocol
 
@@ -9,6 +10,7 @@ from src.models import User, UserRole
 
 class ResourceProtocol(Protocol):
     """Protocol for resources that have ownership fields."""
+
     id: Optional[int]
     owner_id: Optional[int]
     team_id: Optional[int]
@@ -16,6 +18,7 @@ class ResourceProtocol(Protocol):
 
 class Action(str, Enum):
     """Actions that can be performed on resources."""
+
     CREATE = "create"
     READ = "read"
     UPDATE = "update"
@@ -46,7 +49,9 @@ def can_track_task_by_owner(
     )
 
 
-def _is_team_manager(user: User, resource: ResourceProtocol, session: Any = None) -> bool:
+def _is_team_manager(
+    user: User, resource: ResourceProtocol, session: Any = None
+) -> bool:
     """Check if user is the manager of the resource's owner or team."""
     if user.role != UserRole.MANAGER or user.id is None:
         return False
@@ -82,17 +87,17 @@ def check_permission(
     user: User,
     action: Action,
     resource: Optional[ResourceProtocol] = None,
-    session: Any = None
+    session: Any = None,
 ) -> bool:
     """
     Central permission checker.
-    
+
     Args:
         user: The actor attempting the action.
         action: The action being attempted.
         resource: The target resource (optional for global actions like CREATE).
         session: Database session (optional, for resolving relations).
-        
+
     Returns:
         bool: True if allowed, False otherwise.
     """
@@ -109,9 +114,9 @@ def check_permission(
         # Usually everyone can create tasks/KRs if they own the parent?
         # Creation context is usually "Create UNDER parent".
         # So 'resource' here should be the PARENT node if applicable, or None for top-level Goal.
-        
+
         # Creating a Goal:
-        if resource is None: 
+        if resource is None:
             # Top level creation.
             # Managers and Admins can create Goals? Members?
             # Existing app allows everyone to create goals if they own them.

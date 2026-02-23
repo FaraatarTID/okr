@@ -153,7 +153,7 @@ def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db):
         include_analysis=False,
     )
     index = runtime.get("index", {})
-    node_lookup = runtime.get("node_lookup", {})
+    runtime.get("node_lookup", {})
     task_ref = next(
         (ref for ref, meta in index.items() if meta.get("type") == "TASK"),
         None,

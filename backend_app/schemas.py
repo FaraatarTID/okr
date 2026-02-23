@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Pydantic request/response schemas for backend API."""
 
 from __future__ import annotations

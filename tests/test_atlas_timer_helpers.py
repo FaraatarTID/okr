@@ -88,7 +88,9 @@ def test_render_timer_content_not_running_close_clears_state_and_reruns():
         st_module=fake_st,
         node_id=7,
         username="alice",
-        load_task_fn=lambda _task_id: SimpleNamespace(title="Task 7", timer_started_at=None),
+        load_task_fn=lambda _task_id: SimpleNamespace(
+            title="Task 7", timer_started_at=None
+        ),
         stop_timer_fn=lambda *_args, **_kwargs: None,
         fetch_latest_logs_fn=lambda _task_id: [],
         ensure_utc_fn=lambda value: value,
@@ -103,14 +105,18 @@ def test_render_timer_content_not_running_close_clears_state_and_reruns():
 
 def test_render_timer_content_running_stop_logs_and_reruns():
     started_at = datetime(2026, 1, 1, 10, 0, 0)
-    fake_st = _FakeSt(button_values={"✋ Stop & Log": True}, text_input_value="Progress made")
+    fake_st = _FakeSt(
+        button_values={"✋ Stop & Log": True}, text_input_value="Progress made"
+    )
     fake_st.session_state["active_timer_node_id"] = 9
 
     atlas_timer_helpers.render_timer_content(
         st_module=fake_st,
         node_id=9,
         username="alice",
-        load_task_fn=lambda _task_id: SimpleNamespace(title="Task 9", timer_started_at=started_at),
+        load_task_fn=lambda _task_id: SimpleNamespace(
+            title="Task 9", timer_started_at=started_at
+        ),
         stop_timer_fn=lambda *_args, **_kwargs: SimpleNamespace(duration_minutes=12.34),
         fetch_latest_logs_fn=lambda _task_id: [
             SimpleNamespace(

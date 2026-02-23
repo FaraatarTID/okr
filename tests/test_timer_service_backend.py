@@ -65,7 +65,10 @@ def test_timer_service_falls_back_to_local_on_backend_transport_error(monkeypatc
     monkeypatch.setattr(
         timer_service,
         "backend_stop_timer",
-        lambda task_id, actor_username, summary=None: {"error": "timeout", "status_code": 503},
+        lambda task_id, actor_username, summary=None: {
+            "error": "timeout",
+            "status_code": 503,
+        },
     )
     monkeypatch.setattr(
         crud,

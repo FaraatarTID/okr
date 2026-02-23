@@ -46,7 +46,10 @@ def test_resolve_node_details_returns_lookup_hit_without_db():
         session_state={},
         get_node_details_from_lookup_fn=(
             lambda node_id, **kwargs: (
-                str((kwargs.get("node_lookup") or {}).get(str(node_id), {}).get("type") or "").upper()
+                str(
+                    (kwargs.get("node_lookup") or {}).get(str(node_id), {}).get("type")
+                    or ""
+                ).upper()
                 or None,
                 (kwargs.get("node_lookup") or {}).get(str(node_id), {}).get("title"),
             )
@@ -105,7 +108,10 @@ def test_resolve_node_details_numeric_fallback_tries_order_and_skips_errors():
     )
     assert node_type == "TASK"
     assert title == "Task Seven"
-    assert any("Failed fallback lookup for model GOAL id=7" in msg for msg in logger.debug_calls)
+    assert any(
+        "Failed fallback lookup for model GOAL id=7" in msg
+        for msg in logger.debug_calls
+    )
 
 
 def test_resolve_node_details_invalid_numeric_input_returns_unknown():
@@ -122,4 +128,6 @@ def test_resolve_node_details_invalid_numeric_input_returns_unknown():
     )
     assert node_type is None
     assert title == "Unknown"
-    assert any("Failed to coerce node id 'not-a-number'" in msg for msg in logger.debug_calls)
+    assert any(
+        "Failed to coerce node id 'not-a-number'" in msg for msg in logger.debug_calls
+    )

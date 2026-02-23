@@ -76,10 +76,17 @@ def test_build_atlas_index_from_snapshot_preserves_hierarchy_and_owner():
             ],
         }
     ]
-    index, roots = _build_atlas_index_from_snapshot(goals_snapshot, users_map={7: "Owner"})
+    index, roots = _build_atlas_index_from_snapshot(
+        goals_snapshot, users_map={7: "Owner"}
+    )
     assert roots == ["goal_1"]
     assert "task_4" in index
-    assert index["task_4"]["path"] == ["goal_1", "objective_2", "key_result_3", "task_4"]
+    assert index["task_4"]["path"] == [
+        "goal_1",
+        "objective_2",
+        "key_result_3",
+        "task_4",
+    ]
     assert index["task_4"]["owner_name"] == "Owner"
     assert index["task_4"]["description"] == "Task desc"
 
@@ -424,15 +431,26 @@ def test_sprint_run_key_requires_valid_task_target_and_start_time():
 
 def test_soft_reminder_shows_once_after_target_until_dismissed():
     sprint_key = "task_1|25|1730000000"
-    assert _atlas_should_show_soft_reminder(25, 25, sprint_key, dismissed_key=None) is True
-    assert _atlas_should_show_soft_reminder(45, 25, sprint_key, dismissed_key=sprint_key) is False
-    assert _atlas_should_show_soft_reminder(20, 25, sprint_key, dismissed_key=None) is False
+    assert (
+        _atlas_should_show_soft_reminder(25, 25, sprint_key, dismissed_key=None) is True
+    )
+    assert (
+        _atlas_should_show_soft_reminder(45, 25, sprint_key, dismissed_key=sprint_key)
+        is False
+    )
+    assert (
+        _atlas_should_show_soft_reminder(20, 25, sprint_key, dismissed_key=None)
+        is False
+    )
 
 
 def test_soft_notification_emits_once_per_sprint_key():
     sprint_key = "task_1|25|1730000000"
     assert _atlas_should_emit_target_notification(sprint_key, emitted_key=None) is True
-    assert _atlas_should_emit_target_notification(sprint_key, emitted_key=sprint_key) is False
+    assert (
+        _atlas_should_emit_target_notification(sprint_key, emitted_key=sprint_key)
+        is False
+    )
     assert _atlas_should_emit_target_notification(None, emitted_key=None) is False
 
 
@@ -440,7 +458,9 @@ def test_clean_work_summary_trims_and_normalizes_empty_values():
     assert _atlas_clean_work_summary(None) is None
     assert _atlas_clean_work_summary("") is None
     assert _atlas_clean_work_summary("   ") is None
-    assert _atlas_clean_work_summary("  finished api retries  ") == "finished api retries"
+    assert (
+        _atlas_clean_work_summary("  finished api retries  ") == "finished api retries"
+    )
 
 
 def test_suggested_next_prioritizes_running_then_attention_then_owner():
@@ -505,13 +525,18 @@ def test_suggested_next_reason_is_human_readable():
 
 
 def test_extract_clicked_ref_supports_dict_and_object_payload_shapes():
-    dict_point = {"customdata": ["task_10", "Task | In progress | 10%"], "id": "task_fallback"}
+    dict_point = {
+        "customdata": ["task_10", "Task | In progress | 10%"],
+        "id": "task_fallback",
+    }
     assert _atlas_extract_clicked_ref(dict_point) == "task_10"
 
     dict_point_without_custom = {"id": "objective_4"}
     assert _atlas_extract_clicked_ref(dict_point_without_custom) == "objective_4"
 
-    obj_point = SimpleNamespace(customdata=("kr_7", "Key Result | Needs attention | 22%"), id="kr_fallback")
+    obj_point = SimpleNamespace(
+        customdata=("kr_7", "Key Result | Needs attention | 22%"), id="kr_fallback"
+    )
     assert _atlas_extract_clicked_ref(obj_point) == "kr_7"
 
     obj_point_without_custom = SimpleNamespace(id="goal_2")
@@ -527,7 +552,10 @@ def test_extract_clicked_ref_supports_point_index_and_label_fallbacks():
 
     label_lookup = {"📋 test task": ["task_7"]}
     point_with_label = {"label": "📋 test task"}
-    assert _atlas_extract_clicked_ref(point_with_label, label_lookup=label_lookup) == "task_7"
+    assert (
+        _atlas_extract_clicked_ref(point_with_label, label_lookup=label_lookup)
+        == "task_7"
+    )
 
 
 def test_extract_clicked_ref_from_points_picks_deepest_node_from_path():
@@ -568,6 +596,8 @@ def test_extract_selection_points_supports_selection_object_shape():
     points = _atlas_extract_selection_points(payload)
     assert points == [{"pointIndex": 1}]
 
-    payload_obj = SimpleNamespace(selection=SimpleNamespace(points=[{"pointNumber": 0}]))
+    payload_obj = SimpleNamespace(
+        selection=SimpleNamespace(points=[{"pointNumber": 0}])
+    )
     points_obj = _atlas_extract_selection_points(payload_obj)
     assert points_obj == [{"pointNumber": 0}]

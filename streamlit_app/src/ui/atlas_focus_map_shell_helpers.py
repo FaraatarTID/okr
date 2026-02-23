@@ -19,7 +19,9 @@ def render_focus_map_shell(
     escape_html_fn: Callable[[str], str],
     is_mobile_request: bool,
 ) -> tuple[Any, Any]:
-    st_module.markdown("<div class='atlas-kicker'>Focus Map</div>", unsafe_allow_html=True)
+    st_module.markdown(
+        "<div class='atlas-kicker'>Focus Map</div>", unsafe_allow_html=True
+    )
     st_module.caption("Navigate hierarchy and pick your next move.")
 
     nav_labels = ["Home"]

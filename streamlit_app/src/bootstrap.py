@@ -76,9 +76,10 @@ def should_run_startup_recovery(exc: BaseException) -> bool:
 
 def _is_recent_success(now: Optional[float] = None) -> bool:
     current = time.monotonic() if now is None else float(now)
-    return _last_success_monotonic > 0 and (
-        current - _last_success_monotonic
-    ) < BOOTSTRAP_MIN_INTERVAL_SECONDS
+    return (
+        _last_success_monotonic > 0
+        and (current - _last_success_monotonic) < BOOTSTRAP_MIN_INTERVAL_SECONDS
+    )
 
 
 def ensure_startup_ready(force: bool = False) -> Dict[str, Any]:

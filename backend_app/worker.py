@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """DB-backed async worker for AI/PDF backend jobs."""
 
 from __future__ import annotations

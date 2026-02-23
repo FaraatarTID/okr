@@ -30,7 +30,9 @@ class _FormButtonVisitor(ast.NodeVisitor):
         self.form_without_submit_issues: list[str] = []
 
     def visit_With(self, node: ast.With) -> None:
-        enters_form = any(_is_streamlit_form_call(item.context_expr) for item in node.items)
+        enters_form = any(
+            _is_streamlit_form_call(item.context_expr) for item in node.items
+        )
         if enters_form and self.form_depth > 0:
             self.nested_form_issues.append(
                 f"{self.path}:{node.lineno} contains nested `st.form` blocks"
@@ -54,7 +56,10 @@ class _FormButtonVisitor(ast.NodeVisitor):
             self.button_issues.append(
                 f"{self.path}:{node.lineno} uses `{callsite}` inside `st.form`"
             )
-        if isinstance(node.func, ast.Attribute) and node.func.attr == "form_submit_button":
+        if (
+            isinstance(node.func, ast.Attribute)
+            and node.func.attr == "form_submit_button"
+        ):
             if self.form_depth == 0:
                 self.submit_outside_form_issues.append(
                     f"{self.path}:{node.lineno} uses `st.form_submit_button` outside `st.form`"
@@ -68,9 +73,7 @@ def test_streamlit_form_widget_constraints() -> None:
     app_root = Path(__file__).resolve().parents[1]
     excluded_dirs = {"tests", "venv", "__pycache__", ".pytest_cache"}
     py_files = [
-        path
-        for path in app_root.rglob("*.py")
-        if excluded_dirs.isdisjoint(path.parts)
+        path for path in app_root.rglob("*.py") if excluded_dirs.isdisjoint(path.parts)
     ]
 
     button_issues: list[str] = []
@@ -93,8 +96,8 @@ def test_streamlit_form_widget_constraints() -> None:
         "`st.form_submit_button` must be inside st.form:\n"
         + "\n".join(submit_outside_form_issues)
     )
-    assert not nested_form_issues, "Nested Streamlit forms are not allowed:\n" + "\n".join(
-        nested_form_issues
+    assert not nested_form_issues, (
+        "Nested Streamlit forms are not allowed:\n" + "\n".join(nested_form_issues)
     )
     assert not form_without_submit_issues, (
         "Every st.form must include st.form_submit_button:\n"

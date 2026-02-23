@@ -47,4 +47,3 @@ if components.User is not models.User:
         f"stdout:\n{result.stdout}\n"
         f"stderr:\n{result.stderr}"
     )
-

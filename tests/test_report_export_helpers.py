@@ -57,9 +57,13 @@ def test_render_report_export_controls_backend_pdf_success():
         objective_stats={"Obj 1": 30},
         total_minutes=30.0,
         krs_list=[
-            SimpleNamespace(title="KR A", progress=40, gemini_analysis='{"overall_score":80}'),
+            SimpleNamespace(
+                title="KR A", progress=40, gemini_analysis='{"overall_score":80}'
+            ),
             SimpleNamespace(title="KR B", progress=10, gemini_analysis="{bad json"),
-            SimpleNamespace(title="KR C", progress=95, gemini_analysis={"overall_score": 95}),
+            SimpleNamespace(
+                title="KR C", progress=95, gemini_analysis={"overall_score": 95}
+            ),
         ],
         achievements=["Task A"],
         username="alice",
@@ -82,7 +86,9 @@ def test_render_report_export_controls_backend_pdf_success():
     assert fake_st.errors == []
     assert fake_st.warnings == []
     assert len(captured_payload["key_results"]) == 3
-    assert captured_payload["key_results"][0]["geminiAnalysis"] == {"parsed": '{"overall_score":80}'}
+    assert captured_payload["key_results"][0]["geminiAnalysis"] == {
+        "parsed": '{"overall_score":80}'
+    }
     assert captured_payload["key_results"][1]["geminiAnalysis"] is None
     assert captured_payload["key_results"][2]["geminiAnalysis"] == {"overall_score": 95}
     assert len(logger.debug_messages) == 1
@@ -141,7 +147,9 @@ def test_render_report_export_controls_reports_errors():
         utc_now_naive_fn=lambda: datetime(2026, 2, 22),
         format_time_fn=lambda mins: f"{int(mins)}m",
         is_backend_enabled_fn=lambda: True,
-        run_job_and_wait_fn=lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("backend down")),
+        run_job_and_wait_fn=lambda **_kwargs: (_ for _ in ()).throw(
+            RuntimeError("backend down")
+        ),
         generate_weekly_pdf_v2_fn=lambda *_args, **_kwargs: None,
         generate_pdf_html_fn=lambda *_args, **_kwargs: "<html/>",
         b64decode_fn=lambda value: value.encode("utf-8"),

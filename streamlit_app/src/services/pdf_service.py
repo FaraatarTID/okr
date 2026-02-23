@@ -19,6 +19,7 @@ PDFSHIFT_AVAILABLE = False
 
 try:
     import requests
+
     PDFSHIFT_AVAILABLE = True
 except ImportError:
     requests = None
@@ -117,7 +118,9 @@ def is_deployed_environment():
     Resolve whether PDF binary generation is enabled in secure mode.
     Returns True only when PDF_METHOD resolves to `pdfshift`.
     """
-    method = str(os.getenv("PDF_METHOD", os.getenv("OKR_PDF_METHOD", ""))).strip().lower()
+    method = (
+        str(os.getenv("PDF_METHOD", os.getenv("OKR_PDF_METHOD", ""))).strip().lower()
+    )
     if method == "shiftpdf":
         method = "pdfshift"
     if method:
@@ -137,37 +140,52 @@ def get_base64_font(font_path):
     try:
         if os.path.exists(font_path):
             with open(font_path, "rb") as font_file:
-                return base64.b64encode(font_file.read()).decode('utf-8')
+                return base64.b64encode(font_file.read()).decode("utf-8")
     except Exception as e:
         print(f"Font error: {e}")
     return ""
 
 
-def generate_pdf_html(report_items, objective_stats, total_time_str, key_results, 
-                      direction="RTL", title="Weekly Work Report", time_label="Last 7 Days",
-                      report_summary=None, achievements=None):
+def generate_pdf_html(
+    report_items,
+    objective_stats,
+    total_time_str,
+    key_results,
+    direction="RTL",
+    title="Weekly Work Report",
+    time_label="Last 7 Days",
+    report_summary=None,
+    achievements=None,
+):
     """
     Generate HTML content for PDF (common for both methods)
     """
-    align = 'right' if direction == 'RTL' else 'left'
+    align = "right" if direction == "RTL" else "left"
     dir_attr = direction.lower()
-    
+
     # Find font path
     font_path = None
     possible_paths = [
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Vazirmatn-Regular.ttf"),
-        os.path.join(os.path.dirname(__file__), "assets", "fonts", "Vazirmatn-Regular.ttf"),
+        os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "assets",
+            "fonts",
+            "Vazirmatn-Regular.ttf",
+        ),
+        os.path.join(
+            os.path.dirname(__file__), "assets", "fonts", "Vazirmatn-Regular.ttf"
+        ),
         "assets/fonts/Vazirmatn-Regular.ttf",
-        "./Vazirmatn-Regular.ttf"
+        "./Vazirmatn-Regular.ttf",
     ]
-    
+
     for path in possible_paths:
         if os.path.exists(path):
             font_path = path
             break
-    
+
     font_base64 = get_base64_font(font_path) if font_path else ""
-    
+
     html = f"""
 <!DOCTYPE html>
 <html dir="{dir_attr}">
@@ -264,7 +282,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
 <body>
     <div id="header">
         <h1 style="border-bottom: 2px solid #2c3e50; padding-bottom: 10px;">{_escape(title)}</h1>
-        <p>Generated: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC</p>
+        <p>Generated: {datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M")} UTC</p>
     </div>
 
     <div class="total-box">
@@ -278,7 +296,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
         summary_text = str(report_summary.get("summary_markdown", "") or "")
         summary_html = _escape(summary_text).replace("\n", "<br>")
         highlights = report_summary.get("highlights", [])
-        
+
         html += f"""
     <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #2ecc71;">
         <h2 style="margin-top: 0;">Executive Summary</h2>
@@ -305,7 +323,7 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
         <ul style="list-style-type: none; padding: 0;">
 """
         for a in achievements:
-             html += f"""
+            html += f"""
             <li style="padding: 10px; border-bottom: 1px solid #eee; display: flex; align-items: center;">
                 <span style="color: #2ecc71; margin-right: 10px; font-size: 1.2em;">[OK]</span>
                 <span style="font-weight: 500;">{_escape(a)}</span>
@@ -345,23 +363,27 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
             obj_title = _escape(item.get("Objective", "-"))
             kr_title = _escape(item.get("KeyResult", "-"))
             deadline = _escape(item.get("Deadline", "-"))
-            
+
             # Format Date/Time
             date_time_html = f"""
                 <div style="font-weight:bold;">{date_str}</div>
                 <div class="text-muted">{time_str}</div>
             """
-            
+
             # Format Deadline Badge
             badge_class = "badge-gray"
-            if "On Track" in deadline: 
+            if "On Track" in deadline:
                 badge_class = "badge-green"
             elif "At Risk" in deadline:
-                badge_class = "badge-amber" 
+                badge_class = "badge-amber"
             elif "Overdue" in deadline:
                 badge_class = "badge-red"
-            
-            deadline_html = f'<span class="badge {badge_class}">{deadline}</span>' if deadline != "-" else "-"
+
+            deadline_html = (
+                f'<span class="badge {badge_class}">{deadline}</span>'
+                if deadline != "-"
+                else "-"
+            )
 
             html += f"""
             <tr>
@@ -388,15 +410,18 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
     html += """
     <h3>Time Distribution by Objective</h3>
 """
-    
+
     if objective_stats:
-        sorted_stats = sorted(objective_stats.items(), key=lambda item: item[1], reverse=True)
+        sorted_stats = sorted(
+            objective_stats.items(), key=lambda item: item[1], reverse=True
+        )
         total_mins = sum(v for k, v in objective_stats.items())
-        
+
         def fmt(m):
             h = int(m // 60)
             mn = int(m % 60)
-            if h > 0: return f"{h}h {mn}m"
+            if h > 0:
+                return f"{h}h {mn}m"
             return f"{mn}m"
 
         html += """
@@ -410,10 +435,10 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
         </thead>
         <tbody>
 """
-        
+
         for obj_title, mins in sorted_stats:
             pct = (mins / total_mins * 100) if total_mins > 0 else 0
-            
+
             html += f"""
             <tr>
                 <td>{_escape(obj_title)}</td>
@@ -450,42 +475,45 @@ def generate_pdf_html(report_items, objective_stats, total_time_str, key_results
         for kr in key_results:
             kr_title = _escape(kr.get("title", "Untitled"))
             progress = kr.get("progress", 0)
-            
+
             an = kr.get("geminiAnalysis")
             eff_score = "N/A"
             qual_score = "N/A"
             fulfillment = "N/A"
-            
+
             analysis_html = ""
-            
+
             if an and isinstance(an, dict):
-                e_val = an.get('efficiency_score')
-                q_val = an.get('effectiveness_score')
-                o_val = an.get('overall_score')
-                
-                if e_val is not None: eff_score = f"{e_val}%"
-                if q_val is not None: qual_score = f"{q_val}%"
-                if o_val is not None: fulfillment = f"{o_val}%"
-                
+                e_val = an.get("efficiency_score")
+                q_val = an.get("effectiveness_score")
+                o_val = an.get("overall_score")
+
+                if e_val is not None:
+                    eff_score = f"{e_val}%"
+                if q_val is not None:
+                    qual_score = f"{q_val}%"
+                if o_val is not None:
+                    fulfillment = f"{o_val}%"
+
                 summary = _escape(an.get("summary", ""))
                 gap = _escape(an.get("gap_analysis", ""))
                 quality = _escape(an.get("quality_assessment", ""))
-                
+
                 if summary or gap or quality:
                     analysis_html = f"""
                     <tr>
                         <td colspan="5" style="background-color: #fcfcfc; padding: 10px 15px; border-top: none;">
                             <div style="font-size: 11px; color: #555;">
-                                {f'<p><strong>Summary:</strong> {summary}</p>' if summary else ''}
-                                {f'<p><strong>Gap Analysis:</strong> {gap}</p>' if gap else ''}
-                                {f'<p><strong>Quality Assessment:</strong> {quality}</p>' if quality else ''}
+                                {f"<p><strong>Summary:</strong> {summary}</p>" if summary else ""}
+                                {f"<p><strong>Gap Analysis:</strong> {gap}</p>" if gap else ""}
+                                {f"<p><strong>Quality Assessment:</strong> {quality}</p>" if quality else ""}
                             </div>
                         </td>
                     </tr>
 """
 
             html += f"""
-            <tr style="border-bottom: {'none' if analysis_html else '1px solid #dee2e6'};">
+            <tr style="border-bottom: {"none" if analysis_html else "1px solid #dee2e6"};">
                 <td>{kr_title}</td>
                 <td>{_escape(progress)}%</td>
                 <td>{_escape(eff_score)}</td>
@@ -550,27 +578,43 @@ def generate_pdf_with_pdfshift_bytes(html, *, api_key: str = ""):
         return None
 
 
-def generate_weekly_pdf_v2(report_items, objective_stats, total_time_str, key_results, 
-                          direction="RTL", title="Weekly Work Report", time_label="Last 7 Days",
-                          report_summary=None, achievements=None):
+def generate_weekly_pdf_v2(
+    report_items,
+    objective_stats,
+    total_time_str,
+    key_results,
+    direction="RTL",
+    title="Weekly Work Report",
+    time_label="Last 7 Days",
+    report_summary=None,
+    achievements=None,
+):
     """
     Main PDF generation function.
-    
+
     Returns: BytesIO object containing the PDF data, or None if generation fails
     """
-    
+
     # Detect configured method (secure mode supports PDFShift only).
     is_deployed = is_deployed_environment()
-    
+
     # Generate HTML (common for both methods)
     html = generate_pdf_html(
-        report_items, objective_stats, total_time_str, key_results,
-        direction, title, time_label,
-        report_summary, achievements
+        report_items,
+        objective_stats,
+        total_time_str,
+        key_results,
+        direction,
+        title,
+        time_label,
+        report_summary,
+        achievements,
     )
-    
+
     if not is_deployed:
-        st.error("Unsupported PDF_METHOD. Secure mode supports only PDFShift or HTML fallback.")
+        st.error(
+            "Unsupported PDF_METHOD. Secure mode supports only PDFShift or HTML fallback."
+        )
         return None
 
     print("Using PDFShift (Secure Mode)")
@@ -585,14 +629,16 @@ def get_pdf_generator_info():
     Return information about the current PDF generation setup
     """
     is_deployed = is_deployed_environment()
-    
+
     info = {
-        'environment': 'Secure mode (PDFShift)' if is_deployed else 'Unsupported PDF method',
-        'method': 'PDFShift API (secure-only)',
-        'pdfshift_available': PDFSHIFT_AVAILABLE,
-        'platform': platform.system()
+        "environment": "Secure mode (PDFShift)"
+        if is_deployed
+        else "Unsupported PDF method",
+        "method": "PDFShift API (secure-only)",
+        "pdfshift_available": PDFSHIFT_AVAILABLE,
+        "platform": platform.system(),
     }
-    
+
     return info
 
 
@@ -618,8 +664,15 @@ def generate_achievement_portfolio_pdf(portfolio: dict, direction: str = "RTL"):
     # Font embedding
     font_path = None
     possible_paths = [
-        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts", "Vazirmatn-Regular.ttf"),
-        os.path.join(os.path.dirname(__file__), "assets", "fonts", "Vazirmatn-Regular.ttf"),
+        os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "assets",
+            "fonts",
+            "Vazirmatn-Regular.ttf",
+        ),
+        os.path.join(
+            os.path.dirname(__file__), "assets", "fonts", "Vazirmatn-Regular.ttf"
+        ),
     ]
     for path in possible_paths:
         if os.path.exists(path):
@@ -684,10 +737,10 @@ def generate_achievement_portfolio_pdf(portfolio: dict, direction: str = "RTL"):
             time_h = round(a.get("time_spent", 0) / 60, 1)
             html += f"""
             <tr>
-                <td><strong>{_escape(a.get('task_title', ''))}</strong></td>
-                <td>{_escape(a.get('kr_title', ''))}</td>
-                <td>{_escape(a.get('objective_title', ''))}</td>
-                <td>{a.get('kr_score', 0):.2f} ({_escape(a.get('kr_score_label', ''))})</td>
+                <td><strong>{_escape(a.get("task_title", ""))}</strong></td>
+                <td>{_escape(a.get("kr_title", ""))}</td>
+                <td>{_escape(a.get("objective_title", ""))}</td>
+                <td>{a.get("kr_score", 0):.2f} ({_escape(a.get("kr_score_label", ""))})</td>
                 <td>{time_h}h</td>
             </tr>
 """
@@ -710,9 +763,9 @@ def generate_achievement_portfolio_pdf(portfolio: dict, direction: str = "RTL"):
         html += f"""
     <h2>Health Snapshot</h2>
     <p>
-        Burnout Risk: <span class="health-badge {risk_class}">{_escape(risk_label)} ({burnout.get('risk_score', 0)})</span>
-        &nbsp; Avg Daily Focus: <strong>{burnout.get('avg_daily_minutes', 0)} min</strong>
-        &nbsp; Tasks Completed (14d): <strong>{burnout.get('completed_tasks', 0)}</strong>
+        Burnout Risk: <span class="health-badge {risk_class}">{_escape(risk_label)} ({burnout.get("risk_score", 0)})</span>
+        &nbsp; Avg Daily Focus: <strong>{burnout.get("avg_daily_minutes", 0)} min</strong>
+        &nbsp; Tasks Completed (14d): <strong>{burnout.get("completed_tasks", 0)}</strong>
     </p>
 """
 

@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Hot-path performance benchmark for the OKR data layer.
 

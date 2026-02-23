@@ -60,7 +60,9 @@ def upgrade() -> None:
 
     if "ck_sync_retry_attempts_non_negative" in _check_names("sync_retry_event"):
         with op.batch_alter_table("sync_retry_event") as batch_op:
-            batch_op.drop_constraint("ck_sync_retry_attempts_non_negative", type_="check")
+            batch_op.drop_constraint(
+                "ck_sync_retry_attempts_non_negative", type_="check"
+            )
 
     op.drop_table("sync_retry_event")
 
@@ -74,7 +76,9 @@ def downgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
         sa.Column("queue_key", sa.String(), nullable=False),
         sa.Column("payload_json", sa.String(), nullable=False),
-        sa.Column("attempts", sa.Integer(), nullable=False, server_default=sa.text("0")),
+        sa.Column(
+            "attempts", sa.Integer(), nullable=False, server_default=sa.text("0")
+        ),
         sa.Column("next_attempt_at", sa.DateTime(), nullable=False),
         sa.Column("last_error_code", sa.String(), nullable=True),
         sa.Column("last_error", sa.String(), nullable=True),

@@ -18,7 +18,9 @@ class _FakeSt:
                 "options": list(options),
                 "index": int(index),
                 "key": str(key),
-                "rendered": [format_func(opt) if format_func else opt for opt in options],
+                "rendered": [
+                    format_func(opt) if format_func else opt for opt in options
+                ],
             }
         )
         if self.selectbox_value is not None:
@@ -123,6 +125,7 @@ def test_resolve_task_assignee_member_shows_unassigned():
     assert result is None
     assert fake_st.info_calls == ["👥 **Unassigned**"]
 
+
 class _ScoreMode(Enum):
     UNWEIGHTED = "unweighted"
     WEIGHTED = "weighted"
@@ -208,8 +211,20 @@ def test_resolve_objective_scoring_section_weighted_mode_shows_score():
         score_mode=_ScoreMode.UNWEIGHTED,
         weight=1.0,
         key_results=[
-            SimpleNamespace(current_value=40, target_value=100, start_value=0, metric_type="pct", weight=1.2),
-            SimpleNamespace(current_value=30, target_value=60, start_value=0, metric_type="pct", weight=0.8),
+            SimpleNamespace(
+                current_value=40,
+                target_value=100,
+                start_value=0,
+                metric_type="pct",
+                weight=1.2,
+            ),
+            SimpleNamespace(
+                current_value=30,
+                target_value=60,
+                start_value=0,
+                metric_type="pct",
+                weight=0.8,
+            ),
         ],
     )
     captured = {}
@@ -226,7 +241,9 @@ def test_resolve_objective_scoring_section_weighted_mode_shows_score():
         node_type_upper="OBJECTIVE",
         node_id=34,
         score_mode_enum=_ScoreMode,
-        calculate_kr_score_fn=lambda **kwargs: float(kwargs["current"]) / float(kwargs["target"]),
+        calculate_kr_score_fn=lambda **kwargs: (
+            float(kwargs["current"]) / float(kwargs["target"])
+        ),
         get_score_label_fn=lambda _score: "On Track",
         get_score_color_band_fn=lambda _score: "atlas-score-band-green",
         calculate_objective_score_fn=_calc_obj_score,
@@ -380,7 +397,11 @@ def test_resolve_goal_cycle_and_strategy_tags_fallbacks_on_bad_json_and_no_cycle
     assert tags == "new-tag"
     assert fake_st.info_calls == ["No cycles available."]
     assert fake_st.text_input_calls[0]["value"] == "alpha, beta"
-    assert any("Failed to parse strategy_tags JSON for node 77" in m for m in logger.debug_calls)
+    assert any(
+        "Failed to parse strategy_tags JSON for node 77" in m
+        for m in logger.debug_calls
+    )
+
 
 class _MetricType(Enum):
     NUMERIC = "numeric"
@@ -531,7 +552,9 @@ def test_resolve_key_result_metrics_section_updates_progress_and_metric_type():
         has_children=False,
         new_progress_value=5,
         metric_type_enum=_MetricType,
-        calculate_kr_score_fn=lambda **kwargs: float(kwargs["current"]) / float(kwargs["target"]),
+        calculate_kr_score_fn=lambda **kwargs: (
+            float(kwargs["current"]) / float(kwargs["target"])
+        ),
         get_score_label_fn=lambda _score: "On Track",
         get_score_color_band_fn=lambda _score: "atlas-score-band-green",
         json_loads_fn=lambda _raw: ["alpha", "beta"],
@@ -581,7 +604,11 @@ def test_resolve_key_result_metrics_section_bad_json_and_has_children_keeps_prog
     assert result["new_progress"] == 33
     assert result["new_metric_type"] == _MetricType.NUMERIC
     assert fake_st.text_input_calls[1]["value"] == "alpha, beta"
-    assert any("Failed to parse initiative_tags JSON for node 66" in m for m in logger.debug_calls)
+    assert any(
+        "Failed to parse initiative_tags JSON for node 66" in m
+        for m in logger.debug_calls
+    )
+
 
 class _LifecycleState(Enum):
     DRAFT = "draft"
@@ -686,8 +713,15 @@ def test_resolve_lifecycle_section_objective_change_emits_warning():
         node_type_upper="OBJECTIVE",
         node_id=92,
         lifecycle_state_enum=_LifecycleState,
-        get_allowed_transitions_fn=lambda _state: [_LifecycleState.GRADING, _LifecycleState.ARCHIVED],
-        state_icons={_LifecycleState.ACTIVE: "A", _LifecycleState.GRADING: "G", _LifecycleState.ARCHIVED: "R"},
+        get_allowed_transitions_fn=lambda _state: [
+            _LifecycleState.GRADING,
+            _LifecycleState.ARCHIVED,
+        ],
+        state_icons={
+            _LifecycleState.ACTIVE: "A",
+            _LifecycleState.GRADING: "G",
+            _LifecycleState.ARCHIVED: "R",
+        },
         state_hints={_LifecycleState.GRADING: "ready for grading"},
     )
 
@@ -721,6 +755,7 @@ def test_resolve_lifecycle_section_key_result_no_warning_and_invalid_state_fallb
     assert new_reflection == "kr reflection"
     assert fake_st.warning_calls == []
     assert any("Draft" in msg for msg in fake_st.info_calls)
+
 
 class _FakeScheduleLogger:
     def __init__(self):
@@ -912,11 +947,17 @@ def test_render_task_schedule_section_deadline_status_display_and_debug_fallback
         username="alice",
         update_task_fn=lambda *_args, **_kwargs: None,
         datetime_cls=datetime,
-        get_deadline_status_fn=lambda _node: (_ for _ in ()).throw(RuntimeError("boom")),
+        get_deadline_status_fn=lambda _node: (_ for _ in ()).throw(
+            RuntimeError("boom")
+        ),
         rerun_fn=lambda: None,
         logger=logger2,
     )
-    assert any("Failed to compute inspector deadline status for node 45" in msg for msg in logger2.debug_calls)
+    assert any(
+        "Failed to compute inspector deadline status for node 45" in msg
+        for msg in logger2.debug_calls
+    )
+
 
 class _WorkHistoryColumn:
     def __init__(self, *, parent):
@@ -1001,7 +1042,12 @@ def test_render_task_work_history_section_delete_success():
     deleted = []
     reruns = []
     logs = [
-        SimpleNamespace(id=10, end_time=datetime(2026, 2, 1, 10, 0), duration_minutes=12.4, summary="Done")
+        SimpleNamespace(
+            id=10,
+            end_time=datetime(2026, 2, 1, 10, 0),
+            duration_minutes=12.4,
+            summary="Done",
+        )
     ]
     aborted = inspector_form_helpers.render_task_work_history_section(
         st_module=fake_st,
@@ -1021,7 +1067,12 @@ def test_render_task_work_history_section_delete_success():
 def test_render_task_work_history_section_delete_permission_error_aborts():
     fake_st = _FakeWorkHistorySt(buttons={"del_log_10": True})
     logs = [
-        SimpleNamespace(id=10, end_time=datetime(2026, 2, 1, 10, 0), duration_minutes=12.4, summary="Done")
+        SimpleNamespace(
+            id=10,
+            end_time=datetime(2026, 2, 1, 10, 0),
+            duration_minutes=12.4,
+            summary="Done",
+        )
     ]
 
     aborted = inspector_form_helpers.render_task_work_history_section(
@@ -1030,12 +1081,15 @@ def test_render_task_work_history_section_delete_permission_error_aborts():
         node_type_upper="TASK",
         username="alice",
         get_work_logs_fn=lambda _task_id: logs,
-        delete_work_log_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("denied")),
+        delete_work_log_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            PermissionError("denied")
+        ),
         rerun_fn=lambda: None,
         datetime_cls=datetime,
     )
     assert aborted is True
     assert fake_st.error_calls == ["denied"]
+
 
 class _FakeDeleteSt:
     def __init__(self, *, buttons=None):
@@ -1086,7 +1140,9 @@ def test_render_delete_entity_section_permission_error_aborts():
         delete_goal_fn=lambda *_args, **_kwargs: None,
         delete_objective_fn=lambda *_args, **_kwargs: None,
         delete_key_result_fn=lambda *_args, **_kwargs: None,
-        delete_task_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("denied")),
+        delete_task_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            PermissionError("denied")
+        ),
         rerun_fn=lambda: None,
     )
     assert aborted is True
@@ -1127,6 +1183,7 @@ def test_render_delete_entity_section_success_clears_state_and_reruns():
     assert "active_inspector_id" not in session_state
     assert session_state["nav_stack"] == ["goal_1", "objective_2"]
     assert session_state["keep_me"] == "x"
+
 
 class _FakeSaveSt:
     def __init__(self, *, submit=False):
@@ -1263,7 +1320,9 @@ def test_handle_save_changes_key_result_payload_and_permission_error():
         new_assignee_id=None,
         update_goal_fn=lambda *_args, **_kwargs: None,
         update_objective_fn=lambda *_args, **_kwargs: None,
-        update_key_result_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(PermissionError("denied")),
+        update_key_result_fn=lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            PermissionError("denied")
+        ),
         update_task_fn=lambda *_args, **_kwargs: None,
         rerun_fn=lambda: None,
     )

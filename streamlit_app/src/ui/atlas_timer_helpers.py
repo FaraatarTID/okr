@@ -61,7 +61,9 @@ def render_timer_content(
             wl = stop_timer_fn(node_id, summary=summary, user_id=username)
             if wl:
                 logs = list(fetch_latest_logs_fn(node_id) or [])
-                st_module.success(f"Logged {round(float(wl.duration_minutes), 1)} minutes")
+                st_module.success(
+                    f"Logged {round(float(wl.duration_minutes), 1)} minutes"
+                )
                 if logs:
                     latest = logs[0]
                     st_module.info(

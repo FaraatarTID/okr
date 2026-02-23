@@ -1,6 +1,7 @@
 import unittest
 from src.domain.scoring import calculate_kr_score, calculate_objective_score
 
+
 class TestScoring(unittest.TestCase):
     def test_kr_numeric_linear(self):
         self.assertEqual(calculate_kr_score(50, 100, 0), 0.5)
@@ -30,7 +31,10 @@ class TestScoring(unittest.TestCase):
         scores = [1.0, 0.0]
         weights = [1.0, 3.0]
         # (1.0*1 + 0.0*3) / 4 = 0.25
-        self.assertAlmostEqual(calculate_objective_score(scores, weights, weighted=True), 0.25)
+        self.assertAlmostEqual(
+            calculate_objective_score(scores, weights, weighted=True), 0.25
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -46,7 +46,9 @@ def render_focus_section(
     logger: Any,
 ) -> str | None:
     with st_module.container(border=True):
-        st_module.markdown("<div class='atlas-luxe-strip'></div>", unsafe_allow_html=True)
+        st_module.markdown(
+            "<div class='atlas-luxe-strip'></div>", unsafe_allow_html=True
+        )
         st_module.markdown(
             "<div class='atlas-kicker'>Focus Task</div>", unsafe_allow_html=True
         )
@@ -98,7 +100,9 @@ def render_focus_section(
             focus_meta = index[focus_task_ref]
             focus_task = focus_meta["node"]
             focus_health = (
-                health_index.get(focus_task_ref) if isinstance(health_index, dict) else None
+                health_index.get(focus_task_ref)
+                if isinstance(health_index, dict)
+                else None
             )
             if focus_health is None:
                 focus_health = health_state_fn(focus_meta, index=index)
@@ -214,10 +218,12 @@ def render_focus_section(
 
             session_summary = session_state.get("atlas_last_session_summary")
             if isinstance(session_summary, dict):
-                session_feedback = atlas_workspace_helpers.build_recent_session_feedback(
-                    session_summary=session_summary,
-                    index=index,
-                    clean_summary_fn=clean_work_summary_fn,
+                session_feedback = (
+                    atlas_workspace_helpers.build_recent_session_feedback(
+                        session_summary=session_summary,
+                        index=index,
+                        clean_summary_fn=clean_work_summary_fn,
+                    )
                 )
                 if bool(session_feedback.get("visible")):
                     st_module.success(str(session_feedback.get("message") or ""))

@@ -134,7 +134,9 @@ def test_bootstrap_default_cycle_admin_success_clears_cache(monkeypatch):
         clear_calls["count"] += 1
 
     monkeypatch.setattr(app_module, "create_cycle", _create_cycle)
-    monkeypatch.setattr(app_module._cached_get_all_cycles, "clear", _clear_cache, raising=False)
+    monkeypatch.setattr(
+        app_module._cached_get_all_cycles, "clear", _clear_cache, raising=False
+    )
 
     cycles, error = app_module._bootstrap_default_cycle_if_needed(
         [],

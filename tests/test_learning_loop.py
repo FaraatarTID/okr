@@ -1,17 +1,17 @@
 """
 Tests for learning loop feature: experiments, variation classification, and retro outcomes.
 """
+
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
-from contextlib import contextmanager
 
 import pytest
-from sqlmodel import SQLModel, Session, create_engine
+from sqlmodel import SQLModel
 
 from src.models import (
-    Cycle, User, UserRole, Goal, Objective, KeyResult, LifecycleState,
-    VariationType, ExperimentStatus, ExperimentDecision, ExpectedEffectDirection,
-    Experiment, RetroExperimentOutcome,
+    LifecycleState,
+    VariationType,
+    ExperimentStatus,
+    ExperimentDecision,
 )
 
 
@@ -22,7 +22,6 @@ def _utc_now_naive() -> datetime:
 @pytest.fixture()
 def isolated_db(monkeypatch, tmp_path):
     import src.database as database
-    import src.models
 
     db_path = tmp_path / "okr_learning_loop_test.db"
     db_url = f"sqlite:///{db_path}"
@@ -39,11 +38,20 @@ def isolated_db(monkeypatch, tmp_path):
 
 
 def _build_kr_tree_for_user(username: str, cycle_id: int):
-    from src.crud import create_goal, create_key_result, create_objective, update_objective
+    from src.crud import (
+        create_goal,
+        create_key_result,
+        create_objective,
+        update_objective,
+    )
 
-    goal = create_goal(username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username)
+    goal = create_goal(
+        username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username
+    )
     objective = create_objective(goal.id, "Objective", actor_username=username)
-    kr = create_key_result(objective.id, "KR", target_value=100.0, actor_username=username)
+    kr = create_key_result(
+        objective.id, "KR", target_value=100.0, actor_username=username
+    )
     update_objective(objective.id, state=LifecycleState.ACTIVE, actor_username=username)
     return goal, objective, kr
 
@@ -137,9 +145,14 @@ def test_special_cause_requires_note(isolated_db):
 
 
 def test_experiment_list_requires_authorization(isolated_db):
-    from src.crud import create_cycle, create_user, create_experiment, list_experiments_for_kr
+    from src.crud import (
+        create_cycle,
+        create_user,
+        create_experiment,
+        list_experiments_for_kr,
+    )
 
-    alice = create_user("alice", "alice-pass")
+    create_user("alice", "alice-pass")
     create_user("bob", "bob-pass")
     cycle = create_cycle(
         "Q1",
@@ -250,12 +263,15 @@ def test_special_cause_clears_experiment_link(isolated_db):
 
 def test_retro_outcome_only_owner_can_modify(isolated_db):
     from src.crud import (
-        create_cycle, create_user, create_experiment, create_retrospective,
+        create_cycle,
+        create_user,
+        create_experiment,
+        create_retrospective,
         upsert_retro_experiment_outcome,
     )
 
     alice = create_user("alice", "alice-pass")
-    bob = create_user("bob", "bob-pass")
+    create_user("bob", "bob-pass")
     cycle = create_cycle(
         "Q1",
         start_date=_utc_now_naive(),

@@ -38,11 +38,7 @@ def _tracked_markdown_files() -> list[Path]:
         return files
     except Exception:
         # Fallback if git is unavailable.
-        return sorted(
-            p.resolve()
-            for p in ROOT.rglob("*.md")
-            if ".git" not in p.parts
-        )
+        return sorted(p.resolve() for p in ROOT.rglob("*.md") if ".git" not in p.parts)
 
 
 def _clean_link_target(link: str) -> str:

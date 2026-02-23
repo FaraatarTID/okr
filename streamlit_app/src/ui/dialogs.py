@@ -1,52 +1,79 @@
 import streamlit as st
-import time
 import json
 from datetime import datetime, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 from src.config_runtime import get_bool_config
 from src.utils.time_utils import utc_now_naive
-from src.ui.styles import TYPE_COLORS, TYPE_ICONS, inject_dialog_styles
 from src.ui.components import (
-    render_timer_content, 
+    render_timer_content,
     render_leadership_dashboard_content,
     render_report_content,
     render_inspector_content,
     build_graph_from_node,
-    format_time
+    format_time,
 )
 
 # Crude and Storage imports needed by dialogs
 from src.crud import (
-    get_all_cycles, create_cycle, update_cycle, delete_cycle,
-    get_all_users, update_user, create_user, reset_user_password,
-    get_team_members, get_user_by_id, get_user_by_username,
-    get_krs_needing_checkin, create_check_in, create_weekly_plan,
-    create_retrospective, get_user_retrospectives, get_team_retrospectives,
-    create_goal, create_objective, create_key_result
-    , get_work_logs_by_date_range,
-    create_team, get_all_teams, update_team, delete_team,
-    create_experiment, get_active_experiments_for_kr, update_experiment,
-    list_experiments_for_retro_window, upsert_retro_experiment_outcome,
+    get_all_cycles,
+    create_cycle,
+    delete_cycle,
+    get_all_users,
+    update_user,
+    create_user,
+    reset_user_password,
+    get_team_members,
+    get_user_by_username,
+    get_krs_needing_checkin,
+    create_check_in,
+    create_weekly_plan,
+    create_retrospective,
+    get_user_retrospectives,
+    get_team_retrospectives,
+    create_goal,
+    create_objective,
+    create_key_result,
+    get_work_logs_by_date_range,
+    create_team,
+    get_all_teams,
+    update_team,
+    delete_team,
+    create_experiment,
+    get_active_experiments_for_kr,
+    update_experiment,
+    list_experiments_for_retro_window,
+    upsert_retro_experiment_outcome,
     close_experiment,
 )
-from src.models import UserRole, VariationType, ExperimentStatus, ExpectedEffectDirection, ExperimentDecision
+from src.models import (
+    UserRole,
+    VariationType,
+    ExperimentStatus,
+    ExpectedEffectDirection,
+    ExperimentDecision,
+)
+
 
 # Cache helpers for dialog-heavy queries
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_user_by_username(username):
     return get_user_by_username(username)
 
+
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_work_logs_by_range(user_id, start_date, end_date):
     return get_work_logs_by_date_range(user_id, start_date, end_date)
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_user_retrospectives(user_id, cycle_id):
     return get_user_retrospectives(user_id, cycle_id)
 
+
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_team_retrospectives(manager_id, cycle_id):
     return get_team_retrospectives(manager_id, cycle_id)
+
 
 @st.cache_data(ttl=60, show_spinner=False)
 def _cached_get_krs_needing_checkin(user_id, cycle_id, days_threshold):
@@ -56,7 +83,6 @@ def _cached_get_krs_needing_checkin(user_id, cycle_id, days_threshold):
 @st.dialog("Manage OKR Cycles", width="medium")
 def render_manage_cycles_dialog():
     """Dialog to add/activate/deactivate OKR cycles."""
-    from src.crud import get_all_cycles, create_cycle, update_cycle, delete_cycle
     st.markdown("### Manage OKR Cycles")
 
     cycles = get_all_cycles()
@@ -65,9 +91,11 @@ def render_manage_cycles_dialog():
     else:
         for c in cycles:
             with st.container(border=True):
-                col1, col2 = st.columns([4,1])
+                col1, col2 = st.columns([4, 1])
                 with col1:
-                    st.markdown(f"**{c.title}** — {c.start_date.date()} → {c.end_date.date()}")
+                    st.markdown(
+                        f"**{c.title}** — {c.start_date.date()} → {c.end_date.date()}"
+                    )
                 with col2:
                     if st.button("🗑️", key=f"del_cycle_{c.id}"):
                         try:
@@ -110,10 +138,12 @@ def render_timer_dialog(node_id, username):
     # Use the shared render_timer_content from components
     render_timer_content(node_id, username)
 
+
 @st.dialog("📊 Leadership Dashboard", width="large")
 def render_leadership_dashboard_dialog(username):
     # CSS: Style YOUR EXISTING custom button as a circle (Dialog specific)
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         div[role="dialog"] button[aria-label="Close"] { display: none; }
         div[data-baseweb="modal-backdrop"] { display: none; }
@@ -122,7 +152,9 @@ def render_leadership_dashboard_dialog(username):
         div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
         div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # Header with Close button
     c_head, c_close = st.columns([0.92, 0.08])
@@ -131,7 +163,7 @@ def render_leadership_dashboard_dialog(username):
         if "active_report_mode" in st.session_state:
             del st.session_state.active_report_mode
         st.rerun()
-    
+
     render_leadership_dashboard_content_func = render_leadership_dashboard_content
     from src.ui.components import render_strategy_pulse_content
 
@@ -141,11 +173,13 @@ def render_leadership_dashboard_dialog(username):
     with tab_strat:
         render_strategy_pulse_content(username)
 
+
 @st.dialog("👑 Admin Panel", width="large")
 def render_admin_panel_dialog():
     """Admin-only panel for user management."""
     # CSS: Hide native X and make dialog strictly modal
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         div[role="dialog"] button[aria-label="Close"] { display: none; }
         div[data-baseweb="modal-backdrop"] { display: none; }
@@ -154,8 +188,10 @@ def render_admin_panel_dialog():
         div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
         div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
         </style>
-    """, unsafe_allow_html=True)
-    
+    """,
+        unsafe_allow_html=True,
+    )
+
     # Header with Close button
     c_head, c_close = st.columns([0.92, 0.08])
     c_head.markdown("### User Management")
@@ -163,21 +199,23 @@ def render_admin_panel_dialog():
         if "active_report_mode" in st.session_state:
             del st.session_state.active_report_mode
         st.rerun()
-    
+
     # Require Admin role
     if st.session_state.get("user_role") != "admin":
         st.error("🚫 Access Denied. Admin privileges required.")
         return
-    
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "👥 User List",
-        "➕ Create User",
-        "🏢 Teams",
-        "🗄️ DB Backup",
-        "🔑 Reset Password",
-        "🤖 AI Health",
-    ])
-    
+
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        [
+            "👥 User List",
+            "➕ Create User",
+            "🏢 Teams",
+            "🗄️ DB Backup",
+            "🔑 Reset Password",
+            "🤖 AI Health",
+        ]
+    )
+
     with tab1:
         users = get_all_users()
         if not users:
@@ -188,10 +226,12 @@ def render_admin_panel_dialog():
                     c1, c2, c3, c4 = st.columns([2, 1.5, 1, 1])
                     c1.markdown(f"**{user.display_name}** (`{user.username}`)")
                     c2.caption(f"Role: {user.role.value.title()}")
-                    
+
                     status_color = "🟢" if user.is_active else "🔴"
-                    c3.markdown(f"{status_color} {'Active' if user.is_active else 'Inactive'}")
-                    
+                    c3.markdown(
+                        f"{status_color} {'Active' if user.is_active else 'Inactive'}"
+                    )
+
                     if user.username != "admin":  # Prevent editing the main admin
                         if c4.button("🗑️", key=f"deact_{user.id}", help="Deactivate"):
                             update_user(
@@ -200,15 +240,21 @@ def render_admin_panel_dialog():
                                 actor_username=st.session_state.get("username"),
                             )
                             st.rerun()
-    
+
     with tab2:
         st.markdown("#### Create New User")
         new_username = st.text_input("Username", key="new_username")
         new_display = st.text_input("Display Name", key="new_display")
         new_password = st.text_input("Password", type="password", key="new_password")
-        new_role = st.selectbox("Role", options=["member", "manager", "admin"], key="new_role")
-        require_pw_change = st.checkbox("Require password change on first login", value=True, key="new_require_pw_change")
-        
+        new_role = st.selectbox(
+            "Role", options=["member", "manager", "admin"], key="new_role"
+        )
+        require_pw_change = st.checkbox(
+            "Require password change on first login",
+            value=True,
+            key="new_require_pw_change",
+        )
+
         # Manager assignment (for members) - ID-backed to avoid display-name collisions.
         managers = [u for u in get_all_users() if u.role.value in ["manager", "admin"]]
         manager_option_ids = [None]
@@ -220,17 +266,18 @@ def render_admin_panel_dialog():
             manager_id = int(manager_id)
             manager_option_ids.append(manager_id)
             manager_name = (
-                (manager.display_name or manager.username or f"user_{manager_id}").strip()
-                or f"user_{manager_id}"
+                manager.display_name or manager.username or f"user_{manager_id}"
+            ).strip() or f"user_{manager_id}"
+            manager_labels[manager_id] = (
+                f"{manager_name} (@{manager.username}) | #{manager_id}"
             )
-            manager_labels[manager_id] = f"{manager_name} (@{manager.username}) | #{manager_id}"
         new_manager_id = st.selectbox(
             "Assigned Manager",
             options=manager_option_ids,
             format_func=lambda mid: manager_labels.get(mid, f"User #{mid}"),
             key="new_manager",
         )
-        
+
         # Team assignment
         teams = get_all_teams()
         team_option_ids = [None]
@@ -249,11 +296,13 @@ def render_admin_panel_dialog():
             format_func=lambda tid: team_labels.get(tid, f"Team #{tid}"),
             key="new_team_select",
         )
-        
+
         if st.button("Create User", type="primary"):
             if new_username and new_password:
                 try:
-                    manager_id_val = int(new_manager_id) if new_manager_id is not None else None
+                    manager_id_val = (
+                        int(new_manager_id) if new_manager_id is not None else None
+                    )
                     create_user(
                         username=new_username,
                         password=new_password,
@@ -273,7 +322,7 @@ def render_admin_panel_dialog():
 
     with tab3:
         st.markdown("#### Team Management")
-        
+
         # Create Team
         with st.form("create_team_form"):
             col_t1, col_t2 = st.columns([3, 1])
@@ -289,9 +338,9 @@ def render_admin_panel_dialog():
                         st.rerun()
                     except Exception as e:
                         st.error(f"Error: {e}")
-        
+
         st.markdown("---")
-        
+
         # List Teams
         teams_list = get_all_teams()
         if not teams_list:
@@ -300,7 +349,9 @@ def render_admin_panel_dialog():
             for team in teams_list:
                 with st.expander(f"🏢 {team.name}"):
                     # Rename
-                    new_name = st.text_input("Name", value=team.name, key=f"team_name_{team.id}")
+                    new_name = st.text_input(
+                        "Name", value=team.name, key=f"team_name_{team.id}"
+                    )
                     if st.button("Update Name", key=f"upd_team_{team.id}"):
                         update_team(
                             team.id,
@@ -318,7 +369,7 @@ def render_admin_panel_dialog():
                             st.text(f"- {tm.display_name} ({tm.username})")
                     else:
                         st.caption("No members assigned.")
-                    
+
                     if st.button("🗑️ Delete Team", key=f"del_team_{team.id}"):
                         try:
                             delete_team(
@@ -377,8 +428,8 @@ def render_admin_panel_dialog():
                 try:
                     backup_bytes = export_database_backup()
                     st.session_state["admin_backup_bytes"] = backup_bytes
-                    st.session_state["admin_backup_created_at"] = utc_now_naive().strftime(
-                        "%Y-%m-%d_%H-%M-%S"
+                    st.session_state["admin_backup_created_at"] = (
+                        utc_now_naive().strftime("%Y-%m-%d_%H-%M-%S")
                     )
                     st.success("Backup file prepared.")
                 except Exception as exc:
@@ -443,7 +494,7 @@ def render_admin_panel_dialog():
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Backup import failed: {exc}")
-    
+
     with tab5:
         st.markdown("#### Reset Password")
         user_list_reset = get_all_users()
@@ -456,11 +507,15 @@ def render_admin_panel_dialog():
                 continue
             user_id = int(user_id)
             reset_user_ids.append(user_id)
-            display_name = (user.display_name or user.username or f"user_{user_id}").strip()
+            display_name = (
+                user.display_name or user.username or f"user_{user_id}"
+            ).strip()
             if not display_name:
                 display_name = f"user_{user_id}"
             reset_user_names[user_id] = display_name
-            reset_user_labels[user_id] = f"{display_name} (@{user.username}) | #{user_id}"
+            reset_user_labels[user_id] = (
+                f"{display_name} (@{user.username}) | #{user_id}"
+            )
         if not reset_user_ids:
             st.info("No users available for password reset.")
         else:
@@ -471,9 +526,13 @@ def render_admin_panel_dialog():
                 key="reset_user",
             )
             new_pw = st.text_input("New Password", type="password", key="new_pw")
-            confirm_pw = st.text_input("Confirm Password", type="password", key="confirm_pw")
-            force_change = st.checkbox("Require change at next login", value=False, key="reset_force_change")
-            
+            confirm_pw = st.text_input(
+                "Confirm Password", type="password", key="confirm_pw"
+            )
+            force_change = st.checkbox(
+                "Require change at next login", value=False, key="reset_force_change"
+            )
+
             if st.button("Reset Password", type="primary", key="reset_pw_btn"):
                 if new_pw and new_pw == confirm_pw:
                     u_id = int(selected_user_id)
@@ -484,7 +543,9 @@ def render_admin_panel_dialog():
                         actor_username=st.session_state.get("username"),
                     ):
                         selected_display = reset_user_names.get(u_id, f"User #{u_id}")
-                        st.success(f"Password for '{selected_display}' reset successfully!")
+                        st.success(
+                            f"Password for '{selected_display}' reset successfully!"
+                        )
                     else:
                         st.error("Failed to reset password.")
                 elif new_pw != confirm_pw:
@@ -528,7 +589,9 @@ def render_admin_panel_dialog():
             )
             st.rerun()
 
-        if c_probe_2.button("Run Live Probe", key="admin_ai_check_live", type="primary"):
+        if c_probe_2.button(
+            "Run Live Probe", key="admin_ai_check_live", type="primary"
+        ):
             with st.spinner("Running live AI provider probe..."):
                 st.session_state["admin_ai_health_report"] = run_ai_health_check(
                     live_probe=True
@@ -556,10 +619,12 @@ def render_admin_panel_dialog():
                 key="admin_ai_health_download",
             )
 
+
 @st.dialog("🔄 Weekly Ritual", width="large")
 def render_weekly_ritual_dialog(username):
     # CSS: Style Custom Close Button
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         div[role="dialog"] button[aria-label="Close"] { display: none; }
         div[data-baseweb="modal-backdrop"] { display: none; }
@@ -568,7 +633,9 @@ def render_weekly_ritual_dialog(username):
         div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
         div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # Header with Close button
     c_head, c_close = st.columns([0.92, 0.08])
@@ -579,7 +646,7 @@ def render_weekly_ritual_dialog(username):
         if "ritual_step" in st.session_state:
             del st.session_state.ritual_step
         st.rerun()
-    
+
     cycle_id = st.session_state.get("active_cycle_id")
     if not cycle_id:
         st.warning("Please select a cycle first.")
@@ -588,34 +655,40 @@ def render_weekly_ritual_dialog(username):
     # Initialize ritual state
     if "ritual_step" not in st.session_state:
         st.session_state.ritual_step = 1
-    
+
     step = st.session_state.ritual_step
-    
+
     # Progress Stepper
     c1, c2, c3 = st.columns(3)
-    c1.markdown(f"**1. Review Week** {'✅' if step > 1 else '🔵' if step==1 else '⚪'}")
-    c2.markdown(f"**2. Update KRs** {'✅' if step > 2 else '🔵' if step==2 else '⚪'}")
-    c3.markdown(f"**3. Plan Next** {'✅' if step > 3 else '🔵' if step==3 else '⚪'}")
+    c1.markdown(
+        f"**1. Review Week** {'✅' if step > 1 else '🔵' if step == 1 else '⚪'}"
+    )
+    c2.markdown(
+        f"**2. Update KRs** {'✅' if step > 2 else '🔵' if step == 2 else '⚪'}"
+    )
+    c3.markdown(f"**3. Plan Next** {'✅' if step > 3 else '🔵' if step == 3 else '⚪'}")
     st.markdown("---")
 
     # === STEP 1: REVIEW WEEK ===
     if step == 1:
         st.markdown("#### 📅 Week in Review")
-        
+
         # Calculate stats for the last 7 days
         end_date = utc_now_naive()
         start_date = end_date - timedelta(days=7)
-        start_ts = int(start_date.timestamp() * 1000)
-        
+        int(start_date.timestamp() * 1000)
+
         # Collect work logs
         total_minutes = 0
         work_logs_text = []
-        
+
         # Collect work logs for the current user via CRUD helper
         logs = []
         current_user_obj = _cached_get_user_by_username(username)
         if current_user_obj:
-            logs = _cached_get_work_logs_by_range(current_user_obj.id, start_date, end_date)
+            logs = _cached_get_work_logs_by_range(
+                current_user_obj.id, start_date, end_date
+            )
 
         for wl in logs:
             mins = wl.duration_minutes or 0
@@ -623,49 +696,64 @@ def render_weekly_ritual_dialog(username):
             # Try to get a meaningful title from the task / KR
             node_title = None
             try:
-                if wl.task and getattr(wl.task, 'title', None):
+                if wl.task and getattr(wl.task, "title", None):
                     node_title = wl.task.title
-                elif wl.task and wl.task.key_result and getattr(wl.task.key_result, 'title', None):
+                elif (
+                    wl.task
+                    and wl.task.key_result
+                    and getattr(wl.task.key_result, "title", None)
+                ):
                     node_title = wl.task.key_result.title
             except (AttributeError, TypeError):
                 node_title = None
 
-            node_title = node_title or 'Work'
-            summary = getattr(wl, 'summary', None) or getattr(wl, 'note', None) or 'Work'
+            node_title = node_title or "Work"
+            summary = (
+                getattr(wl, "summary", None) or getattr(wl, "note", None) or "Work"
+            )
             work_logs_text.append(f"- {node_title}: {summary} ({int(mins)}m)")
-        
+
         # AI Summary Generation
         if "ritual_summary" not in st.session_state:
             if st.button("✨ Generate AI Summary", type="primary"):
                 with st.spinner("Analyzing your week..."):
-                     from src.services.ai_service import generate_weekly_summary
-                     stats = {
-                         "total_minutes": total_minutes,
-                         "tasks_completed": 0,
-                         "krs_updated": 0,
-                         "work_logs_text": "\n".join(work_logs_text[:50])
-                     }
-                     res = generate_weekly_summary(username, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"), stats)
-                     if "error" not in res:
-                         st.session_state.ritual_summary = res
-                         st.rerun()
-                     else:
-                         st.error(res["error"])
-        
+                    from src.services.ai_service import generate_weekly_summary
+
+                    stats = {
+                        "total_minutes": total_minutes,
+                        "tasks_completed": 0,
+                        "krs_updated": 0,
+                        "work_logs_text": "\n".join(work_logs_text[:50]),
+                    }
+                    res = generate_weekly_summary(
+                        username,
+                        start_date.strftime("%Y-%m-%d"),
+                        end_date.strftime("%Y-%m-%d"),
+                        stats,
+                    )
+                    if "error" not in res:
+                        st.session_state.ritual_summary = res
+                        st.rerun()
+                    else:
+                        st.error(res["error"])
+
         # Display Summary
         summary = st.session_state.get("ritual_summary")
         if summary:
             st.markdown(summary.get("summary_markdown"))
-            for h in summary.get("highlights", []): st.success(h)
+            for h in summary.get("highlights", []):
+                st.success(h)
             st.info(f"💡 **Focus Analysis:** {summary.get('focus_analysis')}")
-        
+
         st.markdown(f"**Total Focus Time:** {format_time(total_minutes)} this week.")
-        
+
         # --- RETROSPECTIVE INPUT ---
         st.markdown("---")
         st.markdown("#### 📝 Your Retrospective")
-        st.caption("Reflect on your week. What went well? What blocked you? This is visible to your manager.")
-        
+        st.caption(
+            "Reflect on your week. What went well? What blocked you? This is visible to your manager."
+        )
+
         # Check for existing retro for this week
         # We define "this week" as the start_date calculated above
         current_user_obj = _cached_get_user_by_username(username)
@@ -675,7 +763,7 @@ def render_weekly_ritual_dialog(username):
             # Using exact match on start_date might be tricky if calc differs slightly.
             # Let's fetch all and find one close? Or just use the exact start_date we just calculated.
             # For simplicity, we use the calculated start_date (7 days ago) as the anchor.
-            # Better: Fetch latest and see if it's recent? 
+            # Better: Fetch latest and see if it's recent?
             # Let's use get_user_retrospectives and check date.
             past_retros = _cached_get_user_retrospectives(current_user_obj.id, cycle_id)
             for r in past_retros:
@@ -684,18 +772,22 @@ def render_weekly_ritual_dialog(username):
                 if r.week_start_date.date() == start_date.date():
                     existing_retro = r
                     break
-        
+
         default_retro = existing_retro.content if existing_retro else ""
-        retro_input = st.text_area("Your Thoughts", value=default_retro, height=150, key="retro_input_area")
-        
+        retro_input = st.text_area(
+            "Your Thoughts", value=default_retro, height=150, key="retro_input_area"
+        )
+
         # === EXPERIMENTS REVIEWED THIS WEEK ===
         st.markdown("---")
         st.markdown("#### 🔬 Experiments Reviewed This Week")
-        st.caption("Record decisions for experiments that concluded or are still running.")
-        
+        st.caption(
+            "Record decisions for experiments that concluded or are still running."
+        )
+
         window_end = start_date + timedelta(days=7)
         exp_review_key = f"retro_exps_{cycle_id}_{start_date.isoformat()}"
-        
+
         if exp_review_key not in st.session_state:
             try:
                 st.session_state[exp_review_key] = list_experiments_for_retro_window(
@@ -706,29 +798,35 @@ def render_weekly_ritual_dialog(username):
                 )
             except PermissionError:
                 st.session_state[exp_review_key] = []
-        
+
         review_experiments = st.session_state.get(exp_review_key, [])
-        
+
         if review_experiments:
             for exp in review_experiments:
-                status_bad = {"PLANNED": "⚪", "RUNNING": "🟢", "DECIDED": "🔵"}.get(exp.status.value, "⚪")
+                status_bad = {"PLANNED": "⚪", "RUNNING": "🟢", "DECIDED": "🔵"}.get(
+                    exp.status.value, "⚪"
+                )
                 with st.container(border=True):
-                    st.markdown(f"**{status_bad} {exp.hypothesis[:60]}{'...' if len(exp.hypothesis) > 60 else ''}**")
-                    st.caption(f"Status: {exp.status.value} | Created: {exp.created_at.strftime('%Y-%m-%d')}")
-                    
+                    st.markdown(
+                        f"**{status_bad} {exp.hypothesis[:60]}{'...' if len(exp.hypothesis) > 60 else ''}**"
+                    )
+                    st.caption(
+                        f"Status: {exp.status.value} | Created: {exp.created_at.strftime('%Y-%m-%d')}"
+                    )
+
                     dec_key = f"retro_dec_{exp.id}"
                     rat_key = f"retro_rat_{exp.id}"
-                    
+
                     c_dec, c_rat = st.columns([1, 2])
                     with c_dec:
-                        decision = st.selectbox(
+                        st.selectbox(
                             "Decision",
                             options=["", "ADOPT", "REVERT", "ITERATE", "UNKNOWN"],
                             key=dec_key,
                             label_visibility="collapsed",
                         )
                     with c_rat:
-                        rationale = st.text_input(
+                        st.text_input(
                             "Rationale (optional)",
                             key=rat_key,
                             label_visibility="collapsed",
@@ -736,7 +834,7 @@ def render_weekly_ritual_dialog(username):
                         )
         else:
             st.info("No experiments to review this week.")
-        
+
         col_r1, col_r2 = st.columns([1, 4])
         if col_r1.button("Next: Update KRs ➡️", type="primary"):
             # Save Retrospective
@@ -750,7 +848,7 @@ def render_weekly_ritual_dialog(username):
                     actor_username=username,
                 )
                 st.toast("Retrospective Saved!")
-            
+
             # Save experiment outcomes (don't fail retro if one outcome fails)
             if saved_retro and review_experiments:
                 for exp in review_experiments:
@@ -758,7 +856,7 @@ def render_weekly_ritual_dialog(username):
                     rat_key = f"retro_rat_{exp.id}"
                     decision_val = st.session_state.get(dec_key, "")
                     rationale_val = st.session_state.get(rat_key, "")
-                    
+
                     if decision_val:
                         try:
                             dec_enum = ExperimentDecision(decision_val)
@@ -777,27 +875,34 @@ def render_weekly_ritual_dialog(username):
                                     actor_username=username,
                                 )
                         except Exception as e:
-                            st.warning(f"Could not save outcome for experiment {exp.id}: {e}")
-            
+                            st.warning(
+                                f"Could not save outcome for experiment {exp.id}: {e}"
+                            )
+
             st.session_state.ritual_step = 2
             st.rerun()
 
     # === STEP 2: UPDATE KRs ===
     elif step == 2:
         st.markdown("#### 📊 Key Result Updates")
-        needing_update = _cached_get_krs_needing_checkin(user_id=username, cycle_id=cycle_id, days_threshold=7)
-        
+        needing_update = _cached_get_krs_needing_checkin(
+            user_id=username, cycle_id=cycle_id, days_threshold=7
+        )
+
         if not needing_update:
             st.success("🎉 All Key Results are up to date!")
         else:
             for i, kr in enumerate(needing_update):
-                with st.expander(f"📊 {kr.title}", expanded=(i==0)):
-                    st.caption(f"Current: {kr.current_value} | Target: {kr.target_value}")
-                    
+                with st.expander(f"📊 {kr.title}", expanded=(i == 0)):
+                    st.caption(
+                        f"Current: {kr.current_value} | Target: {kr.target_value}"
+                    )
+
                     ai_key = f"ai_sugg_{kr.id}"
                     if st.button("✨ Get AI Estimate", key=f"btn_ai_{kr.id}"):
                         with st.spinner("Analyzing..."):
                             from src.services.ai_service import analyze_node
+
                             res = analyze_node(
                                 kr.id,
                                 "KEY_RESULT",
@@ -807,38 +912,46 @@ def render_weekly_ritual_dialog(username):
                                 st.session_state[ai_key] = res.get("analysis", {})
                             else:
                                 st.error(res["error"])
-                    
+
                     sugg = st.session_state.get(ai_key)
                     if sugg:
-                        st.info(f"**AI Recommendation:** {sugg['suggested_current_value']}")
+                        st.info(
+                            f"**AI Recommendation:** {sugg['suggested_current_value']}"
+                        )
                         if st.button("Apply Suggestion", key=f"apply_{kr.id}"):
-                            st.session_state[f"val_{kr.id}"] = float(sugg['suggested_current_value'])
+                            st.session_state[f"val_{kr.id}"] = float(
+                                sugg["suggested_current_value"]
+                            )
                             st.rerun()
 
                     # === LEARNING LOOP: Variation Classification ===
                     st.markdown("---")
                     st.markdown("**🔬 Variation Classification**")
-                    st.caption("Every check-in must classify what type of variation explains this result.")
-                    
+                    st.caption(
+                        "Every check-in must classify what type of variation explains this result."
+                    )
+
                     var_type_key = f"var_type_{kr.id}"
                     exp_cache_key = f"active_exps_{kr.id}"
-                    
+
                     if var_type_key not in st.session_state:
                         st.session_state[var_type_key] = "Common Cause"
-                    
+
                     variation = st.radio(
                         "What type of variation?",
                         ["Common Cause", "Special Cause"],
                         key=var_type_key,
                         horizontal=True,
-                        help="Common cause = system behavior we can experiment on. Special cause = exceptional one-time event."
+                        help="Common cause = system behavior we can experiment on. Special cause = exceptional one-time event.",
                     )
-                    
+
                     experiment_id_to_link = None
                     special_cause_text = None
-                    
+
                     if variation == "Special Cause":
-                        st.info("📍 Special causes are exceptional events. Describe what happened.")
+                        st.info(
+                            "📍 Special causes are exceptional events. Describe what happened."
+                        )
                         special_cause_text = st.text_input(
                             "Special cause note (required, min 5 chars)",
                             placeholder="e.g., Customer outage, team member emergency",
@@ -846,19 +959,23 @@ def render_weekly_ritual_dialog(username):
                             max_chars=200,
                         )
                     else:
-                        st.info("🔬 Common causes reflect system behavior. Link to an active experiment if one exists.")
-                        
+                        st.info(
+                            "🔬 Common causes reflect system behavior. Link to an active experiment if one exists."
+                        )
+
                         # Cache experiments for this dialog session
                         if exp_cache_key not in st.session_state:
                             try:
-                                st.session_state[exp_cache_key] = get_active_experiments_for_kr(
-                                    kr.id, actor_username=username
+                                st.session_state[exp_cache_key] = (
+                                    get_active_experiments_for_kr(
+                                        kr.id, actor_username=username
+                                    )
                                 )
                             except PermissionError:
                                 st.session_state[exp_cache_key] = []
-                        
+
                         active_exps = st.session_state.get(exp_cache_key, [])
-                        
+
                         if active_exps:
                             exp_ids = [None]
                             exp_labels = {None: "None (no experiment this week)"}
@@ -898,25 +1015,42 @@ def render_weekly_ritual_dialog(username):
                             )
                         else:
                             st.warning("No active experiments for this KR.")
-                            
+
                             # Inline "Start Experiment" toggle
                             show_exp_form_key = f"show_exp_form_{kr.id}"
-                            if st.button("🔬 Start New Experiment", key=f"btn_new_exp_{kr.id}"):
+                            if st.button(
+                                "🔬 Start New Experiment", key=f"btn_new_exp_{kr.id}"
+                            ):
                                 st.session_state[show_exp_form_key] = True
-                            
+
                             if st.session_state.get(show_exp_form_key):
                                 with st.form(f"new_exp_form_{kr.id}"):
                                     st.markdown("**New Experiment**")
-                                    new_hyp = st.text_input("Hypothesis *", placeholder="If we do X, then Y will improve")
-                                    new_change = st.text_area("Change Description *", placeholder="What specific change will we make?")
-                                    
+                                    new_hyp = st.text_input(
+                                        "Hypothesis *",
+                                        placeholder="If we do X, then Y will improve",
+                                    )
+                                    new_change = st.text_area(
+                                        "Change Description *",
+                                        placeholder="What specific change will we make?",
+                                    )
+
                                     c_dir, c_size = st.columns(2)
                                     with c_dir:
-                                        exp_dir = st.selectbox("Expected Direction", ["UP", "DOWN"])
+                                        exp_dir = st.selectbox(
+                                            "Expected Direction", ["UP", "DOWN"]
+                                        )
                                     with c_size:
-                                        exp_size = st.number_input("Expected Effect Size", min_value=0.0, value=10.0, step=5.0)
-                                    
-                                    if st.form_submit_button("Create & Start Experiment"):
+                                        exp_size = st.number_input(
+                                            "Expected Effect Size",
+                                            min_value=0.0,
+                                            value=10.0,
+                                            step=5.0,
+                                        )
+
+                                    if st.form_submit_button(
+                                        "Create & Start Experiment"
+                                    ):
                                         if new_hyp and new_change:
                                             try:
                                                 new_exp = create_experiment(
@@ -925,33 +1059,51 @@ def render_weekly_ritual_dialog(username):
                                                     hypothesis=new_hyp,
                                                     change_description=new_change,
                                                     actor_username=username,
-                                                    expected_effect_direction=ExpectedEffectDirection(exp_dir),
+                                                    expected_effect_direction=ExpectedEffectDirection(
+                                                        exp_dir
+                                                    ),
                                                     expected_effect_size=exp_size,
                                                 )
                                                 # Immediately set to RUNNING
-                                                update_experiment(new_exp.id, actor_username=username, status=ExperimentStatus.RUNNING)
-                                                
+                                                update_experiment(
+                                                    new_exp.id,
+                                                    actor_username=username,
+                                                    status=ExperimentStatus.RUNNING,
+                                                )
+
                                                 # Clear cache
                                                 if exp_cache_key in st.session_state:
                                                     del st.session_state[exp_cache_key]
                                                 del st.session_state[show_exp_form_key]
-                                                st.success("Experiment created and running!")
+                                                st.success(
+                                                    "Experiment created and running!"
+                                                )
                                                 st.rerun()
                                             except PermissionError as e:
                                                 st.error(str(e))
                                             except ValueError as e:
                                                 st.error(str(e))
                                         else:
-                                            st.error("Hypothesis and change description are required.")
+                                            st.error(
+                                                "Hypothesis and change description are required."
+                                            )
 
                     st.markdown("---")
                     with st.form(f"checkin_form_{kr.id}"):
                         c1, c2 = st.columns(2)
                         with c1:
-                            new_val_in = st.number_input("New Value", value=st.session_state.get(f"val_{kr.id}", float(kr.current_value)), key=f"inp_val_{kr.id}")
+                            new_val_in = st.number_input(
+                                "New Value",
+                                value=st.session_state.get(
+                                    f"val_{kr.id}", float(kr.current_value)
+                                ),
+                                key=f"inp_val_{kr.id}",
+                            )
                         with c2:
-                            conf = st.slider("Confidence (0-10)", 0, 10, 5, key=f"conf_{kr.id}")
-                        
+                            conf = st.slider(
+                                "Confidence (0-10)", 0, 10, 5, key=f"conf_{kr.id}"
+                            )
+
                         comment = st.text_area("What changed?", key=f"comm_{kr.id}")
                         if st.form_submit_button("✅ Update"):
                             try:
@@ -961,7 +1113,9 @@ def render_weekly_ritual_dialog(username):
                                     conf,
                                     comment,
                                     actor_username=username,
-                                    variation_type=VariationType.COMMON_CAUSE if variation == "Common Cause" else VariationType.SPECIAL_CAUSE,
+                                    variation_type=VariationType.COMMON_CAUSE
+                                    if variation == "Common Cause"
+                                    else VariationType.SPECIAL_CAUSE,
                                     special_cause_note=special_cause_text,
                                     experiment_id=experiment_id_to_link,
                                 )
@@ -971,28 +1125,34 @@ def render_weekly_ritual_dialog(username):
                             except ValueError as e:
                                 st.error(str(e))
                                 return
-                            if ai_key in st.session_state: del st.session_state[ai_key]
+                            if ai_key in st.session_state:
+                                del st.session_state[ai_key]
                             # Clear experiment cache on successful check-in
                             if exp_cache_key in st.session_state:
                                 del st.session_state[exp_cache_key]
                             st.success("Check-in recorded!")
                             st.rerun()
-                            
+
         col_nav_2 = st.columns(2)
         if col_nav_2[0].button("⬅️ Back"):
-            st.session_state.ritual_step = 1; st.rerun()
+            st.session_state.ritual_step = 1
+            st.rerun()
         if col_nav_2[1].button("Next: Plan Week ➡️", type="primary"):
-            st.session_state.ritual_step = 3; st.rerun()
+            st.session_state.ritual_step = 3
+            st.rerun()
 
     # === STEP 3: PLAN NEXT WEEK ===
     elif step == 3:
         st.markdown("#### 🎯 Planning Next Week")
         with st.form("planning_form"):
-            p1 = st.text_input("Priority #1"); p2 = st.text_input("Priority #2"); p3 = st.text_input("Priority #3")
+            p1 = st.text_input("Priority #1")
+            p2 = st.text_input("Priority #2")
+            p3 = st.text_input("Priority #3")
             if st.form_submit_button("🚀 Finish Ritual"):
                 user_obj_p = _cached_get_user_by_username(username)
                 if user_obj_p:
-                    sd = utc_now_naive(); ed = sd + timedelta(days=7)
+                    sd = utc_now_naive()
+                    ed = sd + timedelta(days=7)
                     create_weekly_plan(
                         user_obj_p.id,
                         sd,
@@ -1004,17 +1164,20 @@ def render_weekly_ritual_dialog(username):
                     )
                 st.toast("Weekly Ritual Complete!")
                 del st.session_state.ritual_step
-                if "ritual_summary" in st.session_state: del st.session_state.ritual_summary
+                if "ritual_summary" in st.session_state:
+                    del st.session_state.ritual_summary
                 st.rerun()
         if st.button("⬅️ Back", key="ritual_back_3"):
-            st.session_state.ritual_step = 2; st.rerun()
+            st.session_state.ritual_step = 2
+            st.rerun()
+
 
 @st.dialog("Create New Task", width="medium")
 def render_create_task_dialog(parent_id, username):
     # 'data' removed
-    from src.crud import create_task, get_user_by_username, get_team_members
+    from src.crud import create_task, get_team_members
     from datetime import datetime
-    
+
     st.caption("Define your task and assign it to team members.")
     with st.form("create_task_form"):
         title = st.text_input("Task Title", placeholder="e.g. Draft Initial Report")
@@ -1025,12 +1188,12 @@ def render_create_task_dialog(parent_id, username):
             due_date = st.date_input("Due Date", value=None)
 
         desc = st.text_area("Description", height=100)
-        
+
         # Assignee Logic
         assignee_id = None
         # Default assignee is creator (resolved to User.id).
         user_role = st.session_state.get("user_role")
-        
+
         if user_role in ["manager", "admin"]:
             # Manager can assign to team
             user_obj = _cached_get_user_by_username(username)
@@ -1044,13 +1207,17 @@ def render_create_task_dialog(parent_id, username):
                         continue
                     member_id = int(member_id)
                     member_option_ids.append(member_id)
-                    display_name = member.display_name or member.username or f"user_{member_id}"
+                    display_name = (
+                        member.display_name or member.username or f"user_{member_id}"
+                    )
                     member_option_labels[member_id] = (
                         f"{display_name} (@{member.username}) | #{member_id}"
                     )
                 if user_obj.id is not None:
                     owner_id = int(user_obj.id)
-                    owner_name = user_obj.display_name or user_obj.username or f"user_{owner_id}"
+                    owner_name = (
+                        user_obj.display_name or user_obj.username or f"user_{owner_id}"
+                    )
                     member_option_labels[owner_id] = (
                         f"{owner_name} (@{user_obj.username}) (Me) | #{owner_id}"
                     )
@@ -1061,7 +1228,9 @@ def render_create_task_dialog(parent_id, username):
                     selected_member_id = st.selectbox(
                         "Assign To",
                         options=member_option_ids,
-                        format_func=lambda uid: member_option_labels.get(uid, f"User #{uid}"),
+                        format_func=lambda uid: member_option_labels.get(
+                            uid, f"User #{uid}"
+                        ),
                     )
                     assignee_id = int(selected_member_id)
         else:
@@ -1069,11 +1238,20 @@ def render_create_task_dialog(parent_id, username):
             assignee_id = st.session_state.get("user_id")
 
         if st.form_submit_button("Create Task", type="primary"):
-            if not title: st.error("Task title is required.")
+            if not title:
+                st.error("Task title is required.")
             else:
-                sd_ts = datetime.combine(start_date, datetime.min.time()) if start_date else None
-                dd_ts = datetime.combine(due_date, datetime.max.time()) if due_date else None
-                
+                sd_ts = (
+                    datetime.combine(start_date, datetime.min.time())
+                    if start_date
+                    else None
+                )
+                dd_ts = (
+                    datetime.combine(due_date, datetime.max.time())
+                    if due_date
+                    else None
+                )
+
                 # parent_id may be a typed ref like 'key_result_1' — extract numeric id
                 try:
                     if isinstance(parent_id, str) and "_" in parent_id:
@@ -1100,13 +1278,16 @@ def render_create_task_dialog(parent_id, username):
                     st.error(str(e))
                     return
                 st.success("Task created!")
-                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+                if "add_mode_type" in st.session_state:
+                    del st.session_state["add_mode_type"]
                 st.rerun()
+
 
 @st.dialog("Create New Goal", width="medium")
 def render_create_goal_dialog(username):
     # Hide default modal close button and add a custom close at top-right
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         div[role="dialog"] { position: relative; }
         div[role="dialog"] button[aria-label="Close"] { display: none; }
@@ -1134,12 +1315,16 @@ def render_create_goal_dialog(username):
             box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
         }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
     # Header with Close button (pinned top-right)
     c_head, c_close = st.columns([0.92, 0.08])
     if c_close.button("", icon=":material/close:", key="close_create_goal"):
-        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
-        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
+        if "add_mode_type" in st.session_state:
+            del st.session_state["add_mode_type"]
+        if "add_mode_parent" in st.session_state:
+            del st.session_state["add_mode_parent"]
         st.rerun()
     cycle_id = st.session_state.get("active_cycle_id")
 
@@ -1148,9 +1333,10 @@ def render_create_goal_dialog(username):
     with st.form("create_goal_form"):
         title = st.text_input("Goal Title", placeholder="e.g. Expand Market Presence")
         desc = st.text_area("Description", height=100)
-        
+
         if st.form_submit_button("Create Goal", type="primary"):
-            if not title: st.error("Goal title is required.")
+            if not title:
+                st.error("Goal title is required.")
             else:
                 try:
                     create_goal(
@@ -1164,13 +1350,16 @@ def render_create_goal_dialog(username):
                     st.error(str(e))
                     return
                 st.success("Goal created!")
-                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+                if "add_mode_type" in st.session_state:
+                    del st.session_state["add_mode_type"]
                 st.rerun()
+
 
 @st.dialog("Create New Objective", width="medium")
 def render_create_objective_dialog(parent_id):
     # Hide default modal close button and add a custom close at top-right
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         div[role="dialog"] { position: relative; }
         div[role="dialog"] button[aria-label="Close"] { display: none; }
@@ -1195,19 +1384,27 @@ def render_create_objective_dialog(parent_id):
             background-color: white !important;
         }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
     # Header with Close button (pinned top-right)
     c_head, c_close = st.columns([0.92, 0.08])
-    if c_close.button("", icon=":material/close:", key=f"close_create_objective_{parent_id}"):
-        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
-        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
+    if c_close.button(
+        "", icon=":material/close:", key=f"close_create_objective_{parent_id}"
+    ):
+        if "add_mode_type" in st.session_state:
+            del st.session_state["add_mode_type"]
+        if "add_mode_parent" in st.session_state:
+            del st.session_state["add_mode_parent"]
         st.rerun()
     st.caption("Measurable objective to achieve the parent goal.")
 
     with st.form("create_objective_form"):
-        title = st.text_input("Objective Title", placeholder="e.g. Increase conversion rate by 20%")
+        title = st.text_input(
+            "Objective Title", placeholder="e.g. Increase conversion rate by 20%"
+        )
         desc = st.text_area("Description", height=100)
-        
+
         if st.form_submit_button("Create Objective", type="primary"):
             if not title:
                 st.error("Objective title is required.")
@@ -1233,13 +1430,16 @@ def render_create_objective_dialog(parent_id):
                     st.error(str(e))
                     return
                 st.success("Objective created!")
-                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+                if "add_mode_type" in st.session_state:
+                    del st.session_state["add_mode_type"]
                 st.rerun()
+
 
 @st.dialog("Create New Key Result", width="medium")
 def render_create_kr_dialog(parent_id):
     # Hide default modal close button and add a custom close at top-right
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         div[role="dialog"] { position: relative; }
         div[role="dialog"] button[aria-label="Close"] { display: none; }
@@ -1264,24 +1464,30 @@ def render_create_kr_dialog(parent_id):
             background-color: white !important;
         }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
     # Header with Close button (pinned top-right)
     c_head, c_close = st.columns([0.92, 0.08])
     if c_close.button("", icon=":material/close:", key=f"close_create_kr_{parent_id}"):
-        if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
-        if "add_mode_parent" in st.session_state: del st.session_state["add_mode_parent"]
+        if "add_mode_type" in st.session_state:
+            del st.session_state["add_mode_type"]
+        if "add_mode_parent" in st.session_state:
+            del st.session_state["add_mode_parent"]
         st.rerun()
     st.caption("Specific, time-bound metric to measure success.")
 
     with st.form("create_kr_form"):
-        title = st.text_input("Key Result Title", placeholder="e.g. 10,000 New Active Users")
+        title = st.text_input(
+            "Key Result Title", placeholder="e.g. 10,000 New Active Users"
+        )
         desc = st.text_area("Description", height=100)
         col1, col2 = st.columns(2)
         with col1:
             target = st.number_input("Target Value", value=100.0)
         with col2:
             unit = st.text_input("Unit", value="%")
-            
+
         if st.form_submit_button("Create Key Result", type="primary"):
             if not title:
                 st.error("Key Result title is required.")
@@ -1309,23 +1515,27 @@ def render_create_kr_dialog(parent_id):
                     st.error(str(e))
                     return
                 st.success("Key Result created!")
-                if "add_mode_type" in st.session_state: del st.session_state["add_mode_type"]
+                if "add_mode_type" in st.session_state:
+                    del st.session_state["add_mode_type"]
                 st.rerun()
+
 
 @st.dialog("📊 Weekly Report", width="large")
 def render_weekly_report_dialog(username):
     render_report_content(username, "Weekly")
 
+
 @st.dialog("📅 Daily Report", width="large")
 def render_daily_report_dialog(username):
     render_report_content(username, "Daily")
+
 
 @st.dialog("Inspect & Edit", width="large")
 def render_inspector_dialog(node_id, username):
     # Accept typed reference like 'task_12' and parse it, else auto-detect
     from src.crud import get_session_context
     from src.models import Goal, Objective, KeyResult, Task
-    
+
     # Parse typed ref if provided
     raw_id = node_id
     node_type = None
@@ -1336,23 +1546,31 @@ def render_inspector_dialog(node_id, username):
             raw_id = int(parts[-1])
         except (TypeError, ValueError):
             raw_id = node_id
-        if tab == "goal": node_type = "GOAL"
-        elif tab == "objective": node_type = "OBJECTIVE"
-        elif tab in ("key_result","keyresult"): node_type = "KEY_RESULT"
-        elif tab == "task": node_type = "TASK"
-    
+        if tab == "goal":
+            node_type = "GOAL"
+        elif tab == "objective":
+            node_type = "OBJECTIVE"
+        elif tab in ("key_result", "keyresult"):
+            node_type = "KEY_RESULT"
+        elif tab == "task":
+            node_type = "TASK"
+
     # Auto-detect if unknown
     with get_session_context() as session:
         if node_type is None:
-            if session.get(Task, raw_id): node_type = "TASK"
-            elif session.get(KeyResult, raw_id): node_type = "KEY_RESULT"
-            elif session.get(Objective, raw_id): node_type = "OBJECTIVE"
-            elif session.get(Goal, raw_id): node_type = "GOAL"
-    
+            if session.get(Task, raw_id):
+                node_type = "TASK"
+            elif session.get(KeyResult, raw_id):
+                node_type = "KEY_RESULT"
+            elif session.get(Objective, raw_id):
+                node_type = "OBJECTIVE"
+            elif session.get(Goal, raw_id):
+                node_type = "GOAL"
+
     if not node_type:
         st.error(f"Node {node_id} not found")
         return
-    
+
     render_inspector_content(raw_id, node_type, username)
 
 
@@ -1361,30 +1579,44 @@ def render_mindmap_dialog(node_id):
     """Render a simple mindmap graph for the given SQL node id."""
     from src.database import get_session_context
     from src.models import Goal, Objective, KeyResult, Task
-    from src.ui.components import build_graph_from_node
     from streamlit_agraph import agraph, Config
     from sqlalchemy.orm import selectinload
 
     # Load the SQL object with its children eagerly inside a session to avoid DetachedInstanceError
     from sqlmodel import select
+
     obj = None
     with get_session_context() as session:
         try:
             # Try Goal with objectives->krs->tasks
-            stmt = select(Goal).where(Goal.id == node_id).options(
-                selectinload(Goal.objectives).selectinload(Objective.key_results).selectinload(KeyResult.tasks)
+            stmt = (
+                select(Goal)
+                .where(Goal.id == node_id)
+                .options(
+                    selectinload(Goal.objectives)
+                    .selectinload(Objective.key_results)
+                    .selectinload(KeyResult.tasks)
+                )
             )
             obj = session.exec(stmt).first()
             if not obj:
                 # Try Objective with key_results->tasks
-                stmt = select(Objective).where(Objective.id == node_id).options(
-                    selectinload(Objective.key_results).selectinload(KeyResult.tasks)
+                stmt = (
+                    select(Objective)
+                    .where(Objective.id == node_id)
+                    .options(
+                        selectinload(Objective.key_results).selectinload(
+                            KeyResult.tasks
+                        )
+                    )
                 )
                 obj = session.exec(stmt).first()
             if not obj:
                 # Try KeyResult with tasks
-                stmt = select(KeyResult).where(KeyResult.id == node_id).options(
-                    selectinload(KeyResult.tasks)
+                stmt = (
+                    select(KeyResult)
+                    .where(KeyResult.id == node_id)
+                    .options(selectinload(KeyResult.tasks))
                 )
                 obj = session.exec(stmt).first()
             if not obj:
@@ -1401,7 +1633,7 @@ def render_mindmap_dialog(node_id):
     nodes, edges = build_graph_from_node(obj)
     # Use hierarchical layout for top-down stream (parent -> children)
     config = Config(
-        width='100%',
+        width="100%",
         height=700,
         directed=True,
         nodeHighlightBehavior=True,
@@ -1409,19 +1641,21 @@ def render_mindmap_dialog(node_id):
             "hierarchical": {
                 "enabled": True,
                 "direction": "UD",  # Up -> Down
-                "sortMethod": "directed"
+                "sortMethod": "directed",
             }
         },
-        physics={"enabled": False}
+        physics={"enabled": False},
     )
 
     agraph(nodes=nodes, edges=edges, config=config)
+
 
 @st.dialog("📬 RetroBox", width="large")
 def render_retrobox_dialog(username):
     """View personal and team retrospectives."""
     # CSS: Style Custom Close Button
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         div[role="dialog"] button[aria-label="Close"] { display: none; }
         div[data-baseweb="modal-backdrop"] { display: none; }
@@ -1430,7 +1664,9 @@ def render_retrobox_dialog(username):
         div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
         div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # Header with Close button
     c_head, c_close = st.columns([0.92, 0.08])
@@ -1439,22 +1675,22 @@ def render_retrobox_dialog(username):
         if "active_report_mode" in st.session_state:
             del st.session_state.active_report_mode
         st.rerun()
-    
+
     # Check User Role
     current_user = _cached_get_user_by_username(username)
     if not current_user:
         st.error("User context lost.")
         return
-        
+
     cycle_id = st.session_state.get("active_cycle_id")
-    
+
     # Tabs: My Retros | Team Retros (if Manager)
     tabs_labels = ["👤 My Retros"]
     if current_user.role in ["manager", "admin"]:
         tabs_labels.append("👥 Team Retros")
-    
+
     tabs = st.tabs(tabs_labels)
-    
+
     # --- MY RETROS ---
     with tabs[0]:
         my_retros = _cached_get_user_retrospectives(current_user.id, cycle_id)
@@ -1462,10 +1698,14 @@ def render_retrobox_dialog(username):
             st.info("No retrospectives found for this cycle.")
         else:
             for r in my_retros:
-                with st.expander(f"Week of {r.week_start_date.strftime('%b %d, %Y')}", expanded=True):
+                with st.expander(
+                    f"Week of {r.week_start_date.strftime('%b %d, %Y')}", expanded=True
+                ):
                     st.markdown(r.content)
-                    st.caption(f"Submitted on: {r.created_at.strftime('%Y-%m-%d %H:%M')}")
-    
+                    st.caption(
+                        f"Submitted on: {r.created_at.strftime('%Y-%m-%d %H:%M')}"
+                    )
+
     # --- TEAM RETROS ---
     if len(tabs) > 1:
         with tabs[1]:
@@ -1475,7 +1715,7 @@ def render_retrobox_dialog(username):
             else:
                 # Group by User or Week? Group by Week is usually better for managers to see pulse.
                 # Or Group by User. Let's do a selectbox filter.
-                
+
                 # Fetch team members for filter
                 team_members = get_team_members(current_user.id)
                 member_option_ids = [None]
@@ -1496,21 +1736,24 @@ def render_retrobox_dialog(username):
                 selected_member_id = st.selectbox(
                     "Filter by Member",
                     options=member_option_ids,
-                    format_func=lambda uid: member_option_labels.get(uid, f"User #{uid}"),
+                    format_func=lambda uid: member_option_labels.get(
+                        uid, f"User #{uid}"
+                    ),
                 )
-                
+
                 for r in team_retros:
                     # Filter logic
                     if selected_member_id and r.user.id != selected_member_id:
                         continue
-                        
+
                     with st.container(border=True):
                         col_av, col_content = st.columns([1, 5])
                         with col_av:
                             st.markdown(f"**{r.user.display_name}**")
-                            st.caption(r.week_start_date.strftime('%b %d'))
+                            st.caption(r.week_start_date.strftime("%b %d"))
                         with col_content:
                             st.markdown(r.content)
+
 
 @st.dialog("📅 Project Timeline", width="large")
 def render_timeline_dialog(username: str):
@@ -1525,9 +1768,10 @@ def render_timeline_dialog(username: str):
     from sqlmodel import select
     from sqlalchemy.orm import selectinload
     from src.ui.visualizations import render_gantt_chart
-    
+
     # CSS: Style Custom Close Button (Same as RetroBox)
-    st.markdown("""
+    st.markdown(
+        """
         <style>
         div[role="dialog"] button[aria-label="Close"] { display: none; }
         div[data-baseweb="modal-backdrop"] { display: none; }
@@ -1536,7 +1780,9 @@ def render_timeline_dialog(username: str):
         div[role="dialog"] { overflow: visible !important; pointer-events: auto; }
         div[role="dialog"] [data-testid="stHorizontalBlock"]:first-of-type [data-testid="column"]:last-child button { border-radius: 50%; border: 1px solid #e0e0e0; width: 35px; height: 35px; padding: 0 !important; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background-color: white; }
         </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     # Header with Close button (no duplicate title)
     c_head, c_close = st.columns([0.92, 0.08])
@@ -1544,7 +1790,7 @@ def render_timeline_dialog(username: str):
         if "active_report_mode" in st.session_state:
             del st.session_state.active_report_mode
         st.rerun()
-    
+
     cycle_id = st.session_state.get("active_cycle_id")
     role = str(st.session_state.get("user_role", "member")).strip().lower()
 
@@ -1556,12 +1802,12 @@ def render_timeline_dialog(username: str):
     if not current_user:
         st.error("User not found.")
         return
-    
+
     with get_session_context() as session:
         # Fetch Users map for assignee resolution
         users = session.exec(select(User)).all()
-        users_map = {u.id: u for u in users} 
-        
+        users_map = {u.id: u for u in users}
+
         # Cycle-scoped fetch (strictly bounded to active cycle)
         stmt = (
             select(Task)
@@ -1580,7 +1826,9 @@ def render_timeline_dialog(username: str):
         # Role-aware visibility filter
         visible_owner_ids = {current_user.id}
         if role == "manager":
-            team_members = session.exec(select(User).where(User.manager_id == current_user.id)).all()
+            team_members = session.exec(
+                select(User).where(User.manager_id == current_user.id)
+            ).all()
             visible_owner_ids.update(member.id for member in team_members)
         elif role == "admin":
             # Admin can see all cycle tasks
@@ -1597,12 +1845,13 @@ def render_timeline_dialog(username: str):
                 visible_tasks.append(t)
                 continue
 
-            if (goal_owner_id in visible_owner_ids) or (assignee_id in visible_owner_ids):
+            if (goal_owner_id in visible_owner_ids) or (
+                assignee_id in visible_owner_ids
+            ):
                 visible_tasks.append(t)
-            
+
         if not visible_tasks:
-             st.info("No tasks found for this cycle and visibility scope.")
-             return
+            st.info("No tasks found for this cycle and visibility scope.")
+            return
 
         render_gantt_chart(visible_tasks, role, username, users_map)
-

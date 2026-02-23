@@ -71,7 +71,10 @@ def test_collect_treemap_points_falls_back_when_plotly_events_fails():
         chart_key="chart_k",
         chart_events_key="chart_events_k",
         render_plotly_events_fn=lambda: (_ for _ in ()).throw(RuntimeError("boom")),
-        render_plotly_chart_fn=lambda: called.__setitem__("chart", called["chart"] + 1) or {"points": [{"id": "task_1"}]},
+        render_plotly_chart_fn=lambda: (
+            called.__setitem__("chart", called["chart"] + 1)
+            or {"points": [{"id": "task_1"}]}
+        ),
         extract_selection_points_fn=lambda payload: list(payload.get("points") or []),
         logger=logger,
     )
@@ -196,9 +199,7 @@ def test_render_map_chart_and_handle_navigation_updates_clicked_task():
     chart_area.next_plotly_payload = {"selection": {"points": [{"id": "task_1"}]}}
     session_state = {}
     reruns = []
-    treemap = SimpleNamespace(
-        data=[SimpleNamespace(ids=["task_1"], labels=["Task 1"])]
-    )
+    treemap = SimpleNamespace(data=[SimpleNamespace(ids=["task_1"], labels=["Task 1"])])
 
     handled = atlas_map_chart_helpers.render_map_chart_and_handle_navigation(
         map_chart_area=chart_area,

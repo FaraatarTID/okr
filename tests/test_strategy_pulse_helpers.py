@@ -83,7 +83,9 @@ def test_render_strategy_pulse_content_requires_cycle():
         generate_achievement_portfolio_pdf_fn=lambda *_args, **_kwargs: None,
         utc_now_naive_fn=lambda: datetime(2026, 1, 1),
     )
-    assert fake_st.warning_calls == ["Please select a cycle to view strategic insights."]
+    assert fake_st.warning_calls == [
+        "Please select a cycle to view strategic insights."
+    ]
     assert fake_st.error_calls == []
 
 

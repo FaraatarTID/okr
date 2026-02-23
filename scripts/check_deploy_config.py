@@ -229,7 +229,9 @@ def validate(
         strict=(mode == "runtime"),
     )
 
-    security_state_backend = _normalize(env.get("OKR_BACKEND_SECURITY_STATE_BACKEND", ""))
+    security_state_backend = _normalize(
+        env.get("OKR_BACKEND_SECURITY_STATE_BACKEND", "")
+    )
     if not security_state_backend:
         report.errors.append(
             "Missing value for 'OKR_BACKEND_SECURITY_STATE_BACKEND' "
@@ -251,7 +253,9 @@ def validate(
             report.errors.append(
                 "Missing 'pdfshift_api_key' in secrets TOML root table."
             )
-        secret_pdf_method = _normalize(_secret_value(secrets, "PDF_METHOD", "pdf_method"))
+        secret_pdf_method = _normalize(
+            _secret_value(secrets, "PDF_METHOD", "pdf_method")
+        )
         if secret_pdf_method and secret_pdf_method != "pdfshift":
             report.errors.append(
                 f"Secrets PDF method must be 'pdfshift', found '{secret_pdf_method}'."

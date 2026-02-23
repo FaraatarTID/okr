@@ -14,11 +14,7 @@ def _normalize_owner_ids(owner_ids: Optional[Iterable[int]]) -> Optional[list[in
     if owner_ids is None:
         return None
     normalized = sorted(
-        {
-            int(owner_id)
-            for owner_id in owner_ids
-            if owner_id is not None
-        }
+        {int(owner_id) for owner_id in owner_ids if owner_id is not None}
     )
     return normalized
 
@@ -47,7 +43,9 @@ def _atlas_extract_ai_snapshot_fields(raw_analysis):
 
     warnings_list = analysis.get("deadline_warnings") or []
     if isinstance(warnings_list, list) and warnings_list:
-        joined = " ".join(str(item) for item in warnings_list if item is not None).lower()
+        joined = " ".join(
+            str(item) for item in warnings_list if item is not None
+        ).lower()
         ai_deadline_state = "overdue" if "overdue" in joined else "risk"
     return ai_overall_score, ai_deadline_state
 
@@ -134,7 +132,15 @@ def build_atlas_scope_snapshot(
 
     objective_payload_by_id: dict[int, dict] = {}
     objective_ids: list[int] = []
-    for objective_id, goal_id, title, description, progress, score_mode, weight in objective_rows:
+    for (
+        objective_id,
+        goal_id,
+        title,
+        description,
+        progress,
+        score_mode,
+        weight,
+    ) in objective_rows:
         if objective_id is None or goal_id is None:
             continue
         objective_id_int = int(objective_id)
@@ -174,7 +180,9 @@ def build_atlas_scope_snapshot(
                     KeyResult.unit,
                 )
                 .where(KeyResult.objective_id.in_(objective_ids))
-                .order_by(KeyResult.objective_id, func.lower(KeyResult.title), KeyResult.id)
+                .order_by(
+                    KeyResult.objective_id, func.lower(KeyResult.title), KeyResult.id
+                )
             ).all()
         )
         for (
@@ -267,7 +275,9 @@ def build_atlas_scope_snapshot(
                     "timer_started_at": timer_started_at,
                     "status": str(getattr(status, "value", status)),
                     "total_time_spent": int(total_time_spent or 0),
-                    "assignee_id": int(assignee_id) if assignee_id is not None else None,
+                    "assignee_id": int(assignee_id)
+                    if assignee_id is not None
+                    else None,
                 }
             )
     return {"goals": goals_payload, "users_map": users_map}

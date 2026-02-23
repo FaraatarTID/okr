@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import event
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel
 from src.models import VariationType
 
 

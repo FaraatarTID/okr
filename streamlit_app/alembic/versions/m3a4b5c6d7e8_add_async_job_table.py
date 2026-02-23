@@ -52,7 +52,9 @@ def upgrade() -> None:
             sa.Column("started_at", sa.DateTime(), nullable=True),
             sa.Column("finished_at", sa.DateTime(), nullable=True),
             sa.Column("updated_at", sa.DateTime(), nullable=True),
-            sa.CheckConstraint("attempts >= 0", name="ck_async_job_attempts_non_negative"),
+            sa.CheckConstraint(
+                "attempts >= 0", name="ck_async_job_attempts_non_negative"
+            ),
             sa.CheckConstraint(
                 "max_attempts >= 1",
                 name="ck_async_job_max_attempts_positive",

@@ -8,8 +8,8 @@ Provides:
 """
 
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from datetime import timedelta
+from typing import Dict, List, Optional
 
 from sqlmodel import Session, select
 from sqlalchemy import func
@@ -33,6 +33,7 @@ _logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # 1. Burnout Risk Detection
 # ---------------------------------------------------------------------------
+
 
 def _aggregate_daily_effort(
     session: Session,
@@ -134,6 +135,7 @@ def calculate_burnout_risk(
 # 2. Strategy Gap Detection
 # ---------------------------------------------------------------------------
 
+
 def detect_strategy_gaps(
     cycle_id: int,
     user_ids: Optional[List[int]] = None,
@@ -159,14 +161,16 @@ def detect_strategy_gaps(
         for obj in objectives:
             krs = obj.key_results or []
             if not krs:
-                gaps.append({
-                    "objective_id": obj.id,
-                    "title": obj.title,
-                    "progress": obj.progress,
-                    "gap_type": "NO_KEY_RESULTS",
-                    "severity": 100,
-                    "detail": "Active objective has no key results defined.",
-                })
+                gaps.append(
+                    {
+                        "objective_id": obj.id,
+                        "title": obj.title,
+                        "progress": obj.progress,
+                        "gap_type": "NO_KEY_RESULTS",
+                        "severity": 100,
+                        "detail": "Active objective has no key results defined.",
+                    }
+                )
                 continue
 
             total_tasks = 0
@@ -182,38 +186,44 @@ def detect_strategy_gaps(
                 total_time += sum(t.total_time_spent for t in tasks)
 
             if total_tasks == 0:
-                gaps.append({
-                    "objective_id": obj.id,
-                    "title": obj.title,
-                    "progress": obj.progress,
-                    "gap_type": "NO_TASKS",
-                    "severity": 90,
-                    "detail": f"Objective has {len(krs)} KR(s) but no tasks.",
-                })
+                gaps.append(
+                    {
+                        "objective_id": obj.id,
+                        "title": obj.title,
+                        "progress": obj.progress,
+                        "gap_type": "NO_TASKS",
+                        "severity": 90,
+                        "detail": f"Objective has {len(krs)} KR(s) but no tasks.",
+                    }
+                )
             elif active_tasks == 0 and obj.progress < 50:
-                gaps.append({
-                    "objective_id": obj.id,
-                    "title": obj.title,
-                    "progress": obj.progress,
-                    "gap_type": "STALLED",
-                    "severity": max(60, 90 - obj.progress),
-                    "detail": (
-                        f"{total_tasks} task(s) exist but none are in progress. "
-                        f"Total logged time: {total_time} min."
-                    ),
-                })
+                gaps.append(
+                    {
+                        "objective_id": obj.id,
+                        "title": obj.title,
+                        "progress": obj.progress,
+                        "gap_type": "STALLED",
+                        "severity": max(60, 90 - obj.progress),
+                        "detail": (
+                            f"{total_tasks} task(s) exist but none are in progress. "
+                            f"Total logged time: {total_time} min."
+                        ),
+                    }
+                )
             elif total_time == 0 and obj.progress < 30:
-                gaps.append({
-                    "objective_id": obj.id,
-                    "title": obj.title,
-                    "progress": obj.progress,
-                    "gap_type": "ZERO_EFFORT",
-                    "severity": 75,
-                    "detail": (
-                        f"{total_tasks} task(s), {active_tasks} active, "
-                        f"but zero time has been logged."
-                    ),
-                })
+                gaps.append(
+                    {
+                        "objective_id": obj.id,
+                        "title": obj.title,
+                        "progress": obj.progress,
+                        "gap_type": "ZERO_EFFORT",
+                        "severity": 75,
+                        "detail": (
+                            f"{total_tasks} task(s), {active_tasks} active, "
+                            f"but zero time has been logged."
+                        ),
+                    }
+                )
 
     gaps.sort(key=lambda g: g["severity"], reverse=True)
     return gaps
@@ -222,6 +232,7 @@ def detect_strategy_gaps(
 # ---------------------------------------------------------------------------
 # 3. Achievement Aggregation (Evidence Seeds)
 # ---------------------------------------------------------------------------
+
 
 def aggregate_achievements(
     user_id: int,
@@ -267,15 +278,17 @@ def aggregate_achievements(
                 continue
 
             obj = kr.objective
-            achievements.append({
-                "task_id": t.id,
-                "task_title": t.title,
-                "time_spent": t.total_time_spent,
-                "kr_title": kr.title,
-                "kr_score": round(kr_score, 2),
-                "kr_score_label": get_score_label(kr_score),
-                "objective_title": obj.title if obj else "—",
-            })
+            achievements.append(
+                {
+                    "task_id": t.id,
+                    "task_title": t.title,
+                    "time_spent": t.total_time_spent,
+                    "kr_title": kr.title,
+                    "kr_score": round(kr_score, 2),
+                    "kr_score_label": get_score_label(kr_score),
+                    "objective_title": obj.title if obj else "—",
+                }
+            )
 
     achievements.sort(key=lambda a: a["kr_score"], reverse=True)
     return achievements

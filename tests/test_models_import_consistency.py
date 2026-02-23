@@ -9,9 +9,7 @@ def test_models_import_path_is_consistent() -> None:
     root = Path(__file__).resolve().parents[1]
     excluded_dirs = {"venv", "__pycache__", ".pytest_cache", ".venv", "node_modules"}
     py_files = [
-        path
-        for path in root.rglob("*.py")
-        if excluded_dirs.isdisjoint(path.parts)
+        path for path in root.rglob("*.py") if excluded_dirs.isdisjoint(path.parts)
     ]
 
     issues: list[str] = []

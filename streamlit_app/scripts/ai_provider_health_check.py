@@ -20,6 +20,7 @@ APP_DIR = ROOT_DIR / "streamlit_app"
 if str(APP_DIR) not in sys.path:
     sys.path.insert(0, str(APP_DIR))
 
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run AI provider health check.")
     parser.add_argument(

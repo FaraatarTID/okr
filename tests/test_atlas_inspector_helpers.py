@@ -87,7 +87,9 @@ def test_render_inspector_tab_renders_content_when_target_valid():
         health_state_fn=lambda *_args, **_kwargs: {"source": "fallback"},
         health_source_explanation_fn=lambda src: f"expl:{src}",
         parse_typed_ref_fn=lambda _ref: ("KEY_RESULT", 1),
-        render_inspector_content_fn=lambda *args, **kwargs: render_calls.append((args, kwargs)),
+        render_inspector_content_fn=lambda *args, **kwargs: render_calls.append(
+            (args, kwargs)
+        ),
         username="alice",
     )
 

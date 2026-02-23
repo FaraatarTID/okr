@@ -92,7 +92,9 @@ def test_run_ai_progress_sync_preview_does_not_write_and_returns_suggestion():
         map_kr_refs=["kr_1"],
         map_task_refs=["task_1"],
         index=index,
-        health_index={"task_1": {"status_label": "In progress", "reason": "Needs care"}},
+        health_index={
+            "task_1": {"status_label": "In progress", "reason": "Needs care"}
+        },
         actor_id=5,
         selected_scope="My OKRs",
         map_lens="Scope",
@@ -107,11 +109,16 @@ def test_run_ai_progress_sync_preview_does_not_write_and_returns_suggestion():
         update_key_result_fn=_update_key_result,
         recalculate_rollup_for_key_results_fn=_recalculate_rollup,
         ai_progress_decision_fn=_decision,
-        health_state_fn=lambda *args, **kwargs: {"status_label": "In progress", "reason": "On track"},
+        health_state_fn=lambda *args, **kwargs: {
+            "status_label": "In progress",
+            "reason": "On track",
+        },
         ai_overall_score_fn=lambda meta: 50 if meta else None,
         next_score_fn=lambda *args, **kwargs: (0, "task_1"),
         deadline_to_iso_fn=lambda _: None,
-        progress_callback=lambda idx, total, text: progress_ticks.append((idx, total, text)),
+        progress_callback=lambda idx, total, text: progress_ticks.append(
+            (idx, total, text)
+        ),
     )
 
     sync_report = result["sync_report"]
@@ -168,7 +175,9 @@ def test_build_ai_undo_sidebar_messages_formats_success_and_failures():
     messages = atlas_workspace_helpers.build_ai_undo_sidebar_messages(
         undo_report={"restored": 4, "failed": ["KR 2: failed"]}
     )
-    assert messages["primary_message"] == "Rollback restored progress on 4 key result(s)."
+    assert (
+        messages["primary_message"] == "Rollback restored progress on 4 key result(s)."
+    )
     assert messages["failed_items"] == ["KR 2: failed"]
 
 
@@ -218,7 +227,7 @@ def test_build_recent_session_feedback_visibility_and_truncation():
     feedback = atlas_workspace_helpers.build_recent_session_feedback(
         session_summary=session_summary,
         index={"task_1": {"title": "Task One"}},
-        clean_summary_fn=lambda value: (str(value).strip() if value else None),
+        clean_summary_fn=lambda value: str(value).strip() if value else None,
         now_fn=lambda: 105.0,
         max_age_seconds=10.0,
         summary_preview_limit=180,
@@ -233,7 +242,7 @@ def test_build_recent_session_feedback_visibility_and_truncation():
     stale_feedback = atlas_workspace_helpers.build_recent_session_feedback(
         session_summary=session_summary,
         index={"task_1": {"title": "Task One"}},
-        clean_summary_fn=lambda value: (str(value).strip() if value else None),
+        clean_summary_fn=lambda value: str(value).strip() if value else None,
         now_fn=lambda: 200.0,
         max_age_seconds=10.0,
     )
@@ -316,7 +325,9 @@ def test_build_sprint_reminder_state_and_mark_notification():
         target_for_focus=25,
         sprint_run_key_fn=lambda ref, target, started: f"{ref}|{target}|{int(started)}",
         should_show_soft_reminder_fn=lambda **kwargs: True,
-        should_emit_target_notification_fn=lambda sprint_key, emitted: bool(sprint_key) and emitted is None,
+        should_emit_target_notification_fn=lambda sprint_key, emitted: (
+            bool(sprint_key) and emitted is None
+        ),
     )
     assert state["show"] is True
     assert state["sprint_key"] == "task_9|25|1000"

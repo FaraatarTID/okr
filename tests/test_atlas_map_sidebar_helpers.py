@@ -2,7 +2,9 @@ from src.ui import atlas_map_sidebar_helpers
 
 
 class _FakeSidebar:
-    def __init__(self, *, buttons=None, toggles=None, segmented_value="Scope", slider_value=25):
+    def __init__(
+        self, *, buttons=None, toggles=None, segmented_value="Scope", slider_value=25
+    ):
         self._buttons = dict(buttons or {})
         self._toggles = dict(toggles or {})
         self._segmented_value = segmented_value
@@ -112,7 +114,9 @@ def test_resolve_map_lens_and_refs_branch_mode_uses_descendants():
             index=index,
             selected_ref="goal_1",
             scope_refs_fn=lambda *_args, **_kwargs: ["goal_1"],
-            descendant_refs_fn=lambda *_args, **_kwargs: calls.append("desc") or ["kr_1", "task_1"],
+            descendant_refs_fn=lambda *_args, **_kwargs: (
+                calls.append("desc") or ["kr_1", "task_1"]
+            ),
         )
     )
 
@@ -180,7 +184,9 @@ def test_handle_ai_progress_undo_action_executes_and_sets_report():
         sidebar=sidebar,
         session_state=session_state,
         username="alice",
-        apply_ai_progress_undo_fn=lambda **kwargs: called.append(kwargs) or {"restored": 1, "failed": []},
+        apply_ai_progress_undo_fn=lambda **kwargs: (
+            called.append(kwargs) or {"restored": 1, "failed": []}
+        ),
         update_key_result_fn=lambda *_args, **_kwargs: None,
         recalculate_rollup_for_key_results_fn=lambda *_args, **_kwargs: None,
         rerun_fn=lambda: reruns.append("rerun"),

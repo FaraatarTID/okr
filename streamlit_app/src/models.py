@@ -3,25 +3,28 @@ SQLModel classes for the OKR hierarchical structure.
 Hierarchy: Cycle -> Goal -> Objective -> KeyResult -> Task
 Plus WorkLog for time tracking.
 """
+
+from datetime import datetime
+from enum import Enum
+from typing import List, Optional
+from uuid import uuid4
+
+from sqlalchemy import CheckConstraint, Index, event, text
+from sqlalchemy.orm import relationship
 from sqlmodel import SQLModel, Field, Relationship
 from sqlmodel.main import default_registry
-from sqlalchemy import CheckConstraint, event, Index, text
-from sqlalchemy.orm import relationship
+
+from src.utils.time_utils import utc_now_naive
 
 # Streamlit hot-reload can import this module multiple times in one process.
 # Reset mapper registry/metadata to avoid duplicate-class ambiguity (e.g. "User").
 default_registry.dispose()
 SQLModel.metadata.clear()
 
-from datetime import datetime
-from enum import Enum
-from typing import Optional, List, Union
-from uuid import uuid4
-from src.utils.time_utils import utc_now_naive
-
 
 class TaskStatus(str, Enum):
     """Status options for tasks."""
+
     TODO = "todo"
     IN_PROGRESS = "in_progress"
     DONE = "done"
@@ -30,13 +33,15 @@ class TaskStatus(str, Enum):
 
 class UserRole(str, Enum):
     """Role options for users."""
-    ADMIN = "admin"      # Can manage users and see all data
+
+    ADMIN = "admin"  # Can manage users and see all data
     MANAGER = "manager"  # Can see team data and manage their assigned OKRs
-    MEMBER = "member"    # Can only see/edit their own OKRs
+    MEMBER = "member"  # Can only see/edit their own OKRs
 
 
 class MetricType(str, Enum):
     """Metric types for Key Results."""
+
     BOOLEAN = "BOOLEAN"
     NUMERIC = "NUMERIC"
     PERCENT = "PERCENT"
@@ -44,6 +49,7 @@ class MetricType(str, Enum):
 
 class ScoreMode(str, Enum):
     """How an objective's score is calculated from its KRs."""
+
     UNWEIGHTED = "UNWEIGHTED"
     WEIGHTED = "WEIGHTED"
 
@@ -57,18 +63,21 @@ class LifecycleState(str, Enum):
 
 class AlignmentType(str, Enum):
     """How one objective relates to another."""
-    SUPPORTS = "SUPPORTS"      # Vertical alignment (e.g., Team Obj -> Org Obj)
-    CONTRIBUTES = "CONTRIBUTES" # Horizontal alignment (e.g., Peer Obj -> Peer Obj)
+
+    SUPPORTS = "SUPPORTS"  # Vertical alignment (e.g., Team Obj -> Org Obj)
+    CONTRIBUTES = "CONTRIBUTES"  # Horizontal alignment (e.g., Peer Obj -> Peer Obj)
 
 
 class VariationType(str, Enum):
     """Classification of variation in check-in data for learning loop."""
+
     COMMON_CAUSE = "COMMON_CAUSE"
     SPECIAL_CAUSE = "SPECIAL_CAUSE"
 
 
 class ExperimentStatus(str, Enum):
     """Lifecycle status for experiments."""
+
     PLANNED = "PLANNED"
     RUNNING = "RUNNING"
     DECIDED = "DECIDED"
@@ -76,6 +85,7 @@ class ExperimentStatus(str, Enum):
 
 class ExperimentDecision(str, Enum):
     """Decision outcome for a completed experiment."""
+
     ADOPT = "ADOPT"
     REVERT = "REVERT"
     ITERATE = "ITERATE"
@@ -84,12 +94,14 @@ class ExperimentDecision(str, Enum):
 
 class ExpectedEffectDirection(str, Enum):
     """Expected direction of experiment effect on KR metric."""
+
     UP = "UP"
     DOWN = "DOWN"
 
 
 class Team(SQLModel, table=True):
     """Team definition for grouping users and ownership."""
+
     __tablename__ = "team"
     __table_args__ = {"extend_existing": True}
 
@@ -109,12 +121,13 @@ class Team(SQLModel, table=True):
 
 class User(SQLModel, table=True):
     """User account for authentication and authorization."""
+
     __tablename__ = "user"
     __table_args__ = (
         Index("ix_user_manager_active", "manager_id", "is_active"),
-        {"extend_existing": True}
+        {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(unique=True, index=True)
     password_hash: str
@@ -138,9 +151,12 @@ class User(SQLModel, table=True):
 
 class AuthThrottleState(SQLModel, table=True):
     """Tracks failed authentication attempts for rate limiting and lockouts."""
+
     __tablename__ = "auth_throttle_state"
     __table_args__ = (
-        CheckConstraint("failed_attempts >= 0", name="ck_auth_throttle_failed_attempts_non_negative"),
+        CheckConstraint(
+            "failed_attempts >= 0", name="ck_auth_throttle_failed_attempts_non_negative"
+        ),
         Index("ux_auth_throttle_scope_identifier", "scope", "identifier", unique=True),
         Index("ix_auth_throttle_locked_until", "locked_until"),
         {"extend_existing": True},
@@ -158,6 +174,7 @@ class AuthThrottleState(SQLModel, table=True):
 
 class AsyncJobStatus(str, Enum):
     """Lifecycle status for async backend jobs."""
+
     PENDING = "pending"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
@@ -167,6 +184,7 @@ class AsyncJobStatus(str, Enum):
 
 class AsyncJob(SQLModel, table=True):
     """Durable async job record for backend worker execution."""
+
     __tablename__ = "async_job"
     __table_args__ = (
         Index("ix_async_job_status_created", "status", "created_at"),
@@ -208,14 +226,16 @@ class AsyncJob(SQLModel, table=True):
 # BASE MODELS (shared fields)
 # ============================================================================
 
+
 class NodeBase(SQLModel):
     """Base class for all OKR nodes with common fields."""
+
     title: str = Field(index=True)
     description: Optional[str] = None
     progress: int = Field(default=0, ge=0, le=100)
     created_at: datetime = Field(default_factory=utc_now_naive)
     updated_at: Optional[datetime] = None
-    
+
     # Ownership and Audit
     owner_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
     team_id: Optional[int] = Field(default=None, foreign_key="team.id", index=True)
@@ -232,20 +252,22 @@ class NodeBase(SQLModel):
 # TABLE MODELS
 # ============================================================================
 
+
 class Cycle(SQLModel, table=True):
     """Time-bound period for OKRs (e.g., Q1 2026)."""
+
     __tablename__ = "cycle"
     __table_args__ = (
         Index("ix_cycle_is_active", "is_active"),
-        {"extend_existing": True}
+        {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str = Field(index=True)
     start_date: datetime
     end_date: datetime
     is_active: bool = Field(default=True)
-    
+
     # Relationships
     goals: List["Goal"] = Relationship(
         sa_relationship=relationship(
@@ -258,19 +280,22 @@ class Cycle(SQLModel, table=True):
 
 class Goal(NodeBase, table=True):
     """Top-level strategic goal."""
+
     __tablename__ = "goal"
     __table_args__ = (
-        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_goal_progress_range"),
+        CheckConstraint(
+            "progress >= 0 AND progress <= 100", name="ck_goal_progress_range"
+        ),
         Index("ix_goal_owner_cycle", "owner_id", "cycle_id"),
-        {"extend_existing": True}
+        {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     owner_id: int = Field(foreign_key="user.id", index=True)  # FK to User table
     cycle_id: Optional[int] = Field(default=None, foreign_key="cycle.id", index=True)
     # Tags (Stored as JSON string or comma-separated)
     strategy_tags: Optional[str] = Field(default="[]")
-    
+
     # Relationships
     cycle: Optional[Cycle] = Relationship(
         sa_relationship=relationship(lambda: Cycle, back_populates="goals")
@@ -286,35 +311,41 @@ class Goal(NodeBase, table=True):
 
 class Retrospective(SQLModel, table=True):
     """Weekly retrospective entry."""
+
     __tablename__ = "retrospective"
     __table_args__ = {"extend_existing": True}
 
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
     cycle_id: Optional[int] = Field(default=None, foreign_key="cycle.id", index=True)
-    week_start_date: datetime = Field(index=True) # To identify the week
+    week_start_date: datetime = Field(index=True)  # To identify the week
     content: str
-    sentiment: Optional[str] = None # For future AI analysis
+    sentiment: Optional[str] = None  # For future AI analysis
     created_at: datetime = Field(default_factory=utc_now_naive)
-    
+
     # Relationships
     user: "User" = Relationship(sa_relationship=relationship(lambda: User))
-    cycle: Optional[Cycle] = Relationship(sa_relationship=relationship(lambda: Cycle)) # No back_populates needed for now
+    cycle: Optional[Cycle] = Relationship(
+        sa_relationship=relationship(lambda: Cycle)
+    )  # No back_populates needed for now
 
 
 class Objective(NodeBase, table=True):
     """Measurable objective within a goal."""
+
     __tablename__ = "objective"
     __table_args__ = (
-        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_objective_progress_range"),
+        CheckConstraint(
+            "progress >= 0 AND progress <= 100", name="ck_objective_progress_range"
+        ),
         {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     goal_id: int = Field(foreign_key="goal.id", index=True)
     weight: float = Field(default=1.0)
     score_mode: ScoreMode = Field(default=ScoreMode.UNWEIGHTED)
-    
+
     # Phase 2: Lifecycle
     state: LifecycleState = Field(default=LifecycleState.DRAFT)
     final_reflection: Optional[str] = Field(default=None)
@@ -332,19 +363,20 @@ class Objective(NodeBase, table=True):
     )
 
 
-
-
 class KeyResult(NodeBase, table=True):
     """Key result metrics for an objective."""
+
     __tablename__ = "key_result"
     __table_args__ = (
-        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_key_result_progress_range"),
+        CheckConstraint(
+            "progress >= 0 AND progress <= 100", name="ck_key_result_progress_range"
+        ),
         {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     objective_id: int = Field(foreign_key="objective.id", index=True)
-    
+
     # KR-specific fields
     start_value: float = Field(default=0.0)
     target_value: float = Field(default=100.0)
@@ -353,15 +385,15 @@ class KeyResult(NodeBase, table=True):
     metric_type: MetricType = Field(default=MetricType.NUMERIC)
     initiative_tags: Optional[str] = Field(default="[]")
     weight: float = Field(default=1.0)
-    
+
     # AI Analysis cache
     gemini_analysis: Optional[str] = None  # JSON string of analysis results
     analysis_updated_at: Optional[datetime] = None
-    
+
     # Phase 2: Lifecycle
     state: LifecycleState = Field(default=LifecycleState.DRAFT)
     final_reflection: Optional[str] = Field(default=None)
-    
+
     # Relationships
     objective: Optional[Objective] = Relationship(
         sa_relationship=relationship(lambda: Objective, back_populates="key_results")
@@ -384,32 +416,39 @@ class KeyResult(NodeBase, table=True):
 
 class Task(NodeBase, table=True):
     """Actionable task within a key result."""
+
     __tablename__ = "task"
     __table_args__ = (
-        CheckConstraint("progress >= 0 AND progress <= 100", name="ck_task_progress_range"),
-        CheckConstraint("estimated_minutes >= 0", name="ck_task_estimated_minutes_non_negative"),
-        CheckConstraint("total_time_spent >= 0", name="ck_task_total_time_spent_non_negative"),
+        CheckConstraint(
+            "progress >= 0 AND progress <= 100", name="ck_task_progress_range"
+        ),
+        CheckConstraint(
+            "estimated_minutes >= 0", name="ck_task_estimated_minutes_non_negative"
+        ),
+        CheckConstraint(
+            "total_time_spent >= 0", name="ck_task_total_time_spent_non_negative"
+        ),
         Index("ix_task_status_kr", "status", "key_result_id"),
         Index("ix_task_timer_started_at", "timer_started_at"),
         Index("ix_task_deadline_progress", "deadline", "progress"),
-        {"extend_existing": True}
+        {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     key_result_id: int = Field(foreign_key="key_result.id", index=True)
-    
+
     # Task-specific fields
     status: TaskStatus = Field(default=TaskStatus.TODO)
     start_date: Optional[datetime] = None
     estimated_minutes: int = Field(default=0)
     total_time_spent: int = Field(default=0)  # Cached sum of work logs (minutes)
-    
+
     # Active timer tracking
     timer_started_at: Optional[datetime] = None
-    
+
     # Assignment
     assignee_id: Optional[int] = Field(default=None, foreign_key="user.id")
-    
+
     # Relationships
     key_result: Optional[KeyResult] = Relationship(
         sa_relationship=relationship(lambda: KeyResult, back_populates="tasks")
@@ -431,9 +470,12 @@ class Task(NodeBase, table=True):
 
 class WorkLog(SQLModel, table=True):
     """Time log entry for a specific task."""
+
     __tablename__ = "work_log"
     __table_args__ = (
-        CheckConstraint("duration_minutes >= 0", name="ck_work_log_duration_non_negative"),
+        CheckConstraint(
+            "duration_minutes >= 0", name="ck_work_log_duration_non_negative"
+        ),
         Index(
             "ux_work_log_task_open",
             "task_id",
@@ -445,15 +487,15 @@ class WorkLog(SQLModel, table=True):
         Index("ix_work_log_start_time", "start_time"),
         {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     task_id: int = Field(foreign_key="task.id", index=True)
     start_time: datetime
     end_time: Optional[datetime] = None
     duration_minutes: float = Field(default=0.0)
     note: Optional[str] = None
-    summary: Optional[str] = None # Added for timer session summary
-    
+    summary: Optional[str] = None  # Added for timer session summary
+
     # Relationships
     task: Optional["Task"] = Relationship(
         sa_relationship=relationship(lambda: Task, back_populates="work_logs")
@@ -462,48 +504,58 @@ class WorkLog(SQLModel, table=True):
 
 class WeeklyPlan(SQLModel, table=True):
     """Stores the user's top 3 priorities for a specific week."""
+
     __tablename__ = "weekly_plan"
     __table_args__ = (
         Index("ix_weekly_plan_user_date", "user_id", "week_start_date"),
-        {"extend_existing": True}
+        {"extend_existing": True},
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)
-    week_start_date: datetime # Monday (or Saturday) of the week
-    week_end_date: datetime   # End of the week
-    
+    week_start_date: datetime  # Monday (or Saturday) of the week
+    week_end_date: datetime  # End of the week
+
     priority_1: str
     priority_2: Optional[str] = None
     priority_3: Optional[str] = None
-    
+
     created_at: datetime = Field(default_factory=utc_now_naive)
     is_active: bool = Field(default=True)
 
 
 class CheckIn(SQLModel, table=True):
     """Weekly check-in for a Key Result."""
+
     __tablename__ = "check_in"
     __table_args__ = (
-        CheckConstraint("confidence_score >= 0 AND confidence_score <= 10", name="ck_check_in_confidence_range"),
+        CheckConstraint(
+            "confidence_score >= 0 AND confidence_score <= 10",
+            name="ck_check_in_confidence_range",
+        ),
         Index("ix_check_in_kr_created", "key_result_id", "created_at"),
-        Index("ix_check_in_kr_var_created", "key_result_id", "variation_type", "created_at"),
+        Index(
+            "ix_check_in_kr_var_created",
+            "key_result_id",
+            "variation_type",
+            "created_at",
+        ),
         {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     key_result_id: int = Field(foreign_key="key_result.id", index=True)
-    
+
     value: float  # The metric value at this time
-    confidence_score: int = Field(default=5, ge=0, le=10) # 0-10 scale
+    confidence_score: int = Field(default=5, ge=0, le=10)  # 0-10 scale
     comment: Optional[str] = None
     created_at: datetime = Field(default_factory=utc_now_naive)
-    
+
     # Learning loop fields (null default for backward compatibility)
     variation_type: Optional[VariationType] = Field(default=None)
     special_cause_note: Optional[str] = None
     experiment_id: Optional[int] = Field(default=None, foreign_key="experiment.id")
-    
+
     # Relationships (minimal - no Experiment relationship to avoid eager loads)
     key_result: Optional["KeyResult"] = Relationship(
         sa_relationship=relationship(lambda: KeyResult, back_populates="check_ins")
@@ -512,13 +564,14 @@ class CheckIn(SQLModel, table=True):
 
 class Experiment(SQLModel, table=True):
     """System change experiment linked to a Key Result for learning loop."""
+
     __tablename__ = "experiment"
     __table_args__ = (
         Index("ix_experiment_kr_status", "key_result_id", "status"),
         Index("ix_experiment_cycle_status", "cycle_id", "status"),
-        {"extend_existing": True}
+        {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     key_result_id: int = Field(foreign_key="key_result.id", index=True)
     cycle_id: int = Field(foreign_key="cycle.id", index=True)  # Non-null, cycle-scoped
@@ -537,12 +590,13 @@ class Experiment(SQLModel, table=True):
 
 class RetroExperimentOutcome(SQLModel, table=True):
     """Links retrospective to experiment decision for institutional learning."""
+
     __tablename__ = "retro_experiment_outcome"
     __table_args__ = (
         Index("ux_retro_experiment", "retrospective_id", "experiment_id", unique=True),
-        {"extend_existing": True}
+        {"extend_existing": True},
     )
-    
+
     id: Optional[int] = Field(default=None, primary_key=True)
     retrospective_id: int = Field(foreign_key="retrospective.id", index=True)
     experiment_id: int = Field(foreign_key="experiment.id", index=True)
@@ -553,6 +607,7 @@ class RetroExperimentOutcome(SQLModel, table=True):
 
 class AlignmentEdge(SQLModel, table=True):
     """Directed link representing organizational alignment between Objectives."""
+
     __tablename__ = "alignment_edge"
     __table_args__ = (
         Index("ix_alignment_parent_child", "parent_id", "child_id", unique=True),
@@ -571,14 +626,17 @@ class AlignmentEdge(SQLModel, table=True):
 # PYDANTIC MODELS FOR API/RESPONSES
 # ============================================================================
 
+
 class GoalRead(NodeBase):
     """Goal with its objectives for reading."""
+
     id: int
     owner_id: int
 
 
 class DashboardGoal(SQLModel):
     """Lightweight goal for dashboard display."""
+
     id: int
     title: str
     progress: int
@@ -587,6 +645,7 @@ class DashboardGoal(SQLModel):
 
 class TaskWithTimer(SQLModel):
     """Task info for timer display."""
+
     id: int
     title: str
     status: TaskStatus
@@ -598,6 +657,7 @@ class TaskWithTimer(SQLModel):
 
 class AnalysisContext(SQLModel):
     """Context data sent to AI for analysis."""
+
     objective: str
     tasks_count: int
     completed_tasks: int
@@ -609,7 +669,8 @@ class AnalysisContext(SQLModel):
 # EVENT LISTENERS
 # ============================================================================
 
-@event.listens_for(NodeBase, 'before_update', propagate=True)
+
+@event.listens_for(NodeBase, "before_update", propagate=True)
 def timestamp_before_update(mapper, connection, target):
     """Automatically update updated_at timestamp before update."""
     target.updated_at = utc_now_naive()

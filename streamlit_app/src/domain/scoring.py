@@ -3,7 +3,7 @@ Scoring logic for OKRs based on Google re:Work documentation.
 Scores are normalized to 0.0 - 1.0.
 """
 
-from typing import List, Optional, Protocol
+from typing import List, Optional
 
 
 def clamp(value: float, min_val: float, max_val: float) -> float:
@@ -12,14 +12,11 @@ def clamp(value: float, min_val: float, max_val: float) -> float:
 
 
 def calculate_kr_score(
-    current: float,
-    target: float,
-    start: float = 0.0,
-    metric_type: str = "numeric"
+    current: float, target: float, start: float = 0.0, metric_type: str = "numeric"
 ) -> float:
     """
     Calculate normalized score (0.0 - 1.0) for a Key Result.
-    
+
     re:Work logic:
     - Numeric: (current - start) / (target - start)
     - Boolean: 1.0 if done else 0.0
@@ -41,7 +38,7 @@ def calculate_kr_score(
 def calculate_objective_score(
     kr_scores: List[float],
     weights: Optional[List[float]] = None,
-    weighted: bool = False
+    weighted: bool = False,
 ) -> float:
     """
     Calculate objective score by averaging KR scores.
@@ -61,8 +58,7 @@ def calculate_objective_score(
 
 
 def calculate_goal_score(
-    objective_scores: List[float],
-    weights: Optional[List[float]] = None
+    objective_scores: List[float], weights: Optional[List[float]] = None
 ) -> float:
     """
     Calculate goal score by aggregating objective scores.
@@ -70,7 +66,7 @@ def calculate_goal_score(
     """
     if not objective_scores:
         return 0.0
-    
+
     if not weights or len(weights) != len(objective_scores):
         return sum(objective_scores) / len(objective_scores)
 

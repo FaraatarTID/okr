@@ -12,7 +12,10 @@ class _SelectorOptionsVisitor(ast.NodeVisitor):
     @staticmethod
     def _is_selector_call(node: ast.Call) -> bool:
         func = node.func
-        return isinstance(func, ast.Attribute) and func.attr in {"selectbox", "multiselect"}
+        return isinstance(func, ast.Attribute) and func.attr in {
+            "selectbox",
+            "multiselect",
+        }
 
     @staticmethod
     def _is_keys_call(node: ast.AST) -> bool:
@@ -39,7 +42,10 @@ class _SelectorOptionsVisitor(ast.NodeVisitor):
     def _contains_list_of_keys_call(cls, node: ast.AST) -> bool:
         if cls._is_list_of_keys_call(node):
             return True
-        return any(cls._contains_list_of_keys_call(child) for child in ast.iter_child_nodes(node))
+        return any(
+            cls._contains_list_of_keys_call(child)
+            for child in ast.iter_child_nodes(node)
+        )
 
     @staticmethod
     def _options_expr(node: ast.Call) -> ast.AST | None:
@@ -53,7 +59,9 @@ class _SelectorOptionsVisitor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
         if self._is_selector_call(node):
             options_expr = self._options_expr(node)
-            if options_expr is not None and self._contains_list_of_keys_call(options_expr):
+            if options_expr is not None and self._contains_list_of_keys_call(
+                options_expr
+            ):
                 self.issues.append(
                     f"{self.rel_path}:{node.lineno} uses list(<dict>.keys()) for selector options; "
                     "prefer ID-backed options + format_func to avoid label-collision bugs"
