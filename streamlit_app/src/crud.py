@@ -1,6 +1,17 @@
-"""
-CRUD operations for OKR Application.
-Provides efficient data access with JOINs for dashboard and tree loading.
+"""Facade CRUD layer for the OKR application.
+
+This module is intentionally a stable compatibility surface, not the primary home
+of business logic. Most concrete behavior has been sliced into focused helper
+modules (`crud_*_helpers.py`), while this file preserves import paths used across:
+1. UI modules and dialogs that call `src.crud` directly.
+2. Tests that monkeypatch symbols on the `src.crud` module object.
+3. Backend proxy adapters that depend on legacy function signatures.
+
+Why delegation still flows through this file:
+1. Backward compatibility: existing callers do not need to change imports.
+2. Policy centralization: shared config flags and allowed update fields stay visible.
+3. Runtime rebinding: helpers receive `crud_module=sys.modules[__name__]` so they
+   can resolve symbols dynamically from this module during tests/hot reload.
 """
 
 from sqlmodel import Session, select  # noqa: F401
@@ -13,6 +24,10 @@ from typing import Any, Dict, Optional, List
 from datetime import datetime
 from src.utils.time_utils import utc_now_naive  # noqa: F401
 
+# NOTE:
+# Many imports below intentionally suppress Ruff unused-import checks. Helpers read
+# attributes from this module object at runtime (via `crud_module=...`), so names
+# that appear unused inside this file are still part of the runtime contract.
 from src.models import (
     Goal,
     Objective,
@@ -42,6 +57,9 @@ from src.database import get_session_context as _database_get_session_context  #
 from src.domain import authorization as domain_auth  # noqa: F401
 from src.audit import audit_log  # noqa: F401
 from src.utils.cache_utils import clear_cache_safe  # noqa: F401
+
+# Helper modules own concrete implementations per domain slice.
+# This facade delegates to them while preserving legacy call signatures.
 from src import crud_auth_helpers
 from src import crud_alignment_helpers
 from src import crud_core_helpers
@@ -61,6 +79,8 @@ from src import crud_checkin_helpers
 logger = logging.getLogger(__name__)
 
 
+# Field allow-lists are explicit mutation contracts. Update helpers validate
+# incoming kwargs against these sets to prevent silent schema drift.
 _ALLOWED_GOAL_UPDATE_FIELDS = {
     "title",
     "description",
@@ -116,18 +136,24 @@ _ALLOWED_EXPERIMENT_UPDATE_FIELDS = {
     "expected_effect_direction",
     "expected_effect_size",
 }
+# Sentinel used where `None` is a valid user value and we still need to detect
+# "argument omitted" semantics (for example partial updates).
 _UNSET = object()
+# Authentication throttling policy defaults (overridable by env vars).
 AUTH_USER_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_USER_WINDOW_SECONDS", "300")))
 AUTH_USER_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_USER_MAX_ATTEMPTS", "5")))
 AUTH_IP_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_IP_WINDOW_SECONDS", "300")))
 AUTH_IP_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_IP_MAX_ATTEMPTS", "20")))
 AUTH_LOCKOUT_SECONDS = max(1, int(os.getenv("AUTH_LOCKOUT_SECONDS", "900")))
+# Bootstrap retry policy for first-run admin creation.
 ADMIN_BOOTSTRAP_MAX_RETRIES = max(1, int(os.getenv("ADMIN_BOOTSTRAP_MAX_RETRIES", "3")))
 ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS = max(
     0.0, float(os.getenv("ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", "0.4"))
 )
 _BOOTSTRAP_ADMIN_PASSWORD_ENV = "OKR_BOOTSTRAP_ADMIN_PASSWORD"
 
+# Names that can become stale during hot reload if model classes are re-imported.
+# `crud_core_helpers.ensure_model_bindings_current_from_crud` refreshes bindings.
 _MODEL_BINDING_NAMES = (
     "Goal",
     "Objective",
@@ -157,6 +183,13 @@ _MODEL_BINDING_NAMES = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Core facade adapters
+# ---------------------------------------------------------------------------
+# These functions intentionally stay tiny. They exist to keep this module as the
+# contract boundary, while implementation details live in helper modules.
+# Passing `crud_module=sys.modules[__name__]` lets helpers look up runtime-bound
+# symbols from this module (important for tests that monkeypatch `src.crud` attrs).
 def _ensure_model_bindings_current() -> None:
     return crud_core_helpers.ensure_model_bindings_current_from_crud(
         crud_module=sys.modules[__name__]
@@ -219,6 +252,9 @@ def _validate_update_fields(
 # ============================================================================
 # USER OPERATIONS (Authentication & Authorization)
 # ============================================================================
+# The auth section contains both public APIs (create/auth/update user) and
+# internal guardrail primitives used by helper modules for throttling/RBAC.
+# Keeping wrappers here preserves historical import paths and test fixtures.
 
 
 def _auth_throttle_fail_open_allowed() -> bool:
@@ -279,6 +315,7 @@ def get_user_by_username(username: str) -> Optional[User]:
 
 
 def _goal_owner_predicate_by_username(username: str):
+    # Canonical owner scope predicate used across many goal-scoped queries.
     return crud_auth_helpers.goal_owner_predicate_by_username_from_crud(
         crud_module=sys.modules[__name__],
         username=username,
@@ -420,6 +457,7 @@ def _get_auth_throttle_states(
     normalized_username: str,
     normalized_ip: Optional[str],
 ) -> tuple[Optional[AuthThrottleState], Optional[AuthThrottleState]]:
+    # Returns (username_state, ip_state) so callers can evaluate both dimensions.
     return crud_auth_helpers.get_auth_throttle_states_from_crud(
         crud_module=sys.modules[__name__],
         session=session,
@@ -603,7 +641,7 @@ def reset_user_password(
 
 
 def _ensure_admin_exists_once() -> bool:
-    """Create a default admin user if no users exist."""
+    """Create the bootstrap admin once per process startup path."""
     return crud_auth_helpers.ensure_admin_exists_once_from_crud(
         crud_module=sys.modules[__name__]
     )
@@ -619,6 +657,9 @@ def ensure_admin_exists() -> bool:
 # ============================================================================
 # CHECK-IN OPERATIONS
 # ============================================================================
+# Check-ins are the core observation stream for KR progress and learning loop
+# behavior. Wrappers in this block are intentionally small so policy and schema
+# logic can evolve in `crud_checkin_helpers` without changing caller contracts.
 
 
 def create_check_in(
@@ -654,6 +695,7 @@ def get_check_ins(kr_id: int) -> List[CheckIn]:
 
 
 def _get_latest_checkins_by_kr(session: Session, kr_ids: List[int]) -> dict:
+    # Internal utility used by dashboard/read paths to avoid N+1 lookups.
     return crud_checkin_helpers.get_latest_checkins_by_kr_from_crud(
         crud_module=sys.modules[__name__],
         session=session,
@@ -675,6 +717,8 @@ def get_krs_needing_checkin(
 # ============================================================================
 # EXPERIMENT OPERATIONS (Learning Loop)
 # ============================================================================
+# Learning loop entities stay grouped here for discoverability. The helper module
+# enforces lifecycle and authorization; this facade preserves stable signatures.
 
 
 def create_experiment(
@@ -776,6 +820,7 @@ def list_experiments_for_retro_window(
 # ============================================================================
 # CYCLE OPERATIONS
 # ============================================================================
+# Cycles are admin-governed boundaries for OKR planning/reporting windows.
 
 
 def create_cycle(
@@ -842,6 +887,8 @@ def delete_cycle(cycle_id: int, actor_username: Optional[str] = None) -> bool:
 # ============================================================================
 # DASHBOARD QUERIES (Efficient JOINs)
 # ============================================================================
+# Read-optimized endpoints for UI surfaces. These avoid loading full object
+# graphs unless necessary and delegate query-shape decisions to query helpers.
 
 
 def get_dashboard_data(
@@ -881,6 +928,8 @@ def get_user_goals_simple(user_id: str, cycle_id: Optional[int] = None) -> List[
 # ============================================================================
 # CREATE OPERATIONS
 # ============================================================================
+# Hierarchy creation wrappers (Goal -> Objective -> KR -> Task). Authorization,
+# default values, and audit behavior are implemented in helper modules.
 
 
 def create_goal(
@@ -984,6 +1033,8 @@ def create_task(
 # ============================================================================
 # TIMER OPERATIONS (legacy functions removed; see Smart Timer Logic below)
 # ============================================================================
+# This small prelude keeps `get_total_time` backward-compatible for older call
+# sites, while the full smart timer API is defined later in the file.
 
 
 def get_total_time(task_id: int):
@@ -995,6 +1046,13 @@ def get_total_time(task_id: int):
 
 
 # ============================================================================
+# UPDATE / ALIGNMENT OPERATIONS
+# ============================================================================
+# Update functions enforce strict allow-lists and ownership checks through
+# helpers. Alignment wrappers are kept nearby because UI inspector actions call
+# these APIs alongside node updates.
+
+
 def update_goal(
     goal_id: int, actor_username: Optional[str] = None, **updates
 ) -> Optional[Goal]:
@@ -1033,6 +1091,7 @@ def update_key_result_analysis(
 def update_objective(
     objective_id: int, actor_username: Optional[str] = None, **updates
 ) -> Optional[Objective]:
+    """Update objective fields with allow-list validation and RBAC enforcement."""
     return crud_update_helpers.update_objective_from_crud(
         crud_module=sys.modules[__name__],
         objective_id=objective_id,
@@ -1069,6 +1128,7 @@ def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
 def update_key_result(
     key_result_id: int, actor_username: Optional[str] = None, **updates
 ) -> Optional[KeyResult]:
+    """Update key result fields including score/metric metadata where allowed."""
     return crud_update_helpers.update_key_result_from_crud(
         crud_module=sys.modules[__name__],
         key_result_id=key_result_id,
@@ -1102,6 +1162,8 @@ def update_task(
 # ============================================================================
 # DELETE OPERATIONS
 # ============================================================================
+# Delete wrappers preserve the same public API while helper modules own cascade
+# safety, authorization checks, and post-delete progress/cache maintenance.
 
 
 def delete_goal(goal_id: int, actor_username: Optional[str] = None) -> bool:
@@ -1159,6 +1221,8 @@ def get_node_by_external_id(external_id: str):
 # ============================================================================
 # TIMER OPERATIONS (Smart Timer Logic)
 # ============================================================================
+# Smart timer operations guarantee a single active timer per owner scope and
+# keep WorkLog/task rollups consistent across manual and running logs.
 
 
 def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
@@ -1172,6 +1236,7 @@ def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:
 def _query_owned_task_for_timer(
     session: Session, task_id: int, user_id: str
 ) -> Optional[Task]:
+    # Internal ownership guard used before mutating timer state.
     return crud_timer_helpers.query_owned_task_for_timer_from_crud(
         crud_module=sys.modules[__name__],
         session=session,
@@ -1189,6 +1254,7 @@ def _get_active_work_log_for_task(session: Session, task_id: int) -> Optional[Wo
 
 
 def start_timer(task_id: int, user_id: str) -> WorkLog:
+    """Start timer for one task after stopping any conflicting active timer."""
     return crud_timer_helpers.start_timer_from_crud(
         crud_module=sys.modules[__name__],
         task_id=task_id,
@@ -1199,6 +1265,7 @@ def start_timer(task_id: int, user_id: str) -> WorkLog:
 def stop_timer(
     task_id: int, summary: str = None, user_id: Optional[str] = None
 ) -> Optional[WorkLog]:
+    """Stop a running timer and finalize the corresponding WorkLog row."""
     return crud_timer_helpers.stop_timer_from_crud(
         crud_module=sys.modules[__name__],
         task_id=task_id,
@@ -1261,6 +1328,7 @@ def delete_work_log(log_id: int, actor_username: Optional[str] = None) -> bool:
 
 
 def get_leadership_metrics(usernames: List[str], cycle_id: int):
+    """Aggregate portfolio-level metrics for leadership dashboards."""
     return crud_data_helpers.get_leadership_metrics_from_crud(
         usernames=usernames,
         cycle_id=cycle_id,
@@ -1283,6 +1351,7 @@ def get_all_krs_by_cycle(
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> List[KeyResult]:
+    """Paged KR read for cycle-level analytics/report rendering."""
     return crud_data_helpers.get_all_krs_by_cycle_from_crud(
         cycle_id=cycle_id,
         limit=limit,
@@ -1296,6 +1365,7 @@ def get_all_tasks_by_cycle(
     limit: Optional[int] = None,
     offset: int = 0,
 ) -> List[Task]:
+    """Paged task read for cycle scans with optional query limits."""
     return crud_data_helpers.get_all_tasks_by_cycle_from_crud(
         cycle_id=cycle_id,
         limit=limit,
@@ -1317,6 +1387,7 @@ def get_daily_work_trend(user_id: int, days: int = 7) -> dict:
 # ============================================================================
 # PROGRESS CALCULATIONS
 # ============================================================================
+# Rollup functions keep hierarchy progress coherent after task/check-in updates.
 
 
 def calculate_progress(session: Session, node_type: str, node_id: int) -> int:
@@ -1350,6 +1421,7 @@ def recalculate_rollup_for_key_results(key_result_ids: List[int]) -> None:
 # ============================================================================
 # WEEKLY FOCUS OPERATIONS
 # ============================================================================
+# Weekly planning APIs back the ritual flow and manager/member accountability.
 
 
 def create_weekly_plan(
@@ -1386,6 +1458,8 @@ def get_active_weekly_plan(user_id: int, date: datetime = None) -> Optional[Week
 # ============================================================================
 # RETROSPECTIVE OPERATIONS
 # ============================================================================
+# Retrospective endpoints capture qualitative review state and experiment
+# outcomes, feeding both historical reporting and learning-loop governance.
 
 
 def create_retrospective(
@@ -1484,6 +1558,8 @@ def get_sql_id_by_external(external_id: str, model_class) -> Optional[int]:
 # ============================================================================
 # TEAM OPERATIONS
 # ============================================================================
+# Team management wrappers stay in this facade so admin flows and tests can keep
+# importing from `src.crud` while implementation remains helper-driven.
 
 
 def create_team(
