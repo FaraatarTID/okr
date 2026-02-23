@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui import session_keys
+
 
 def render_key_result_ai_analysis_section(
     *,
@@ -144,19 +146,19 @@ def render_delete_entity_section(
         keys_to_clear = [
             key
             for key in session_state.keys()
-            if str(key).startswith("okr_data_cache_")
+            if str(key).startswith(session_keys.OKR_DATA_CACHE_PREFIX)
         ]
         for key in keys_to_clear:
             del session_state[key]
 
-        if "nav_stack" in session_state:
-            nav_stack = session_state.get("nav_stack") or []
-            session_state["nav_stack"] = [
+        if session_keys.NAV_STACK in session_state:
+            nav_stack = session_state.get(session_keys.NAV_STACK) or []
+            session_state[session_keys.NAV_STACK] = [
                 item for item in nav_stack if not str(item).endswith(str(node_id))
             ]
 
-        if "active_inspector_id" in session_state:
-            del session_state["active_inspector_id"]
+        if session_keys.ACTIVE_INSPECTOR_ID in session_state:
+            del session_state[session_keys.ACTIVE_INSPECTOR_ID]
 
         rerun_fn()
 

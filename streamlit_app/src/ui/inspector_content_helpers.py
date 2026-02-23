@@ -87,16 +87,7 @@ def render_inspector_content(
         rerun_fn=st_module.rerun,
     )
 
-    if inspector_content_form_helpers.render_inspector_edit_form(
-        st_module=st_module,
-        node=node,
-        node_id=node_id,
-        title=title_insp,
-        progress=int(progress_insp),
-        node_type_upper=node_type_insp,
-        has_children=has_children_insp,
-        username=username,
-        logger=logger,
+    edit_form_deps = inspector_content_form_helpers.InspectorEditFormDeps(
         cached_get_all_users_fn=cached_get_all_users_fn,
         cached_get_user_by_id_fn=cached_get_user_by_id_fn,
         cached_get_team_members_fn=cached_get_team_members_fn,
@@ -120,6 +111,21 @@ def render_inspector_content(
         update_key_result_fn=update_key_result,
         update_task_fn=update_task,
         rerun_fn=st_module.rerun,
+    )
+    edit_form_context = inspector_content_form_helpers.InspectorEditFormContext(
+        st_module=st_module,
+        node=node,
+        node_id=node_id,
+        title=title_insp,
+        progress=int(progress_insp),
+        node_type_upper=node_type_insp,
+        has_children=has_children_insp,
+        username=username,
+        logger=logger,
+        deps=edit_form_deps,
+    )
+    if inspector_content_form_helpers.render_inspector_edit_form_with_context(
+        edit_form_context
     ):
         return
 
