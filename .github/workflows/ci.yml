@@ -96,10 +96,32 @@ jobs:
             exit 1
           }
 
+      - name: Install Playwright Browser (Chromium)
+        run: |
+          set -o pipefail
+          python -m playwright install chromium 2>&1 | tee playwright-install.log || {
+            echo "Playwright browser install failed. Collecting diagnostics..."
+            python --version || true
+            python -m pip --version || true
+            python -m pip show playwright || true
+            python -m pip list | grep -i playwright || true
+            uname -a || true
+            exit 1
+          }
+
+      - name: E2E Test (Playwright)
+        env:
+          OKR_RUN_PLAYWRIGHT_E2E: "1"
+        run: |
+          python -m pytest -q tests/test_e2e_playwright_login_to_atlas.py --junitxml=pytest-e2e-results.xml
+
       - name: Upload Pytest Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pytest-results
-          path: pytest-results.xml
+          path: |
+            pytest-results.xml
+            pytest-e2e-results.xml
+            playwright-install.log
           if-no-files-found: ignore

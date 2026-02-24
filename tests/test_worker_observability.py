@@ -42,3 +42,100 @@ def test_worker_process_sets_job_observability_context(monkeypatch):
     assert observed["correlation_id"] == "job-abc123"
     assert observed["request_id"] == "job-abc123"
     assert observed["job_id"] == "abc123"
+
+
+def test_worker_process_marks_malformed_payload_terminal(monkeypatch):
+    import backend_app.worker as worker
+
+    observed = {}
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending_job",
+        lambda _worker_id: SimpleNamespace(
+            id="bad1",
+            kind="ai.generate_json",
+            payload_json="{bad-json",
+        ),
+    )
+    monkeypatch.setattr(worker, "run_job", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(
+        worker,
+        "mark_job_failed_terminal",
+        lambda job_id, error_text: observed.update(
+            {"job_id": job_id, "error_text": error_text}
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "mark_job_failed",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Retryable mark should not be used for malformed payload")
+        ),
+    )
+
+    handled = worker.process_next_job(worker_id="worker-1")
+
+    assert handled is True
+    assert observed["job_id"] == "bad1"
+    assert "Invalid job payload JSON" in observed["error_text"]
+
+
+def test_worker_process_claim_exception_is_caught(monkeypatch):
+    import backend_app.worker as worker
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending_job",
+        lambda _worker_id: (_ for _ in ()).throw(RuntimeError("claim failed")),
+    )
+
+    handled = worker.process_next_job(worker_id="worker-1")
+    assert handled is False
+
+
+def test_worker_process_finalization_failure_marks_failed(monkeypatch):
+    import backend_app.worker as worker
+
+    observed = {}
+
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending_job",
+        lambda _worker_id: SimpleNamespace(
+            id="job-finalize",
+            kind="ai.generate_json",
+            payload_json='{"prompt":"hello"}',
+        ),
+    )
+    monkeypatch.setattr(worker, "run_job", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(
+        worker,
+        "get_job",
+        lambda _job_id: SimpleNamespace(cancel_requested=False),
+    )
+    monkeypatch.setattr(
+        worker,
+        "mark_job_succeeded",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("db down")),
+    )
+    monkeypatch.setattr(
+        worker,
+        "mark_job_failed",
+        lambda job_id, error_text: observed.update(
+            {"job_id": job_id, "error_text": error_text}
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "mark_job_failed_terminal",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Terminal failure path not expected")
+        ),
+    )
+
+    handled = worker.process_next_job(worker_id="worker-1")
+
+    assert handled is True
+    assert observed["job_id"] == "job-finalize"
+    assert "RuntimeError: db down" in observed["error_text"]

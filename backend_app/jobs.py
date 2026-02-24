@@ -22,6 +22,21 @@ from src.utils.time_utils import utc_now_naive
 
 
 _LOGGER = logging.getLogger(__name__)
+_MAX_JOB_ATTEMPTS_HARD_CAP = 10
+_ERROR_TEXT_MAX_CHARS = 2000
+
+
+def _normalize_max_attempts(raw: Any) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 1
+    value = max(1, value)
+    return min(value, _MAX_JOB_ATTEMPTS_HARD_CAP)
+
+
+def _truncate_error_text(value: str) -> str:
+    return str(value or "")[:_ERROR_TEXT_MAX_CHARS]
 
 
 def _loads_json(raw: Optional[str]) -> Optional[Dict[str, Any]]:
@@ -92,13 +107,14 @@ def enqueue_job(
                 return existing
 
         team_id = _resolve_actor_team_id(session, actor_username)
+        normalized_max_attempts = _normalize_max_attempts(max_attempts)
         job = AsyncJob(
             kind=str(kind).strip(),
             actor_username=actor_username,
             team_id=team_id,
             idempotency_key=normalized_key,
             payload_json=json.dumps(payload, ensure_ascii=False),
-            max_attempts=max(1, int(max_attempts)),
+            max_attempts=normalized_max_attempts,
             status=AsyncJobStatus.PENDING,
             created_at=now,
             updated_at=now,
@@ -232,13 +248,17 @@ def mark_job_failed(job_id: str, error_text: str) -> None:
         if not job:
             return
 
+        max_attempts = _normalize_max_attempts(job.max_attempts)
+        if int(job.max_attempts or 0) != max_attempts:
+            job.max_attempts = max_attempts
+
         attempts = int(job.attempts or 0) + 1
         job.attempts = attempts
 
-        if attempts < int(job.max_attempts or 1) and not job.cancel_requested:
+        if attempts < max_attempts and not job.cancel_requested:
             # Requeue with retained error context for observability.
             job.status = AsyncJobStatus.PENDING
-            job.error_text = str(error_text)[:2000]
+            job.error_text = _truncate_error_text(error_text)
             job.started_at = None
             job.worker_id = None
             job.updated_at = now
@@ -249,7 +269,28 @@ def mark_job_failed(job_id: str, error_text: str) -> None:
         job.status = (
             AsyncJobStatus.CANCELLED if job.cancel_requested else AsyncJobStatus.FAILED
         )
-        job.error_text = str(error_text)[:2000]
+        job.error_text = _truncate_error_text(error_text)
+        job.finished_at = now
+        job.updated_at = now
+        session.add(job)
+        session.commit()
+
+
+def mark_job_failed_terminal(job_id: str, error_text: str) -> None:
+    """Mark a job terminally failed without requeueing (poison-pill protection)."""
+    now = utc_now_naive()
+    with get_session_context() as session:
+        job = session.get(AsyncJob, job_id)
+        if not job:
+            return
+
+        max_attempts = _normalize_max_attempts(job.max_attempts)
+        job.max_attempts = max_attempts
+        job.attempts = max(int(job.attempts or 0) + 1, max_attempts)
+        job.status = (
+            AsyncJobStatus.CANCELLED if job.cancel_requested else AsyncJobStatus.FAILED
+        )
+        job.error_text = _truncate_error_text(error_text)
         job.finished_at = now
         job.updated_at = now
         session.add(job)

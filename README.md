@@ -151,3 +151,16 @@ Benchmark hot paths when changing performance-sensitive code:
 ```bash
 python streamlit_app/scripts/perf_hotpaths.py
 ```
+
+Run Playwright happy-path e2e test (login -> focus map -> start timer):
+
+```bash
+set OKR_RUN_PLAYWRIGHT_E2E=1
+python -m pytest -q tests/test_e2e_playwright_login_to_atlas.py
+```
+
+Install browser runtime once if needed:
+
+```bash
+playwright install chromium
+```
