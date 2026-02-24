@@ -102,7 +102,7 @@ Documentation HQ: [README](../README.md)
 5. روند آلودگی را ماهانه بازبینی کنید.
 
 قالب:
-- `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`
+- `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE_FA.md`
 
 ### 4.1 خروجی دو-مسیره Ritual هفتگی (الزامی)
 

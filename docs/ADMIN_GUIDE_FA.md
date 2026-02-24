@@ -175,7 +175,7 @@ Definition of done برای کیفیت پایش مدیر:
 مدل اعمال سیاست توسط ادمین:
 1. مدیران را ملزم کنید هر هفته بازبینی BAU release را اجرا کنند.
 2. لاگ تصمیم‌های BAU را ماهانه بازبینی کنید:
-   - `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`
+   - `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE_FA.md`
 3. برای هر BAU assignment وجود `owner + deadline + external system reference` را الزامی کنید (`Odoo`/ticketing/project tool/paper).
 4. تیم‌هایی را که الگوی تکراری آلودگی BAU دارند escalation کنید.
 5. Objective/KRهای activity-only یا throughput-only را به بازنویسی اجباری ببرید.

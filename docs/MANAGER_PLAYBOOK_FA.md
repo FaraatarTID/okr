@@ -109,7 +109,7 @@ Inspector:
    - `CONVERT_TO_OKR_CHANGE`: بازنویسی به اقدام تغییر با فرضیه و delta.
    - `KEEP_IN_OKR`: فقط وقتی معیارهای تغییر استراتژیک واقعا برقرار است.
 4. تصمیم‌ها را در این قالب ثبت کنید:
-   - `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`
+   - `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE_FA.md`
 5. روند آلودگی را ماهانه با ادمین بازبینی کنید.
 
 قانون دو-مسیره در Ritual هفتگی:
