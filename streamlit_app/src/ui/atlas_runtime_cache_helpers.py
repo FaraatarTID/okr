@@ -67,60 +67,58 @@ def build_scope_snapshot_with_backend_fallback(
     func_obj,
     extract_ai_snapshot_fields_fn,
 ):
-    ensure_model_bindings_current_fn()
+    _ = (
+        ensure_model_bindings_current_fn,
+        backend_read_proxy_enabled_fn,
+        get_session_context_fn,
+        build_scope_snapshot_payload_fn,
+        goal_model,
+        objective_model,
+        key_result_model,
+        task_model,
+        user_model,
+        select_fn,
+        func_obj,
+        extract_ai_snapshot_fields_fn,
+    )
     canonical_owner_ids_key = canonical_owner_ids_key_fn(owner_ids_key)
-    if backend_read_proxy_enabled_fn():
-        if not actor_username:
-            handle_backend_read_failure_fn(
-                operation="atlas snapshot",
-                backend_result={
-                    "error": "Actor username is required for backend read proxy mode.",
-                },
-            )
-        owner_ids = (
-            list(canonical_owner_ids_key)
-            if canonical_owner_ids_key is not None
-            else None
+    if not actor_username:
+        handle_backend_read_failure_fn(
+            operation="atlas snapshot",
+            backend_result={
+                "error": "Actor username is required for backend read proxy mode.",
+            },
         )
-        try:
-            from src.services.backend_client import fetch_atlas_scope_snapshot
+    owner_ids = (
+        list(canonical_owner_ids_key)
+        if canonical_owner_ids_key is not None
+        else None
+    )
+    try:
+        from src.services.backend_client import fetch_atlas_scope_snapshot
 
-            backend_result = fetch_atlas_scope_snapshot(
-                cycle_id=int(cycle_id),
-                owner_ids=owner_ids,
-                include_analysis=include_analysis,
-                actor_username=str(actor_username),
-            )
-            if isinstance(backend_result, dict) and "error" not in backend_result:
-                if isinstance(backend_result.get("goals"), list):
-                    return backend_result
-            handle_backend_read_failure_fn(
-                operation="atlas snapshot",
-                backend_result=backend_result,
-            )
-        except Exception as exc:
-            if isinstance(exc, RuntimeError):
-                raise
-            handle_backend_read_failure_fn(
-                operation="atlas snapshot",
-                exc=exc,
-            )
-
-    with get_session_context_fn() as session:
-        return build_scope_snapshot_payload_fn(
-            session=session,
+        backend_result = fetch_atlas_scope_snapshot(
             cycle_id=int(cycle_id),
-            canonical_owner_ids_key_value=canonical_owner_ids_key,
-            include_analysis=bool(include_analysis),
-            goal_model=goal_model,
-            objective_model=objective_model,
-            key_result_model=key_result_model,
-            task_model=task_model,
-            user_model=user_model,
-            select_fn=select_fn,
-            func_obj=func_obj,
-            extract_ai_snapshot_fields_fn=extract_ai_snapshot_fields_fn,
+            owner_ids=owner_ids,
+            include_analysis=include_analysis,
+            actor_username=str(actor_username),
         )
+        if isinstance(backend_result, dict) and "error" not in backend_result:
+            if isinstance(backend_result.get("goals"), list):
+                return backend_result
+        handle_backend_read_failure_fn(
+            operation="atlas snapshot",
+            backend_result=backend_result,
+        )
+    except Exception as exc:
+        if isinstance(exc, RuntimeError):
+            raise
+        handle_backend_read_failure_fn(
+            operation="atlas snapshot",
+            exc=exc,
+        )
+
+    raise RuntimeError("Atlas snapshot backend read failed.")
 
 
 def build_scope_runtime_payload(

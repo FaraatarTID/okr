@@ -26,16 +26,12 @@ def resolve_node_details(
     if lookup_type:
         return lookup_type, str(lookup_title or "Unknown")
 
+    _ = get_session_context_fn, models_by_type
+
     def _load_node(*, label: str, key: int):
-        if get_node_fn is not None:
-            return get_node_fn(key, label, actor_username=actor_username)
-        if get_session_context_fn is None:
+        if get_node_fn is None:
             return None
-        model = (models_by_type or {}).get(str(label).upper())
-        if model is None:
-            return None
-        with get_session_context_fn() as session:
-            return session.get(model, key)
+        return get_node_fn(key, label, actor_username=actor_username)
 
     if isinstance(node_id, str) and "_" in node_id:
         node_type, node_id_int = parse_typed_ref_fn(node_id)
@@ -60,19 +56,11 @@ def resolve_node_details(
                 return label, str(getattr(row, "title", "Unknown"))
         except Exception as exc:
             if logger is not None:
-                if get_node_fn is None:
-                    logger.debug(
-                        "Failed fallback lookup for model %s id=%s: %s",
-                        label,
-                        raw_id,
-                        exc,
-                    )
-                else:
-                    logger.debug(
-                        "Failed fallback lookup for node %s id=%s: %s",
-                        label,
-                        raw_id,
-                        exc,
-                    )
+                logger.debug(
+                    "Failed fallback lookup for node %s id=%s: %s",
+                    label,
+                    raw_id,
+                    exc,
+                )
             continue
     return None, "Unknown"

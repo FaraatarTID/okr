@@ -86,6 +86,63 @@ def _seed_small_tree():
     return user, cycle
 
 
+def _install_backend_snapshot_mock(monkeypatch, *, user):
+    import src.services.backend_client as backend_client
+
+    calls = {"count": 0}
+
+    def _fake_fetch(**kwargs):
+        calls["count"] += 1
+        include_analysis = bool(kwargs.get("include_analysis"))
+        kr_payload = {
+            "id": 1,
+            "title": "KR A",
+            "description": "",
+            "progress": 0,
+            "ai_overall_score": 72,
+            "ai_deadline_state": "overdue",
+            "tasks": [
+                {
+                    "id": 1,
+                    "title": "Task A",
+                    "description": "",
+                    "progress": 0,
+                    "assignee_id": user.id,
+                    "status": "todo",
+                }
+            ],
+        }
+        if include_analysis:
+            kr_payload["gemini_analysis"] = {
+                "overall_score": 72,
+                "deadline_warnings": ["Potentially overdue next week"],
+            }
+        return {
+            "goals": [
+                {
+                    "id": 1,
+                    "title": "Goal A",
+                    "description": "",
+                    "progress": 0,
+                    "owner_id": user.id,
+                    "objectives": [
+                        {
+                            "id": 1,
+                            "title": "Objective A",
+                            "description": "",
+                            "progress": 0,
+                            "key_results": [kr_payload],
+                        }
+                    ],
+                }
+            ],
+            "users_map": {int(user.id): user.username},
+        }
+
+    monkeypatch.setattr(backend_client, "fetch_atlas_scope_snapshot", _fake_fetch)
+    return calls
+
+
 def test_atlas_owner_scope_cache_key_is_deterministic():
     from src.ui.components import _canonical_owner_ids_key
 
@@ -95,7 +152,7 @@ def test_atlas_owner_scope_cache_key_is_deterministic():
     assert _canonical_owner_ids_key(None) is None
 
 
-def test_atlas_snapshot_excludes_analysis_blob_by_default(isolated_db):
+def test_atlas_snapshot_excludes_analysis_blob_by_default(isolated_db, monkeypatch):
     from src.ui.components import (
         _cached_get_atlas_scope_snapshot,
         _canonical_owner_ids_key,
@@ -103,6 +160,7 @@ def test_atlas_snapshot_excludes_analysis_blob_by_default(isolated_db):
 
     user, cycle = _seed_small_tree()
     owner_ids_key = _canonical_owner_ids_key([user.id])
+    calls = _install_backend_snapshot_mock(monkeypatch, user=user)
 
     _cached_get_atlas_scope_snapshot.clear()
 
@@ -110,6 +168,7 @@ def test_atlas_snapshot_excludes_analysis_blob_by_default(isolated_db):
         cycle.id,
         owner_ids_key,
         include_analysis=False,
+        actor_username=user.username,
     )
     key_results = (
         snapshot_default["goals"][0]["objectives"][0]["key_results"]
@@ -125,6 +184,7 @@ def test_atlas_snapshot_excludes_analysis_blob_by_default(isolated_db):
         cycle.id,
         owner_ids_key,
         include_analysis=True,
+        actor_username=user.username,
     )
     key_results_with = (
         snapshot_with_analysis["goals"][0]["objectives"][0]["key_results"]
@@ -132,9 +192,10 @@ def test_atlas_snapshot_excludes_analysis_blob_by_default(isolated_db):
         else []
     )
     assert "gemini_analysis" in key_results_with[0]
+    assert calls["count"] == 2
 
 
-def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db):
+def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db, monkeypatch):
     from src.ui.components import (
         _cached_get_atlas_scope_runtime,
         _canonical_owner_ids_key,
@@ -143,6 +204,7 @@ def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db):
 
     user, cycle = _seed_small_tree()
     owner_ids_key = _canonical_owner_ids_key([user.id])
+    calls = _install_backend_snapshot_mock(monkeypatch, user=user)
 
     _cached_get_atlas_scope_runtime.clear()
 
@@ -151,6 +213,7 @@ def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db):
         cycle.id,
         owner_ids_key,
         include_analysis=False,
+        actor_username=user.username,
     )
     index = runtime.get("index", {})
     runtime.get("node_lookup", {})
@@ -166,6 +229,7 @@ def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db):
             cycle.id,
             owner_ids_key,
             include_analysis=False,
+            actor_username=user.username,
         )
         lookup_hit = runtime_hit.get("node_lookup", {})
         path_titles = []
@@ -177,9 +241,10 @@ def test_atlas_cache_hit_navigation_labels_do_not_query_db(isolated_db):
 
     query_count = _count_queries(isolated_db, _cache_hit_navigation_work)
     assert query_count == 0
+    assert calls["count"] == 1
 
 
-def test_atlas_cache_miss_snapshot_query_budget(isolated_db):
+def test_atlas_cache_miss_snapshot_query_budget(isolated_db, monkeypatch):
     from src.ui.components import (
         _cached_get_atlas_scope_snapshot,
         _canonical_owner_ids_key,
@@ -187,6 +252,7 @@ def test_atlas_cache_miss_snapshot_query_budget(isolated_db):
 
     user, cycle = _seed_small_tree()
     owner_ids_key = _canonical_owner_ids_key([user.id])
+    calls = _install_backend_snapshot_mock(monkeypatch, user=user)
 
     _cached_get_atlas_scope_snapshot.clear()
 
@@ -195,10 +261,12 @@ def test_atlas_cache_miss_snapshot_query_budget(isolated_db):
             cycle.id,
             owner_ids_key,
             include_analysis=False,
+            actor_username=user.username,
         )
 
     query_count = _count_queries(isolated_db, _cache_miss_snapshot_work)
-    assert query_count <= 4
+    assert query_count == 0
+    assert calls["count"] == 1
 
 
 def test_atlas_treemap_session_cache_reuses_figure(isolated_db, monkeypatch):
@@ -206,12 +274,14 @@ def test_atlas_treemap_session_cache_reuses_figure(isolated_db, monkeypatch):
 
     user, cycle = _seed_small_tree()
     owner_ids_key = atlas_components._canonical_owner_ids_key([user.id])
+    _install_backend_snapshot_mock(monkeypatch, user=user)
 
     atlas_components._cached_get_atlas_scope_runtime.clear()
     runtime = atlas_components._cached_get_atlas_scope_runtime(
         cycle.id,
         owner_ids_key,
         include_analysis=False,
+        actor_username=user.username,
     )
     index = runtime.get("index", {})
     roots = runtime.get("roots", [])

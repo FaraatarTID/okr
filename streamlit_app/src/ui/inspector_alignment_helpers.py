@@ -25,6 +25,14 @@ def render_objective_alignment_section(
 
     from src.services import backend_client
 
+    _ = (
+        get_session_context_fn,
+        get_alignment_neighbors_fn,
+        select_fn,
+        alignment_edge_model,
+        objective_model,
+    )
+
     st_module.markdown("---")
     st_module.caption("Organizational Alignment")
 
@@ -32,54 +40,15 @@ def render_objective_alignment_section(
     if click_button_fn is None:
         click_button_fn = getattr(st_module, "form_submit_button")
 
-    use_backend_reads = False
-    try:
-        use_backend_reads = bool(getattr(backend_client, "is_backend_enabled", lambda: False)())
-    except Exception:
-        use_backend_reads = False
+    context_result = backend_client.read_alignment_context(
+        int(node_id),
+        actor_username=username,
+    )
+    if isinstance(context_result, dict) and "error" in context_result:
+        st_module.error(str(context_result.get("error") or "Failed to load alignments."))
+        return
 
-    if use_backend_reads:
-        context_result = backend_client.read_alignment_context(
-            int(node_id),
-            actor_username=username,
-        )
-        if isinstance(context_result, dict) and "error" in context_result:
-            st_module.error(
-                str(context_result.get("error") or "Failed to load alignments.")
-            )
-            return
-        context = dict(context_result or {})
-    else:
-        if (
-            select_fn is None
-            or alignment_edge_model is None
-            or objective_model is None
-        ):
-            context = {"parents": [], "children": [], "all_objectives": [], "edges": []}
-        else:
-            with get_session_context_fn() as session:
-                parents, children = get_alignment_neighbors_fn(session, int(node_id))
-                all_edges = list(session.exec(select_fn(alignment_edge_model)).all())
-                edge_rows = [
-                    edge
-                    for edge in all_edges
-                    if int(getattr(edge, "parent_id", -1)) == int(node_id)
-                    or int(getattr(edge, "child_id", -1)) == int(node_id)
-                ]
-                all_objs = list(
-                    session.exec(
-                        select_fn(objective_model).where(
-                            objective_model.id != int(node_id)
-                        )
-                    ).all()
-                )
-            context = {
-                "parents": list(parents or []),
-                "children": list(children or []),
-                "all_objectives": list(all_objs or []),
-                "edges": list(edge_rows or []),
-            }
-
+    context = dict(context_result or {})
     parents = list(context.get("parents") or [])
     children = list(context.get("children") or [])
     all_objs = list(context.get("all_objectives") or [])
@@ -107,10 +76,7 @@ def render_objective_alignment_section(
             )
             if edge_id:
                 with p_col2:
-                    if click_button_fn(
-                        "Delete",
-                        key=f"del_align_p_{edge_id}",
-                    ):
+                    if click_button_fn("Delete", key=f"del_align_p_{edge_id}"):
                         delete_alignment_fn(int(edge_id), actor_username=username)
                         rerun_fn()
 
@@ -127,10 +93,7 @@ def render_objective_alignment_section(
             )
             if edge_id:
                 with c_col2:
-                    if click_button_fn(
-                        "Delete",
-                        key=f"del_align_c_{edge_id}",
-                    ):
+                    if click_button_fn("Delete", key=f"del_align_c_{edge_id}"):
                         delete_alignment_fn(int(edge_id), actor_username=username)
                         rerun_fn()
 
@@ -182,7 +145,7 @@ def render_objective_alignment_section(
             key=f"align_type_{node_id}",
         )
 
-        if click_button_fn("🔗 Link Objectives", use_container_width=True):
+        if click_button_fn("Link Objectives", use_container_width=True):
             try:
                 if align_type_sel == "This objective SUPPORTS the target":
                     create_alignment_fn(

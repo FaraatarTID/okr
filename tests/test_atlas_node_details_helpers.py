@@ -13,33 +13,13 @@ class _FakeLogger:
         self.debug_calls.append(str(message))
 
 
-class _FakeSession:
-    def __init__(self, rows=None, errors=None):
-        self.rows = dict(rows or {})
-        self.errors = dict(errors or {})
-        self.calls = []
+def test_resolve_node_details_returns_lookup_hit_without_backend_call():
+    calls = []
 
-    def get(self, model, key):
-        self.calls.append((model, key))
-        if model in self.errors:
-            raise self.errors[model]
-        return self.rows.get((model, key))
+    def _get_node(*_args, **_kwargs):
+        calls.append("called")
+        return None
 
-
-class _FakeCtx:
-    def __init__(self, session):
-        self.session = session
-
-    def __enter__(self):
-        return self.session
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
-def test_resolve_node_details_returns_lookup_hit_without_db():
-    goal_model = object()
-    session = _FakeSession()
     node_type, title = atlas_node_details_helpers.resolve_node_details(
         "goal_1",
         node_lookup={"goal_1": {"type": "goal", "title": "Lookup Goal"}},
@@ -55,26 +35,26 @@ def test_resolve_node_details_returns_lookup_hit_without_db():
             )
         ),
         parse_typed_ref_fn=lambda _raw: ("GOAL", 1),
-        get_session_context_fn=lambda: _FakeCtx(session),
-        models_by_type={"GOAL": goal_model},
+        get_node_fn=_get_node,
         logger=None,
     )
     assert node_type == "GOAL"
     assert title == "Lookup Goal"
-    assert session.calls == []
+    assert calls == []
 
 
-def test_resolve_node_details_supports_typed_ref_db_lookup():
-    goal_model = object()
-    session = _FakeSession(rows={(goal_model, 5): SimpleNamespace(title="Goal Five")})
+def test_resolve_node_details_supports_typed_ref_backend_lookup():
     node_type, title = atlas_node_details_helpers.resolve_node_details(
         "goal_5",
         node_lookup={},
         session_state={},
         get_node_details_from_lookup_fn=lambda *_args, **_kwargs: (None, None),
         parse_typed_ref_fn=lambda _raw: ("GOAL", 5),
-        get_session_context_fn=lambda: _FakeCtx(session),
-        models_by_type={"GOAL": goal_model},
+        get_node_fn=lambda node_id, node_type, **_kwargs: (
+            SimpleNamespace(title="Goal Five")
+            if int(node_id) == 5 and str(node_type) == "GOAL"
+            else None
+        ),
         logger=None,
     )
     assert node_type == "GOAL"
@@ -82,34 +62,28 @@ def test_resolve_node_details_supports_typed_ref_db_lookup():
 
 
 def test_resolve_node_details_numeric_fallback_tries_order_and_skips_errors():
-    goal_model = object()
-    obj_model = object()
-    kr_model = object()
-    task_model = object()
-    session = _FakeSession(
-        rows={(task_model, 7): SimpleNamespace(title="Task Seven")},
-        errors={goal_model: RuntimeError("goal table unavailable")},
-    )
     logger = _FakeLogger()
+
+    def _get_node(node_id, node_type, **_kwargs):
+        if str(node_type) == "GOAL":
+            raise RuntimeError("goal read unavailable")
+        if str(node_type) == "TASK" and int(node_id) == 7:
+            return SimpleNamespace(title="Task Seven")
+        return None
+
     node_type, title = atlas_node_details_helpers.resolve_node_details(
         7,
         node_lookup={},
         session_state={},
         get_node_details_from_lookup_fn=lambda *_args, **_kwargs: (None, None),
         parse_typed_ref_fn=lambda _raw: (None, None),
-        get_session_context_fn=lambda: _FakeCtx(session),
-        models_by_type={
-            "GOAL": goal_model,
-            "OBJECTIVE": obj_model,
-            "KEY_RESULT": kr_model,
-            "TASK": task_model,
-        },
+        get_node_fn=_get_node,
         logger=logger,
     )
     assert node_type == "TASK"
     assert title == "Task Seven"
     assert any(
-        "Failed fallback lookup for model GOAL id=7" in msg
+        "Failed fallback lookup for node GOAL id=7" in msg
         for msg in logger.debug_calls
     )
 
@@ -122,8 +96,7 @@ def test_resolve_node_details_invalid_numeric_input_returns_unknown():
         session_state={},
         get_node_details_from_lookup_fn=lambda *_args, **_kwargs: (None, None),
         parse_typed_ref_fn=lambda _raw: (None, None),
-        get_session_context_fn=lambda: _FakeCtx(_FakeSession()),
-        models_by_type={},
+        get_node_fn=lambda *_args, **_kwargs: None,
         logger=logger,
     )
     assert node_type is None

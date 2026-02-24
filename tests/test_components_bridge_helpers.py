@@ -101,35 +101,25 @@ def test_cached_get_leadership_metrics_prefers_backend_success(monkeypatch):
     assert failures == []
 
 
-def test_cached_get_leadership_metrics_falls_back_after_backend_error_payload(
+def test_cached_get_leadership_metrics_raises_after_backend_error_payload(
     monkeypatch,
 ):
     backend_module = ModuleType("src.services.backend_client")
     backend_module.fetch_leadership_metrics = lambda **_kwargs: {"error": "unavailable"}
     monkeypatch.setitem(sys.modules, "src.services.backend_client", backend_module)
 
-    crud_calls = {}
-    crud_module = ModuleType("src.crud")
-    crud_module.get_leadership_metrics = lambda user_ids, cycle_id: (
-        crud_calls.setdefault("args", (user_ids, cycle_id)),
-        {"fallback": True},
-    )[1]
-    monkeypatch.setitem(sys.modules, "src.crud", crud_module)
-
     failures = []
 
-    result = components_bridge_helpers.cached_get_leadership_metrics(
-        [10],
-        5,
-        actor_username="alice",
-        backend_read_proxy_enabled_fn=lambda: True,
-        handle_backend_read_failure_fn=lambda **kwargs: failures.append(kwargs),
-    )
-
-    assert result == {"fallback": True}
+    with pytest.raises(RuntimeError, match="Leadership metrics backend read failed"):
+        components_bridge_helpers.cached_get_leadership_metrics(
+            [10],
+            5,
+            actor_username="alice",
+            backend_read_proxy_enabled_fn=lambda: True,
+            handle_backend_read_failure_fn=lambda **kwargs: failures.append(kwargs),
+        )
     assert failures and failures[0]["operation"] == "leadership metrics"
     assert failures[0]["backend_result"] == {"error": "unavailable"}
-    assert crud_calls["args"] == ([10], 5)
 
 
 def test_cached_get_leadership_metrics_reraises_runtime_error(monkeypatch):
