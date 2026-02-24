@@ -66,8 +66,10 @@ from src.ui import (
     app_preflight_helpers,
     app_runtime_helpers,
     app_shell_helpers,
+    app_query_helpers,
 )
 from src.utils.time_utils import utc_now_naive
+from src.utils.cache_utils import check_distributed_cache_staleness
 
 
 def _get_pdf_method() -> str:
@@ -376,6 +378,12 @@ def render_app(username, runtime_bundle=None):
 
 def main():
     """Top-level app entrypoint."""
+    # Restore UI state from URL if present (e.g. after failover or refresh).
+    app_query_helpers.restore_from_query_params(st=st, session_state=st.session_state)
+
+    # Check if another node in the cluster requested a cache invalidation.
+    check_distributed_cache_staleness()
+
     return app_entry_helpers.run_main_from_app(app_module=_build_app_context())
 
 

@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from src.ui import session_keys
+from src.ui.app_query_helpers import sync_to_query_params
 
 CYCLE_CHANGE_KEYS: tuple[str, ...] = session_keys.CYCLE_CHANGE_KEYS
 HOME_NAV_KEYS: tuple[str, ...] = session_keys.HOME_NAV_KEYS
@@ -25,6 +26,9 @@ def handle_cycle_change(
     session_state.active_cycle_id = selected_cycle_id
     session_state[session_keys.NAV_STACK] = []
     clear_state_keys(session_state=session_state, keys=CYCLE_CHANGE_KEYS)
+    
+    import streamlit as st
+    sync_to_query_params(st=st, session_state=session_state)
 
 
 def handle_home_navigation(*, session_state: dict[str, Any]) -> None:
@@ -38,6 +42,9 @@ def handle_home_navigation(*, session_state: dict[str, Any]) -> None:
         session_state=session_state,
         keys=(*HOME_NAV_KEYS, session_keys.ACTIVE_INSPECTOR_ID),
     )
+    
+    import streamlit as st
+    sync_to_query_params(st=st, session_state=session_state)
 
 
 def activate_report_mode(*, session_state: dict[str, Any], mode: str) -> None:
@@ -50,6 +57,9 @@ def activate_report_mode(*, session_state: dict[str, Any], mode: str) -> None:
             session_keys.ACTIVE_INSPECTOR_ID,
         ),
     )
+    
+    import streamlit as st
+    sync_to_query_params(st=st, session_state=session_state)
 
 
 def handle_report_button(

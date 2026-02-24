@@ -48,6 +48,12 @@ class SecurityStateStore(Protocol):
     ) -> bool:
         """Return True if request is allowed, False if limit exceeded."""
 
+    def get_app_state(self, key: str) -> Optional[str]:
+        """Retrieve a distributed state value by key."""
+
+    def set_app_state(self, key: str, value: str) -> None:
+        """Set a distributed state value by key."""
+
 
 class InMemorySecurityStateStore:
     """Process-local fallback for non-production environments."""
@@ -110,6 +116,20 @@ class InMemorySecurityStateStore:
                 return False
             q.append(now)
             return True
+
+    def get_app_state(self, key: str) -> Optional[str]:
+        with self._lock:
+            # We don't have a dedicated dict for generic state yet, 
+            # so we'll just use a hidden one for in-memory mocks.
+            if not hasattr(self, "_app_state"):
+                self._app_state: dict[str, str] = {}
+            return self._app_state.get(key)
+
+    def set_app_state(self, key: str, value: str) -> None:
+        with self._lock:
+            if not hasattr(self, "_app_state"):
+                self._app_state: dict[str, str] = {}
+            self._app_state[key] = str(value)
 
 
 class DatabaseSecurityStateStore:
@@ -185,6 +205,17 @@ class DatabaseSecurityStateStore:
                             """
                             CREATE INDEX IF NOT EXISTS ix_backend_rate_limit_counter_expires_at
                             ON backend_rate_limit_counter (expires_at)
+                            """
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            """
+                            CREATE TABLE IF NOT EXISTS backend_distributed_state (
+                                state_key VARCHAR(255) PRIMARY KEY,
+                                state_value TEXT,
+                                updated_at TIMESTAMP NOT NULL
+                            )
                             """
                         )
                     )
@@ -320,6 +351,43 @@ class DatabaseSecurityStateStore:
                 "Distributed rate limiter storage is unavailable."
             ) from exc
 
+    def get_app_state(self, key: str) -> Optional[str]:
+        self._ensure_schema()
+        try:
+            with self._engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT state_value FROM backend_distributed_state WHERE state_key = :key"
+                    ),
+                    {"key": key},
+                ).first()
+                return str(row[0]) if row else None
+        except SQLAlchemyError as exc:
+            _LOGGER.debug("Failed to get distributed app state '%s': %s", key, exc)
+            return None
+
+    def set_app_state(self, key: str, value: str) -> None:
+        self._ensure_schema()
+        now_dt = _utc_naive_from_epoch(time.time())
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO backend_distributed_state (state_key, state_value, updated_at)
+                        VALUES (:key, :value, :updated_at)
+                        ON CONFLICT(state_key) DO UPDATE SET
+                            state_value = EXCLUDED.state_value,
+                            updated_at = EXCLUDED.updated_at
+                        """
+                    ),
+                    {"key": key, "value": value, "updated_at": now_dt},
+                )
+        except SQLAlchemyError as exc:
+            raise SecurityStateUnavailableError(
+                f"Failed to set distributed app state '{key}'."
+            ) from exc
+
 
 class RedisSecurityStateStore:
     """Distributed security state backed by Redis."""
@@ -438,6 +506,23 @@ class RedisSecurityStateStore:
         except Exception as exc:
             raise SecurityStateUnavailableError(
                 "Distributed rate limiter storage is unavailable."
+            ) from exc
+
+    def get_app_state(self, key: str) -> Optional[str]:
+        try:
+            # redis-py .get() returns bytes or None
+            value = self._client.get(f"{self._key_prefix}:state:{key}")
+            return value.decode("utf-8") if value is not None else None
+        except Exception as exc:
+            _LOGGER.debug("Failed to get Redis app state '%s': %s", key, exc)
+            return None
+
+    def set_app_state(self, key: str, value: str) -> None:
+        try:
+            self._client.set(f"{self._key_prefix}:state:{key}", str(value))
+        except Exception as exc:
+            raise SecurityStateUnavailableError(
+                f"Failed to set Redis app state '{key}'."
             ) from exc
 
 
@@ -589,6 +674,25 @@ def check_rate_limit_window(
             limit=limit,
             window_seconds=window_seconds,
         )
+
+
+def get_app_state(key: str) -> Optional[str]:
+    """Retrieve shared application state across all cluster nodes."""
+    try:
+        return _get_store().get_app_state(key)
+    except SecurityStateUnavailableError:
+        return _fallback_to_memory_store().get_app_state(key)
+
+
+def set_app_state(key: str, value: str) -> None:
+    """Update shared application state across all cluster nodes."""
+    try:
+        _get_store().set_app_state(key, value)
+    except SecurityStateUnavailableError as exc:
+        settings = get_backend_settings()
+        if _is_production(settings):
+            raise
+        _fallback_to_memory_store().set_app_state(key, value)
 
 
 def reset_security_state_for_tests() -> None:
