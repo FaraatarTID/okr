@@ -70,8 +70,8 @@ def _resolve_focus_health(
 
 
 def _build_stop_keys(*, focus_task_ref: str) -> tuple[str, str]:
-    stop_capture_key = "atlas_stop_capture_task_ref"
-    stop_draft_key = f"atlas_stop_summary_draft_{focus_task_ref}"
+    stop_capture_key = session_keys.ATLAS_STOP_CAPTURE_TASK_REF
+    stop_draft_key = f"{session_keys.ATLAS_STOP_SUMMARY_DRAFT_PREFIX}{focus_task_ref}"
     return stop_capture_key, stop_draft_key
 
 

@@ -250,3 +250,57 @@ def test_record_rerun_metrics_warns_when_threshold_exceeded(monkeypatch):
         app_entry_helpers._record_rerun_metrics(session_state)
 
     assert any("High Streamlit rerun rate detected" in message for message in warnings)
+
+
+def test_record_rerun_metrics_warns_once_per_window(monkeypatch):
+    session_state = {}
+    monkeypatch.setenv("OKR_RERUN_MONITOR_WINDOW_SECONDS", "60")
+    monkeypatch.setenv("OKR_RERUN_WARN_THRESHOLD", "5")
+
+    timeline = iter([1000.0, 1000.1, 1000.2, 1000.3, 1000.4, 1000.5])
+    monkeypatch.setattr(app_entry_helpers.time, "time", lambda: next(timeline))
+    warnings = []
+    monkeypatch.setattr(
+        app_entry_helpers._LOGGER,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+
+    for _ in range(6):
+        app_entry_helpers._record_rerun_metrics(session_state)
+
+    assert len(warnings) == 1
+
+
+def test_record_rerun_metrics_window_reset_allows_new_warning(monkeypatch):
+    session_state = {}
+    monkeypatch.setenv("OKR_RERUN_MONITOR_WINDOW_SECONDS", "60")
+    monkeypatch.setenv("OKR_RERUN_WARN_THRESHOLD", "5")
+
+    timeline = iter(
+        [
+            1000.0,
+            1000.1,
+            1000.2,
+            1000.3,
+            1000.4,
+            1061.0,
+            1061.1,
+            1061.2,
+            1061.3,
+            1061.4,
+        ]
+    )
+    monkeypatch.setattr(app_entry_helpers.time, "time", lambda: next(timeline))
+    warnings = []
+    monkeypatch.setattr(
+        app_entry_helpers._LOGGER,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+
+    for _ in range(10):
+        app_entry_helpers._record_rerun_metrics(session_state)
+
+    assert len(warnings) == 2
+    assert int(session_state.get("okr_runtime_rerun_window_count", 0)) == 5

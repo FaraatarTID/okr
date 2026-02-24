@@ -6,6 +6,7 @@ It complements:
 - `docs/OKR_LIFECYCLE_GUIDE.md` (state machine + lifecycle constraints)
 - `docs/MANAGER_PLAYBOOK.md` (manager operating rhythm)
 - `docs/USER_GUIDE.md` (daily user workflow)
+- `docs/OKR_BAU_BOUNDARY_GUIDE.md` (strategic-change vs BAU boundary policy)
 - Persian counterpart: `docs/OKR_ROLLOUT_GUIDE_FA.md`
 
 Use this document when you are introducing OKRs across multiple teams or business units, not only running one team cycle.
@@ -29,6 +30,7 @@ Confirm the organization and system are ready:
 | Strategy clarity | Vision/mission and strategic priorities are explicit enough to derive cycle Objectives. |
 | Culture | Mistakes are treated as learning signals; retrospectives are safe to run honestly. |
 | Performance assessment boundary | OKRs are not used as direct individual performance rating tools. |
+| BAU boundary policy | Teams can explicitly classify and release BAU work out of OKRs using a shared rule (`SHIFT` + release log). |
 | Leadership style | Sponsors and managers are prepared to coach and remove blockers, not only control output. |
 | Platform readiness | Roles, cycle, and scope visibility are correctly configured in the app (`admin/manager/member`, `manager_id`, active cycle). |
 
@@ -69,6 +71,7 @@ Map rollout ceremonies to product workflows:
 - `Weekly`: run Weekly Ritual, especially Step 2 (`Update KRs`) for check-in discipline.
 - `Review`: evaluate cycle outcomes with Strategic Dashboard + reports.
 - `Retrospective`: capture reflection signals, review RetroBox evidence, define process improvements.
+- `Operational BAU lane`: assign routine BAU projects/tasks with deadlines in external systems (for example Odoo/ticketing/paper), separate from OKR evidence.
 
 Execution rule:
 - Schedule all recurring ceremonies before cycle start and treat them as non-optional governance events.
@@ -78,6 +81,7 @@ Execution rule:
 Set explicit pass/fail thresholds before the first cycle. Recommended categories:
 - Adoption: participation in planning, weekly ritual completion, training coverage.
 - Quality: KR clarity, metric quality, confidence trends, variation discipline.
+- Boundary quality: BAU contamination rate trend and BAU release cycle time.
 - Execution: check-in freshness, overdue risk trend, at-risk KR trend.
 - Alignment: visibility of priorities and cross-team dependency clarity.
 - Learning: retrospective quality and number of actionable improvements carried to next cycle.
@@ -148,12 +152,14 @@ Implementation note:
 | Expanding too quickly after one positive cycle | Enforce two-cycle evidence minimum before major scale-out. |
 | Tool fragmentation across teams | Use one central source of truth for goals, check-ins, and rollup views. |
 | Manager role reduced to status policing | Shift manager rhythm toward coaching, blocker removal, and quality feedback. |
+| BAU work disguised as OKR progress | Enforce `SHIFT` test and weekly BAU release log; rewrite throughput goals into KPI-delta change goals. |
 
 ## 13. Implementation Crosswalk in This Repo
 
 - Lifecycle constraints and transitions: `docs/OKR_LIFECYCLE_GUIDE.md`
 - Manager coaching and governance rhythm: `docs/MANAGER_PLAYBOOK.md`
 - User execution behavior and ritual flow: `docs/USER_GUIDE.md`
+- Strategic-change vs BAU classification policy: `docs/OKR_BAU_BOUNDARY_GUIDE.md`
 - Learning-loop mechanics for check-in quality: `docs/learning-loop.md`
 
 Use this guide as the rollout governance layer above those implementation-specific guides.
@@ -164,6 +170,7 @@ Use these templates to operationalize rollout decisions:
 - `docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE.md`
 - `docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md`
 - `docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE.md`
+- `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`
 
 Persian counterparts:
 - `docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE_FA.md`

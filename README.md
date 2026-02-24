@@ -2,7 +2,33 @@
 
 A backend-first OKR platform with a Streamlit UI layer, secure backend mutations, and async worker support. The embedded backend path in `streamlit_app/app.py` is a Streamlit Cloud compatibility mode.
 
-This README is intentionally concise. Detailed behavior, operations, and role playbooks live in the documents below.
+This README stays concise on implementation mechanics while making core policy concerns explicit. Detailed behavior, operations, and role playbooks live in the documents below.
+
+## Read First: Fundamental Concern
+
+This product exists to solve a management failure that is easy to miss:
+- Teams can look busy while strategic performance does not improve.
+- Routine operational work (BAU) can be mistaken for OKR progress.
+- Leadership then makes decisions on activity volume instead of outcome change.
+
+Core operating model:
+- BAU (Business as Usual): keeps current operations stable and reliable.
+- OKR (Objectives and Key Results): changes system performance and moves KPI baselines.
+
+Non-negotiable boundary:
+- BAU completion is not KR progress evidence.
+- KR progress evidence must show measurable KPI baseline movement.
+- BAU must be managed in external operational systems/governance artifacts (for example Odoo/ticketing/paper), not in KR check-in fields.
+
+What every reviewer should verify:
+1. Strategic lane and operational lane are separated in weekly governance outputs.
+2. Throughput/activity-only KRs are rewritten into true change KRs.
+3. BAU candidates are released or converted, not silently kept under strategic KRs.
+4. Risk and coaching decisions use outcome deltas, not task volume.
+
+Boundary policy references:
+- EN: [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md)
+- FA: [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md)
 
 ## Documentation HQ
 
@@ -22,6 +48,8 @@ Use this section as the primary index for all project docs.
 - AI Features (FA): [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md)
 - OKR Lifecycle (EN): [docs/OKR_LIFECYCLE_GUIDE.md](docs/OKR_LIFECYCLE_GUIDE.md)
 - OKR Lifecycle (FA): [docs/OKR_LIFECYCLE_GUIDE_FA.md](docs/OKR_LIFECYCLE_GUIDE_FA.md)
+- OKR vs BAU Boundary (EN): [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md)
+- OKR vs BAU Boundary (FA): [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md)
 - OKR Rollout (EN): [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md)
 - OKR Rollout (FA): [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md)
 - Learning Loop workflow (EN+FA): [docs/learning-loop.md](docs/learning-loop.md)
@@ -32,6 +60,7 @@ Use this section as the primary index for all project docs.
 - Charter (EN): [docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE.md](docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE.md)
 - Readiness checklist (EN): [docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md)
 - Pilot retro survey (EN): [docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE.md](docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE.md)
+- BAU release log (EN): [docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md](docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md)
 - Charter (FA): [docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE_FA.md](docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE_FA.md)
 - Readiness checklist (FA): [docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST_FA.md](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST_FA.md)
 - Pilot retro survey (FA): [docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE_FA.md](docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE_FA.md)
@@ -63,6 +92,14 @@ Use this section as the primary index for all project docs.
 
 ## Start Here
 
+### Persian-First Paths
+
+- Member: [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
+- Manager: [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md)
+- Admin/Operator: [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md)
+- OKR transformation lead: [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md)
+- OKR/BAU boundary owner: [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md)
+
 ### By Goal
 
 | Goal | Read First | Then Read |
@@ -72,16 +109,18 @@ Use this section as the primary index for all project docs.
 | Configure runtime safely | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) | [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md) |
 | Operate incident/day-2 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | [DEPLOYMENT.md](DEPLOYMENT.md) |
 | Roll out OKRs across departments | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) | [docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md) |
+| Prevent BAU contamination in OKRs | [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md) | [docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md](docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md) |
 
 ### By Role
 
-| Role | Primary Guide |
-| --- | --- |
-| Member | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) |
-| Manager | [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md) |
-| Admin/Operator | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) |
-| OKR transformation lead | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) |
-| AI/policy reviewer | [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md) |
+| Role | Primary Guide (EN) | Primary Guide (FA) |
+| --- | --- | --- |
+| Member | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md) |
+| Manager | [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md) | [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md) |
+| Admin/Operator | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md) |
+| OKR transformation lead | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) | [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md) |
+| OKR/BAU boundary owner | [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md) | [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md) |
+| AI/policy reviewer | [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md) | [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md) |
 
 ## Deployment Intent
 
@@ -99,11 +138,23 @@ Prerequisites:
 
 Run:
 
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --require-hashes -r streamlit_app/requirements-dev.txt
+$env:OKR_BACKEND_API_URL="auto"
+streamlit run streamlit_app/app.py
+```
+
+macOS/Linux bash:
+
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
+source .venv/bin/activate
 pip install --require-hashes -r streamlit_app/requirements-dev.txt
-set OKR_BACKEND_API_URL=auto
+export OKR_BACKEND_API_URL=auto
 streamlit run streamlit_app/app.py
 ```
 
@@ -156,8 +207,17 @@ python streamlit_app/scripts/perf_hotpaths.py
 
 Run Playwright happy-path e2e test (login -> focus map -> start timer):
 
+Windows PowerShell:
+
+```powershell
+$env:OKR_RUN_PLAYWRIGHT_E2E="1"
+python -m pytest -q tests/test_e2e_playwright_login_to_atlas.py
+```
+
+macOS/Linux bash:
+
 ```bash
-set OKR_RUN_PLAYWRIGHT_E2E=1
+export OKR_RUN_PLAYWRIGHT_E2E=1
 python -m pytest -q tests/test_e2e_playwright_login_to_atlas.py
 ```
 
