@@ -58,7 +58,7 @@ CRUD save/update/delete errors in UI
   - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between services
   - If request signing is enabled, verify `OKR_BACKEND_SIGNING_SECRET` matches between `okr` and `backend-api`
   - Check backend logs for 403/400 details (permission or validation failures)
-- If backend is temporarily unstable and you must use local emergency mode in a non-production environment, enable only the required scoped fallback: `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation/timer/job flows, or `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied reads.
+- If backend is temporarily unstable, runtime remains fail-closed. Restore backend connectivity and retry; local read/mutation fallback execution is intentionally disabled.
 
 Migrations fail
 

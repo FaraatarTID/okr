@@ -87,6 +87,7 @@ Use this section as the primary index for all project docs.
 
 - Primary production design: `okr` + `backend-api` + `backend-worker` (self-hosted backend server architecture).
 - Embedded backend in `app.py` is for Streamlit Cloud compatibility and MVP/demo hosting.
+- Runtime behavior is backend-segregated: frontend reads/writes and heavy jobs are backend-owned (fail-closed on backend transport failure).
 - Corporate deployments (AWS/ECS/Kubernetes/VM) should follow [DEPLOYMENT.md](DEPLOYMENT.md), not embedded mode.
 
 ## Quickstart (Local Development)
@@ -102,6 +103,7 @@ Run:
 python -m venv .venv
 .venv\Scripts\activate
 pip install --require-hashes -r streamlit_app/requirements-dev.txt
+set OKR_BACKEND_API_URL=auto
 streamlit run streamlit_app/app.py
 ```
 

@@ -75,8 +75,9 @@ Weekly Report:
 - خروجی: PDF از مسیر `PDF_METHOD=pdfshift` یا `PDF_METHOD=chromium`؛ در نبود renderer خروجی HTML ارائه می‌شود.
 
 نکته فنی:
-- در deploymentهای backend-assisted، جریان‌های نوشتنی فرانت‌اند (CRUD نودها، timer، مدیریت کاربران/چرخه‌ها/تیم‌ها و تغییرات Learning Loop) با `OKR_BACKEND_PROXY_MUTATIONS=true` از مسیر `backend-api` عبور می‌کنند.
-- پردازش‌های سنگین AI/PDF از مسیر `backend-api` و `backend-worker` اجرا می‌شوند و مسیرهای read-heavy همچنان داخل Streamlit باقی می‌مانند.
+- در deploymentهای backend-segregated، جریان‌های خواندنی و نوشتنی فرانت‌اند با `OKR_BACKEND_PROXY_MUTATIONS=true` و `OKR_BACKEND_PROXY_READS=true` از مسیر `backend-api` عبور می‌کنند (CRUD نودها، timer، مدیریت کاربران/چرخه‌ها/تیم‌ها، تغییرات Learning Loop و readهای سنگین Atlas/leadership).
+- پردازش‌های سنگین AI/PDF از مسیر `backend-api` و `backend-worker` اجرا می‌شوند.
+- در خطای ارتباط با backend، رفتار runtime به‌صورت fail-closed است (fallback محلی اجرا نمی‌شود).
 
 ## ۵. داشبورد استراتژیک (محتوای واقعی فعلی)
 
@@ -176,4 +177,3 @@ Task:
 
 راهنمای اجرایی گام‌به‌گام مدیر:
 - [راهنمای عملیاتی مدیر](MANAGER_PLAYBOOK_FA.md)
-

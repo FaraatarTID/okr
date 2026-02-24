@@ -66,9 +66,8 @@ Key wiring:
 
 Technical behavior (current):
 
-- Read-heavy hierarchy traversal is still served in-process (`Streamlit -> src/crud.py -> DB`).
-- Write-heavy frontend mutations and timer actions route through backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`).
-- If backend is unavailable, production default is fail-closed (optional emergency fallback via scoped flags: `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for writes/timers/jobs, `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied reads).
+- Frontend read and write paths route through backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`, `OKR_BACKEND_PROXY_READS=true`).
+- If backend is unavailable, runtime is fail-closed (local read/mutation fallback execution is disabled).
 - AI/PDF heavy operations are executed asynchronously by `backend-worker` through `async_job`.
 - **Embedded Mode (Cloud)**: On Streamlit Cloud, the backend runs as a background subprocess. Monitor the Streamlit console for "Embedded backend is up" messages and diagnostic log tails in case of failures.
 - In backend-assisted mode, admin backup restore from the Streamlit UI is intentionally disabled; use backend maintenance/runbook procedures.

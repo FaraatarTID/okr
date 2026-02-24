@@ -23,7 +23,7 @@ AI در این بخش‌ها استفاده می‌شود:
 
 جزئیات معماری مرتبط:
 - با `OKR_BACKEND_PROXY_MUTATIONS=true`، نوشتن داده‌هایی که خروجی AI را persist می‌کنند (مثل فیلدهای تحلیل KR) می‌تواند از endpointهای mutation در backend API عبور کند.
-- در خطاهای backend، رفتار پیش‌فرض Production به‌صورت fail-closed است؛ fallback محلی فقط با فلگ مجزا فعال می‌شود (`OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` برای write/job و `OKR_ALLOW_LOCAL_READ_FALLBACK=true` برای readهای proxied).
+- در خطای ارتباط backend، رفتار runtime به‌صورت fail-closed است و fallback محلی اجرا نمی‌شود.
 
 ## ۲. قابلیت‌های پیاده‌سازی‌شده AI
 

@@ -17,13 +17,13 @@ Maintainer-focused map for the primary files and helper boundaries.
 3. `streamlit_app/src/ui/components.py` exposes a stable UI facade and delegates to `src/ui/*_helpers.py`.
 4. `streamlit_app/src/crud.py` exposes a stable domain/data facade and delegates to `src/crud_*_helpers.py`.
 5. `streamlit_app/src/database.py` and `streamlit_app/src/models.py` own persistence contracts.
-6. Optional backend path: `backend_app/main.py` (API) -> `backend_app/jobs.py` -> `backend_app/worker.py`.
+6. Primary backend path: `backend_app/main.py` (API) -> `backend_app/jobs.py` -> `backend_app/worker.py`.
 
 ## Primary File Ownership Map
 
 | File                                             | Responsibility                                       | Keep Here                                               | Move To                         | Key Dependencies                                             | Key Tests                                                                                                                                                                               |
 | ------------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `streamlit_app/app.py`                           | Thin Streamlit coordinator and adapter wiring        | Entrypoint wiring, cache boundaries, helper delegation  | UI rendering/business logic     | `src.ui.app_*_helpers`, `src.crud`, `src.runtime_preflight`  | `tests/test_app_thin_coordinator_guardrails.py`, `tests/test_app_entry_helpers.py`, `tests/test_app_shell_helpers.py`, `tests/test_app_auth_helpers.py`                                 |
+| `streamlit_app/app.py`                           | Thin Streamlit coordinator and adapter wiring        | Entrypoint wiring, cache boundaries, helper delegation  | UI rendering/business logic     | `src.ui.app_*_helpers`, `src.crud`, `src.runtime_preflight`  | `tests/test_app_thin_coordinator_guardrails.py`, `tests/test_app_entry_helpers.py`, `tests/test_app_shell_helpers.py`, `tests/test_app_auth_helpers.py`, `tests/test_e2e_playwright_login_to_atlas.py` |
 | `streamlit_app/src/ui/components.py`             | Stable UI compatibility facade                       | Cache wrappers, compatibility exports, bridge wiring    | Feature-specific UI logic       | `src/ui/*_helpers.py`, `components_bridge_helpers.py`        | `tests/test_dynamic_helper_contract_exports.py`, `tests/test_latency_audit_fixes.py`, `tests/test_backend_read_proxy_policy.py`, atlas UI test suite                                    |
 | `streamlit_app/src/ui/dialogs.py`                | Dialog compatibility facade                          | Dialog routing/backward-compatible symbols              | Dialog implementation details   | `src/ui/dialogs_*_helpers.py`                                | `tests/test_remaining_helper_module_imports.py`, dialog-focused tests                                                                                                                   |
 | `streamlit_app/src/crud.py`                      | Stable CRUD/domain facade API                        | Public contracts, policy constants, helper delegation   | Detailed business logic/queries | `src/crud_*_helpers.py`, `src/domain/*`, `src/database.py`   | `tests/test_crud_authorization.py`, `tests/test_crud_backend_mutation_proxy.py`, `tests/test_auth_rate_limit.py`, `tests/test_progress_rollup.py`, `tests/test_performance_hotpaths.py` |
@@ -48,6 +48,12 @@ Maintainer-focused map for the primary files and helper boundaries.
   - `streamlit_app/src/ui/atlas_map_tab_helpers.py`
   - `streamlit_app/src/ui/atlas_inspector_helpers.py`
 - Session keys contract: `streamlit_app/src/ui/session_keys.py`
+
+## End-to-End Test Spine
+
+- Happy-path browser e2e: `tests/test_e2e_playwright_login_to_atlas.py`
+- Coverage path: `Login -> Focus Map -> Start Timer`
+- CI wiring: `.github/workflows/ci.yml` (Chromium install + gated e2e run)
 
 Rule:
 
