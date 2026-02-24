@@ -5,10 +5,12 @@ Enterprise Deployment Guide (Step-by-Step, Beginner Friendly)
 Last updated: 2026-02-20
 
 This guide is for deploying the OKR app in a company environment where users access it through a corporate URL such as:
+
 - `https://okr.mycompany.com` (recommended)
 - `https://mycompany.com/okr` (supported)
 
 If you are not sure what to choose, use this default stack:
+
 - Docker Compose
 - Supabase PostgreSQL
 - Nginx reverse proxy
@@ -19,6 +21,7 @@ This is the safest and easiest enterprise path for this repo.
 ---
 
 What this deployment gives you
+
 - Non-root container runtime
 - Automatic DB migrations at app startup
 - Health checks and restart policy
@@ -27,6 +30,7 @@ What this deployment gives you
 - Optional CI/CD via GitHub Actions
 
 Key files used by this guide
+
 - `deploy/docker/Dockerfile`
 - `deploy/docker/docker-compose.yml`
 - `deploy/docker/.env.example`
@@ -40,14 +44,17 @@ Key files used by this guide
 
 Quick decision matrix
 
-1) Which URL structure?
+1. Which URL structure?
+
 - Use subdomain if possible: `okr.mycompany.com`
 - Use subpath only if your company policy requires it: `mycompany.com/okr`
 
-2) Which database?
+2. Which database?
+
 - Required: Supabase PostgreSQL (Transaction Pooler URL on port `6543` with `sslmode=require`)
 
-3) Which platform?
+3. Which platform?
+
 - Start with Docker Compose on one VM
 - Use Kubernetes only if your team already runs K8s operationally
 
@@ -57,13 +64,15 @@ Deployment modes (important)
 
 Use one of these modes:
 
-1) Streamlit Cloud (MVP/demo hosting only)
+1. Streamlit Cloud (MVP/demo hosting only)
+
 - No SSH deploy secrets are required.
 - The app is deployed by Streamlit Cloud from your GitHub repo.
 - In this mode, the GitHub Actions SSH deploy step is expected to skip.
 - For confidential internal data or multi-user alpha, do not use Streamlit Cloud.
 
-2) Docker Compose on your own server (enterprise/self-hosted)
+2. Docker Compose on your own server (enterprise/self-hosted)
+
 - SSH deploy is disabled by default. Set `ENABLE_SSH_DEPLOY=true` (repo secret or variable) before adding SSH deploy secrets.
 - Use this when you want GitHub Actions to connect to your server and run `docker compose`.
 
@@ -84,6 +93,7 @@ Use this if you want the fastest reliable enterprise deployment.
 Step 0: Collect required values
 
 Prepare these values first:
+
 - `APP_DOMAIN`: for example `okr.mycompany.com`
 - `SERVER_IP`: public/private server IP
 - `OKR_DATABASE_URL`: example `postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
@@ -161,6 +171,7 @@ OKR_STRICT_RUNTIME_PREFLIGHT=true
 ```
 
 Notes:
+
 - Keep `BASE_URL_PATH` empty for subdomain hosting.
 - For subpath hosting (`/okr`), set `BASE_URL_PATH=okr`.
 - `OKR_DATABASE_URL` must use the least-privilege `okr_app` role (or equivalent non-superuser role), never `postgres`, for runtime app traffic.
@@ -189,6 +200,7 @@ python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.e
 ```
 
 Expected:
+
 - Exit code `0`
 - No `ERROR:` lines in output
 
@@ -209,6 +221,7 @@ curl -f http://127.0.0.1:8100/healthz
 ```
 
 Expected:
+
 - Services `okr`, `backend-api`, and `backend-worker` are `Up`
 - HTTP response from `/` is `200 OK`
 - Backend health endpoint returns `{"status":"ok"}`
@@ -256,6 +269,7 @@ sudo systemctl reload nginx
 Step 8: Create DNS record
 
 In your DNS provider:
+
 - Add `A` record: `okr.mycompany.com -> SERVER_IP`
 
 Wait for propagation and confirm:
@@ -278,11 +292,13 @@ If your company uses internal PKI, install certificates per your security policy
 Step 10: First login and hardening
 
 On first run with empty DB:
+
 - Production: login is `admin / <OKR_BOOTSTRAP_ADMIN_PASSWORD>`
 - Non-production/dev: fallback `admin / admin` remains for local convenience
 - You will be forced to change password
 
 Immediately after login:
+
 1. Change admin password to a strong one.
 2. Create named admin accounts for real admins.
 3. Disable unused accounts.
@@ -307,6 +323,7 @@ sudo nginx -t
 ```
 
 Confirm manually:
+
 - Login works
 - Create Goal/Objectives/KRs/Tasks
 - Timer starts/stops
@@ -316,22 +333,66 @@ Confirm manually:
 
 ---
 
-Path B: Kubernetes (for teams already running K8s)
+Path B: Horizontal Cluster Scaling (Kubernetes / ECS / Nomad)
 
-Use manifests in `deploy/k8s`.
+Use this if you need high availability or need to scale compute resources independently. In this mode, services are **de-coupled** into separate containers.
 
-High-level sequence:
-1. Create namespace `okr`.
-2. Create DB secret (`OKR_DATABASE_URL`) from `deploy/k8s/secret-db.yaml`.
-3. Apply deployment/service/ingress.
-4. Set ingress host/TLS secret.
-5. Verify readiness/liveness and HTTPS.
+### 1. De-coupled Architecture
 
-Important:
-- Streamlit sessions are stateful, so use sticky sessions at ingress when scaling.
+Unlike the "Embedded Mode" used on Streamlit Cloud, a cluster deployment splits the app into three distinct tiers:
 
-Detailed docs:
-- `docs/KUBERNETES.md`
+```mermaid
+graph TD
+    User((User)) --> LB[Load Balancer / Ingress]
+    LB -- "HTTP/WS (Sticky)" --> ST[Streamlit Frontend Replicas]
+    LB -- "Internal" --> API[Backend API Replicas]
+    API --> DB[(Shared PostgreSQL)]
+    ST -- "Authenticated API Calls" --> API
+    Worker[Backend Worker Replicas] --> DB
+    Worker --> API
+
+    subgraph "Shared State"
+        DB
+        Redis[(Redis Cache)]
+    end
+    API -.-> Redis
+    ST -.-> Redis
+```
+
+### 2. Service Separation
+
+| Service              | Replicas | Scaling Trigger | Notes                                            |
+| :------------------- | :------- | :-------------- | :----------------------------------------------- |
+| **`okr`**            | 2+       | User Sessions   | Must use **Sticky Sessions** (Session Affinity). |
+| **`backend-api`**    | 2+       | Request Latency | Handles all DB writes and token verification.    |
+| **`backend-worker`** | 1+       | Queue Depth     | Handles async tasks (AI, PDF generation).        |
+
+### 3. Critical Cluster Configuration
+
+To run successfully in a cluster, set these environment variables:
+
+- **`OKR_BACKEND_API_URL`**: Set this to the internal cluster DNS name of the backend service (e.g., `http://okr-backend-api.svc.cluster.local:8100`).
+- **`OKR_BACKEND_SECURITY_STATE_BACKEND`**: Set to `database` or `redis`. Do **NOT** use `memory` in a cluster, or nonces will fail across replicas.
+- **`OKR_BACKEND_SECURITY_STATE_REDIS_URL`**: Required if using Redis for high-speed rate limiting and state shared across pods.
+- **`OKR_ALLOW_LOCAL_BACKEND_FALLBACK`**: Always `false` in clusters to ensure architectural integrity.
+
+### 4. Kubernetes Implementation
+
+Manifests are provided in `deploy/k8s/`.
+
+1. **Namespace**: `kubectl create ns okr`
+2. **Secrets**: Create a `Secret` for `OKR_DATABASE_URL` and `OKR_BACKEND_SERVICE_TOKEN`.
+3. **Stickiness**: Ensure your Ingress controller is configured for stickiness:
+   ```yaml
+   # nginx-ingress example
+   nginx.ingress.kubernetes.io/affinity: "cookie"
+   nginx.ingress.kubernetes.io/session-cookie-name: "route"
+   ```
+
+Detailed configuration reference:
+
+- `docs/CONFIG_REFERENCE.md`
+- `docs/KUBERNETES.md` (Legacy reference)
 
 ---
 
@@ -360,6 +421,7 @@ docker compose -f deploy/docker/docker-compose.yml up -d --build
 ```
 
 Rollback (if new release is bad)
+
 1. Pin previous image tag in `deploy/docker/.env` using `IMAGE=...`.
 2. Recreate containers:
 
@@ -368,6 +430,7 @@ docker compose -f deploy/docker/docker-compose.yml up -d
 ```
 
 Backups
+
 - Supabase PostgreSQL: enable provider snapshots and test restore quarterly.
 
 ---
@@ -390,17 +453,21 @@ Security hardening checklist
 Common mistakes and fixes
 
 Blank page or repeated reconnect:
+
 - Check Nginx websocket headers (`Upgrade`, `Connection`) and 3600s timeouts.
 
 Assets broken under subpath:
+
 - Set `BASE_URL_PATH=okr`.
 - Ensure reverse proxy strips `/okr` before forwarding.
 
 App fails at startup with database URL error:
+
 - Ensure `OKR_DATABASE_URL` uses `postgresql+psycopg2://` and points to `*.pooler.supabase.com:6543`.
 - Ensure DSN user is `okr_app` (or equivalent least-privilege role), not `postgres`.
 
 Cannot log in:
+
 - If DB is new in production, confirm `OKR_BOOTSTRAP_ADMIN_PASSWORD` is set and use that value.
 - If DB is new in non-production, `admin/admin` is available by default.
 - If DB is existing, default admin bootstrap does not run again.
@@ -410,17 +477,21 @@ Cannot log in:
 CI/CD option (GitHub Actions)
 
 Workflow file:
+
 - `.github/workflows/docker-deploy.yml`
 
 What it can do:
+
 - Build and push image to GHCR on push to `main`/`master`
 - Optional remote deploy over SSH (self-hosted mode only, opt-in via `ENABLE_SSH_DEPLOY=true`)
 
 Recommended for internal networks:
+
 - Prefer pull-based deployment (server-side pull/agent/cron) to avoid granting CI direct SSH into internal hosts.
 - Keep SSH push deployment only for explicitly approved environments.
 
 Required secrets for SSH deploy (recommended names):
+
 - `ENABLE_SSH_DEPLOY` = `true`
 - `SSH_HOST`
 - `SSH_USER`
@@ -428,30 +499,36 @@ Required secrets for SSH deploy (recommended names):
 - `REMOTE_DEPLOY_DIR`
 
 Supported fallback secret names in this repo's workflow:
+
 - Host: `SSH_HOST` or `DEPLOY_HOST` or `HOST`
 - User: `SSH_USER` or `DEPLOY_USER` or `USERNAME`
 - Key: `SSH_KEY` or `DEPLOY_KEY`
 - Deploy dir: `REMOTE_DEPLOY_DIR` or `DEPLOY_DIR`
 
 Where to set `SSH_KEY`:
+
 - GitHub repository -> `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`
 - Name it `SSH_KEY` (or `DEPLOY_KEY` if you prefer fallback naming)
 - Paste the private key content for your deploy user (for example, `id_ed25519` private key)
 
 If you are using Streamlit Cloud and not SSH deploy:
+
 - Keep `ENABLE_SSH_DEPLOY` unset (or `false`).
 - Do not set SSH deploy secrets.
 - The SSH deploy job should be skipped automatically.
 
 Tip:
+
 - Use immutable image tags for controlled rollback.
 
 Security note:
+
 - Never commit private keys or any deploy secrets to the repository.
 
 ---
 
 Related docs
+
 - `docs/CONFIG_REFERENCE.md`
 - `docs/DEPLOYMENT_OPERATIONS_GUIDE.md`
 - `docs/DOCKER_COMPOSE.md`

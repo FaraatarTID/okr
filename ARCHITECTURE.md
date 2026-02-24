@@ -11,15 +11,20 @@ Maintainer file ownership and change map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
 This repository is a Streamlit-based OKR product with a SQLModel persistence layer on Supabase PostgreSQL.
 
 Current runtime topology has two profiles:
+
 - `Legacy direct mode` (development/demo only):
   - Streamlit UI calls CRUD/service code in-process.
   - Heavy operations (AI/PDF) run in the Streamlit runtime.
-- `Backend-assisted mode` (recommended):
+- `Backend-assisted mode` (recommended for enterprise):
   - Streamlit UI still renders pages and handles session UX.
   - Timer mutations and heavy AI/PDF workflows route to internal backend services:
     - `backend-api` (FastAPI control plane)
     - `backend-worker` (async execution plane)
   - Jobs are persisted in `async_job` table and processed out-of-band.
+- `Embedded mode` (Streamlit Cloud / auto):
+  - Used when `OKR_BACKEND_API_URL` is `"auto"`.
+  - Streamlit frontend automatically launches `backend-api` as a background subprocess via `backend_launcher.py`.
+  - Provides a single-container deployment experience while maintaining backend-first integrity.
 
 - UI entrypoint: `streamlit_app/app.py`
 - UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
@@ -31,37 +36,45 @@ Current runtime topology has two profiles:
 - Persistence: `streamlit_app/src/database.py`, `streamlit_app/src/models.py`, Alembic migrations in `streamlit_app/alembic/`
 - External integrations: `streamlit_app/src/services/ai_service.py`, `streamlit_app/src/services/pdf_service.py`
 - Shared business helpers: `streamlit_app/src/utils/deadline_utils.py`
-- Internal backend services: `backend_app/main.py`, `backend_app/worker.py`, `backend_app/jobs.py`, `backend_app/job_runner.py`
+- Backend services & launcher:
+  - `streamlit_app/src/services/backend_launcher.py` (Embedded process manager)
+  - `backend_app/main.py`, `backend_app/worker.py`, `backend_app/jobs.py`
 
 ## Runtime Topology
 
 Primary data/control flow in backend-assisted mode:
 
 1. UI and session:
+
 - Browser -> Streamlit (`okr` service).
 - Streamlit handles page rendering, state, and role-aware UX.
 
 2. Synchronous domain mutations:
+
 - Preferred (backend URL configured): Streamlit -> `backend-api` mutation endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
 - Default production behavior (backend unavailable): fail closed with explicit user-facing error; no implicit local mutation fallback.
 - Optional emergency fallback (non-production only): set `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`.
 - Scope (frontend write paths): Goal/Objective/KeyResult/Task CRUD, timer start/stop, user/cycle/team admin mutations, Learning Loop mutations (check-ins/experiments/retrospectives/weekly plans/outcomes), alignment mutations, and work-log deletes.
 
 3. Synchronous read/query paths:
+
 - Streamlit -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
 - Current MVP still serves most read-heavy hierarchy traversal in-process.
 
 4. Async heavy workflows:
+
 - Streamlit -> `backend-api` (`/v1/jobs`) with `OKR_BACKEND_SERVICE_TOKEN`.
 - `backend-api` enqueues durable jobs in `async_job`.
 - `backend-worker` claims and executes jobs (`ai.generate_json`, `pdf.weekly`).
 - Streamlit polls job status and renders result.
 
 5. Timer routing:
+
 - Preferred: Streamlit timer service -> `backend-api` (`/v1/timer/start|stop`).
 - Production default: fail closed if backend is unavailable (optional local fallback only when explicitly enabled).
 
 6. PDF rendering:
+
 - Supported binary renderers:
   - `PDFShift` (`PDF_METHOD=pdfshift`, requires API key)
   - `Chromium` via Playwright (`PDF_METHOD=chromium`)
@@ -113,6 +126,7 @@ Primary data/control flow in backend-assisted mode:
 - Owns AI analysis and PDF/report output.
 - Should not contain core authorization logic.
 - Backend API/worker isolate heavy operations from Streamlit request reruns.
+- **Migration Ownership**: In Embedded mode, the frontend skips migrations to avoid database lock contention; the backend subprocess is the sole owner of `alembic upgrade`.
 
 ## Critical Request/Data Flows
 
@@ -238,6 +252,7 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 ## Recommended Next Refactor Boundary
 
 To move toward higher-concurrency internal production:
+
 - Keep all frontend writes behind backend API contracts (now implemented) and remove/replace remaining direct DB admin operations.
 - Keep Streamlit as presentation/workflow shell.
 - Preserve SQLModel domain logic but continue moving read/query APIs behind backend services for true three-tier isolation.

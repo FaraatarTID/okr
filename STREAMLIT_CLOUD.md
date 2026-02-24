@@ -115,3 +115,15 @@ take 5–10 seconds on a cold start. Subsequent loads will be faster.
 
 Ensure you have configured secrets in the Streamlit Cloud dashboard (not just
 in a local `secrets.toml` file that won't be deployed).
+
+---
+
+## Scaling Out (Beyond Streamlit Cloud)
+
+If your user base grows and you need to scale horizontally (e.g., Kubernetes, AWS ECS, or multiple VMs), you should move **away** from "Embedded Mode" to a de-coupled architecture.
+
+See the [Cluster Deployment & Horizontal Scaling](DEPLOYMENT.md#path-b-horizontal-cluster-scaling-kubernetes--ecs--nomad) section in the main deployment guide for:
+
+- Splitting the app into Frontend, API, and Worker tiers.
+- Architectural diagrams for high-availability clusters.
+- Config requirements for shared state (Redis) and Sticky Sessions.

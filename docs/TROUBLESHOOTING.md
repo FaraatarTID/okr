@@ -2,16 +2,25 @@ Documentation HQ: [README](../README.md)
 
 Troubleshooting
 
-Blank page or reconnecting loop
+### Streamlit Cloud Startup Issues
+
+- **Backend Startup Timeout**: The embedded backend has a 60-second timeout to complete database migrations and cold-starts. If the app fails with "Backend read failed", check the Streamlit logs for the last 30 lines of the backend output.
+- **Viewing Backend Logs**: On Streamlit Cloud, the backend `stderr` is redirected to `/tmp/okr_backend.log`. If the app is up but backend features fail, you can try to view this file in a debug session.
+- **ModuleNotFoundError: No module named 'src'**: This usually indicates a broken `PYTHONPATH`. Ensure you are using the latest version of `backend_launcher.py` and `run_api.py` which have auto-reinforcement logic.
+
+### Blank page or reconnecting loop
+
 - Check reverse proxy websocket headers (Upgrade/Connection)
 - Verify BASE_URL_PATH is set when using subpath hosting
 
 PDF export fails
+
 - If using PDFShift: set pdfshift_api_key in secrets
 - If using Chromium mode: set `PDF_METHOD=chromium`, install Playwright, and ensure Chromium is available.
 - If backend mode is enabled, verify `backend-worker` is running and has required PDF runtime access.
 
 Runtime preflight shows configuration errors
+
 - If preflight says `PDF_METHOD=pdfshift but PDFShift API key is missing`:
   - Add `pdfshift_api_key`
 - If preflight says `PDF_METHOD=chromium but Playwright/Chromium runtime is unavailable`:
@@ -28,6 +37,7 @@ Runtime preflight shows configuration errors
 - If strict mode is enabled (`OKR_STRICT_RUNTIME_PREFLIGHT=1`), app startup will stop on critical preflight errors until fixed.
 
 AI features unavailable
+
 - Run provider check: `python streamlit_app/scripts/ai_provider_health_check.py --json`
 - If using Gemini:
   - Verify `AI_PROVIDER=gemini`
@@ -41,6 +51,7 @@ AI features unavailable
   - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between `okr` and `backend-api`
 
 CRUD save/update/delete errors in UI
+
 - If backend mutation proxy is enabled (`OKR_BACKEND_PROXY_MUTATIONS=true`):
   - Verify `OKR_BACKEND_API_URL` resolves from `okr`
   - Verify `backend-api` is healthy (`/healthz`)
@@ -50,12 +61,14 @@ CRUD save/update/delete errors in UI
 - If backend is temporarily unstable and you must use local emergency mode in a non-production environment, enable only the required scoped fallback: `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation/timer/job flows, or `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied reads.
 
 Migrations fail
+
 - Ensure the configured DB is reachable from the host/pod
 - Check that OKR_DATABASE_URL is valid and that the user has DDL permissions
 - If you see `permission denied to reassign objects`, run ownership/reassign SQL using an admin DB role; keep app runtime DSN on a least-privilege runtime role (example: `okr_app`).
   - If your current deployment uses a different least-privilege role name, use that runtime role consistently instead of `postgres`.
 
 Workspace runtime load fails with `Multiple classes found for path "User"`
+
 - Cause: SQLModel mapper registry/class references became stale after a code hot-reload.
 - Ensure all model imports use `src.models` (no `models` or `streamlit_app.src.models` imports).
 - Ensure relationships are lambda-resolved (`sa_relationship=relationship(lambda: ...)`) instead of relying on string class lookup.
@@ -64,10 +77,12 @@ Workspace runtime load fails with `Multiple classes found for path "User"`
 - Restart the `okr` app process after a live code pull if the error loop persists.
 
 Login not working
+
 - Default admin only exists on an empty DB
 - Check password hash path; try reset via Admin Panel after login
 
 Supabase connection errors
+
 - Verify OKR_DATABASE_URL uses `postgresql+psycopg2://`
 - Verify host includes `supabase.com`
 - Ensure `sslmode=require` is present
@@ -81,8 +96,10 @@ Supabase connection errors
 - Confirm DB password is URL-encoded if it contains special characters
 
 Hosting under subpath breaks assets
+
 - Ensure proxy rewrite strips the prefix
 - Ensure Streamlit CLI flag --server.baseUrlPath is set (container CMD handles this)
 
 Timeouts on long interactions
+
 - Increase proxy_read_timeout and proxy_send_timeout to >= 3600

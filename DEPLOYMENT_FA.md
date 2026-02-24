@@ -5,13 +5,16 @@ Documentation HQ: [README](README.md)
 این سند نسخه فارسی خلاصه‌شده برای استقرار امن است. برای جزئیات کامل، `DEPLOYMENT.md` را نیز مرجع قرار دهید.
 
 بهترین مسیر پیشنهادی
+
 - Docker Compose
 - Supabase PostgreSQL
 - Nginx reverse proxy
 - HTTPS
 - مسیر backend-assisted شامل `okr` + `backend-api` + `backend-worker`
+- در Streamlit Cloud، استفاده از **Embedded Mode** با تنظیم `OKR_BACKEND_API_URL="auto"`
 
 الزامات مهم
+
 - `OKR_DATABASE_URL` روی Supabase transaction pooler (`:6543`) با `sslmode=require`
 - استفاده از runtime DB role کم‌اختیار (مثل `okr_app`، نه `postgres`)
 - `OKR_BACKEND_SERVICE_TOKEN` قوی
@@ -28,37 +31,46 @@ Documentation HQ: [README](README.md)
 
 گام‌های سریع
 
-1) آماده‌سازی host
+1. آماده‌سازی host
+
 - Docker, Compose plugin, Nginx را نصب کنید.
 
-2) گرفتن کد
+2. گرفتن کد
+
 ```bash
 git clone <YOUR_REPO_URL> okr
 cd okr
 ```
 
-3) ساخت env
+3. ساخت env
+
 ```bash
 cp deploy/docker/.env.example deploy/docker/.env
 ```
+
 یا برای دامنه نمونه شرکت:
+
 ```bash
 cp deploy/docker/.env.mycompany.example deploy/docker/.env
 ```
 
-4) تنظیم secrets اختیاری
+4. تنظیم secrets اختیاری
+
 ```bash
 mkdir -p deploy/secrets
 cp deploy/secrets/secrets.toml.example deploy/secrets/secrets.toml
 ```
 
-5) اجرای گیت پیکربندی قبل از startup
+5. اجرای گیت پیکربندی قبل از startup
+
 ```bash
 python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml
 ```
+
 باید بدون `ERROR` تمام شود.
 
-6) بالا آوردن سرویس‌ها
+6. بالا آوردن سرویس‌ها
+
 ```bash
 docker compose -f deploy/docker/docker-compose.yml up -d --build
 docker compose -f deploy/docker/docker-compose.yml ps
@@ -66,18 +78,21 @@ curl -I http://127.0.0.1:8501/
 curl -f http://127.0.0.1:8100/healthz
 ```
 
-7) تنظیم Nginx + DNS + TLS
+7. تنظیم Nginx + DNS + TLS
+
 - proxy را به `127.0.0.1:8501` بدهید.
 - DNS دامنه را به IP سرور وصل کنید.
 - TLS را با Certbot یا PKI داخلی فعال کنید.
 
-8) ورود اولیه و hardening
+8. ورود اولیه و hardening
+
 - در production ورود اولیه: `admin/<OKR_BOOTSTRAP_ADMIN_PASSWORD>` (با الگوی strong بالا)
 - در غیر production fallback: `admin/admin`
 - بلافاصله رمز عبور را تغییر دهید.
 - ادمین‌های واقعی را بسازید و کاربرهای تست را غیرفعال کنید.
 
-9) اعتبارسنجی go-live
+9. اعتبارسنجی go-live
+
 - login/logout
 - ساخت Goal/Objective/KR/Task
 - مسیر write با backend API
@@ -85,8 +100,10 @@ curl -f http://127.0.0.1:8100/healthz
 - report/PDF
 - نبود reconnect loop
 - عدم وجود خطای بحرانی preflight
+- در حالت Embedded: بررسی لاگ‌های Streamlit Cloud برای مشاهده پیام «Embedded backend is up»
 
 اسناد مرتبط
+
 - `DEPLOYMENT.md`
 - `docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md`
 - `docs/DOCKER_COMPOSE.md`
