@@ -4,6 +4,25 @@ Documentation HQ: [README](../README.md)
 
 این راهنما با رفتار فعلی کد هم‌راستا است (`streamlit_app/app.py`، `streamlit_app/src/ui/*`، `streamlit_app/src/crud.py`، `streamlit_app/src/domain/*`).
 
+برای اعمال سیاست مرزبندی «کار استراتژیک» در برابر BAU از `docs/OKR_BAU_BOUNDARY_GUIDE_FA.md` استفاده کنید.
+
+## مقدمه (چرا این یک کنترل حاکمیتی است، نه بوروکراسی اضافه)
+
+مدیریت مرسوم و حاکمیت OKR باید هم‌زمان اجرا شوند، اما با مدل شواهد متفاوت:
+- مدیریت مرسوم، پایداری عملیات را اثبات می‌کند (delivery cadence، SLA، انضباط deadline).
+- حاکمیت OKR، تغییر استراتژیک را اثبات می‌کند (جابه‌جایی KPI baseline بر اثر مداخله عمدی).
+
+اگر این دو مدل شواهد مخلوط شوند:
+1. throughput عملیاتی به‌جای استراتژی گزارش می‌شود.
+2. رهبری نمی‌تواند نگه‌داری را از تحول تشخیص دهد.
+3. تصمیم سرمایه‌گذاری و مربی‌گری بر داده نویزی انجام می‌شود.
+
+وظیفه هسته‌ای ادمین:
+1. حفاظت همزمان از هر دو مسیر.
+2. الزام به طبقه‌بندی دقیق.
+3. رد شواهد بدون طبقه‌بندی یا بدطبقه‌بندی‌شده.
+4. نگه‌داشتن حاکمیت BAU خارج از فیلدهای check-in داخل اپ.
+
 ## ۱. RBAC و قواعد تغییر داده
 
 نقش‌ها:
@@ -149,7 +168,36 @@ Definition of done برای کیفیت پایش مدیر:
 - `Weekly Report`: پنجره ۷ روز اخیر.
 - هر دو بر اساس Work Log هستند و خروجی‌پذیرند (PDF با `pdfshift` یا `chromium`، با fallback به HTML).
 
-## ۶. Playbook رخدادها
+## ۶. حاکمیت OKR در برابر BAU (الزام ادمین)
+
+این بخش یک کنترل سیاستی حیاتی است: کار BAU نباید به‌عنوان پیشرفت OKR حساب شود.
+
+مدل اعمال سیاست توسط ادمین:
+1. مدیران را ملزم کنید هر هفته بازبینی BAU release را اجرا کنند.
+2. لاگ تصمیم‌های BAU را ماهانه بازبینی کنید:
+   - `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`
+3. برای هر BAU assignment وجود `owner + deadline + external system reference` را الزامی کنید (`Odoo`/ticketing/project tool/paper).
+4. تیم‌هایی را که الگوی تکراری آلودگی BAU دارند escalation کنید.
+5. Objective/KRهای activity-only یا throughput-only را به بازنویسی اجباری ببرید.
+6. در artifacts بیرونی هفتگی، تفکیک صریح دو مسیر را الزامی کنید: `مسیر استراتژیک` و `مسیر عملیاتی`.
+7. آیتمِ طبقه‌بندی‌نشده را تا زمان تعیین‌تکلیف رد کنید.
+
+سیگنال‌های ممیزی:
+- BAU contamination rate:
+  - `BAU-classified tasks linked to KRs / total KR-linked tasks`
+- Strategic change ratio:
+  - `KR tasks with explicit hypothesis / total KR tasks`
+- BAU release cycle time:
+  - زمان از ثبت candidate در artifact بیرونی راهبری تا تصمیم مدیر
+- External tracking completeness:
+  - `% BAU assignments with external system reference and deadline`
+- Classification hygiene rate:
+  - `% external weekly items explicitly classified into Strategic or Operational lane`
+
+مرجع سیاست:
+- `docs/OKR_BAU_BOUNDARY_GUIDE_FA.md`
+
+## ۷. Playbook رخدادها
 
 ### الف) KR قدیمی/ناسازگار به نظر می‌رسد
 
@@ -169,7 +217,7 @@ Definition of done برای کیفیت پایش مدیر:
 2. در Atlas با Branch Lens هر شاخه هدف را جداگانه اصلاح کنید.
 3. از مدیران بخواهید Weekly Ritual را کامل کنند و confidence/comment با کیفیت ثبت کنند.
 
-## ۷. محدودیت‌های فعلی (مهم)
+## ۸. محدودیت‌های فعلی (مهم)
 
 در UI فعلی وجود ندارد:
 
@@ -181,7 +229,7 @@ Definition of done برای کیفیت پایش مدیر:
 
 - Project Timeline اکنون به چرخه فعال (`active_cycle_id`) محدود است و با دامنه نقش‌ها (member/manager/admin) فیلتر می‌شود.
 
-## ۸. چک‌لیست سریع ممیزی
+## ۹. چک‌لیست سریع ممیزی
 
 1. درستی محدوده نقش‌ها (admin/manager/member).
 2. درستی چرخه فعال و عدم هم‌پوشانی غیرمجاز.
@@ -189,8 +237,9 @@ Definition of done برای کیفیت پایش مدیر:
 4. نرخ استفاده تیم از Weekly Ritual برای check-in KR.
 5. مرور روند ریسک Dashboard و اقدام اصلاحی.
 6. استفاده از AI sync با رویکرد Preview-first.
+7. بازبینی منظم BAU release log و کنترل روند آلودگی.
 
-## ۹. ماتریس ابزارهای ادمین: فرآیند و زمان‌بندی
+## ۱۰. ماتریس ابزارهای ادمین: فرآیند و زمان‌بندی
 
 نکته زمان‌بندی:
 
@@ -210,8 +259,9 @@ Definition of done برای کیفیت پایش مدیر:
 | RetroBox (retros تیم)                | مدیر / ادمین | مرور بازتاب‌های تیمی و شناسایی blockerهای سیستمی.                                                 | بعد از Ritual و در جلسه تیم.                         | هفتگی.                  | حلقه بهبود مستند و فهرست موانع.                  |
 | Weekly Report (شواهد تیم)            | ادمین / مدیر | استفاده از خروجی گزارش برای بازبینی و escalation مبتنی بر داده.                                   | پایان هفته، پس از Ritual.                            | هفتگی.                  | artifact قابل اشتراک برای تصمیم‌گیری.            |
 | Project Timeline                     | ادمین / مدیر | اعتبارسنجی فشار زمان‌بندی و خوشه‌های deadline در تسک‌ها.                                          | برنامه‌ریزی اسپرینت و triage رخدادها.                | ۱ تا ۲ بار در هفته.     | دید ریسک deadline برای تصمیم ظرفیت.              |
+| بازبینی BAU Release Log              | ادمین / مدیر | طبقه‌بندی/خروج BAU candidateها و بازنویسی KRهای ضعیف به KRهای تغییر استراتژیک.                  | راهبری هفتگی تیم + ممیزی ماهانه ادمین.               | هفتگی + ماهانه.         | کاهش آلودگی BAU در پرتفوی OKR.                   |
 
-## ۱۰. Secrets و پیکربندی Runtime
+## ۱۱. Secrets و پیکربندی Runtime
 
 برای پایداری تولید:
 

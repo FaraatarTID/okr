@@ -4,6 +4,25 @@ Documentation HQ: [README](../README.md)
 
 This guide is aligned with current behavior in the codebase (`streamlit_app/app.py`, `streamlit_app/src/ui/*`, `streamlit_app/src/crud.py`, `streamlit_app/src/domain/*`).
 
+For strategic-change vs BAU policy enforcement, use `docs/OKR_BAU_BOUNDARY_GUIDE.md`.
+
+## Introduction (Why This Is a Governance Control, Not Extra Bureaucracy)
+
+Conventional management and OKR governance must run in parallel, with different evidence models:
+- Conventional management proves operational reliability (delivery cadence, SLA compliance, deadline discipline).
+- OKR governance proves strategic change (KPI baseline movement caused by deliberate interventions).
+
+If these evidence models are mixed, governance quality collapses:
+1. Operational throughput is reported as strategy.
+2. Leadership cannot distinguish maintenance from transformation.
+3. Investment and coaching decisions are made on noisy data.
+
+Admin core duty:
+1. Protect both lanes.
+2. Enforce classification discipline.
+3. Reject unclassified or misclassified evidence.
+4. Keep BAU governance external to app check-in fields.
+
 ## 1. RBAC and Mutation Rules
 
 User roles:
@@ -150,7 +169,36 @@ Report timing:
 - `Weekly Report`: last 7 days window.
 - Both are work-log based and exportable (PDF via `pdfshift` or `chromium`, with HTML fallback).
 
-## 6. Incident Playbooks
+## 6. OKR vs BAU Governance (Admin Enforcement)
+
+This is a policy-critical control: BAU work must not be counted as OKR progress.
+
+Admin enforcement model:
+1. Require managers to run weekly BAU release review.
+2. Review BAU decision logs monthly:
+   - `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`
+3. Require BAU assignments (owner + deadline) to be tracked in an operational system reference (`Odoo`/ticketing/project tool/paper log), not inside OKR evidence.
+4. Escalate teams with repeated BAU contamination patterns.
+5. Require KR rewrites when objectives are activity/throughput-only.
+6. Enforce explicit two-lane separation in external weekly artifacts: `Strategic lane` and `Operational lane`.
+7. Reject unclassified items until classification is complete.
+
+Audit signals to review:
+- BAU contamination rate:
+  - `BAU-classified tasks linked to KRs / total KR-linked tasks`
+- Strategic change ratio:
+  - `KR tasks with explicit hypothesis / total KR tasks`
+- BAU release cycle time:
+  - time from candidate flag to manager decision
+- External tracking completeness:
+  - `% BAU assignments with external system reference and deadline`
+- Classification hygiene rate:
+  - `% external weekly items explicitly classified into Strategic or Operational lane`
+
+Policy reference:
+- `docs/OKR_BAU_BOUNDARY_GUIDE.md`
+
+## 7. Incident Playbooks
 
 ### A) KR looks stale or inconsistent
 
@@ -170,7 +218,7 @@ Report timing:
 2. Use branch lens in Atlas to focus one objective tree at a time.
 3. Ask managers to complete Weekly Ritual and raise confidence-quality comments.
 
-## 7. Known Limits (Important)
+## 8. Known Limits (Important)
 
 Current UI does not provide:
 
@@ -182,7 +230,7 @@ Current timeline note:
 
 - Project Timeline is now strictly cycle-bounded (`active_cycle_id`) and role-filtered for visibility (member/manager/admin scopes).
 
-## 8. Quick Audit Checklist
+## 9. Quick Audit Checklist
 
 1. RBAC correctness (admin/manager/member scopes).
 2. Active cycle correctness and overlap sanity.
@@ -190,8 +238,9 @@ Current timeline note:
 4. Weekly Ritual adoption for KR check-ins.
 5. Dashboard risk trends reviewed and acted on.
 6. AI sync used with preview-first discipline.
+7. BAU release logs are reviewed and contamination trend is controlled.
 
-## 9. Admin Tool Process and Timing Matrix
+## 10. Admin Tool Process and Timing Matrix
 
 Timing note:
 
@@ -211,8 +260,9 @@ Timing note:
 | RetroBox (Team Retros)                   | Manager / Admin | Review team retrospectives and identify systemic blockers.                                                                  | Post-Ritual team review.                               | Weekly.                     | Documented improvement loop and impediment list.            |
 | Weekly Report (Team/Owner context)       | Admin / Manager | Use report outputs for evidence in reviews and escalations.                                                                 | End of week, after Ritual.                             | Weekly.                     | Shared factual summary artifacts.                           |
 | Project Timeline                         | Admin / Manager | Validate schedule pressure and deadline clustering by task.                                                                 | Sprint planning and incident triage.                   | 1-2 times per week.         | Deadline risk visibility for capacity decisions.            |
+| BAU Release Log Review                   | Admin / Manager | Classify/release BAU candidates and rewrite weak KRs into strategic-change KRs.                                             | Weekly team governance + monthly admin audit.          | Weekly + monthly.           | Reduced BAU contamination in OKR portfolio.                 |
 
-## 10. Secrets and Runtime Configuration
+## 11. Secrets and Runtime Configuration
 
 For production stability:
 

@@ -22,6 +22,8 @@ Use this checklist before pilot start and before each scale wave.
 | Managers are trained on cadence and quality expectations |  |  |
 | Teams can run weekly check-ins reliably |  |  |
 | Teams can own strategic outcomes, not only tasks |  |  |
+| Teams can distinguish BAU work from strategic change work |  |  |
+| BAU assignment system is defined (for example Odoo/ticketing/paper) |  |  |
 | Cross-team dependencies are visible and managed |  |  |
 
 ## 3. Process Readiness
@@ -31,6 +33,7 @@ Use this checklist before pilot start and before each scale wave.
 | Pilot goals, scope, and parameters are documented in writing |  |  |
 | Success criteria and thresholds are defined before cycle start |  |  |
 | Planning/check-in/review/retro dates are pre-scheduled |  |  |
+| BAU release policy is adopted (`SHIFT` test + release log) |  |  |
 | Retro format is standardized (`Start/Stop/Continue` or equivalent) |  |  |
 | Decision process for scale/no-scale is documented |  |  |
 
@@ -54,6 +57,7 @@ Use this checklist before pilot start and before each scale wave.
 | Teams can access Weekly Ritual and submit KR check-ins |  |  |
 | Dashboard and report views are available for governance |  |  |
 | Lifecycle states are used consistently (`DRAFT/ACTIVE/GRADING/ARCHIVED`) |  |  |
+| BAU release log is reviewed in manager governance rhythm |  |  |
 
 ## 6. Scale Wave Readiness
 

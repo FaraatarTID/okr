@@ -70,6 +70,19 @@ Streamlit rerun observability
 - Behavior:
   - Runtime tracks rerun counts per sliding window and stores telemetry in session state.
   - When threshold is exceeded, server logs a warning with current rerun pressure.
+  - Regression tests enforce warning budget behavior (warn-once-per-window + reset semantics) in `tests/test_app_entry_helpers.py`.
+
+Atlas session-state governance
+
+- Canonical Atlas keys are centralized in `streamlit_app/src/ui/session_keys.py`.
+  - Governed fixed-key bundle: `ATLAS_FIXED_SESSION_KEYS`.
+  - Dynamic draft namespace: `ATLAS_STOP_SUMMARY_DRAFT_PREFIX`.
+- Lifecycle policy contract:
+  - `ATLAS_KEY_LIFECYCLE_POLICY` documents owner/set/reset/persistence per Atlas key.
+  - `validate_atlas_key_lifecycle_policy()` enforces policy completeness and structure.
+- Audit gates:
+  - `tests/test_session_keys_policy.py` blocks raw Atlas key literals outside `session_keys.py`.
+  - CI includes `Session-State Governance Gate` in `.github/workflows/ci.yml`.
 
 PDF generation
 
@@ -224,9 +237,26 @@ Release governance (CI)
 - Branches should require passing CI checks before merge:
   - Docs HQ link check
   - Deploy config template gate
+  - Quality baseline expiry gate (`scripts/check_quality_gate_baseline.py`)
+  - Repo-critical lint gate (Ruff `E9,F63,F7,F82` across `streamlit_app/src`, `backend_app`, `scripts`, `tests`)
+  - Expanded mypy gate (`streamlit_app/src/utils`, `scripts`, runtime-core modules)
   - RBAC regression gate
+  - Session-state governance gate
   - Full pytest suite
   - Playwright happy-path e2e (`Login -> Focus Map -> Start Timer`)
+- Time-boxed baseline policy:
+  - Temporary quality-scope exceptions are tracked in `docs/QUALITY_GATE_BASELINE.md`.
+  - Expiry enforcement runs in CI/pre-commit via `scripts/check_quality_gate_baseline.py`.
+- OKR governance policy artifacts:
+  - Strategic-change vs BAU boundary policy: `docs/OKR_BAU_BOUNDARY_GUIDE.md`.
+  - BAU release decision log template: `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`.
+- Before production release, run runtime config gate workflow:
+  - GitHub Actions workflow: `.github/workflows/release-runtime-gate.yml` (`workflow_dispatch`)
+  - Required repository/environment secrets:
+    - `OKR_RUNTIME_ENV_DOTENV` (runtime `.env` content)
+    - `OKR_RUNTIME_SECRETS_TOML` (runtime `secrets.toml` content)
+  - Gate command executed by workflow:
+    - `python scripts/check_deploy_config.py --mode runtime --env-file /tmp/okr-runtime-gate/runtime.env --secrets-file /tmp/okr-runtime-gate/runtime.secrets.toml`
 
 Admin bootstrap
 

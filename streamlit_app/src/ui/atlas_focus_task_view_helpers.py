@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui import session_keys
+
 
 def build_focus_path(
     *,
@@ -82,12 +84,12 @@ def render_focus_status_and_commit_controls(
     )
 
     preset_options = ["25m", "50m", "Custom"]
-    if session_state.get("atlas_commit_preset") not in preset_options:
-        session_state["atlas_commit_preset"] = "25m"
+    if session_state.get(session_keys.ATLAS_COMMIT_PRESET) not in preset_options:
+        session_state[session_keys.ATLAS_COMMIT_PRESET] = "25m"
     preset_choice = spotlight_cols[1].segmented_control(
         "Commit Preset",
         options=preset_options,
-        key="atlas_commit_preset",
+        key=session_keys.ATLAS_COMMIT_PRESET,
         selection_mode="single",
         label_visibility="collapsed",
     )
@@ -96,15 +98,15 @@ def render_focus_status_and_commit_controls(
 
     target_minutes = int(commit_target_minutes_fn(preset_choice))
     if preset_choice == "Custom":
-        if "atlas_commit_custom_min" not in session_state:
-            session_state["atlas_commit_custom_min"] = 35
+        if session_keys.ATLAS_COMMIT_CUSTOM_MIN not in session_state:
+            session_state[session_keys.ATLAS_COMMIT_CUSTOM_MIN] = 35
         custom_minutes = int(
             spotlight_cols[1].number_input(
                 "Custom Sprint (min)",
                 min_value=5,
                 max_value=240,
                 step=5,
-                key="atlas_commit_custom_min",
+                key=session_keys.ATLAS_COMMIT_CUSTOM_MIN,
             )
         )
         target_minutes = int(commit_target_minutes_fn("Custom", custom_minutes))

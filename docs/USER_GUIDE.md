@@ -45,6 +45,45 @@ Important:
 - DRAFT objectives/KRs are excluded from rollups.
 - **Every check-in now requires variation classification** (see Learning Loop below).
 
+### 2.1 Critical Boundary: OKRs vs BAU (Do Not Mix)
+
+Rule:
+- If a task would happen the same way without this cycle's Objective/KR, it is BAU and should not be counted as strategic progress.
+- Deadline or urgency does not make a task strategic; it can still be BAU.
+
+10-second self-check:
+1. "Would my manager ask this even without an OKR?" -> Yes means BAU.
+2. "Can I write the KPI movement from A to B by date?" -> No means BAU.
+3. "Am I reporting activity count instead of KPI shift?" -> Yes means BAU.
+
+Use this fast `SHIFT` check before writing KR updates:
+- `S` (System change): does this change how work is done?
+- `H` (Hypothesis): is there a testable prediction?
+- `I` (Insight): will it produce reusable learning?
+- `F` (Frequency): is it recurring regardless of strategy?
+- `T` (Target delta): should a baseline KPI move materially?
+
+Member decision shortcut:
+- Mostly routine + recurring (`F` yes, weak `S/H/T`) -> treat as BAU.
+- Time-boxed change with measurable KPI delta (`S/H/T` yes) -> keep in OKR.
+
+Weekly practice for members:
+1. Log suspected routine work in the external BAU governance note/release log (not in app check-in comment fields).
+2. Keep BAU notes transparent in that external artifact; do not frame them as KR attainment.
+3. Ask manager to classify in weekly review (`release to BAU` vs `convert to true OKR change`).
+4. If manager assigns BAU work with deadlines, track it in the operational lane (for example Odoo/ticketing/paper list), not as OKR-progress evidence.
+5. Keep two separate sections in external weekly governance notes: `Strategic lane` and `Operational lane`.
+
+Important boundary:
+- Do not add BAU classification markers into KR check-in forms; check-ins remain for KR metric + learning-loop data.
+
+Example rewrite:
+- Weak: "Handled daily support tickets."
+- Strong: "Reduced incoming support tickets per active user by launching self-service flow."
+
+Policy reference:
+- `docs/OKR_BAU_BOUNDARY_GUIDE.md`
+
 ## 3. Learning Loop: Variation Classification & Experiments
 
 The Learning Loop transforms weekly check-ins from passive reporting into active system improvement.

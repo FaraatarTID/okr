@@ -34,6 +34,10 @@ Transition validation is enforced in lifecycle logic.
 - Objective cannot transition to `ACTIVE` unless it has at least one KR.
 - Changing Objective state cascades the same state to child KRs.
 - `DRAFT` objectives/KRs are excluded from objective/goal rollups.
+- Activation readiness policy should also include BAU boundary screening:
+  - routine operating work is released to BAU tracking,
+  - only strategic-change KRs move to `ACTIVE`.
+  - See `docs/OKR_BAU_BOUNDARY_GUIDE.md`.
 
 ## 4. Alignment Graph (Objective-to-Objective)
 
