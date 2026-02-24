@@ -129,16 +129,18 @@ Backend API (recommended for scale)
 
 - Streamlit-to-backend routing:
   - Source precedence: environment variables first, then Streamlit secrets (root key or `[app]` section).
-  - `OKR_BACKEND_API_URL` (e.g. `http://backend-api:8100`)
-  - `OKR_BACKEND_SERVICE_TOKEN` (shared token for service-to-service auth)
-  - `OKR_BACKEND_SIGNING_SECRET` (shared HMAC signing secret for signed internal requests)
-  - `OKR_BACKEND_DEFAULT_ACTOR` (fallback actor for system-initiated AI requests; default: `system`)
-  - `OKR_BACKEND_PROXY_MUTATIONS` (default: `true`; routes frontend mutation writes through backend API when backend URL is set)
-  - `OKR_BACKEND_PROXY_READS` (default: `false`; when enabled, selected high-traffic reads are fetched via backend read endpoints)
-  - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (default: `false`; emergency non-production fallback for mutation/timer/job flows)
-  - `OKR_ALLOW_LOCAL_READ_FALLBACK` (default: `false`; emergency non-production fallback for proxied read flows)
-  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy compatibility fallback; used only when scoped flags above are unset)
-  - `OKR_ENABLE_DIRECT_DB_RESTORE` (default: `false`; direct Streamlit DB restore is disabled by default and blocked in production)
+  - `OKR_BACKEND_API_URL`:
+    - Example: `http://backend-api:8100`
+    - **`"auto"`**: Special keyword to automatically launch an embedded backend subprocess (used on Streamlit Cloud).
+  - `OKR_BACKEND_SERVICE_TOKEN`: Shared token for service-to-service auth.
+  - `OKR_BACKEND_SIGNING_SECRET`: Shared HMAC signing secret for signed internal requests.
+  - `OKR_BACKEND_DEFAULT_ACTOR`: Fallback actor for system-initiated AI requests; default: `system`.
+  - `OKR_BACKEND_PROXY_MUTATIONS` (default: `true`): Routes frontend mutation writes through backend API when backend URL is set.
+  - `OKR_BACKEND_PROXY_READS` (default: `false`): When enabled, selected high-traffic reads are fetched via backend read endpoints.
+  - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (default: `false`): Emergency non-production fallback for mutation/timer/job flows.
+  - `OKR_ALLOW_LOCAL_READ_FALLBACK` (default: `false`): Emergency non-production fallback for proxied read flows.
+  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy compatibility fallback): Used only when scoped flags above are unset.
+  - `OKR_ENABLE_DIRECT_DB_RESTORE` (default: `false`): Direct Streamlit DB restore is disabled by default and blocked in production.
 - Backend API runtime:
   - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
   - `OKR_BACKEND_PORT` (default: `8100`)
@@ -178,6 +180,11 @@ Backend API (recommended for scale)
   - If proxied backend transport fails, default behavior is fail-closed unless scoped fallback is explicitly enabled (`OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation paths, `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied reads).
   - Direct DB restore in Streamlit Admin is opt-in (`OKR_ENABLE_DIRECT_DB_RESTORE=true`) and intended for controlled non-production scenarios only.
   - In non-production (or when strict runtime preflight is disabled), missing backend URL can result in direct-mode legacy behavior.
+  - **Embedded Mode (Cloud)**:
+    - Automatically active when `OKR_BACKEND_API_URL="auto"` or running on Streamlit Cloud with an empty backend URL.
+    - Launches `backend_app.run_api` with a **60-second health check timeout**.
+    - Redirects `stderr` to `/tmp/okr_backend.log`; tail of this log is printed on startup failure for debugging.
+    - Reinforces `PYTHONPATH` to include both repo root and `streamlit_app` directory to ensure `src` module resolution.
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.
   - Current MVP still serves most read-heavy hierarchy traversal directly via Streamlit + SQLModel.
 

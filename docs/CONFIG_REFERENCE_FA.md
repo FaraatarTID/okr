@@ -5,6 +5,7 @@ Documentation HQ: [README](../README.md)
 این سند مرجع کلیدهای اصلی پیکربندی runtime است.
 
 ## اولویت خواندن تنظیمات
+
 1. Environment variables
 2. Streamlit secrets (`streamlit_app/.streamlit/secrets.toml`)
 
@@ -62,7 +63,10 @@ Documentation HQ: [README](../README.md)
 ## Backend API
 
 ### مسیر Streamlit به Backend
-- `OKR_BACKEND_API_URL`
+
+- `OKR_BACKEND_API_URL`:
+  - مثال: `http://backend-api:8100`
+  - **`"auto"`**: کلمه کلیدی ویژه برای راه‌اندازی خودکار backend به‌صورت subprocess (استفاده در Streamlit Cloud).
 - `OKR_BACKEND_SERVICE_TOKEN`
 - `OKR_BACKEND_SIGNING_SECRET`
 - `OKR_BACKEND_DEFAULT_ACTOR`
@@ -72,6 +76,7 @@ Documentation HQ: [README](../README.md)
 - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy compatibility fallback when scoped flags are unset)
 
 ### Runtime Backend
+
 - `OKR_BACKEND_HOST` (پیش‌فرض `0.0.0.0`)
 - `OKR_BACKEND_PORT` (پیش‌فرض `8100`)
 - `OKR_BACKEND_ENFORCE_TOKEN` (پیش‌فرض `true`)
@@ -83,6 +88,7 @@ Documentation HQ: [README](../README.md)
 - `OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS` (پیش‌فرض `120`)
 
 ### امنیت توزیع‌شده (Phase 2)
+
 - `OKR_BACKEND_SECURITY_STATE_BACKEND`
   - production پیش‌فرض: `database`
   - non-production پیش‌فرض: `memory`
@@ -99,6 +105,11 @@ Documentation HQ: [README](../README.md)
 - وقتی backend روی `redis` باشد:
   - nonce replay و rate-limit در Redis shared key-space ذخیره می‌شوند.
   - `OKR_BACKEND_SECURITY_STATE_REDIS_URL` اجباری است و `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX` namespace کلیدها را تعیین می‌کند.
+- **Embedded Mode (Cloud)**:
+  - زمانی فعال می‌شود که `OKR_BACKEND_API_URL="auto"` باشد یا روی Streamlit Cloud بدون URL بک‌اند اجرا شود.
+  - بک‌بند را با **timeout سلامت‌سنجی ۶۰ ثانیه‌ای** اجرا می‌کند.
+  - خروجی `stderr` را به `/tmp/okr_backend.log` هدایت می‌کند و در صورت شکست راه‌اندازی، انتهای آن را چاپ می‌کند.
+  - `PYTHONPATH` را برای یافتن ماژول `src` اصلاح و تقویت می‌کند.
 
 ## Worker
 
@@ -148,6 +159,7 @@ Documentation HQ: [README](../README.md)
 - `OKR_BACKEND_JOB_BACKOFF_BASE_SECONDS` (پیش‌فرض `3`)
 
 Notes:
+
 - `POST /v1/jobs` از `X-OKR-Idempotency-Key` پشتیبانی می‌کند.
 - در quota/backoff reject، پاسخ `429` با `detail.error_code` و `detail.retry_after_seconds` برمی‌گردد.
 - header `Retry-After` در همان پاسخ ارسال می‌شود.
