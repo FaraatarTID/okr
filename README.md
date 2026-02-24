@@ -1,8 +1,66 @@
 # OKR Tracker
 
-A backend-first OKR platform with a Streamlit UI layer, secure backend mutations, and async worker support. The embedded backend path in `streamlit_app/app.py` is a Streamlit Cloud compatibility mode.
+An OKR system that keeps strategic change work separate from day-to-day operations.
 
-This README stays concise on implementation mechanics while making core policy concerns explicit. Detailed behavior, operations, and role playbooks live in the documents below.
+This README is the fast starting point. It shows what this product is, what it is not, and where to start.
+
+`Atlas` means the main in-app workspace (Focus Task, Focus Map, and Inspector) after login.
+
+## Mini Glossary (Plain Language)
+
+- `BAU` (Business as Usual): routine operational work that keeps current service running.
+- `OKR`: strategic change work intended to improve system performance.
+- `KR` (Key Result): measurable target showing if an objective is moving.
+- `KPI baseline movement`: before/after metric change (not task completion count).
+- `Atlas`: the in-app strategy workspace for OKR execution and evidence updates.
+
+## Atlas Design Philosophy
+
+Atlas is designed as a strategy cockpit, not a daily task board.
+
+- One workspace, one strategic narrative: Focus Task, Focus Map, and Inspector stay connected.
+- Outcome evidence over activity volume: KR progress must tie to measurable KPI movement.
+- Role-aware clarity: members, managers, and admins see the right scope without changing the model.
+- Weekly governance ready: at-risk areas are visible for coaching and correction.
+- BAU boundary by design: operational execution stays outside the app.
+
+## Why This Exists Beside Conventional Management
+
+Conventional management tools are still required, but they solve a different problem.
+
+- Conventional tools (ERP, ticketing, project boards, to-do lists) manage operational execution.
+- Atlas manages strategic change and outcome evidence.
+- Mixing both in one lane creates false progress signals and weak leadership decisions.
+- Separation keeps governance honest: BAU throughput in operational reports, KPI movement in KR reports.
+
+## Quick Orientation (60 Seconds)
+
+1. This app is for strategic OKR work only.
+2. BAU execution stays in your existing operational tools.
+3. A completed BAU task is never KR progress by itself.
+4. KR progress must show measurable KPI movement.
+
+## Non-Negotiable Rules
+
+1. Do not store BAU tasks inside this app.
+2. Do not use task count as KR progress evidence.
+3. Do not report KR progress without a measurable metric delta.
+4. Do track BAU in your existing operations system (ERP, ticketing, board, or notes).
+
+## Choose Your Path (30 Seconds)
+
+- I need policy clarity first: read `Read First: Fundamental Concern` and `OKR vs BAU Quick Test`.
+- I am a member/manager/admin: go to `Start Here` then open one guide under `By Role`.
+- I want to run the app locally: jump to `Quickstart (Local Development)`.
+- I need production deployment: jump to `Quickstart (Self-Hosted Docker Compose)`, then [DEPLOYMENT.md](DEPLOYMENT.md).
+- I am a non-technical reviewer: read `Read First`, `OKR vs BAU Quick Test`, and `First 5 Minutes in Atlas`, then stop.
+
+Read in this order if you are new:
+1. `Read First: Fundamental Concern`
+2. `Atlas Design Philosophy`
+3. `Product Scope in Plain Language`
+4. `Start Here`
+5. `Quickstart` (if you want to run the app)
 
 ## Read First: Fundamental Concern
 
@@ -18,7 +76,7 @@ Core operating model:
 Non-negotiable boundary:
 - BAU completion is not KR progress evidence.
 - KR progress evidence must show measurable KPI baseline movement.
-- BAU must be managed in external operational systems/governance artifacts (for example Odoo/ticketing/paper), not in KR check-in fields.
+- BAU must be tracked outside this app (for example in an operations board, ticket system, ERP workflow, or meeting notes).
 
 What every reviewer should verify:
 1. Strategic lane and operational lane are separated in weekly governance outputs.
@@ -30,9 +88,116 @@ Boundary policy references:
 - EN: [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md)
 - FA: [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md)
 
+## Product Scope in Plain Language
+
+What this app is:
+- An OKR workspace for strategy, key results, check-ins, and measurable outcome tracking.
+
+What this app is not:
+- A BAU task manager.
+- A BAU deadline tracker.
+- A replacement for ERP, ticketing, project board, or daily operations planning tools.
+
+Hard rule:
+- Do not enter BAU tasks as KR evidence in this app.
+- If BAU work is important, track it in operational systems and discuss it in weekly operations rituals.
+
+## OKR vs BAU Quick Test (30 Seconds)
+
+Use this rule before entering any update:
+- If the work keeps current operations running, it is BAU and stays outside this app.
+- If the work is intended to shift a KPI baseline, it is OKR work and belongs in this app.
+
+Examples:
+- BAU: "Close daily support tickets within SLA."
+- OKR: "Reduce average ticket resolution time from 36h to 12h by end of quarter."
+
+### Separation Decision Table
+
+| Question | BAU (Operational) | OKR (Strategic) |
+| --- | --- | --- |
+| Primary purpose | Keep current service running | Change performance baseline |
+| Where to track | ERP, ticketing, project board, meeting notes | Atlas (Objective/KR workflow) |
+| Acceptable evidence | Completion, SLA adherence, throughput | Measurable before/after outcome delta |
+| Should be entered as KR evidence in app? | No | Yes |
+| If metric delta is missing | Keep outside app | Define metric first, then track |
+
+### When You Are Unsure
+
+1. Ask: "What exact metric will move?"
+2. If you cannot name baseline and target, treat it as BAU.
+3. Do not add BAU tags/placeholders in this app; keep BAU in operational systems.
+
+### Common Classification Mistakes
+
+| Statement | Correct classification | Correct handling |
+| --- | --- | --- |
+| "Close 100 support tickets this week." | BAU | Track in ticketing/operations tools, not KR evidence fields. |
+| "Hold weekly sync meetings." | BAU | Keep in manager routines or project plan outside app. |
+| "Update dashboard every day." | BAU | Track as operational hygiene, not strategic progress. |
+| "Cut ticket resolution time from 36h to 12h." | OKR | Track as KR with explicit baseline, target, and evidence updates. |
+
+## First 5 Minutes in Atlas
+
+Use this flow to understand the product in one short pass:
+1. Sign in and open Atlas.
+2. Select your scope (`My OKRs` for individual work, `My Team` for manager view).
+3. Open one Objective/KR in Focus Map and check current status.
+4. Start one Focus Task timer, then stop it with a short summary.
+5. Open Inspector and update KR progress only with outcome evidence (not BAU task completion).
+
+## Start Here
+
+Pick exactly one path below first. Ignore the rest on first read.
+
+If you want a zero-decision start:
+1. Go to `By Role`.
+2. Open one guide only.
+3. Use `By Goal` and `Documentation HQ` later.
+4. If you are a non-technical reviewer, you can stop after your role guide.
+
+### English-First Paths
+
+- Member: [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
+- Manager: [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md)
+- Admin/Operator: [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)
+- OKR transformation lead: [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md)
+- OKR/BAU boundary owner: [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md)
+
+### Persian-First Paths
+
+- Member: [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
+- Manager: [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md)
+- Admin/Operator: [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md)
+- OKR transformation lead: [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md)
+- OKR/BAU boundary owner: [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md)
+
+### By Goal
+
+| Goal | Read First (EN / FA) | Then Read (EN / FA) |
+| --- | --- | --- |
+| Run locally and explore product behavior | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) / [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md) | [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md) / [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md) |
+| First production deployment | [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) / [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) |
+| Configure runtime safely | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) / [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md) | [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md) / [docs/DOCKER_COMPOSE_FA.md](docs/DOCKER_COMPOSE_FA.md) |
+| Operate incident/day-2 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) / [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md) | [DEPLOYMENT.md](DEPLOYMENT.md) / [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md) |
+| Roll out OKRs across departments | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) / [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md) | [docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md) / [docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST_FA.md](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST_FA.md) |
+| Prevent BAU contamination in OKRs | [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md) / [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md) | [docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md](docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md) / [docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE_FA.md](docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE_FA.md) |
+
+### By Role
+
+| Role | Primary Guide (EN) | Primary Guide (FA) |
+| --- | --- | --- |
+| Member | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md) |
+| Manager | [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md) | [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md) |
+| Admin/Operator | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md) |
+| OKR transformation lead | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) | [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md) |
+| OKR/BAU boundary owner | [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md) | [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md) |
+| AI/policy reviewer | [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md) | [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md) |
+
 ## Documentation HQ
 
 Use this section as the primary index for all project docs.
+If you are a first-time reader, skip this section until after `Start Here`.
 
 ### Core Product Guides
 
@@ -57,6 +222,8 @@ Use this section as the primary index for all project docs.
 
 ### Rollout Templates
 
+All templates in this section are external governance documents, not app data-entry screens.
+
 - Charter (EN): [docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE.md](docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE.md)
 - Readiness checklist (EN): [docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md)
 - Pilot retro survey (EN): [docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE.md](docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE.md)
@@ -64,6 +231,7 @@ Use this section as the primary index for all project docs.
 - Charter (FA): [docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE_FA.md](docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE_FA.md)
 - Readiness checklist (FA): [docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST_FA.md](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST_FA.md)
 - Pilot retro survey (FA): [docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE_FA.md](docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE_FA.md)
+- BAU release log (FA): [docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE_FA.md](docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE_FA.md)
 
 ### Ops and Deployment
 
@@ -74,53 +242,20 @@ Use this section as the primary index for all project docs.
 - Resilience verification runbook (EN): [docs/RESILIENCE_VERIFICATION.md](docs/RESILIENCE_VERIFICATION.md)
 - Config reference (EN): [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 - Config reference (FA): [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md)
-- Deployment compatibility redirects:
-  - [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
-  - [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
-  - [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
-  - [docs/DOCKER_COMPOSE_FA.md](docs/DOCKER_COMPOSE_FA.md)
-  - [docs/KUBERNETES.md](docs/KUBERNETES.md)
-  - [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md)
-  - [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
-  - [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md)
+- Compatibility redirect: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
+- Compatibility redirect: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
+- Compatibility redirect: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
+- Compatibility redirect: [docs/DOCKER_COMPOSE_FA.md](docs/DOCKER_COMPOSE_FA.md)
+- Compatibility redirect: [docs/KUBERNETES.md](docs/KUBERNETES.md)
+- Compatibility redirect: [docs/KUBERNETES_FA.md](docs/KUBERNETES_FA.md)
+- Compatibility redirect: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
+- Compatibility redirect: [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md)
 
 ### Planning, Performance, and History
 
 - V2 prioritized backlog: [docs/V2_PRIORITIZED_ISSUE_LIST.md](docs/V2_PRIORITIZED_ISSUE_LIST.md)
 - Performance baselines: [performance.md](performance.md)
 - Documentation archive index: [docs/archive/README.md](docs/archive/README.md)
-
-## Start Here
-
-### Persian-First Paths
-
-- Member: [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
-- Manager: [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md)
-- Admin/Operator: [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md)
-- OKR transformation lead: [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md)
-- OKR/BAU boundary owner: [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md)
-
-### By Goal
-
-| Goal | Read First | Then Read |
-| --- | --- | --- |
-| Run locally and explore product behavior | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md) |
-| First production deployment | [DEPLOYMENT.md](DEPLOYMENT.md) | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) |
-| Configure runtime safely | [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md) | [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md) |
-| Operate incident/day-2 | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | [DEPLOYMENT.md](DEPLOYMENT.md) |
-| Roll out OKRs across departments | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) | [docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md) |
-| Prevent BAU contamination in OKRs | [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md) | [docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md](docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md) |
-
-### By Role
-
-| Role | Primary Guide (EN) | Primary Guide (FA) |
-| --- | --- | --- |
-| Member | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md) |
-| Manager | [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md) | [docs/MANAGER_PLAYBOOK_FA.md](docs/MANAGER_PLAYBOOK_FA.md) |
-| Admin/Operator | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) | [docs/ADMIN_GUIDE_FA.md](docs/ADMIN_GUIDE_FA.md) |
-| OKR transformation lead | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) | [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md) |
-| OKR/BAU boundary owner | [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md) | [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md) |
-| AI/policy reviewer | [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md) | [docs/AI_FEATURES_GUIDE_FA.md](docs/AI_FEATURES_GUIDE_FA.md) |
 
 ## Deployment Intent
 
@@ -131,10 +266,41 @@ Use this section as the primary index for all project docs.
 
 ## Quickstart (Local Development)
 
+Run commands from repository root (`okr`).
+
 Prerequisites:
 
 - Python 3.11+
-- Supabase/PostgreSQL connection string (or local test DB)
+- A reachable Postgres/Supabase database
+- Database URL set as `OKR_DATABASE_URL` (recommended) or `DATABASE_URL` (alias)
+
+Set database URL (required):
+
+Windows PowerShell:
+
+```powershell
+$env:OKR_DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DBNAME"
+```
+
+macOS/Linux bash:
+
+```bash
+export OKR_DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/DBNAME"
+```
+
+Verify environment (required):
+
+Windows PowerShell:
+
+```powershell
+if (-not $env:OKR_DATABASE_URL -and -not $env:DATABASE_URL) { throw "Set OKR_DATABASE_URL or DATABASE_URL first." }
+```
+
+macOS/Linux bash:
+
+```bash
+test -n "$OKR_DATABASE_URL$DATABASE_URL" || { echo "Set OKR_DATABASE_URL or DATABASE_URL first."; exit 1; }
+```
 
 Run:
 
@@ -164,7 +330,28 @@ Optional provider health check:
 python streamlit_app/scripts/ai_provider_health_check.py
 ```
 
+Success check (local):
+1. Terminal shows a Streamlit URL (usually `http://localhost:8501`).
+2. Browser opens the login screen.
+3. After login, the Atlas workspace loads.
+
 ## Quickstart (Self-Hosted Docker Compose)
+
+Prerequisites:
+
+- Docker Desktop (or Docker Engine + Docker Compose v2 plugin)
+- `deploy/secrets/secrets.toml` is present and configured
+- Network access for pulling images/packages
+
+Windows PowerShell:
+
+```powershell
+Copy-Item deploy/docker/.env.example deploy/docker/.env
+python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml
+docker compose -f deploy/docker/docker-compose.yml up -d --build
+```
+
+macOS/Linux bash:
 
 ```bash
 cp deploy/docker/.env.example deploy/docker/.env
@@ -177,14 +364,18 @@ Then follow full production hardening in:
 - [DEPLOYMENT.md](DEPLOYMENT.md)
 - [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
 
+Success check (self-hosted):
+1. `docker compose -f deploy/docker/docker-compose.yml ps` shows services running.
+2. UI is reachable at configured host/port.
+3. Login works and the Atlas workspace opens.
+
 ## Security Defaults (Production)
 
 - Keep `OKR_BACKEND_PROXY_MUTATIONS=true`.
 - Keep backend API private (internal only).
-- Set strong values for:
-  - `OKR_BACKEND_SERVICE_TOKEN`
-  - `OKR_BACKEND_SIGNING_SECRET`
-  - `OKR_BOOTSTRAP_ADMIN_PASSWORD`
+- Set a strong `OKR_BACKEND_SERVICE_TOKEN`.
+- Set a strong `OKR_BACKEND_SIGNING_SECRET`.
+- Set a strong `OKR_BOOTSTRAP_ADMIN_PASSWORD`.
 - Use least-privilege DB role (not `postgres`).
 - Keep fail-open toggles disabled in production.
 - Keep `ALLOW_EXTERNAL_AI=false` unless policy-approved.
