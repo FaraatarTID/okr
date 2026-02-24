@@ -44,6 +44,18 @@ def test_enqueue_and_get_job(isolated_db):
     assert fetched.actor_username == "alice"
 
 
+def test_enqueue_job_clamps_max_attempts_to_hard_cap(isolated_db):
+    from backend_app.jobs import enqueue_job
+
+    job = enqueue_job(
+        kind="ai.generate_json",
+        payload={"prompt": "Return JSON"},
+        actor_username="alice",
+        max_attempts=999,
+    )
+    assert int(job.max_attempts or 0) == 10
+
+
 def test_claim_and_fail_requeues_until_max_attempts(isolated_db):
     from backend_app.jobs import (
         claim_next_pending_job,
@@ -79,6 +91,31 @@ def test_claim_and_fail_requeues_until_max_attempts(isolated_db):
     assert final is not None
     assert int(final.attempts) == 2
     assert str(final.status.value) == "failed"
+
+
+def test_mark_job_failed_terminal_does_not_requeue(isolated_db):
+    from backend_app.jobs import (
+        claim_next_pending_job,
+        enqueue_job,
+        get_job,
+        mark_job_failed_terminal,
+    )
+
+    job = enqueue_job(
+        kind="ai.generate_json",
+        payload={"prompt": "Return JSON"},
+        actor_username="alice",
+        max_attempts=5,
+    )
+
+    claimed = claim_next_pending_job("worker-1")
+    assert claimed is not None
+    mark_job_failed_terminal(job.id, "poison payload")
+
+    final = get_job(job.id)
+    assert final is not None
+    assert str(final.status.value) == "failed"
+    assert int(final.attempts or 0) >= int(final.max_attempts or 0)
 
 
 def test_cancel_pending_job_marks_cancelled(isolated_db):

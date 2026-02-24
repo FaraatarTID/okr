@@ -198,3 +198,55 @@ def test_run_main_from_app_handles_missing_runtime_resolver_without_crash():
 
     assert st.errors
     assert "startup wiring" in st.errors[0]
+
+
+def test_run_main_records_runtime_telemetry_and_rerun_counters():
+    st = _FakeStreamlit(session_state={"user_id": 10})
+    runtime_bundle = {
+        "user": {
+            "username": "alice",
+            "display_name": "Alice",
+            "role": "member",
+            "manager_id": 5,
+            "must_change_password": False,
+            "is_active": True,
+        }
+    }
+    app_module = SimpleNamespace(
+        st=st,
+        render_login=lambda: None,
+        _resolve_app_shell_runtime=lambda _user_id: runtime_bundle,
+        error_log=lambda *_args, **_kwargs: None,
+        _clear_user_session=lambda: None,
+        render_password_reset_gate=lambda: None,
+        render_app=lambda *_args, **_kwargs: None,
+    )
+
+    app_entry_helpers.run_main_from_app(app_module=app_module)
+
+    telemetry = st.session_state.get("okr_runtime_telemetry")
+    assert isinstance(telemetry, dict)
+    assert float(telemetry.get("last_run_ms", 0.0)) >= 0.0
+    assert float(telemetry.get("last_resolve_runtime_ms", 0.0)) >= 0.0
+    assert int(st.session_state.get("okr_runtime_rerun_total", 0)) >= 1
+    assert int(st.session_state.get("okr_runtime_rerun_window_count", 0)) >= 1
+
+
+def test_record_rerun_metrics_warns_when_threshold_exceeded(monkeypatch):
+    session_state = {}
+    monkeypatch.setenv("OKR_RERUN_MONITOR_WINDOW_SECONDS", "60")
+    monkeypatch.setenv("OKR_RERUN_WARN_THRESHOLD", "5")
+
+    timeline = iter([1000.0, 1000.1, 1000.2, 1000.3, 1000.4, 1000.5])
+    monkeypatch.setattr(app_entry_helpers.time, "time", lambda: next(timeline))
+    warnings = []
+    monkeypatch.setattr(
+        app_entry_helpers._LOGGER,
+        "warning",
+        lambda message, *args: warnings.append(message % args),
+    )
+
+    for _ in range(5):
+        app_entry_helpers._record_rerun_metrics(session_state)
+
+    assert any("High Streamlit rerun rate detected" in message for message in warnings)

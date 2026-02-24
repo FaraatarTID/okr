@@ -6,6 +6,7 @@ from __future__ import annotations
 import time
 import traceback
 import logging
+import json
 
 from backend_app.config import get_backend_settings
 from backend_app.job_runner import run_job
@@ -14,6 +15,7 @@ from backend_app.jobs import (
     get_job,
     mark_job_cancelled,
     mark_job_failed,
+    mark_job_failed_terminal,
     mark_job_succeeded,
     prune_audit_events,
     prune_terminal_jobs,
@@ -26,10 +28,50 @@ from src.database import init_database
 from src.observability import observability_context
 
 logger = logging.getLogger(__name__)
+_LOOP_ERROR_SLEEP_SECONDS = 2.0
+
+
+class NonRetryableJobError(RuntimeError):
+    """Raised when a job is malformed and should not be retried."""
+
+
+def _parse_job_payload(job) -> dict:
+    raw_payload = getattr(job, "payload_json", None)
+    if not raw_payload:
+        return {}
+    try:
+        parsed = json.loads(raw_payload)
+    except Exception as exc:
+        raise NonRetryableJobError("Invalid job payload JSON.") from exc
+    if not isinstance(parsed, dict):
+        raise NonRetryableJobError("Job payload must be a JSON object.")
+    return parsed
+
+
+def _is_non_retryable_error(exc: Exception) -> bool:
+    return isinstance(exc, (NonRetryableJobError, ValueError))
+
+
+def _safe_mark_job_failed(*, job_id: str, error_text: str, terminal: bool) -> None:
+    try:
+        if terminal:
+            mark_job_failed_terminal(job_id, error_text)
+        else:
+            mark_job_failed(job_id, error_text)
+    except Exception:
+        logger.exception(
+            "Failed to persist worker job failure state (job_id=%s, terminal=%s)",
+            job_id,
+            terminal,
+        )
 
 
 def process_next_job(*, worker_id: str) -> bool:
-    job = claim_next_pending_job(worker_id)
+    try:
+        job = claim_next_pending_job(worker_id)
+    except Exception:
+        logger.exception("Worker failed claiming pending job (worker_id=%s)", worker_id)
+        return False
     if not job:
         return False
 
@@ -39,21 +81,8 @@ def process_next_job(*, worker_id: str) -> bool:
         request_id=correlation_id,
     ):
         try:
-            payload = {}
-            if job.payload_json:
-                import json
-
-                parsed = json.loads(job.payload_json)
-                if isinstance(parsed, dict):
-                    payload = parsed
-
+            payload = _parse_job_payload(job)
             result = run_job(str(job.kind), payload)
-
-            latest = get_job(job.id)
-            if latest and bool(latest.cancel_requested):
-                mark_job_cancelled(job.id, error_text="Cancelled while running.")
-            else:
-                mark_job_succeeded(job.id, result)
         except Exception as exc:
             msg = f"{type(exc).__name__}: {exc}"
             trace = traceback.format_exc(limit=3)
@@ -63,7 +92,33 @@ def process_next_job(*, worker_id: str) -> bool:
                 getattr(job, "id", None),
                 getattr(job, "kind", None),
             )
-            mark_job_failed(job.id, f"{msg}\n{trace}")
+            _safe_mark_job_failed(
+                job_id=str(job.id),
+                error_text=f"{msg}\n{trace}",
+                terminal=_is_non_retryable_error(exc),
+            )
+            return True
+
+        try:
+            latest = get_job(job.id)
+            if latest and bool(latest.cancel_requested):
+                mark_job_cancelled(job.id, error_text="Cancelled while running.")
+            else:
+                mark_job_succeeded(job.id, result)
+        except Exception as exc:
+            msg = f"{type(exc).__name__}: {exc}"
+            trace = traceback.format_exc(limit=3)
+            logger.exception(
+                "Worker job finalization failed (worker_id=%s, job_id=%s, kind=%s)",
+                worker_id,
+                getattr(job, "id", None),
+                getattr(job, "kind", None),
+            )
+            _safe_mark_job_failed(
+                job_id=str(job.id),
+                error_text=f"{msg}\n{trace}",
+                terminal=False,
+            )
     return True
 
 
@@ -105,7 +160,15 @@ def run_worker_loop() -> None:
                 )
             finally:
                 last_prune_at = now_ts
-        handled = process_next_job(worker_id=worker_id)
+        try:
+            handled = process_next_job(worker_id=worker_id)
+        except Exception:
+            logger.exception(
+                "Worker loop iteration crashed (worker_id=%s); continuing.",
+                worker_id,
+            )
+            time.sleep(_LOOP_ERROR_SLEEP_SECONDS)
+            continue
         if not handled:
             time.sleep(settings.worker_poll_seconds)
 
