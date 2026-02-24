@@ -22,6 +22,18 @@ if os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD"):
 
 import streamlit as st
 
+# Auto-launch backend if needed (Streamlit Cloud or 'auto' mode).
+# Wrapped with @st.cache_resource so it executes only ONCE per app server
+# process, not on every Streamlit rerun/page interaction.
+from src.services.backend_launcher import ensure_backend_running
+
+@st.cache_resource(show_spinner=False)
+def _cached_ensure_backend_running() -> bool:
+    return ensure_backend_running()
+
+_cached_ensure_backend_running()
+
+
 # Keep `import app` stable for test/runtime contexts that execute from repo root.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 

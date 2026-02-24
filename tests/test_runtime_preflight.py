@@ -73,6 +73,7 @@ def test_valid_cloud_profile_is_clean():
         is_streamlit_cloud=True,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
+        backend_api_url="http://backend-api",
     )
     assert report.ok
 
@@ -130,10 +131,10 @@ def test_backend_proxy_missing_url_is_error_in_production():
         backend_api_url="",
         runtime_env="production",
     )
-    assert any("OKR_BACKEND_PROXY_MUTATIONS=true" in msg for msg in report.errors)
+    assert any("OKR_BACKEND_API_URL is required" in msg for msg in report.errors)
 
 
-def test_backend_proxy_missing_url_is_warning_in_development():
+def test_backend_proxy_missing_url_is_error_in_development():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
         is_streamlit_cloud=False,
@@ -143,7 +144,7 @@ def test_backend_proxy_missing_url_is_warning_in_development():
         backend_api_url="",
         runtime_env="development",
     )
-    assert any("OKR_BACKEND_PROXY_MUTATIONS=true" in msg for msg in report.warnings)
+    assert any("OKR_BACKEND_API_URL is required" in msg for msg in report.errors)
 
 
 def test_production_backend_requires_signing_secret():
@@ -161,67 +162,7 @@ def test_production_backend_requires_signing_secret():
     assert any("OKR_BACKEND_SIGNING_SECRET" in msg for msg in report.errors)
 
 
-def test_production_disallows_local_backend_fallback():
-    report = evaluate_runtime_preflight(
-        pdf_method="pdfshift",
-        is_streamlit_cloud=False,
-        has_pdfshift_key=True,
-        gemini_api_key="valid-key",
-        backend_api_url="http://backend-api:8100",
-        backend_service_token="token",
-        backend_signing_secret="secret",
-        allow_local_backend_mutation_fallback=True,
-        runtime_env="production",
-    )
-    assert any("OKR_ALLOW_LOCAL_MUTATION_FALLBACK" in msg for msg in report.errors)
 
-
-def test_production_warns_when_proxy_reads_and_local_fallback_enabled():
-    report = evaluate_runtime_preflight(
-        pdf_method="pdfshift",
-        is_streamlit_cloud=False,
-        has_pdfshift_key=True,
-        gemini_api_key="valid-key",
-        backend_api_url="http://backend-api:8100",
-        backend_proxy_reads=True,
-        backend_service_token="token",
-        backend_signing_secret="secret",
-        allow_local_backend_read_fallback=True,
-        runtime_env="production",
-    )
-    assert any("OKR_BACKEND_PROXY_READS=true" in msg for msg in report.warnings)
-
-
-def test_legacy_global_fallback_maps_to_scoped_preflight_flags():
-    report = evaluate_runtime_preflight(
-        pdf_method="pdfshift",
-        is_streamlit_cloud=False,
-        has_pdfshift_key=True,
-        gemini_api_key="valid-key",
-        backend_api_url="http://backend-api:8100",
-        backend_proxy_reads=True,
-        backend_service_token="token",
-        backend_signing_secret="secret",
-        allow_local_backend_fallback=True,
-        runtime_env="production",
-    )
-    assert any("OKR_ALLOW_LOCAL_MUTATION_FALLBACK" in msg for msg in report.errors)
-    assert any("OKR_ALLOW_LOCAL_READ_FALLBACK=true" in msg for msg in report.warnings)
-
-
-def test_production_requires_backend_proxy_mutations_enabled():
-    report = evaluate_runtime_preflight(
-        pdf_method="pdfshift",
-        is_streamlit_cloud=False,
-        has_pdfshift_key=True,
-        gemini_api_key="valid-key",
-        backend_proxy_mutations=False,
-        backend_api_url="http://backend-api:8100",
-        backend_service_token="token",
-        backend_signing_secret="secret",
-        runtime_env="production",
-    )
-    assert any("OKR_BACKEND_PROXY_MUTATIONS=true" in msg for msg in report.errors)
 
 
 def test_production_requires_backend_api_url():

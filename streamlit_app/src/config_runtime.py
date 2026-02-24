@@ -20,6 +20,7 @@ def get_config_value_with_source(name: str, default: Any = "") -> tuple[str, str
     try:
         import streamlit as st  # Imported lazily to keep non-Streamlit contexts safe.
 
+        # 1. Try native Streamlit secrets
         if name in st.secrets:
             value = st.secrets.get(name, default)
             return str(value if value is not None else default), "secrets_root"
@@ -28,15 +29,39 @@ def get_config_value_with_source(name: str, default: Any = "") -> tuple[str, str
         if hasattr(app_cfg, "get") and name in app_cfg:
             value = app_cfg.get(name, default)
             return str(value if value is not None else default), "secrets_app"
-    except (
-        ImportError,
-        FileNotFoundError,
-        OSError,
-        RuntimeError,
-        KeyError,
-        AttributeError,
-    ) as exc:
-        _LOGGER.debug("Config secrets fallback unavailable for %s: %s", name, exc)
+    except (ImportError, FileNotFoundError, OSError, RuntimeError, KeyError, AttributeError):
+        pass
+
+    # 2. Manual TOML fallback (robust for non-Streamlit processes)
+    try:
+        # Check standard Streamlit locations: .streamlit/secrets.toml
+        # Or streamlit_app/.streamlit/secrets.toml if we are in the root
+        possible_paths = [
+            os.path.join(os.getcwd(), ".streamlit", "secrets.toml"),
+            os.path.join(os.getcwd(), "streamlit_app", ".streamlit", "secrets.toml"),
+        ]
+        
+        # Also check parent directory if we are inside a subfolder
+        possible_paths.append(os.path.join(os.path.dirname(os.getcwd()), ".streamlit", "secrets.toml"))
+
+        import tomllib  # Python 3.11+
+        
+        for p in possible_paths:
+            if os.path.exists(p):
+                with open(p, "rb") as f:
+                    data = tomllib.load(f)
+                    
+                    # Check root
+                    if name in data:
+                        return str(data[name] if data[name] is not None else default), f"fs_root:{os.path.basename(p)}"
+                    
+                    # Check [app]
+                    app_data = data.get("app", {})
+                    if hasattr(app_data, "get") and name in app_data:
+                        val = app_data.get(name)
+                        return str(val if val is not None else default), f"fs_app:{os.path.basename(p)}"
+    except Exception as exc:
+        _LOGGER.debug("Manual TOML fallback failed for %s: %s", name, exc)
 
     return str(default), "default"
 

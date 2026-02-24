@@ -42,28 +42,4 @@ def test_backend_client_adds_signing_headers_when_secret_configured(monkeypatch)
     assert len(str(headers["X-OKR-Signature"])) >= 32
 
 
-def test_local_backend_fallback_flags_default_off(monkeypatch):
-    import src.services.backend_client as backend_client
 
-    monkeypatch.delenv("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", raising=False)
-    monkeypatch.delenv("OKR_ALLOW_LOCAL_READ_FALLBACK", raising=False)
-    monkeypatch.delenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", raising=False)
-    assert backend_client.allow_local_mutation_fallback() is False
-    assert backend_client.allow_local_read_fallback() is False
-    assert backend_client.allow_local_backend_fallback() is False
-
-    monkeypatch.setenv("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", "true")
-    monkeypatch.setenv("OKR_ALLOW_LOCAL_READ_FALLBACK", "true")
-    assert backend_client.allow_local_mutation_fallback() is True
-    assert backend_client.allow_local_read_fallback() is True
-
-
-def test_local_backend_fallback_legacy_flag_is_backward_compatible(monkeypatch):
-    import src.services.backend_client as backend_client
-
-    monkeypatch.delenv("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", raising=False)
-    monkeypatch.delenv("OKR_ALLOW_LOCAL_READ_FALLBACK", raising=False)
-    monkeypatch.setenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", "true")
-    assert backend_client.allow_local_mutation_fallback() is True
-    assert backend_client.allow_local_read_fallback() is True
-    assert backend_client.allow_local_backend_fallback() is True

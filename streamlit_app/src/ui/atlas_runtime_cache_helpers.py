@@ -10,25 +10,14 @@ def backend_read_proxy_enabled(*, get_bool_config_fn, logger) -> bool:
     try:
         from src.services.backend_client import is_backend_enabled
 
-        return bool(get_bool_config_fn("OKR_BACKEND_PROXY_READS", False)) and bool(
-            is_backend_enabled()
-        )
+        return bool(is_backend_enabled())
     except Exception as exc:
         logger.debug("Backend read proxy availability check failed: %s", exc)
         return False
 
 
 def allow_local_backend_fallback(*, get_bool_config_fn, logger) -> bool:
-    try:
-        from src.config_runtime import get_config_value
-
-        scoped_raw = str(get_config_value("OKR_ALLOW_LOCAL_READ_FALLBACK", "")).strip()
-        if scoped_raw:
-            return scoped_raw.lower() in {"1", "true", "yes", "on"}
-        return bool(get_bool_config_fn("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False))
-    except Exception as exc:
-        logger.debug("Local backend fallback check failed: %s", exc)
-        return False
+    return False
 
 
 def handle_backend_read_failure(

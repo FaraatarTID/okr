@@ -5,8 +5,7 @@ def test_create_goal_uses_backend_mutation_proxy(monkeypatch):
     import src.crud as crud
     import src.services.backend_client as backend_client
 
-    monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
-    monkeypatch.setenv("OKR_BACKEND_PROXY_MUTATIONS", "true")
+    monkeypatch.setattr(backend_client, "is_backend_enabled", lambda: True)
 
     monkeypatch.setattr(
         backend_client,
@@ -35,8 +34,7 @@ def test_update_task_backend_permission_error_bubbles(monkeypatch):
     import src.crud as crud
     import src.services.backend_client as backend_client
 
-    monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
-    monkeypatch.setenv("OKR_BACKEND_PROXY_MUTATIONS", "true")
+    monkeypatch.setattr(backend_client, "is_backend_enabled", lambda: True)
 
     monkeypatch.setattr(
         backend_client,
@@ -52,8 +50,7 @@ def test_create_goal_backend_transient_error_fails_closed_by_default(monkeypatch
     import src.crud as crud
     import src.services.backend_client as backend_client
 
-    monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
-    monkeypatch.setenv("OKR_BACKEND_PROXY_MUTATIONS", "true")
+    monkeypatch.setattr(backend_client, "is_backend_enabled", lambda: True)
     monkeypatch.delenv("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", raising=False)
     monkeypatch.delenv("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", raising=False)
 
@@ -76,8 +73,7 @@ def test_create_cycle_uses_backend_mutation_proxy(monkeypatch):
     import src.crud as crud
     import src.services.backend_client as backend_client
 
-    monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
-    monkeypatch.setenv("OKR_BACKEND_PROXY_MUTATIONS", "true")
+    monkeypatch.setattr(backend_client, "is_backend_enabled", lambda: True)
 
     monkeypatch.setattr(
         backend_client,
@@ -106,8 +102,7 @@ def test_create_check_in_backend_permission_error_bubbles(monkeypatch):
     import src.services.backend_client as backend_client
     from src.models import VariationType
 
-    monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
-    monkeypatch.setenv("OKR_BACKEND_PROXY_MUTATIONS", "true")
+    monkeypatch.setattr(backend_client, "is_backend_enabled", lambda: True)
 
     monkeypatch.setattr(
         backend_client,
@@ -130,8 +125,7 @@ def test_reset_user_password_uses_backend_mutation_proxy(monkeypatch):
     import src.crud as crud
     import src.services.backend_client as backend_client
 
-    monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
-    monkeypatch.setenv("OKR_BACKEND_PROXY_MUTATIONS", "true")
+    monkeypatch.setattr(backend_client, "is_backend_enabled", lambda: True)
 
     monkeypatch.setattr(
         backend_client,

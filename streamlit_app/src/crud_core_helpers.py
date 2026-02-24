@@ -49,8 +49,6 @@ def get_session_context_from_crud(*, crud_module):
 
 
 def backend_mutation_proxy_enabled_from_crud(*, crud_module) -> bool:
-    if not crud_module.get_bool_config("OKR_BACKEND_PROXY_MUTATIONS", True):
-        return False
     try:
         from src.services.backend_client import is_backend_enabled
 
@@ -63,12 +61,7 @@ def backend_mutation_proxy_enabled_from_crud(*, crud_module) -> bool:
 
 
 def local_backend_fallback_allowed_from_crud(*, crud_module) -> bool:
-    scoped_raw = str(
-        crud_module.get_config_value("OKR_ALLOW_LOCAL_MUTATION_FALLBACK", "")
-    ).strip()
-    if scoped_raw:
-        return scoped_raw.lower() in {"1", "true", "yes", "on"}
-    return crud_module.get_bool_config("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False)
+    return False
 
 
 def is_transient_backend_mutation_error_from_crud(
@@ -130,13 +123,13 @@ def enforce_backend_mutation_failure_policy_from_crud(
             crud_module=crud_module,
             payload=payload,
         )
-    if not local_backend_fallback_allowed_from_crud(crud_module=crud_module):
-        message = str(
-            payload.get("error") or "Backend mutation request failed."
-        ).strip()
-        raise ValueError(
-            f"{message} Local backend fallback is disabled; retry when backend is healthy."
-        )
+    
+    message = str(
+        payload.get("error") or "Backend mutation request failed."
+    ).strip()
+    raise ValueError(
+        f"{message} Local backend fallback is disabled; retry when backend is healthy."
+    )
 
 
 def node_from_backend_payload_from_crud(*, payload: Dict[str, Any]):
