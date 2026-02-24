@@ -191,20 +191,27 @@ def ensure_backend_running() -> bool:
         _LOGGER.error("Failed to spawn embedded backend process: %s", exc)
         return False
 
-    # ---- Poll until the port opens (max 15 s) ----
-    max_polls = 30  # 30 × 0.5 s = 15 s
+    # ---- Poll until the port opens (max 60 s) ----
+    max_polls = 60  # 60 × 1.0 s = 60 s total
     for i in range(max_polls):
-        time.sleep(0.5)
+        time.sleep(1.0)
         if is_port_open(host, port):
             _LOGGER.info(
-                "Embedded backend is up on %s:%d (after %.1f s).",
-                host, port, (i + 1) * 0.5,
+                "Embedded backend is up on %s:%d (after %d s).",
+                host, port, i + 1,
             )
             return True
+        # Log progress every 10 seconds so cloud logs show activity
+        if (i + 1) % 10 == 0:
+            _LOGGER.info(
+                "Waiting for embedded backend on %s:%d … (%d s elapsed)",
+                host, port, i + 1,
+            )
 
     _LOGGER.warning(
-        "Embedded backend was launched but port %d is still closed after 15 s. "
+        "Embedded backend was launched but port %d is still closed after 60 s. "
         "The app may experience backend connectivity issues.",
         port,
     )
     return False
+
