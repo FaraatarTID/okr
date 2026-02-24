@@ -17,6 +17,35 @@ from src.crud import ensure_admin_exists
 from src.database import init_database
 
 
+def _frontend_should_skip_migrations() -> bool:
+    """
+    Return True when the embedded backend subprocess is responsible for
+    running Alembic migrations.
+
+    In embedded mode, both the Streamlit frontend and the backend subprocess
+    would each call `alembic upgrade head` at startup. PostgreSQL's advisory
+    lock means only one can hold it at a time — the other blocks indefinitely,
+    causing the backend to never open its port.
+
+    Skipping the migration here lets the backend subprocess be the sole owner
+    of schema migrations in embedded mode.
+    """
+    backend_url = os.getenv("OKR_BACKEND_API_URL", "").strip()
+    is_cloud = bool(
+        os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD")
+    )
+    # 'auto' keyword or empty URL on cloud
+    if backend_url.lower() == "auto" or (not backend_url and is_cloud):
+        return True
+    # localhost URL on cloud (embedded but with explicit URL)
+    if is_cloud and (
+        backend_url.lower().startswith("http://localhost")
+        or backend_url.lower().startswith("http://127.0.0.1")
+    ):
+        return True
+    return False
+
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -106,7 +135,16 @@ def ensure_startup_ready(force: bool = False) -> Dict[str, Any]:
             return {"ran": False, "cached": True, "duration_ms": _last_duration_ms}
 
         started = time.perf_counter()
-        init_database()
+        if _frontend_should_skip_migrations():
+            # In embedded mode the backend subprocess runs `alembic upgrade head`.
+            # Running it here too causes a PostgreSQL advisory-lock race that
+            # prevents the backend from opening its port within any sane timeout.
+            _LOGGER.info(
+                "Embedded backend mode: skipping frontend Alembic migrations "
+                "(backend subprocess is the sole migration owner)."
+            )
+        else:
+            init_database()
         ensure_admin_exists()
         _last_success_monotonic = time.monotonic()
         _last_duration_ms = round((time.perf_counter() - started) * 1000.0, 3)

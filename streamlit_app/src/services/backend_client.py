@@ -73,13 +73,16 @@ def _wait_for_backend_ready(*, timeout_seconds: int = 30) -> None:
     """
     Block until the embedded backend port is open, or timeout expires.
 
-    This is a secondary safeguard: `backend_launcher.ensure_backend_running()`
-    waits up to 60 s at startup, but a fast Streamlit rerun can reach a data
-    fetch before that completes. This function adds a short additional wait
-    at the point of first use.
+    This is a secondary safeguard for the race between the frontend rendering
+    and the backend subprocess opening its port.
 
-    Only runs once per process (guarded by module-level flag).
-    Does nothing if not in embedded mode.
+    Key behaviour:
+    - Only active in embedded mode (no-op otherwise).
+    - The sentinel is only set True on a SUCCESSFUL connection, so if the
+      backend isn't up within `timeout_seconds`, the next call also polls.
+      This lets users who arrive just after the initial 60 s launcher window
+      still get a graceful wait rather than an immediate crash.
+    - After a confirmed successful connection, subsequent calls return instantly.
     """
     global _backend_ready_checked
     if _backend_ready_checked:
@@ -89,26 +92,30 @@ def _wait_for_backend_ready(*, timeout_seconds: int = 30) -> None:
         return
 
     import socket
-    import time
+    import time as _time
 
     base = _base_url()
     try:
-        from urllib.parse import urlparse
-        parsed = urlparse(base)
+        from urllib.parse import urlparse as _urlparse
+        parsed = _urlparse(base)
         host = parsed.hostname or "127.0.0.1"
         port = parsed.port or 8100
     except Exception:
         host, port = "127.0.0.1", 8100
 
-    deadline = time.time() + timeout_seconds
-    while time.time() < deadline:
+    deadline = _time.time() + timeout_seconds
+    connected = False
+    while _time.time() < deadline:
         try:
             with socket.create_connection((host, port), timeout=1.0):
+                connected = True
                 break
         except OSError:
-            time.sleep(1.0)
+            _time.sleep(1.0)
 
-    _backend_ready_checked = True
+    if connected:
+        _backend_ready_checked = True  # Only mark done on actual success
+
 
 
 def _service_token() -> str:
