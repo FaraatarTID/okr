@@ -154,8 +154,8 @@ def ensure_backend_running() -> bool:
     # dir (for src) in PYTHONPATH on Streamlit Cloud to avoid ModuleNotFoundError.
     env = os.environ.copy()
     repo_root_str = str(repo_root)
-    # repo_root is a string from _find_repo_root(), so we wrap it in Path
-    streamlit_app_path = str(Path(repo_root) / "streamlit_app")
+    # Use os.path.join to be 100% safe against weird import timing issues with Path
+    streamlit_app_path = os.path.join(repo_root_str, "streamlit_app")
     
     current_pp = env.get("PYTHONPATH", "")
     new_pp_parts = [repo_root_str, streamlit_app_path]
