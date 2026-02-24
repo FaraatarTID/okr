@@ -12,14 +12,11 @@ This repository is a Streamlit-based OKR product with a SQLModel persistence lay
 
 Current runtime topology has two profiles:
 
-- `Legacy direct mode` (development/demo only):
-  - Streamlit UI calls CRUD/service code in-process.
-  - Heavy operations (AI/PDF) run in the Streamlit runtime.
-- `Backend-assisted mode` (recommended for enterprise):
-  - Streamlit UI still renders pages and handles session UX.
-  - Timer mutations and heavy AI/PDF workflows route to internal backend services:
+- `Backend-segregated mode` (default):
+  - Streamlit UI renders pages and handles session UX.
+  - Synchronous reads and mutations route through internal backend services:
     - `backend-api` (FastAPI control plane)
-    - `backend-worker` (async execution plane)
+    - `backend-worker` (async execution plane for heavy jobs)
   - Jobs are persisted in `async_job` table and processed out-of-band.
 - `Embedded mode` (Streamlit Cloud / auto):
   - Used when `OKR_BACKEND_API_URL` is `"auto"`.
@@ -42,7 +39,7 @@ Current runtime topology has two profiles:
 
 ## Runtime Topology
 
-Primary data/control flow in backend-assisted mode:
+Primary data/control flow in backend-segregated mode:
 
 1. UI and session:
 
@@ -51,15 +48,14 @@ Primary data/control flow in backend-assisted mode:
 
 2. Synchronous domain mutations:
 
-- Preferred (backend URL configured): Streamlit -> `backend-api` mutation endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
-- Default production behavior (backend unavailable): fail closed with explicit user-facing error; no implicit local mutation fallback.
-- Optional emergency fallback (non-production only): set `OKR_ALLOW_LOCAL_BACKEND_FALLBACK=true`.
+- Streamlit -> `backend-api` mutation endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
+- Default behavior (all environments): fail closed with explicit user-facing error when backend transport fails.
 - Scope (frontend write paths): Goal/Objective/KeyResult/Task CRUD, timer start/stop, user/cycle/team admin mutations, Learning Loop mutations (check-ins/experiments/retrospectives/weekly plans/outcomes), alignment mutations, and work-log deletes.
 
 3. Synchronous read/query paths:
 
-- Streamlit -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
-- Current MVP still serves most read-heavy hierarchy traversal in-process.
+- Streamlit -> `backend-api` read endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
+- Atlas snapshot/runtime reads and leadership read paths are backend-served in runtime mode.
 
 4. Async heavy workflows:
 
@@ -70,8 +66,8 @@ Primary data/control flow in backend-assisted mode:
 
 5. Timer routing:
 
-- Preferred: Streamlit timer service -> `backend-api` (`/v1/timer/start|stop`).
-- Production default: fail closed if backend is unavailable (optional local fallback only when explicitly enabled).
+- Streamlit timer service -> `backend-api` (`/v1/timer/start|stop`).
+- Runtime behavior is fail-closed if backend is unavailable (no local fallback execution).
 
 6. PDF rendering:
 
@@ -220,6 +216,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - UI reads job state and surfaces final output.
 - Job submission is guarded by per-user/per-team quotas and idempotency keys in backend API.
 - In PostgreSQL runtimes, worker claim path uses `FOR UPDATE SKIP LOCKED` semantics to reduce queue-head contention across concurrent workers.
+- Worker resiliency guardrails include capped attempts, terminal handling for non-retryable payload failures, and bounded error-text persistence.
 
 ## Invariants and Guardrails
 
@@ -228,7 +225,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - DB constraints enforce progress ranges, non-negative durations, and single open work log per task.
 - Hot-path query budgets are tested in `tests/test_performance_hotpaths.py` to prevent N+1 regressions.
 - Runtime preflight defaults to strict (`OKR_STRICT_RUNTIME_PREFLIGHT=true`) for fail-fast misconfiguration detection.
-- Runtime preflight validates backend production wiring (API URL/token/signing secret/local-fallback policy) when backend mode is enabled.
+- Runtime preflight validates backend production wiring (API URL/token/signing secret/distributed security backend) when backend mode is enabled.
 - Supported secure-runtime PDF engines: `pdfshift`, `chromium`.
 
 ## Current Performance-Critical Paths
@@ -244,8 +241,7 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 ## Current Architectural Limits
 
 - Streamlit rerun model still governs UI interaction cost and concurrency.
-- Read-heavy hierarchy paths remain in-process from Streamlit to DB (not yet fully API-decoupled).
-- Frontend mutation paths route through backend API with `OKR_BACKEND_API_URL` (`OKR_BACKEND_PROXY_MUTATIONS=true` by default in internal deployments).
+- Backend API availability is now a hard runtime dependency for frontend reads/writes.
 - Direct Streamlit DB restore is disabled by default and blocked in production; enable only for controlled non-production operations via `OKR_ENABLE_DIRECT_DB_RESTORE=true`.
 - Backend-assisted Kubernetes manifests are available in `deploy/k8s/` for `okr-streamlit`, `okr-backend-api`, and `okr-backend-worker`.
 
@@ -253,6 +249,6 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 
 To move toward higher-concurrency internal production:
 
-- Keep all frontend writes behind backend API contracts (now implemented) and remove/replace remaining direct DB admin operations.
+- Keep all frontend read/write contracts backend-owned (implemented) and continue tightening backend API contract/version governance.
 - Keep Streamlit as presentation/workflow shell.
-- Preserve SQLModel domain logic but continue moving read/query APIs behind backend services for true three-tier isolation.
+- Preserve SQLModel domain logic while expanding backend-side query composition to reduce UI rerun pressure.

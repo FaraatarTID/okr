@@ -66,8 +66,8 @@ Documentation HQ: [README](../README.md)
 
 رفتار فنی فعلی:
 
-- مسیرهای read-heavy هنوز در خود Streamlit اجرا می‌شوند (`Streamlit -> src/crud.py -> DB`).
-- مسیرهای نوشتنی فرانت‌اند (نودها، timer، مدیریت کاربران/چرخه‌ها/تیم‌ها، Learning Loop و alignment) از backend API عبور می‌کنند؛ در Production رفتار پیش‌فرض fail-closed است و fallback محلی فقط با فلگ‌های مجزا فعال می‌شود: `OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` برای write/timer/job و `OKR_ALLOW_LOCAL_READ_FALLBACK=true` برای readهای proxied.
+- مسیرهای خواندنی و نوشتنی فرانت‌اند (Atlas/leadership reads + نودها، timer، مدیریت کاربران/چرخه‌ها/تیم‌ها، Learning Loop و alignment) از backend API عبور می‌کنند (`OKR_BACKEND_PROXY_MUTATIONS=true`, `OKR_BACKEND_PROXY_READS=true`).
+- در اختلال backend، رفتار runtime به‌صورت fail-closed است و fallback محلی اجرا نمی‌شود.
 - عملیات سنگین AI/PDF به‌صورت async توسط `backend-worker` و جدول `async_job` اجرا می‌شود.
 - **حالت Embedded (Cloud)**: در Streamlit Cloud، بک‌اند به‌صورت خودکار در پس‌زمینه (subprocess) اجرا می‌شود. اپراتورها باید به پیام «Embedded backend is up» در لاگ‌های کنسول Streamlit توجه کنند. در صورت بروز خطا، ۳۰ خط آخر لاگ‌های داخلی بک‌اند برای عیب‌یابی در کنسول نمایش داده می‌شود.
 

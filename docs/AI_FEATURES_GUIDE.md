@@ -15,15 +15,15 @@ AI is used in these places:
 
 ## 1.1 Runtime Execution Path
 
-AI requests can execute in two modes:
-- Direct mode: Streamlit calls provider client in-process.
-- Backend-assisted mode (recommended): Streamlit submits `ai.generate_json` jobs to `backend-api`, then `backend-worker` executes provider calls asynchronously.
+Runtime path is backend-segregated:
+- Streamlit submits `ai.generate_json` jobs to `backend-api`.
+- `backend-worker` executes provider calls asynchronously.
 
-This separation reduces Streamlit request pressure for heavy AI flows and gives a durable job status model.
+This keeps heavy AI calls off Streamlit rerun threads and provides durable job status tracking.
 
 Related architecture detail:
-- With `OKR_BACKEND_PROXY_MUTATIONS=true`, frontend writes that may persist AI outputs (for example KR analysis fields) route via backend API mutation endpoints.
-- If backend transport fails, production default is fail-closed; local execution fallback is available only when the scoped flag is enabled (`OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation/job flows, `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied reads).
+- Frontend reads/writes that participate in AI-assisted workflows route via backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`, `OKR_BACKEND_PROXY_READS=true`).
+- If backend transport fails, behavior is fail-closed (local execution fallback is disabled).
 
 ## 2. Implemented AI Capabilities
 

@@ -62,6 +62,15 @@ Streamlit server
   - server.headless=true, enableCORS=true, enableXsrfProtection=true
   - browser.gatherUsageStats=false
 
+Streamlit rerun observability
+
+- Runtime rerun monitor controls:
+  - `OKR_RERUN_MONITOR_WINDOW_SECONDS` (default: `60`, minimum: `5`)
+  - `OKR_RERUN_WARN_THRESHOLD` (default: `40`, minimum: `5`)
+- Behavior:
+  - Runtime tracks rerun counts per sliding window and stores telemetry in session state.
+  - When threshold is exceeded, server logs a warning with current rerun pressure.
+
 PDF generation
 
 - Streamlit secrets keys:
@@ -117,8 +126,7 @@ Runtime preflight policy
   - Set `OKR_STRICT_RUNTIME_PREFLIGHT=0` only for temporary troubleshooting.
 - Behavior:
   - Runtime validates PDF provider mode and key presence.
-  - Runtime also validates backend production-safety wiring (backend URL/token/signing secret and scoped local-fallback policy) when relevant.
-  - In production, runtime warns if `OKR_BACKEND_PROXY_READS=true` is combined with `OKR_ALLOW_LOCAL_READ_FALLBACK=true`.
+  - Runtime also validates backend production-safety wiring (backend URL/token/signing secret/distributed security backend).
   - Production requires `OKR_BOOTSTRAP_ADMIN_PASSWORD` and it must be strong (minimum 12 chars including upper/lowercase, number, symbol).
   - Production backend mode requires `OKR_BACKEND_SECURITY_STATE_BACKEND=database` or `redis` for distributed nonce/rate-limit state.
   - If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, set `OKR_BACKEND_SECURITY_STATE_REDIS_URL`.
@@ -138,11 +146,11 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_SERVICE_TOKEN`: Shared token for service-to-service auth.
   - `OKR_BACKEND_SIGNING_SECRET`: Shared HMAC signing secret for signed internal requests.
   - `OKR_BACKEND_DEFAULT_ACTOR`: Fallback actor for system-initiated AI requests; default: `system`.
-  - `OKR_BACKEND_PROXY_MUTATIONS` (default: `true`): Routes frontend mutation writes through backend API when backend URL is set.
-  - `OKR_BACKEND_PROXY_READS` (default: `false`): When enabled, selected high-traffic reads are fetched via backend read endpoints.
-  - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (default: `false`): Emergency non-production fallback for mutation/timer/job flows.
-  - `OKR_ALLOW_LOCAL_READ_FALLBACK` (default: `false`): Emergency non-production fallback for proxied read flows.
-  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy compatibility fallback): Used only when scoped flags above are unset.
+  - `OKR_BACKEND_PROXY_MUTATIONS` (required secure value: `true`): frontend write operations are backend-owned in runtime.
+  - `OKR_BACKEND_PROXY_READS` (required secure value: `true`): frontend read operations are backend-owned in runtime.
+  - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (required secure value: `false`): retained as deployment-policy gate; runtime executes fail-closed.
+  - `OKR_ALLOW_LOCAL_READ_FALLBACK` (required secure value: `false`): retained as deployment-policy gate; runtime executes fail-closed.
+  - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy key): keep `false`; runtime local fallback is not used.
   - `OKR_ENABLE_DIRECT_DB_RESTORE` (default: `false`): Direct Streamlit DB restore is disabled by default and blocked in production.
 - Backend API runtime:
   - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
@@ -172,24 +180,26 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_AUDIT_RETENTION_DAYS` (default: `365`; `audit_event` retention before prune)
   - `OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS` (default: `300`; worker prune cadence)
   - `OKR_BACKEND_JOB_PRUNE_BATCH_SIZE` (default: `200`; max rows removed per prune pass)
+  - Built-in resiliency guards (non-configurable):
+    - Job `max_attempts` is normalized and hard-capped in persistence.
+    - Malformed/non-retryable payload failures are marked terminal (no infinite requeue).
+    - Worker loop catches generic iteration errors to avoid queue poison-pill stalls.
 - Notes:
-  - With `OKR_BACKEND_API_URL` set, frontend write flows (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes) and heavy AI/PDF workflows run through backend services.
-  - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps mutation authority in backend API.
+  - With `OKR_BACKEND_API_URL` set, frontend read/write flows (node CRUD, timer, users/cycles/teams, Learning Loop writes, alignments, work-log deletes, Atlas/leadership reads) and heavy AI/PDF workflows run through backend services.
+  - `OKR_BACKEND_PROXY_MUTATIONS=true` and `OKR_BACKEND_PROXY_READS=true` keep application authority in backend API contracts.
   - Job submit endpoint (`POST /v1/jobs`) supports idempotency via `X-OKR-Idempotency-Key`.
   - Quota/backoff rejections return deterministic `429` payloads with `detail.error_code`, `detail.retry_after_seconds`, and `Retry-After` header.
   - Job submit accepted/rejected events are written to DB-backed `audit_event` (with file fallback) for usage reporting and incident review.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
-  - If proxied backend transport fails, default behavior is fail-closed unless scoped fallback is explicitly enabled (`OKR_ALLOW_LOCAL_MUTATION_FALLBACK=true` for mutation paths, `OKR_ALLOW_LOCAL_READ_FALLBACK=true` for proxied reads).
+  - If proxied backend transport fails, runtime behavior is fail-closed (local read/mutation fallback execution is disabled).
   - Direct DB restore in Streamlit Admin is opt-in (`OKR_ENABLE_DIRECT_DB_RESTORE=true`) and intended for controlled non-production scenarios only.
-  - In non-production (or when strict runtime preflight is disabled), missing backend URL can result in direct-mode legacy behavior.
   - **Embedded Mode (Cloud)**:
     - Automatically active when `OKR_BACKEND_API_URL="auto"` or running on Streamlit Cloud with an empty backend URL.
     - Launches `backend_app.run_api` with a **60-second health check timeout**.
     - Redirects `stderr` to `/tmp/okr_backend.log`; tail of this log is printed on startup failure for debugging.
     - Reinforces `PYTHONPATH` to include both repo root and `streamlit_app` directory to ensure `src` module resolution.
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.
-  - Current MVP still serves most read-heavy hierarchy traversal directly via Streamlit + SQLModel.
 
 Recommended deployment profiles
 
@@ -216,6 +226,7 @@ Release governance (CI)
   - Deploy config template gate
   - RBAC regression gate
   - Full pytest suite
+  - Playwright happy-path e2e (`Login -> Focus Map -> Start Timer`)
 
 Admin bootstrap
 
