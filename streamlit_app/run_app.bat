@@ -34,7 +34,7 @@ if not exist "%VENV_DIR%\Scripts\activate.bat" (
     )
 )
 
-set PYEXE=%VENV_DIR%\Scripts\python.exe
+set PYEXE=%~dp0%VENV_DIR%\Scripts\python.exe
 if not exist "%PYEXE%" (
     echo [ERROR] Virtual environment python not found at %PYEXE%.
     pause
@@ -69,7 +69,7 @@ if not defined CURR_HASH (
 
     if /I "!CURR_HASH!"=="!STORED_HASH!" (
         echo [INFO] requirements.txt unchanged. Verifying core packages...
-        %PYEXE% -c "import streamlit,sqlmodel,alembic,psycopg2" >nul 2>&1
+        %PYEXE% -c "import streamlit,sqlmodel,alembic,psycopg2,fastapi,uvicorn" >nul 2>&1
         if errorlevel 1 (
             echo [INFO] Core dependency check failed. Reinstalling requirements...
             set "NEED_INSTALL=1"
@@ -95,12 +95,20 @@ if "!NEED_INSTALL!"=="1" (
 )
 
 echo.
+echo [INFO] Starting OKR Backend API...
+set "PYTHONPATH=%~dp0.."
+set "OKR_BACKEND_SERVICE_TOKEN=local-development-secret-token"
+start "OKR Backend API" cmd /k ""%PYEXE%" -m backend_app.run_api"
+
+echo [INFO] Waiting for the OKR Backend to initialize database...
+timeout /t 6 /nobreak >nul
+
 echo [INFO] Starting Streamlit...
 echo.
-start "" /b "%PYEXE%" -m streamlit run login_app.py --server.headless=true
+start "Streamlit App" /min "%PYEXE%" -m streamlit run login_app.py --server.headless=true
 
-REM Wait a moment for the server to start, then open the app
-timeout /t 3 /nobreak >nul
+REM Wait a moment for the servers to start, then open the app
+timeout /t 5 /nobreak >nul
 start "" "http://localhost:8501/"
 
 echo [INFO] Streamlit is running in the background. Close this window to stop showing messages.

@@ -19,42 +19,35 @@ from src.services.http_client import request_with_retry
 
 
 def is_backend_enabled() -> bool:
-    return bool(str(get_config_value("OKR_BACKEND_API_URL", "")).strip())
+    """Detect if we are running in a Streamlit context."""
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        return get_script_run_ctx() is not None
+    except ImportError:
+        return False
 
 
-_TRUE_VALUES = {"1", "true", "yes", "on"}
 
-
-def _bool_from_raw(raw: str, default: bool = False) -> bool:
-    text = str(raw or "").strip().lower()
-    if not text:
-        return bool(default)
-    return text in _TRUE_VALUES
-
-
-def _scoped_fallback_flag(scoped_name: str) -> bool:
-    raw = str(get_config_value(scoped_name, "")).strip()
-    if raw:
-        return _bool_from_raw(raw, default=False)
-    # Legacy compatibility: when scoped flag is unset, inherit global fallback.
-    return get_bool_config("OKR_ALLOW_LOCAL_BACKEND_FALLBACK", False)
-
-
-def allow_local_mutation_fallback() -> bool:
-    return _scoped_fallback_flag("OKR_ALLOW_LOCAL_MUTATION_FALLBACK")
-
-
-def allow_local_read_fallback() -> bool:
-    return _scoped_fallback_flag("OKR_ALLOW_LOCAL_READ_FALLBACK")
-
-
-def allow_local_backend_fallback() -> bool:
-    # Backward-compatible alias: mutation fallback is the legacy behavior.
-    return allow_local_mutation_fallback()
-
+import os
 
 def _base_url() -> str:
-    return str(get_config_value("OKR_BACKEND_API_URL", "")).strip().rstrip("/")
+    url = str(get_config_value("OKR_BACKEND_API_URL", "")).strip().rstrip("/")
+    is_cloud = bool(
+        os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD")
+    )
+
+    # Case 1: explicit 'auto' keyword
+    # Case 2: URL is empty and we're on Streamlit Cloud
+    if url.lower() == "auto" or (not url and is_cloud):
+        host = str(get_config_value("OKR_BACKEND_HOST", "127.0.0.1")).strip() or "127.0.0.1"
+        port = str(get_config_value("OKR_BACKEND_PORT", "8100")).strip() or "8100"
+        return f"http://{host}:{port}"
+
+    # Case 3: localhost URL on Streamlit Cloud — the embedded launcher handles
+    # the process; all we need is to correctly resolve the URL (already is localhost).
+    # No transformation needed — the URL is already correct.
+    return url
+
 
 
 def _service_token() -> str:

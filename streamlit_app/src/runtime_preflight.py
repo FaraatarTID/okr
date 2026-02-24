@@ -77,32 +77,16 @@ def evaluate_runtime_preflight(
     backend_url = str(backend_api_url or "").strip()
     env_name = str(runtime_env or "development").strip().lower()
     is_production = env_name in {"prod", "production"}
-    legacy_fallback = bool(allow_local_backend_fallback)
-    mutation_fallback = (
-        bool(allow_local_backend_mutation_fallback)
-        if allow_local_backend_mutation_fallback is not None
-        else legacy_fallback
-    )
-    read_fallback = (
-        bool(allow_local_backend_read_fallback)
-        if allow_local_backend_read_fallback is not None
-        else legacy_fallback
-    )
-
-    if is_production and not backend_proxy_mutations:
-        report.errors.append("Production requires OKR_BACKEND_PROXY_MUTATIONS=true.")
-
-    if is_production and not backend_url:
+    
+    # Resolve embedded backend status
+    is_embedded = (backend_url.lower() == "auto") or (is_streamlit_cloud and not backend_url)
+    
+    if is_embedded:
+        report.infos.append("Backend mode: Embedded (auto-launching background API).")
+    elif not backend_url:
         report.errors.append(
-            "Production requires OKR_BACKEND_API_URL for backend-owned mutations."
+            "OKR_BACKEND_API_URL is required for backend-owned mutations."
         )
-
-    if backend_proxy_mutations and not backend_url:
-        message = "OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set."
-        if is_production:
-            report.errors.append(message)
-        else:
-            report.warnings.append(message)
 
     if backend_url and not str(backend_service_token or "").strip():
         message = "OKR_BACKEND_API_URL is configured but OKR_BACKEND_SERVICE_TOKEN is missing."
@@ -153,15 +137,7 @@ def evaluate_runtime_preflight(
         except ValueError as exc:
             report.errors.append(str(exc))
 
-    if is_production and mutation_fallback:
-        report.errors.append(
-            "OKR_ALLOW_LOCAL_MUTATION_FALLBACK should be disabled in production."
-        )
-    if is_production and backend_proxy_reads and read_fallback:
-        report.warnings.append(
-            "Production risk: OKR_BACKEND_PROXY_READS=true with "
-            "OKR_ALLOW_LOCAL_READ_FALLBACK=true can bypass backend read fail-closed policy."
-        )
+
 
     key = str(gemini_api_key or "").strip()
     if not external_ai_allowed:

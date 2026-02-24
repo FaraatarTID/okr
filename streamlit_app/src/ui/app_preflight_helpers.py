@@ -105,25 +105,12 @@ def run_pdf_preflight(
     backend_api_url, backend_api_url_source = get_config_value_with_source_fn(
         "OKR_BACKEND_API_URL", ""
     )
-    backend_proxy_mutations = env_bool_fn("OKR_BACKEND_PROXY_MUTATIONS", True)
+    
+    # Legacy: We no longer allow opting out of proxy mutations if in a Streamlit context
+    # backend_proxy_mutations = env_bool_fn("OKR_BACKEND_PROXY_MUTATIONS", True)
+    
+    # Selected high-traffic reads can still be fetched via backend if configured
     backend_proxy_reads = env_bool_fn("OKR_BACKEND_PROXY_READS", False)
-    allow_local_backend_mutation_fallback = env_bool_with_legacy(
-        name="OKR_ALLOW_LOCAL_MUTATION_FALLBACK",
-        legacy_name="OKR_ALLOW_LOCAL_BACKEND_FALLBACK",
-        default=False,
-        cfg_value_fn=cfg_value_fn,
-        env_bool_fn=env_bool_fn,
-    )
-    allow_local_backend_read_fallback = env_bool_with_legacy(
-        name="OKR_ALLOW_LOCAL_READ_FALLBACK",
-        legacy_name="OKR_ALLOW_LOCAL_BACKEND_FALLBACK",
-        default=False,
-        cfg_value_fn=cfg_value_fn,
-        env_bool_fn=env_bool_fn,
-    )
-    backend_proxy_raw, backend_proxy_source = get_config_value_with_source_fn(
-        "OKR_BACKEND_PROXY_MUTATIONS", ""
-    )
 
     report = evaluate_runtime_preflight_fn(
         pdf_method=pdf_method,
@@ -136,10 +123,10 @@ def run_pdf_preflight(
         ai_provider_ready=ai_status.ready,
         ai_provider_message=ai_status.message,
         backend_api_url=backend_api_url,
-        backend_proxy_mutations=backend_proxy_mutations,
+        backend_proxy_mutations=True, # Strictly enforced
         backend_proxy_reads=backend_proxy_reads,
-        allow_local_backend_mutation_fallback=allow_local_backend_mutation_fallback,
-        allow_local_backend_read_fallback=allow_local_backend_read_fallback,
+        allow_local_backend_mutation_fallback=False, # Strictly disabled
+        allow_local_backend_read_fallback=False, # Strictly disabled
         backend_service_token=cfg_value_fn("OKR_BACKEND_SERVICE_TOKEN", ""),
         backend_signing_secret=cfg_value_fn("OKR_BACKEND_SIGNING_SECRET", ""),
         bootstrap_admin_password=str(environ.get("OKR_BOOTSTRAP_ADMIN_PASSWORD", "")),
@@ -160,22 +147,7 @@ def run_pdf_preflight(
         st_module.error(f"Runtime preflight: {msg}")
     for msg in report.warnings:
         st_module.warning(f"Runtime preflight: {msg}")
-    if (
-        "OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set."
-        in report.warnings
-    ):
-        effective_proxy = (
-            str(backend_proxy_raw).strip()
-            if str(backend_proxy_raw).strip()
-            else str(backend_proxy_mutations)
-        )
-        st_module.info(
-            "Config trace: "
-            f"OKR_BACKEND_PROXY_MUTATIONS={effective_proxy!r} "
-            f"(source={backend_proxy_source}), "
-            f"OKR_BACKEND_API_URL={backend_api_url!r} "
-            f"(source={backend_api_url_source})."
-        )
+
 
     st_module.session_state["preflight_done"] = True
     if report.errors and runtime_preflight_strict_mode_fn():

@@ -32,30 +32,7 @@ def test_runtime_config_env_precedence_over_streamlit_secrets(monkeypatch):
     assert get_config_value("OKR_BACKEND_API_URL", "") == "http://env-api.local"
 
 
-def test_backend_client_uses_streamlit_secrets_for_backend_url(monkeypatch):
-    import src.services.backend_client as backend_client
 
-    monkeypatch.delenv("OKR_BACKEND_API_URL", raising=False)
-    _fake_streamlit_with_secrets(
-        monkeypatch,
-        {"OKR_BACKEND_API_URL": "http://secret-api.local"},
-    )
-
-    assert backend_client.is_backend_enabled() is True
-    assert backend_client._base_url() == "http://secret-api.local"
-
-
-def test_crud_proxy_flag_respects_streamlit_secrets(monkeypatch):
-    import src.crud as crud
-
-    monkeypatch.delenv("OKR_BACKEND_PROXY_MUTATIONS", raising=False)
-    _fake_streamlit_with_secrets(
-        monkeypatch,
-        {"OKR_BACKEND_PROXY_MUTATIONS": False},
-    )
-    monkeypatch.setattr("src.services.backend_client.is_backend_enabled", lambda: True)
-
-    assert crud._backend_mutation_proxy_enabled() is False
 
 
 def test_runtime_config_source_reports_env(monkeypatch):

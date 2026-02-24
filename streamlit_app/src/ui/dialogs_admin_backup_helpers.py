@@ -24,12 +24,11 @@ def render_backup_tab_content() -> None:
         "Restore replaces all current application data."
     )
 
-    proxy_mutations = get_bool_config("OKR_BACKEND_PROXY_MUTATIONS", True)
     explicit_restore_override = get_bool_config("OKR_ENABLE_DIRECT_DB_RESTORE", False)
     restore_allowed = (
         explicit_restore_override
         and not is_production_runtime()
-        and not (proxy_mutations and is_backend_enabled())
+        and not is_backend_enabled()
     )
     if not explicit_restore_override:
         st.warning(
@@ -41,9 +40,9 @@ def render_backup_tab_content() -> None:
             "Direct DB restore is blocked in production runtime. "
             "Use backend/operator maintenance procedures for restore operations."
         )
-    elif proxy_mutations and is_backend_enabled():
+    elif is_backend_enabled():
         st.warning(
-            "Direct DB restore is disabled while backend-assisted mutation mode is active. "
+            "Direct DB restore is disabled while backend-assisted mode is active. "
             "Use backend maintenance procedures for restore operations."
         )
 
