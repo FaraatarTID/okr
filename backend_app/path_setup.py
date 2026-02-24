@@ -12,3 +12,4 @@ def ensure_streamlit_app_on_path() -> None:
     app_dir_str = str(app_dir)
     if app_dir_str not in sys.path:
         sys.path.insert(0, app_dir_str)
+        print(f"DEBUG: Added {app_dir_str} to sys.path for backend startup.")

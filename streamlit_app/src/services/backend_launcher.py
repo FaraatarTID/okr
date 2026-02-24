@@ -149,9 +149,19 @@ def ensure_backend_running() -> bool:
 
     _LOGGER.info("Launching embedded backend on %s:%d …", host, port)
 
-    # ---- Build environment for the child process ----
+    # Build environment for the child process.
+    # We must include both the repo root (for backend_app) and the streamlit_app
+    # dir (for src) in PYTHONPATH on Streamlit Cloud to avoid ModuleNotFoundError.
     env = os.environ.copy()
-    env["PYTHONPATH"] = repo_root
+    repo_root_str = str(repo_root)
+    streamlit_app_path = str(repo_root / "streamlit_app")
+    
+    current_pp = env.get("PYTHONPATH", "")
+    new_pp_parts = [repo_root_str, streamlit_app_path]
+    if current_pp:
+        new_pp_parts.append(current_pp)
+    
+    env["PYTHONPATH"] = os.pathsep.join(new_pp_parts)
     env["OKR_BACKEND_HOST"] = host
     env["OKR_BACKEND_PORT"] = str(port)
 
