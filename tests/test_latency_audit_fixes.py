@@ -88,6 +88,8 @@ def test_cached_node_retrieval_logic(isolated_db, monkeypatch):
 
 def test_cached_work_logs_retrieval(isolated_db, monkeypatch):
     from src.database import get_session_context
+    from types import SimpleNamespace
+    import src.services.backend_client as backend_client
 
     user, cycle, goal, obj, kr, task = _seed_basic_tree()
 
@@ -96,6 +98,12 @@ def test_cached_work_logs_retrieval(isolated_db, monkeypatch):
         session.add(log)
         session.commit()
         task_id = task.id
+
+    monkeypatch.setattr(
+        backend_client,
+        "read_work_logs_by_task",
+        lambda *_args, **_kwargs: [SimpleNamespace(id=1, task_id=task_id)],
+    )
 
     components._cached_get_work_logs.clear()
 
@@ -128,11 +136,46 @@ def test_actor_db_fallback_elimination(monkeypatch):
     assert any("User context is unavailable" in e for e in errors)
 
 
-def test_snapshot_includes_assignee_id(isolated_db):
+def test_snapshot_includes_assignee_id(isolated_db, monkeypatch):
+    import src.services.backend_client as backend_client
+
     user, cycle, goal, obj, kr, task = _seed_basic_tree()
 
+    monkeypatch.setattr(
+        backend_client,
+        "fetch_atlas_scope_snapshot",
+        lambda **_kwargs: {
+            "goals": [
+                {
+                    "id": goal.id,
+                    "objectives": [
+                        {
+                            "id": obj.id,
+                            "key_results": [
+                                {
+                                    "id": kr.id,
+                                    "tasks": [
+                                        {
+                                            "id": task.id,
+                                            "assignee_id": user.id,
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            "users_map": {str(user.id): {"username": user.username}},
+        },
+    )
+
     components._cached_get_atlas_scope_snapshot.clear()
-    snapshot = components._cached_get_atlas_scope_snapshot(cycle.id, (user.id,))
+    snapshot = components._cached_get_atlas_scope_snapshot(
+        cycle.id,
+        (user.id,),
+        actor_username=user.username,
+    )
 
     # Find the task in the payload
     found_task = None

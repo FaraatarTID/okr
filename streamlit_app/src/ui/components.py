@@ -19,7 +19,6 @@ import streamlit as st
 from sqlalchemy import func, inspect as sa_inspect
 from sqlmodel import select
 
-from src.config_runtime import get_bool_config
 from src.crud import get_node, get_session_context, get_user_by_username
 from src.domain.authorization import can_track_task_timer  # noqa: F401 - compatibility export
 from src.domain.scoring import calculate_kr_score, get_score_color_band, get_score_label
@@ -159,19 +158,8 @@ def _ensure_model_bindings_current() -> None:
 
 
 def _backend_read_proxy_enabled() -> bool:
-    """Whether read endpoints should prefer backend proxy over local DB reads."""
-    return atlas_runtime_cache_helpers.backend_read_proxy_enabled(
-        get_bool_config_fn=get_bool_config,
-        logger=logger,
-    )
-
-
-def _allow_local_backend_fallback() -> bool:
-    """Whether backend read failures can fall back to local DB reads."""
-    return atlas_runtime_cache_helpers.allow_local_backend_fallback(
-        get_bool_config_fn=get_bool_config,
-        logger=logger,
-    )
+    """Backend segregation is strict for UI reads."""
+    return True
 
 
 def _handle_backend_read_failure(
@@ -185,7 +173,7 @@ def _handle_backend_read_failure(
         operation=operation,
         backend_result=backend_result,
         exc=exc,
-        allow_local_backend_fallback_fn=_allow_local_backend_fallback,
+        allow_local_backend_fallback_fn=lambda: False,
         logger=logger,
     )
 
@@ -280,7 +268,7 @@ def _cached_get_atlas_scope_snapshot(
     include_analysis: bool = False,
     actor_username: str | None = None,
 ):
-    """Build a serialization-safe Atlas snapshot payload (backend-first, local fallback)."""
+    """Build a serialization-safe Atlas snapshot payload from backend."""
     return atlas_runtime_cache_helpers.build_scope_snapshot_with_backend_fallback(
         cycle_id=int(cycle_id),
         owner_ids_key=owner_ids_key,
@@ -334,7 +322,7 @@ def _cached_get_atlas_scope_runtime(
 
 
 def get_node_details(node_id, node_lookup=None):
-    """Resolve node label/type with Atlas lookup first, DB fallback second."""
+    """Resolve node label/type with Atlas lookup first, then backend node lookup."""
     return components_bridge_helpers.resolve_node_details(
         node_id,
         node_lookup=node_lookup,

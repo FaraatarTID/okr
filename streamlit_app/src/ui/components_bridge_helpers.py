@@ -124,38 +124,37 @@ def cached_get_leadership_metrics(
     backend_read_proxy_enabled_fn,
     handle_backend_read_failure_fn,
 ):
-    if backend_read_proxy_enabled_fn():
-        if not actor_username:
-            handle_backend_read_failure_fn(
-                operation="leadership metrics",
-                backend_result={
-                    "error": "Actor username is required for backend read proxy mode.",
-                },
-            )
-        try:
-            from src.services.backend_client import fetch_leadership_metrics
+    _ = backend_read_proxy_enabled_fn
+    if not actor_username:
+        handle_backend_read_failure_fn(
+            operation="leadership metrics",
+            backend_result={
+                "error": "Actor username is required for backend read proxy mode.",
+            },
+        )
+    try:
+        from src.services.backend_client import fetch_leadership_metrics
 
-            backend_result = fetch_leadership_metrics(
-                cycle_id=int(cycle_id),
-                usernames=[str(uid) for uid in list(user_ids)],
-                actor_username=str(actor_username),
-            )
-            if isinstance(backend_result, dict) and "error" not in backend_result:
-                return backend_result
-            handle_backend_read_failure_fn(
-                operation="leadership metrics",
-                backend_result=backend_result,
-            )
-        except Exception as exc:
-            if isinstance(exc, RuntimeError):
-                raise
-            handle_backend_read_failure_fn(
-                operation="leadership metrics",
-                exc=exc,
-            )
-    from src.crud import get_leadership_metrics
+        backend_result = fetch_leadership_metrics(
+            cycle_id=int(cycle_id),
+            usernames=[str(uid) for uid in list(user_ids)],
+            actor_username=str(actor_username),
+        )
+        if isinstance(backend_result, dict) and "error" not in backend_result:
+            return backend_result
+        handle_backend_read_failure_fn(
+            operation="leadership metrics",
+            backend_result=backend_result,
+        )
+    except Exception as exc:
+        if isinstance(exc, RuntimeError):
+            raise
+        handle_backend_read_failure_fn(
+            operation="leadership metrics",
+            exc=exc,
+        )
 
-    return get_leadership_metrics(list(user_ids), cycle_id)
+    raise RuntimeError("Leadership metrics backend read failed.")
 
 
 def resolve_node_details(

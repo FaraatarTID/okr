@@ -3,91 +3,6 @@ from types import SimpleNamespace
 from src.ui import inspector_alignment_helpers
 
 
-class _FakeField:
-    def __init__(self, name):
-        self.name = name
-
-    def __eq__(self, other):
-        return ("eq", self.name, other)
-
-    def __ne__(self, other):
-        return ("ne", self.name, other)
-
-
-class _FakeAlignmentEdgeModel:
-    parent_id = _FakeField("parent_id")
-    child_id = _FakeField("child_id")
-
-
-class _FakeObjectiveModel:
-    id = _FakeField("id")
-
-
-class _FakeQuery:
-    def __init__(self, model):
-        self.model = model
-        self.conditions = []
-
-    def where(self, condition):
-        self.conditions.append(condition)
-        return self
-
-
-def _fake_select(model):
-    return _FakeQuery(model)
-
-
-class _FakeExecResult:
-    def __init__(self, value):
-        self.value = value
-
-    def first(self):
-        if isinstance(self.value, list):
-            return self.value[0] if self.value else None
-        return self.value
-
-    def all(self):
-        if isinstance(self.value, list):
-            return list(self.value)
-        return [self.value] if self.value is not None else []
-
-
-class _FakeSession:
-    def __init__(self, *, edges=None, objectives=None):
-        self.edges = list(edges or [])
-        self.objectives = list(objectives or [])
-
-    def exec(self, query):
-        if query.model is _FakeAlignmentEdgeModel:
-            rows = list(self.edges)
-            for operator, field, value in query.conditions:
-                if operator == "eq":
-                    rows = [row for row in rows if getattr(row, field) == value]
-                elif operator == "ne":
-                    rows = [row for row in rows if getattr(row, field) != value]
-            return _FakeExecResult(rows)
-        if query.model is _FakeObjectiveModel:
-            rows = list(self.objectives)
-            for operator, field, value in query.conditions:
-                if operator == "eq":
-                    rows = [row for row in rows if getattr(row, field) == value]
-                elif operator == "ne":
-                    rows = [row for row in rows if getattr(row, field) != value]
-            return _FakeExecResult(rows)
-        return _FakeExecResult([])
-
-
-class _FakeSessionCtx:
-    def __init__(self, session):
-        self.session = session
-
-    def __enter__(self):
-        return self.session
-
-    def __exit__(self, exc_type, exc, tb):
-        return False
-
-
 class _FakeColumn:
     def __init__(self, *, parent):
         self._parent = parent
@@ -171,6 +86,16 @@ class _FakeSt:
         return bool(self.buttons.get(button_key, False))
 
 
+def _install_backend_alignment_context(monkeypatch, context):
+    import src.services.backend_client as backend_client
+
+    monkeypatch.setattr(
+        backend_client,
+        "read_alignment_context",
+        lambda *_args, **_kwargs: context,
+    )
+
+
 def test_render_objective_alignment_section_non_objective_noop():
     fake_st = _FakeSt()
     inspector_alignment_helpers.render_objective_alignment_section(
@@ -178,25 +103,30 @@ def test_render_objective_alignment_section_non_objective_noop():
         node_type_upper="TASK",
         node_id=1,
         username="alice",
-        get_session_context_fn=lambda: _FakeSessionCtx(_FakeSession()),
+        get_session_context_fn=lambda: None,
         get_alignment_neighbors_fn=lambda *_args, **_kwargs: ([], []),
         create_alignment_fn=lambda **_kwargs: None,
         delete_alignment_fn=lambda *_args, **_kwargs: None,
         rerun_fn=lambda: None,
-        select_fn=_fake_select,
-        alignment_edge_model=_FakeAlignmentEdgeModel,
-        objective_model=_FakeObjectiveModel,
+        select_fn=None,
+        alignment_edge_model=None,
+        objective_model=None,
     )
     assert fake_st.caption_calls == []
     assert fake_st.columns_specs == []
 
 
-def test_render_objective_alignment_section_delete_parent_alignment():
-    fake_st = _FakeSt(buttons={"del_align_p_10": True})
-    session = _FakeSession(
-        edges=[SimpleNamespace(id=10, parent_id=2, child_id=1)],
-        objectives=[],
+def test_render_objective_alignment_section_delete_parent_alignment(monkeypatch):
+    _install_backend_alignment_context(
+        monkeypatch,
+        {
+            "parents": [SimpleNamespace(id=2, title="Parent A")],
+            "children": [],
+            "all_objectives": [],
+            "edges": [SimpleNamespace(id=10, parent_id=2, child_id=1)],
+        },
     )
+    fake_st = _FakeSt(buttons={"del_align_p_10": True})
     deleted = []
     reruns = []
 
@@ -205,35 +135,37 @@ def test_render_objective_alignment_section_delete_parent_alignment():
         node_type_upper="OBJECTIVE",
         node_id=1,
         username="alice",
-        get_session_context_fn=lambda: _FakeSessionCtx(session),
-        get_alignment_neighbors_fn=lambda _session, _node_id: (
-            [SimpleNamespace(id=2, title="Parent A")],
-            [],
-        ),
+        get_session_context_fn=lambda: None,
+        get_alignment_neighbors_fn=lambda *_args, **_kwargs: ([], []),
         create_alignment_fn=lambda **_kwargs: None,
         delete_alignment_fn=lambda edge_id, **kwargs: deleted.append((edge_id, kwargs)),
         rerun_fn=lambda: reruns.append("rerun"),
-        select_fn=_fake_select,
-        alignment_edge_model=_FakeAlignmentEdgeModel,
-        objective_model=_FakeObjectiveModel,
+        select_fn=None,
+        alignment_edge_model=None,
+        objective_model=None,
     )
 
     assert deleted == [(10, {"actor_username": "alice"})]
     assert reruns == ["rerun"]
 
 
-def test_render_objective_alignment_section_link_objective_supports_target():
+def test_render_objective_alignment_section_link_objective_supports_target(monkeypatch):
+    _install_backend_alignment_context(
+        monkeypatch,
+        {
+            "parents": [],
+            "children": [],
+            "all_objectives": [
+                SimpleNamespace(id=2, title="Obj B", created_by="bob"),
+                SimpleNamespace(id=3, title="Obj C", created_by="cara"),
+            ],
+            "edges": [],
+        },
+    )
     fake_st = _FakeSt(
-        buttons={"🔗 Link Objectives": True},
+        buttons={"Link Objectives": True},
         selectbox_value=2,
         radio_value="This objective SUPPORTS the target",
-    )
-    session = _FakeSession(
-        edges=[],
-        objectives=[
-            SimpleNamespace(id=2, title="Obj B", created_by="bob"),
-            SimpleNamespace(id=3, title="Obj C", created_by="cara"),
-        ],
     )
     created = []
     reruns = []
@@ -243,14 +175,14 @@ def test_render_objective_alignment_section_link_objective_supports_target():
         node_type_upper="OBJECTIVE",
         node_id=1,
         username="alice",
-        get_session_context_fn=lambda: _FakeSessionCtx(session),
-        get_alignment_neighbors_fn=lambda _session, _node_id: ([], []),
+        get_session_context_fn=lambda: None,
+        get_alignment_neighbors_fn=lambda *_args, **_kwargs: ([], []),
         create_alignment_fn=lambda **kwargs: created.append(kwargs),
         delete_alignment_fn=lambda *_args, **_kwargs: None,
         rerun_fn=lambda: reruns.append("rerun"),
-        select_fn=_fake_select,
-        alignment_edge_model=_FakeAlignmentEdgeModel,
-        objective_model=_FakeObjectiveModel,
+        select_fn=None,
+        alignment_edge_model=None,
+        objective_model=None,
     )
 
     assert len(created) == 1

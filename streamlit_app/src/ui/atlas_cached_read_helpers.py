@@ -73,18 +73,12 @@ def cached_get_work_logs(
 ):
     from src.services import backend_client
 
-    if backend_client.is_backend_enabled():
-        actor = backend_client.resolve_actor_username(actor_username)
-        backend_result = backend_client.read_work_logs_by_task(
-            int(task_id),
-            actor_username=actor,
-        )
-        if isinstance(backend_result, dict) and "error" in backend_result:
-            raise RuntimeError(str(backend_result.get("error") or "Backend read failed."))
-        return list(backend_result or [])
-
-    ensure_model_bindings_current_fn()
-    with get_session_context_fn() as session:
-        return session.exec(
-            select_fn(worklog_model).where(worklog_model.task_id == task_id)
-        ).all()
+    _ = ensure_model_bindings_current_fn, get_session_context_fn, select_fn, worklog_model
+    actor = backend_client.resolve_actor_username(actor_username)
+    backend_result = backend_client.read_work_logs_by_task(
+        int(task_id),
+        actor_username=actor,
+    )
+    if isinstance(backend_result, dict) and "error" in backend_result:
+        raise RuntimeError(str(backend_result.get("error") or "Backend read failed."))
+    return list(backend_result or [])
