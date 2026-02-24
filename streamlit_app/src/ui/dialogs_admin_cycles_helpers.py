@@ -7,6 +7,7 @@ from datetime import datetime
 import streamlit as st
 
 from src.crud import create_cycle, delete_cycle, get_all_cycles
+from src.utils.cache_utils import clear_cache_safe
 
 
 def render_manage_cycles_dialog_content() -> None:
@@ -31,7 +32,7 @@ def render_manage_cycles_dialog_content() -> None:
                                 cycle.id,
                                 actor_username=st.session_state.get("username"),
                             )
-                            st.cache_data.clear()
+                            clear_cache_safe()
                             st.success("Cycle deleted")
                             st.rerun()
                         except Exception as exc:
@@ -53,7 +54,7 @@ def render_manage_cycles_dialog_content() -> None:
                         end_date=datetime.combine(new_end, datetime.min.time()),
                         actor_username=st.session_state.get("username"),
                     )
-                    st.cache_data.clear()
+                    clear_cache_safe()
                     st.success("Cycle created")
                     st.rerun()
                 except Exception as exc:

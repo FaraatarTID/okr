@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui import app_query_helpers
 from src.ui import atlas_map_sidebar_ai_helpers
 from src.ui.session_keys import ATLAS_MAP_LENS, ATLAS_SHOW_HEALTH_DEBUG
 
@@ -61,6 +62,7 @@ def resolve_map_lens_and_refs(
     *,
     sidebar: Any,
     session_state: dict[str, Any],
+    st_module: Any | None = None,
     roots: list[str],
     index: dict[str, Any],
     selected_ref: str,
@@ -68,7 +70,8 @@ def resolve_map_lens_and_refs(
     descendant_refs_fn: Callable[..., list[str]],
 ) -> tuple[str, list[str], list[str], list[str]]:
     map_lens_options = ["Scope", "Branch"]
-    if session_state.get(ATLAS_MAP_LENS) not in map_lens_options:
+    previous_lens = str(session_state.get(ATLAS_MAP_LENS) or "")
+    if previous_lens not in map_lens_options:
         session_state[ATLAS_MAP_LENS] = "Scope"
     map_lens = sidebar.segmented_control(
         "Map Lens",
@@ -79,6 +82,16 @@ def resolve_map_lens_and_refs(
     )
     if map_lens not in map_lens_options:
         map_lens = "Scope"
+    if session_state.get(ATLAS_MAP_LENS) != map_lens:
+        session_state[ATLAS_MAP_LENS] = map_lens
+
+    if st_module is not None:
+        current_lens = str(session_state.get(ATLAS_MAP_LENS) or "")
+        if current_lens != previous_lens:
+            app_query_helpers.sync_to_query_params(
+                st=st_module,
+                session_state=session_state,
+            )
 
     map_refs = (
         scope_refs_fn(roots, index, limit=800)

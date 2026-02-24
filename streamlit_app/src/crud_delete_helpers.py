@@ -22,6 +22,7 @@ def delete_goal_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return bool(backend_result.get("deleted", True))
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -57,6 +58,7 @@ def delete_task_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return bool(backend_result.get("deleted", True))
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -92,6 +94,7 @@ def delete_objective_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return bool(backend_result.get("deleted", True))
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -129,6 +132,7 @@ def delete_key_result_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return bool(backend_result.get("deleted", True))
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -154,3 +158,4 @@ def delete_key_result_from_crud(
             crud_module.clear_cache_safe()
             return True
         return False
+

@@ -38,6 +38,7 @@ def create_experiment_from_crud(
             expected_effect_size=expected_effect_size,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -148,6 +149,7 @@ def update_experiment_from_crud(
             actor_username=actor_name,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -205,6 +207,7 @@ def close_experiment_from_crud(
             actor_username=actor_name,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -260,3 +263,4 @@ def list_experiments_for_retro_window_from_crud(
             except PermissionError:
                 continue
         return allowed
+

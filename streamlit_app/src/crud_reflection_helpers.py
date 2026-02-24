@@ -37,6 +37,7 @@ def create_weekly_plan_from_crud(
             actor_username=actor_name,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -130,6 +131,7 @@ def create_retrospective_from_crud(
             actor_username=actor_name,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -233,6 +235,7 @@ def upsert_retro_experiment_outcome_from_crud(
             actor_username=actor_name,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -288,3 +291,4 @@ def upsert_retro_experiment_outcome_from_crud(
                 session.refresh(existing)
                 return existing
             raise
+

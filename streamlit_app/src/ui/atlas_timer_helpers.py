@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui import app_query_helpers
+
 
 def render_timer_content(
     *,
@@ -73,6 +75,10 @@ def render_timer_content(
                 st_module.warning("No running timer found for this task.")
             if "active_timer_node_id" in st_module.session_state:
                 del st_module.session_state["active_timer_node_id"]
+                app_query_helpers.sync_to_query_params(
+                    st=st_module,
+                    session_state=st_module.session_state,
+                )
             st_module.rerun()
         return
 
@@ -84,4 +90,8 @@ def render_timer_content(
     if action_col.button("Close", use_container_width=True):
         if "active_timer_node_id" in st_module.session_state:
             del st_module.session_state["active_timer_node_id"]
+            app_query_helpers.sync_to_query_params(
+                st=st_module,
+                session_state=st_module.session_state,
+            )
         st_module.rerun()

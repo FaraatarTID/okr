@@ -5,7 +5,13 @@ def test_create_goal_uses_backend_mutation_proxy(monkeypatch):
     import src.crud as crud
     import src.services.backend_client as backend_client
 
+    cache_clears = {"count": 0}
     monkeypatch.setattr(backend_client, "is_backend_enabled", lambda: True)
+    monkeypatch.setattr(
+        crud,
+        "clear_cache_safe",
+        lambda: cache_clears.__setitem__("count", cache_clears["count"] + 1),
+    )
 
     monkeypatch.setattr(
         backend_client,
@@ -28,6 +34,7 @@ def test_create_goal_uses_backend_mutation_proxy(monkeypatch):
     )
     assert int(goal.id) == 901
     assert goal.title == "Proxy Goal"
+    assert cache_clears["count"] == 1
 
 
 def test_update_task_backend_permission_error_bubbles(monkeypatch):
@@ -73,7 +80,13 @@ def test_create_cycle_uses_backend_mutation_proxy(monkeypatch):
     import src.crud as crud
     import src.services.backend_client as backend_client
 
+    cache_clears = {"count": 0}
     monkeypatch.setattr(backend_client, "is_backend_enabled", lambda: True)
+    monkeypatch.setattr(
+        crud,
+        "clear_cache_safe",
+        lambda: cache_clears.__setitem__("count", cache_clears["count"] + 1),
+    )
 
     monkeypatch.setattr(
         backend_client,
@@ -95,6 +108,7 @@ def test_create_cycle_uses_backend_mutation_proxy(monkeypatch):
     )
     assert int(cycle.id) == 77
     assert cycle.title == "Q1 2026"
+    assert cache_clears["count"] == 1
 
 
 def test_create_check_in_backend_permission_error_bubbles(monkeypatch):

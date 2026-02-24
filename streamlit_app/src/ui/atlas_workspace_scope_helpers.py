@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
+from src.ui import app_query_helpers
 from src.ui.session_keys import (
     ATLAS_BREADCRUMBS,
     ATLAS_FOCUS_TASK_REF,
@@ -150,6 +151,13 @@ def sync_selected_navigation(
 ) -> set[str]:
     path = list(selected_meta.get("path") or [])
     session_state[nav_stack_key] = path
+    try:
+        import streamlit as st
+
+        app_query_helpers.sync_to_query_params(st=st, session_state=session_state)
+    except Exception:
+        # Query sync is best-effort and should never block workspace rendering.
+        pass
     if session_state.get(last_selected_key) != selected_ref:
         session_state[last_selected_key] = selected_ref
         session_state[breadcrumbs_key] = selected_ref

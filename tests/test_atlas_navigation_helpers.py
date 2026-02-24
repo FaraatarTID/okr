@@ -26,6 +26,7 @@ class _FakeSt:
         self._query_value = query_value
         self._scope_value = scope_value
         self._buttons = dict(buttons or {})
+        self.query_params = {}
         self.expanders = []
 
     def columns(self, *_args, **_kwargs):
@@ -44,13 +45,16 @@ class _FakeSt:
 
 def test_render_scope_toolbar_returns_query_and_scope():
     fake_st = _FakeSt(query_value="  roadmap  ", scope_value="My Team")
+    session_state = {"atlas_jump_query": ""}
     query, selected_scope = atlas_navigation_helpers.render_scope_toolbar(
         st_module=fake_st,
-        session_state={"atlas_jump_query": ""},
+        session_state=session_state,
         scope_labels=["My OKRs", "My Team"],
     )
     assert query == "roadmap"
     assert selected_scope == "My Team"
+    assert fake_st.query_params["jump"] == "roadmap"
+    assert fake_st.query_params["scope"] == "My Team"
 
 
 def test_find_jump_matches_filters_case_insensitive_by_title_l():
@@ -92,5 +96,6 @@ def test_render_jump_results_sets_selected_ref_and_reruns():
 
     assert handled is True
     assert session_state["atlas_selected_ref"] == "task_2"
+    assert fake_st.query_params["sel"] == "task_2"
     assert reruns == ["rerun"]
     assert fake_st.expanders == ["Jump Results (2)"]

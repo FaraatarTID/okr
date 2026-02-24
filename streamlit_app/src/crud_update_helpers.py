@@ -26,6 +26,7 @@ def update_goal_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -81,6 +82,7 @@ def update_objective_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -158,6 +160,7 @@ def update_key_result_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -276,6 +279,7 @@ def update_task_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return crud_module._node_from_backend_payload(backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -344,3 +348,4 @@ def update_key_result_analysis_from_crud(
             session.refresh(kr)
             crud_module.clear_cache_safe()
         return kr
+

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui import app_query_helpers
 from src.ui import dialog_chrome_helpers
 from src.ui import session_keys
 
@@ -66,6 +67,10 @@ def render_report_header_controls(
         if st_module.button("✕", key=f"close_rep_{mode}"):
             if session_keys.ACTIVE_REPORT_MODE in st_module.session_state:
                 del st_module.session_state[session_keys.ACTIVE_REPORT_MODE]
+            app_query_helpers.sync_to_query_params(
+                st=st_module,
+                session_state=st_module.session_state,
+            )
             st_module.rerun()
 
 

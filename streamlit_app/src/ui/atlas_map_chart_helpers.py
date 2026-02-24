@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui import app_query_helpers
 from src.ui.session_keys import (
     ATLAS_BREADCRUMBS,
     ATLAS_FOCUS_TASK_REF,
@@ -97,6 +98,7 @@ def apply_clicked_ref_navigation(
     selected_ref: str,
     index: dict[str, Any],
     session_state: dict[str, Any],
+    st_module: Any | None = None,
     health_index: dict[str, Any] | None,
     collect_task_refs_fn: Callable[..., list[str]],
     suggest_focus_task_fn: Callable[..., str | None],
@@ -127,6 +129,11 @@ def apply_clicked_ref_navigation(
                 )
                 or branch_tasks[0]
             )
+    if st_module is not None:
+        app_query_helpers.sync_to_query_params(
+            st=st_module,
+            session_state=session_state,
+        )
     rerun_fn()
     return True
 
@@ -135,6 +142,7 @@ def render_map_chart_and_handle_navigation(
     *,
     map_chart_area: Any,
     session_state: dict[str, Any],
+    st_module: Any | None = None,
     map_refs: list[str],
     index: dict[str, Any],
     selected_ref: str,
@@ -214,6 +222,7 @@ def render_map_chart_and_handle_navigation(
         selected_ref=selected_ref,
         index=index,
         session_state=session_state,
+        st_module=st_module,
         health_index=health_index,
         collect_task_refs_fn=collect_task_refs_fn,
         suggest_focus_task_fn=suggest_focus_task_fn,

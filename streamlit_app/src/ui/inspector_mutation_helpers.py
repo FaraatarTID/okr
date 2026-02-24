@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui import app_query_helpers
 from src.ui import session_keys
 
 
@@ -160,6 +161,7 @@ def render_delete_entity_section(
         if session_keys.ACTIVE_INSPECTOR_ID in session_state:
             del session_state[session_keys.ACTIVE_INSPECTOR_ID]
 
+        app_query_helpers.sync_to_query_params(st=st_module, session_state=session_state)
         rerun_fn()
 
     return False

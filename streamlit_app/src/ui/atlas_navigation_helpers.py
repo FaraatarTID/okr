@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui import app_query_helpers
 from src.ui.session_keys import (
     ATLAS_JUMP_QUERY,
     ATLAS_SCOPE_SELECTOR,
@@ -37,6 +38,10 @@ def render_scope_toolbar(
             key=scope_selector_key,
         )
     )
+    # Keep URL query state aligned with widget-backed session values.
+    session_state[jump_query_key] = query
+    session_state[scope_selector_key] = selected_scope
+    app_query_helpers.sync_to_query_params(st=st_module, session_state=session_state)
     return query, selected_scope
 
 
@@ -88,6 +93,10 @@ def render_jump_results(
                 label, key=f"atlas_jump_{ref}", use_container_width=True
             ):
                 session_state[ATLAS_SELECTED_REF] = ref
+                app_query_helpers.sync_to_query_params(
+                    st=st_module,
+                    session_state=session_state,
+                )
                 rerun_fn()
                 return True
     return False

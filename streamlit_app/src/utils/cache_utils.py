@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -14,7 +13,8 @@ def clear_cache_safe():
 
         st.cache_data.clear()
         # Broadcast to other nodes in the cluster
-        broadcast_cache_invalidation()
+        if not broadcast_cache_invalidation():
+            _LOGGER.warning("Failed to broadcast distributed cache invalidation.")
     except (ImportError, AttributeError, RuntimeError) as exc:
         _LOGGER.debug("Skipping Streamlit cache clear in current runtime: %s", exc)
 
@@ -30,7 +30,7 @@ def check_distributed_cache_staleness():
         from src.services.distributed_state_service import get_last_invalidation_timestamp
 
         global_ts = get_last_invalidation_timestamp()
-        if global_ts > _LAST_SEEN_INVALIDATION_TS:
+        if global_ts and global_ts != _LAST_SEEN_INVALIDATION_TS:
             _LOGGER.info("Distributed cache invalidation detected (global_ts=%s). Clearing local cache.", global_ts)
             st.cache_data.clear()
             _LAST_SEEN_INVALIDATION_TS = global_ts

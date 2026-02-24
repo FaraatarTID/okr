@@ -127,6 +127,9 @@ Runtime preflight policy
 
 Backend API (recommended for scale)
 
+- Deployment intent:
+  - Corporate/self-hosted production should run a separate backend server tier (`backend-api` + `backend-worker`).
+  - `OKR_BACKEND_API_URL="auto"` embedded mode is intended for Streamlit Cloud compatibility.
 - Streamlit-to-backend routing:
   - Source precedence: environment variables first, then Streamlit secrets (root key or `[app]` section).
   - `OKR_BACKEND_API_URL`:

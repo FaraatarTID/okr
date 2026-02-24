@@ -1,3 +1,5 @@
+Documentation HQ: [README](README.md)
+
 # Streamlit Cloud Deployment Guide
 
 ## Overview
@@ -5,6 +7,12 @@
 This app uses a **backend-first architecture**: the Streamlit UI communicates
 with a FastAPI backend for all data mutations. On Streamlit Cloud, the backend
 runs **in the same container** as the frontend (embedded mode).
+
+Status:
+
+- Embedded mode is implemented and currently operational on Streamlit Cloud.
+- This mode exists for compatibility and demo/MVP hosting.
+- Corporate production deployments should use the decoupled backend-server architecture documented in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## How It Works on Streamlit Cloud
 
