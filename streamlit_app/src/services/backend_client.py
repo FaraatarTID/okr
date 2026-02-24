@@ -7,14 +7,16 @@ from enum import Enum
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import time
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
 import requests
 
-from src.config_runtime import get_bool_config, get_config_value
+from src.config_runtime import get_config_value
 from src.services.http_client import request_with_retry
 
 
@@ -26,9 +28,6 @@ def is_backend_enabled() -> bool:
     except ImportError:
         return False
 
-
-
-import os
 
 def _base_url() -> str:
     url = str(get_config_value("OKR_BACKEND_API_URL", "")).strip().rstrip("/")
@@ -304,6 +303,121 @@ def _json_safe(value: Any) -> Any:
     return str(value)
 
 
+def resolve_actor_username(actor_username: Optional[str] = None) -> str:
+    actor = str(actor_username or "").strip()
+    if actor:
+        return actor
+    try:
+        import streamlit as st
+
+        for key in ("username", "current_username"):
+            candidate = str(st.session_state.get(key) or "").strip()
+            if candidate:
+                return candidate
+    except Exception:
+        return ""
+    return ""
+
+
+def _try_parse_datetime(value: Any, *, key: str | None = None):
+    if not isinstance(value, str):
+        return value
+    normalized_key = str(key or "").strip().lower()
+    if not normalized_key:
+        return value
+    datetime_keys = {
+        "start_time",
+        "end_time",
+        "created_at",
+        "updated_at",
+        "start_date",
+        "end_date",
+        "week_start_date",
+        "week_end_date",
+        "deadline",
+        "timer_started_at",
+        "start_at",
+        "end_at",
+        "date",
+    }
+    if normalized_key not in datetime_keys and not normalized_key.endswith("_at"):
+        return value
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return value
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _try_parse_enum(value: Any, *, key: str | None = None):
+    if not isinstance(value, str):
+        return value
+    normalized_key = str(key or "").strip().lower()
+    if not normalized_key:
+        return value
+    try:
+        from src.models import (
+            ExperimentDecision,
+            ExperimentStatus,
+            ExpectedEffectDirection,
+            LifecycleState,
+            MetricType,
+            ScoreMode,
+            TaskStatus,
+            UserRole,
+            VariationType,
+        )
+    except Exception:
+        return value
+
+    enum_candidates = {
+        "role": (UserRole,),
+        "status": (TaskStatus, ExperimentStatus),
+        "state": (LifecycleState,),
+        "metric_type": (MetricType,),
+        "score_mode": (ScoreMode,),
+        "variation_type": (VariationType,),
+        "decision": (ExperimentDecision,),
+        "expected_effect_direction": (ExpectedEffectDirection,),
+    }.get(normalized_key, ())
+    if not enum_candidates:
+        return value
+
+    raw = value.strip()
+    for enum_cls in enum_candidates:
+        for candidate in {raw, raw.upper(), raw.lower()}:
+            try:
+                return enum_cls(candidate)
+            except Exception:
+                continue
+    return value
+
+
+def _to_backend_object(value: Any, *, key: str | None = None):
+    if isinstance(value, dict):
+        payload = {
+            str(k): _to_backend_object(v, key=str(k))
+            for k, v in value.items()
+        }
+        return SimpleNamespace(**payload)
+    if isinstance(value, list):
+        return [_to_backend_object(item, key=key) for item in value]
+    value = _try_parse_datetime(value, key=key)
+    value = _try_parse_enum(value, key=key)
+    return value
+
+
+def _to_backend_object_list(values: Any) -> list[Any]:
+    if not isinstance(values, list):
+        return []
+    return [item for item in (_to_backend_object(v) for v in values) if item is not None]
+
+
 def _normalize_node_type(node_type: str) -> str:
     value = str(node_type or "").strip().upper().replace("-", "_")
     if value == "KEYRESULT":
@@ -423,6 +537,401 @@ def fetch_leadership_metrics(
         timeout=(3.0, 30.0),
         retries=1,
     )
+
+
+def authenticate_user_detailed(
+    username: str,
+    password: str,
+    *,
+    client_ip: Optional[str] = None,
+) -> Dict[str, Any]:
+    result = _request_json(
+        method="POST",
+        path="/v1/auth/login",
+        actor_username="",
+        payload={
+            "username": str(username or "").strip(),
+            "password": str(password or ""),
+            "client_ip": str(client_ip or "").strip() or None,
+        },
+        timeout=(3.0, 20.0),
+        retries=1,
+    )
+    if isinstance(result, dict) and "error" not in result:
+        user_payload = result.get("user")
+        if user_payload is not None:
+            result["user"] = _to_backend_object(user_payload)
+    return result
+
+
+def _read_query(
+    *,
+    kind: str,
+    params: Optional[Dict[str, Any]] = None,
+    actor_username: Optional[str] = None,
+) -> Dict[str, Any]:
+    actor = resolve_actor_username(actor_username)
+    payload = {
+        "kind": str(kind or "").strip(),
+        "params": _json_safe(dict(params or {})),
+        "actor_username": actor,
+    }
+    return _request_json(
+        method="POST",
+        path="/v1/read/query",
+        actor_username=actor,
+        payload=payload,
+        timeout=(3.0, 30.0),
+        retries=1,
+    )
+
+
+def read_user_by_username(username: str, *, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="users.by_username",
+        params={"username": str(username or "").strip()},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object(result.get("user"))
+
+
+def read_user_by_id(user_id: int, *, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="users.by_id",
+        params={"user_id": int(user_id)},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object(result.get("user"))
+
+
+def read_all_users(*, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="users.all",
+        params={},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("users"))
+
+
+def read_team_members(manager_id: int, *, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="users.team_members",
+        params={"manager_id": int(manager_id)},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("users"))
+
+
+def read_all_teams(*, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="teams.all",
+        params={},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("teams"))
+
+
+def read_team_by_id(team_id: int, *, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="teams.by_id",
+        params={"team_id": int(team_id)},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object(result.get("team"))
+
+
+def read_all_cycles(*, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="cycles.all",
+        params={},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("cycles"))
+
+
+def read_active_cycles(*, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="cycles.active",
+        params={},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("cycles"))
+
+
+def read_active_weekly_plan(
+    user_id: int,
+    *,
+    date: Any = None,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="weekly_plan.active",
+        params={
+            "user_id": int(user_id),
+            "date": _json_safe(date) if date is not None else None,
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object(result.get("weekly_plan"))
+
+
+def read_node(
+    node_id: int,
+    node_type: str,
+    *,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="node.get",
+        params={
+            "node_id": int(node_id),
+            "node_type": _normalize_node_type(node_type),
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object(result.get("node"))
+
+
+def read_detect_node_type(node_id: int, *, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="node.detect_type",
+        params={"node_id": int(node_id)},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return str(result.get("node_type") or "").strip() or None
+
+
+def read_all_krs_by_cycle(
+    cycle_id: int,
+    *,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="krs.by_cycle",
+        params={
+            "cycle_id": int(cycle_id),
+            "limit": int(limit) if limit is not None else None,
+            "offset": int(offset),
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("key_results"))
+
+
+def read_all_tasks_by_cycle(
+    cycle_id: int,
+    *,
+    limit: Optional[int] = None,
+    offset: int = 0,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="tasks.by_cycle",
+        params={
+            "cycle_id": int(cycle_id),
+            "limit": int(limit) if limit is not None else None,
+            "offset": int(offset),
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("tasks"))
+
+
+def read_work_logs_by_range(
+    *,
+    user_id: int,
+    start_date: Any,
+    end_date: Any,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="work_logs.by_range",
+        params={
+            "user_id": int(user_id),
+            "start_date": _json_safe(start_date),
+            "end_date": _json_safe(end_date),
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("work_logs"))
+
+
+def read_work_logs_by_task(task_id: int, *, actor_username: Optional[str] = None):
+    result = _read_query(
+        kind="work_logs.by_task",
+        params={"task_id": int(task_id)},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("work_logs"))
+
+
+def read_krs_needing_checkin(
+    *,
+    user_id: str,
+    cycle_id: int,
+    days_threshold: int = 7,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="krs.needing_checkin",
+        params={
+            "user_id": str(user_id or "").strip(),
+            "cycle_id": int(cycle_id),
+            "days_threshold": int(days_threshold),
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("key_results"))
+
+
+def read_active_experiments_for_kr(
+    key_result_id: int,
+    *,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="experiments.active_for_kr",
+        params={"key_result_id": int(key_result_id)},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("experiments"))
+
+
+def read_experiments_for_retro_window(
+    *,
+    cycle_id: int,
+    window_start: Any,
+    window_end: Any,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="experiments.for_retro_window",
+        params={
+            "cycle_id": int(cycle_id),
+            "window_start": _json_safe(window_start),
+            "window_end": _json_safe(window_end),
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("experiments"))
+
+
+def read_user_retrospectives(
+    *,
+    user_id: int,
+    cycle_id: Optional[int] = None,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="retros.user",
+        params={
+            "user_id": int(user_id),
+            "cycle_id": int(cycle_id) if cycle_id is not None else None,
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("retros"))
+
+
+def read_team_retrospectives(
+    *,
+    manager_id: int,
+    cycle_id: Optional[int] = None,
+    actor_username: Optional[str] = None,
+):
+    result = _read_query(
+        kind="retros.team",
+        params={
+            "manager_id": int(manager_id),
+            "cycle_id": int(cycle_id) if cycle_id is not None else None,
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return _to_backend_object_list(result.get("retros"))
+
+
+def read_alignment_context(
+    objective_id: int,
+    *,
+    actor_username: Optional[str] = None,
+) -> Dict[str, Any]:
+    result = _read_query(
+        kind="alignments.context",
+        params={"objective_id": int(objective_id)},
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return {
+        "parents": _to_backend_object_list(result.get("parents")),
+        "children": _to_backend_object_list(result.get("children")),
+        "all_objectives": _to_backend_object_list(result.get("all_objectives")),
+        "edges": _to_backend_object_list(result.get("edges")),
+    }
+
+
+def read_mindmap_root(
+    *,
+    node_id: int,
+    node_type: Optional[str] = None,
+    actor_username: Optional[str] = None,
+) -> Dict[str, Any]:
+    result = _read_query(
+        kind="mindmap.root",
+        params={
+            "node_id": int(node_id),
+            "node_type": _normalize_node_type(node_type) if node_type else None,
+        },
+        actor_username=actor_username,
+    )
+    if "error" in result:
+        return result
+    return {
+        "node": _to_backend_object(result.get("node")),
+        "node_type": str(result.get("node_type") or "").strip() or None,
+    }
 
 
 def create_goal(

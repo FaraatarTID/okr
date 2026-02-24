@@ -208,6 +208,35 @@ def _backend_mutation_proxy_enabled() -> bool:
     )
 
 
+def _backend_read_proxy_enabled() -> bool:
+    return _backend_mutation_proxy_enabled()
+
+
+def _resolve_backend_actor(actor_username: Optional[str] = None) -> str:
+    from src.services.backend_client import resolve_actor_username
+
+    return str(resolve_actor_username(actor_username)).strip()
+
+
+def _raise_backend_read_error(operation: str, payload: Dict[str, Any]) -> None:
+    message = str(payload.get("error") or f"Backend read failed for {operation}.").strip()
+    try:
+        code = int(payload.get("status_code") or 0)
+    except Exception:
+        code = 0
+    if code in {401, 403}:
+        raise PermissionError(message)
+    if code == 404:
+        raise ValueError(message or "Not found.")
+    raise ValueError(message)
+
+
+def _backend_read_result_or_raise(operation: str, result):
+    if isinstance(result, dict) and "error" in result:
+        _raise_backend_read_error(operation, result)
+    return result
+
+
 def _local_backend_fallback_allowed() -> bool:
     return crud_core_helpers.local_backend_fallback_allowed_from_crud(
         crud_module=sys.modules[__name__]
@@ -308,6 +337,15 @@ def create_user(
 
 def get_user_by_username(username: str) -> Optional[User]:
     """Get a user by username."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_user_by_username(
+            str(username or "").strip(),
+            actor_username=actor,
+        )
+        return _backend_read_result_or_raise("get_user_by_username", backend_result)
     return crud_auth_helpers.get_user_by_username_from_crud(
         crud_module=sys.modules[__name__],
         username=username,
@@ -408,6 +446,15 @@ def get_user_goals(username: str, cycle_id: int):
 
 def get_user_by_id(user_id: int) -> Optional[User]:
     """Get a user by ID."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_user_by_id(
+            int(user_id),
+            actor_username=actor,
+        )
+        return _backend_read_result_or_raise("get_user_by_id", backend_result)
     return crud_auth_helpers.get_user_by_id_from_crud(
         crud_module=sys.modules[__name__],
         user_id=user_id,
@@ -569,6 +616,23 @@ def authenticate_user_detailed(
     """
     Authenticate user with per-user and per-IP throttling/temporary lockouts.
     """
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        backend_result = backend_client.authenticate_user_detailed(
+            str(username or "").strip(),
+            password,
+            client_ip=client_ip,
+        )
+        backend_result = _backend_read_result_or_raise(
+            "authenticate_user_detailed",
+            backend_result,
+        )
+        if isinstance(backend_result, dict):
+            user_payload = backend_result.get("user")
+            if user_payload and not isinstance(user_payload, dict):
+                backend_result["user"] = user_payload
+            return backend_result
     return crud_auth_helpers.authenticate_user_detailed_from_crud(
         crud_module=sys.modules[__name__],
         username=username,
@@ -581,6 +645,13 @@ def authenticate_user(
     username: str, password: str, client_ip: Optional[str] = None
 ) -> Optional[User]:
     """Authenticate a user and return the User object if successful."""
+    if _backend_read_proxy_enabled():
+        auth = authenticate_user_detailed(
+            username=username,
+            password=password,
+            client_ip=client_ip,
+        )
+        return auth.get("user") if isinstance(auth, dict) else None
     return crud_auth_helpers.authenticate_user_from_crud(
         crud_module=sys.modules[__name__],
         username=username,
@@ -591,11 +662,28 @@ def authenticate_user(
 
 def get_all_users() -> List[User]:
     """Get all users."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_all_users(actor_username=actor)
+        return list(_backend_read_result_or_raise("get_all_users", backend_result) or [])
     return crud_auth_helpers.get_all_users_from_crud(crud_module=sys.modules[__name__])
 
 
 def get_team_members(manager_id: int) -> List[User]:
     """Get all users managed by a specific manager."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_team_members(
+            int(manager_id),
+            actor_username=actor,
+        )
+        return list(
+            _backend_read_result_or_raise("get_team_members", backend_result) or []
+        )
     return crud_auth_helpers.get_team_members_from_crud(
         crud_module=sys.modules[__name__],
         manager_id=manager_id,
@@ -706,6 +794,20 @@ def _get_latest_checkins_by_kr(session: Session, kr_ids: List[int]) -> dict:
 def get_krs_needing_checkin(
     user_id: str, cycle_id: int, days_threshold: int = 7
 ) -> List[KeyResult]:
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_krs_needing_checkin(
+            user_id=str(user_id or "").strip(),
+            cycle_id=int(cycle_id),
+            days_threshold=int(days_threshold),
+            actor_username=actor,
+        )
+        return list(
+            _backend_read_result_or_raise("get_krs_needing_checkin", backend_result)
+            or []
+        )
     return crud_checkin_helpers.get_krs_needing_checkin_from_crud(
         crud_module=sys.modules[__name__],
         user_id=user_id,
@@ -762,6 +864,21 @@ def get_active_experiments_for_kr(
     actor_username: str,
 ) -> List[Experiment]:
     """Get RUNNING experiments for a KR. Enforces goal-scoped read access."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor(actor_username)
+        backend_result = backend_client.read_active_experiments_for_kr(
+            int(key_result_id),
+            actor_username=actor,
+        )
+        return list(
+            _backend_read_result_or_raise(
+                "get_active_experiments_for_kr",
+                backend_result,
+            )
+            or []
+        )
     return crud_experiment_helpers.get_active_experiments_for_kr_from_crud(
         crud_module=sys.modules[__name__],
         key_result_id=key_result_id,
@@ -808,6 +925,23 @@ def list_experiments_for_retro_window(
     Returns experiments that ended in the window OR are still running.
     Enforces goal-scoped access per experiment.
     """
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor(actor_username)
+        backend_result = backend_client.read_experiments_for_retro_window(
+            cycle_id=int(cycle_id),
+            window_start=window_start,
+            window_end=window_end,
+            actor_username=actor,
+        )
+        return list(
+            _backend_read_result_or_raise(
+                "list_experiments_for_retro_window",
+                backend_result,
+            )
+            or []
+        )
     return crud_experiment_helpers.list_experiments_for_retro_window_from_crud(
         crud_module=sys.modules[__name__],
         cycle_id=cycle_id,
@@ -843,6 +977,14 @@ def create_cycle(
 
 def get_active_cycles() -> List[Cycle]:
     """Get all active cycles."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_active_cycles(actor_username=actor)
+        return list(
+            _backend_read_result_or_raise("get_active_cycles", backend_result) or []
+        )
     return crud_cycle_helpers.get_active_cycles_from_crud(
         crud_module=sys.modules[__name__]
     )
@@ -850,6 +992,12 @@ def get_active_cycles() -> List[Cycle]:
 
 def get_all_cycles() -> List[Cycle]:
     """Get all cycles."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_all_cycles(actor_username=actor)
+        return list(_backend_read_result_or_raise("get_all_cycles", backend_result) or [])
     return crud_cycle_helpers.get_all_cycles_from_crud(
         crud_module=sys.modules[__name__]
     )
@@ -1202,6 +1350,16 @@ def delete_key_result(kr_id: int, actor_username: Optional[str] = None) -> bool:
 
 def get_node(node_id: int, node_type: str, actor_username: Optional[str] = None):
     """Fetch a node by ID and Type string (GOAL, OBJECTIVE, KEY_RESULT, TASK)."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor(actor_username)
+        backend_result = backend_client.read_node(
+            int(node_id),
+            node_type,
+            actor_username=actor,
+        )
+        return _backend_read_result_or_raise("get_node", backend_result)
     return crud_query_helpers.get_node_from_crud(
         crud_module=sys.modules[__name__],
         node_id=node_id,
@@ -1329,6 +1487,16 @@ def delete_work_log(log_id: int, actor_username: Optional[str] = None) -> bool:
 
 def get_leadership_metrics(usernames: List[str], cycle_id: int):
     """Aggregate portfolio-level metrics for leadership dashboards."""
+    if _backend_read_proxy_enabled():
+        from src.services.backend_client import fetch_leadership_metrics
+
+        actor = _resolve_backend_actor()
+        backend_result = fetch_leadership_metrics(
+            cycle_id=int(cycle_id),
+            usernames=[str(username).strip() for username in (usernames or [])],
+            actor_username=actor,
+        )
+        return _backend_read_result_or_raise("get_leadership_metrics", backend_result)
     return crud_data_helpers.get_leadership_metrics_from_crud(
         usernames=usernames,
         cycle_id=cycle_id,
@@ -1338,6 +1506,20 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
 def get_work_logs_by_date_range(
     user_id: int, start_date: datetime, end_date: datetime
 ) -> List[WorkLog]:
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_work_logs_by_range(
+            user_id=int(user_id),
+            start_date=start_date,
+            end_date=end_date,
+            actor_username=actor,
+        )
+        return list(
+            _backend_read_result_or_raise("get_work_logs_by_date_range", backend_result)
+            or []
+        )
     return crud_data_helpers.get_work_logs_by_date_range_from_crud(
         user_id=user_id,
         start_date=start_date,
@@ -1352,6 +1534,19 @@ def get_all_krs_by_cycle(
     offset: int = 0,
 ) -> List[KeyResult]:
     """Paged KR read for cycle-level analytics/report rendering."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_all_krs_by_cycle(
+            int(cycle_id),
+            limit=limit,
+            offset=int(offset),
+            actor_username=actor,
+        )
+        return list(
+            _backend_read_result_or_raise("get_all_krs_by_cycle", backend_result) or []
+        )
     return crud_data_helpers.get_all_krs_by_cycle_from_crud(
         cycle_id=cycle_id,
         limit=limit,
@@ -1366,6 +1561,20 @@ def get_all_tasks_by_cycle(
     offset: int = 0,
 ) -> List[Task]:
     """Paged task read for cycle scans with optional query limits."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_all_tasks_by_cycle(
+            int(cycle_id),
+            limit=limit,
+            offset=int(offset),
+            actor_username=actor,
+        )
+        return list(
+            _backend_read_result_or_raise("get_all_tasks_by_cycle", backend_result)
+            or []
+        )
     return crud_data_helpers.get_all_tasks_by_cycle_from_crud(
         cycle_id=cycle_id,
         limit=limit,
@@ -1448,6 +1657,16 @@ def create_weekly_plan(
 
 def get_active_weekly_plan(user_id: int, date: datetime = None) -> Optional[WeeklyPlan]:
     """Get the weekly plan active for the given date (default: now)."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_active_weekly_plan(
+            int(user_id),
+            date=date,
+            actor_username=actor,
+        )
+        return _backend_read_result_or_raise("get_active_weekly_plan", backend_result)
     return crud_reflection_helpers.get_active_weekly_plan_from_crud(
         crud_module=sys.modules[__name__],
         user_id=user_id,
@@ -1484,6 +1703,19 @@ def create_retrospective(
 
 def get_user_retrospectives(user_id: int, cycle_id: int = None) -> List[Retrospective]:
     """Get all retrospectives for a user."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_user_retrospectives(
+            user_id=int(user_id),
+            cycle_id=int(cycle_id) if cycle_id is not None else None,
+            actor_username=actor,
+        )
+        return list(
+            _backend_read_result_or_raise("get_user_retrospectives", backend_result)
+            or []
+        )
     return crud_reflection_helpers.get_user_retrospectives_from_crud(
         crud_module=sys.modules[__name__],
         user_id=user_id,
@@ -1495,6 +1727,19 @@ def get_team_retrospectives(
     manager_id: int, cycle_id: int = None
 ) -> List[Retrospective]:
     """Get retrospectives for all members of a manager's team."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_team_retrospectives(
+            manager_id=int(manager_id),
+            cycle_id=int(cycle_id) if cycle_id is not None else None,
+            actor_username=actor,
+        )
+        return list(
+            _backend_read_result_or_raise("get_team_retrospectives", backend_result)
+            or []
+        )
     return crud_reflection_helpers.get_team_retrospectives_from_crud(
         crud_module=sys.modules[__name__],
         manager_id=manager_id,
@@ -1578,6 +1823,12 @@ def create_team(
 
 def get_all_teams() -> List[Team]:
     """Retrieve all teams."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_all_teams(actor_username=actor)
+        return list(_backend_read_result_or_raise("get_all_teams", backend_result) or [])
     return crud_team_helpers.get_all_teams_from_crud(
         crud_module=sys.modules[__name__],
     )
@@ -1585,6 +1836,15 @@ def get_all_teams() -> List[Team]:
 
 def get_team_by_id(team_id: int) -> Optional[Team]:
     """Retrieve a team by ID."""
+    if _backend_read_proxy_enabled():
+        from src.services import backend_client
+
+        actor = _resolve_backend_actor()
+        backend_result = backend_client.read_team_by_id(
+            int(team_id),
+            actor_username=actor,
+        )
+        return _backend_read_result_or_raise("get_team_by_id", backend_result)
     return crud_team_helpers.get_team_by_id_from_crud(
         crud_module=sys.modules[__name__],
         team_id=team_id,

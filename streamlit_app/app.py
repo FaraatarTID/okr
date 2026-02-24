@@ -1,12 +1,4 @@
-"""Thin Streamlit entry coordinator.
-
-This module intentionally stays small and declarative:
-1. Adapt environment/config/runtime data to helper modules.
-2. Expose cached runtime snapshot utilities consumed by helper modules.
-3. Delegate UI/auth/app-shell flows to focused helper modules.
-
-Business logic should live in `src/ui/app_*_helpers.py` (or lower layers), not here.
-"""
+"""Thin Streamlit entry coordinator."""
 
 import os
 import subprocess
@@ -14,7 +6,6 @@ import sys
 from datetime import datetime
 from types import SimpleNamespace
 
-# Streamlit Cloud can hit watchdog race conditions that cause refresh loops.
 # Disable event-based file watching in managed cloud runtime only.
 if os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD"):
     os.environ.setdefault("STREAMLIT_SERVER_FILE_WATCHER_TYPE", "none")
@@ -22,9 +13,6 @@ if os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD"):
 
 import streamlit as st
 
-# Auto-launch backend if needed (Streamlit Cloud or 'auto' mode).
-# Wrapped with @st.cache_resource so it executes only ONCE per app server
-# process, not on every Streamlit rerun/page interaction.
 from src.services.backend_launcher import ensure_backend_running
 
 @st.cache_resource(show_spinner=False)
@@ -32,7 +20,6 @@ def _cached_ensure_backend_running() -> bool:
     return ensure_backend_running()
 
 _cached_ensure_backend_running()
-
 
 # Keep `import app` stable for test/runtime contexts that execute from repo root.
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -342,6 +329,9 @@ def _build_app_context():
         _bootstrap_default_cycle_if_needed=_bootstrap_default_cycle_if_needed,
         _build_cycle_selector_payload=_build_cycle_selector_payload,
         _get_build_fingerprint=_get_build_fingerprint,
+        restore_from_query_params=app_query_helpers.restore_from_query_params,
+        sync_to_query_params=app_query_helpers.sync_to_query_params,
+        check_distributed_cache_staleness=check_distributed_cache_staleness,
     )
 
 
@@ -378,14 +368,6 @@ def render_app(username, runtime_bundle=None):
 
 def main():
     """Top-level app entrypoint."""
-    # Restore UI state from URL if present (e.g. after failover or refresh).
-    app_query_helpers.restore_from_query_params(st=st, session_state=st.session_state)
-    # Canonicalize mapped query params after restoration/validation.
-    app_query_helpers.sync_to_query_params(st=st, session_state=st.session_state)
-
-    # Check if another node in the cluster requested a cache invalidation.
-    check_distributed_cache_staleness()
-
     return app_entry_helpers.run_main_from_app(app_module=_build_app_context())
 
 

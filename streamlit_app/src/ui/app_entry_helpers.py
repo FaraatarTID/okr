@@ -33,12 +33,24 @@ def sync_user_session_from_snapshot(session_state, user_snapshot: dict) -> None:
 def run_main_from_app(*, app_module) -> None:
     """Run app entry flow using dependencies provided by app_module."""
     st = _resolve_streamlit_from_app(app_module=app_module)
+    restore_query_fn = getattr(app_module, "restore_from_query_params", None)
+    sync_query_fn = getattr(app_module, "sync_to_query_params", None)
+    check_cache_staleness_fn = getattr(
+        app_module, "check_distributed_cache_staleness", None
+    )
     render_login_fn = getattr(app_module, "render_login", None)
     resolve_runtime_fn = getattr(app_module, "_resolve_app_shell_runtime", None)
     error_log_fn = getattr(app_module, "error_log", None)
     clear_session_fn = getattr(app_module, "_clear_user_session", None)
     render_password_reset_gate_fn = getattr(app_module, "render_password_reset_gate", None)
     render_app_fn = getattr(app_module, "render_app", None)
+
+    if callable(restore_query_fn):
+        restore_query_fn(st=st, session_state=st.session_state)
+    if callable(sync_query_fn):
+        sync_query_fn(st=st, session_state=st.session_state)
+    if callable(check_cache_staleness_fn):
+        check_cache_staleness_fn()
 
     if "user_id" not in st.session_state:
         if callable(render_login_fn):

@@ -387,3 +387,15 @@ class LeadershipMetricsRequest(BaseModel):
     cycle_id: int = Field(..., gt=0)
     usernames: Optional[List[str]] = None
     actor_username: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1, max_length=128)
+    password: str = Field(..., min_length=1, max_length=512)
+    client_ip: Optional[str] = Field(default=None, max_length=128)
+
+
+class ReadQueryRequest(BaseModel):
+    kind: str = Field(..., min_length=1, max_length=128)
+    params: Dict[str, Any] = Field(default_factory=dict)
+    actor_username: Optional[str] = None

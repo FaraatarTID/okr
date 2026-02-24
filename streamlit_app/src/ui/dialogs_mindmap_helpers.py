@@ -7,55 +7,26 @@ query strategy and graph rendering behavior.
 from __future__ import annotations
 
 import streamlit as st
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import selectinload
-from sqlmodel import select
 from streamlit_agraph import Config, agraph
 
-from src.database import get_session_context
-from src.models import Goal, KeyResult, Objective, Task
+from src.services import backend_client
 from src.ui.components import build_graph_from_node
 
 
 def _load_mindmap_root(node_id):
-    obj = None
-    with get_session_context() as session:
-        try:
-            stmt = (
-                select(Goal)
-                .where(Goal.id == node_id)
-                .options(
-                    selectinload(Goal.objectives)
-                    .selectinload(Objective.key_results)
-                    .selectinload(KeyResult.tasks)
-                )
-            )
-            obj = session.exec(stmt).first()
-            if not obj:
-                stmt = (
-                    select(Objective)
-                    .where(Objective.id == node_id)
-                    .options(
-                        selectinload(Objective.key_results).selectinload(
-                            KeyResult.tasks
-                        )
-                    )
-                )
-                obj = session.exec(stmt).first()
-            if not obj:
-                stmt = (
-                    select(KeyResult)
-                    .where(KeyResult.id == node_id)
-                    .options(selectinload(KeyResult.tasks))
-                )
-                obj = session.exec(stmt).first()
-            if not obj:
-                stmt = select(Task).where(Task.id == node_id)
-                obj = session.exec(stmt).first()
-        except (AttributeError, SQLAlchemyError, TypeError, ValueError):
-            obj = None
-
-    return obj
+    try:
+        actor = backend_client.resolve_actor_username()
+        backend_result = backend_client.read_mindmap_root(
+            node_id=int(node_id),
+            actor_username=actor,
+        )
+    except Exception:
+        return None
+    if isinstance(backend_result, dict) and "error" in backend_result:
+        return None
+    if not isinstance(backend_result, dict):
+        return None
+    return backend_result.get("node")
 
 
 def _build_mindmap_config() -> Config:
