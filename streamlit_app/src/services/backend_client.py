@@ -49,6 +49,67 @@ def _base_url() -> str:
     return url
 
 
+def _is_embedded_mode() -> bool:
+    """Return True when the backend is running as an embedded subprocess."""
+    url = str(get_config_value("OKR_BACKEND_API_URL", "")).strip()
+    is_cloud = bool(
+        os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD")
+    )
+    if url.lower() == "auto" or (not url and is_cloud):
+        return True
+    # localhost URL on cloud = embedded
+    if is_cloud and (
+        url.lower().startswith("http://localhost")
+        or url.lower().startswith("http://127.0.0.1")
+    ):
+        return True
+    return False
+
+
+_backend_ready_checked = False
+
+
+def _wait_for_backend_ready(*, timeout_seconds: int = 30) -> None:
+    """
+    Block until the embedded backend port is open, or timeout expires.
+
+    This is a secondary safeguard: `backend_launcher.ensure_backend_running()`
+    waits up to 60 s at startup, but a fast Streamlit rerun can reach a data
+    fetch before that completes. This function adds a short additional wait
+    at the point of first use.
+
+    Only runs once per process (guarded by module-level flag).
+    Does nothing if not in embedded mode.
+    """
+    global _backend_ready_checked
+    if _backend_ready_checked:
+        return
+    if not _is_embedded_mode():
+        _backend_ready_checked = True
+        return
+
+    import socket
+    import time
+
+    base = _base_url()
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(base)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 8100
+    except Exception:
+        host, port = "127.0.0.1", 8100
+
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=1.0):
+                break
+        except OSError:
+            time.sleep(1.0)
+
+    _backend_ready_checked = True
+
 
 def _service_token() -> str:
     return str(get_config_value("OKR_BACKEND_SERVICE_TOKEN", "")).strip()
@@ -185,6 +246,9 @@ def _request_json(
     retries: int = 1,
     extra_headers: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
+    # Ensure the embedded backend is accepting connections before the first request.
+    # This is a no-op after the first successful check (guarded by module-level flag).
+    _wait_for_backend_ready()
     try:
         base_url = _base_url()
         if not base_url:
@@ -211,6 +275,7 @@ def _request_json(
         return _response_json_or_error(response)
     except Exception as exc:
         return _transport_error(exc)
+
 
 
 def _json_safe(value: Any) -> Any:
