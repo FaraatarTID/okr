@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 import streamlit as st
+from src.ui import app_query_helpers
 from src.ui import session_keys
 
 _STANDARD_DIALOG_CHROME_CSS = """
@@ -53,4 +54,8 @@ def render_dialog_header_with_close(
         for state_key in clear_state_keys:
             if state_key in st_ref.session_state:
                 del st_ref.session_state[state_key]
+        app_query_helpers.sync_to_query_params(
+            st=st_ref,
+            session_state=st_ref.session_state,
+        )
         st_ref.rerun()

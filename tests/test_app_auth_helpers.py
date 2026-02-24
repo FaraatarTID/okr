@@ -95,6 +95,41 @@ def test_clear_user_session_removes_known_keys():
     assert session_state["keep_me"] == "x"
 
 
+def test_clear_user_session_cleans_mapped_query_params_when_streamlit_supplied():
+    session_state = {
+        "active_cycle_id": 10,
+        "active_report_mode": "Weekly",
+        "active_inspector_id": 11,
+        "active_timer_node_id": 19,
+        "nav_stack": ["GOAL:1", "TASK:2"],
+        "atlas_jump_query": "find task",
+        "atlas_map_lens": "Branch",
+        "keep_me": "x",
+    }
+    st = _FakeStreamlit(session_state=session_state)
+    st.query_params = {
+        "cycle": "10",
+        "mode": "Weekly",
+        "focus": "11",
+        "timer": "19",
+        "nav": "GOAL:1,TASK:2",
+        "jump": "find task",
+        "lens": "Branch",
+        "keep": "y",
+    }
+
+    app_auth_helpers.clear_user_session(session_state, st_module=st)
+
+    assert "cycle" not in st.query_params
+    assert "mode" not in st.query_params
+    assert "focus" not in st.query_params
+    assert "timer" not in st.query_params
+    assert "nav" not in st.query_params
+    assert "jump" not in st.query_params
+    assert "lens" not in st.query_params
+    assert st.query_params["keep"] == "y"
+
+
 def test_render_login_success_populates_session_and_reruns():
     st = _FakeStreamlit(
         text_inputs={"Username": "alice", "Password": "S3cret!"},

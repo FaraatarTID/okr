@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from src.ui import app_query_helpers
 from src.ui.session_keys import (
     ATLAS_AI_SUGGESTED_NEXT,
     ATLAS_FOCUS_TASK_PICKER,
@@ -100,6 +101,7 @@ def render_suggested_focus_banner(
     ):
         session_state[ATLAS_FOCUS_TASK_REF] = suggested_focus_ref
         session_state[ATLAS_SELECTED_REF] = suggested_focus_ref
+        app_query_helpers.sync_to_query_params(st=st_module, session_state=session_state)
         rerun_fn()
     suggested_row[1].markdown(
         (
@@ -155,5 +157,6 @@ def render_focus_task_picker(
     )
     if picked_ref != focus_task_ref:
         session_state[ATLAS_FOCUS_TASK_REF] = picked_ref
+        app_query_helpers.sync_to_query_params(st=st_module, session_state=session_state)
         rerun_fn()
     return picked_ref

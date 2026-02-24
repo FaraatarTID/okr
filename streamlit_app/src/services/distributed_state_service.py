@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import logging
+from threading import Lock
+import time
 from typing import Optional
 
 from src.services.backend_client import _request_json
 
 _LOGGER = logging.getLogger(__name__)
+_BROADCAST_LOCK = Lock()
+_LAST_BROADCAST_TS = 0
 
 # Reserved state keys
 KEY_CACHE_INVALIDATION_TS = "okr:cache:invalidation_ts"
@@ -52,13 +56,23 @@ def set_distributed_state(key: str, value: str, actor_username: str = "system") 
         return False
 
 
+def _next_invalidation_timestamp_ns() -> int:
+    """Return a process-local monotonic epoch timestamp in nanoseconds."""
+    global _LAST_BROADCAST_TS
+    with _BROADCAST_LOCK:
+        now_ts = int(time.time_ns())
+        if now_ts <= int(_LAST_BROADCAST_TS):
+            now_ts = int(_LAST_BROADCAST_TS) + 1
+        _LAST_BROADCAST_TS = now_ts
+        return now_ts
+
+
 def broadcast_cache_invalidation(actor_username: str = "system") -> bool:
     """Signal all nodes to clear their local data cache."""
-    import time
     return set_distributed_state(
-        KEY_CACHE_INVALIDATION_TS, 
-        str(int(time.time())), 
-        actor_username=actor_username
+        KEY_CACHE_INVALIDATION_TS,
+        str(_next_invalidation_timestamp_ns()),
+        actor_username=actor_username,
     )
 
 

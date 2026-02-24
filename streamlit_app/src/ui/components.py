@@ -527,7 +527,4 @@ def render_strategy_pulse_content(username):
 
 def render_level(username):
     """Main level renderer used by the application shell."""
-    # Ensure any stale inspector target is cleared before opening workspace.
-    if "active_inspector_id" in st.session_state:
-        del st.session_state.active_inspector_id
     return render_atlas_workspace(username)

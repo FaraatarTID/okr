@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from src.ui import app_query_helpers
 from src.ui import app_shell_navigation_helpers
 from src.ui import session_keys
 
@@ -34,8 +35,10 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
     apply_custom_fonts()
     inject_dialog_styles()
 
+    query_sync_needed = False
     if session_keys.NAV_STACK not in st.session_state:
         st.session_state[session_keys.NAV_STACK] = []
+        query_sync_needed = True
 
     runtime_bundle = runtime_bundle or app_module._resolve_app_shell_runtime(
         int(st.session_state.get("user_id"))
@@ -59,6 +62,7 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
             )
         if st.sidebar.button("Admin Panel", use_container_width=True):
             st.session_state[session_keys.ACTIVE_REPORT_MODE] = "Admin"
+            app_query_helpers.sync_to_query_params(st=st, session_state=st.session_state)
             st.rerun()
 
     st.sidebar.markdown("---")
@@ -80,10 +84,15 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
 
     if "active_cycle_id" not in st.session_state:
         st.session_state.active_cycle_id = cycle_ids[0]
+        query_sync_needed = True
     active_cycle_id = int(st.session_state.get("active_cycle_id", cycle_ids[0]))
     if active_cycle_id not in cycle_ids:
         active_cycle_id = cycle_ids[0]
         st.session_state.active_cycle_id = active_cycle_id
+        query_sync_needed = True
+
+    if query_sync_needed:
+        app_query_helpers.sync_to_query_params(st=st, session_state=st.session_state)
 
     current_cycle_index = cycle_ids.index(active_cycle_id)
     selected_cycle_id = int(

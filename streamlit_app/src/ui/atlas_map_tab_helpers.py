@@ -82,6 +82,7 @@ def render_focus_map_tab_content_with_context(context: FocusMapTabContext) -> No
             atlas_map_sidebar_helpers.resolve_map_lens_and_refs(
                 sidebar=map_sidebar_area,
                 session_state=context.session_state,
+                st_module=context.st_module,
                 roots=context.roots,
                 index=context.index,
                 selected_ref=context.selected_ref,
@@ -180,6 +181,7 @@ def render_focus_map_tab_content_with_context(context: FocusMapTabContext) -> No
         atlas_map_chart_helpers.render_map_chart_and_handle_navigation(
             map_chart_area=map_chart_area,
             session_state=context.session_state,
+            st_module=context.st_module,
             map_refs=map_refs,
             index=context.index,
             selected_ref=context.selected_ref,

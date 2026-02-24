@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from src.ui import atlas_map_sidebar_helpers
 
 
@@ -125,6 +127,32 @@ def test_resolve_map_lens_and_refs_branch_mode_uses_descendants():
     assert map_refs == ["kr_1", "task_1"]
     assert map_kr_refs == ["kr_1"]
     assert map_task_refs == ["task_1"]
+
+
+def test_resolve_map_lens_and_refs_syncs_default_lens_to_query_params():
+    sidebar = _FakeSidebar(segmented_value="Scope")
+    session_state = {}
+    st_module = SimpleNamespace(query_params={})
+
+    map_lens, map_refs, map_kr_refs, map_task_refs = (
+        atlas_map_sidebar_helpers.resolve_map_lens_and_refs(
+            sidebar=sidebar,
+            session_state=session_state,
+            st_module=st_module,
+            roots=["goal_1"],
+            index={"goal_1": {"type": "GOAL"}},
+            selected_ref="goal_1",
+            scope_refs_fn=lambda *_args, **_kwargs: ["goal_1"],
+            descendant_refs_fn=lambda *_args, **_kwargs: [],
+        )
+    )
+
+    assert map_lens == "Scope"
+    assert map_refs == ["goal_1"]
+    assert map_kr_refs == []
+    assert map_task_refs == []
+    assert session_state["atlas_map_lens"] == "Scope"
+    assert st_module.query_params["lens"] == "Scope"
 
 
 def test_render_health_debug_panel_admin_renders_dataframe():

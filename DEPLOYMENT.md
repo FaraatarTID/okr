@@ -20,6 +20,23 @@ This is the safest and easiest enterprise path for this repo.
 
 ---
 
+Architecture status and deployment intent (2026-02-24)
+
+- The app is designed for backend-server operation in enterprise environments (`okr` + `backend-api` + `backend-worker`).
+- The backend embedded in `streamlit_app/app.py` is implemented for Streamlit Cloud compatibility and has been validated in Streamlit Cloud.
+- For corporate deployments (AWS/ECS/Kubernetes/VM), use the decoupled backend-server model from this guide, not embedded mode.
+- The distributed resilience plan items are implemented:
+  - cluster-wide cache invalidation signaling
+  - URL-backed navigation-pointer restoration/synchronization
+  - resilience verification scripts and runbook (`scripts/verify_resilience.py`, `scripts/run_multi_instance_failover_drill.py`, `docs/RESILIENCE_VERIFICATION.md`)
+
+Readiness conclusion for corporate backend-server deployment:
+
+- Purpose fulfilled for operational backend-server deployment guidance and resilience controls.
+- Remaining optional improvement for "easier AWS onboarding": add first-party AWS IaC blueprints (for example ECS/Fargate and RDS templates) beyond the current platform-agnostic Docker/Kubernetes guidance.
+
+---
+
 What this deployment gives you
 
 - Non-root container runtime

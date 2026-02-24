@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.ui import app_query_helpers
 from src.ui import dialog_chrome_helpers
 
 
@@ -19,9 +20,16 @@ def inject_dialog_css(*, st_module: Any) -> None:
     )
 
 
-def clear_active_inspector(*, session_state: dict[str, Any]) -> None:
+def clear_active_inspector(
+    *,
+    session_state: dict[str, Any],
+    st_module: Any | None = None,
+) -> None:
     if "active_inspector_id" in session_state:
         del session_state["active_inspector_id"]
+    if st_module is None:
+        return
+    app_query_helpers.sync_to_query_params(st=st_module, session_state=session_state)
 
 
 def handle_missing_node(
@@ -34,7 +42,7 @@ def handle_missing_node(
 ) -> bool:
     st_module.error(f"Node {node_id} ({node_type}) not found")
     if st_module.button("Close", key=f"close_error_{node_id}"):
-        clear_active_inspector(session_state=session_state)
+        clear_active_inspector(session_state=session_state, st_module=st_module)
         rerun_fn()
     return True
 
@@ -80,7 +88,7 @@ def render_header(
             icon=":material/close:",
             key=f"close_insp_{node_id}",
         ):
-            clear_active_inspector(session_state=session_state)
+            clear_active_inspector(session_state=session_state, st_module=st_module)
             rerun_fn()
         return
 

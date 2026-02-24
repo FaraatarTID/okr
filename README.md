@@ -1,6 +1,6 @@
 # OKR Tracker
 
-A Streamlit-based OKR platform for multi-user goal execution, lifecycle governance, AI-assisted analysis, and backend-assisted secure mutations.
+A backend-first OKR platform with a Streamlit UI layer, secure backend mutations, and async worker support. The embedded backend path in `streamlit_app/app.py` is a Streamlit Cloud compatibility mode.
 
 This README is intentionally concise. Detailed behavior, operations, and role playbooks live in the documents below.
 
@@ -42,6 +42,7 @@ Use this section as the primary index for all project docs.
 - Enterprise deployment (FA, concise): [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md)
 - Troubleshooting (EN): [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - Troubleshooting (FA): [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md)
+- Resilience verification runbook (EN): [docs/RESILIENCE_VERIFICATION.md](docs/RESILIENCE_VERIFICATION.md)
 - Config reference (EN): [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 - Config reference (FA): [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md)
 - Deployment compatibility redirects:
@@ -81,6 +82,12 @@ Use this section as the primary index for all project docs.
 | Admin/Operator | [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) |
 | OKR transformation lead | [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md) |
 | AI/policy reviewer | [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md) |
+
+## Deployment Intent
+
+- Primary production design: `okr` + `backend-api` + `backend-worker` (self-hosted backend server architecture).
+- Embedded backend in `app.py` is for Streamlit Cloud compatibility and MVP/demo hosting.
+- Corporate deployments (AWS/ECS/Kubernetes/VM) should follow [DEPLOYMENT.md](DEPLOYMENT.md), not embedded mode.
 
 ## Quickstart (Local Development)
 

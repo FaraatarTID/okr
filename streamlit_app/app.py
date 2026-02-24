@@ -357,7 +357,7 @@ def render_login():
 
 def _clear_user_session():
     """Clear auth/navigation/session keys on logout or invalid session."""
-    return app_auth_helpers.clear_user_session(st.session_state)
+    return app_auth_helpers.clear_user_session(st.session_state, st_module=st)
 
 
 def render_password_reset_gate():
@@ -380,6 +380,8 @@ def main():
     """Top-level app entrypoint."""
     # Restore UI state from URL if present (e.g. after failover or refresh).
     app_query_helpers.restore_from_query_params(st=st, session_state=st.session_state)
+    # Canonicalize mapped query params after restoration/validation.
+    app_query_helpers.sync_to_query_params(st=st, session_state=st.session_state)
 
     # Check if another node in the cluster requested a cache invalidation.
     check_distributed_cache_staleness()

@@ -17,6 +17,7 @@ class _FakeSt:
     def __init__(self, *, button_map=None, select_value=None):
         self._button_map = dict(button_map or {})
         self._select_value = select_value
+        self.query_params = {}
         self.markdowns = []
         self.columns_objs = None
 
@@ -119,6 +120,8 @@ def test_render_suggested_focus_banner_sets_focus_on_use_suggested():
     assert rendered is True
     assert session_state["atlas_focus_task_ref"] == "task_1"
     assert session_state["atlas_selected_ref"] == "task_1"
+    assert fake_st.query_params["ft"] == "task_1"
+    assert fake_st.query_params["sel"] == "task_1"
     assert reruns == ["rerun"]
     assert any("AI confidence: 91%" in item for item in fake_st.markdowns)
 
@@ -143,4 +146,5 @@ def test_render_focus_task_picker_updates_selection_and_reruns():
 
     assert picked == "task_2"
     assert session_state["atlas_focus_task_ref"] == "task_2"
+    assert fake_st.query_params["ft"] == "task_2"
     assert reruns == ["rerun"]

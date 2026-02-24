@@ -343,6 +343,7 @@ def create_user_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return SimpleNamespace(**backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -827,6 +828,7 @@ def update_user_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return SimpleNamespace(**backend_result)
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -890,6 +892,7 @@ def reset_user_password_from_crud(
             actor_username=actor_username,
         )
         if "error" not in backend_result:
+            crud_module.clear_cache_safe()
             return bool(backend_result.get("reset", True))
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
@@ -1015,3 +1018,4 @@ def ensure_admin_exists_from_crud(*, crud_module) -> bool:
     if last_exc is not None:
         raise last_exc
     return False
+

@@ -124,6 +124,7 @@ def test_render_plotly_events_points_uses_chart_area_context():
 
 def test_apply_clicked_ref_navigation_updates_task_selection():
     session_state = {}
+    st_module = SimpleNamespace(query_params={})
     reruns = []
 
     handled = atlas_map_chart_helpers.apply_clicked_ref_navigation(
@@ -131,6 +132,7 @@ def test_apply_clicked_ref_navigation_updates_task_selection():
         selected_ref="goal_1",
         index={"task_1": {"type": "TASK"}},
         session_state=session_state,
+        st_module=st_module,
         health_index={},
         collect_task_refs_fn=lambda **_kwargs: [],
         suggest_focus_task_fn=lambda **_kwargs: None,
@@ -142,18 +144,22 @@ def test_apply_clicked_ref_navigation_updates_task_selection():
     assert session_state["atlas_selected_ref"] == "task_1"
     assert session_state["atlas_breadcrumbs"] == "task_1"
     assert session_state["atlas_focus_task_ref"] == "task_1"
+    assert st_module.query_params["sel"] == "task_1"
+    assert st_module.query_params["ft"] == "task_1"
     assert reruns == ["rerun"]
 
 
 def test_apply_clicked_ref_navigation_updates_branch_focus_from_tasks():
     session_state = {}
+    st_module = SimpleNamespace(query_params={})
     reruns = []
 
     handled = atlas_map_chart_helpers.apply_clicked_ref_navigation(
-        clicked_ref="kr_1",
+        clicked_ref="key_result_1",
         selected_ref="goal_1",
-        index={"kr_1": {"type": "KEY_RESULT"}},
+        index={"key_result_1": {"type": "KEY_RESULT"}},
         session_state=session_state,
+        st_module=st_module,
         health_index={},
         collect_task_refs_fn=lambda **_kwargs: ["task_2"],
         suggest_focus_task_fn=lambda **_kwargs: "task_2",
@@ -162,8 +168,10 @@ def test_apply_clicked_ref_navigation_updates_branch_focus_from_tasks():
     )
 
     assert handled is True
-    assert session_state["atlas_selected_ref"] == "kr_1"
+    assert session_state["atlas_selected_ref"] == "key_result_1"
     assert session_state["atlas_focus_task_ref"] == "task_2"
+    assert st_module.query_params["sel"] == "key_result_1"
+    assert st_module.query_params["ft"] == "task_2"
     assert reruns == ["rerun"]
 
 
@@ -198,12 +206,14 @@ def test_render_map_chart_and_handle_navigation_updates_clicked_task():
     chart_area = _FakeChartArea()
     chart_area.next_plotly_payload = {"selection": {"points": [{"id": "task_1"}]}}
     session_state = {}
+    st_module = SimpleNamespace(query_params={})
     reruns = []
     treemap = SimpleNamespace(data=[SimpleNamespace(ids=["task_1"], labels=["Task 1"])])
 
     handled = atlas_map_chart_helpers.render_map_chart_and_handle_navigation(
         map_chart_area=chart_area,
         session_state=session_state,
+        st_module=st_module,
         map_refs=["task_1"],
         index={"task_1": {"type": "TASK"}},
         selected_ref="goal_1",
@@ -231,6 +241,8 @@ def test_render_map_chart_and_handle_navigation_updates_clicked_task():
     assert session_state["atlas_selected_ref"] == "task_1"
     assert session_state["atlas_breadcrumbs"] == "task_1"
     assert session_state["atlas_focus_task_ref"] == "task_1"
+    assert st_module.query_params["sel"] == "task_1"
+    assert st_module.query_params["ft"] == "task_1"
     assert chart_area.plotly_calls == 1
     assert reruns == ["rerun"]
 
