@@ -61,6 +61,7 @@ from backend_app.schemas import (
     WorkLogDeleteResponse,
 )
 from backend_app.security import require_service_access, resolve_actor_username
+from backend_app.security_state import get_app_state, set_app_state
 
 ensure_streamlit_app_on_path()
 
@@ -588,6 +589,40 @@ def _safe_audit_job_submit(
 @app.get("/healthz")
 def healthz() -> dict:
     return {"status": "ok"}
+
+
+@app.get(
+    "/v1/state/{key}",
+    dependencies=[Depends(require_service_access)],
+)
+def api_get_app_state(key: str) -> dict:
+    value = get_app_state(key)
+    return {"key": key, "value": value}
+
+
+@app.post(
+    "/v1/state/{key}",
+    dependencies=[Depends(require_service_access)],
+)
+async def api_set_app_state(key: str, request: Request) -> dict:
+    # Accept raw text/plain or json-wrapped value
+    try:
+        body = await request.body()
+        raw_value = body.decode("utf-8")
+        # Try if it's JSON {"value": "..."}
+        try:
+            data = json.loads(raw_value)
+            if isinstance(data, dict) and "value" in data:
+                value = str(data["value"])
+            else:
+                value = raw_value
+        except json.JSONDecodeError:
+            value = raw_value
+        
+        set_app_state(key, value)
+        return {"key": key, "value": value, "status": "updated"}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @app.post(
