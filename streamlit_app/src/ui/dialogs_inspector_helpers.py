@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.crud import get_session_context
-from src.models import Goal, KeyResult, Objective, Task
+from src.crud import get_node
+from src.services import backend_client
 from src.ui.components import render_inspector_content
 
 
@@ -38,15 +38,21 @@ def _parse_typed_node_reference(node_id):
 
 
 def _autodetect_node_type(raw_id):
-    with get_session_context() as session:
-        if session.get(Task, raw_id):
-            return "TASK"
-        if session.get(KeyResult, raw_id):
-            return "KEY_RESULT"
-        if session.get(Objective, raw_id):
-            return "OBJECTIVE"
-        if session.get(Goal, raw_id):
-            return "GOAL"
+    actor = backend_client.resolve_actor_username()
+    detected = backend_client.read_detect_node_type(
+        int(raw_id),
+        actor_username=actor,
+    )
+    if isinstance(detected, dict) and "error" in detected:
+        return None
+    if detected:
+        return str(detected)
+    for label in ("TASK", "KEY_RESULT", "OBJECTIVE", "GOAL"):
+        try:
+            if get_node(int(raw_id), label):
+                return label
+        except Exception:
+            continue
     return None
 
 

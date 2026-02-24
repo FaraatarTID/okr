@@ -124,7 +124,14 @@ def cached_get_leadership_metrics(
     backend_read_proxy_enabled_fn,
     handle_backend_read_failure_fn,
 ):
-    if backend_read_proxy_enabled_fn() and actor_username:
+    if backend_read_proxy_enabled_fn():
+        if not actor_username:
+            handle_backend_read_failure_fn(
+                operation="leadership metrics",
+                backend_result={
+                    "error": "Actor username is required for backend read proxy mode.",
+                },
+            )
         try:
             from src.services.backend_client import fetch_leadership_metrics
 
@@ -159,11 +166,14 @@ def resolve_node_details(
     session_state,
     get_node_details_from_lookup_fn,
     parse_typed_ref_fn,
-    get_session_context_fn,
-    models_by_type,
-    logger,
+    get_node_fn=None,
+    actor_username=None,
+    logger=None,
     atlas_node_details_helpers_module,
+    get_session_context_fn=None,
+    models_by_type=None,
 ):
+    _ = get_session_context_fn, models_by_type
     ensure_model_bindings_current_fn()
     return atlas_node_details_helpers_module.resolve_node_details(
         node_id,
@@ -171,8 +181,8 @@ def resolve_node_details(
         session_state=session_state,
         get_node_details_from_lookup_fn=get_node_details_from_lookup_fn,
         parse_typed_ref_fn=parse_typed_ref_fn,
-        get_session_context_fn=get_session_context_fn,
-        models_by_type=models_by_type,
+        get_node_fn=get_node_fn or (lambda *_args, **_kwargs: None),
+        actor_username=actor_username,
         logger=logger,
     )
 
@@ -188,22 +198,22 @@ def render_timer_content(
     escape_html_fn,
 ):
     # Local imports keep bridge decoupled from module import side-effects.
-    from sqlmodel import select
-    from src.database import get_session_context
-    from src.models import Task, WorkLog
+    from src.crud import get_node
+    from src.services import backend_client
     from src.services.timer_service import stop_timer
 
     def _load_task(task_id):
-        with get_session_context() as session:
-            return session.get(Task, task_id)
+        return get_node(task_id, "TASK", actor_username=username)
 
     def _fetch_latest_logs(task_id):
-        with get_session_context() as session:
-            return session.exec(
-                select(WorkLog)
-                .where(WorkLog.task_id == task_id)
-                .order_by(WorkLog.start_time.desc())
-            ).all()
+        actor = backend_client.resolve_actor_username(username)
+        logs = backend_client.read_work_logs_by_task(
+            int(task_id),
+            actor_username=actor,
+        )
+        if isinstance(logs, dict) and "error" in logs:
+            return []
+        return list(logs or [])
 
     return atlas_timer_helpers_module.render_timer_content(
         st_module=st_module,

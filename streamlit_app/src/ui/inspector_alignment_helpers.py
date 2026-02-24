@@ -23,82 +23,121 @@ def render_objective_alignment_section(
     if node_type_upper != "OBJECTIVE":
         return
 
-    if select_fn is None:
-        from sqlmodel import select as _sqlmodel_select
-
-        select_fn = _sqlmodel_select
-    if alignment_edge_model is None or objective_model is None:
-        from src.models import AlignmentEdge as _AlignmentEdge, Objective as _Objective
-
-        alignment_edge_model = _AlignmentEdge
-        objective_model = _Objective
+    from src.services import backend_client
 
     st_module.markdown("---")
     st_module.caption("Organizational Alignment")
+
     click_button_fn = getattr(st_module, "button", None)
     if click_button_fn is None:
         click_button_fn = getattr(st_module, "form_submit_button")
 
-    with get_session_context_fn() as session:
-        parents, children = get_alignment_neighbors_fn(session, node_id)
+    use_backend_reads = False
+    try:
+        use_backend_reads = bool(getattr(backend_client, "is_backend_enabled", lambda: False)())
+    except Exception:
+        use_backend_reads = False
+
+    if use_backend_reads:
+        context_result = backend_client.read_alignment_context(
+            int(node_id),
+            actor_username=username,
+        )
+        if isinstance(context_result, dict) and "error" in context_result:
+            st_module.error(
+                str(context_result.get("error") or "Failed to load alignments.")
+            )
+            return
+        context = dict(context_result or {})
+    else:
+        if (
+            select_fn is None
+            or alignment_edge_model is None
+            or objective_model is None
+        ):
+            context = {"parents": [], "children": [], "all_objectives": [], "edges": []}
+        else:
+            with get_session_context_fn() as session:
+                parents, children = get_alignment_neighbors_fn(session, int(node_id))
+                all_edges = list(session.exec(select_fn(alignment_edge_model)).all())
+                edge_rows = [
+                    edge
+                    for edge in all_edges
+                    if int(getattr(edge, "parent_id", -1)) == int(node_id)
+                    or int(getattr(edge, "child_id", -1)) == int(node_id)
+                ]
+                all_objs = list(
+                    session.exec(
+                        select_fn(objective_model).where(
+                            objective_model.id != int(node_id)
+                        )
+                    ).all()
+                )
+            context = {
+                "parents": list(parents or []),
+                "children": list(children or []),
+                "all_objectives": list(all_objs or []),
+                "edges": list(edge_rows or []),
+            }
+
+    parents = list(context.get("parents") or [])
+    children = list(context.get("children") or [])
+    all_objs = list(context.get("all_objectives") or [])
+    edges = list(context.get("edges") or [])
+
+    edge_by_parent_child: dict[tuple[int, int], int] = {}
+    for edge in edges:
+        parent_id = getattr(edge, "parent_id", None)
+        child_id = getattr(edge, "child_id", None)
+        edge_id = getattr(edge, "id", None)
+        if parent_id is None or child_id is None or edge_id is None:
+            continue
+        edge_by_parent_child[(int(parent_id), int(child_id))] = int(edge_id)
 
     if parents:
         st_module.write("**Supports (Parents):**")
         for parent in parents:
             p_col1, p_col2 = st_module.columns([0.8, 0.2])
             p_col1.write(f"{getattr(parent, 'title', '')}")
-            with get_session_context_fn() as session:
-                edge = session.exec(
-                    select_fn(alignment_edge_model)
-                    .where(
-                        alignment_edge_model.parent_id == getattr(parent, "id", None)
-                    )
-                    .where(alignment_edge_model.child_id == node_id)
-                ).first()
-                if edge:
-                    with p_col2:
-                        if click_button_fn(
-                            "🗑️",
-                            key=f"del_align_p_{getattr(edge, 'id', '')}",
-                        ):
-                            delete_alignment_fn(
-                                getattr(edge, "id", None),
-                                actor_username=username,
-                            )
-                            rerun_fn()
+            parent_id = getattr(parent, "id", None)
+            edge_id = (
+                edge_by_parent_child.get((int(parent_id), int(node_id)))
+                if parent_id is not None
+                else None
+            )
+            if edge_id:
+                with p_col2:
+                    if click_button_fn(
+                        "Delete",
+                        key=f"del_align_p_{edge_id}",
+                    ):
+                        delete_alignment_fn(int(edge_id), actor_username=username)
+                        rerun_fn()
 
     if children:
         st_module.write("**Supported by (Children):**")
         for child in children:
             c_col1, c_col2 = st_module.columns([0.8, 0.2])
             c_col1.write(f"{getattr(child, 'title', '')}")
-            with get_session_context_fn() as session:
-                edge = session.exec(
-                    select_fn(alignment_edge_model)
-                    .where(alignment_edge_model.parent_id == node_id)
-                    .where(alignment_edge_model.child_id == getattr(child, "id", None))
-                ).first()
-                if edge:
-                    with c_col2:
-                        if click_button_fn(
-                            "🗑️",
-                            key=f"del_align_c_{getattr(edge, 'id', '')}",
-                        ):
-                            delete_alignment_fn(
-                                getattr(edge, "id", None),
-                                actor_username=username,
-                            )
-                            rerun_fn()
+            child_id = getattr(child, "id", None)
+            edge_id = (
+                edge_by_parent_child.get((int(node_id), int(child_id)))
+                if child_id is not None
+                else None
+            )
+            if edge_id:
+                with c_col2:
+                    if click_button_fn(
+                        "Delete",
+                        key=f"del_align_c_{edge_id}",
+                    ):
+                        delete_alignment_fn(int(edge_id), actor_username=username)
+                        rerun_fn()
 
     if not parents and not children:
         st_module.info("No active alignments. This objective is currently isolated.")
 
-    with st_module.expander("➕ Add Alignment Link"):
-        with get_session_context_fn() as session:
-            all_objs = session.exec(
-                select_fn(objective_model).where(objective_model.id != node_id)
-            ).all()
-
+    with st_module.expander("Add Alignment Link"):
         if not all_objs:
             st_module.write("No other objectives available to link.")
             return
@@ -143,10 +182,7 @@ def render_objective_alignment_section(
             key=f"align_type_{node_id}",
         )
 
-        if click_button_fn(
-            "🔗 Link Objectives",
-            use_container_width=True,
-        ):
+        if click_button_fn("🔗 Link Objectives", use_container_width=True):
             try:
                 if align_type_sel == "This objective SUPPORTS the target":
                     create_alignment_fn(

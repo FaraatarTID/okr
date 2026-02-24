@@ -69,7 +69,14 @@ def build_scope_snapshot_with_backend_fallback(
 ):
     ensure_model_bindings_current_fn()
     canonical_owner_ids_key = canonical_owner_ids_key_fn(owner_ids_key)
-    if backend_read_proxy_enabled_fn() and actor_username:
+    if backend_read_proxy_enabled_fn():
+        if not actor_username:
+            handle_backend_read_failure_fn(
+                operation="atlas snapshot",
+                backend_result={
+                    "error": "Actor username is required for backend read proxy mode.",
+                },
+            )
         owner_ids = (
             list(canonical_owner_ids_key)
             if canonical_owner_ids_key is not None

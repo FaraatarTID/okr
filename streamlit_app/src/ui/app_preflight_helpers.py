@@ -109,8 +109,8 @@ def run_pdf_preflight(
     # Legacy: We no longer allow opting out of proxy mutations if in a Streamlit context
     # backend_proxy_mutations = env_bool_fn("OKR_BACKEND_PROXY_MUTATIONS", True)
     
-    # Selected high-traffic reads can still be fetched via backend if configured
-    backend_proxy_reads = env_bool_fn("OKR_BACKEND_PROXY_READS", False)
+    # Backend segregation is strict: reads must use backend control plane.
+    backend_proxy_reads = True
 
     report = evaluate_runtime_preflight_fn(
         pdf_method=pdf_method,

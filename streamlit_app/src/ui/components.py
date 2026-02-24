@@ -20,7 +20,7 @@ from sqlalchemy import func, inspect as sa_inspect
 from sqlmodel import select
 
 from src.config_runtime import get_bool_config
-from src.crud import get_session_context, get_user_by_username
+from src.crud import get_node, get_session_context, get_user_by_username
 from src.domain.authorization import can_track_task_timer  # noqa: F401 - compatibility export
 from src.domain.scoring import calculate_kr_score, get_score_color_band, get_score_label
 from src.models import (  # noqa: F401 - compatibility exports for bridge helpers/tests
@@ -259,9 +259,10 @@ def _cached_get_user_by_id(user_id):
 
 
 @st.cache_data(ttl=45, show_spinner=False)
-def _cached_get_work_logs(task_id):
+def _cached_get_work_logs(task_id, actor_username=None):
     return atlas_cached_read_helpers.cached_get_work_logs(
         task_id,
+        actor_username=actor_username,
         ensure_model_bindings_current_fn=_ensure_model_bindings_current,
         get_session_context_fn=get_session_context,
         select_fn=select,
@@ -341,13 +342,8 @@ def get_node_details(node_id, node_lookup=None):
         session_state=st.session_state,
         get_node_details_from_lookup_fn=atlas_runtime_lookup_helpers.get_node_details_from_lookup,
         parse_typed_ref_fn=_parse_typed_ref,
-        get_session_context_fn=get_session_context,
-        models_by_type={
-            "GOAL": Goal,
-            "OBJECTIVE": Objective,
-            "KEY_RESULT": KeyResult,
-            "TASK": Task,
-        },
+        get_node_fn=get_node,
+        actor_username=st.session_state.get("username"),
         logger=logger,
         atlas_node_details_helpers_module=atlas_node_details_helpers,
     )

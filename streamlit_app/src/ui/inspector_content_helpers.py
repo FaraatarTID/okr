@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from src.crud import get_session_context
 from src.domain.lifecycle import get_allowed_transitions, STATE_HINTS, STATE_ICONS
 from src.domain.scoring import (
     calculate_kr_score,
@@ -49,11 +48,15 @@ def render_inspector_content(
         delete_work_log,
         get_all_cycles,
     )
-    from src.domain.alignment import get_alignment_neighbors
     from src.services.ai_service import analyze_node
     from src.utils.deadline_utils import get_deadline_status
 
     inspector_shell_helpers.inject_dialog_css(st_module=st_module)
+
+    def _disabled_session_context():
+        raise RuntimeError(
+            "Direct frontend DB sessions are disabled in backend-segregated mode."
+        )
 
     # Fetch node (cached to prevent rerun DB bottleneck)
     node = cached_get_node_fn(node_id, node_type, actor_username=username)
@@ -102,8 +105,8 @@ def render_inspector_content(
         state_icons=STATE_ICONS,
         state_hints=STATE_HINTS,
         get_all_cycles_fn=get_all_cycles,
-        get_session_context_fn=get_session_context,
-        get_alignment_neighbors_fn=get_alignment_neighbors,
+        get_session_context_fn=_disabled_session_context,
+        get_alignment_neighbors_fn=(lambda *_args, **_kwargs: ([], [])),
         create_alignment_fn=create_alignment,
         delete_alignment_fn=delete_alignment,
         update_goal_fn=update_goal,
@@ -136,7 +139,12 @@ def render_inspector_content(
         node_id=node_id,
         username=username,
         logger=logger,
-        cached_get_work_logs_fn=cached_get_work_logs_fn,
+        cached_get_work_logs_fn=(
+            lambda task_id: cached_get_work_logs_fn(
+                task_id,
+                actor_username=username,
+            )
+        ),
         get_deadline_status_fn=get_deadline_status,
         analyze_node_fn=analyze_node,
         update_task_fn=update_task,
