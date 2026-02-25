@@ -300,8 +300,12 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
         page.goto(e2e_stack.app_url, wait_until="domcontentloaded", timeout=90_000)
 
         expect(page.get_by_text("Login to OKR Tracker")).to_be_visible(timeout=60_000)
-        page.get_by_label("Username").fill(e2e_stack.username)
-        page.get_by_label("Password").fill(e2e_stack.password)
+        page.get_by_role("textbox", name="Username", exact=True).fill(
+            e2e_stack.username
+        )
+        page.get_by_role("textbox", name="Password", exact=True).fill(
+            e2e_stack.password
+        )
         page.get_by_role("button", name="Login").click()
 
         expect(page.get_by_text("Focus Task")).to_be_visible(timeout=90_000)
