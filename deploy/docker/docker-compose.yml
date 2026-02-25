@@ -106,3 +106,47 @@ services:
       - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
     command: ["python", "-m", "backend_app.worker"]
     restart: unless-stopped
+
+  spa-bff:
+    profiles: ["spa"]
+    build:
+      context: ../../spa-bff
+      dockerfile: Dockerfile
+    container_name: okr-spa-bff
+    image: ${SPA_BFF_IMAGE:-okr-spa-bff:local}
+    environment:
+      - BFF_HOST=0.0.0.0
+      - BFF_PORT=${BFF_PORT:-3001}
+      - BFF_REQUEST_TIMEOUT_MS=${BFF_REQUEST_TIMEOUT_MS:-20000}
+      - OKR_BACKEND_API_URL=${OKR_BACKEND_API_URL:-http://backend-api:8100}
+      - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:-}
+      - OKR_BACKEND_SIGNING_SECRET=${OKR_BACKEND_SIGNING_SECRET:-}
+      - BFF_LOG_LEVEL=${BFF_LOG_LEVEL:-info}
+    ports:
+      - "${SPA_BFF_BIND_ADDRESS:-127.0.0.1}:${SPA_BFF_HOST_PORT:-3001}:${BFF_PORT:-3001}"
+    depends_on:
+      - backend-api
+    restart: unless-stopped
+
+  spa-web:
+    profiles: ["spa"]
+    build:
+      context: ../../spa-web
+      dockerfile: Dockerfile
+    container_name: okr-spa-web
+    image: ${SPA_WEB_IMAGE:-okr-spa-web:local}
+    environment:
+      - PORT=3000
+      - BFF_PUBLIC_ORIGIN=${BFF_PUBLIC_ORIGIN:-http://spa-bff:3001}
+      - OKR_SPA_ROLLOUT_ENABLED=${OKR_SPA_ROLLOUT_ENABLED:-false}
+      - OKR_SPA_ROLLOUT_ALLOW_ALL=${OKR_SPA_ROLLOUT_ALLOW_ALL:-false}
+      - OKR_SPA_ROLLOUT_TEAM_IDS=${OKR_SPA_ROLLOUT_TEAM_IDS:-}
+      - OKR_SPA_ROLLOUT_USERNAMES=${OKR_SPA_ROLLOUT_USERNAMES:-}
+      - OKR_SPA_ROLLOUT_ROLES=${OKR_SPA_ROLLOUT_ROLES:-admin}
+      - OKR_SPA_ROLLOUT_ALLOW_PREVIEW_BYPASS=${OKR_SPA_ROLLOUT_ALLOW_PREVIEW_BYPASS:-false}
+      - OKR_STREAMLIT_FALLBACK_URL=${OKR_STREAMLIT_FALLBACK_URL:-http://127.0.0.1:8501}
+    ports:
+      - "${SPA_WEB_BIND_ADDRESS:-127.0.0.1}:${SPA_WEB_HOST_PORT:-3000}:3000"
+    depends_on:
+      - spa-bff
+    restart: unless-stopped

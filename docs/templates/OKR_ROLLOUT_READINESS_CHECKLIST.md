@@ -1,4 +1,4 @@
-# OKR Rollout Readiness Checklist
+﻿# OKR Rollout Readiness Checklist
 
 Documentation HQ: [README](../../README.md)
 
@@ -56,7 +56,7 @@ Use this checklist before pilot start and before each scale wave.
 | Roles are configured correctly (`admin/manager/member`) |  |  |
 | Manager links are configured (`manager_id`) |  |  |
 | Active cycle is selected and visible |  |  |
-| Teams can access Weekly Ritual and submit KR check-ins |  |  |
+| Teams can access Weekly Check-In and submit KR check-ins |  |  |
 | Dashboard and report views are available for governance |  |  |
 | Lifecycle states are used consistently (`DRAFT/ACTIVE/GRADING/ARCHIVED`) |  |  |
 | BAU release log is reviewed in manager governance rhythm |  |  |
@@ -81,3 +81,4 @@ Outcome:
 Approver:
 Date:
 Conditions (if any):
+

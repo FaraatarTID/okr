@@ -1,4 +1,4 @@
-# OKR Rollout Guide (Enterprise)
+﻿# OKR Rollout Guide (Enterprise)
 Documentation HQ: [README](../README.md)
 
 This guide translates enterprise OKR rollout practices into an execution model for this project.
@@ -68,7 +68,7 @@ Use the following defaults unless there is a strong reason to deviate:
 
 Map rollout ceremonies to product workflows:
 - `OKR Planning`: create/align Objectives/KRs, move from `DRAFT` to `ACTIVE` when execution starts.
-- `Weekly`: run Weekly Ritual, especially Step 2 (`Update KRs`) for check-in discipline.
+- `Weekly`: run Weekly Check-In, especially Step 2 (`Update KRs`) for check-in discipline.
 - `Review`: evaluate cycle outcomes with Strategic Dashboard + reports.
 - `Retrospective`: capture reflection signals, review RetroBox evidence, define process improvements.
 - `Operational BAU lane`: assign routine BAU projects/tasks with deadlines in external systems (for example Odoo/ticketing/paper), separate from OKR evidence.
@@ -79,7 +79,7 @@ Execution rule:
 ## 6. Pilot Success Criteria (Define Up Front)
 
 Set explicit pass/fail thresholds before the first cycle. Recommended categories:
-- Adoption: participation in planning, weekly ritual completion, training coverage.
+- Adoption: participation in planning, weekly check-in completion, training coverage.
 - Quality: KR clarity, metric quality, confidence trends, variation discipline.
 - Boundary quality: BAU contamination rate trend and BAU release cycle time.
 - Execution: check-in freshness, overdue risk trend, at-risk KR trend.
@@ -158,7 +158,7 @@ Implementation note:
 
 - Lifecycle constraints and transitions: `docs/OKR_LIFECYCLE_GUIDE.md`
 - Manager coaching and governance rhythm: `docs/MANAGER_PLAYBOOK.md`
-- User execution behavior and ritual flow: `docs/USER_GUIDE.md`
+- User execution behavior and check-in flow: `docs/USER_GUIDE.md`
 - Strategic-change vs BAU classification policy: `docs/OKR_BAU_BOUNDARY_GUIDE.md`
 - Learning-loop mechanics for check-in quality: `docs/learning-loop.md`
 
@@ -176,3 +176,5 @@ Persian counterparts:
 - `docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE_FA.md`
 - `docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST_FA.md`
 - `docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE_FA.md`
+
+

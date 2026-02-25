@@ -1,4 +1,4 @@
-# System Administrator Guide
+﻿# System Administrator Guide
 
 Documentation HQ: [README](../README.md)
 
@@ -28,7 +28,7 @@ Admin core duty:
 User roles:
 
 - `admin`: full organization visibility, user/cycle administration, broad edit rights.
-- `manager`: visibility and mutation scope for direct-report hierarchies, plus weekly team monitoring, coaching, and ritual discipline.
+- `manager`: visibility and mutation scope for direct-report hierarchies, plus weekly team monitoring, coaching, and check-in discipline.
 - `member`: own-scope execution and updates.
 
 Direct-report vs same-team (important distinction):
@@ -139,7 +139,7 @@ Weekly monitoring procedure (dummy manager):
 
 1. Baseline (start of week): open `Leadership Insights -> Execution`, filter to the manager's team, record `Data Hygiene`, `Avg Confidence`, `At-Risk KRs`, `Overdue Tasks`, `At Risk Tasks`.
 2. Mid-week control: review `At-Risk Key Results` and `Overdue Tasks`; open affected nodes in Atlas (`Branch` lens) and correct ownership, deadlines, or KR metric fields where required.
-3. Ritual governance (end of week): verify every direct report completes `Weekly Ritual` (Step 2 KR check-ins + Step 3 weekly plan). Treat `RetroBox` as review-only evidence, not an update flow.
+3. Check-In governance (end of week): verify every direct report completes `Weekly Check-In` (Step 2 KR check-ins + Step 3 weekly plan). Treat `RetroBox` as review-only evidence, not an update flow.
 4. Strategic risk pass: open `Strategy Pulse`, review burnout + ghost-goal gaps, then generate AI forecast and mitigation actions.
 5. Coaching and escalation: convert high-risk items into explicit team actions (owner + due date + expected metric effect); escalate systemic blockers to admin.
 6. Evidence closure: export `Weekly Report` and keep one shareable summary artifact for the weekly manager review.
@@ -151,16 +151,16 @@ Role boundaries for dummy managers:
 
 Definition of done (for manager monitoring quality):
 
-1. Ritual completion rate for direct reports is 100% weekly.
+1. Check-In completion rate for direct reports is 100% weekly.
 2. No ACTIVE KR remains without fresh check-in beyond policy threshold.
 3. Every high-risk KR has a named owner, mitigation action, and follow-up date.
 
-## 5. Ritual, Retro, and Reporting Governance
+## 5. Check-In, Retro, and Reporting Governance
 
 Process distinction:
 
-- `Weekly Ritual` is the KR update workflow (check-ins + weekly plan).
-- `Retrospective` text is captured in Ritual step 1.
+- `Weekly Check-In` is the KR update workflow (check-ins + weekly plan).
+- `Retrospective` text is captured in Check-In step 1.
 - `RetroBox` is for viewing saved retrospectives (personal/team), not KR check-ins.
 
 Report timing:
@@ -203,7 +203,7 @@ Policy reference:
 ### A) KR looks stale or inconsistent
 
 1. Open KR in Inspector; verify `start/current/target` values and metric type.
-2. Confirm recent check-ins exist (Weekly Ritual step 2).
+2. Confirm recent check-ins exist (Weekly Check-In step 2).
 3. If needed, update KR manually, then re-open dashboard to verify rollup.
 
 ### B) Wrong hierarchy or assignment
@@ -216,7 +216,7 @@ Policy reference:
 
 1. Use dashboard lists to isolate owners and areas.
 2. Use branch lens in Atlas to focus one objective tree at a time.
-3. Ask managers to complete Weekly Ritual and raise confidence-quality comments.
+3. Ask managers to complete Weekly Check-In and raise confidence-quality comments.
 
 ## 8. Known Limits (Important)
 
@@ -235,7 +235,7 @@ Current timeline note:
 1. RBAC correctness (admin/manager/member scopes).
 2. Active cycle correctness and overlap sanity.
 3. DRAFT items moved to ACTIVE when execution starts.
-4. Weekly Ritual adoption for KR check-ins.
+4. Weekly Check-In adoption for KR check-ins.
 5. Dashboard risk trends reviewed and acted on.
 6. AI sync used with preview-first discipline.
 7. BAU release logs are reviewed and contamination trend is controlled.
@@ -256,9 +256,9 @@ Timing note:
 | Atlas Inspector (Data Correction)        | Admin / Manager | Correct KR metrics, lifecycle states, assignments, and deadlines.                                                           | Right after anomaly detection.                         | Ad hoc (often weekly).      | Clean, defensible operational data.                         |
 | AI Progress Sync (Atlas)                 | Admin / Manager | Run preview, apply bounded update, verify result, use undo if needed.                                                       | After analysis refresh or before executive check-in.   | Weekly or as needed.        | Controlled organization-wide analysis/progress consistency. |
 | AI Team Coach (Dashboard)                | Admin / Manager | Generate coaching guidance from aggregate team metrics.                                                                     | After dashboard metrics review.                        | Weekly.                     | Actionable coaching priorities and quick wins.              |
-| Weekly Ritual Compliance Review          | Manager / Admin | Verify teams complete Ritual and update KR check-ins.                                                                       | End-of-week governance cycle.                          | Weekly.                     | Reliable check-in cadence and better forecast quality.      |
-| RetroBox (Team Retros)                   | Manager / Admin | Review team retrospectives and identify systemic blockers.                                                                  | Post-Ritual team review.                               | Weekly.                     | Documented improvement loop and impediment list.            |
-| Weekly Report (Team/Owner context)       | Admin / Manager | Use report outputs for evidence in reviews and escalations.                                                                 | End of week, after Ritual.                             | Weekly.                     | Shared factual summary artifacts.                           |
+| Weekly Check-In Compliance Review          | Manager / Admin | Verify teams complete Check-In and update KR check-ins.                                                                       | End-of-week governance cycle.                          | Weekly.                     | Reliable check-in cadence and better forecast quality.      |
+| RetroBox (Team Retros)                   | Manager / Admin | Review team retrospectives and identify systemic blockers.                                                                  | Post-Check-In team review.                               | Weekly.                     | Documented improvement loop and impediment list.            |
+| Weekly Report (Team/Owner context)       | Admin / Manager | Use report outputs for evidence in reviews and escalations.                                                                 | End of week, after Check-In.                             | Weekly.                     | Shared factual summary artifacts.                           |
 | Project Timeline                         | Admin / Manager | Validate schedule pressure and deadline clustering by task.                                                                 | Sprint planning and incident triage.                   | 1-2 times per week.         | Deadline risk visibility for capacity decisions.            |
 | BAU Release Log Review                   | Admin / Manager | Classify/release BAU candidates and rewrite weak KRs into strategic-change KRs.                                             | Weekly team governance + monthly admin audit.          | Weekly + monthly.           | Reduced BAU contamination in OKR portfolio.                 |
 
@@ -275,3 +275,5 @@ For production stability:
 5. HTML export remains available when PDF rendering is not configured.
 6. Keep one deployment mode active per environment (avoid mixed pipelines in the same runtime).
 7. Optional fail-fast mode: set `OKR_STRICT_RUNTIME_PREFLIGHT=1` to stop app startup when runtime preflight detects critical runtime misconfiguration.
+
+

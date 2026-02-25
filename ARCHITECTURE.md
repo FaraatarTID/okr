@@ -1,4 +1,4 @@
-# Architecture
+﻿# Architecture
 
 Documentation HQ: [README](README.md)
 
@@ -191,7 +191,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 2. Check-in flow
 
-- UI weekly ritual submits `create_check_in`.
+- UI weekly check-in submits `create_check_in`.
 - CRUD creates `check_in`, updates KR value/progress, commits transaction.
 - `get_krs_needing_checkin` identifies stale/missing KR updates for the selected cycle.
 
@@ -252,3 +252,4 @@ To move toward higher-concurrency internal production:
 - Keep all frontend read/write contracts backend-owned (implemented) and continue tightening backend API contract/version governance.
 - Keep Streamlit as presentation/workflow shell.
 - Preserve SQLModel domain logic while expanding backend-side query composition to reduce UI rerun pressure.
+

@@ -21,6 +21,7 @@ _ALLOWED_REPORT_MODES = frozenset(
     {
         "Weekly",
         "Daily",
+        "Check-In",
         "Ritual",
         "RetroBox",
         "Timeline",

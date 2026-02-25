@@ -399,3 +399,22 @@ class ReadQueryRequest(BaseModel):
     kind: str = Field(..., min_length=1, max_length=128)
     params: Dict[str, Any] = Field(default_factory=dict)
     actor_username: Optional[str] = None
+
+
+class AiAnalyzeNodeRequest(BaseModel):
+    node_id: int = Field(..., gt=0)
+    node_type: NodeType = "KEY_RESULT"
+    actor_username: Optional[str] = None
+
+
+class AiTeamCoachRequest(BaseModel):
+    team_data: Dict[str, Any] = Field(default_factory=dict)
+    actor_username: Optional[str] = None
+
+
+class AiStrategyPulseRequest(BaseModel):
+    cycle_id: int = Field(..., gt=0)
+    subject_username: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    cycle_title: Optional[str] = Field(default=None, max_length=255)
+    days: int = Field(default=14, ge=7, le=90)
+    actor_username: Optional[str] = None
