@@ -6,7 +6,7 @@ This README is the fast starting point. It shows what this product is, what it i
 
 `Atlas` means the main in-app workspace (Focus Task, Focus Map, and Inspector) after login.
 
-## Mini Glossary (Plain Language)
+## Glossary
 
 - `Goal`: a clear narrative that defines the why, why it matters, and the intended change people can align around.
 - `Objective`: the concrete strategic outcome under a goal for the cycle; it states what should be different and is validated by one or more KRs.
