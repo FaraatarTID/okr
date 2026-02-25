@@ -177,6 +177,7 @@ def e2e_stack(tmp_path_factory: pytest.TempPathFactory) -> E2EStack:
     )
 
     repo_root = Path(__file__).resolve().parents[1]
+    app_dir = repo_root / "streamlit_app"
     tmp_dir = tmp_path_factory.mktemp("playwright_e2e")
     db_path = tmp_dir / "playwright_e2e.sqlite3"
     db_url = f"sqlite:///{db_path.as_posix()}"
@@ -185,6 +186,11 @@ def e2e_stack(tmp_path_factory: pytest.TempPathFactory) -> E2EStack:
     service_token = "e2e-service-token"
 
     env = os.environ.copy()
+    existing_pythonpath = str(env.get("PYTHONPATH", "")).strip()
+    pythonpath_parts = [str(repo_root), str(app_dir)]
+    if existing_pythonpath:
+        pythonpath_parts.append(existing_pythonpath)
+    env["PYTHONPATH"] = os.pathsep.join(pythonpath_parts)
     env.update(
         {
             "OKR_DATABASE_URL": db_url,
