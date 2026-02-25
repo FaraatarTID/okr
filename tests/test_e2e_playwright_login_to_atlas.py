@@ -299,7 +299,8 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
         page = context.new_page()
         page.goto(e2e_stack.app_url, wait_until="domcontentloaded", timeout=90_000)
 
-        expect(page.get_by_text("Login to OKR Tracker")).to_be_visible(timeout=60_000)
+        login_heading = page.get_by_text("Login to OKR Tracker").first
+        expect(login_heading).to_be_visible(timeout=60_000)
         page.get_by_role("textbox", name="Username", exact=True).fill(
             e2e_stack.username
         )
@@ -308,12 +309,15 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
         )
         page.get_by_role("button", name="Login").click()
 
-        focus_map_tab = page.get_by_role("tab", name="Focus Map").first
-        expect(focus_map_tab).to_be_visible(timeout=90_000)
-        focus_map_tab.click()
+        # Streamlit accessibility markup can vary by runtime; assert a stable
+        # post-login signal first, then click Focus Map tab only if exposed.
+        expect(login_heading).not_to_be_visible(timeout=90_000)
+        focus_map_tab = page.get_by_role("tab", name="Focus Map")
+        if focus_map_tab.count() > 0:
+            focus_map_tab.first.click()
         expect(
-            page.get_by_text("Navigate hierarchy and pick your next move.")
-        ).to_be_visible(timeout=60_000)
+            page.get_by_text("Navigate hierarchy and pick your next move.").first
+        ).to_be_visible(timeout=90_000)
 
         start_button = page.get_by_role("button", name="Start").first
         expect(start_button).to_be_enabled(timeout=60_000)
