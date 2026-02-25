@@ -42,7 +42,7 @@ def render_admin_panel_dialog():
     dialogs_admin_helpers.render_admin_panel_dialog_content()
 
 
-@st.dialog("🔄 Weekly Ritual", width="large")
+@st.dialog("🔄 Weekly Check-In", width="large")
 def render_weekly_ritual_dialog(username):
     dialogs_ritual_helpers.render_weekly_ritual_dialog_content(
         username,

@@ -1,4 +1,4 @@
-# Learning Loop
+﻿# Learning Loop
 Documentation HQ: [README](../README.md)
 
 Single source of truth for the Learning Loop user workflow. Keep EN and FA sections in sync in the same PR.
@@ -12,10 +12,10 @@ The Learning Loop turns weekly KR updates into controlled improvement:
 - `SPECIAL_CAUSE` updates require a short note and cannot link to experiments.
 - Weekly retro decisions close experiments and persist institutional outcomes.
 
-### Weekly Ritual Flow
+### Weekly Check-In Flow
 
 #### Step 1: Review Week
-- Open Weekly Ritual and go to `Step 1 (Review Week)`.
+- Open Weekly Check-In and go to `Step 1 (Review Week)`.
 - Use the `Experiments Reviewed This Week` section to review:
   - experiments with `ExperimentStatus.RUNNING`, and
   - experiments that ended in this retro window.
@@ -56,61 +56,62 @@ If `Step 1` shows `No experiments to review this week`:
 ### Glossary
 | Product Term | Persian Standard |
 |---|---|
-| Common Cause | علت مشترک |
-| Special Cause | علت ویژه |
-| Experiment | آزمایش |
-| Decision | تصمیم |
-| Retro Outcome | خروجی بازنگری |
+| Common Cause | Ø¹Ù„Øª Ù…Ø´ØªØ±Ú© |
+| Special Cause | Ø¹Ù„Øª ÙˆÛŒÚ˜Ù‡ |
+| Experiment | Ø¢Ø²Ù…Ø§ÛŒØ´ |
+| Decision | ØªØµÙ…ÛŒÙ… |
+| Retro Outcome | Ø®Ø±ÙˆØ¬ÛŒ Ø¨Ø§Ø²Ù†Ú¯Ø±ÛŒ |
 
 ## FA
 
 ### Purpose
-Learning Loop به‌روزرسانی هفتگی KR را به چرخه بهبود کنترل‌شده تبدیل می‌کند:
-- هر check-in باید نوع تغییر را با `VariationType` مشخص کند.
-- در `COMMON_CAUSE` می‌توان check-in را به `Experiment` فعال متصل کرد.
-- در `SPECIAL_CAUSE` ثبت توضیح کوتاه اجباری است و اتصال به experiment مجاز نیست.
-- تصمیم‌های بازنگری هفتگی، experiment را می‌بندند و خروجی سازمانی را ثبت می‌کنند.
+Learning Loop Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù‡ÙØªÚ¯ÛŒ KR Ø±Ø§ Ø¨Ù‡ Ú†Ø±Ø®Ù‡ Ø¨Ù‡Ø¨ÙˆØ¯ Ú©Ù†ØªØ±Ù„â€ŒØ´Ø¯Ù‡ ØªØ¨Ø¯ÛŒÙ„ Ù…ÛŒâ€ŒÚ©Ù†Ø¯:
+- Ù‡Ø± check-in Ø¨Ø§ÛŒØ¯ Ù†ÙˆØ¹ ØªØºÛŒÛŒØ± Ø±Ø§ Ø¨Ø§ `VariationType` Ù…Ø´Ø®Øµ Ú©Ù†Ø¯.
+- Ø¯Ø± `COMMON_CAUSE` Ù…ÛŒâ€ŒØªÙˆØ§Ù† check-in Ø±Ø§ Ø¨Ù‡ `Experiment` ÙØ¹Ø§Ù„ Ù…ØªØµÙ„ Ú©Ø±Ø¯.
+- Ø¯Ø± `SPECIAL_CAUSE` Ø«Ø¨Øª ØªÙˆØ¶ÛŒØ­ Ú©ÙˆØªØ§Ù‡ Ø§Ø¬Ø¨Ø§Ø±ÛŒ Ø§Ø³Øª Ùˆ Ø§ØªØµØ§Ù„ Ø¨Ù‡ experiment Ù…Ø¬Ø§Ø² Ù†ÛŒØ³Øª.
+- ØªØµÙ…ÛŒÙ…â€ŒÙ‡Ø§ÛŒ Ø¨Ø§Ø²Ù†Ú¯Ø±ÛŒ Ù‡ÙØªÚ¯ÛŒØŒ experiment Ø±Ø§ Ù…ÛŒâ€ŒØ¨Ù†Ø¯Ù†Ø¯ Ùˆ Ø®Ø±ÙˆØ¬ÛŒ Ø³Ø§Ø²Ù…Ø§Ù†ÛŒ Ø±Ø§ Ø«Ø¨Øª Ù…ÛŒâ€ŒÚ©Ù†Ù†Ø¯.
 
-### Weekly Ritual Flow
+### Weekly Check-In Flow
 
 #### Step 1: Review Week
-- Weekly Ritual را باز کنید و به `Step 1 (Review Week)` بروید.
-- در بخش `Experiments Reviewed This Week` این موارد را بررسی کنید:
-  - experimentهایی با `ExperimentStatus.RUNNING`
-  - experimentهایی که در بازه همین retro تمام شده‌اند.
-- برای هر experiment یک تصمیم ثبت کنید (`ADOPT`، `REVERT`، `ITERATE`، `UNKNOWN`) و در صورت نیاز rationale بنویسید.
-- هنگام submit، هر تصمیم انتخاب‌شده:
-  - در `RetroExperimentOutcome` ثبت/به‌روزرسانی می‌شود،
-  - و experiment با `close_experiment` به `ExperimentStatus.DECIDED` بسته می‌شود.
+- Weekly Check-In Ø±Ø§ Ø¨Ø§Ø² Ú©Ù†ÛŒØ¯ Ùˆ Ø¨Ù‡ `Step 1 (Review Week)` Ø¨Ø±ÙˆÛŒØ¯.
+- Ø¯Ø± Ø¨Ø®Ø´ `Experiments Reviewed This Week` Ø§ÛŒÙ† Ù…ÙˆØ§Ø±Ø¯ Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯:
+  - experimentÙ‡Ø§ÛŒÛŒ Ø¨Ø§ `ExperimentStatus.RUNNING`
+  - experimentÙ‡Ø§ÛŒÛŒ Ú©Ù‡ Ø¯Ø± Ø¨Ø§Ø²Ù‡ Ù‡Ù…ÛŒÙ† retro ØªÙ…Ø§Ù… Ø´Ø¯Ù‡â€ŒØ§Ù†Ø¯.
+- Ø¨Ø±Ø§ÛŒ Ù‡Ø± experiment ÛŒÚ© ØªØµÙ…ÛŒÙ… Ø«Ø¨Øª Ú©Ù†ÛŒØ¯ (`ADOPT`ØŒ `REVERT`ØŒ `ITERATE`ØŒ `UNKNOWN`) Ùˆ Ø¯Ø± ØµÙˆØ±Øª Ù†ÛŒØ§Ø² rationale Ø¨Ù†ÙˆÛŒØ³ÛŒØ¯.
+- Ù‡Ù†Ú¯Ø§Ù… submitØŒ Ù‡Ø± ØªØµÙ…ÛŒÙ… Ø§Ù†ØªØ®Ø§Ø¨â€ŒØ´Ø¯Ù‡:
+  - Ø¯Ø± `RetroExperimentOutcome` Ø«Ø¨Øª/Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ù…ÛŒâ€ŒØ´ÙˆØ¯ØŒ
+  - Ùˆ experiment Ø¨Ø§ `close_experiment` Ø¨Ù‡ `ExperimentStatus.DECIDED` Ø¨Ø³ØªÙ‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯.
 
 #### Step 2: Update KRs
-- وارد `Step 2 (Update KRs)` شوید.
-- برای هر check-in روی KR، دسته‌بندی تغییر اجباری است:
-  - `Common Cause` یا `Special Cause` (نگاشت به `VariationType`).
-- مسیر `Common Cause`:
-  - اتصال اختیاری به experiment فعال (`RUNNING`)، یا
-  - ساخت experiment جدید به‌صورت inline با `Start New Experiment`.
-- مسیر ساخت inline:
+- ÙˆØ§Ø±Ø¯ `Step 2 (Update KRs)` Ø´ÙˆÛŒØ¯.
+- Ø¨Ø±Ø§ÛŒ Ù‡Ø± check-in Ø±ÙˆÛŒ KRØŒ Ø¯Ø³ØªÙ‡â€ŒØ¨Ù†Ø¯ÛŒ ØªØºÛŒÛŒØ± Ø§Ø¬Ø¨Ø§Ø±ÛŒ Ø§Ø³Øª:
+  - `Common Cause` ÛŒØ§ `Special Cause` (Ù†Ú¯Ø§Ø´Øª Ø¨Ù‡ `VariationType`).
+- Ù…Ø³ÛŒØ± `Common Cause`:
+  - Ø§ØªØµØ§Ù„ Ø§Ø®ØªÛŒØ§Ø±ÛŒ Ø¨Ù‡ experiment ÙØ¹Ø§Ù„ (`RUNNING`)ØŒ ÛŒØ§
+  - Ø³Ø§Ø®Øª experiment Ø¬Ø¯ÛŒØ¯ Ø¨Ù‡â€ŒØµÙˆØ±Øª inline Ø¨Ø§ `Start New Experiment`.
+- Ù…Ø³ÛŒØ± Ø³Ø§Ø®Øª inline:
   - `Common Cause -> Start New Experiment`
-  - فیلدهای hypothesis و change description (به‌همراه expected direction/size در صورت نیاز) را پر کنید
-  - با submit، experiment ساخته می‌شود و سپس به `ExperimentStatus.RUNNING` می‌رود.
-- مسیر `Special Cause`:
-  - مقدار `special_cause_note` (حداقل ۵ کاراکتر) الزامی است،
-  - لینک experiment مجاز نیست و پاک می‌شود.
+  - ÙÛŒÙ„Ø¯Ù‡Ø§ÛŒ hypothesis Ùˆ change description (Ø¨Ù‡â€ŒÙ‡Ù…Ø±Ø§Ù‡ expected direction/size Ø¯Ø± ØµÙˆØ±Øª Ù†ÛŒØ§Ø²) Ø±Ø§ Ù¾Ø± Ú©Ù†ÛŒØ¯
+  - Ø¨Ø§ submitØŒ experiment Ø³Ø§Ø®ØªÙ‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯ Ùˆ Ø³Ù¾Ø³ Ø¨Ù‡ `ExperimentStatus.RUNNING` Ù…ÛŒâ€ŒØ±ÙˆØ¯.
+- Ù…Ø³ÛŒØ± `Special Cause`:
+  - Ù…Ù‚Ø¯Ø§Ø± `special_cause_note` (Ø­Ø¯Ø§Ù‚Ù„ Ûµ Ú©Ø§Ø±Ø§Ú©ØªØ±) Ø§Ù„Ø²Ø§Ù…ÛŒ Ø§Ø³ØªØŒ
+  - Ù„ÛŒÙ†Ú© experiment Ù…Ø¬Ø§Ø² Ù†ÛŒØ³Øª Ùˆ Ù¾Ø§Ú© Ù…ÛŒâ€ŒØ´ÙˆØ¯.
 
 #### Step 3: Plan Next Week
-- اولویت‌های هفته بعد را طبق روال معمول ثبت کنید.
-- این مرحله مستقیما experiment ایجاد یا بسته نمی‌کند.
+- Ø§ÙˆÙ„ÙˆÛŒØªâ€ŒÙ‡Ø§ÛŒ Ù‡ÙØªÙ‡ Ø¨Ø¹Ø¯ Ø±Ø§ Ø·Ø¨Ù‚ Ø±ÙˆØ§Ù„ Ù…Ø¹Ù…ÙˆÙ„ Ø«Ø¨Øª Ú©Ù†ÛŒØ¯.
+- Ø§ÛŒÙ† Ù…Ø±Ø­Ù„Ù‡ Ù…Ø³ØªÙ‚ÛŒÙ…Ø§ experiment Ø§ÛŒØ¬Ø§Ø¯ ÛŒØ§ Ø¨Ø³ØªÙ‡ Ù†Ù…ÛŒâ€ŒÚ©Ù†Ø¯.
 
 ### Troubleshooting
 
 #### No experiments to review this week
-اگر در `Step 1` پیام `No experiments to review this week` می‌بینید:
-- experiment را از `Step 2` در مسیر `Common Cause -> Start New Experiment` بسازید.
-- قانون لیست را بررسی کنید:
-  - همه experimentهای `RUNNING` نمایش داده می‌شوند،
-  - experimentهایی که `end_at` آن‌ها داخل بازه retro فعلی است نیز نمایش داده می‌شوند.
-- اگر این هفته فقط `SPECIAL_CAUSE` ثبت کرده باشید، experiment جدیدی ساخته نمی‌شود.
+Ø§Ú¯Ø± Ø¯Ø± `Step 1` Ù¾ÛŒØ§Ù… `No experiments to review this week` Ù…ÛŒâ€ŒØ¨ÛŒÙ†ÛŒØ¯:
+- experiment Ø±Ø§ Ø§Ø² `Step 2` Ø¯Ø± Ù…Ø³ÛŒØ± `Common Cause -> Start New Experiment` Ø¨Ø³Ø§Ø²ÛŒØ¯.
+- Ù‚Ø§Ù†ÙˆÙ† Ù„ÛŒØ³Øª Ø±Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ú©Ù†ÛŒØ¯:
+  - Ù‡Ù…Ù‡ experimentÙ‡Ø§ÛŒ `RUNNING` Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯ØŒ
+  - experimentÙ‡Ø§ÛŒÛŒ Ú©Ù‡ `end_at` Ø¢Ù†â€ŒÙ‡Ø§ Ø¯Ø§Ø®Ù„ Ø¨Ø§Ø²Ù‡ retro ÙØ¹Ù„ÛŒ Ø§Ø³Øª Ù†ÛŒØ² Ù†Ù…Ø§ÛŒØ´ Ø¯Ø§Ø¯Ù‡ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯.
+- Ø§Ú¯Ø± Ø§ÛŒÙ† Ù‡ÙØªÙ‡ ÙÙ‚Ø· `SPECIAL_CAUSE` Ø«Ø¨Øª Ú©Ø±Ø¯Ù‡ Ø¨Ø§Ø´ÛŒØ¯ØŒ experiment Ø¬Ø¯ÛŒØ¯ÛŒ Ø³Ø§Ø®ØªÙ‡ Ù†Ù…ÛŒâ€ŒØ´ÙˆØ¯.
 
 ### Glossary
-از همان جدول واژگان مشترک EN/FA در بخش EN استفاده کنید تا ترجمه اصطلاحات تیم ثابت بماند.
+Ø§Ø² Ù‡Ù…Ø§Ù† Ø¬Ø¯ÙˆÙ„ ÙˆØ§Ú˜Ú¯Ø§Ù† Ù…Ø´ØªØ±Ú© EN/FA Ø¯Ø± Ø¨Ø®Ø´ EN Ø§Ø³ØªÙØ§Ø¯Ù‡ Ú©Ù†ÛŒØ¯ ØªØ§ ØªØ±Ø¬Ù…Ù‡ Ø§ØµØ·Ù„Ø§Ø­Ø§Øª ØªÛŒÙ… Ø«Ø§Ø¨Øª Ø¨Ù…Ø§Ù†Ø¯.
+

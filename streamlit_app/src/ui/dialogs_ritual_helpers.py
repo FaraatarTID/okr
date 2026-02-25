@@ -18,7 +18,7 @@ def _render_weekly_ritual_chrome() -> None:
     dialog_chrome_helpers.apply_standard_dialog_chrome()
     dialog_chrome_helpers.render_dialog_header_with_close(
         close_key="close_ritual",
-        title_markdown="### Weekly Check-in Ritual",
+        title_markdown="### Weekly Check-In",
         clear_state_keys=("active_report_mode", "ritual_step"),
     )
 

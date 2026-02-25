@@ -1,0 +1,26 @@
+{
+  "name": "okr-spa-bff",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Public BFF for SPA clients, forwarding allowlisted requests to internal backend-api with service auth/signing.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "fastify": "^5.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
+

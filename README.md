@@ -1,4 +1,4 @@
-# OKR Tracker
+﻿# OKR Tracker
 
 An OKR system that keeps strategic change work separate from day-to-day operations.
 
@@ -139,7 +139,7 @@ What this app is not:
 
 Hard rule:
 - Do not enter BAU tasks as KR evidence in this app.
-- If BAU work is important, track it in operational systems and discuss it in weekly operations rituals.
+- If BAU work is important, track it in operational systems and discuss it in weekly operations check-ins.
 
 ## OKR vs BAU Quick Test (30 Seconds)
 
@@ -304,6 +304,76 @@ All templates in this section are external governance documents, not app data-en
 - Runtime behavior is backend-segregated: frontend reads/writes and heavy jobs are backend-owned (fail-closed on backend transport failure).
 - Corporate deployments (AWS/ECS/Kubernetes/VM) should follow [DEPLOYMENT.md](DEPLOYMENT.md), not embedded mode.
 
+## Experimental SPA BFF (Migration Track)
+
+This repository now includes an experimental Node.js BFF service for SPA migration work:
+- Path: `spa-bff/`
+- Purpose: expose only allowlisted browser-facing routes while keeping `backend-api` private/internal.
+- Auth model: BFF attaches internal service token and request-signing headers server-side.
+
+Run locally:
+
+```bash
+cd spa-bff
+npm install
+OKR_BACKEND_API_URL=http://127.0.0.1:8100 \
+OKR_BACKEND_SERVICE_TOKEN=CHANGE_ME \
+OKR_BACKEND_SIGNING_SECRET=CHANGE_ME \
+npm run dev
+```
+
+Optional Docker Compose profile:
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml --profile spa up -d --build spa-bff
+```
+
+## Experimental SPA Web (Migration Track)
+
+A Next.js frontend shell now exists for read-first Atlas migration probes:
+- Path: `spa-web/`
+- Uses rewrite-based proxying to BFF for `/api/backend/*` calls.
+- Supports runtime cohort rollout controls via `OKR_SPA_ROLLOUT_*` environment policy.
+- Cohort rollout and rollback procedure: `docs/HYBRID_FRONTEND_COHORT_ROLLOUT_PLAYBOOK.md`.
+- Unified SPA report/dashboards/check-in/admin workflow (no Streamlit bridge dependency for core operation).
+- Iframe feasibility decision (`reject` for current phase): `docs/HYBRID_FRONTEND_IFRAME_FEASIBILITY.md`.
+- Cutover SLO dashboard/runbook and threshold contract: `docs/HYBRID_FRONTEND_SLO_DASHBOARD.md`, `docs/HYBRID_FRONTEND_SLO_TARGETS.json`.
+- Rollback drill evidence for cutover readiness: `docs/HYBRID_FRONTEND_ROLLBACK_DRILL_2026-02-25.md`.
+- Pilot completion review and cutover recommendation: `docs/HYBRID_FRONTEND_PILOT_COMPLETION_REVIEW_2026-02-25.md`.
+- SPA shell and read parity validation evidence: `docs/HYBRID_FRONTEND_SPA_SHELL_VALIDATION_2026-02-25.md`, `docs/HYBRID_FRONTEND_READ_PARITY_VALIDATION_2026-02-25.md`.
+- Phase 0 baseline snapshot and rollback toggle contract: `docs/HYBRID_FRONTEND_PHASE0_BASELINE_2026-02-25.md`, `docs/HYBRID_FRONTEND_ROLLBACK_TOGGLE_CONTRACT_2026-02-25.md`.
+
+Run locally:
+
+```bash
+cd spa-web
+npm install
+npm run dev
+```
+
+Optional Docker Compose profile:
+
+```bash
+docker compose -f deploy/docker/docker-compose.yml --profile spa up -d --build spa-bff spa-web
+```
+
+Windows quick launcher (repo root):
+
+```bat
+run_hybrid_app.bat
+```
+
+Windows local launcher (no Docker, backend API + backend worker + BFF + SPA):
+
+```bat
+run_hybrid_app_local.bat
+```
+
+Database URL resolution precedence for the local launcher:
+`OKR_DATABASE_URL` env -> `DATABASE_URL` env -> `deploy/docker/.env` -> `streamlit_app/.streamlit/secrets.toml`.
+
+If startup fails, review local logs under `tmp/local-hybrid-logs/`.
+
 ## Quickstart (Local Development)
 
 Run commands from repository root (`okr`).
@@ -457,3 +527,4 @@ Install browser runtime once if needed:
 ```bash
 playwright install chromium
 ```
+

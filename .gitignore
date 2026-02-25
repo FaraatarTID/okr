@@ -23,6 +23,14 @@ streamlit_app/.deps_installed
 okr_data*.json
 node_modules/
 
+# Node service manifests for SPA BFF migration
+!spa-bff/package.json
+!spa-bff/package-lock.json
+!spa-bff/tsconfig.json
+!spa-web/package.json
+!spa-web/package-lock.json
+!spa-web/tsconfig.json
+
 # Logs
 *.log
 *.log.*

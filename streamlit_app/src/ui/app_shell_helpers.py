@@ -154,8 +154,8 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
     app_shell_navigation_helpers.handle_report_button(
         sidebar=st.sidebar,
         session_state=st.session_state,
-        mode="Ritual",
-        label="Weekly Ritual",
+        mode="Check-In",
+        label="Weekly Check-In",
         rerun_fn=st.rerun,
         help="Guided check-in for your metrics",
         use_container_width=True,
@@ -222,7 +222,7 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
             render_inspector_dialog(st.session_state.active_inspector_id, username)
         elif session_keys.ACTIVE_REPORT_MODE in st.session_state:
             mode = st.session_state[session_keys.ACTIVE_REPORT_MODE]
-            if mode == "Ritual":
+            if mode in {"Check-In", "Ritual"}:
                 render_weekly_ritual_dialog(username)
             elif mode == "Dashboard":
                 render_leadership_dashboard_dialog(username)
