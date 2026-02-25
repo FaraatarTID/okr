@@ -31,6 +31,23 @@ The main execution workspace is Atlas (`render_atlas_workspace`), composed of:
 - Opens details for the selected node.
 - Use it for edits, lifecycle updates, alignment links, and task schedule/work history.
 
+### 1.1 Goal vs Objective vs KR (Use Before Editing)
+
+- `Goal`: why this strategic change matters and what strategic direction it sets.
+- `Objective`: what changed state should exist by cycle end.
+- `KR`: how that changed state is proven numerically.
+
+Classification shortcut:
+- If it expresses purpose/direction and intended strategic shift -> `Goal`.
+- If it is a strategic outcome that needs multiple indicators -> `Objective`.
+- If it is one measurable line (`from A to B by date`) -> `KR`.
+- If it is an action step -> task/initiative (not objective/KR evidence).
+
+Common writing mistakes:
+- Objective written as a single metric line -> should be a KR.
+- KR written as broad narrative ("improve experience") -> should be an objective.
+- Task completion text in KR check-ins -> not valid KR evidence without metric delta.
+
 ## 2. How KR Updates Actually Work
 
 KR progress is driven by KR metric values (`start_value`, `current_value`, `target_value`) and score logic.
@@ -212,12 +229,15 @@ Other useful tools:
 ## 7. Inspector Quick Reference
 
 Goal:
+- Narrative direction and intent: why this change matters and what strategic shift it points to.
 - Title, description, cycle assignment, strategy tags.
 
 Objective:
+- Strategic outcome: what should be different by cycle end.
 - Title/description, score mode, weight, lifecycle state, final reflection, alignment links.
 
 Key Result:
+- Numeric proof: how objective movement is verified (`start/current/target` over time).
 - Start/Target/Current values, unit, metric type, weight, lifecycle state, final reflection, initiative tags.
 - AI analysis run action from Inspector.
 

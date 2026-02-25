@@ -34,6 +34,8 @@ Use this checklist before pilot start and before each scale wave.
 | Success criteria and thresholds are defined before cycle start |  |  |
 | Planning/check-in/review/retro dates are pre-scheduled |  |  |
 | BAU release policy is adopted (`SHIFT` test + release log) |  |  |
+| Objective wording quality gate is in use (outcome-state statements, not single-metric lines) |  |  |
+| KR wording quality gate is in use (`baseline/current/target/time` present for each KR) |  |  |
 | Retro format is standardized (`Start/Stop/Continue` or equivalent) |  |  |
 | Decision process for scale/no-scale is documented |  |  |
 

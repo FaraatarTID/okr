@@ -8,11 +8,50 @@ This README is the fast starting point. It shows what this product is, what it i
 
 ## Mini Glossary (Plain Language)
 
+- `Goal`: a clear narrative that defines the why, why it matters, and the intended change people can align around.
+- `Objective`: the concrete strategic outcome under a goal for the cycle; it states what should be different and is validated by one or more KRs.
 - `BAU` (Business as Usual): routine operational work that keeps current service running.
 - `OKR`: strategic change work intended to improve system performance.
-- `KR` (Key Result): measurable target showing if an objective is moving.
+- `KR` (Key Result): one measurable proof line (`baseline -> target by time`) showing whether an objective is moving.
 - `KPI baseline movement`: before/after metric change (not task completion count).
 - `Atlas`: the in-app strategy workspace for OKR execution and evidence updates.
+
+## Goal vs Objective vs KR Writing Standard
+
+- `Goal` answers: "Why this change matters, where we are heading, and what strategic shift we intend."
+- `Objective` answers: "What outcome state must exist by cycle end?"
+- `KR` answers: "How will we verify that outcome numerically?"
+- `Initiative/Task` answers: "How will we execute the change work?"
+
+Objective quality bar:
+- Outcome-oriented, not a task list.
+- Time-bounded to the cycle.
+- Usually needs 2-4 KRs to prove movement.
+- Minimum activation rule is still 1 KR; `2-4` is the quality recommendation.
+
+KR quality bar:
+- One metric per KR.
+- Must define `start/current/target` and unit.
+- Progress is metric movement, not task completion.
+
+Classification rule:
+- Purpose, direction, and intended strategic shift -> `Goal`.
+- Strategic outcome statement that may need multiple indicators -> `Objective`.
+- Single measurable line ("from A to B by date") -> `KR`.
+- Execution steps ("build, run, close, ship") -> `Initiative/Task` (not Objective/KR).
+
+### Objective vs KR Quick Test (20 Seconds)
+
+| If the statement is... | Classify as... | Reason |
+| --- | --- | --- |
+| Broad changed state ("faster, more reliable onboarding this quarter") | Objective | Needs multiple signals to prove it. |
+| One numeric delta ("activation rate 42% -> 60% by Sep 30") | KR | It is already a metric proof line. |
+| Action plan ("launch onboarding emails and rewrite docs") | Initiative/Task | It describes execution, not outcome proof. |
+
+Example stack:
+- Goal: "Make customer onboarding a strategic advantage."
+- Objective: "Deliver a faster and more predictable onboarding experience this quarter."
+- KR: "Increase activation rate from 42% to 60% by September 30."
 
 ## Atlas Design Philosophy
 
@@ -110,7 +149,8 @@ Use this rule before entering any update:
 
 Examples:
 - BAU: "Close daily support tickets within SLA."
-- OKR: "Reduce average ticket resolution time from 36h to 12h by end of quarter."
+- OKR Objective: "Deliver faster customer support resolution this quarter."
+- KR: "Reduce average ticket resolution time from 36h to 12h by end of quarter."
 
 ### Separation Decision Table
 

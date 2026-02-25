@@ -5,6 +5,17 @@ This guide reflects the lifecycle logic currently implemented in `streamlit_app/
 
 For enterprise rollout sequencing and change-management guidance, see `docs/OKR_ROLLOUT_GUIDE.md`.
 
+## Semantic Model (Goal, Objective, KR)
+
+- `Goal`: narrative intent, strategic direction, and intended shift (`why + where`).
+- `Objective`: cycle-bounded outcome commitment (`what changes`).
+- `KR`: atomic measurable proof line (`how change is verified`).
+
+Operational consequence:
+- Objective progress is computed from KR progress.
+- Goal progress is computed from objective progress.
+- Lifecycle activation gate requires at least one KR because objectives are not self-scoring.
+
 ## 1. Lifecycle States
 
 Objectives and Key Results use four states:
