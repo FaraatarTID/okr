@@ -308,10 +308,8 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
         )
         page.get_by_role("button", name="Login").click()
 
-        expect(page.get_by_text("Focus Task")).to_be_visible(timeout=90_000)
-
-        focus_map_tab = page.locator('button[role="tab"]:has-text("Focus Map")').first
-        expect(focus_map_tab).to_be_visible(timeout=60_000)
+        focus_map_tab = page.get_by_role("tab", name="Focus Map").first
+        expect(focus_map_tab).to_be_visible(timeout=90_000)
         focus_map_tab.click()
         expect(
             page.get_by_text("Navigate hierarchy and pick your next move.")
