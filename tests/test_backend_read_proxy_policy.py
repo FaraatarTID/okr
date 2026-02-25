@@ -55,6 +55,3 @@ def test_atlas_snapshot_read_fails_closed_when_local_fallback_disabled(monkeypat
             include_analysis=False,
             actor_username="alice",
         )
-
-
-

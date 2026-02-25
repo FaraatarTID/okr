@@ -40,6 +40,3 @@ def test_backend_client_adds_signing_headers_when_secret_configured(monkeypatch)
     assert "X-OKR-Timestamp" in headers
     assert "X-OKR-Nonce" in headers
     assert len(str(headers["X-OKR-Signature"])) >= 32
-
-
-

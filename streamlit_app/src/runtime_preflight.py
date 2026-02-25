@@ -77,10 +77,12 @@ def evaluate_runtime_preflight(
     backend_url = str(backend_api_url or "").strip()
     env_name = str(runtime_env or "development").strip().lower()
     is_production = env_name in {"prod", "production"}
-    
+
     # Resolve embedded backend status
-    is_embedded = (backend_url.lower() == "auto") or (is_streamlit_cloud and not backend_url)
-    
+    is_embedded = (backend_url.lower() == "auto") or (
+        is_streamlit_cloud and not backend_url
+    )
+
     if is_embedded:
         report.infos.append("Backend mode: Embedded (auto-launching background API).")
     elif not backend_url:
@@ -136,8 +138,6 @@ def evaluate_runtime_preflight(
             )
         except ValueError as exc:
             report.errors.append(str(exc))
-
-
 
     key = str(gemini_api_key or "").strip()
     if not external_ai_allowed:

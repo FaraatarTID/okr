@@ -655,9 +655,10 @@ def generate_pdf_with_chromium_bytes(html, *, executable_path: str = ""):
     browser = None
     context = None
     try:
-        resolved_executable = str(executable_path or "").strip() or str(
-            _resolve_chromium_executable_path() or ""
-        ).strip()
+        resolved_executable = (
+            str(executable_path or "").strip()
+            or str(_resolve_chromium_executable_path() or "").strip()
+        )
         launch_kwargs = {"headless": True}
         if resolved_executable:
             launch_kwargs["executable_path"] = resolved_executable

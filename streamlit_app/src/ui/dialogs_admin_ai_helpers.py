@@ -64,9 +64,7 @@ def _render_pdf_runtime_diagnostics() -> None:
             "chromium_executable_path": str(
                 diagnostics.get("chromium_executable_path") or ""
             ),
-            "streamlit_cloud_runtime": bool(
-                diagnostics.get("streamlit_cloud_runtime")
-            ),
+            "streamlit_cloud_runtime": bool(diagnostics.get("streamlit_cloud_runtime")),
         }
     )
 

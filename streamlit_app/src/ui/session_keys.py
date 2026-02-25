@@ -305,13 +305,11 @@ def validate_atlas_key_lifecycle_policy() -> list[str]:
     extra = sorted(policy_keys - defined_keys)
     if missing:
         errors.append(
-            "Missing lifecycle policy entries for keys: "
-            + ", ".join(missing)
+            "Missing lifecycle policy entries for keys: " + ", ".join(missing)
         )
     if extra:
         errors.append(
-            "Unexpected lifecycle policy entries for unknown keys: "
-            + ", ".join(extra)
+            "Unexpected lifecycle policy entries for unknown keys: " + ", ".join(extra)
         )
 
     for key in sorted(policy_keys):

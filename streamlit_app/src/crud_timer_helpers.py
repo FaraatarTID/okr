@@ -353,4 +353,3 @@ def delete_work_log_from_crud(
             crud_module.clear_cache_safe()
             return True
         return False
-

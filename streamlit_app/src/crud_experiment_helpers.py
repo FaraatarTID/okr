@@ -263,4 +263,3 @@ def list_experiments_for_retro_window_from_crud(
             except PermissionError:
                 continue
         return allowed
-

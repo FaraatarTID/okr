@@ -150,9 +150,7 @@ with Session(engine, expire_on_commit=False) as session:
     )
     if result.returncode != 0:
         raise RuntimeError(
-            "Database seed failed.\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
+            f"Database seed failed.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
 
@@ -261,9 +259,7 @@ def e2e_stack(tmp_path_factory: pytest.TempPathFactory) -> E2EStack:
                 f"http://127.0.0.1:{app_port}/_stcore/health",
                 f"http://127.0.0.1:{app_port}/",
             ]
-            if not any(
-                _wait_for_http(url, timeout_seconds=90) for url in health_urls
-            ):
+            if not any(_wait_for_http(url, timeout_seconds=90) for url in health_urls):
                 _terminate_process(streamlit_process)
                 streamlit_log.flush()
                 raise RuntimeError(

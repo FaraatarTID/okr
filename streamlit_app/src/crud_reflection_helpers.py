@@ -291,4 +291,3 @@ def upsert_retro_experiment_outcome_from_crud(
                 session.refresh(existing)
                 return existing
             raise
-

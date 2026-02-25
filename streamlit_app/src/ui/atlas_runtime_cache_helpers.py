@@ -90,9 +90,7 @@ def build_scope_snapshot_with_backend_fallback(
             },
         )
     owner_ids = (
-        list(canonical_owner_ids_key)
-        if canonical_owner_ids_key is not None
-        else None
+        list(canonical_owner_ids_key) if canonical_owner_ids_key is not None else None
     )
     try:
         from src.services.backend_client import fetch_atlas_scope_snapshot

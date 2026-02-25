@@ -45,7 +45,9 @@ def render_objective_alignment_section(
         actor_username=username,
     )
     if isinstance(context_result, dict) and "error" in context_result:
-        st_module.error(str(context_result.get("error") or "Failed to load alignments."))
+        st_module.error(
+            str(context_result.get("error") or "Failed to load alignments.")
+        )
         return
 
     context = dict(context_result or {})

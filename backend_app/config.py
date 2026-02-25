@@ -68,14 +68,18 @@ def get_backend_settings() -> BackendSettings:
     from src.config_runtime import get_config_value
 
     runtime_env = (
-        str(get_config_value("OKR_ENV", get_config_value("OKR_RUNTIME_ENV", "development")))
+        str(
+            get_config_value(
+                "OKR_ENV", get_config_value("OKR_RUNTIME_ENV", "development")
+            )
+        )
         .strip()
         .lower()
         or "development"
     )
     is_production = runtime_env in {"prod", "production"}
     security_state_backend_default = "database" if is_production else "memory"
-    
+
     settings = BackendSettings(
         runtime_env=runtime_env,
         host=str(get_config_value("OKR_BACKEND_HOST", "0.0.0.0")).strip() or "0.0.0.0",
@@ -120,7 +124,9 @@ def get_backend_settings() -> BackendSettings:
         ).strip(),
         security_state_redis_prefix=(
             str(
-                get_config_value("OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX", "okr:security")
+                get_config_value(
+                    "OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX", "okr:security"
+                )
             ).strip()
             or "okr:security"
         ),
@@ -195,10 +201,12 @@ def get_backend_settings() -> BackendSettings:
             minimum=1,
         ),
     )
-    
+
     # Minimal startup confirmation
-    print(f"INFO: Backend configuration loaded (Env: {runtime_env}, Port: {settings.port})")
+    print(
+        f"INFO: Backend configuration loaded (Env: {runtime_env}, Port: {settings.port})"
+    )
     if settings.enforce_service_token and not settings.service_token:
         print("WARNING: Service token enforcement enabled but no token configured!")
-    
+
     return settings

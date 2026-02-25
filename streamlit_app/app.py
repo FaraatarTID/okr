@@ -15,9 +15,11 @@ import streamlit as st
 
 from src.services.backend_launcher import ensure_backend_running
 
+
 @st.cache_resource(show_spinner=False)
 def _cached_ensure_backend_running() -> bool:
     return ensure_backend_running()
+
 
 _cached_ensure_backend_running()
 

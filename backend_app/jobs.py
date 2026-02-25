@@ -361,7 +361,9 @@ def prune_audit_events(*, retention_days: int, batch_size: int = 200) -> int:
         if not candidate_ids:
             return 0
 
-        result = session.exec(delete(AuditEvent).where(AuditEvent.id.in_(candidate_ids)))
+        result = session.exec(
+            delete(AuditEvent).where(AuditEvent.id.in_(candidate_ids))
+        )
         deleted = int(getattr(result, "rowcount", 0) or 0)
         session.commit()
         return deleted

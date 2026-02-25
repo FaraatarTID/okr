@@ -49,6 +49,7 @@ def _parse_host_port_from_url(url: str, default_port: int = 8100) -> tuple[str, 
     """Extract host and port from a URL like http://localhost:8100."""
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         host = parsed.hostname or "127.0.0.1"
         port = parsed.port or default_port
@@ -118,7 +119,10 @@ def ensure_backend_running() -> bool:
 
     # ---- Resolve the target host:port the backend should bind to ----
     if want_auto or want_auto_cloud_empty:
-        host = str(get_config_value("OKR_BACKEND_HOST", "127.0.0.1")).strip() or "127.0.0.1"
+        host = (
+            str(get_config_value("OKR_BACKEND_HOST", "127.0.0.1")).strip()
+            or "127.0.0.1"
+        )
         port_str = str(get_config_value("OKR_BACKEND_PORT", "8100")).strip()
         try:
             port = int(port_str)
@@ -156,12 +160,12 @@ def ensure_backend_running() -> bool:
     repo_root_str = str(repo_root)
     # Use os.path.join to be 100% safe against weird import timing issues with Path
     streamlit_app_path = os.path.join(repo_root_str, "streamlit_app")
-    
+
     current_pp = env.get("PYTHONPATH", "")
     new_pp_parts = [repo_root_str, streamlit_app_path]
     if current_pp:
         new_pp_parts.append(current_pp)
-    
+
     env["PYTHONPATH"] = os.pathsep.join(new_pp_parts)
     env["OKR_BACKEND_HOST"] = host
     env["OKR_BACKEND_PORT"] = str(port)
@@ -184,6 +188,7 @@ def ensure_backend_running() -> bool:
     _log_fh = None
     if os.name != "nt":  # Linux / cloud
         import tempfile
+
         try:
             _log_path = os.path.join(tempfile.gettempdir(), "okr_backend.log")
             _log_fh = open(_log_path, "w")  # noqa: WPS515
@@ -223,7 +228,9 @@ def ensure_backend_running() -> bool:
         if is_port_open(host, port):
             _LOGGER.info(
                 "Embedded backend is up on %s:%d (after %d s).",
-                host, port, i + 1,
+                host,
+                port,
+                i + 1,
             )
             if _log_fh:
                 _log_fh.close()
@@ -232,7 +239,9 @@ def ensure_backend_running() -> bool:
         if (i + 1) % 10 == 0:
             _LOGGER.info(
                 "Waiting for embedded backend on %s:%d … (%d s elapsed)",
-                host, port, i + 1,
+                host,
+                port,
+                i + 1,
             )
 
     if _log_fh:
@@ -258,5 +267,3 @@ def ensure_backend_running() -> bool:
         _LOGGER.warning("  [no backend log file found]")
 
     return False
-
-

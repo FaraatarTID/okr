@@ -36,14 +36,18 @@ def render_timeline_dialog_content(username: str) -> None:
         return
 
     users = list(get_all_users() or [])
-    users_map = {user.id: user for user in users if getattr(user, "id", None) is not None}
+    users_map = {
+        user.id: user for user in users if getattr(user, "id", None) is not None
+    }
     all_tasks = list(get_all_tasks_by_cycle(int(cycle_id)) or [])
 
     visible_owner_ids = {current_user.id}
     if role == "manager":
         team_members = list(get_team_members(current_user.id) or [])
         visible_owner_ids.update(
-            member.id for member in team_members if getattr(member, "id", None) is not None
+            member.id
+            for member in team_members
+            if getattr(member, "id", None) is not None
         )
     elif role == "admin":
         visible_owner_ids = None
@@ -63,9 +67,7 @@ def render_timeline_dialog_content(username: str) -> None:
             visible_tasks.append(task)
             continue
 
-        if (goal_owner_id in visible_owner_ids) or (
-            assignee_id in visible_owner_ids
-        ):
+        if (goal_owner_id in visible_owner_ids) or (assignee_id in visible_owner_ids):
             visible_tasks.append(task)
 
     if not visible_tasks:

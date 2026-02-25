@@ -24,6 +24,7 @@ def is_backend_enabled() -> bool:
     """Detect if we are running in a Streamlit context."""
     try:
         from streamlit.runtime.scriptrunner import get_script_run_ctx
+
         return get_script_run_ctx() is not None
     except ImportError:
         return False
@@ -38,7 +39,10 @@ def _base_url() -> str:
     # Case 1: explicit 'auto' keyword
     # Case 2: URL is empty and we're on Streamlit Cloud
     if url.lower() == "auto" or (not url and is_cloud):
-        host = str(get_config_value("OKR_BACKEND_HOST", "127.0.0.1")).strip() or "127.0.0.1"
+        host = (
+            str(get_config_value("OKR_BACKEND_HOST", "127.0.0.1")).strip()
+            or "127.0.0.1"
+        )
         port = str(get_config_value("OKR_BACKEND_PORT", "8100")).strip() or "8100"
         return f"http://{host}:{port}"
 
@@ -96,6 +100,7 @@ def _wait_for_backend_ready(*, timeout_seconds: int = 30) -> None:
     base = _base_url()
     try:
         from urllib.parse import urlparse as _urlparse
+
         parsed = _urlparse(base)
         host = parsed.hostname or "127.0.0.1"
         port = parsed.port or 8100
@@ -114,7 +119,6 @@ def _wait_for_backend_ready(*, timeout_seconds: int = 30) -> None:
 
     if connected:
         _backend_ready_checked = True  # Only mark done on actual success
-
 
 
 def _service_token() -> str:
@@ -283,7 +287,6 @@ def _request_json(
         return _transport_error(exc)
 
 
-
 def _json_safe(value: Any) -> Any:
     if value is None:
         return None
@@ -400,10 +403,7 @@ def _try_parse_enum(value: Any, *, key: str | None = None):
 
 def _to_backend_object(value: Any, *, key: str | None = None):
     if isinstance(value, dict):
-        payload = {
-            str(k): _to_backend_object(v, key=str(k))
-            for k, v in value.items()
-        }
+        payload = {str(k): _to_backend_object(v, key=str(k)) for k, v in value.items()}
         return SimpleNamespace(**payload)
     if isinstance(value, list):
         return [_to_backend_object(item, key=key) for item in value]
@@ -415,7 +415,9 @@ def _to_backend_object(value: Any, *, key: str | None = None):
 def _to_backend_object_list(values: Any) -> list[Any]:
     if not isinstance(values, list):
         return []
-    return [item for item in (_to_backend_object(v) for v in values) if item is not None]
+    return [
+        item for item in (_to_backend_object(v) for v in values) if item is not None
+    ]
 
 
 def _normalize_node_type(node_type: str) -> str:

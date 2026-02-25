@@ -32,7 +32,9 @@ class CheckResult:
 class ManagedProcess:
     """Subprocess wrapper with log capture."""
 
-    def __init__(self, *, name: str, argv: list[str], env: dict[str, str], log_path: Path):
+    def __init__(
+        self, *, name: str, argv: list[str], env: dict[str, str], log_path: Path
+    ):
         self.name = str(name)
         self.argv = list(argv)
         self.env = dict(env)

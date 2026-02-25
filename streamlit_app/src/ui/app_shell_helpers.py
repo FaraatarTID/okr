@@ -62,7 +62,9 @@ def render_app_from_app(*, app_module, username: str, runtime_bundle=None) -> No
             )
         if st.sidebar.button("Admin Panel", use_container_width=True):
             st.session_state[session_keys.ACTIVE_REPORT_MODE] = "Admin"
-            app_query_helpers.sync_to_query_params(st=st, session_state=st.session_state)
+            app_query_helpers.sync_to_query_params(
+                st=st, session_state=st.session_state
+            )
             st.rerun()
 
     st.sidebar.markdown("---")

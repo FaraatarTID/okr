@@ -1086,9 +1086,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         owner_ids = {int(value) for value in (scope.get("owner_ids") or set())}
         if not bool(scope.get("is_admin", False)):
             users = [
-                user
-                for user in users
-                if int(getattr(user, "id", 0) or 0) in owner_ids
+                user for user in users if int(getattr(user, "id", 0) or 0) in owner_ids
             ]
         return {
             "users": [
@@ -1105,9 +1103,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         owner_ids = {int(value) for value in (scope.get("owner_ids") or set())}
         if not bool(scope.get("is_admin", False)):
             users = [
-                user
-                for user in users
-                if int(getattr(user, "id", 0) or 0) in owner_ids
+                user for user in users if int(getattr(user, "id", 0) or 0) in owner_ids
             ]
         return {
             "users": [
@@ -1391,8 +1387,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             "retros": [
                 payload
                 for payload in (
-                    _serialize_retro(retro, include_user=False)
-                    for retro in retros
+                    _serialize_retro(retro, include_user=False) for retro in retros
                 )
                 if payload is not None
             ]
@@ -1431,7 +1426,9 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         return {"retros": serialized_retros}
 
     if kind == "alignments.context":
-        objective_id = _coerce_int(params.get("objective_id"), field_name="objective_id")
+        objective_id = _coerce_int(
+            params.get("objective_id"), field_name="objective_id"
+        )
         objective_node = get_node(objective_id, "OBJECTIVE", actor_username=actor)
         if not objective_node:
             return {
@@ -1579,6 +1576,7 @@ def api_read_query(
             detail=str(exc),
         ) from exc
 
+
 @app.get("/healthz")
 def healthz() -> dict:
     return {"status": "ok"}
@@ -1611,7 +1609,7 @@ async def api_set_app_state(key: str, request: Request) -> dict:
                 value = raw_value
         except json.JSONDecodeError:
             value = raw_value
-        
+
         set_app_state(key, value)
         return {"key": key, "value": value, "status": "updated"}
     except Exception as exc:

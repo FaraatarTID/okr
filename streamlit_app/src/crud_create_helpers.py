@@ -324,4 +324,3 @@ def create_task_from_crud(
         )
         crud_module.clear_cache_safe()
         return task
-

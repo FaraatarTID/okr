@@ -77,7 +77,9 @@ def clear_user_session(session_state, *, keys=None, st_module=None) -> None:
         if key in session_state:
             del session_state[key]
     if st_module is not None:
-        app_query_helpers.sync_to_query_params(st=st_module, session_state=session_state)
+        app_query_helpers.sync_to_query_params(
+            st=st_module, session_state=session_state
+        )
 
 
 def render_login_from_app(*, app_module) -> None:

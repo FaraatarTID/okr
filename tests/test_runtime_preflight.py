@@ -162,9 +162,6 @@ def test_production_backend_requires_signing_secret():
     assert any("OKR_BACKEND_SIGNING_SECRET" in msg for msg in report.errors)
 
 
-
-
-
 def test_production_requires_backend_api_url():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",

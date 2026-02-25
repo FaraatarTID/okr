@@ -32,9 +32,6 @@ def test_runtime_config_env_precedence_over_streamlit_secrets(monkeypatch):
     assert get_config_value("OKR_BACKEND_API_URL", "") == "http://env-api.local"
 
 
-
-
-
 def test_runtime_config_source_reports_env(monkeypatch):
     from src.config_runtime import get_config_value_with_source
 
