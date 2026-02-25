@@ -71,6 +71,16 @@ OKR work:
 | "do X every day/week" | "move KPI from A to B by date" |
 | "on-time completion" | "baseline improvement" |
 
+### 2.2 Objective vs KR Boundary (Inside OKR Lane)
+
+- Objective = strategic outcome state for the cycle ("what should be different").
+- KR = measurable proof line for that objective ("how we verify change").
+
+Quick split rule:
+- If it is one metric delta with time boundary (`A -> B by date`), write it as a KR.
+- If it is a broader outcome that needs multiple indicators, write it as an Objective.
+- If it is an action step, keep it as initiative/task, not Objective/KR wording.
+
 ## 3. The `SHIFT` Test (Fast Classification)
 
 Use this for every proposed KR task or check-in narrative:

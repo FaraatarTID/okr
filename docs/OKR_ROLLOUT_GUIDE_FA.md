@@ -135,6 +135,7 @@ Documentation HQ: [README](../README.md)
 | گسترش سریع بعد از یک چرخه موفق | الزام شواهد حداقل دو چرخه قبل از rollout وسیع |
 | چندپارگی ابزار بین تیم‌ها | یک منبع مرکزی برای اهداف، check-in و rollup |
 | نقش مدیریتی صرفاً کنترلی | تاکید بر مربی‌گری، رفع مانع و بازخورد کیفی |
+| BAU در لباس پیشرفت OKR | اجرای `SHIFT` + لاگ release هفتگی BAU؛ بازنویسی objectiveهای throughput به objectiveهای outcome + KRهای KPI-delta |
 
 ## ۱۳. الگوهای آماده در مخزن
 

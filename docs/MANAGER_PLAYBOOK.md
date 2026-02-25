@@ -20,6 +20,20 @@ Manager non-negotiable:
 3. Only verified KPI baseline movement is valid OKR progress evidence.
 4. BAU classification/release is managed outside the app (no BAU data-entry requirement in KR check-ins).
 
+## Concept Boundary: Goal, Objective, KR, Initiative
+
+Manager governance depends on strict semantic separation:
+- `Goal`: strategic narrative ("why this matters, where we are headed, and what shift is intended").
+- `Objective`: strategic outcome commitment for the cycle ("what must change").
+- `KR`: numeric proof line with baseline and target ("how we know it changed").
+- `Initiative/Task`: execution plan ("how we do the work"), not proof by itself.
+
+Manager quality checks:
+1. If a so-called objective is just one metric line, rewrite it as a KR.
+2. If a so-called KR is broad narrative without baseline/target, rewrite it as an objective.
+3. If a check-in reports activity without metric movement, reject it as KR evidence.
+4. If a KR is written as action steps, split it into initiative/tasks + a measurable KR.
+
 ## 1. Manager Role in This System
 
 Manager role is expected to own three responsibilities:

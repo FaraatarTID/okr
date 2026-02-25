@@ -31,6 +31,9 @@ Documentation HQ: [README](../../README.md)
 | اهداف، محدوده و پارامترهای پایلوت مکتوب شده‌اند |  |  |
 | معیارها و آستانه‌های موفقیت قبل از چرخه تعیین شده‌اند |  |  |
 | تاریخ‌های Planning/check-in/review/retro از قبل ثبت شده‌اند |  |  |
+| سیاست release برای BAU اجرا می‌شود (`SHIFT` test + release log) |  |  |
+| گیت کیفیت نوشتار Objective فعال است (جمله خروجی‌محور، نه یک خط متریک) |  |  |
+| گیت کیفیت نوشتار KR فعال است (`baseline/current/target/time` برای هر KR کامل است) |  |  |
 | قالب retrospective استاندارد شده است (`Start/Stop/Continue` یا معادل) |  |  |
 | فرایند تصمیم scale/no-scale مستند شده است |  |  |
 

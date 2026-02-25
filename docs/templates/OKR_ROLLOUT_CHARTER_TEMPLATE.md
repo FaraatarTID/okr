@@ -21,6 +21,22 @@ Use this template to define the rollout contract before pilot launch.
 - Expected organizational outcomes (1-3 bullets):
 - Non-goals (what this rollout will not attempt now):
 
+### 2.1 Why -> What -> How Drafting Block (Required)
+
+- Goal statement (`why`):
+- Objective statement (`what changes by cycle end`):
+
+KR proof lines (`how success is measured`):
+
+| KR statement | Baseline | Target | Time boundary | Owner |
+|---|---|---|---|---|
+|  |  |  |  |  |
+|  |  |  |  |  |
+
+Execution commitments (`how work will be done` as initiatives/tasks):
+- Initiative/task 1:
+- Initiative/task 2:
+
 ## 3. Pilot Design
 
 - Pilot population size:

@@ -152,7 +152,7 @@ Implementation note:
 | Expanding too quickly after one positive cycle | Enforce two-cycle evidence minimum before major scale-out. |
 | Tool fragmentation across teams | Use one central source of truth for goals, check-ins, and rollup views. |
 | Manager role reduced to status policing | Shift manager rhythm toward coaching, blocker removal, and quality feedback. |
-| BAU work disguised as OKR progress | Enforce `SHIFT` test and weekly BAU release log; rewrite throughput goals into KPI-delta change goals. |
+| BAU work disguised as OKR progress | Enforce `SHIFT` test and weekly BAU release log; rewrite throughput objectives into outcome objectives plus KPI-delta KRs. |
 
 ## 13. Implementation Crosswalk in This Repo
 

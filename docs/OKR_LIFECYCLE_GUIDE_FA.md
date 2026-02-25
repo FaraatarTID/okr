@@ -3,6 +3,17 @@ Documentation HQ: [README](../README.md)
 
 این راهنما با منطق چرخه‌حیات پیاده‌سازی‌شده در `streamlit_app/src/models.py`، `streamlit_app/src/domain/lifecycle.py` و `streamlit_app/src/crud.py` هم‌راستا است.
 
+## مدل مفهومی (Goal، Objective، KR)
+
+- `Goal`: نیت، جهت، و تغییر استراتژیک موردنظر (`چرا + به کجا`).
+- `Objective`: تعهد خروجی در بازه چرخه (`چه چیزی تغییر می‌کند`).
+- `KR`: خط اثبات عددی (`چطور تغییر را می‌سنجیم`).
+
+نتیجه عملی:
+- پیشرفت Objective از پیشرفت KRها محاسبه می‌شود.
+- پیشرفت Goal از پیشرفت Objectiveها محاسبه می‌شود.
+- شرط فعال‌سازی Objective داشتن حداقل یک KR است، چون Objective به‌تنهایی self-scoring نیست.
+
 ## ۱. وضعیت‌های چرخه حیات
 
 برای Objective و Key Result چهار وضعیت وجود دارد:
