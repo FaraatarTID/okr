@@ -168,4 +168,3 @@ def delete_team_from_crud(
             details={"id": team_id},
         )
         return True
-

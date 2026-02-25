@@ -71,7 +71,9 @@ def _write_audit_event_to_db(payload: dict) -> None:
                     action=str(payload.get("action") or ""),
                     entity=str(payload.get("entity") or ""),
                     result=str(payload.get("result") or "info"),
-                    details_json=_json_dumps(details if isinstance(details, dict) else {}),
+                    details_json=_json_dumps(
+                        details if isinstance(details, dict) else {}
+                    ),
                     correlation_id=payload.get("correlation_id"),
                     request_id=payload.get("request_id"),
                     created_at=utc_now_naive(),
@@ -112,9 +114,7 @@ def error_log(message: str, exc: Optional[Exception] = None):
     observability = current_observability_fields()
     scoped_message = str(message)
     if observability:
-        scoped_message = (
-            f"{scoped_message} | ctx={_json_dumps(observability)}"
-        )
+        scoped_message = f"{scoped_message} | ctx={_json_dumps(observability)}"
     if exc:
         logger.exception(scoped_message, exc_info=exc)
     else:

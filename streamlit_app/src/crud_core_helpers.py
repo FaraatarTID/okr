@@ -123,10 +123,8 @@ def enforce_backend_mutation_failure_policy_from_crud(
             crud_module=crud_module,
             payload=payload,
         )
-    
-    message = str(
-        payload.get("error") or "Backend mutation request failed."
-    ).strip()
+
+    message = str(payload.get("error") or "Backend mutation request failed.").strip()
     raise ValueError(
         f"{message} Local backend fallback is disabled; retry when backend is healthy."
     )

@@ -72,8 +72,7 @@ def _run_pytest(*, targets: Iterable[str], extra_args: Iterable[str]) -> CheckRe
     return_code, output = _run_command(cmd, cwd=ROOT)
     if return_code != 0:
         detail = (
-            output
-            or "Pytest exited with a non-zero status and no output was captured."
+            output or "Pytest exited with a non-zero status and no output was captured."
         )
         return CheckResult(
             name="pytest_resilience_suite",

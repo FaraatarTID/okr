@@ -12,10 +12,9 @@ def test_broadcast_cache_invalidation_uses_monotonic_ns_signal(monkeypatch):
     monkeypatch.setattr(
         service,
         "set_distributed_state",
-        lambda key, value, actor_username="system": sent.append(
-            (str(key), int(value), str(actor_username))
-        )
-        or True,
+        lambda key, value, actor_username="system": (
+            sent.append((str(key), int(value), str(actor_username))) or True
+        ),
     )
 
     assert service.broadcast_cache_invalidation(actor_username="alice") is True

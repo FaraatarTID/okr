@@ -83,8 +83,7 @@ def test_resolve_node_details_numeric_fallback_tries_order_and_skips_errors():
     assert node_type == "TASK"
     assert title == "Task Seven"
     assert any(
-        "Failed fallback lookup for node GOAL id=7" in msg
-        for msg in logger.debug_calls
+        "Failed fallback lookup for node GOAL id=7" in msg for msg in logger.debug_calls
     )
 
 

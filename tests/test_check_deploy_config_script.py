@@ -188,9 +188,7 @@ def test_runtime_mode_accepts_chromium_without_pdfshift_key(tmp_path: Path):
 
     lines = env_file.read_text(encoding="utf-8").splitlines()
     lines = [
-        "PDFSHIFT_API_KEY="
-        if line.startswith("PDFSHIFT_API_KEY=")
-        else line
+        "PDFSHIFT_API_KEY=" if line.startswith("PDFSHIFT_API_KEY=") else line
         for line in lines
     ]
     env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")

@@ -28,7 +28,9 @@ def get_distributed_state(key: str, actor_username: str = "system") -> Optional[
             retries=0,
         )
         if "error" in response:
-            _LOGGER.debug("Failed to get distributed state '%s': %s", key, response["error"])
+            _LOGGER.debug(
+                "Failed to get distributed state '%s': %s", key, response["error"]
+            )
             return None
         return response.get("value")
     except Exception as exc:
@@ -48,7 +50,9 @@ def set_distributed_state(key: str, value: str, actor_username: str = "system") 
             retries=0,
         )
         if "error" in response:
-            _LOGGER.warning("Failed to set distributed state '%s': %s", key, response["error"])
+            _LOGGER.warning(
+                "Failed to set distributed state '%s': %s", key, response["error"]
+            )
             return False
         return True
     except Exception as exc:

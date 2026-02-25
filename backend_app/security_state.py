@@ -119,7 +119,7 @@ class InMemorySecurityStateStore:
 
     def get_app_state(self, key: str) -> Optional[str]:
         with self._lock:
-            # We don't have a dedicated dict for generic state yet, 
+            # We don't have a dedicated dict for generic state yet,
             # so we'll just use a hidden one for in-memory mocks.
             if not hasattr(self, "_app_state"):
                 self._app_state: dict[str, str] = {}

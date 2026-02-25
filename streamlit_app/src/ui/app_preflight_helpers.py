@@ -15,7 +15,7 @@ def get_pdf_method(
             cfg_value_fn("PDF_METHOD", "")
             or cfg_value_fn("OKR_PDF_METHOD", "")
             or cfg_value_fn("pdf_method", "")
-    )
+        )
         .strip()
         .lower()
     )
@@ -105,10 +105,10 @@ def run_pdf_preflight(
     backend_api_url, backend_api_url_source = get_config_value_with_source_fn(
         "OKR_BACKEND_API_URL", ""
     )
-    
+
     # Legacy: We no longer allow opting out of proxy mutations if in a Streamlit context
     # backend_proxy_mutations = env_bool_fn("OKR_BACKEND_PROXY_MUTATIONS", True)
-    
+
     # Backend segregation is strict: reads must use backend control plane.
     backend_proxy_reads = True
 
@@ -123,10 +123,10 @@ def run_pdf_preflight(
         ai_provider_ready=ai_status.ready,
         ai_provider_message=ai_status.message,
         backend_api_url=backend_api_url,
-        backend_proxy_mutations=True, # Strictly enforced
+        backend_proxy_mutations=True,  # Strictly enforced
         backend_proxy_reads=backend_proxy_reads,
-        allow_local_backend_mutation_fallback=False, # Strictly disabled
-        allow_local_backend_read_fallback=False, # Strictly disabled
+        allow_local_backend_mutation_fallback=False,  # Strictly disabled
+        allow_local_backend_read_fallback=False,  # Strictly disabled
         backend_service_token=cfg_value_fn("OKR_BACKEND_SERVICE_TOKEN", ""),
         backend_signing_secret=cfg_value_fn("OKR_BACKEND_SIGNING_SECRET", ""),
         bootstrap_admin_password=str(environ.get("OKR_BOOTSTRAP_ADMIN_PASSWORD", "")),
@@ -147,7 +147,6 @@ def run_pdf_preflight(
         st_module.error(f"Runtime preflight: {msg}")
     for msg in report.warnings:
         st_module.warning(f"Runtime preflight: {msg}")
-
 
     st_module.session_state["preflight_done"] = True
     if report.errors and runtime_preflight_strict_mode_fn():

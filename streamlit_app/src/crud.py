@@ -219,7 +219,9 @@ def _resolve_backend_actor(actor_username: Optional[str] = None) -> str:
 
 
 def _raise_backend_read_error(operation: str, payload: Dict[str, Any]) -> None:
-    message = str(payload.get("error") or f"Backend read failed for {operation}.").strip()
+    message = str(
+        payload.get("error") or f"Backend read failed for {operation}."
+    ).strip()
     try:
         code = int(payload.get("status_code") or 0)
     except Exception:
@@ -667,7 +669,9 @@ def get_all_users() -> List[User]:
 
         actor = _resolve_backend_actor()
         backend_result = backend_client.read_all_users(actor_username=actor)
-        return list(_backend_read_result_or_raise("get_all_users", backend_result) or [])
+        return list(
+            _backend_read_result_or_raise("get_all_users", backend_result) or []
+        )
     return crud_auth_helpers.get_all_users_from_crud(crud_module=sys.modules[__name__])
 
 
@@ -997,7 +1001,9 @@ def get_all_cycles() -> List[Cycle]:
 
         actor = _resolve_backend_actor()
         backend_result = backend_client.read_all_cycles(actor_username=actor)
-        return list(_backend_read_result_or_raise("get_all_cycles", backend_result) or [])
+        return list(
+            _backend_read_result_or_raise("get_all_cycles", backend_result) or []
+        )
     return crud_cycle_helpers.get_all_cycles_from_crud(
         crud_module=sys.modules[__name__]
     )
@@ -1828,7 +1834,9 @@ def get_all_teams() -> List[Team]:
 
         actor = _resolve_backend_actor()
         backend_result = backend_client.read_all_teams(actor_username=actor)
-        return list(_backend_read_result_or_raise("get_all_teams", backend_result) or [])
+        return list(
+            _backend_read_result_or_raise("get_all_teams", backend_result) or []
+        )
     return crud_team_helpers.get_all_teams_from_crud(
         crud_module=sys.modules[__name__],
     )

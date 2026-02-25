@@ -1,6 +1,3 @@
-
-
-
 def test_run_job_and_wait_fails_closed_on_submit_transport_error_when_fallback_disabled(
     monkeypatch,
 ):

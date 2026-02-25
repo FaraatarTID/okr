@@ -73,7 +73,12 @@ def cached_get_work_logs(
 ):
     from src.services import backend_client
 
-    _ = ensure_model_bindings_current_fn, get_session_context_fn, select_fn, worklog_model
+    _ = (
+        ensure_model_bindings_current_fn,
+        get_session_context_fn,
+        select_fn,
+        worklog_model,
+    )
     actor = backend_client.resolve_actor_username(actor_username)
     backend_result = backend_client.read_work_logs_by_task(
         int(task_id),

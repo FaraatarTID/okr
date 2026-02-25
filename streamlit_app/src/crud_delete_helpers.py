@@ -158,4 +158,3 @@ def delete_key_result_from_crud(
             crud_module.clear_cache_safe()
             return True
         return False
-

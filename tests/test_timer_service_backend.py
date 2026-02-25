@@ -53,9 +53,9 @@ def test_timer_service_backend_404_maps_to_none(monkeypatch):
     assert timer_service.stop_timer(7, summary="x", user_id="alice") is None
 
 
-
 def test_timer_service_transient_backend_error_fails_closed_by_default(monkeypatch):
     import src.services.timer_service as timer_service
+
     monkeypatch.setenv("OKR_BACKEND_API_URL", "http://backend.local")
     monkeypatch.setattr(timer_service, "is_backend_enabled", lambda: True)
     monkeypatch.setattr(

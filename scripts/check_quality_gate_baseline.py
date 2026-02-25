@@ -57,9 +57,7 @@ def main() -> int:
 
     print(f"Quality baseline review date: {today.isoformat()}")
     for item in BASELINE_ITEMS:
-        print(
-            f"- {item.id}: expires {item.expires_on.isoformat()} | {item.scope}"
-        )
+        print(f"- {item.id}: expires {item.expires_on.isoformat()} | {item.scope}")
 
     if errors:
         print("Quality baseline check failed:")

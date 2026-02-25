@@ -27,6 +27,6 @@ def test_atlas_fixed_keys_are_not_used_as_raw_string_literals():
             if f'"{key}"' in text or f"'{key}'" in text:
                 offenders.append(f"{path.relative_to(ui_dir)} -> {key}")
 
-    assert not offenders, "Raw atlas session keys found outside session_keys.py:\n" + "\n".join(
-        offenders
+    assert not offenders, (
+        "Raw atlas session keys found outside session_keys.py:\n" + "\n".join(offenders)
     )

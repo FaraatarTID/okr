@@ -7,9 +7,7 @@ import sys
 
 
 MODULE_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "scripts"
-    / "check_quality_gate_baseline.py"
+    Path(__file__).resolve().parents[1] / "scripts" / "check_quality_gate_baseline.py"
 )
 SPEC = importlib.util.spec_from_file_location(
     "check_quality_gate_baseline", MODULE_PATH

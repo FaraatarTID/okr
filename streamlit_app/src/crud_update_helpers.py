@@ -348,4 +348,3 @@ def update_key_result_analysis_from_crud(
             session.refresh(kr)
             crud_module.clear_cache_safe()
         return kr
-

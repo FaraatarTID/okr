@@ -138,4 +138,3 @@ def get_krs_needing_checkin_from_crud(
         cycle_id,
         days_threshold,
     )
-

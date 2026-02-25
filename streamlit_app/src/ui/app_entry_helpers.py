@@ -110,7 +110,9 @@ def run_main_from_app(*, app_module) -> None:
     resolve_runtime_fn = getattr(app_module, "_resolve_app_shell_runtime", None)
     error_log_fn = getattr(app_module, "error_log", None)
     clear_session_fn = getattr(app_module, "_clear_user_session", None)
-    render_password_reset_gate_fn = getattr(app_module, "render_password_reset_gate", None)
+    render_password_reset_gate_fn = getattr(
+        app_module, "render_password_reset_gate", None
+    )
     render_app_fn = getattr(app_module, "render_app", None)
 
     _record_rerun_metrics(st.session_state)
@@ -165,7 +167,9 @@ def run_main_from_app(*, app_module) -> None:
             if callable(render_password_reset_gate_fn):
                 render_password_reset_gate_fn()
             else:
-                st.error("Password reset flow is unavailable. Please log out and retry.")
+                st.error(
+                    "Password reset flow is unavailable. Please log out and retry."
+                )
             return
 
         if callable(render_app_fn):

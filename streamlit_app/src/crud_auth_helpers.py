@@ -1018,4 +1018,3 @@ def ensure_admin_exists_from_crud(*, crud_module) -> bool:
     if last_exc is not None:
         raise last_exc
     return False
-

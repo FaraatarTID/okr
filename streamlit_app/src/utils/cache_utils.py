@@ -27,11 +27,16 @@ def check_distributed_cache_staleness():
     global _LAST_SEEN_INVALIDATION_TS
     try:
         import streamlit as st
-        from src.services.distributed_state_service import get_last_invalidation_timestamp
+        from src.services.distributed_state_service import (
+            get_last_invalidation_timestamp,
+        )
 
         global_ts = get_last_invalidation_timestamp()
         if global_ts and global_ts != _LAST_SEEN_INVALIDATION_TS:
-            _LOGGER.info("Distributed cache invalidation detected (global_ts=%s). Clearing local cache.", global_ts)
+            _LOGGER.info(
+                "Distributed cache invalidation detected (global_ts=%s). Clearing local cache.",
+                global_ts,
+            )
             st.cache_data.clear()
             _LAST_SEEN_INVALIDATION_TS = global_ts
     except Exception as exc:

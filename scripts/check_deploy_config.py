@@ -237,7 +237,9 @@ def validate(
 
     pdf_method = _normalize_pdf_method(env.get("PDF_METHOD", ""))
     if not pdf_method:
-        report.errors.append(f"Missing value for 'PDF_METHOD' in {_display_path(env_file)}.")
+        report.errors.append(
+            f"Missing value for 'PDF_METHOD' in {_display_path(env_file)}."
+        )
     elif pdf_method not in ALLOWED_PDF_METHODS:
         report.errors.append(
             f"'PDF_METHOD' must be one of: {', '.join(sorted(ALLOWED_PDF_METHODS))}; "

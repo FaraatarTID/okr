@@ -433,7 +433,11 @@ def build_ai_task_candidates(
 
 build_ai_suggested_payload = atlas_workspace_ai_helpers.build_ai_suggested_payload
 build_ai_sync_report = atlas_workspace_ai_helpers.build_ai_sync_report
-build_ai_sync_sidebar_messages = atlas_workspace_ai_helpers.build_ai_sync_sidebar_messages
-build_ai_undo_sidebar_messages = atlas_workspace_ai_helpers.build_ai_undo_sidebar_messages
+build_ai_sync_sidebar_messages = (
+    atlas_workspace_ai_helpers.build_ai_sync_sidebar_messages
+)
+build_ai_undo_sidebar_messages = (
+    atlas_workspace_ai_helpers.build_ai_undo_sidebar_messages
+)
 apply_ai_progress_undo = atlas_workspace_ai_helpers.apply_ai_progress_undo
 run_ai_progress_sync = atlas_workspace_ai_helpers.run_ai_progress_sync
