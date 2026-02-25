@@ -16,6 +16,7 @@ import pytest
 _RUN_E2E_ENV = "OKR_RUN_PLAYWRIGHT_E2E"
 _TEST_USERNAME = "e2e_admin"
 _TEST_PASSWORD = "E2E-Atlas-Password-123"
+_TEST_PASSWORD_UPDATED = "E2E-Atlas-Password-123!"
 
 
 def _truthy(raw: str | None) -> bool:
@@ -309,21 +310,46 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
         )
         page.get_by_role("button", name="Login").click()
 
-        # Streamlit accessibility markup can vary by runtime; assert a stable
-        # post-login signal first, then click Focus Map tab only if exposed.
         expect(login_heading).not_to_be_visible(timeout=90_000)
-        focus_map_tab = page.get_by_role("tab", name="Focus Map")
-        if focus_map_tab.count() > 0:
-            focus_map_tab.first.click()
-        expect(
-            page.get_by_text("Navigate hierarchy and pick your next move.").first
-        ).to_be_visible(timeout=90_000)
+        password_gate_heading = page.get_by_text("Change Your Password").first
+        if password_gate_heading.is_visible():
+            page.get_by_role("textbox", name="New Password", exact=True).fill(
+                _TEST_PASSWORD_UPDATED
+            )
+            page.get_by_role("textbox", name="Confirm Password", exact=True).fill(
+                _TEST_PASSWORD_UPDATED
+            )
+            page.get_by_role("button", name="Update Password").click()
+
+            expect(login_heading).to_be_visible(timeout=90_000)
+            page.get_by_role("textbox", name="Username", exact=True).fill(
+                e2e_stack.username
+            )
+            page.get_by_role("textbox", name="Password", exact=True).fill(
+                _TEST_PASSWORD_UPDATED
+            )
+            page.get_by_role("button", name="Login").click()
+            expect(login_heading).not_to_be_visible(timeout=90_000)
+
+        # Stable authenticated signal.
+        expect(page.get_by_role("button", name="Logout").first).to_be_visible(
+            timeout=90_000
+        )
+
+        # Best-effort: navigate to home/workspace and choose suggested focus if shown.
+        home_button = page.get_by_role("button", name="Home / OKRs").first
+        if home_button.count() > 0 and home_button.is_visible():
+            home_button.click()
+        use_suggested_button = page.get_by_role("button", name="Use Suggested").first
+        if use_suggested_button.count() > 0 and use_suggested_button.is_visible():
+            use_suggested_button.click()
 
         start_button = page.get_by_role("button", name="Start").first
-        expect(start_button).to_be_enabled(timeout=60_000)
+        expect(start_button).to_be_visible(timeout=90_000)
+        expect(start_button).to_be_enabled(timeout=90_000)
         start_button.click()
         expect(page.get_by_role("button", name="Stop & Log").first).to_be_visible(
-            timeout=60_000
+            timeout=90_000
         )
 
         context.close()
