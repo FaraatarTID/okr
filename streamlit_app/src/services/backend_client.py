@@ -968,18 +968,22 @@ def create_objective(
     goal_id: int,
     title: str,
     description: str = "",
+    weight: Optional[float] = None,
     actor_username: str,
 ) -> Dict[str, Any]:
+    payload = {
+        "goal_id": int(goal_id),
+        "title": str(title or ""),
+        "description": str(description or ""),
+        "actor_username": str(actor_username),
+    }
+    if weight is not None:
+        payload["weight"] = float(weight)
     return _request_json(
         method="POST",
         path="/v1/nodes/objective",
         actor_username=actor_username,
-        payload={
-            "goal_id": int(goal_id),
-            "title": str(title or ""),
-            "description": str(description or ""),
-            "actor_username": str(actor_username),
-        },
+        payload=payload,
         timeout=(3.0, 25.0),
         retries=1,
     )
@@ -993,21 +997,25 @@ def create_key_result(
     target_value: float = 100.0,
     unit: str = "%",
     initiative_tags: Any = None,
+    weight: Optional[float] = None,
     actor_username: str,
 ) -> Dict[str, Any]:
+    payload = {
+        "objective_id": int(objective_id),
+        "title": str(title or ""),
+        "description": str(description or ""),
+        "target_value": float(target_value),
+        "unit": str(unit or "%"),
+        "initiative_tags": _json_safe(initiative_tags),
+        "actor_username": str(actor_username),
+    }
+    if weight is not None:
+        payload["weight"] = float(weight)
     return _request_json(
         method="POST",
         path="/v1/nodes/key_result",
         actor_username=actor_username,
-        payload={
-            "objective_id": int(objective_id),
-            "title": str(title or ""),
-            "description": str(description or ""),
-            "target_value": float(target_value),
-            "unit": str(unit or "%"),
-            "initiative_tags": _json_safe(initiative_tags),
-            "actor_username": str(actor_username),
-        },
+        payload=payload,
         timeout=(3.0, 25.0),
         retries=1,
     )

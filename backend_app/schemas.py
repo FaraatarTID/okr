@@ -8,9 +8,9 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
-from backend_app.path_setup import ensure_streamlit_app_on_path
+from backend_app.path_setup import ensure_shared_src_on_path
 
-ensure_streamlit_app_on_path()
+ensure_shared_src_on_path()
 
 from src.domain.password_policy import validate_password_policy
 
@@ -72,6 +72,7 @@ class ObjectiveCreateRequest(BaseModel):
     goal_id: int = Field(..., gt=0)
     title: str = ""
     description: str = ""
+    weight: Optional[float] = Field(default=None, ge=0)
     actor_username: Optional[str] = None
 
 
@@ -82,6 +83,7 @@ class KeyResultCreateRequest(BaseModel):
     target_value: float = 100.0
     unit: str = "%"
     initiative_tags: Optional[Union[str, List[str]]] = None
+    weight: Optional[float] = Field(default=None, ge=0)
     actor_username: Optional[str] = None
 
 
@@ -399,3 +401,23 @@ class ReadQueryRequest(BaseModel):
     kind: str = Field(..., min_length=1, max_length=128)
     params: Dict[str, Any] = Field(default_factory=dict)
     actor_username: Optional[str] = None
+
+
+class AiAnalyzeNodeRequest(BaseModel):
+    node_id: int = Field(..., gt=0)
+    node_type: NodeType = "KEY_RESULT"
+    actor_username: Optional[str] = None
+
+
+class AiTeamCoachRequest(BaseModel):
+    team_data: Dict[str, Any] = Field(default_factory=dict)
+    actor_username: Optional[str] = None
+
+
+class AiStrategyPulseRequest(BaseModel):
+    cycle_id: int = Field(..., gt=0)
+    subject_username: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    cycle_title: Optional[str] = Field(default=None, max_length=255)
+    days: int = Field(default=14, ge=7, le=90)
+    actor_username: Optional[str] = None
+

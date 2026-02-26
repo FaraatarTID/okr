@@ -1,4 +1,4 @@
-# OKR vs BAU Boundary Guide
+﻿# OKR vs BAU Boundary Guide
 Documentation HQ: [README](../README.md)
 
 This guide defines a strict boundary between strategic OKR work and Business as Usual (BAU) operations.
@@ -100,7 +100,7 @@ Decision:
 
 ## 4. BAU Release Workflow (Member + Manager)
 
-Use this every week during ritual/review:
+Use this every week during check-in/review:
 
 1. Member logs BAU candidates in an external governance artifact (meeting notes/release log), not in app check-in comments.
 2. Manager reviews candidates in weekly governance.
@@ -114,9 +114,9 @@ Use this every week during ritual/review:
 Template:
 - `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`
 
-### 4.1 Dual-Track Weekly Ritual Output (Required)
+### 4.1 Dual-Track Weekly Check-In Output (Required)
 
-Weekly ritual should produce two separate outputs:
+Weekly check-in should produce two separate outputs:
 
 1. Strategic lane (OKR):
    - KR check-ins, hypothesis updates, and change initiatives.
@@ -192,3 +192,5 @@ Before activating Objectives/KRs:
 2. Remove or release BAU items.
 3. Confirm each KR has measurable strategic delta.
 4. Capture decisions in BAU release log.
+
+

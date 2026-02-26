@@ -1,0 +1,52 @@
+[
+  {
+    "id": "auth_login",
+    "method": "POST",
+    "path": "/v1/auth/login",
+    "request": "auth_login.request.json",
+    "response": "auth_login.response.json"
+  },
+  {
+    "id": "atlas_snapshot",
+    "method": "POST",
+    "path": "/v1/read/atlas/snapshot",
+    "request": "atlas_snapshot.request.json",
+    "response": "atlas_snapshot.response.json"
+  },
+  {
+    "id": "timer_start",
+    "method": "POST",
+    "path": "/v1/timer/start",
+    "request": "timer_start.request.json",
+    "response": "timer_start.response.json"
+  },
+  {
+    "id": "timer_stop",
+    "method": "POST",
+    "path": "/v1/timer/stop",
+    "request": "timer_stop.request.json",
+    "response": "timer_stop.response.json"
+  },
+  {
+    "id": "node_update",
+    "method": "PATCH",
+    "path": "/v1/nodes/key_result/3201",
+    "request": "node_update.request.json",
+    "response": "node_update.response.json"
+  },
+  {
+    "id": "node_create",
+    "method": "POST",
+    "path": "/v1/nodes/task",
+    "request": "node_create.request.json",
+    "response": "node_create.response.json"
+  },
+  {
+    "id": "node_delete",
+    "method": "DELETE",
+    "path": "/v1/nodes/task/4509",
+    "request": "node_delete.request.json",
+    "response": "node_delete.response.json"
+  }
+]
+

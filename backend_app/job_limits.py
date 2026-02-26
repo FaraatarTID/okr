@@ -12,9 +12,9 @@ from sqlalchemy import func
 from sqlmodel import select
 
 from backend_app.config import get_backend_settings
-from backend_app.path_setup import ensure_streamlit_app_on_path
+from backend_app.path_setup import ensure_shared_src_on_path
 
-ensure_streamlit_app_on_path()
+ensure_shared_src_on_path()
 
 from src.database import get_session_context
 from src.models import AsyncJob, AsyncJobStatus, User
@@ -345,3 +345,4 @@ def enforce_job_submit_limits(
             team_id=team_id,
             window_seconds=86400,
         )
+

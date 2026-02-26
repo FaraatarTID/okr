@@ -20,9 +20,9 @@ from backend_app.jobs import (
     prune_audit_events,
     prune_terminal_jobs,
 )
-from backend_app.path_setup import ensure_streamlit_app_on_path
+from backend_app.path_setup import ensure_shared_src_on_path
 
-ensure_streamlit_app_on_path()
+ensure_shared_src_on_path()
 
 from src.database import init_database
 from src.observability import observability_context
@@ -175,3 +175,4 @@ def run_worker_loop() -> None:
 
 if __name__ == "__main__":
     run_worker_loop()
+

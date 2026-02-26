@@ -1,58 +1,12 @@
 version: "3.9"
 
 services:
-  okr:
-    build:
-      context: ../..
-      dockerfile: deploy/docker/Dockerfile
-    container_name: okr-streamlit
-    image: ${IMAGE:-okr-streamlit:local}
-    environment:
-      - PORT=${PORT:-8501}
-      - BASE_URL_PATH=${BASE_URL_PATH:-}
-      - STREAMLIT_SERVER_HEADLESS=true
-      - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL is required}
-      - OKR_BACKEND_API_URL=${OKR_BACKEND_API_URL:-http://backend-api:8100}
-      - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:-}
-      - OKR_BACKEND_SIGNING_SECRET=${OKR_BACKEND_SIGNING_SECRET:-}
-      - OKR_BACKEND_PROXY_MUTATIONS=${OKR_BACKEND_PROXY_MUTATIONS:-true}
-      - OKR_BACKEND_SECURITY_STATE_BACKEND=${OKR_BACKEND_SECURITY_STATE_BACKEND:-database}
-      - OKR_BACKEND_SECURITY_STATE_REDIS_URL=${OKR_BACKEND_SECURITY_STATE_REDIS_URL:-}
-      - OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX=${OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX:-okr:security}
-      - OKR_ALLOW_LOCAL_MUTATION_FALLBACK=${OKR_ALLOW_LOCAL_MUTATION_FALLBACK:-false}
-      - OKR_ALLOW_LOCAL_READ_FALLBACK=${OKR_ALLOW_LOCAL_READ_FALLBACK:-false}
-      - OKR_BACKEND_DEFAULT_ACTOR=${OKR_BACKEND_DEFAULT_ACTOR:-system}
-      - PDF_METHOD=${PDF_METHOD:-pdfshift}
-      - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
-      - ALLOW_EXTERNAL_AI=${ALLOW_EXTERNAL_AI:-false}
-      - AI_PROVIDER=${AI_PROVIDER:-gemini}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-latest}
-      - AI_BASE_URL=${AI_BASE_URL:-}
-      - AI_MODEL=${AI_MODEL:-}
-      - AI_API_KEY=${AI_API_KEY:-}
-      - OKR_STRICT_RUNTIME_PREFLIGHT=${OKR_STRICT_RUNTIME_PREFLIGHT:-true}
-      - AUTH_USER_WINDOW_SECONDS=${AUTH_USER_WINDOW_SECONDS:-300}
-      - AUTH_USER_MAX_ATTEMPTS=${AUTH_USER_MAX_ATTEMPTS:-5}
-      - AUTH_IP_WINDOW_SECONDS=${AUTH_IP_WINDOW_SECONDS:-300}
-      - AUTH_IP_MAX_ATTEMPTS=${AUTH_IP_MAX_ATTEMPTS:-20}
-      - AUTH_LOCKOUT_SECONDS=${AUTH_LOCKOUT_SECONDS:-900}
-    # Mount secrets.toml if you use Streamlit secrets (uncomment and provide a file)
-    # volumes:
-    #   - ../secrets/secrets.toml:/app/streamlit_app/.streamlit/secrets.toml:ro
-    ports:
-      - "${HOST_PORT:-8501}:${PORT:-8501}"
-    depends_on:
-      - backend-api
-      - backend-worker
-    restart: unless-stopped
-
   backend-api:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
     container_name: okr-backend-api
-    image: ${IMAGE:-okr-streamlit:local}
+    image: ${IMAGE:-okr-backend:local}
     environment:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL is required}
       - OKR_BACKEND_HOST=0.0.0.0
@@ -89,7 +43,7 @@ services:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
     container_name: okr-backend-worker
-    image: ${IMAGE:-okr-streamlit:local}
+    image: ${IMAGE:-okr-backend:local}
     environment:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL is required}
       - OKR_BACKEND_WORKER_POLL_SECONDS=${OKR_BACKEND_WORKER_POLL_SECONDS:-2}
@@ -105,4 +59,45 @@ services:
       - PDF_METHOD=${PDF_METHOD:-pdfshift}
       - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
     command: ["python", "-m", "backend_app.worker"]
+    restart: unless-stopped
+
+  spa-bff:
+    build:
+      context: ../../spa-bff
+      dockerfile: Dockerfile
+    container_name: okr-spa-bff
+    image: ${SPA_BFF_IMAGE:-okr-spa-bff:local}
+    environment:
+      - BFF_HOST=0.0.0.0
+      - BFF_PORT=${BFF_PORT:-3001}
+      - BFF_REQUEST_TIMEOUT_MS=${BFF_REQUEST_TIMEOUT_MS:-20000}
+      - OKR_BACKEND_API_URL=${OKR_BACKEND_API_URL:-http://backend-api:8100}
+      - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:-}
+      - OKR_BACKEND_SIGNING_SECRET=${OKR_BACKEND_SIGNING_SECRET:-}
+      - BFF_LOG_LEVEL=${BFF_LOG_LEVEL:-info}
+    ports:
+      - "${SPA_BFF_BIND_ADDRESS:-127.0.0.1}:${SPA_BFF_HOST_PORT:-3001}:${BFF_PORT:-3001}"
+    depends_on:
+      - backend-api
+    restart: unless-stopped
+
+  spa-web:
+    build:
+      context: ../../spa-web
+      dockerfile: Dockerfile
+    container_name: okr-spa-web
+    image: ${SPA_WEB_IMAGE:-okr-spa-web:local}
+    environment:
+      - PORT=3000
+      - BFF_PUBLIC_ORIGIN=${BFF_PUBLIC_ORIGIN:-http://spa-bff:3001}
+      - OKR_SPA_ROLLOUT_ENABLED=${OKR_SPA_ROLLOUT_ENABLED:-false}
+      - OKR_SPA_ROLLOUT_ALLOW_ALL=${OKR_SPA_ROLLOUT_ALLOW_ALL:-false}
+      - OKR_SPA_ROLLOUT_TEAM_IDS=${OKR_SPA_ROLLOUT_TEAM_IDS:-}
+      - OKR_SPA_ROLLOUT_USERNAMES=${OKR_SPA_ROLLOUT_USERNAMES:-}
+      - OKR_SPA_ROLLOUT_ROLES=${OKR_SPA_ROLLOUT_ROLES:-admin}
+      - OKR_SPA_ROLLOUT_ALLOW_PREVIEW_BYPASS=${OKR_SPA_ROLLOUT_ALLOW_PREVIEW_BYPASS:-false}
+    ports:
+      - "${SPA_WEB_BIND_ADDRESS:-127.0.0.1}:${SPA_WEB_HOST_PORT:-3000}:3000"
+    depends_on:
+      - spa-bff
     restart: unless-stopped

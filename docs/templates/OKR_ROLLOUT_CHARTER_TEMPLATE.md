@@ -1,4 +1,4 @@
-# OKR Rollout Charter Template
+﻿# OKR Rollout Charter Template
 
 Documentation HQ: [README](../../README.md)
 
@@ -62,7 +62,7 @@ Define pass/fail thresholds before cycle 1 starts.
 
 | Category | Metric | Baseline | Target | Decision threshold |
 |---|---|---|---|---|
-| Adoption | Weekly ritual completion rate |  |  |  |
+| Adoption | Weekly check-in completion rate |  |  |  |
 | Adoption | Training completion rate |  |  |  |
 | Execution | KR check-in freshness |  |  |  |
 | Quality | KR metric quality score |  |  |  |
@@ -107,3 +107,4 @@ Decision:
 
 Decision owner:
 Decision date:
+

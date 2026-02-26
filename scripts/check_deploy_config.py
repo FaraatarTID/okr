@@ -23,6 +23,7 @@ REQUIRED_ENV_KEYS = (
     "OKR_BACKEND_PROXY_MUTATIONS",
     "OKR_BACKEND_PROXY_READS",
     "OKR_BACKEND_SECURITY_STATE_BACKEND",
+    "OKR_BACKEND_BIND_ADDRESS",
     "OKR_ALLOW_LOCAL_MUTATION_FALLBACK",
     "OKR_ALLOW_LOCAL_READ_FALLBACK",
     "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN",
@@ -183,6 +184,18 @@ def _validate_redis_url(url: str, report: ValidationReport, *, strict: bool) -> 
         )
 
 
+def _validate_backend_bind_address(value: str, report: ValidationReport) -> None:
+    raw = str(value or "").strip()
+    if not raw:
+        report.errors.append("OKR_BACKEND_BIND_ADDRESS cannot be empty.")
+        return
+    if _normalize(raw) not in {"127.0.0.1", "localhost", "::1"}:
+        report.errors.append(
+            "OKR_BACKEND_BIND_ADDRESS must remain loopback/private "
+            "(127.0.0.1, localhost, or ::1)."
+        )
+
+
 def validate(
     *,
     env_file: Path,
@@ -271,6 +284,8 @@ def validate(
             strict=(mode == "runtime"),
         )
 
+    _validate_backend_bind_address(env.get("OKR_BACKEND_BIND_ADDRESS", ""), report)
+
     if secrets:
         secret_pdf_method = _normalize_pdf_method(
             _secret_value(secrets, "PDF_METHOD", "pdf_method")
@@ -337,7 +352,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--secrets-file",
         type=Path,
         default=ROOT / "deploy" / "secrets" / "secrets.toml.example",
-        help="Path to Streamlit secrets TOML file.",
+        help="Path to runtime secrets TOML file.",
     )
     parser.add_argument(
         "--mode",
