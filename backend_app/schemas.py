@@ -8,9 +8,9 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field, field_validator
 
-from backend_app.path_setup import ensure_streamlit_app_on_path
+from backend_app.path_setup import ensure_shared_src_on_path
 
-ensure_streamlit_app_on_path()
+ensure_shared_src_on_path()
 
 from src.domain.password_policy import validate_password_policy
 
@@ -72,6 +72,7 @@ class ObjectiveCreateRequest(BaseModel):
     goal_id: int = Field(..., gt=0)
     title: str = ""
     description: str = ""
+    weight: Optional[float] = Field(default=None, ge=0)
     actor_username: Optional[str] = None
 
 
@@ -82,6 +83,7 @@ class KeyResultCreateRequest(BaseModel):
     target_value: float = 100.0
     unit: str = "%"
     initiative_tags: Optional[Union[str, List[str]]] = None
+    weight: Optional[float] = Field(default=None, ge=0)
     actor_username: Optional[str] = None
 
 
@@ -418,3 +420,4 @@ class AiStrategyPulseRequest(BaseModel):
     cycle_title: Optional[str] = Field(default=None, max_length=255)
     days: int = Field(default=14, ge=7, le=90)
     actor_username: Optional[str] = None
+

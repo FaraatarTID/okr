@@ -1,0 +1,13 @@
+/* This is a hacky way to prevent backdrop clicks in Streamlit 1.34+ */
+            [data-testid="stDialog"] [data-testid="stBaseButton-secondary"] {
+                /* We can't easily prevent the click, but we can make the dialog more 'modal' */
+            }
+            
+            /* Custom Scrollbar for white-themed dialogs */
+            [data-testid="stDialog"] ::-webkit-scrollbar {
+                width: 8px;
+            }
+            [data-testid="stDialog"] ::-webkit-scrollbar-thumb {
+                background: #ddd;
+                border-radius: 4px;
+            }

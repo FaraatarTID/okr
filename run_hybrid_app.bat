@@ -105,8 +105,8 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [6/6] Starting upgraded hybrid stack (spa-bff + spa-web)...
-"!DOCKER_EXE!" compose -f "%COMPOSE_FILE%" --profile spa up -d --build spa-bff spa-web
+echo [6/6] Starting upgraded hybrid stack (backend-api + backend-worker + spa-bff + spa-web)...
+"!DOCKER_EXE!" compose -f "%COMPOSE_FILE%" up -d --build backend-api backend-worker spa-bff spa-web
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to start hybrid stack.
     pause
@@ -116,13 +116,14 @@ if %errorlevel% neq 0 (
 echo.
 echo [OK] Hybrid stack is up.
 echo - SPA Web: http://127.0.0.1:3000
-echo - Streamlit fallback URL: configured via OKR_STREAMLIT_FALLBACK_URL in %ENV_FILE%
+echo - Backend API: http://127.0.0.1:8100
+echo - SPA BFF:     http://127.0.0.1:3001
 echo.
 echo [INFO] Opening SPA in your browser...
 start "" "http://127.0.0.1:3000"
 echo.
 echo [INFO] Service status:
-"!DOCKER_EXE!" compose -f "%COMPOSE_FILE%" --profile spa ps
+"!DOCKER_EXE!" compose -f "%COMPOSE_FILE%" ps
 echo.
 pause
 exit /b 0

@@ -299,14 +299,14 @@ All templates in this section are external governance documents, not app data-en
 
 ## Deployment Intent
 
-- Primary production design: `okr` + `backend-api` + `backend-worker` (self-hosted backend server architecture).
-- Embedded backend in `app.py` is for Streamlit Cloud compatibility and MVP/demo hosting.
+- Primary production design: `backend-api` + `backend-worker` + `spa-bff` + `spa-web`.
+- Streamlit runtime is retired from active deployment and launch paths.
 - Runtime behavior is backend-segregated: frontend reads/writes and heavy jobs are backend-owned (fail-closed on backend transport failure).
 - Corporate deployments (AWS/ECS/Kubernetes/VM) should follow [DEPLOYMENT.md](DEPLOYMENT.md), not embedded mode.
 
-## Experimental SPA BFF (Migration Track)
+## SPA BFF
 
-This repository now includes an experimental Node.js BFF service for SPA migration work:
+This repository includes a Node.js BFF service for browser-facing API mediation:
 - Path: `spa-bff/`
 - Purpose: expose only allowlisted browser-facing routes while keeping `backend-api` private/internal.
 - Auth model: BFF attaches internal service token and request-signing headers server-side.
@@ -322,15 +322,15 @@ OKR_BACKEND_SIGNING_SECRET=CHANGE_ME \
 npm run dev
 ```
 
-Optional Docker Compose profile:
+Docker Compose:
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml --profile spa up -d --build spa-bff
+docker compose -f deploy/docker/docker-compose.yml up -d --build backend-api backend-worker spa-bff
 ```
 
-## Experimental SPA Web (Migration Track)
+## SPA Web
 
-A Next.js frontend shell now exists for read-first Atlas migration probes:
+A Next.js frontend is the primary UI:
 - Path: `spa-web/`
 - Uses rewrite-based proxying to BFF for `/api/backend/*` calls.
 - Supports runtime cohort rollout controls via `OKR_SPA_ROLLOUT_*` environment policy.
@@ -340,6 +340,7 @@ A Next.js frontend shell now exists for read-first Atlas migration probes:
 - Cutover SLO dashboard/runbook and threshold contract: `docs/HYBRID_FRONTEND_SLO_DASHBOARD.md`, `docs/HYBRID_FRONTEND_SLO_TARGETS.json`.
 - Rollback drill evidence for cutover readiness: `docs/HYBRID_FRONTEND_ROLLBACK_DRILL_2026-02-25.md`.
 - Pilot completion review and cutover recommendation: `docs/HYBRID_FRONTEND_PILOT_COMPLETION_REVIEW_2026-02-25.md`.
+- Streamlit retirement phase execution record: `docs/HYBRID_FRONTEND_STREAMLIT_RETIREMENT_2026-02-26.md`.
 - SPA shell and read parity validation evidence: `docs/HYBRID_FRONTEND_SPA_SHELL_VALIDATION_2026-02-25.md`, `docs/HYBRID_FRONTEND_READ_PARITY_VALIDATION_2026-02-25.md`.
 - Phase 0 baseline snapshot and rollback toggle contract: `docs/HYBRID_FRONTEND_PHASE0_BASELINE_2026-02-25.md`, `docs/HYBRID_FRONTEND_ROLLBACK_TOGGLE_CONTRACT_2026-02-25.md`.
 
@@ -351,10 +352,10 @@ npm install
 npm run dev
 ```
 
-Optional Docker Compose profile:
+Docker Compose:
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml --profile spa up -d --build spa-bff spa-web
+docker compose -f deploy/docker/docker-compose.yml up -d --build backend-api backend-worker spa-bff spa-web
 ```
 
 Windows quick launcher (repo root):
@@ -370,11 +371,11 @@ run_hybrid_app_local.bat
 ```
 
 Database URL resolution precedence for the local launcher:
-`OKR_DATABASE_URL` env -> `DATABASE_URL` env -> `deploy/docker/.env` -> `streamlit_app/.streamlit/secrets.toml`.
+`OKR_DATABASE_URL` env -> `DATABASE_URL` env -> `deploy/docker/.env` -> `deploy/secrets/secrets.toml`.
 
 If startup fails, review local logs under `tmp/local-hybrid-logs/`.
 
-## Quickstart (Local Development)
+## Quickstart (Local Development - SPA First)
 
 Run commands from repository root (`okr`).
 
@@ -417,11 +418,7 @@ Run:
 Windows PowerShell:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install --require-hashes -r streamlit_app/requirements-dev.txt
-$env:OKR_BACKEND_API_URL="auto"
-streamlit run streamlit_app/app.py
+.\run_hybrid_app_local.bat
 ```
 
 macOS/Linux bash:
@@ -429,19 +426,22 @@ macOS/Linux bash:
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install --require-hashes -r streamlit_app/requirements-dev.txt
-export OKR_BACKEND_API_URL=auto
-streamlit run streamlit_app/app.py
+pip install -r backend_app/requirements.txt
+export OKR_DATABASE_URL='postgresql+psycopg2://...'
+python -m backend_app.run_api &
+python -m backend_app.worker &
+npm --prefix spa-bff install && npm --prefix spa-bff run dev &
+npm --prefix spa-web install && npm --prefix spa-web run dev
 ```
 
 Optional provider health check:
 
 ```bash
-python streamlit_app/scripts/ai_provider_health_check.py
+python scripts/ai_provider_health_check.py
 ```
 
 Success check (local):
-1. Terminal shows a Streamlit URL (usually `http://localhost:8501`).
+1. SPA is reachable at `http://127.0.0.1:3000`.
 2. Browser opens the login screen.
 3. After login, the Atlas workspace loads.
 
@@ -503,7 +503,7 @@ python -m pytest -q
 Benchmark hot paths when changing performance-sensitive code:
 
 ```bash
-python streamlit_app/scripts/perf_hotpaths.py
+python scripts/perf_hotpaths.py
 ```
 
 Run Playwright happy-path e2e test (login -> focus map -> start timer):
@@ -527,4 +527,3 @@ Install browser runtime once if needed:
 ```bash
 playwright install chromium
 ```
-

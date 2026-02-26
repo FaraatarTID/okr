@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import uuid
+import math
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -14,7 +16,7 @@ from sqlmodel import Session, select
 
 from backend_app.job_limits import enforce_job_submit_limits
 from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job
-from backend_app.path_setup import ensure_streamlit_app_on_path
+from backend_app.path_setup import ensure_shared_src_on_path
 from backend_app.schemas import (
     AiAnalyzeNodeRequest,
     AiStrategyPulseRequest,
@@ -68,7 +70,7 @@ from backend_app.schemas import (
 from backend_app.security import require_service_access, resolve_actor_username
 from backend_app.security_state import get_app_state, set_app_state
 
-ensure_streamlit_app_on_path()
+ensure_shared_src_on_path()
 
 from src.crud import (
     authenticate_user_detailed,
@@ -113,6 +115,7 @@ from src.crud import (
     get_user_retrospectives,
     get_work_logs_by_date_range,
     list_experiments_for_retro_window,
+    list_experiments_for_kr,
     start_timer,
     stop_timer,
     update_cycle,
@@ -249,6 +252,27 @@ def _coerce_datetime(value, *, field_name: str):
     raise HTTPException(status_code=400, detail=f"Invalid datetime for '{field_name}'.")
 
 
+def _coerce_float(value, *, field_name: str):
+    if value is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid numeric value for '{field_name}'.",
+        )
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid numeric value for '{field_name}'.",
+        ) from exc
+    if not math.isfinite(parsed):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid numeric value for '{field_name}'.",
+        )
+    return parsed
+
+
 def _coerce_enum(value, enum_cls, *, field_name: str):
     if value is None:
         return None
@@ -296,6 +320,17 @@ def _normalize_updates(node_type: str, updates: dict) -> dict:
                 MetricType,
                 field_name="metric_type",
             )
+        for numeric_field in ("start_value", "target_value", "current_value", "weight"):
+            if numeric_field in clean:
+                clean[numeric_field] = _coerce_float(
+                    clean.get(numeric_field),
+                    field_name=numeric_field,
+                )
+        if "weight" in clean and float(clean["weight"]) < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid value for 'weight'.",
+            )
 
     if node_type == "OBJECTIVE":
         if "score_mode" in clean:
@@ -304,6 +339,13 @@ def _normalize_updates(node_type: str, updates: dict) -> dict:
                 ScoreMode,
                 field_name="score_mode",
             )
+        if "weight" in clean:
+            clean["weight"] = _coerce_float(clean.get("weight"), field_name="weight")
+            if float(clean["weight"]) < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid value for 'weight'.",
+                )
 
     if node_type in {"OBJECTIVE", "KEY_RESULT"} and "state" in clean:
         clean["state"] = _coerce_enum(
@@ -577,10 +619,146 @@ def _coerce_experiment_updates(updates: dict) -> dict:
     return clean
 
 
+def _normalize_idempotency_key(value: Optional[str]) -> Optional[str]:
+    key = str(value or "").strip()
+    if not key:
+        return None
+    return key[:255]
+
+
+def _payload_to_jsonable(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _payload_to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_payload_to_jsonable(item) for item in value]
+    if hasattr(value, "model_dump"):
+        try:
+            return _payload_to_jsonable(value.model_dump(mode="json"))
+        except TypeError:
+            return _payload_to_jsonable(value.model_dump())
+    if hasattr(value, "dict"):
+        return _payload_to_jsonable(value.dict())
+    return str(value)
+
+
+def _payload_fingerprint(payload: Any) -> str:
+    body = json.dumps(
+        _payload_to_jsonable(payload),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _idempotency_state_key(*, scope: str, actor: str, key: str) -> str:
+    return f"idempotency:{scope}:{actor}:{key}"
+
+
+def _load_idempotent_response(
+    *,
+    scope: str,
+    actor: str,
+    idempotency_key: Optional[str],
+    payload: Any,
+) -> Optional[dict]:
+    key = _normalize_idempotency_key(idempotency_key)
+    if not key:
+        return None
+    state_key = _idempotency_state_key(scope=scope, actor=str(actor), key=key)
+    raw_state = get_app_state(state_key)
+    if not raw_state:
+        return None
+    try:
+        parsed = json.loads(raw_state)
+    except Exception:
+        return None
+    payload_hash = _payload_fingerprint(payload)
+    saved_hash = str(parsed.get("payload_hash") or "")
+    if saved_hash and saved_hash != payload_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="Idempotency key reuse with different payload is not allowed.",
+        )
+    cached_response = parsed.get("response")
+    if isinstance(cached_response, dict):
+        return cached_response
+    return None
+
+
+def _store_idempotent_response(
+    *,
+    scope: str,
+    actor: str,
+    idempotency_key: Optional[str],
+    payload: Any,
+    response_payload: dict,
+) -> None:
+    key = _normalize_idempotency_key(idempotency_key)
+    if not key:
+        return
+    state_key = _idempotency_state_key(scope=scope, actor=str(actor), key=key)
+    record = {
+        "payload_hash": _payload_fingerprint(payload),
+        "response": _payload_to_jsonable(response_payload),
+        "stored_at": datetime.now(timezone.utc).isoformat(),
+    }
+    set_app_state(state_key, json.dumps(record, ensure_ascii=False, default=str))
+
+
+def _audit_experiment_failure(
+    *,
+    action: str,
+    actor: str,
+    error_message: str,
+    payload: Any,
+    idempotency_key: Optional[str],
+    experiment_id: Optional[int] = None,
+) -> None:
+    details: dict[str, Any] = {
+        "success": False,
+        "result": "failure",
+        "error": str(error_message or "").strip() or "unknown error",
+        "idempotency_key_present": bool(_normalize_idempotency_key(idempotency_key)),
+        "payload": _payload_to_jsonable(payload),
+    }
+    if experiment_id is not None:
+        details["experiment_id"] = int(experiment_id)
+    if idempotency_key:
+        details["idempotency_key"] = str(idempotency_key).strip()[:255]
+    try:
+        audit_log(action=action, entity="experiment", actor=str(actor), details=details)
+    except Exception as exc:
+        error_log("backend_experiment_failure_audit_failed", exc)
+
+
+def _experiment_view_from_payload(payload: dict) -> ExperimentMutationView:
+    if hasattr(ExperimentMutationView, "model_validate"):
+        return ExperimentMutationView.model_validate(payload)
+    return ExperimentMutationView(**payload)
+
+
 def _status_for_value_error(message: str, default: int = 400) -> int:
     text = str(message or "").strip().lower()
     if "not found" in text:
         return 404
+    if "invalid experiment status transition" in text:
+        return 409
+    if "immutable" in text:
+        return 409
+    if "must be running" in text:
+        return 409
+    if "idempotency key reuse" in text:
+        return 409
     return int(default)
 
 
@@ -1354,6 +1532,28 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         )
         experiments = list(
             get_active_experiments_for_kr(
+                key_result_id=key_result_id,
+                actor_username=actor,
+            )
+            or []
+        )
+        return {
+            "experiments": [
+                payload
+                for payload in (
+                    _serialize_experiment(experiment) for experiment in experiments
+                )
+                if payload is not None
+            ]
+        }
+
+    if kind == "experiments.for_kr":
+        key_result_id = _coerce_int(
+            params.get("key_result_id"),
+            field_name="key_result_id",
+        )
+        experiments = list(
+            list_experiments_for_kr(
                 key_result_id=key_result_id,
                 actor_username=actor,
             )
@@ -2149,6 +2349,7 @@ def api_create_objective(
             goal_id=payload.goal_id,
             title=payload.title,
             description=payload.description,
+            weight=payload.weight,
             actor_username=actor,
         )
     except PermissionError as exc:
@@ -2179,6 +2380,7 @@ def api_create_key_result(
             target_value=payload.target_value,
             unit=payload.unit,
             initiative_tags=_normalize_tags(payload.initiative_tags),
+            weight=payload.weight,
             actor_username=actor,
         )
     except PermissionError as exc:
@@ -2612,10 +2814,21 @@ def api_create_check_in(
 def api_create_experiment(
     payload: ExperimentCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> ExperimentMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    idempotency_scope = "experiments.create"
+    idempotency_payload = _payload_to_jsonable(payload)
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _experiment_view_from_payload(replay)
     try:
         experiment = create_experiment(
             key_result_id=payload.key_result_id,
@@ -2632,13 +2845,35 @@ def api_create_experiment(
             expected_effect_size=payload.expected_effect_size,
         )
     except PermissionError as exc:
+        _audit_experiment_failure(
+            action="create_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
+        _audit_experiment_failure(
+            action="create_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+        )
         raise HTTPException(
             status_code=_status_for_value_error(str(exc)),
             detail=str(exc),
         ) from exc
-    return _experiment_view_from_obj(experiment)
+    view = _experiment_view_from_obj(experiment)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(view),
+    )
+    return view
 
 
 @app.patch(
@@ -2650,11 +2885,39 @@ def api_update_experiment(
     experiment_id: int,
     payload: ExperimentUpdateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> ExperimentMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
-    updates = _coerce_experiment_updates(payload.updates)
+    idempotency_scope = f"experiments.update:{int(experiment_id)}"
+    try:
+        updates = _coerce_experiment_updates(payload.updates)
+    except HTTPException as exc:
+        _audit_experiment_failure(
+            action="update_failed",
+            actor=actor,
+            error_message=str(exc.detail),
+            payload=_payload_to_jsonable(payload),
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
+        raise
+
+    idempotency_payload = {
+        "experiment_id": int(experiment_id),
+        "updates": _payload_to_jsonable(updates),
+        "actor_username": actor,
+    }
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _experiment_view_from_payload(replay)
+
     try:
         experiment = update_experiment(
             int(experiment_id),
@@ -2662,15 +2925,47 @@ def api_update_experiment(
             **updates,
         )
     except PermissionError as exc:
+        _audit_experiment_failure(
+            action="update_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
+        _audit_experiment_failure(
+            action="update_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(
             status_code=_status_for_value_error(str(exc)),
             detail=str(exc),
         ) from exc
     if not experiment:
+        _audit_experiment_failure(
+            action="update_failed",
+            actor=actor,
+            error_message="Experiment not found.",
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(status_code=404, detail="Experiment not found.")
-    return _experiment_view_from_obj(experiment)
+    view = _experiment_view_from_obj(experiment)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(view),
+    )
+    return view
 
 
 @app.post(
@@ -2682,10 +2977,27 @@ def api_close_experiment(
     experiment_id: int,
     payload: ExperimentCloseRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> ExperimentMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    idempotency_scope = f"experiments.close:{int(experiment_id)}"
+    idempotency_payload = {
+        "experiment_id": int(experiment_id),
+        "decision": _payload_to_jsonable(payload.decision),
+        "rationale": str(payload.rationale or ""),
+        "actor_username": actor,
+    }
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _experiment_view_from_payload(replay)
+
     try:
         experiment = close_experiment(
             experiment_id=int(experiment_id),
@@ -2698,15 +3010,47 @@ def api_close_experiment(
             actor_username=actor,
         )
     except PermissionError as exc:
+        _audit_experiment_failure(
+            action="close_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
+        _audit_experiment_failure(
+            action="close_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(
             status_code=_status_for_value_error(str(exc)),
             detail=str(exc),
         ) from exc
     if not experiment:
+        _audit_experiment_failure(
+            action="close_failed",
+            actor=actor,
+            error_message="Experiment not found.",
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(status_code=404, detail="Experiment not found.")
-    return _experiment_view_from_obj(experiment)
+    view = _experiment_view_from_obj(experiment)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(view),
+    )
+    return view
 
 
 @app.post(
@@ -2882,3 +3226,4 @@ def api_delete_work_log(
     if not deleted:
         raise HTTPException(status_code=404, detail="Work log not found.")
     return WorkLogDeleteResponse(id=int(work_log_id), deleted=True)
+

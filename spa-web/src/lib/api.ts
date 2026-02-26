@@ -51,6 +51,11 @@ export interface NodeDeleteResponse {
   deleted: boolean;
 }
 
+export interface WorkLogDeleteResponse {
+  id: number;
+  deleted: boolean;
+}
+
 export interface CycleSummary {
   id: number;
   title: string;
@@ -135,7 +140,7 @@ export interface AdminPdfHealthResponse {
   pdfshift_api_key_configured?: boolean;
   chromium_executable_detected?: boolean;
   chromium_executable_path?: string;
-  streamlit_cloud_runtime?: boolean;
+  managed_cloud_runtime?: boolean;
 }
 
 export interface AdminDbRestoreResponse {
@@ -239,6 +244,8 @@ export interface ExperimentMutationResponse {
   created_at?: string | null;
 }
 
+export type ExperimentDecisionType = "ADOPT" | "ITERATE" | "ABANDON";
+
 async function responseDetail(response: Response): Promise<string> {
   let detail = `${response.status}`;
   try {
@@ -252,6 +259,49 @@ async function responseDetail(response: Response): Promise<string> {
     // ignore body parse failure
   }
   return detail;
+}
+
+function normalizeBackendDateTime(value: unknown): string {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+  const matched = text.match(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([zZ]|[+\-]\d{2}:\d{2})?$/,
+  );
+  if (!matched) {
+    return text;
+  }
+  const [, datePart, timePart, fractionalRaw, timezoneRaw] = matched;
+  const fractional = fractionalRaw ? `.${fractionalRaw.slice(0, 3).padEnd(3, "0")}` : "";
+  const timezone = timezoneRaw ? (timezoneRaw.toUpperCase() === "Z" ? "Z" : timezoneRaw) : "Z";
+  return `${datePart}T${timePart}${fractional}${timezone}`;
+}
+
+function stableStringHash(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = (hash * 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+function idempotencyKey(scope: string, payload: unknown): string {
+  const serialized = JSON.stringify(payload ?? {});
+  const bucket = Math.floor(Date.now() / 15_000);
+  return `${scope}:${bucket}:${stableStringHash(serialized)}`.slice(0, 255);
+}
+
+function jsonHeadersWithIdempotency(
+  actor: string | undefined,
+  scope: string,
+  payload: unknown,
+): Record<string, string> {
+  return {
+    ...jsonHeaders(actor),
+    "x-okr-idempotency-key": idempotencyKey(scope, payload),
+  };
 }
 
 function jsonHeaders(actor?: string): Record<string, string> {
@@ -313,7 +363,11 @@ export async function startTaskTimer(input: {
   if (!response.ok) {
     throw new Error(`Timer start failed: ${await responseDetail(response)}`);
   }
-  return (await response.json()) as TimerStartResponse;
+  const payload = (await response.json()) as TimerStartResponse;
+  return {
+    ...payload,
+    start_time: normalizeBackendDateTime(payload.start_time),
+  };
 }
 
 export async function stopTaskTimer(input: {
@@ -334,7 +388,12 @@ export async function stopTaskTimer(input: {
   if (!response.ok) {
     throw new Error(`Timer stop failed: ${await responseDetail(response)}`);
   }
-  return (await response.json()) as TimerStopResponse;
+  const payload = (await response.json()) as TimerStopResponse;
+  return {
+    ...payload,
+    start_time: normalizeBackendDateTime(payload.start_time),
+    end_time: normalizeBackendDateTime(payload.end_time),
+  };
 }
 
 export async function readSpaRolloutConfig(): Promise<SpaRolloutConfig> {
@@ -400,6 +459,20 @@ export async function deleteNodeMutation(input: {
     throw new Error(`Node delete failed: ${await responseDetail(response)}`);
   }
   return (await response.json()) as NodeDeleteResponse;
+}
+
+export async function deleteWorkLogMutation(input: {
+  actor_username: string;
+  work_log_id: number;
+}): Promise<WorkLogDeleteResponse> {
+  const response = await fetch(`/api/backend/v1/work-logs/${input.work_log_id}`, {
+    method: "DELETE",
+    headers: jsonHeaders(input.actor_username),
+  });
+  if (!response.ok) {
+    throw new Error(`Work log delete failed: ${await responseDetail(response)}`);
+  }
+  return (await response.json()) as WorkLogDeleteResponse;
 }
 
 export async function readCyclesQuery(input: {
@@ -928,22 +1001,77 @@ export async function createExperimentMutation(input: {
   expected_effect_direction?: ExpectedEffectDirectionType;
   expected_effect_size?: number;
 }): Promise<ExperimentMutationResponse> {
+  const requestPayload = {
+    actor_username: input.actor_username,
+    key_result_id: input.key_result_id,
+    cycle_id: input.cycle_id,
+    hypothesis: input.hypothesis,
+    change_description: input.change_description,
+    start_at: input.start_at || null,
+    expected_effect_direction: input.expected_effect_direction || null,
+    expected_effect_size: input.expected_effect_size,
+  };
   const response = await fetch("/api/backend/v1/experiments", {
     method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
-      actor_username: input.actor_username,
-      key_result_id: input.key_result_id,
-      cycle_id: input.cycle_id,
-      hypothesis: input.hypothesis,
-      change_description: input.change_description,
-      start_at: input.start_at || null,
-      expected_effect_direction: input.expected_effect_direction || null,
-      expected_effect_size: input.expected_effect_size,
-    }),
+    headers: jsonHeadersWithIdempotency(
+      input.actor_username,
+      "experiments.create",
+      requestPayload,
+    ),
+    body: JSON.stringify(requestPayload),
   });
   if (!response.ok) {
     throw new Error(`Experiment create failed: ${await responseDetail(response)}`);
+  }
+  return (await response.json()) as ExperimentMutationResponse;
+}
+
+export async function updateExperimentMutation(input: {
+  actor_username: string;
+  experiment_id: number;
+  updates: Record<string, unknown>;
+}): Promise<ExperimentMutationResponse> {
+  const requestPayload = {
+    actor_username: input.actor_username,
+    updates: input.updates,
+  };
+  const response = await fetch(`/api/backend/v1/experiments/${input.experiment_id}`, {
+    method: "PATCH",
+    headers: jsonHeadersWithIdempotency(
+      input.actor_username,
+      `experiments.update.${input.experiment_id}`,
+      requestPayload,
+    ),
+    body: JSON.stringify(requestPayload),
+  });
+  if (!response.ok) {
+    throw new Error(`Experiment update failed: ${await responseDetail(response)}`);
+  }
+  return (await response.json()) as ExperimentMutationResponse;
+}
+
+export async function closeExperimentMutation(input: {
+  actor_username: string;
+  experiment_id: number;
+  decision: ExperimentDecisionType;
+  rationale?: string;
+}): Promise<ExperimentMutationResponse> {
+  const requestPayload = {
+    actor_username: input.actor_username,
+    decision: input.decision,
+    rationale: input.rationale || "",
+  };
+  const response = await fetch(`/api/backend/v1/experiments/${input.experiment_id}/close`, {
+    method: "POST",
+    headers: jsonHeadersWithIdempotency(
+      input.actor_username,
+      `experiments.close.${input.experiment_id}`,
+      requestPayload,
+    ),
+    body: JSON.stringify(requestPayload),
+  });
+  if (!response.ok) {
+    throw new Error(`Experiment close failed: ${await responseDetail(response)}`);
   }
   return (await response.json()) as ExperimentMutationResponse;
 }

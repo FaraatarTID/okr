@@ -469,6 +469,50 @@ a {
   font-size: 0.8rem;
 }
 
+.timer-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(20, 32, 24, 0.34);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.timer-modal {
+  width: min(560px, 100%);
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: var(--surface);
+  margin: 0 auto;
+}
+
+.timer-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.timer-elapsed {
+  margin-top: 0.5rem;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: color-mix(in srgb, var(--accent) 80%, #1c3c2d 20%);
+}
+
+.timer-modal-actions {
+  margin-top: 0.55rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .delta-pill {
   display: inline-block;
   border: 1px solid var(--line);
@@ -687,6 +731,10 @@ a {
   .band-row {
     grid-template-columns: 1fr;
     gap: 0.24rem;
+  }
+
+  .timer-elapsed {
+    font-size: 1.6rem;
   }
 
   .timeline-row {

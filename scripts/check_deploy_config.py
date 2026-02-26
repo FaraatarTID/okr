@@ -352,7 +352,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--secrets-file",
         type=Path,
         default=ROOT / "deploy" / "secrets" / "secrets.toml.example",
-        help="Path to Streamlit secrets TOML file.",
+        help="Path to runtime secrets TOML file.",
     )
     parser.add_argument(
         "--mode",

@@ -27,7 +27,7 @@ Summary
 - This allows same-origin framing but does not by itself solve cross-service auth/session coupling.
 
 3. Deployment topology separates SPA and Streamlit services:
-- `deploy/docker/docker-compose.yml` runs `okr` (Streamlit) and `spa-web` as separate services/ports.
+- `deploy/docker/docker-compose.yml` runs SPA services by default and keeps `okr` (Streamlit) behind `legacy-streamlit` profile.
 - Current migration direction is unified SPA for core operator-facing workflows.
 
 ## Assessment Matrix
