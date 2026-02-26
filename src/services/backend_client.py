@@ -22,6 +22,9 @@ from src.services.http_client import request_with_retry
 
 def is_backend_enabled() -> bool:
     """Detect if backend API integration is configured for current runtime."""
+    runtime_role = str(os.getenv("OKR_RUNTIME_ROLE", "")).strip().lower()
+    if runtime_role in {"backend", "worker"}:
+        return False
     configured = str(get_config_value("OKR_BACKEND_API_URL", "")).strip()
     return bool(configured)
 

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -322,6 +322,7 @@ const MODE_LABEL_MAP = new Map(SIDEBAR_ITEMS.map((item) => [item.mode, item.labe
 PATH_MODE_MAP.set("/ritual", "ritual");
 const AI_SYNC_MAX_DELTA = 40;
 const AI_SYNC_ALLOW_DECREASE = false;
+const DASHBOARD_REFRESH_INTERVAL_MS = 30_000;
 
 function pathForMode(mode: string): string {
   return MODE_PATH_MAP.get(mode) || "/";
@@ -1159,6 +1160,7 @@ export default function AtlasShell() {
   const [mode, setMode] = useState(DEFAULT_MODE);
   const [modeDataPending, setModeDataPending] = useState(false);
   const [modeDataError, setModeDataError] = useState("");
+  const dashboardRefreshInFlightRef = useRef(false);
   const [weeklyPlanData, setWeeklyPlanData] = useState<WeeklyPlanRead | null>(null);
   const [weeklyLogs, setWeeklyLogs] = useState<WorkLogRead[]>([]);
   const [weeklyKrsNeedingCheckIn, setWeeklyKrsNeedingCheckIn] = useState<KeyResultRead[]>([]);
@@ -2400,6 +2402,35 @@ export default function AtlasShell() {
     void loadModeData(user, mode);
   }, [mode, parsedCycleId, user]);
 
+  useEffect(() => {
+    if (!user || (mode !== "dashboard" && mode !== "timeline")) {
+      return;
+    }
+
+    let active = true;
+
+    const refreshFromSignal = () => {
+      if (!active || modeDataPending) {
+        return;
+      }
+      if (typeof document !== "undefined" && document.hidden) {
+        return;
+      }
+      void refreshDashboardModeData(user, mode);
+    };
+
+    const pollTimer = window.setInterval(refreshFromSignal, DASHBOARD_REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", refreshFromSignal);
+    document.addEventListener("visibilitychange", refreshFromSignal);
+
+    return () => {
+      active = false;
+      window.clearInterval(pollTimer);
+      window.removeEventListener("focus", refreshFromSignal);
+      document.removeEventListener("visibilitychange", refreshFromSignal);
+    };
+  }, [mode, modeDataPending, parsedCycleId, user]);
+
   function handleSignOut(): void {
     clearAuthUser();
     setUser(null);
@@ -2418,6 +2449,24 @@ export default function AtlasShell() {
       owner_ids: parsedOwnerIds.value,
     });
     setSnapshotPayload(payload);
+  }
+
+  async function refreshDashboardModeData(
+    activeUser: AuthUser,
+    activeMode: string,
+  ): Promise<void> {
+    if (activeMode !== "dashboard" && activeMode !== "timeline") {
+      return;
+    }
+    if (dashboardRefreshInFlightRef.current) {
+      return;
+    }
+    dashboardRefreshInFlightRef.current = true;
+    try {
+      await loadModeData(activeUser, activeMode);
+    } finally {
+      dashboardRefreshInFlightRef.current = false;
+    }
   }
 
   async function loadAdminCycles(activeUser: AuthUser): Promise<void> {
@@ -4195,6 +4244,9 @@ export default function AtlasShell() {
       if (parsedCycleId) {
         await loadSnapshotForUser(user);
       }
+      if (mode === "dashboard" || mode === "timeline") {
+        await refreshDashboardModeData(user, mode);
+      }
     } catch (error) {
       setTimerError(String(error instanceof Error ? error.message : error));
     } finally {
@@ -4229,6 +4281,9 @@ export default function AtlasShell() {
       setTimerSummary("");
       if (parsedCycleId) {
         await loadSnapshotForUser(user);
+      }
+      if (mode === "dashboard" || mode === "timeline") {
+        await refreshDashboardModeData(user, mode);
       }
     } catch (error) {
       setTimerError(String(error instanceof Error ? error.message : error));

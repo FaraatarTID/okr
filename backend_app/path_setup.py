@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 
 def ensure_shared_src_on_path() -> None:
+    os.environ.setdefault("OKR_RUNTIME_ROLE", "backend")
     repo_root = Path(__file__).resolve().parents[1]
     shared_src_dir = repo_root / "src"
     repo_root_str = str(repo_root)

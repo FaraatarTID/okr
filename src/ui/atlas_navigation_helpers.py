@@ -25,7 +25,6 @@ def render_scope_toolbar(
         toolbar[0]
         .text_input(
             "Quick Jump",
-            value=session_state.get(jump_query_key, ""),
             placeholder="Find any goal, objective, KR, or task",
             key=jump_query_key,
         )
@@ -39,9 +38,16 @@ def render_scope_toolbar(
         )
     )
     # Keep URL query state aligned with widget-backed session values.
-    session_state[jump_query_key] = query
-    session_state[scope_selector_key] = selected_scope
-    app_query_helpers.sync_to_query_params(st=st_module, session_state=session_state)
+    # Do not write these keys here after widget instantiation; Streamlit
+    # already keeps them in session_state and forbids post-instantiation set.
+    try:
+        app_query_helpers.sync_to_query_params(
+            st=st_module,
+            session_state=session_state,
+        )
+    except Exception:
+        # Query sync is optional here; never block toolbar interaction.
+        pass
     return query, selected_scope
 
 
