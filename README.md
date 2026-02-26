@@ -127,7 +127,7 @@ Boundary policy references:
 - EN: [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md)
 - FA: [docs/OKR_BAU_BOUNDARY_GUIDE_FA.md](docs/OKR_BAU_BOUNDARY_GUIDE_FA.md)
 
-## Product Scope in Plain Language
+## Product Scope
 
 What this app is:
 - An OKR workspace for strategy, key results, check-ins, and measurable outcome tracking.
