@@ -1,0 +1,17 @@
+{
+  "user": {
+    "id": 3,
+    "username": "manager_1",
+    "display_name": "Alex Manager",
+    "role": "manager",
+    "manager_id": null,
+    "team_id": 14,
+    "is_active": true,
+    "must_change_password": false
+  },
+  "success": true,
+  "error_code": null,
+  "retry_after_seconds": 0,
+  "lock_scope": null
+}
+

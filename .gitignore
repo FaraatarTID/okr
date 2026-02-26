@@ -23,6 +23,9 @@ streamlit_app/.deps_installed
 okr_data*.json
 node_modules/
 
+# Keep migration governance artifacts and frontend contract fixtures versioned.
+!docs/**/*.json
+
 # Node service manifests for SPA BFF migration
 !spa-bff/package.json
 !spa-bff/package-lock.json

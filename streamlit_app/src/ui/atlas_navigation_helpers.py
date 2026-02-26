@@ -38,12 +38,15 @@ def render_scope_toolbar(
         )
     )
     # Keep URL query state aligned with widget-backed session values.
-    # Do not write these keys here after widget instantiation; Streamlit
-    # already keeps them in session_state and forbids post-instantiation set.
+    # Use a transient state overlay so query-param sync reflects current toolbar
+    # values even in test doubles that do not auto-populate session_state.
     try:
+        query_state = dict(session_state)
+        query_state[jump_query_key] = query
+        query_state[scope_selector_key] = selected_scope
         app_query_helpers.sync_to_query_params(
             st=st_module,
-            session_state=session_state,
+            session_state=query_state,
         )
     except Exception:
         # Query sync is optional here; never block toolbar interaction.

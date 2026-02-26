@@ -4668,6 +4668,94 @@ export default function AtlasShell() {
           <strong>{cycleDisplayLabel(resolvedCycle)}</strong>
           {snapshotPending ? " • Loading..." : " • Auto-sync every 45s"}
         </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: "0.55rem",
+            marginTop: "0.5rem",
+          }}
+        >
+          <div>
+            <label
+              htmlFor="cycle-id"
+              style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}
+            >
+              Cycle ID
+            </label>
+            <input
+              id="cycle-id"
+              className="input"
+              value={cycleId}
+              onChange={(event) => setCycleId(event.target.value.trim())}
+              placeholder="e.g. 1"
+              style={{ marginTop: "0.2rem" }}
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="owner-ids"
+              style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}
+            >
+              Owner IDs (optional)
+            </label>
+            <input
+              id="owner-ids"
+              className="input"
+              value={ownerIdsInput}
+              onChange={(event) => setOwnerIdsInput(event.target.value)}
+              placeholder="e.g. 1,2,3"
+              style={{ marginTop: "0.2rem" }}
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="mode"
+              style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}
+            >
+              Mode
+            </label>
+            <select
+              id="mode"
+              className="input"
+              value={mode}
+              onChange={(event) => handleSidebarModeSelect(event.target.value)}
+              style={{ marginTop: "0.2rem" }}
+            >
+              {sidebarItems.map((item) => (
+                <option key={`mode-${item.mode}`} value={item.mode}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label
+              htmlFor="lens"
+              style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}
+            >
+              Lens
+            </label>
+            <select
+              id="lens"
+              className="input"
+              value={lens}
+              onChange={(event) => setLens(event.target.value)}
+              style={{ marginTop: "0.2rem" }}
+            >
+              <option value="Scope">Scope</option>
+              <option value="Branch">Branch</option>
+            </select>
+          </div>
+        </div>
+        {parsedOwnerIds.error ? (
+          <p style={{ margin: "0.25rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
+            {parsedOwnerIds.error}
+          </p>
+        ) : null}
+        <p style={{ margin: "0.25rem 0 0", color: "var(--ink-soft)", fontSize: "0.8rem" }}>
+          Streamlit Report Bridge: available via workspace report modes.
+        </p>
         {cycleResolveError ? (
           <p style={{ margin: "0.25rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>{cycleResolveError}</p>
         ) : null}

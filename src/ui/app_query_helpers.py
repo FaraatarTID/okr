@@ -38,7 +38,9 @@ _QUERY_KEY_MAP = {
     session_keys.ACTIVE_TIMER_NODE_ID: "timer",
     session_keys.NAV_STACK: "nav",
     session_keys.ATLAS_SELECTED_REF: "sel",
+    session_keys.ATLAS_SCOPE_SELECTOR: "scope",
     session_keys.ATLAS_FOCUS_TASK_REF: "ft",
+    session_keys.ATLAS_JUMP_QUERY: "jump",
     session_keys.ATLAS_MAP_LENS: "lens",
 }
 
