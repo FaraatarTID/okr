@@ -1,4 +1,4 @@
-# User Guide
+﻿# User Guide
 Documentation HQ: [README](../README.md)
 
 This guide describes the current behavior implemented in the codebase (`streamlit_app/app.py`, `streamlit_app/src/ui/*`, `streamlit_app/src/crud.py`).
@@ -54,7 +54,7 @@ KR progress is driven by KR metric values (`start_value`, `current_value`, `targ
 Task completion alone does not directly set KR metric values.
 
 You can update KRs manually in two ways:
-- Weekly Ritual -> Step 2 `Update KRs` creates a check-in (`create_check_in`) with value, confidence, and comment.
+- Weekly Check-In -> Step 2 `Update KRs` creates a check-in (`create_check_in`) with value, confidence, and comment.
 - Inspector on a KR -> edit Start/Current/Target values (and metric type/unit) directly.
 
 Important:
@@ -140,12 +140,12 @@ Decisions:
 | `ITERATE` | Modify and retry |
 | `UNKNOWN` | Inconclusive results |
 
-### 3.3 Experiment Review in Weekly Ritual
+### 3.3 Experiment Review in Weekly Check-In
 
 **Step 1 (Review Week):**
 - Shows experiments that ended this week OR are still RUNNING
 - For each experiment, record decision and rationale
-- Decision updates both `RetroExperimentOutcome` AND closes the experiment (status → DECIDED)
+- Decision updates both `RetroExperimentOutcome` AND closes the experiment (status â†’ DECIDED)
 
 **Step 2 (Update KRs):**
 - Classify variation type for each check-in
@@ -158,20 +158,20 @@ From KR check-in (Common Cause flow):
 2. Fill: hypothesis ("If we do X, then Y will happen"), change description, expected direction/effect
 3. Submit creates experiment and sets status to RUNNING
 
-## 4. Weekly Ritual vs Retrospective (Clearly Distinguished)
+## 4. Weekly Check-In vs Retrospective (Clearly Distinguished)
 
-Weekly Ritual (`active_report_mode = "Ritual"`) is a 3-step guided flow:
+Weekly Check-In (`active_report_mode = "Check-In"`) is a 3-step guided flow:
 1. Review Week: work-log recap, optional AI summary, and retrospective text input.
 2. Update KRs: check-ins for KRs that need updates.
 3. Plan Next Week: set top 3 priorities (`WeeklyPlan`).
 
 Retrospective entry:
-- Captured in Ritual Step 1 (`create_retrospective`).
+- Captured in Check-In Step 1 (`create_retrospective`).
 - RetroBox is a viewer for saved retrospectives; it is not the KR-update flow.
 
 Timing:
 - The app does not enforce exact weekdays.
-- Recommended cadence: run Ritual once per week and review RetroBox after submission.
+- Recommended cadence: run Check-In once per week and review RetroBox after submission.
 
 ## 4. Reports: Process and Timing by Report Type
 
@@ -223,7 +223,7 @@ Current implementation note:
 
 Other useful tools:
 - Weekly Focus card in sidebar for top 3 priorities.
-- Weekly Ritual + Reports for personal execution loop.
+- Weekly Check-In + Reports for personal execution loop.
 - Strategic Dashboard for team-level monitoring.
 
 ## 7. Inspector Quick Reference
@@ -248,8 +248,8 @@ Task:
 ## 8. Recommended Weekly Operating Rhythm
 
 1. During week: run Focus Task timer and keep task summaries clean.
-2. End of week: complete Weekly Ritual (all three steps).
-3. After Ritual: review Weekly Report and export if needed.
+2. End of week: complete Weekly Check-In (all three steps).
+3. After Check-In: review Weekly Report and export if needed.
 4. Managers/admins: review Strategic Dashboard (`Execution` + `Strategy Pulse`) and RetroBox.
 
 ## 9. Tool-by-Tool Process and Timing Matrix
@@ -264,15 +264,15 @@ Timing note:
 | Inspector | Role-authorized user | Edit node fields (KR metrics, lifecycle, assignments, dates). | Immediately when data quality gaps are found. | Ad hoc (usually daily/weekly). | Correct and auditable OKR data. |
 | Lifecycle & Closing (Inspector) | Objective/KR owner, Manager, Admin | Move state (`DRAFT/ACTIVE/GRADING/ARCHIVED`) and capture reflection. | At phase boundaries of the quarter. | Few times per quarter. | Valid state transitions and closure notes. |
 | Organizational Alignment (Objective Inspector) | Manager / Admin (or authorized owner) | Add/remove objective alignment edges with cycle-safe validation. | During planning and mid-quarter replanning. | Weekly or milestone-based. | Traceable cross-objective dependencies. |
-| Weekly Ritual | Member / Manager / Admin | 3 steps: Review Week, Update KRs, Plan Next Week. | End of work week. | Weekly. | KR check-ins, retrospective entry, next-week priorities. |
-| RetroBox | Member / Manager / Admin | Review stored retrospectives (personal/team). | After Weekly Ritual and in weekly team review. | Weekly. | Reflection visibility and coaching input. |
+| Weekly Check-In | Member / Manager / Admin | 3 steps: Review Week, Update KRs, Plan Next Week. | End of work week. | Weekly. | KR check-ins, retrospective entry, next-week priorities. |
+| RetroBox | Member / Manager / Admin | Review stored retrospectives (personal/team). | After Weekly Check-In and in weekly team review. | Weekly. | Reflection visibility and coaching input. |
 | Daily Report | Member / Manager / Admin | Open `Daily Report` (today window) and review execution. | End of day. | Daily. | Day-level execution summary and export. |
-| Weekly Report | Member / Manager / Admin | Open `Weekly Report` (7-day window), generate optional AI brief, export. | End of week after Ritual. | Weekly. | Week-level summary, trends, and artifacts. |
+| Weekly Report | Member / Manager / Admin | Open `Weekly Report` (7-day window), generate optional AI brief, export. | End of week after Check-In. | Weekly. | Week-level summary, trends, and artifacts. |
 | Strategic Dashboard | Manager / Admin (member in own scope) | Review KPI cards, risk lists, matrix, and team distribution. | Weekly governance meeting; also mid-week if risk spikes. | Weekly + event-driven. | Prioritized interventions and escalation decisions. |
 | Strategy Pulse (Leadership Insights) | Manager / Admin | Review burnout risk, ghost-goal gaps, AI forecast, and generate Achievement Portfolio PDF. | Immediately after reviewing Strategic Dashboard execution signals. | Weekly + on risk spikes. | Early risk detection, team coaching actions, and reusable leadership evidence pack. |
 | AI Progress Sync (Atlas sidebar) | Manager / Admin | Run preview first, then apply bounded sync if needed; use undo when necessary. | After major KR analysis refresh or before governance review. | Weekly or as needed. | Consistent KR analysis/progress refresh under policy controls. |
 | Project Timeline | Member / Manager / Admin | Review gantt view of tasks and deadline shape. | Sprint planning and when deadlines move. | 1-2 times per week. | Schedule clarity and deadline risk awareness. |
-| Weekly Focus Card (Sidebar) | Member / Manager / Admin | Set/track top 3 priorities from Weekly Ritual plan. | Start of week and daily check-in. | Weekly + daily glance. | Stable weekly execution focus. |
+| Weekly Focus Card (Sidebar) | Member / Manager / Admin | Set/track top 3 priorities from Weekly Check-In plan. | Start of week and daily check-in. | Weekly + daily glance. | Stable weekly execution focus. |
 
 ## 10. Manager Visibility + Privilege Clarification
 
@@ -294,3 +294,5 @@ Gemini retrieval boundary:
 
 Manager step-by-step operating guide:
 - [Manager Playbook](MANAGER_PLAYBOOK.md)
+
+

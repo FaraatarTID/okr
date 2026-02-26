@@ -1,4 +1,4 @@
-# Learning Loop Implementation Report
+﻿# Learning Loop Implementation Report
 Documentation HQ: [README](../../README.md)
 
 Canonical docs for ongoing usage and maintenance:
@@ -45,7 +45,7 @@ This led to:
 2. Enable creating/linking experiments to Key Results
 3. Allow retrospectives to record experiment outcomes
 4. Enforce the same authorization model as existing goal-scoped operations
-5. Integrate into existing weekly ritual workflow without creating new screens
+5. Integrate into existing weekly check-in workflow without creating new screens
 
 ---
 
@@ -57,37 +57,37 @@ This led to:
 |-----------|----------------|
 | Composable primitives | Two new tables (Experiment, RetroExperimentOutcome), one extended table (CheckIn) |
 | Authorization reuse | All operations use existing `_authorize_goal_mutation` or `_authorize_goal_scoped_access` |
-| Ritual integration | Experiments surface in weekly ritual, outcomes in retrospectives |
+| Check-In integration | Experiments surface in weekly check-in, outcomes in retrospectives |
 | Cycle alignment | Experiments are cycle-scoped, matching quarterly planning cadence |
 | Backward compatibility | New CheckIn columns are nullable; existing data unaffected |
 
 ### 2.2 Component Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                           Weekly Ritual                              │
-│  ┌─────────────┐    ┌─────────────────┐    ┌──────────────────┐    │
-│  │ Review Week │───▶│ Update KRs      │───▶│ Plan Next Week   │    │
-│  └─────────────┘    │ (with variation │    └──────────────────┘    │
-│                     │  classification)│                             │
-│                     └────────┬────────┘                             │
-└──────────────────────────────┼──────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         Data Model                                   │
-│                                                                      │
-│  ┌──────────┐     ┌──────────────┐     ┌─────────────────────────┐ │
-│  │ CheckIn  │────▶│ Experiment   │◀────│ RetroExperimentOutcome  │ │
-│  │          │     │              │     │                         │ │
-│  │variation_│     │key_result_id │     │retrospective_id         │ │
-│  │type      │     │cycle_id      │     │experiment_id            │ │
-│  │experiment│     │hypothesis    │     │decision                 │ │
-│  │_id       │     │status        │     │rationale                │ │
-│  │special_  │     │decision      │     └─────────────────────────┘ │
-│  │cause_note│     └──────────────┘                                 │
-│  └──────────┘                                                       │
-└─────────────────────────────────────────────────────────────────────┘
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                           Weekly Check-In                              â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”    â”‚
+â”‚  â”‚ Review Week â”‚â”€â”€â”€â–¶â”‚ Update KRs      â”‚â”€â”€â”€â–¶â”‚ Plan Next Week   â”‚    â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â”‚ (with variation â”‚    â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜    â”‚
+â”‚                     â”‚  classification)â”‚                             â”‚
+â”‚                     â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜                             â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”¼â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+                               â”‚
+                               â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚                         Data Model                                   â”‚
+â”‚                                                                      â”‚
+â”‚  â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”     â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â” â”‚
+â”‚  â”‚ CheckIn  â”‚â”€â”€â”€â”€â–¶â”‚ Experiment   â”‚â—€â”€â”€â”€â”€â”‚ RetroExperimentOutcome  â”‚ â”‚
+â”‚  â”‚          â”‚     â”‚              â”‚     â”‚                         â”‚ â”‚
+â”‚  â”‚variation_â”‚     â”‚key_result_id â”‚     â”‚retrospective_id         â”‚ â”‚
+â”‚  â”‚type      â”‚     â”‚cycle_id      â”‚     â”‚experiment_id            â”‚ â”‚
+â”‚  â”‚experimentâ”‚     â”‚hypothesis    â”‚     â”‚decision                 â”‚ â”‚
+â”‚  â”‚_id       â”‚     â”‚status        â”‚     â”‚rationale                â”‚ â”‚
+â”‚  â”‚special_  â”‚     â”‚decision      â”‚     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜ â”‚
+â”‚  â”‚cause_noteâ”‚     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                                 â”‚
+â”‚  â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                                                       â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 ---
@@ -219,7 +219,7 @@ def create_check_in(
 
 1. `variation_type` is required (enforced at CRUD level)
 2. If `SPECIAL_CAUSE`:
-   - `special_cause_note` must be ≥ 5 characters
+   - `special_cause_note` must be â‰¥ 5 characters
    - `experiment_id` is cleared (ignored if provided)
 3. If `COMMON_CAUSE`:
    - `special_cause_note` is cleared
@@ -230,9 +230,9 @@ def create_check_in(
 
 ## 5. UI Integration
 
-### 5.1 Weekly Ritual Changes
+### 5.1 Weekly Check-In Changes
 
-Location: `src/ui/dialogs.py` - `render_weekly_ritual_dialog()` Step 2
+Location: `src/ui/dialogs.py` - `render_weekly_check-in_dialog()` Step 2
 
 **Added elements:**
 
@@ -262,14 +262,14 @@ Experiment lists are cached in `st.session_state` per KR:
 - Cleared on: experiment creation, check-in submission
 - Prevents redundant DB queries on rerun
 
-### 5.3 Retro Experiment Review (Step 1 of Weekly Ritual)
+### 5.3 Retro Experiment Review (Step 1 of Weekly Check-In)
 
-Added "Experiments Reviewed This Week" section in weekly ritual Step 1:
+Added "Experiments Reviewed This Week" section in weekly check-in Step 1:
 
 **UI Elements:**
 1. Section header with caption explaining purpose
 2. For each experiment in the week window:
-   - Status badge (⚪ PLANNED, 🟢 RUNNING, 🔵 DECIDED)
+   - Status badge (âšª PLANNED, ðŸŸ¢ RUNNING, ðŸ”µ DECIDED)
    - Hypothesis text (truncated)
    - Decision dropdown: ADOPT/REVERT/ITERATE/UNKNOWN
    - Rationale text input (optional)
@@ -293,7 +293,7 @@ Returns experiments that:
 1. Retro content saved via `create_retrospective()`
 2. For each experiment with a decision selected:
    - Call `upsert_retro_experiment_outcome()` to record outcome in retro
-   - Call `close_experiment()` to update Experiment record (status → DECIDED, decision, rationale, end_at)
+   - Call `close_experiment()` to update Experiment record (status â†’ DECIDED, decision, rationale, end_at)
    - Exceptions caught per-experiment (won't fail retro save)
    - Warning shown if outcome save fails
 
@@ -448,7 +448,7 @@ Downgrade removes all new columns and tables.
 - [ ] Verify new tables exist in database
 - [ ] **Test migration on copy of real DB** (not just SQLite) - FK creation on `check_in.experiment_id` may fail if constraint already exists or schema drift occurred
 - [ ] Run test suite: `pytest tests/test_learning_loop.py tests/test_progress_rollup.py tests/test_performance_hotpaths.py`
-- [ ] **Run end-to-end smoke test for all check-in entry points** (weekly ritual UI, any API hooks, admin utilities)
+- [ ] **Run end-to-end smoke test for all check-in entry points** (weekly check-in UI, any API hooks, admin utilities)
 - [ ] Deploy application code
 - [ ] Monitor for any authorization errors in logs
 - [ ] Train users on variation classification concepts
@@ -601,13 +601,13 @@ def list_experiments_for_retro_window(
 - Enforces goal-scoped access per experiment
 - Experiments without access are silently excluded
 
-### 2. Weekly Ritual Step 1 (`dialogs.py`)
-Added "🔬 Experiments Reviewed This Week" section:
+### 2. Weekly Check-In Step 1 (`dialogs.py`)
+Added "ðŸ”¬ Experiments Reviewed This Week" section:
 - Lists experiments from `list_experiments_for_retro_window()`
 - For each: status badge, hypothesis, decision dropdown, rationale input
 - On submit:
   - Calls `upsert_retro_experiment_outcome()` to record outcome linked to retro
-  - Calls `close_experiment()` to update Experiment record (status → DECIDED)
+  - Calls `close_experiment()` to update Experiment record (status â†’ DECIDED)
 - Exceptions caught per-experiment (won't fail retro save)
 
 ### 3. Updated Imports
@@ -624,30 +624,32 @@ Added to `dialogs.py`:
 ### Complete Learning Loop Flow
 
 ```
-Weekly Ritual Step 1                    Weekly Ritual Step 2
-       │                                       │
-       │  Write retro content                  │  Update KRs with variation_type
-       │  Review experiments                   │  Link to experiments
-       │  Record decisions                     │
-       ▼                                       ▼
-┌─────────────────┐                    ┌─────────────────┐
-│ Retrospective   │                    │ CheckIn         │
-│ (content)       │                    │ (variation_type)│
-└────────┬────────┘                    │ (experiment_id) │
-         │                             └────────┬────────┘
-         │                                      │
-         ▼                                      │
-┌─────────────────────────┐                     │
-│ RetroExperimentOutcome  │                     │
-│ (decision, rationale)   │                     │
-└────────┬────────────────┘                     │
-         │                                      │
-         │ close_experiment()                   │
-         ▼                                      ▼
-┌─────────────────────────────────────────────────┐
-│ Experiment                                      │
-│ status=DECIDED, decision, decision_rationale    │
-└─────────────────────────────────────────────────┘
+Weekly Check-In Step 1                    Weekly Check-In Step 2
+       â”‚                                       â”‚
+       â”‚  Write retro content                  â”‚  Update KRs with variation_type
+       â”‚  Review experiments                   â”‚  Link to experiments
+       â”‚  Record decisions                     â”‚
+       â–¼                                       â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”                    â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Retrospective   â”‚                    â”‚ CheckIn         â”‚
+â”‚ (content)       â”‚                    â”‚ (variation_type)â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜                    â”‚ (experiment_id) â”‚
+         â”‚                             â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”˜
+         â”‚                                      â”‚
+         â–¼                                      â”‚
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”                     â”‚
+â”‚ RetroExperimentOutcome  â”‚                     â”‚
+â”‚ (decision, rationale)   â”‚                     â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”¬â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜                     â”‚
+         â”‚                                      â”‚
+         â”‚ close_experiment()                   â”‚
+         â–¼                                      â–¼
+â”Œâ”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+â”‚ Experiment                                      â”‚
+â”‚ status=DECIDED, decision, decision_rationale    â”‚
+â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 ```
 
 **Note:** The retro UI calls both `upsert_retro_experiment_outcome()` (to record the outcome linked to the retro) and `close_experiment()` (to update the Experiment record itself). This ensures the learning loop is complete: the decision is captured for institutional memory AND the experiment's status is updated to DECIDED.
+
+

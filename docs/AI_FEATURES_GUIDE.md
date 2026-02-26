@@ -1,4 +1,4 @@
-# AI Features Guide
+﻿# AI Features Guide
 Documentation HQ: [README](../README.md)
 
 This guide documents AI behavior that is currently implemented in code (`streamlit_app/src/services/ai_service.py`, `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`).
@@ -7,7 +7,7 @@ This guide documents AI behavior that is currently implemented in code (`streaml
 
 AI is used in these places:
 - `Inspector` (KR/Object analysis via `analyze_node`).
-- `Weekly Ritual` step 1 (AI weekly summary generation).
+- `Weekly Check-In` step 1 (AI weekly summary generation).
 - `Weekly Report` (AI executive brief generation).
 - `Atlas -> Focus Map` sidebar (`AI Progress Sync` controls).
 - `Leadership Insights -> Execution` (`AI Team Coach`, manager/admin).
@@ -48,7 +48,7 @@ How it is applied:
 ### B) AI Weekly Summary
 
 Available in:
-- Weekly Ritual (week review step)
+- Weekly Check-In (week review step)
 - Weekly Report
 
 Input basis:
@@ -130,7 +130,7 @@ AI output quality depends on:
 - clear KR titles and descriptions
 - current KR metric values (`start/current/target`)
 - clean work log summaries
-- regular Weekly Ritual check-ins (confidence + comments)
+- regular Weekly Check-In check-ins (confidence + comments)
 
 If these inputs are weak, AI recommendations become generic.
 
@@ -171,3 +171,4 @@ Use short, constrained prompts in Inspector analysis flows:
 
 For team coaching:
 - "Prioritize top 3 interventions for next week and explain tradeoffs."
+

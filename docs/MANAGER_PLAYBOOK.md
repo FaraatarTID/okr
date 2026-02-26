@@ -1,4 +1,4 @@
-# Manager Playbook
+﻿# Manager Playbook
 Documentation HQ: [README](../README.md)
 
 This playbook is a manager-operating guide for the current implementation in `streamlit_app/src/ui/*`, `streamlit_app/src/crud.py`, and `streamlit_app/src/services/ai_service.py`.
@@ -108,8 +108,8 @@ Timing note:
 Recommended manager rhythm:
 1. Start-of-week (planning): review `Strategy Pulse`, confirm top 3 interventions, validate Weekly Focus priorities.
 2. Mid-week (control): review overdue/at-risk lists, open Inspector, correct ownership/deadlines/metrics as needed.
-3. End-of-week (ritual governance): verify all direct reports complete Weekly Ritual (Review Week -> Update KRs -> Plan Next Week).
-4. Post-ritual review: read RetroBox and Weekly Report, then prepare coaching/escalation summary.
+3. End-of-week (check-in governance): verify all direct reports complete Weekly Check-In (Review Week -> Update KRs -> Plan Next Week).
+4. Post-check-in review: read RetroBox and Weekly Report, then prepare coaching/escalation summary.
 
 ## 7. BAU Release Gate (Mandatory Weekly)
 
@@ -126,7 +126,7 @@ Weekly BAU release workflow:
    - `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`
 5. Review contamination trend monthly with admin.
 
-Dual-track weekly ritual rule:
+Dual-track weekly check-in rule:
 1. Strategic lane:
    - KR check-ins and change commitments that can affect OKR interpretation.
 2. Operational lane:
@@ -136,12 +136,12 @@ Dual-track weekly ritual rule:
    - BAU deadline pressure does not make work strategic.
    - If BAU work starts changing KPI baseline, explicitly convert it into a strategic KR change initiative.
 
-60-second ritual opening script (read verbatim):
+60-second check-in opening script (read verbatim):
 1. "This meeting has two lanes: Strategic lane for change and Operational lane for operations."
 2. "BAU items may have strict deadlines and owners, but they remain BAU."
 3. "In this room, activity volume is not strategy evidence."
 4. "Only KPI baseline movement counts as OKR progress."
-5. "If an item is unclassified, we stop and classify it before closing the ritual."
+5. "If an item is unclassified, we stop and classify it before closing the check-in."
 
 Mandatory weekly output format (external governance artifact, not in-app KR fields):
 - Strategic lane section: `<change commitment + expected KPI delta>`
@@ -161,10 +161,10 @@ Daily Report:
 
 Weekly Report:
 - Window: last 7 days.
-- Use: governance evidence pack after ritual completion.
+- Use: governance evidence pack after check-in completion.
 
-Ritual vs Retro:
-- KR updates happen in Weekly Ritual step 2.
+Check-In vs Retro:
+- KR updates happen in Weekly Check-In step 2.
 - RetroBox is review-only for saved retrospectives.
 
 ## 9. Manager Role During Enterprise Rollout (Pilot -> Scale)
@@ -178,13 +178,13 @@ Pre-pilot manager checks:
 4. Confirm training/coaching plan is complete for your team members.
 
 Pilot-cycle execution responsibilities:
-1. Keep Weekly Ritual completion rate high and resolve stale check-ins immediately.
+1. Keep Weekly Check-In completion rate high and resolve stale check-ins immediately.
 2. Use Inspector to maintain KR metric quality (`start/current/target`, confidence comments, deadlines).
 3. Convert risk signals from dashboard into concrete interventions (ownership, scope, deadline, unblockers).
 4. Capture objective/KR closure reflections to produce reusable learning for next cycle.
 
 Scale recommendation package (what managers should hand upward after pilot):
-1. Evidence of adoption (ritual completion, check-in freshness, participation quality).
+1. Evidence of adoption (check-in completion, check-in freshness, participation quality).
 2. Evidence of outcome quality (risk trend, confidence trend, KR attainment signals).
 3. Top blockers that require leadership or cross-team decisions.
 4. Clear recommendation: keep scope, expand to next teams, or extend pilot.
@@ -204,8 +204,8 @@ Scale recommendation package (what managers should hand upward after pilot):
 6. AI check:
    - manager runs KR analysis on direct-report node (should pass)
    - manager attempts analysis on unauthorized node id (should fail authorization)
-7. Ritual check:
-   - each report submits KR check-in in Ritual step 2
+7. Check-In check:
+   - each report submits KR check-in in Check-In step 2
    - manager verifies completion + confidence quality
 8. Evidence closure:
    - export Weekly Report
@@ -223,3 +223,5 @@ If manager can see but cannot edit:
 1. Confirm node owner is direct report (manager-of-owner edit rule).
 2. Confirm account is active and role is `manager`.
 3. Check permission errors in UI and audit logs.
+
+

@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import uuid
+import math
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -14,8 +16,11 @@ from sqlmodel import Session, select
 
 from backend_app.job_limits import enforce_job_submit_limits
 from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job
-from backend_app.path_setup import ensure_streamlit_app_on_path
+from backend_app.path_setup import ensure_shared_src_on_path
 from backend_app.schemas import (
+    AiAnalyzeNodeRequest,
+    AiStrategyPulseRequest,
+    AiTeamCoachRequest,
     AlignmentCreateRequest,
     AlignmentDeleteResponse,
     AlignmentMutationView,
@@ -65,7 +70,7 @@ from backend_app.schemas import (
 from backend_app.security import require_service_access, resolve_actor_username
 from backend_app.security_state import get_app_state, set_app_state
 
-ensure_streamlit_app_on_path()
+ensure_shared_src_on_path()
 
 from src.crud import (
     authenticate_user_detailed,
@@ -110,6 +115,7 @@ from src.crud import (
     get_user_retrospectives,
     get_work_logs_by_date_range,
     list_experiments_for_retro_window,
+    list_experiments_for_kr,
     start_timer,
     stop_timer,
     update_cycle,
@@ -124,8 +130,19 @@ from src.crud import (
     get_leadership_metrics,
 )
 from src.database import get_session_context, init_database
+from src.config_runtime import get_bool_config
 from src.domain.read_queries import build_atlas_scope_snapshot
+from src.domain.analysis import calculate_burnout_risk, detect_strategy_gaps
+from src.domain.password_policy import is_production_runtime
 from src.observability import observability_context
+from src.services.ai_provider import run_ai_health_check
+from src.services.ai_service import (
+    analyze_node,
+    analyze_team_health,
+    generate_predictive_outlook,
+)
+from src.services.pdf_service import get_pdf_runtime_diagnostics
+from src.database import BACKUP_FORMAT_VERSION, export_database_backup, import_database_backup
 from src.models import (
     AlignmentEdge,
     AlignmentType,
@@ -235,6 +252,27 @@ def _coerce_datetime(value, *, field_name: str):
     raise HTTPException(status_code=400, detail=f"Invalid datetime for '{field_name}'.")
 
 
+def _coerce_float(value, *, field_name: str):
+    if value is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid numeric value for '{field_name}'.",
+        )
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid numeric value for '{field_name}'.",
+        ) from exc
+    if not math.isfinite(parsed):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid numeric value for '{field_name}'.",
+        )
+    return parsed
+
+
 def _coerce_enum(value, enum_cls, *, field_name: str):
     if value is None:
         return None
@@ -282,6 +320,17 @@ def _normalize_updates(node_type: str, updates: dict) -> dict:
                 MetricType,
                 field_name="metric_type",
             )
+        for numeric_field in ("start_value", "target_value", "current_value", "weight"):
+            if numeric_field in clean:
+                clean[numeric_field] = _coerce_float(
+                    clean.get(numeric_field),
+                    field_name=numeric_field,
+                )
+        if "weight" in clean and float(clean["weight"]) < 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid value for 'weight'.",
+            )
 
     if node_type == "OBJECTIVE":
         if "score_mode" in clean:
@@ -290,6 +339,13 @@ def _normalize_updates(node_type: str, updates: dict) -> dict:
                 ScoreMode,
                 field_name="score_mode",
             )
+        if "weight" in clean:
+            clean["weight"] = _coerce_float(clean.get("weight"), field_name="weight")
+            if float(clean["weight"]) < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid value for 'weight'.",
+                )
 
     if node_type in {"OBJECTIVE", "KEY_RESULT"} and "state" in clean:
         clean["state"] = _coerce_enum(
@@ -523,6 +579,17 @@ def _coerce_owner_ids(values: Optional[list[int]]) -> list[int]:
     return sorted(set(output))
 
 
+def _coerce_string_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    output: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            output.append(text)
+    return output
+
+
 def _coerce_experiment_updates(updates: dict) -> dict:
     clean = dict(updates or {})
     for date_field in ("start_at", "end_at"):
@@ -552,10 +619,146 @@ def _coerce_experiment_updates(updates: dict) -> dict:
     return clean
 
 
+def _normalize_idempotency_key(value: Optional[str]) -> Optional[str]:
+    key = str(value or "").strip()
+    if not key:
+        return None
+    return key[:255]
+
+
+def _payload_to_jsonable(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _payload_to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_payload_to_jsonable(item) for item in value]
+    if hasattr(value, "model_dump"):
+        try:
+            return _payload_to_jsonable(value.model_dump(mode="json"))
+        except TypeError:
+            return _payload_to_jsonable(value.model_dump())
+    if hasattr(value, "dict"):
+        return _payload_to_jsonable(value.dict())
+    return str(value)
+
+
+def _payload_fingerprint(payload: Any) -> str:
+    body = json.dumps(
+        _payload_to_jsonable(payload),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _idempotency_state_key(*, scope: str, actor: str, key: str) -> str:
+    return f"idempotency:{scope}:{actor}:{key}"
+
+
+def _load_idempotent_response(
+    *,
+    scope: str,
+    actor: str,
+    idempotency_key: Optional[str],
+    payload: Any,
+) -> Optional[dict]:
+    key = _normalize_idempotency_key(idempotency_key)
+    if not key:
+        return None
+    state_key = _idempotency_state_key(scope=scope, actor=str(actor), key=key)
+    raw_state = get_app_state(state_key)
+    if not raw_state:
+        return None
+    try:
+        parsed = json.loads(raw_state)
+    except Exception:
+        return None
+    payload_hash = _payload_fingerprint(payload)
+    saved_hash = str(parsed.get("payload_hash") or "")
+    if saved_hash and saved_hash != payload_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="Idempotency key reuse with different payload is not allowed.",
+        )
+    cached_response = parsed.get("response")
+    if isinstance(cached_response, dict):
+        return cached_response
+    return None
+
+
+def _store_idempotent_response(
+    *,
+    scope: str,
+    actor: str,
+    idempotency_key: Optional[str],
+    payload: Any,
+    response_payload: dict,
+) -> None:
+    key = _normalize_idempotency_key(idempotency_key)
+    if not key:
+        return
+    state_key = _idempotency_state_key(scope=scope, actor=str(actor), key=key)
+    record = {
+        "payload_hash": _payload_fingerprint(payload),
+        "response": _payload_to_jsonable(response_payload),
+        "stored_at": datetime.now(timezone.utc).isoformat(),
+    }
+    set_app_state(state_key, json.dumps(record, ensure_ascii=False, default=str))
+
+
+def _audit_experiment_failure(
+    *,
+    action: str,
+    actor: str,
+    error_message: str,
+    payload: Any,
+    idempotency_key: Optional[str],
+    experiment_id: Optional[int] = None,
+) -> None:
+    details: dict[str, Any] = {
+        "success": False,
+        "result": "failure",
+        "error": str(error_message or "").strip() or "unknown error",
+        "idempotency_key_present": bool(_normalize_idempotency_key(idempotency_key)),
+        "payload": _payload_to_jsonable(payload),
+    }
+    if experiment_id is not None:
+        details["experiment_id"] = int(experiment_id)
+    if idempotency_key:
+        details["idempotency_key"] = str(idempotency_key).strip()[:255]
+    try:
+        audit_log(action=action, entity="experiment", actor=str(actor), details=details)
+    except Exception as exc:
+        error_log("backend_experiment_failure_audit_failed", exc)
+
+
+def _experiment_view_from_payload(payload: dict) -> ExperimentMutationView:
+    if hasattr(ExperimentMutationView, "model_validate"):
+        return ExperimentMutationView.model_validate(payload)
+    return ExperimentMutationView(**payload)
+
+
 def _status_for_value_error(message: str, default: int = 400) -> int:
     text = str(message or "").strip().lower()
     if "not found" in text:
         return 404
+    if "invalid experiment status transition" in text:
+        return 409
+    if "immutable" in text:
+        return 409
+    if "must be running" in text:
+        return 409
+    if "idempotency key reuse" in text:
+        return 409
     return int(default)
 
 
@@ -1344,6 +1547,28 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             ]
         }
 
+    if kind == "experiments.for_kr":
+        key_result_id = _coerce_int(
+            params.get("key_result_id"),
+            field_name="key_result_id",
+        )
+        experiments = list(
+            list_experiments_for_kr(
+                key_result_id=key_result_id,
+                actor_username=actor,
+            )
+            or []
+        )
+        return {
+            "experiments": [
+                payload
+                for payload in (
+                    _serialize_experiment(experiment) for experiment in experiments
+                )
+                if payload is not None
+            ]
+        }
+
     if kind == "experiments.for_retro_window":
         cycle_id = _coerce_int(params.get("cycle_id"), field_name="cycle_id")
         window_start = _coerce_datetime(
@@ -1510,7 +1735,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         node_type_raw = str(params.get("node_type") or "").strip()
         node_type = node_type_raw.upper() if node_type_raw else None
         if node_type is None:
-            for label in ("TASK", "KEY_RESULT", "OBJECTIVE", "GOAL"):
+            for label in ("GOAL", "OBJECTIVE", "KEY_RESULT", "TASK"):
                 candidate = get_node(node_id, label, actor_username=actor)
                 if candidate:
                     node_type = label
@@ -1526,6 +1751,25 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         if node_type == "GOAL":
             full_goal = get_goal_tree(node_id)
             node_payload = _serialize_goal(full_goal, include_objectives=True)
+        elif node_type == "OBJECTIVE":
+            node_payload = _serialize_objective(
+                scoped_node,
+                include_key_results=True,
+                include_goal=False,
+            )
+        elif node_type == "KEY_RESULT":
+            node_payload = _serialize_key_result(
+                scoped_node,
+                include_tasks=True,
+                include_check_ins=False,
+                include_objective=False,
+            )
+        elif node_type == "TASK":
+            node_payload = _serialize_task(
+                scoped_node,
+                include_key_result=False,
+                include_work_logs=True,
+            )
         else:
             node_payload = _serialize_node_for_type(node_type, scoped_node)
         return {"node": node_payload, "node_type": node_type}
@@ -1580,6 +1824,84 @@ def api_read_query(
 @app.get("/healthz")
 def healthz() -> dict:
     return {"status": "ok"}
+
+
+def _require_admin_actor_scope(actor: str) -> None:
+    scope = _resolve_scope_for_actor(actor)
+    if not bool(scope.get("is_admin", False)):
+        raise HTTPException(status_code=403, detail="Admin privileges required.")
+
+
+@app.get(
+    "/v1/admin/ai-health",
+    dependencies=[Depends(require_service_access)],
+)
+def api_admin_ai_health(
+    live_probe: bool = False,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    _require_admin_actor_scope(actor)
+    return run_ai_health_check(live_probe=bool(live_probe))
+
+
+@app.get(
+    "/v1/admin/pdf-health",
+    dependencies=[Depends(require_service_access)],
+)
+def api_admin_pdf_health(
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    _require_admin_actor_scope(actor)
+    return dict(get_pdf_runtime_diagnostics())
+
+
+@app.get(
+    "/v1/admin/db-backup",
+    dependencies=[Depends(require_service_access)],
+)
+def api_admin_db_backup(
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> Response:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    _require_admin_actor_scope(actor)
+    backup_bytes = export_database_backup()
+    return Response(content=backup_bytes, media_type="application/json")
+
+
+@app.post(
+    "/v1/admin/db-restore",
+    dependencies=[Depends(require_service_access)],
+)
+async def api_admin_db_restore(
+    request: Request,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    _require_admin_actor_scope(actor)
+    if not get_bool_config("OKR_ENABLE_DIRECT_DB_RESTORE", False):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Direct DB restore is disabled. "
+                "Set OKR_ENABLE_DIRECT_DB_RESTORE=true for controlled admin restore."
+            ),
+        )
+    if is_production_runtime():
+        raise HTTPException(
+            status_code=403,
+            detail="Direct DB restore is blocked in production runtime.",
+        )
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Backup restore payload must be a JSON object.")
+    if str(payload.get("format") or "").strip() != BACKUP_FORMAT_VERSION:
+        raise HTTPException(status_code=400, detail="Unsupported backup format version.")
+    try:
+        return dict(import_database_backup(payload))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get(
@@ -1686,6 +2008,127 @@ def api_read_leadership_metrics(
 
 
 @app.post(
+    "/v1/ai/analyze-node",
+    dependencies=[Depends(require_service_access)],
+)
+def api_ai_analyze_node(
+    payload: AiAnalyzeNodeRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    actor = _resolve_actor(
+        header_actor=x_okr_actor,
+        payload_actor=payload.actor_username,
+    )
+    result = analyze_node(
+        int(payload.node_id),
+        str(payload.node_type or "KEY_RESULT"),
+        actor_username=actor,
+    )
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=500, detail="AI analysis returned invalid payload.")
+    error_text = str(result.get("error") or "").strip()
+    if error_text:
+        lowered = error_text.lower()
+        if "not found" in lowered:
+            raise HTTPException(status_code=404, detail=error_text)
+        if "permission" in lowered or "forbidden" in lowered or "authorized" in lowered:
+            raise HTTPException(status_code=403, detail=error_text)
+        raise HTTPException(status_code=400, detail=error_text)
+    return result
+
+
+@app.post(
+    "/v1/ai/team-coach",
+    dependencies=[Depends(require_service_access)],
+)
+def api_ai_team_coach(
+    payload: AiTeamCoachRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    actor = _resolve_actor(
+        header_actor=x_okr_actor,
+        payload_actor=payload.actor_username,
+    )
+    with get_session_context() as session:
+        _resolve_actor_scope(session, actor)
+    result = analyze_team_health(dict(payload.team_data or {}))
+    if not isinstance(result, dict):
+        raise HTTPException(status_code=500, detail="AI team coach returned invalid payload.")
+    error_text = str(result.get("error") or "").strip()
+    if error_text:
+        raise HTTPException(status_code=400, detail=error_text)
+    return result
+
+
+@app.post(
+    "/v1/ai/strategy-pulse",
+    dependencies=[Depends(require_service_access)],
+)
+def api_ai_strategy_pulse(
+    payload: AiStrategyPulseRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    actor = _resolve_actor(
+        header_actor=x_okr_actor,
+        payload_actor=payload.actor_username,
+    )
+    with get_session_context() as session:
+        scope = _resolve_actor_scope(session, actor)
+    allowed_usernames = {str(value).strip() for value in (scope.get("usernames") or set())}
+    subject_username = str(payload.subject_username or actor).strip()
+    if not subject_username:
+        raise HTTPException(status_code=400, detail="Subject username is required.")
+    if subject_username not in allowed_usernames:
+        raise HTTPException(status_code=403, detail="Actor is not authorized.")
+
+    subject_user = get_user_by_username(subject_username)
+    if not subject_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    cycle_id = int(payload.cycle_id)
+    subject_user_id = int(getattr(subject_user, "id", 0) or 0)
+    if subject_user_id <= 0:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    burnout = calculate_burnout_risk(subject_user_id, days=int(payload.days))
+    gaps = detect_strategy_gaps(cycle_id, user_ids=[subject_user_id])
+    cycle_title = str(payload.cycle_title or f"Cycle {cycle_id}").strip() or f"Cycle {cycle_id}"
+    outlook = generate_predictive_outlook(
+        burnout_data=burnout,
+        strategy_gaps=gaps,
+        cycle_title=cycle_title,
+    )
+    if not isinstance(outlook, dict):
+        raise HTTPException(status_code=500, detail="AI strategy pulse returned invalid payload.")
+    error_text = str(outlook.get("error") or "").strip()
+    if error_text:
+        raise HTTPException(status_code=400, detail=error_text)
+
+    gap_signals = [
+        (
+            f"{str(gap.get('title') or 'Untitled').strip()}: "
+            f"{str(gap.get('gap_type') or 'N/A').strip()} "
+            f"(severity {int(gap.get('severity') or 0)})"
+        )
+        for gap in (gaps or [])[:5]
+    ]
+    portfolio_actions = _coerce_string_list(outlook.get("risk_mitigation")) + _coerce_string_list(
+        outlook.get("strategic_pivots")
+    )
+
+    return {
+        "subject_username": subject_username,
+        "cycle_id": cycle_id,
+        "burnout_snapshot": burnout,
+        "strategy_gaps": gaps,
+        "predictive_outlook": outlook,
+        "burnout_risk": str(burnout.get("risk_label") or "").strip(),
+        "gap_signals": gap_signals,
+        "portfolio_actions": portfolio_actions,
+    }
+
+
+@app.post(
     "/v1/timer/start",
     dependencies=[Depends(require_service_access)],
 )
@@ -1699,8 +2142,13 @@ def api_start_timer(
     )
     try:
         work_log = start_timer(payload.task_id, actor)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
 
     return {
         "work_log_id": work_log.id,
@@ -1721,7 +2169,15 @@ def api_stop_timer(
         header_actor=x_okr_actor,
         payload_actor=payload.user_id,
     )
-    work_log = stop_timer(payload.task_id, summary=payload.summary, user_id=actor)
+    try:
+        work_log = stop_timer(payload.task_id, summary=payload.summary, user_id=actor)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=_status_for_value_error(str(exc)),
+            detail=str(exc),
+        ) from exc
     if not work_log:
         raise HTTPException(status_code=404, detail="No active timer found.")
     return {
@@ -1893,6 +2349,7 @@ def api_create_objective(
             goal_id=payload.goal_id,
             title=payload.title,
             description=payload.description,
+            weight=payload.weight,
             actor_username=actor,
         )
     except PermissionError as exc:
@@ -1923,6 +2380,7 @@ def api_create_key_result(
             target_value=payload.target_value,
             unit=payload.unit,
             initiative_tags=_normalize_tags(payload.initiative_tags),
+            weight=payload.weight,
             actor_username=actor,
         )
     except PermissionError as exc:
@@ -2310,19 +2768,31 @@ def api_create_check_in(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    comment_text = str(payload.comment or "").strip()
+    special_cause_note = str(payload.special_cause_note or "").strip()
+    if int(payload.confidence) <= 5 and not comment_text:
+        raise HTTPException(
+            status_code=400,
+            detail="Low-confidence check-ins require a comment.",
+        )
+    if str(payload.variation_type) == "SPECIAL_CAUSE" and not special_cause_note:
+        raise HTTPException(
+            status_code=400,
+            detail="Special-cause check-ins require a special_cause_note.",
+        )
     try:
         check_in = create_check_in(
             kr_id=payload.kr_id,
             value=payload.value,
             confidence=payload.confidence,
-            comment=payload.comment,
+            comment=comment_text,
             actor_username=actor,
             variation_type=_coerce_enum(
                 payload.variation_type,
                 VariationType,
                 field_name="variation_type",
             ),
-            special_cause_note=payload.special_cause_note,
+            special_cause_note=special_cause_note or None,
             experiment_id=payload.experiment_id,
         )
     except PermissionError as exc:
@@ -2344,10 +2814,21 @@ def api_create_check_in(
 def api_create_experiment(
     payload: ExperimentCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> ExperimentMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    idempotency_scope = "experiments.create"
+    idempotency_payload = _payload_to_jsonable(payload)
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _experiment_view_from_payload(replay)
     try:
         experiment = create_experiment(
             key_result_id=payload.key_result_id,
@@ -2364,13 +2845,35 @@ def api_create_experiment(
             expected_effect_size=payload.expected_effect_size,
         )
     except PermissionError as exc:
+        _audit_experiment_failure(
+            action="create_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
+        _audit_experiment_failure(
+            action="create_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+        )
         raise HTTPException(
             status_code=_status_for_value_error(str(exc)),
             detail=str(exc),
         ) from exc
-    return _experiment_view_from_obj(experiment)
+    view = _experiment_view_from_obj(experiment)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(view),
+    )
+    return view
 
 
 @app.patch(
@@ -2382,11 +2885,39 @@ def api_update_experiment(
     experiment_id: int,
     payload: ExperimentUpdateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> ExperimentMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
-    updates = _coerce_experiment_updates(payload.updates)
+    idempotency_scope = f"experiments.update:{int(experiment_id)}"
+    try:
+        updates = _coerce_experiment_updates(payload.updates)
+    except HTTPException as exc:
+        _audit_experiment_failure(
+            action="update_failed",
+            actor=actor,
+            error_message=str(exc.detail),
+            payload=_payload_to_jsonable(payload),
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
+        raise
+
+    idempotency_payload = {
+        "experiment_id": int(experiment_id),
+        "updates": _payload_to_jsonable(updates),
+        "actor_username": actor,
+    }
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _experiment_view_from_payload(replay)
+
     try:
         experiment = update_experiment(
             int(experiment_id),
@@ -2394,15 +2925,47 @@ def api_update_experiment(
             **updates,
         )
     except PermissionError as exc:
+        _audit_experiment_failure(
+            action="update_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
+        _audit_experiment_failure(
+            action="update_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(
             status_code=_status_for_value_error(str(exc)),
             detail=str(exc),
         ) from exc
     if not experiment:
+        _audit_experiment_failure(
+            action="update_failed",
+            actor=actor,
+            error_message="Experiment not found.",
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(status_code=404, detail="Experiment not found.")
-    return _experiment_view_from_obj(experiment)
+    view = _experiment_view_from_obj(experiment)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(view),
+    )
+    return view
 
 
 @app.post(
@@ -2414,10 +2977,27 @@ def api_close_experiment(
     experiment_id: int,
     payload: ExperimentCloseRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> ExperimentMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    idempotency_scope = f"experiments.close:{int(experiment_id)}"
+    idempotency_payload = {
+        "experiment_id": int(experiment_id),
+        "decision": _payload_to_jsonable(payload.decision),
+        "rationale": str(payload.rationale or ""),
+        "actor_username": actor,
+    }
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _experiment_view_from_payload(replay)
+
     try:
         experiment = close_experiment(
             experiment_id=int(experiment_id),
@@ -2430,15 +3010,47 @@ def api_close_experiment(
             actor_username=actor,
         )
     except PermissionError as exc:
+        _audit_experiment_failure(
+            action="close_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
+        _audit_experiment_failure(
+            action="close_failed",
+            actor=actor,
+            error_message=str(exc),
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(
             status_code=_status_for_value_error(str(exc)),
             detail=str(exc),
         ) from exc
     if not experiment:
+        _audit_experiment_failure(
+            action="close_failed",
+            actor=actor,
+            error_message="Experiment not found.",
+            payload=idempotency_payload,
+            idempotency_key=x_okr_idempotency_key,
+            experiment_id=int(experiment_id),
+        )
         raise HTTPException(status_code=404, detail="Experiment not found.")
-    return _experiment_view_from_obj(experiment)
+    view = _experiment_view_from_obj(experiment)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(view),
+    )
+    return view
 
 
 @app.post(
@@ -2614,3 +3226,4 @@ def api_delete_work_log(
     if not deleted:
         raise HTTPException(status_code=404, detail="Work log not found.")
     return WorkLogDeleteResponse(id=int(work_log_id), deleted=True)
+

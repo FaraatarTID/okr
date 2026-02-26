@@ -6,9 +6,9 @@ from __future__ import annotations
 import base64
 from typing import Any, Dict
 
-from backend_app.path_setup import ensure_streamlit_app_on_path
+from backend_app.path_setup import ensure_shared_src_on_path
 
-ensure_streamlit_app_on_path()
+ensure_shared_src_on_path()
 
 from src.services.ai_provider import generate_json
 from src.services.pdf_service import generate_pdf_bytes, generate_pdf_html
@@ -65,3 +65,4 @@ def run_job(kind: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     if job_kind == "ai.generate_json":
         return _run_ai_generate_json_job(payload)
     raise ValueError(f"Unsupported job kind '{kind}'.")
+

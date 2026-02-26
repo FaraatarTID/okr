@@ -36,6 +36,7 @@ def _write_env(
     security_state_backend: str = "database",
     security_state_redis_url: str = "",
     pdf_method: str = "pdfshift",
+    backend_bind_address: str = "127.0.0.1",
 ) -> None:
     service_token = "CHANGE_ME_SHARED_TOKEN" if placeholder_values else "tok_live_123"
     signing_secret = (
@@ -65,6 +66,7 @@ def _write_env(
         "OKR_BACKEND_PROXY_READS=true",
         f"OKR_BACKEND_SECURITY_STATE_BACKEND={security_state_backend}",
         f"OKR_BACKEND_SECURITY_STATE_REDIS_URL={security_state_redis_url}",
+        f"OKR_BACKEND_BIND_ADDRESS={backend_bind_address}",
         "OKR_ALLOW_LOCAL_MUTATION_FALLBACK=false",
         "OKR_ALLOW_LOCAL_READ_FALLBACK=false",
         "OKR_ENFORCE_STRONG_PASSWORD_POLICY=true",
@@ -239,3 +241,19 @@ def test_template_mode_rejects_disabled_backend_read_proxy(tmp_path: Path):
 
     assert result.returncode == 1
     assert "OKR_BACKEND_PROXY_READS" in result.stdout
+
+
+def test_runtime_mode_rejects_non_loopback_backend_bind_address(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    secrets_file = tmp_path / "secrets.toml"
+    _write_env(
+        env_file,
+        placeholder_values=False,
+        backend_bind_address="0.0.0.0",
+    )
+    _write_secrets(secrets_file)
+
+    result = _run_checker(env_file, secrets_file, mode="runtime")
+
+    assert result.returncode == 1
+    assert "OKR_BACKEND_BIND_ADDRESS" in result.stdout
