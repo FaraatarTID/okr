@@ -1,5 +1,7 @@
 # SPA BFF (`spa-bff`)
 
+Documentation HQ: [README](../README.md)
+
 Public Backend-for-Frontend service for browser SPA clients.
 
 Purpose:
