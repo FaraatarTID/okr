@@ -12,9 +12,9 @@ from sqlalchemy import delete, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import select
 
-from backend_app.path_setup import ensure_streamlit_app_on_path
+from backend_app.path_setup import ensure_shared_src_on_path
 
-ensure_streamlit_app_on_path()
+ensure_shared_src_on_path()
 
 from src.database import get_session_context
 from src.models import AsyncJob, AsyncJobStatus, AuditEvent, User
@@ -367,3 +367,4 @@ def prune_audit_events(*, retention_days: int, batch_size: int = 200) -> int:
         deleted = int(getattr(result, "rowcount", 0) or 0)
         session.commit()
         return deleted
+

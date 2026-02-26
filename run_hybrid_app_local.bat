@@ -6,7 +6,7 @@ set "ROOT=%~dp0"
 set "ROOT_CLEAN=%ROOT%"
 if "%ROOT_CLEAN:~-1%"=="\" set "ROOT_CLEAN=%ROOT_CLEAN:~0,-1%"
 set "DOCKER_ENV_FILE=deploy\docker\.env"
-set "SECRETS_FILE=streamlit_app\.streamlit\secrets.toml"
+set "SECRETS_FILE=deploy\secrets\secrets.toml"
 set "VENV_DIR=.venv"
 set "PYEXE=%ROOT%%VENV_DIR%\Scripts\python.exe"
 set "POWERSHELL_EXE=powershell"
@@ -104,7 +104,7 @@ if not exist "%PYEXE%" (
 "%PYEXE%" -c "import fastapi,uvicorn,sqlmodel,psycopg2" >nul 2>&1
 if errorlevel 1 (
     echo [INFO] Installing Python dependencies...
-    "%PYEXE%" -m pip install -r "streamlit_app\requirements.txt"
+    "%PYEXE%" -m pip install -r "backend_app\requirements.txt"
     if errorlevel 1 (
         echo [ERROR] Failed to install Python dependencies.
         pause
@@ -166,9 +166,9 @@ set "OKR_BACKEND_API_URL=http://127.0.0.1:8100"
 set "BFF_HOST=127.0.0.1"
 set "BFF_PORT=3001"
 set "BFF_PUBLIC_ORIGIN=http://127.0.0.1:3001"
+set "BFF_REQUEST_TIMEOUT_MS=90000"
 set "OKR_SPA_ROLLOUT_ENABLED=true"
 set "OKR_SPA_ROLLOUT_ALLOW_ALL=true"
-set "OKR_STREAMLIT_FALLBACK_URL=http://127.0.0.1:8501"
 
 echo [7/9] Launching backend + worker + BFF + SPA...
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"

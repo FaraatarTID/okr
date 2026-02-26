@@ -21,6 +21,7 @@ import {
   readStrategyPulseAi,
   createAlignmentMutation,
   createCheckInMutation,
+  closeExperimentMutation,
   createExperimentMutation,
   readAdminDbBackup,
   restoreAdminDbBackup,
@@ -35,6 +36,7 @@ import {
   deleteCycleMutation,
   deleteAlignmentMutation,
   deleteNodeMutation,
+  deleteWorkLogMutation,
   deleteTeamMutation,
   readAtlasSnapshot,
   readBackendJob,
@@ -47,6 +49,7 @@ import {
   stopTaskTimer,
   submitBackendJob,
   updateCycleMutation,
+  updateExperimentMutation,
   updateTeamMutation,
   updateNodeMutation,
   updateUserMutation,
@@ -57,6 +60,7 @@ import {
   type AuthUser,
   type CycleSummary,
   type ExperimentMutationResponse,
+  type ExperimentDecisionType,
   type LeadershipMetricsResponse,
   type NodeTypePath,
   type TeamMutationResponse,
@@ -130,14 +134,21 @@ type ExperimentRead = {
   id: number;
   key_result_id: number;
   cycle_id: number;
+  created_by?: string | null;
   hypothesis?: string | null;
   change_description?: string | null;
   status?: "PLANNED" | "RUNNING" | "DECIDED" | null;
   start_at?: string | null;
   end_at?: string | null;
   created_at?: string | null;
+  decision?: "ADOPT" | "ITERATE" | "ABANDON" | null;
+  decision_rationale?: string | null;
   expected_effect_direction?: "UP" | "DOWN" | null;
   expected_effect_size?: number | null;
+};
+type ExperimentCloseDraft = {
+  decision: ExperimentDecisionType;
+  rationale: string;
 };
 type RetroRead = {
   id: number;
@@ -309,6 +320,8 @@ const MODE_PATH_MAP = new Map(SIDEBAR_ITEMS.map((item) => [item.mode, item.path]
 const PATH_MODE_MAP = new Map(SIDEBAR_ITEMS.map((item) => [item.path, item.mode]));
 const MODE_LABEL_MAP = new Map(SIDEBAR_ITEMS.map((item) => [item.mode, item.label]));
 PATH_MODE_MAP.set("/ritual", "ritual");
+const AI_SYNC_MAX_DELTA = 40;
+const AI_SYNC_ALLOW_DECREASE = false;
 
 function pathForMode(mode: string): string {
   return MODE_PATH_MAP.get(mode) || "/";
@@ -365,10 +378,9 @@ function formatOptionalDate(value: unknown): string {
   if (!value) {
     return "-";
   }
-  const asText = String(value);
-  const parsed = new Date(asText);
-  if (Number.isNaN(parsed.getTime())) {
-    return asText;
+  const parsed = parseDateOrNull(value);
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    return String(value);
   }
   return parsed.toLocaleString();
 }
@@ -471,7 +483,23 @@ function parseDateOrNull(raw: unknown): Date | null {
   if (!text) {
     return null;
   }
-  const parsed = new Date(text);
+  // Canonicalize backend datetime strings to strict ISO-8601 UTC with
+  // millisecond precision. This prevents local-time interpretation drift.
+  let normalized = text;
+  const matched = normalized.match(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([zZ]|[+\-]\d{2}:\d{2})?$/,
+  );
+  if (matched) {
+    const [, datePart, timePart, fractionalRaw, timezoneRaw] = matched;
+    const fractional = fractionalRaw
+      ? `.${fractionalRaw.slice(0, 3).padEnd(3, "0")}`
+      : "";
+    const timezone = timezoneRaw
+      ? (timezoneRaw.toUpperCase() === "Z" ? "Z" : timezoneRaw)
+      : "Z";
+    normalized = `${datePart}T${timePart}${fractional}${timezone}`;
+  }
+  const parsed = new Date(normalized);
   if (Number.isNaN(parsed.getTime())) {
     return null;
   }
@@ -503,6 +531,14 @@ function toDateShortLabel(value: Date): string {
     month: "short",
     day: "numeric",
   });
+}
+
+function formatElapsedClock(totalSeconds: number): string {
+  const safe = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
+  const seconds = safe % 60;
+  return `${`${hours}`.padStart(2, "0")}:${`${minutes}`.padStart(2, "0")}:${`${seconds}`.padStart(2, "0")}`;
 }
 
 function clampProgress(value: unknown): number {
@@ -1166,6 +1202,18 @@ export default function AtlasShell() {
   const [ritualExperimentPending, setRitualExperimentPending] = useState<Record<number, boolean>>({});
   const [ritualExperimentError, setRitualExperimentError] = useState<Record<number, string>>({});
   const [ritualExperimentMessage, setRitualExperimentMessage] = useState<Record<number, string>>({});
+  const [ritualExperimentCloseDrafts, setRitualExperimentCloseDrafts] = useState<
+    Record<number, ExperimentCloseDraft>
+  >({});
+  const [ritualExperimentActionPending, setRitualExperimentActionPending] = useState<
+    Record<number, boolean>
+  >({});
+  const [ritualExperimentActionError, setRitualExperimentActionError] = useState<
+    Record<number, string>
+  >({});
+  const [ritualExperimentActionMessage, setRitualExperimentActionMessage] = useState<
+    Record<number, string>
+  >({});
   const [ritualCheckInPending, setRitualCheckInPending] = useState<Record<number, boolean>>({});
   const [ritualCheckInError, setRitualCheckInError] = useState<Record<number, string>>({});
   const [ritualCheckInMessage, setRitualCheckInMessage] = useState<Record<number, string>>({});
@@ -1174,8 +1222,6 @@ export default function AtlasShell() {
   const [aiSyncMessage, setAiSyncMessage] = useState("");
   const [aiSyncReport, setAiSyncReport] = useState<AiSyncReport | null>(null);
   const [aiProgressUndoItems, setAiProgressUndoItems] = useState<AiProgressUndoItem[]>([]);
-  const [aiMaxProgressDelta, setAiMaxProgressDelta] = useState("25");
-  const [aiAllowProgressDecrease, setAiAllowProgressDecrease] = useState(false);
   const [aiSuggestPending, setAiSuggestPending] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<AiTaskSuggestion | null>(null);
   const [alignmentContext, setAlignmentContext] = useState<AlignmentContextPayload | null>(null);
@@ -1200,12 +1246,22 @@ export default function AtlasShell() {
   const [timerSummary, setTimerSummary] = useState("");
   const [timerError, setTimerError] = useState("");
   const [timerMessage, setTimerMessage] = useState("");
+  const [timerModalOpen, setTimerModalOpen] = useState(false);
+  const [timerSessionStartAt, setTimerSessionStartAt] = useState("");
+  const [timerSessionTaskId, setTimerSessionTaskId] = useState<number | null>(null);
+  const [timerClockNowMs, setTimerClockNowMs] = useState(() => Date.now());
   const [inspectPending, setInspectPending] = useState(false);
   const [inspectError, setInspectError] = useState("");
   const [inspectMessage, setInspectMessage] = useState("");
   const [inspectAnalysisPending, setInspectAnalysisPending] = useState(false);
   const [inspectAnalysisError, setInspectAnalysisError] = useState("");
   const [inspectAnalysis, setInspectAnalysis] = useState<AnalysisSummary | null>(null);
+  const [inspectTaskWorkLogs, setInspectTaskWorkLogs] = useState<WorkLogRead[]>([]);
+  const [inspectTaskWorkLogsPending, setInspectTaskWorkLogsPending] = useState(false);
+  const [inspectTaskWorkLogsError, setInspectTaskWorkLogsError] = useState("");
+  const [inspectTaskWorkLogPendingId, setInspectTaskWorkLogPendingId] = useState<number | null>(null);
+  const [inspectTaskWorkLogsActionError, setInspectTaskWorkLogsActionError] = useState("");
+  const [inspectTaskWorkLogsActionMessage, setInspectTaskWorkLogsActionMessage] = useState("");
   const [inspectDraft, setInspectDraft] = useState<InspectorEditDraft>({
     title: "",
     description: "",
@@ -1838,12 +1894,35 @@ export default function AtlasShell() {
   }, [atlasRuntime, focusTaskRef]);
 
   const focusTaskRunning = useMemo(() => {
+    if (String(timerSessionStartAt || "").trim()) {
+      return true;
+    }
     if (!focusTaskMeta || focusTaskMeta.type !== "TASK") {
       return false;
     }
     const task = focusTaskMeta.node as AtlasTaskSnapshot;
     return Boolean(task.timer_started_at);
-  }, [focusTaskMeta]);
+  }, [focusTaskMeta, timerSessionStartAt]);
+
+  const activeTimerStartedAt = useMemo(() => {
+    const explicit = String(timerSessionStartAt || "").trim();
+    if (explicit) {
+      return explicit;
+    }
+    if (focusTaskMeta && focusTaskMeta.type === "TASK") {
+      const task = focusTaskMeta.node as AtlasTaskSnapshot;
+      return String(task.timer_started_at || "").trim();
+    }
+    return "";
+  }, [focusTaskMeta, timerSessionStartAt]);
+
+  const activeTimerElapsedSeconds = useMemo(() => {
+    const parsed = parseDateOrNull(activeTimerStartedAt);
+    if (!parsed) {
+      return 0;
+    }
+    return Math.max(0, Math.floor((timerClockNowMs - parsed.getTime()) / 1000));
+  }, [activeTimerStartedAt, timerClockNowMs]);
 
   const mindmapTree = useMemo(() => {
     if (!mindmapPayload) {
@@ -1873,6 +1952,21 @@ export default function AtlasShell() {
     }
     return baseTitle || `${nodeTypeLabel(selectedMeta.type)} ${selectedMeta.id}`;
   }, [mindmapTree, selectedMeta]);
+
+  const inspectTaskWorkHistoryRows = useMemo(() => {
+    if (!inspectTaskWorkLogs.length) {
+      return [];
+    }
+    return [...inspectTaskWorkLogs].sort((left, right) => {
+      const leftAt =
+        parseDateOrNull(left.end_time || left.start_time)?.getTime() ??
+        Number.NEGATIVE_INFINITY;
+      const rightAt =
+        parseDateOrNull(right.end_time || right.start_time)?.getTime() ??
+        Number.NEGATIVE_INFINITY;
+      return rightAt - leftAt;
+    });
+  }, [inspectTaskWorkLogs]);
 
   useEffect(() => {
     if (!ritualKrs.length) {
@@ -2094,6 +2188,37 @@ export default function AtlasShell() {
   }, [selectedMeta, focusTaskRef]);
 
   useEffect(() => {
+    if (!focusTaskMeta || !focusTaskRunning) {
+      return;
+    }
+    if (!timerSessionTaskId) {
+      setTimerSessionTaskId(focusTaskMeta.id);
+    }
+  }, [focusTaskMeta, focusTaskRunning, timerSessionTaskId]);
+
+  useEffect(() => {
+    if (!timerModalOpen || !focusTaskRunning) {
+      return;
+    }
+    setTimerClockNowMs(Date.now());
+    const timerId = window.setInterval(() => {
+      setTimerClockNowMs(Date.now());
+    }, 1000);
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, [timerModalOpen, focusTaskRunning, activeTimerStartedAt]);
+
+  useEffect(() => {
+    if (focusTaskRunning) {
+      return;
+    }
+    setTimerModalOpen(false);
+    setTimerSessionStartAt("");
+    setTimerSessionTaskId(null);
+  }, [focusTaskRunning]);
+
+  useEffect(() => {
     if (!selectedMeta) {
       setInspectDraft({
         title: "",
@@ -2136,6 +2261,22 @@ export default function AtlasShell() {
       return;
     }
     void loadAlignmentContext(user, selectedMeta.id);
+  }, [selectedMeta, user]);
+
+  useEffect(() => {
+    if (!user || !selectedMeta || selectedMeta.type !== "TASK") {
+      setInspectTaskWorkLogs([]);
+      setInspectTaskWorkLogsPending(false);
+      setInspectTaskWorkLogsError("");
+      setInspectTaskWorkLogPendingId(null);
+      setInspectTaskWorkLogsActionError("");
+      setInspectTaskWorkLogsActionMessage("");
+      return;
+    }
+    setInspectTaskWorkLogPendingId(null);
+    setInspectTaskWorkLogsActionError("");
+    setInspectTaskWorkLogsActionMessage("");
+    void loadInspectorTaskWorkLogs(user, selectedMeta.id);
   }, [selectedMeta, user]);
 
   useEffect(() => {
@@ -2819,7 +2960,7 @@ export default function AtlasShell() {
               }
               const payload = await readBackendQuery({
                 actor_username: activeUser.username,
-                kind: "experiments.active_for_kr",
+                kind: "experiments.for_kr",
                 params: { key_result_id: krId },
               });
               return [krId, ((payload.experiments as ExperimentRead[]) || []).slice(0, 50)] as const;
@@ -3058,6 +3199,105 @@ export default function AtlasShell() {
     });
   }
 
+  function updateRitualExperimentCloseDraft(
+    experimentId: number,
+    patch: Partial<ExperimentCloseDraft>,
+  ): void {
+    setRitualExperimentActionError((prev) => ({ ...prev, [experimentId]: "" }));
+    setRitualExperimentActionMessage((prev) => ({ ...prev, [experimentId]: "" }));
+    setRitualExperimentCloseDrafts((prev) => {
+      const base = prev[experimentId] || {
+        decision: "ITERATE" as ExperimentDecisionType,
+        rationale: "",
+      };
+      return {
+        ...prev,
+        [experimentId]: {
+          ...base,
+          ...patch,
+        },
+      };
+    });
+  }
+
+  async function handleRitualExperimentStart(experimentId: number): Promise<void> {
+    if (!user) {
+      return;
+    }
+    setRitualExperimentActionPending((prev) => ({ ...prev, [experimentId]: true }));
+    setRitualExperimentActionError((prev) => ({ ...prev, [experimentId]: "" }));
+    setRitualExperimentActionMessage((prev) => ({ ...prev, [experimentId]: "" }));
+    try {
+      await updateExperimentMutation({
+        actor_username: user.username,
+        experiment_id: experimentId,
+        updates: {
+          status: "RUNNING",
+          start_at: new Date().toISOString(),
+        },
+      });
+      setRitualExperimentActionMessage((prev) => ({
+        ...prev,
+        [experimentId]: "Experiment is now RUNNING.",
+      }));
+      await loadModeData(user, "ritual");
+      if (parsedCycleId) {
+        await loadSnapshotForUser(user);
+      }
+    } catch (error) {
+      setRitualExperimentActionError((prev) => ({
+        ...prev,
+        [experimentId]: String(error instanceof Error ? error.message : error),
+      }));
+    } finally {
+      setRitualExperimentActionPending((prev) => ({ ...prev, [experimentId]: false }));
+    }
+  }
+
+  async function handleRitualExperimentClose(experimentId: number): Promise<void> {
+    if (!user) {
+      return;
+    }
+    const draft = ritualExperimentCloseDrafts[experimentId] || {
+      decision: "ITERATE" as ExperimentDecisionType,
+      rationale: "",
+    };
+    const rationale = String(draft.rationale || "").trim();
+    if (!rationale) {
+      setRitualExperimentActionError((prev) => ({
+        ...prev,
+        [experimentId]: "Decision rationale is required.",
+      }));
+      return;
+    }
+    setRitualExperimentActionPending((prev) => ({ ...prev, [experimentId]: true }));
+    setRitualExperimentActionError((prev) => ({ ...prev, [experimentId]: "" }));
+    setRitualExperimentActionMessage((prev) => ({ ...prev, [experimentId]: "" }));
+    try {
+      await closeExperimentMutation({
+        actor_username: user.username,
+        experiment_id: experimentId,
+        decision: draft.decision,
+        rationale,
+      });
+      setRitualExperimentActionMessage((prev) => ({
+        ...prev,
+        [experimentId]: `Experiment closed as ${draft.decision}.`,
+      }));
+      await loadModeData(user, "ritual");
+      if (parsedCycleId) {
+        await loadSnapshotForUser(user);
+      }
+    } catch (error) {
+      setRitualExperimentActionError((prev) => ({
+        ...prev,
+        [experimentId]: String(error instanceof Error ? error.message : error),
+      }));
+    } finally {
+      setRitualExperimentActionPending((prev) => ({ ...prev, [experimentId]: false }));
+    }
+  }
+
   async function handleRitualExperimentCreate(kr: KeyResultRead): Promise<void> {
     if (!user || !parsedCycleId) {
       return;
@@ -3116,12 +3356,15 @@ export default function AtlasShell() {
           id: created.id,
           key_result_id: created.key_result_id,
           cycle_id: created.cycle_id,
+          created_by: created.created_by,
           hypothesis: created.hypothesis,
           change_description: created.change_description,
           status: created.status,
           start_at: created.start_at,
           end_at: created.end_at,
           created_at: created.created_at,
+          decision: created.decision,
+          decision_rationale: created.decision_rationale,
           expected_effect_direction: created.expected_effect_direction,
           expected_effect_size: created.expected_effect_size,
         };
@@ -3130,7 +3373,6 @@ export default function AtlasShell() {
           [krId]: [createdRow, ...existing],
         };
       });
-      updateRitualCheckInDraft(krId, { experimentId: String(created.id) });
       setRitualExperimentDrafts((prev) => ({
         ...prev,
         [krId]: {
@@ -3143,7 +3385,7 @@ export default function AtlasShell() {
       setRitualExperimentFormOpen((prev) => ({ ...prev, [krId]: false }));
       setRitualExperimentMessage((prev) => ({
         ...prev,
-        [krId]: "Experiment created and linked.",
+        [krId]: "Experiment created as PLANNED. Start it before linking to a check-in.",
       }));
     } catch (error) {
       setRitualExperimentError((prev) => ({
@@ -3198,6 +3440,23 @@ export default function AtlasShell() {
       experimentIdCandidate > 0
         ? experimentIdCandidate
         : undefined;
+    if (experimentId) {
+      const linkedExperiment = (ritualExperimentsByKr[krId] || []).find((exp) => exp.id === experimentId);
+      if (!linkedExperiment) {
+        setRitualCheckInError((prev) => ({
+          ...prev,
+          [krId]: "Selected experiment is not available for this KR.",
+        }));
+        return;
+      }
+      if (String(linkedExperiment.status || "").toUpperCase() !== "RUNNING") {
+        setRitualCheckInError((prev) => ({
+          ...prev,
+          [krId]: "Only RUNNING experiments can be linked to check-ins.",
+        }));
+        return;
+      }
+    }
 
     setRitualCheckInPending((prev) => ({ ...prev, [krId]: true }));
     setRitualCheckInError((prev) => ({ ...prev, [krId]: "" }));
@@ -3540,7 +3799,7 @@ export default function AtlasShell() {
     if (!user || !atlasRuntime || !rolloutAllowed) {
       return;
     }
-    const maxDelta = clampProgress(aiMaxProgressDelta);
+    const maxDelta = AI_SYNC_MAX_DELTA;
     setAiSyncPending(true);
     setAiSyncError("");
     setAiSyncMessage("");
@@ -3568,7 +3827,7 @@ export default function AtlasShell() {
           meta.progress,
           krNode.ai_overall_score,
           maxDelta,
-          aiAllowProgressDecrease,
+          AI_SYNC_ALLOW_DECREASE,
         );
         if (decision.action !== "apply") {
           if (decision.reason === "missing_ai_score") {
@@ -3792,6 +4051,54 @@ export default function AtlasShell() {
     }
   }
 
+  async function loadInspectorTaskWorkLogs(activeUser: AuthUser, taskId: number): Promise<void> {
+    setInspectTaskWorkLogsPending(true);
+    setInspectTaskWorkLogsError("");
+    try {
+      const payload = await readBackendQuery({
+        actor_username: activeUser.username,
+        kind: "work_logs.by_task",
+        params: { task_id: taskId },
+      });
+      setInspectTaskWorkLogs(((payload.work_logs as WorkLogRead[]) || []).slice(0, 200));
+    } catch (error) {
+      setInspectTaskWorkLogsError(String(error instanceof Error ? error.message : error));
+      setInspectTaskWorkLogs([]);
+    } finally {
+      setInspectTaskWorkLogsPending(false);
+    }
+  }
+
+  async function handleInspectorDeleteWorkLog(workLogId: number): Promise<void> {
+    if (!user || !selectedMeta || selectedMeta.type !== "TASK" || !rolloutAllowed) {
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(`Delete work log #${workLogId}? This cannot be undone.`);
+      if (!confirmed) {
+        return;
+      }
+    }
+    setInspectTaskWorkLogPendingId(workLogId);
+    setInspectTaskWorkLogsActionError("");
+    setInspectTaskWorkLogsActionMessage("");
+    try {
+      await deleteWorkLogMutation({
+        actor_username: user.username,
+        work_log_id: workLogId,
+      });
+      setInspectTaskWorkLogsActionMessage(`Deleted work log #${workLogId}.`);
+      await loadInspectorTaskWorkLogs(user, selectedMeta.id);
+      if (parsedCycleId) {
+        await loadSnapshotForUser(user);
+      }
+    } catch (error) {
+      setInspectTaskWorkLogsActionError(String(error instanceof Error ? error.message : error));
+    } finally {
+      setInspectTaskWorkLogPendingId((current) => (current === workLogId ? null : current));
+    }
+  }
+
   async function handleAlignmentCreate(): Promise<void> {
     if (!user || !selectedMeta || selectedMeta.type !== "OBJECTIVE") {
       return;
@@ -3868,9 +4175,23 @@ export default function AtlasShell() {
         actor_username: user.username,
         task_id: focusTaskMeta.id,
       });
-      setTimerMessage(
-        `Timer started for task #${response.task_id} at ${formatOptionalDate(response.start_time)}.`,
-      );
+      const parsedStart = parseDateOrNull(response.start_time);
+      const resumedElapsedSeconds = parsedStart
+        ? Math.max(0, Math.floor((Date.now() - parsedStart.getTime()) / 1000))
+        : 0;
+      if (resumedElapsedSeconds >= 60) {
+        setTimerMessage(
+          `Timer resumed for task #${response.task_id} (already running for ${formatElapsedClock(resumedElapsedSeconds)}).`,
+        );
+      } else {
+        setTimerMessage(
+          `Timer started for task #${response.task_id} at ${formatOptionalDate(response.start_time)}.`,
+        );
+      }
+      setTimerSessionTaskId(response.task_id);
+      setTimerSessionStartAt(String(response.start_time || ""));
+      setTimerClockNowMs(Date.now());
+      setTimerModalOpen(true);
       if (parsedCycleId) {
         await loadSnapshotForUser(user);
       }
@@ -3882,7 +4203,12 @@ export default function AtlasShell() {
   }
 
   async function handleTimerStop(): Promise<void> {
-    if (!user || !focusTaskMeta || !rolloutAllowed) {
+    if (!user || !rolloutAllowed) {
+      return;
+    }
+    const resolvedTaskId = timerSessionTaskId || focusTaskMeta?.id || null;
+    if (!resolvedTaskId) {
+      setTimerError("No running task timer was found.");
       return;
     }
     setTimerPending(true);
@@ -3891,12 +4217,15 @@ export default function AtlasShell() {
     try {
       const response = await stopTaskTimer({
         actor_username: user.username,
-        task_id: focusTaskMeta.id,
+        task_id: resolvedTaskId,
         summary: timerSummary,
       });
       setTimerMessage(
         `Timer stopped for task #${response.task_id}; duration ${response.duration_minutes} min.`,
       );
+      setTimerSessionTaskId(null);
+      setTimerSessionStartAt("");
+      setTimerModalOpen(false);
       setTimerSummary("");
       if (parsedCycleId) {
         await loadSnapshotForUser(user);
@@ -4156,8 +4485,84 @@ export default function AtlasShell() {
     <main className="page-shell">
       <div className="spa-shell-layout">
         <aside className="panel spa-shell-sidebar">
-          <p className="kicker">Navigation</p>
-          <h2 style={{ margin: "0.1rem 0 0.65rem", fontSize: "1.05rem" }}>Workspace</h2>
+          <div
+            style={{
+              marginTop: "0.1rem",
+              border: "1px solid var(--line)",
+              borderRadius: 10,
+              padding: "0.55rem 0.58rem",
+              background: "var(--surface-alt)",
+            }}
+          >
+            <p className="kicker" style={{ margin: 0 }}>
+              Task Timer
+            </p>
+            <label
+              htmlFor="focus-task-ref"
+              style={{ fontSize: "0.78rem", color: "var(--ink-soft)", display: "block", marginTop: "0.3rem" }}
+            >
+              Active Task
+            </label>
+            <select
+              id="focus-task-ref"
+              className="input"
+              value={focusTaskRef}
+              onChange={(event) => setFocusTaskRef(normalizeFocusTaskRef(event.target.value))}
+              style={{ marginTop: "0.2rem" }}
+            >
+              <option value="">None</option>
+              {taskRefs.map((taskRef) => {
+                const taskMeta = atlasRuntime?.index[taskRef];
+                if (!taskMeta) {
+                  return null;
+                }
+                return (
+                  <option key={taskRef} value={taskRef}>
+                    {taskMeta.title} ({taskRef})
+                  </option>
+                );
+              })}
+            </select>
+
+            <p style={{ margin: "0.28rem 0 0.2rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
+              Target: {focusTaskMeta ? `${focusTaskMeta.title} (#${focusTaskMeta.id})` : "No task selected"}
+            </p>
+            {focusTaskMeta ? (
+              <p style={{ margin: "0 0 0.3rem", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+                Timer status: {focusTaskRunning ? "Running" : "Stopped"}
+              </p>
+            ) : null}
+
+            {focusTaskRunning ? (
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => setTimerModalOpen(true)}
+                disabled={!user || !focusTaskMeta || !rolloutAllowed}
+                style={{ width: "100%" }}
+              >
+                Open timer modal
+              </button>
+            ) : (
+              <button
+                className="primary-button"
+                type="button"
+                onClick={handleTimerStart}
+                disabled={timerPending || !user || !focusTaskMeta || !rolloutAllowed}
+                style={{ width: "100%" }}
+              >
+                {timerPending ? "Working..." : "Start timer"}
+              </button>
+            )}
+
+            {timerError ? (
+              <p style={{ margin: "0.36rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>{timerError}</p>
+            ) : null}
+            {timerMessage ? (
+              <p style={{ margin: "0.36rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>{timerMessage}</p>
+            ) : null}
+          </div>
+          <h2 style={{ margin: "0.65rem 0 0.65rem", fontSize: "1.05rem" }}>Workspace</h2>
           <div className="spa-sidebar-links">
             {sidebarItems.map((item) => {
               const isActive = mode === item.mode;
@@ -4173,94 +4578,6 @@ export default function AtlasShell() {
                 </button>
               );
             })}
-          </div>
-          <div style={{ marginTop: "0.85rem", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-            Current mode: <strong>{modeDisplayLabel(mode)}</strong>
-          </div>
-          <div
-            style={{
-              marginTop: "0.5rem",
-              border: "1px solid var(--line)",
-              borderRadius: 10,
-              padding: "0.5rem 0.58rem",
-              background: "var(--surface-alt)",
-            }}
-          >
-            <div style={{ fontSize: "0.82rem", color: rolloutAllowed ? "var(--accent)" : "var(--warn)" }}>
-              {rolloutMessage}
-            </div>
-            {/* Streamlit Report Bridge (retired in unified SPA cutover). */}
-            <details style={{ marginTop: "0.45rem" }}>
-              <summary style={{ cursor: "pointer", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                Session Controls
-              </summary>
-              <label htmlFor="cycle-id" style={{ display: "block", marginTop: "0.45rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
-                Cycle
-              </label>
-              <select
-                id="cycle-id"
-                className="input"
-                value={cycleId}
-                onChange={(event) => {
-                  setResolvedCycle(null);
-                  setCycleId(event.target.value.trim());
-                }}
-                style={{ marginTop: "0.18rem" }}
-              >
-                <option value="">Active cycle (auto)</option>
-                {sessionCycles.map((cycle) => (
-                  <option key={`session-cycle-${cycle.id}`} value={String(cycle.id)}>
-                    {cycleOptionLabel(cycle)}
-                  </option>
-                ))}
-              </select>
-              <label htmlFor="owner-ids" style={{ display: "block", marginTop: "0.35rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
-                Owner IDs (optional)
-              </label>
-              <input
-                id="owner-ids"
-                className="input"
-                value={ownerIdsInput}
-                onChange={(event) => setOwnerIdsInput(event.target.value)}
-                placeholder="e.g. 7,12"
-                style={{ marginTop: "0.18rem" }}
-              />
-              <label htmlFor="mode" style={{ display: "block", marginTop: "0.35rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
-                Mode
-              </label>
-              <select
-                id="mode"
-                className="input"
-                value={mode}
-                onChange={(event) => handleSidebarModeSelect(event.target.value)}
-                style={{ marginTop: "0.18rem" }}
-              >
-                {sidebarItems.map((item) => (
-                  <option key={`mode-${item.mode}`} value={item.mode}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-              <label htmlFor="lens" style={{ display: "block", marginTop: "0.35rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
-                Lens
-              </label>
-              <select
-                id="lens"
-                className="input"
-                value={lens}
-                onChange={(event) => setLens(event.target.value)}
-                style={{ marginTop: "0.18rem" }}
-              >
-                <option value="focus">Focus</option>
-                <option value="health">Health</option>
-                <option value="owner">Owner</option>
-              </select>
-              {parsedOwnerIds.error ? (
-                <p style={{ margin: "0.32rem 0 0", fontSize: "0.78rem", color: "var(--error)" }}>
-                  {parsedOwnerIds.error}
-                </p>
-              ) : null}
-            </details>
           </div>
           <div
             style={{
@@ -4356,101 +4673,6 @@ export default function AtlasShell() {
               : "Select a node"}
           </h2>
 
-          <label
-            htmlFor="focus-task-ref"
-            style={{ fontSize: "0.8rem", color: "var(--ink-soft)", display: "block" }}
-          >
-            Active Task
-          </label>
-          <select
-            id="focus-task-ref"
-            className="input"
-            value={focusTaskRef}
-            onChange={(event) => setFocusTaskRef(normalizeFocusTaskRef(event.target.value))}
-            style={{ marginTop: "0.22rem", marginBottom: "0.66rem" }}
-          >
-            <option value="">None</option>
-            {taskRefs.map((taskRef) => {
-              const taskMeta = atlasRuntime?.index[taskRef];
-              if (!taskMeta) {
-                return null;
-              }
-              return (
-                <option key={taskRef} value={taskRef}>
-                  {taskMeta.title} ({taskRef})
-                </option>
-              );
-            })}
-          </select>
-
-          <div
-            style={{
-              border: "1px solid var(--line)",
-              borderRadius: 10,
-              background: "var(--surface)",
-              padding: "0.55rem 0.6rem",
-              marginBottom: "0.72rem",
-            }}
-          >
-            <p className="kicker" style={{ margin: 0 }}>
-              Task Timer
-            </p>
-            <p style={{ margin: "0.24rem 0 0.3rem", fontSize: "0.84rem", color: "var(--ink-soft)" }}>
-              Target: {focusTaskMeta ? `${focusTaskMeta.title} (#${focusTaskMeta.id})` : "No task selected"}
-            </p>
-            {focusTaskMeta ? (
-              <p style={{ margin: "0 0 0.3rem", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                Timer status: {focusTaskRunning ? "Running" : "Stopped"}
-              </p>
-            ) : null}
-
-            {focusTaskRunning ? (
-              <button
-                className="primary-button"
-                type="button"
-                onClick={handleTimerStop}
-                disabled={timerPending || !user || !focusTaskMeta || !rolloutAllowed}
-              >
-                {timerPending ? "Working..." : "Stop timer"}
-              </button>
-            ) : (
-              <button
-                className="primary-button"
-                type="button"
-                onClick={handleTimerStart}
-                disabled={timerPending || !user || !focusTaskMeta || !rolloutAllowed}
-              >
-                {timerPending ? "Working..." : "Start timer"}
-              </button>
-            )}
-
-            {focusTaskRunning ? (
-              <>
-                <label
-                  htmlFor="timer-summary"
-                  style={{ display: "block", marginTop: "0.44rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                >
-                  Stop summary
-                </label>
-                <input
-                  id="timer-summary"
-                  className="input"
-                  value={timerSummary}
-                  onChange={(event) => setTimerSummary(event.target.value)}
-                  placeholder="Describe what moved during this focus session"
-                  style={{ marginTop: "0.2rem" }}
-                />
-              </>
-            ) : null}
-
-            {timerError ? (
-              <p style={{ margin: "0.36rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>{timerError}</p>
-            ) : null}
-            {timerMessage ? (
-              <p style={{ margin: "0.36rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>{timerMessage}</p>
-            ) : null}
-          </div>
-
           <div
             style={{
               border: "1px solid var(--line)",
@@ -4467,25 +4689,9 @@ export default function AtlasShell() {
               Sync KR progress from AI scores, rollback, and auto-suggest next focus task.
             </p>
 
-            <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", alignItems: "center" }}>
-              <label style={{ fontSize: "0.8rem", color: "var(--ink-soft)", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                Max delta
-                <input
-                  className="input"
-                  value={aiMaxProgressDelta}
-                  onChange={(event) => setAiMaxProgressDelta(event.target.value)}
-                  style={{ width: 84 }}
-                />
-              </label>
-              <label style={{ fontSize: "0.8rem", color: "var(--ink-soft)", display: "flex", alignItems: "center", gap: "0.35rem" }}>
-                <input
-                  type="checkbox"
-                  checked={aiAllowProgressDecrease}
-                  onChange={(event) => setAiAllowProgressDecrease(event.target.checked)}
-                />
-                Allow decrease
-              </label>
-            </div>
+            <p style={{ margin: "0.24rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+              Uses a fixed safety policy: max {AI_SYNC_MAX_DELTA}-point change per KR per run; decreases are blocked.
+            </p>
 
             <div className="grid-2" style={{ marginTop: "0.45rem", gap: "0.45rem" }}>
               <button
@@ -4643,16 +4849,14 @@ export default function AtlasShell() {
                   >
                     {inspectPending ? "Saving..." : "Edit"}
                   </button>
-                  {selectedMeta.type === "GOAL" ? (
-                    <button
-                      className="primary-button"
-                      type="button"
-                      onClick={handleNodeDelete}
-                      disabled={deletePending || !user || !rolloutAllowed}
-                    >
-                      {deletePending ? "Deleting..." : "Delete Goal"}
-                    </button>
-                  ) : null}
+                  <button
+                    className="primary-button"
+                    type="button"
+                    onClick={handleNodeDelete}
+                    disabled={deletePending || !user || !rolloutAllowed}
+                  >
+                    {deletePending ? "Deleting..." : `Delete ${nodeTypeLabel(selectedMeta.type)}`}
+                  </button>
                 </div>
 
                 {inspectError ? (
@@ -4755,32 +4959,12 @@ export default function AtlasShell() {
                   Manage Nodes
                 </p>
                 <p style={{ margin: "0.24rem 0 0.3rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                  Create and delete Goal/Objective/Key Result/Task nodes.
+                  Create Goal/Objective/Key Result/Task nodes.
                 </p>
 
-                <label
-                  htmlFor="create-type"
-                  style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                >
-                  Create Type
-                </label>
-                <select
-                  id="create-type"
-                  className="input"
-                  value={createDraft.createType}
-                  onChange={(event) =>
-                    setCreateDraft((prev) => ({
-                      ...prev,
-                      createType: event.target.value as NodeTypePath,
-                    }))
-                  }
-                  style={{ marginTop: "0.2rem" }}
-                >
-                  <option value="goal">Goal</option>
-                  <option value="objective">Objective</option>
-                  <option value="key_result">Key Result</option>
-                  <option value="task">Task</option>
-                </select>
+                <p style={{ margin: "0.36rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+                  Next Type (auto): <strong>{createTypeLabel(createDraft.createType)}</strong>
+                </p>
 
                 <label
                   htmlFor="create-title"
@@ -4941,7 +5125,7 @@ export default function AtlasShell() {
                   </p>
                 ) : null}
 
-                <div className="grid-2" style={{ marginTop: "0.46rem", gap: "0.45rem" }}>
+                <div style={{ marginTop: "0.46rem" }}>
                   <button
                     className="primary-button"
                     type="button"
@@ -4950,21 +5134,6 @@ export default function AtlasShell() {
                   >
                     {createPending ? "Creating..." : `Create ${createTypeLabel(createDraft.createType)}`}
                   </button>
-
-                  {selectedMeta?.type !== "GOAL" ? (
-                    <button
-                      className="primary-button"
-                      type="button"
-                      onClick={handleNodeDelete}
-                      disabled={deletePending || !user || !selectedMeta || !rolloutAllowed}
-                    >
-                      {deletePending
-                        ? "Deleting..."
-                        : selectedMeta
-                          ? `Delete ${nodeTypeLabel(selectedMeta.type)}`
-                          : "Delete Node"}
-                    </button>
-                  ) : null}
                 </div>
 
                 {createError ? (
@@ -4997,6 +5166,101 @@ export default function AtlasShell() {
                   </div>
                 ))}
               </dl>
+
+              {selectedMeta.type === "TASK" ? (
+                <div
+                  style={{
+                    marginTop: "0.72rem",
+                    border: "1px solid var(--line)",
+                    borderRadius: 10,
+                    background: "var(--surface)",
+                    padding: "0.55rem 0.6rem",
+                  }}
+                >
+                  <p className="kicker" style={{ margin: 0 }}>
+                    Work History
+                  </p>
+                  <p style={{ margin: "0.24rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+                    ended_at | duration | summary
+                  </p>
+                  {inspectTaskWorkLogsPending ? (
+                    <p style={{ margin: "0.36rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
+                      Loading work history...
+                    </p>
+                  ) : null}
+                  {inspectTaskWorkLogsError ? (
+                    <p style={{ margin: "0.36rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
+                      {inspectTaskWorkLogsError}
+                    </p>
+                  ) : null}
+                  {inspectTaskWorkLogsActionError ? (
+                    <p style={{ margin: "0.36rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
+                      {inspectTaskWorkLogsActionError}
+                    </p>
+                  ) : null}
+                  {inspectTaskWorkLogsActionMessage ? (
+                    <p style={{ margin: "0.36rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
+                      {inspectTaskWorkLogsActionMessage}
+                    </p>
+                  ) : null}
+                  {!inspectTaskWorkLogsPending && !inspectTaskWorkLogsError && !inspectTaskWorkHistoryRows.length ? (
+                    <p style={{ margin: "0.36rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
+                      No work logs found for this task.
+                    </p>
+                  ) : null}
+                  {inspectTaskWorkHistoryRows.length ? (
+                    <div className="atlas-node-list" style={{ marginTop: "0.4rem", maxHeight: "24vh" }}>
+                      {inspectTaskWorkHistoryRows.map((log) => {
+                        const endedAt = log.end_time ? formatOptionalDate(log.end_time) : "Running";
+                        const duration = Math.round(Number(log.duration_minutes || 0) * 10) / 10;
+                        const summaryFull = String(log.summary || "").trim() || "-";
+                        const summaryPreview =
+                          summaryFull.length > 120
+                            ? `${summaryFull.slice(0, 117).trimEnd()}...`
+                            : summaryFull;
+                        return (
+                          <div
+                            key={log.id}
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "1fr auto",
+                              gap: "0.45rem",
+                              alignItems: "start",
+                              padding: "0.3rem 0",
+                              borderBottom: "1px solid var(--line)",
+                            }}
+                          >
+                            <details>
+                              <summary style={{ cursor: "pointer", fontSize: "0.82rem", color: "var(--ink)" }}>
+                                <strong>{endedAt}</strong> | {duration}m | {summaryPreview}
+                              </summary>
+                              <p
+                                style={{
+                                  margin: "0.34rem 0 0",
+                                  fontSize: "0.82rem",
+                                  color: "var(--ink-soft)",
+                                  whiteSpace: "pre-wrap",
+                                }}
+                              >
+                                {summaryFull}
+                              </p>
+                            </details>
+                            <button
+                              className="primary-button"
+                              type="button"
+                              onClick={() => void handleInspectorDeleteWorkLog(log.id)}
+                              disabled={inspectTaskWorkLogPendingId === log.id || !user || !rolloutAllowed}
+                              style={{ minWidth: 84 }}
+                            >
+                              {inspectTaskWorkLogPendingId === log.id ? "Deleting..." : "Delete"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               {selectedMeta.type === "OBJECTIVE" ? (
                 <div
@@ -6212,6 +6476,9 @@ export default function AtlasShell() {
                       expectedEffectDirection: "",
                       expectedEffectSize: "",
                     };
+                    const runningExperiments = experiments.filter(
+                      (exp) => String(exp.status || "").toUpperCase() === "RUNNING",
+                    );
                     const variationType = draft?.variationType || "COMMON_CAUSE";
                     const isSaved = Boolean(ritualCheckInMessage[kr.id]);
                     return (
@@ -6291,9 +6558,9 @@ export default function AtlasShell() {
                               }
                             >
                               <option value="">No linked experiment</option>
-                              {experiments.map((exp) => (
+                              {runningExperiments.map((exp) => (
                                 <option key={exp.id} value={exp.id}>
-                                  #{exp.id} • {String(exp.status || "PLANNED")} •{" "}
+                                  #{exp.id} • RUNNING •{" "}
                                   {String(exp.hypothesis || "").slice(0, 72)}
                                 </option>
                               ))}
@@ -6361,7 +6628,7 @@ export default function AtlasShell() {
                                   disabled={Boolean(ritualExperimentPending[kr.id])}
                                   style={{ marginTop: "0.4rem" }}
                                 >
-                                  {ritualExperimentPending[kr.id] ? "Creating..." : "Create and Link"}
+                                  {ritualExperimentPending[kr.id] ? "Creating..." : "Create Experiment"}
                                 </button>
                                 {ritualExperimentError[kr.id] ? (
                                   <p style={{ margin: "0.28rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
@@ -6375,6 +6642,122 @@ export default function AtlasShell() {
                                 ) : null}
                               </div>
                             ) : null}
+                            <div
+                              style={{
+                                marginTop: "0.35rem",
+                                border: "1px solid var(--line)",
+                                borderRadius: 10,
+                                padding: "0.45rem",
+                              }}
+                            >
+                              <p className="kicker" style={{ margin: 0 }}>
+                                Experiment Lifecycle
+                              </p>
+                              {experiments.length ? (
+                                <div style={{ marginTop: "0.28rem", display: "grid", gap: "0.35rem" }}>
+                                  {experiments.map((exp) => {
+                                    const expId = Number(exp.id);
+                                    const status = String(exp.status || "PLANNED").toUpperCase();
+                                    const closeDraft = ritualExperimentCloseDrafts[expId] || {
+                                      decision: "ITERATE" as ExperimentDecisionType,
+                                      rationale: "",
+                                    };
+                                    const actionPending = Boolean(ritualExperimentActionPending[expId]);
+                                    return (
+                                      <div
+                                        key={expId}
+                                        style={{
+                                          border: "1px solid var(--line)",
+                                          borderRadius: 8,
+                                          padding: "0.38rem",
+                                          background: "var(--surface)",
+                                        }}
+                                      >
+                                        <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexWrap: "wrap" }}>
+                                          <strong>#{expId}</strong>
+                                          <span style={{ fontSize: "0.74rem", color: "var(--ink-soft)" }}>
+                                            {status}
+                                          </span>
+                                        </div>
+                                        <div style={{ marginTop: "0.18rem", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+                                          {String(exp.hypothesis || "").trim() || "No hypothesis captured."}
+                                        </div>
+
+                                        {status === "PLANNED" ? (
+                                          <button
+                                            className="primary-button"
+                                            type="button"
+                                            onClick={() => void handleRitualExperimentStart(expId)}
+                                            disabled={actionPending}
+                                            style={{ marginTop: "0.32rem" }}
+                                          >
+                                            {actionPending ? "Starting..." : "Start"}
+                                          </button>
+                                        ) : null}
+
+                                        {status === "RUNNING" ? (
+                                          <div style={{ marginTop: "0.32rem", display: "grid", gap: "0.28rem" }}>
+                                            <select
+                                              className="input"
+                                              value={closeDraft.decision}
+                                              onChange={(event) =>
+                                                updateRitualExperimentCloseDraft(expId, {
+                                                  decision: event.target.value as ExperimentDecisionType,
+                                                })
+                                              }
+                                            >
+                                              <option value="ADOPT">Adopt</option>
+                                              <option value="ITERATE">Iterate</option>
+                                              <option value="ABANDON">Abandon</option>
+                                            </select>
+                                            <textarea
+                                              className="input"
+                                              value={closeDraft.rationale}
+                                              onChange={(event) =>
+                                                updateRitualExperimentCloseDraft(expId, {
+                                                  rationale: event.target.value,
+                                                })
+                                              }
+                                              rows={2}
+                                              placeholder="Decision rationale (required)"
+                                            />
+                                            <button
+                                              className="primary-button"
+                                              type="button"
+                                              onClick={() => void handleRitualExperimentClose(expId)}
+                                              disabled={actionPending}
+                                            >
+                                              {actionPending ? "Closing..." : "Close Experiment"}
+                                            </button>
+                                          </div>
+                                        ) : null}
+
+                                        {status === "DECIDED" ? (
+                                          <p style={{ margin: "0.28rem 0 0", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
+                                            Decision: {String(exp.decision || "N/A")}
+                                          </p>
+                                        ) : null}
+
+                                        {ritualExperimentActionError[expId] ? (
+                                          <p style={{ margin: "0.28rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
+                                            {ritualExperimentActionError[expId]}
+                                          </p>
+                                        ) : null}
+                                        {ritualExperimentActionMessage[expId] ? (
+                                          <p style={{ margin: "0.28rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
+                                            {ritualExperimentActionMessage[expId]}
+                                          </p>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
+                                  No experiments created for this KR yet.
+                                </p>
+                              )}
+                            </div>
                           </div>
                         )}
 
@@ -6629,6 +7012,73 @@ export default function AtlasShell() {
       )}
         </div>
       </div>
+      {timerModalOpen && focusTaskRunning ? (
+        <div className="timer-modal-overlay" role="dialog" aria-modal="true" aria-label="Focus timer session">
+          <div className="timer-modal panel">
+            <div className="timer-modal-head">
+              <div>
+                <p className="kicker" style={{ margin: 0 }}>Focus Timer</p>
+                <h3 style={{ margin: "0.12rem 0 0" }}>
+                  {focusTaskMeta ? focusTaskMeta.title : "Active task"}
+                </h3>
+              </div>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => setTimerModalOpen(false)}
+              >
+                Hide
+              </button>
+            </div>
+
+            <p style={{ margin: "0.3rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
+              Started: {activeTimerStartedAt ? formatOptionalDate(activeTimerStartedAt) : "-"}
+            </p>
+            <div className="timer-elapsed">{formatElapsedClock(activeTimerElapsedSeconds)}</div>
+
+            <label
+              htmlFor="timer-summary-modal"
+              style={{ display: "block", marginTop: "0.25rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}
+            >
+              Session summary
+            </label>
+            <textarea
+              id="timer-summary-modal"
+              className="input"
+              value={timerSummary}
+              onChange={(event) => setTimerSummary(event.target.value)}
+              placeholder="Write what was completed, blockers, and next action."
+              rows={4}
+              style={{ marginTop: "0.2rem" }}
+            />
+
+            <div className="timer-modal-actions">
+              <button
+                className="primary-button"
+                type="button"
+                onClick={handleTimerStop}
+                disabled={timerPending || !user || !rolloutAllowed}
+              >
+                {timerPending ? "Saving..." : "Stop timer + save log"}
+              </button>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => setTimerModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            {timerError ? (
+              <p style={{ margin: "0.36rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>{timerError}</p>
+            ) : null}
+            {timerMessage ? (
+              <p style={{ margin: "0.36rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>{timerMessage}</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

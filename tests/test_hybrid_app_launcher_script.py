@@ -15,7 +15,10 @@ def test_hybrid_launcher_exists_and_targets_spa_stack() -> None:
     assert "set \"DOCKER_EXE=\"" in payload
     assert "compose version" in payload
     assert "scripts/check_deploy_config.py --mode runtime" in payload
-    assert "compose -f \"%COMPOSE_FILE%\" --profile spa up -d --build spa-bff spa-web" in payload
+    assert (
+        "compose -f \"%COMPOSE_FILE%\" up -d --build backend-api backend-worker spa-bff spa-web"
+        in payload
+    )
     assert "http://127.0.0.1:3000" in payload
 
 
@@ -24,7 +27,7 @@ def test_local_hybrid_launcher_exists_and_starts_backend_bff_spa_without_docker(
 
     assert "OKR Tracker - Hybrid Local Launcher" in payload
     assert "set \"DOCKER_ENV_FILE=deploy\\docker\\.env\"" in payload
-    assert "set \"SECRETS_FILE=streamlit_app\\.streamlit\\secrets.toml\"" in payload
+    assert "set \"SECRETS_FILE=deploy\\secrets\\secrets.toml\"" in payload
     assert "Node.js v20+ is required." in payload
     assert "set \"LOG_DIR=%ROOT%tmp\\local-hybrid-logs\"" in payload
     assert "Could not resolve a valid OKR_DATABASE_URL." in payload
@@ -52,6 +55,7 @@ def test_local_hybrid_launcher_exists_and_starts_backend_bff_spa_without_docker(
     assert ":spawn_bff_failed" in payload
     assert ":spawn_spa_failed" in payload
     assert "python -m venv" in payload
+    assert "backend_app\\requirements.txt" in payload
     assert "call npm --prefix \"%ROOT%spa-bff\" install" in payload
     assert "call npm --prefix \"%ROOT%spa-web\" install" in payload
     assert "set \"OKR_BACKEND_API_URL=http://127.0.0.1:8100\"" in payload

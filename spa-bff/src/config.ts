@@ -9,7 +9,7 @@ export interface BffConfig {
 
 const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_PORT = 3001;
-const DEFAULT_TIMEOUT_MS = 20_000;
+const DEFAULT_TIMEOUT_MS = 90_000;
 
 function parsePositiveInt(value: string | undefined, fallback: number, key: string): number {
   if (!value || !value.trim()) {
@@ -71,4 +71,3 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): BffConfig {
     requestTimeoutMs: parsePositiveInt(env.BFF_REQUEST_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, "BFF_REQUEST_TIMEOUT_MS"),
   };
 }
-

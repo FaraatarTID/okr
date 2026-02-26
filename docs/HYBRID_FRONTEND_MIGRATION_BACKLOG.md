@@ -66,7 +66,7 @@ Operating Rules
 - Do not expose `backend-api` directly to browser clients.
 - Do not place internal service credentials in browser-delivered artifacts.
 - Preserve existing backend/domain authorization as the source of truth.
-- Keep Streamlit as an immediate fallback until Phase 6 exit criteria are met.
+- Keep runtime fully SPA-first (`backend-api` + `backend-worker` + `spa-bff` + `spa-web`) with no Streamlit fallback path in active launch/deploy flows.
 
 Execution Notes
 - 2026-02-25: Added initial `spa-bff` implementation under `spa-bff/` with TypeScript + Fastify, route allowlist policy, backend token/signature forwarding helper, and Vitest coverage.
@@ -115,4 +115,4 @@ Execution Notes
 - 2026-02-25: Closed HFM-070 by persisting objective analysis payload (`gemini_analysis`) via the same mutation path as KR analysis after `Run Analysis` (`spa-web/src/components/AtlasShell.tsx`).
 - 2026-02-25: Closed HFM-073 by replacing prompt-only Strategy Pulse generation with semantic backend workflow (`POST /v1/ai/strategy-pulse`) that reuses Streamlit burnout/gap/predictive services and feeds enriched dashboard fields (burnout score, confidence, mitigation, pivots) with parity tests (`backend_app/main.py`, `backend_app/schemas.py`, `spa-web/src/components/AtlasShell.tsx`, `tests/test_backend_mutation_api.py`, `spa-bff/test/*`).
 - 2026-02-25: Tightened Atlas workspace UX: replaced raw cycle-id entry with labeled cycle selector (`Qx-YYYY`/title + active marker), fixed resolved-cycle stale fallback on cycle changes, and enabled automatic Atlas snapshot polling every 45s in Atlas mode (`spa-web/src/components/AtlasShell.tsx`).
-
+- 2026-02-26: Executed Streamlit retirement hard-cut for active runtime: shared package `src/` is canonical, backend bootstrap no longer supports Streamlit path fallback, compose/launchers/docs target SPA stack only.

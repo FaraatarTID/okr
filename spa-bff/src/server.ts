@@ -99,8 +99,14 @@ export function createServer(
         return reply.send(result.body);
       } catch (error) {
         request.log.error({ err: error }, "BFF backend proxy failure");
+        const detail =
+          error instanceof Error && error.message
+            ? error.message
+            : String(error ?? "unknown proxy failure");
         return reply.code(502).send({
           error: "Backend proxy request failed.",
+          detail,
+          backend_timeout_ms: config.requestTimeoutMs,
         });
       }
     },
