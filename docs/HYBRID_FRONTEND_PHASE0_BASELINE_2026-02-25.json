@@ -1,0 +1,35 @@
+{
+  "id": "hfm-000-phase0-baseline-2026-02-25",
+  "date": "2026-02-25",
+  "work_item": "HFM-000",
+  "commands": [
+    {
+      "name": "pytest_baseline",
+      "command": "python -m pytest -q",
+      "exit_code": 0,
+      "status": "pass",
+      "summary": "629 passed, 1 skipped in 181.19s",
+      "notes": "Full repository baseline captured after migration validation checks."
+    },
+    {
+      "name": "playwright_happy_path",
+      "command": "OKR_RUN_PLAYWRIGHT_E2E=1 python -m pytest -q -rs tests/test_e2e_playwright_login_to_atlas.py",
+      "exit_code": 0,
+      "status": "skipped",
+      "summary": "1 skipped in 0.09s",
+      "notes": "Playwright package/runtime unavailable in current environment; skip reason recorded by pytest."
+    },
+    {
+      "name": "runtime_config_gate",
+      "command": "python scripts/check_deploy_config.py --mode runtime --env-file tmp/hfm-baseline/runtime.env --secrets-file tmp/hfm-baseline/runtime.secrets.toml",
+      "exit_code": 0,
+      "status": "pass",
+      "summary": "Deploy config check passed (mode=runtime) with 0 warning(s).",
+      "notes": "Runtime profile uses non-placeholder production-style values and loopback backend bind."
+    }
+  ],
+  "result": {
+    "acceptance_met": true,
+    "notes": "All required baseline checkpoints were executed and recorded; Playwright happy-path result is recorded as skipped due missing runtime dependency."
+  }
+}
