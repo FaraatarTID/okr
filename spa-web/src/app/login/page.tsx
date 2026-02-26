@@ -62,11 +62,16 @@ function LoginPageContent() {
             "linear-gradient(118deg, color-mix(in srgb, var(--surface) 94%, var(--accent) 6%), var(--surface))",
         }}
       >
-        <p className="kicker">Authentication</p>
-        <h1 style={{ margin: "0.15rem 0 0.45rem" }}>Sign in to OKR Atlas SPA</h1>
-        <p style={{ margin: 0, color: "var(--ink-soft)", maxWidth: "60ch" }}>
-          Sign in to continue to your workspace.
-        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.7rem" }}>
+          <img
+            src="/okr-logo.webp"
+            alt="OKR logo"
+            width={42}
+            height={74}
+            style={{ display: "block", width: "42px", height: "74px", objectFit: "contain" }}
+          />
+          <h1 style={{ margin: 0 }}>OKR</h1>
+        </div>
       </section>
 
       <section className="panel" style={{ padding: "0.95rem", maxWidth: 540 }}>
@@ -116,8 +121,16 @@ export default function LoginPage() {
       fallback={
         <main className="page-shell">
           <section className="panel" style={{ padding: "1rem", maxWidth: 540 }}>
-            <p className="kicker">Authentication</p>
-            <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>Loading login page...</p>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.7rem" }}>
+              <img
+                src="/okr-logo.webp"
+                alt="OKR logo"
+                width={34}
+                height={60}
+                style={{ display: "block", width: "34px", height: "60px", objectFit: "contain" }}
+              />
+              <h1 style={{ margin: 0 }}>OKR</h1>
+            </div>
           </section>
         </main>
       }

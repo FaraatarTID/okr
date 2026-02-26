@@ -338,6 +338,7 @@ export async function readAtlasSnapshot(input: {
 }): Promise<AtlasSnapshotResponse> {
   const response = await fetch("/api/backend/v1/read/atlas/snapshot", {
     method: "POST",
+    cache: "no-store",
     headers: jsonHeaders(input.actor_username),
     body: JSON.stringify(input),
   });
@@ -481,6 +482,7 @@ export async function readCyclesQuery(input: {
 }): Promise<CycleSummary[]> {
   const response = await fetch("/api/backend/v1/read/query", {
     method: "POST",
+    cache: "no-store",
     headers: jsonHeaders(input.actor_username),
     body: JSON.stringify({
       kind: input.kind,
@@ -565,6 +567,7 @@ export async function readBackendQuery(input: {
 }): Promise<Record<string, unknown>> {
   const response = await fetch("/api/backend/v1/read/query", {
     method: "POST",
+    cache: "no-store",
     headers: jsonHeaders(input.actor_username),
     body: JSON.stringify({
       kind: input.kind,
@@ -585,6 +588,7 @@ export async function readLeadershipMetrics(input: {
 }): Promise<LeadershipMetricsResponse> {
   const response = await fetch("/api/backend/v1/read/leadership/metrics", {
     method: "POST",
+    cache: "no-store",
     headers: jsonHeaders(input.actor_username),
     body: JSON.stringify({
       actor_username: input.actor_username,
@@ -854,6 +858,7 @@ export async function readAdminAiHealth(input: {
   const probeParam = input.live_probe ? "?live_probe=true" : "?live_probe=false";
   const response = await fetch(`/api/backend/v1/admin/ai-health${probeParam}`, {
     method: "GET",
+    cache: "no-store",
     headers: jsonHeaders(input.actor_username),
   });
   if (!response.ok) {
@@ -867,6 +872,7 @@ export async function readAdminPdfHealth(input: {
 }): Promise<AdminPdfHealthResponse> {
   const response = await fetch("/api/backend/v1/admin/pdf-health", {
     method: "GET",
+    cache: "no-store",
     headers: jsonHeaders(input.actor_username),
   });
   if (!response.ok) {
@@ -880,6 +886,7 @@ export async function readAdminDbBackup(input: {
 }): Promise<Blob> {
   const response = await fetch("/api/backend/v1/admin/db-backup", {
     method: "GET",
+    cache: "no-store",
     headers: jsonHeaders(input.actor_username),
   });
   if (!response.ok) {
@@ -931,6 +938,7 @@ export async function readBackendJob(input: {
 }): Promise<AsyncJobView> {
   const response = await fetch(`/api/backend/v1/jobs/${encodeURIComponent(input.job_id)}`, {
     method: "GET",
+    cache: "no-store",
     headers: jsonHeaders(input.actor_username),
   });
   if (!response.ok) {
