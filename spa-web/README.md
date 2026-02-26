@@ -1,5 +1,7 @@
 # SPA Web (`spa-web`)
 
+Documentation HQ: [README](../README.md)
+
 Next.js frontend shell for Atlas migration.
 
 Current phase:

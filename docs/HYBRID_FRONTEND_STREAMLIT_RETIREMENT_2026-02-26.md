@@ -1,4 +1,4 @@
-﻿Documentation HQ: [README](../README.md)
+Documentation HQ: [README](../README.md)
 
 Hybrid Frontend Streamlit Retirement Phase
 
