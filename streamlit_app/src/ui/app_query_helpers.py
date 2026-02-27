@@ -58,6 +58,13 @@ def _query_scalar(value: Any) -> str:
     return str(value)
 
 
+def _safe_query_keys(st: Any) -> list[str]:
+    try:
+        return sorted(str(key) for key in dict(getattr(st, "query_params", {})).keys())
+    except Exception:
+        return []
+
+
 def _normalize_nav_stack(value: Any) -> list[str]:
     if isinstance(value, str):
         raw_items = value.split(",")
@@ -209,7 +216,12 @@ def sync_to_query_params(*, st, session_state: dict[str, Any]) -> None:
                 del st.query_params[query_key]
 
     except Exception as exc:
-        _LOGGER.debug("Failed to sync query params: %s", exc)
+        _LOGGER.debug(
+            "Failed to sync query params (state_keys=%s query_keys=%s): %s",
+            sorted(str(key) for key in session_state.keys()),
+            _safe_query_keys(st),
+            exc,
+        )
 
 
 def restore_from_query_params(*, st, session_state: dict[str, Any]) -> None:
@@ -271,4 +283,8 @@ def restore_from_query_params(*, st, session_state: dict[str, Any]) -> None:
                         session_state[state_key] = map_lens
                     continue
     except Exception as exc:
-        _LOGGER.debug("Failed to restore from query params: %s", exc)
+        _LOGGER.debug(
+            "Failed to restore from query params (query_keys=%s): %s",
+            _safe_query_keys(st),
+            exc,
+        )
