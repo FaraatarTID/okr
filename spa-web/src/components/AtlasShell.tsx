@@ -8,7 +8,6 @@ import {
   buildAtlasIndexFromSnapshot,
   flattenScopeRefs,
   nodeTypeLabel,
-  type AtlasGoalSnapshot,
   type AtlasIndexNode,
   type AtlasKeyResultSnapshot,
   type AtlasObjectiveSnapshot,
@@ -19,7 +18,6 @@ import {
   analyzeNodeAi,
   analyzeTeamCoachAi,
   readStrategyPulseAi,
-  createAlignmentMutation,
   createCheckInMutation,
   closeExperimentMutation,
   createExperimentMutation,
@@ -34,17 +32,17 @@ import {
   createUserMutation,
   createWeeklyPlanMutation,
   deleteCycleMutation,
-  deleteAlignmentMutation,
   deleteNodeMutation,
-  deleteWorkLogMutation,
   deleteTeamMutation,
   readAtlasSnapshot,
   readBackendJob,
   readBackendQuery,
   readCyclesQuery,
   readLeadershipMetrics,
+  readSessionUser,
   readSpaRolloutConfig,
   resetUserPasswordMutation,
+  logoutSession,
   startTaskTimer,
   stopTaskTimer,
   submitBackendJob,
@@ -66,7 +64,6 @@ import {
   type TeamMutationResponse,
   type UserMutationResponse,
 } from "@/lib/api";
-import { clearAuthUser, loadAuthUser } from "@/lib/auth-session";
 import {
   DEFAULT_LENS,
   DEFAULT_MODE,
@@ -74,6 +71,40 @@ import {
   normalizeFocusTaskRef,
   parseDeepLink,
 } from "@/lib/deeplink";
+import {
+  SIDEBAR_ITEMS,
+  modeDisplayLabel,
+  modeForPath,
+  pathForMode,
+} from "@/components/atlas-shell/navigation";
+import {
+  createTypeLabel,
+  mutationNodeRef,
+  nearestAncestorId,
+  nodeTypeToPath,
+} from "@/components/atlas-shell/nodeMutation";
+import { selectedNodeDetails } from "@/components/atlas-shell/inspectorDetails";
+import AdminModePanel, {
+  type AdminCreateCycleDraft,
+  type AdminResetDraft,
+  type AdminTab,
+  type AdminTeamDraft,
+  type AdminUserDraft,
+} from "@/components/atlas-shell/AdminModePanel";
+import DashboardLeadershipPanel from "@/components/atlas-shell/DashboardLeadershipPanel";
+import TimelineModePanel from "@/components/atlas-shell/TimelineModePanel";
+import WeeklyModePanel from "@/components/atlas-shell/WeeklyModePanel";
+import DailyModePanel from "@/components/atlas-shell/DailyModePanel";
+import RitualModePanel from "@/components/atlas-shell/RitualModePanel";
+import RetroboxModePanel from "@/components/atlas-shell/RetroboxModePanel";
+import AtlasFocusMapPanel from "@/components/atlas-shell/AtlasFocusMapPanel";
+import AtlasModeControlsPanel from "@/components/atlas-shell/AtlasModeControlsPanel";
+import InspectorAiAssistPanel from "@/components/atlas-shell/InspectorAiAssistPanel";
+import InspectorEditAnalysisPanel from "@/components/atlas-shell/InspectorEditAnalysisPanel";
+import InspectorManageNodesPanel from "@/components/atlas-shell/InspectorManageNodesPanel";
+import InspectorTaskWorkHistoryPanel from "@/components/atlas-shell/InspectorTaskWorkHistoryPanel";
+import InspectorAlignmentPanel from "@/components/atlas-shell/InspectorAlignmentPanel";
+import useInspectorAuxData from "@/components/atlas-shell/useInspectorAuxData";
 import {
   evaluateSpaRollout,
   rolloutReasonMessage,
@@ -159,13 +190,6 @@ type RetroRead = {
 };
 type AdminUserRead = UserMutationResponse;
 type AdminTeamRead = TeamMutationResponse;
-type AlignmentContextPayload = {
-  parents?: Array<{ id: number; title?: string }>;
-  children?: Array<{ id: number; title?: string }>;
-  all_objectives?: Array<{ id: number; title?: string }>;
-  edges?: Array<{ id: number; parent_id: number; child_id: number; alignment_type?: string }>;
-};
-
 type AiProgressUndoItem = {
   krId: number;
   title: string;
@@ -300,42 +324,9 @@ const TYPE_TAG: Record<AtlasIndexNode["type"], string> = {
   TASK: "T",
 };
 
-const SIDEBAR_ITEMS: Array<{
-  id: string;
-  label: string;
-  mode: string;
-  path: string;
-}> = [
-  { id: "atlas", label: "Atlas Workspace", mode: "atlas", path: "/" },
-  { id: "dashboard", label: "Dashboard", mode: "dashboard", path: "/dashboard" },
-  { id: "weekly", label: "Weekly Report", mode: "weekly", path: "/weekly" },
-  { id: "daily", label: "Daily Report", mode: "daily", path: "/daily" },
-  { id: "ritual", label: "Check-In", mode: "ritual", path: "/check-in" },
-  { id: "retrobox", label: "Retrobox", mode: "retrobox", path: "/retrobox" },
-  { id: "timeline", label: "Timeline", mode: "timeline", path: "/timeline" },
-  { id: "admin", label: "Admin", mode: "admin", path: "/admin" },
-];
-
-const MODE_PATH_MAP = new Map(SIDEBAR_ITEMS.map((item) => [item.mode, item.path]));
-const PATH_MODE_MAP = new Map(SIDEBAR_ITEMS.map((item) => [item.path, item.mode]));
-const MODE_LABEL_MAP = new Map(SIDEBAR_ITEMS.map((item) => [item.mode, item.label]));
-PATH_MODE_MAP.set("/ritual", "ritual");
 const AI_SYNC_MAX_DELTA = 40;
 const AI_SYNC_ALLOW_DECREASE = false;
 const DASHBOARD_REFRESH_INTERVAL_MS = 30_000;
-
-function pathForMode(mode: string): string {
-  return MODE_PATH_MAP.get(mode) || "/";
-}
-
-function modeForPath(pathname: string): string {
-  const normalized = String(pathname || "").trim() || "/";
-  return PATH_MODE_MAP.get(normalized) || DEFAULT_MODE;
-}
-
-function modeDisplayLabel(mode: string): string {
-  return MODE_LABEL_MAP.get(mode) || mode;
-}
 
 function parseOwnerIds(raw: string): { value: number[] | undefined; error: string } {
   const normalized = String(raw || "").trim();
@@ -1020,96 +1011,6 @@ function endOfWeekIso(today = new Date()): string {
   return `${start.getFullYear()}-${`${start.getMonth() + 1}`.padStart(2, "0")}-${`${start.getDate()}`.padStart(2, "0")}`;
 }
 
-function selectedNodeDetails(meta: AtlasIndexNode): Array<[string, string]> {
-  if (meta.type === "TASK") {
-    const task = meta.node as AtlasTaskSnapshot;
-    return [
-      ["Status", String(task.status || "-")],
-      ["Deadline", formatOptionalDate(task.deadline)],
-      ["Timer Started", formatOptionalDate(task.timer_started_at)],
-      ["Total Time (min)", formatOptionalNumber(task.total_time_spent)],
-      ["Assignee", task.assignee_id ? `#${task.assignee_id}` : "-"],
-    ];
-  }
-
-  if (meta.type === "KEY_RESULT") {
-    const keyResult = meta.node as AtlasKeyResultSnapshot;
-    return [
-      ["Metric Type", String(keyResult.metric_type || "-")],
-      ["Start Value", formatOptionalNumber(keyResult.start_value)],
-      ["Current Value", formatOptionalNumber(keyResult.current_value)],
-      ["Target Value", formatOptionalNumber(keyResult.target_value)],
-      ["Unit", String(keyResult.unit || "-")],
-      ["AI Score", formatOptionalNumber(keyResult.ai_overall_score)],
-      ["AI Deadline State", String(keyResult.ai_deadline_state || "-")],
-      ["Task Count", `${(keyResult.tasks || []).length}`],
-    ];
-  }
-
-  if (meta.type === "OBJECTIVE") {
-    const objective = meta.node as AtlasObjectiveSnapshot;
-    return [
-      ["Score Mode", String(objective.score_mode || "-")],
-      ["Weight", formatOptionalNumber(objective.weight)],
-      ["Key Result Count", `${(objective.key_results || []).length}`],
-    ];
-  }
-
-  const goal = meta.node as AtlasGoalSnapshot;
-  return [
-    ["Owner", meta.ownerName],
-    ["Objective Count", `${(goal.objectives || []).length}`],
-  ];
-}
-
-function nodeTypeToPath(nodeType: AtlasIndexNode["type"]): "goal" | "objective" | "key_result" | "task" {
-  if (nodeType === "GOAL") {
-    return "goal";
-  }
-  if (nodeType === "OBJECTIVE") {
-    return "objective";
-  }
-  if (nodeType === "KEY_RESULT") {
-    return "key_result";
-  }
-  return "task";
-}
-
-function mutationNodeRef(nodeType: AtlasIndexNode["type"], nodeId: number): string {
-  const typePrefix = nodeType === "KEY_RESULT" ? "key_result" : nodeType.toLowerCase();
-  return `${typePrefix}_${nodeId}`;
-}
-
-function createTypeLabel(createType: NodeTypePath): string {
-  if (createType === "goal") {
-    return "Goal";
-  }
-  if (createType === "objective") {
-    return "Objective";
-  }
-  if (createType === "key_result") {
-    return "Key Result";
-  }
-  return "Task";
-}
-
-function nearestAncestorId(
-  meta: AtlasIndexNode | null,
-  index: Record<string, AtlasIndexNode> | null,
-  nodeType: AtlasIndexNode["type"],
-): number | null {
-  if (!meta || !index) {
-    return null;
-  }
-  for (let idx = meta.path.length - 1; idx >= 0; idx -= 1) {
-    const candidate = index[meta.path[idx]];
-    if (candidate && candidate.type === nodeType) {
-      return candidate.id;
-    }
-  }
-  return null;
-}
-
 export default function AtlasShell() {
   const router = useRouter();
   const [cycleId, setCycleId] = useState("");
@@ -1121,25 +1022,25 @@ export default function AtlasShell() {
   const [adminCyclesPending, setAdminCyclesPending] = useState(false);
   const [adminCycleMessage, setAdminCycleMessage] = useState("");
   const [adminCycleError, setAdminCycleError] = useState("");
-  const [adminTab, setAdminTab] = useState<"cycles" | "users" | "teams" | "security" | "backup" | "ai">("cycles");
+  const [adminTab, setAdminTab] = useState<AdminTab>("cycles");
   const [adminUsers, setAdminUsers] = useState<AdminUserRead[]>([]);
   const [adminTeams, setAdminTeams] = useState<AdminTeamRead[]>([]);
   const [adminDataPending, setAdminDataPending] = useState(false);
   const [adminDataError, setAdminDataError] = useState("");
-  const [adminUserDraft, setAdminUserDraft] = useState({
+  const [adminUserDraft, setAdminUserDraft] = useState<AdminUserDraft>({
     username: "",
     displayName: "",
     password: "",
-    role: "member" as "admin" | "manager" | "member",
+    role: "member",
     managerId: "",
     teamId: "",
     mustChangePassword: true,
   });
-  const [adminTeamDraft, setAdminTeamDraft] = useState({
+  const [adminTeamDraft, setAdminTeamDraft] = useState<AdminTeamDraft>({
     name: "",
     description: "",
   });
-  const [adminResetDraft, setAdminResetDraft] = useState({
+  const [adminResetDraft, setAdminResetDraft] = useState<AdminResetDraft>({
     userId: "",
     newPassword: "",
     requireChange: false,
@@ -1151,7 +1052,7 @@ export default function AtlasShell() {
   const [adminBackupRestoreResult, setAdminBackupRestoreResult] = useState<AdminDbRestoreResponse | null>(null);
   const [adminHealthPending, setAdminHealthPending] = useState(false);
   const [adminBackupPending, setAdminBackupPending] = useState(false);
-  const [adminCreateCycleDraft, setAdminCreateCycleDraft] = useState({
+  const [adminCreateCycleDraft, setAdminCreateCycleDraft] = useState<AdminCreateCycleDraft>({
     title: "",
     startDate: "",
     endDate: "",
@@ -1226,11 +1127,6 @@ export default function AtlasShell() {
   const [aiProgressUndoItems, setAiProgressUndoItems] = useState<AiProgressUndoItem[]>([]);
   const [aiSuggestPending, setAiSuggestPending] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<AiTaskSuggestion | null>(null);
-  const [alignmentContext, setAlignmentContext] = useState<AlignmentContextPayload | null>(null);
-  const [alignmentPending, setAlignmentPending] = useState(false);
-  const [alignmentError, setAlignmentError] = useState("");
-  const [alignmentTargetObjectiveId, setAlignmentTargetObjectiveId] = useState("");
-  const [alignmentDirection, setAlignmentDirection] = useState<"parent" | "child">("parent");
   const [mindmapPayload, setMindmapPayload] = useState<Record<string, unknown> | null>(null);
   const [mindmapPending, setMindmapPending] = useState(false);
   const [mindmapError, setMindmapError] = useState("");
@@ -1258,12 +1154,6 @@ export default function AtlasShell() {
   const [inspectAnalysisPending, setInspectAnalysisPending] = useState(false);
   const [inspectAnalysisError, setInspectAnalysisError] = useState("");
   const [inspectAnalysis, setInspectAnalysis] = useState<AnalysisSummary | null>(null);
-  const [inspectTaskWorkLogs, setInspectTaskWorkLogs] = useState<WorkLogRead[]>([]);
-  const [inspectTaskWorkLogsPending, setInspectTaskWorkLogsPending] = useState(false);
-  const [inspectTaskWorkLogsError, setInspectTaskWorkLogsError] = useState("");
-  const [inspectTaskWorkLogPendingId, setInspectTaskWorkLogPendingId] = useState<number | null>(null);
-  const [inspectTaskWorkLogsActionError, setInspectTaskWorkLogsActionError] = useState("");
-  const [inspectTaskWorkLogsActionMessage, setInspectTaskWorkLogsActionMessage] = useState("");
   const [inspectDraft, setInspectDraft] = useState<InspectorEditDraft>({
     title: "",
     description: "",
@@ -1895,6 +1785,30 @@ export default function AtlasShell() {
     () => (isAdmin ? SIDEBAR_ITEMS : SIDEBAR_ITEMS.filter((item) => item.mode !== "admin")),
     [isAdmin],
   );
+  const {
+    alignmentContext,
+    alignmentPending,
+    alignmentError,
+    alignmentTargetObjectiveId,
+    alignmentDirection,
+    setAlignmentTargetObjectiveId,
+    setAlignmentDirection,
+    inspectTaskWorkLogsPending,
+    inspectTaskWorkLogsError,
+    inspectTaskWorkLogPendingId,
+    inspectTaskWorkLogsActionError,
+    inspectTaskWorkLogsActionMessage,
+    inspectTaskWorkHistoryRows,
+    handleInspectorDeleteWorkLog,
+    handleAlignmentCreate,
+    handleAlignmentDelete,
+  } = useInspectorAuxData({
+    user,
+    selectedMeta,
+    rolloutAllowed,
+    parsedCycleId,
+    loadSnapshotForUser,
+  });
 
   const focusTaskMeta = useMemo(() => {
     if (!atlasRuntime || !focusTaskRef) {
@@ -1967,21 +1881,6 @@ export default function AtlasShell() {
     return baseTitle || `${nodeTypeLabel(selectedMeta.type)} ${selectedMeta.id}`;
   }, [mindmapTree, selectedMeta]);
 
-  const inspectTaskWorkHistoryRows = useMemo(() => {
-    if (!inspectTaskWorkLogs.length) {
-      return [];
-    }
-    return [...inspectTaskWorkLogs].sort((left, right) => {
-      const leftAt =
-        parseDateOrNull(left.end_time || left.start_time)?.getTime() ??
-        Number.NEGATIVE_INFINITY;
-      const rightAt =
-        parseDateOrNull(right.end_time || right.start_time)?.getTime() ??
-        Number.NEGATIVE_INFINITY;
-      return rightAt - leftAt;
-    });
-  }, [inspectTaskWorkLogs]);
-
   useEffect(() => {
     if (!ritualKrs.length) {
       setRitualCheckInDrafts({});
@@ -2031,8 +1930,28 @@ export default function AtlasShell() {
   }, [selectedMeta]);
 
   useEffect(() => {
-    setUser(loadAuthUser());
-    setAuthHydrated(true);
+    let active = true;
+    void (async () => {
+      try {
+        const sessionUser = await readSessionUser();
+        if (!active) {
+          return;
+        }
+        setUser(sessionUser);
+      } catch {
+        if (!active) {
+          return;
+        }
+        setUser(null);
+      } finally {
+        if (active) {
+          setAuthHydrated(true);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -2305,30 +2224,6 @@ export default function AtlasShell() {
   }, [selectedMeta]);
 
   useEffect(() => {
-    if (!user || !selectedMeta || selectedMeta.type !== "OBJECTIVE") {
-      setAlignmentContext(null);
-      return;
-    }
-    void loadAlignmentContext(user, selectedMeta.id);
-  }, [selectedMeta, user]);
-
-  useEffect(() => {
-    if (!user || !selectedMeta || selectedMeta.type !== "TASK") {
-      setInspectTaskWorkLogs([]);
-      setInspectTaskWorkLogsPending(false);
-      setInspectTaskWorkLogsError("");
-      setInspectTaskWorkLogPendingId(null);
-      setInspectTaskWorkLogsActionError("");
-      setInspectTaskWorkLogsActionMessage("");
-      return;
-    }
-    setInspectTaskWorkLogPendingId(null);
-    setInspectTaskWorkLogsActionError("");
-    setInspectTaskWorkLogsActionMessage("");
-    void loadInspectorTaskWorkLogs(user, selectedMeta.id);
-  }, [selectedMeta, user]);
-
-  useEffect(() => {
     if (!user || !selectedMeta) {
       setMindmapPayload(null);
       return;
@@ -2479,10 +2374,17 @@ export default function AtlasShell() {
   }, [mode, modeDataPending, parsedCycleId, user]);
 
   function handleSignOut(): void {
-    clearAuthUser();
-    setUser(null);
-    setSnapshotPayload(null);
-    router.replace("/login?return_to=%2F");
+    void (async () => {
+      try {
+        await logoutSession();
+      } catch {
+        // Ignore logout transport errors and still clear local state.
+      } finally {
+        setUser(null);
+        setSnapshotPayload(null);
+        router.replace("/login?return_to=%2F");
+      }
+    })();
   }
 
   async function loadSnapshotForUser(activeUser: AuthUser): Promise<void> {
@@ -4129,114 +4031,6 @@ export default function AtlasShell() {
     }
   }
 
-  async function loadAlignmentContext(activeUser: AuthUser, objectiveId: number): Promise<void> {
-    setAlignmentPending(true);
-    setAlignmentError("");
-    try {
-      const payload = await readBackendQuery({
-        actor_username: activeUser.username,
-        kind: "alignments.context",
-        params: { objective_id: objectiveId },
-      });
-      setAlignmentContext((payload || null) as AlignmentContextPayload | null);
-    } catch (error) {
-      setAlignmentError(String(error instanceof Error ? error.message : error));
-      setAlignmentContext(null);
-    } finally {
-      setAlignmentPending(false);
-    }
-  }
-
-  async function loadInspectorTaskWorkLogs(activeUser: AuthUser, taskId: number): Promise<void> {
-    setInspectTaskWorkLogsPending(true);
-    setInspectTaskWorkLogsError("");
-    try {
-      const payload = await readBackendQuery({
-        actor_username: activeUser.username,
-        kind: "work_logs.by_task",
-        params: { task_id: taskId },
-      });
-      setInspectTaskWorkLogs(((payload.work_logs as WorkLogRead[]) || []).slice(0, 200));
-    } catch (error) {
-      setInspectTaskWorkLogsError(String(error instanceof Error ? error.message : error));
-      setInspectTaskWorkLogs([]);
-    } finally {
-      setInspectTaskWorkLogsPending(false);
-    }
-  }
-
-  async function handleInspectorDeleteWorkLog(workLogId: number): Promise<void> {
-    if (!user || !selectedMeta || selectedMeta.type !== "TASK" || !rolloutAllowed) {
-      return;
-    }
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm(`Delete work log #${workLogId}? This cannot be undone.`);
-      if (!confirmed) {
-        return;
-      }
-    }
-    setInspectTaskWorkLogPendingId(workLogId);
-    setInspectTaskWorkLogsActionError("");
-    setInspectTaskWorkLogsActionMessage("");
-    try {
-      await deleteWorkLogMutation({
-        actor_username: user.username,
-        work_log_id: workLogId,
-      });
-      setInspectTaskWorkLogsActionMessage(`Deleted work log #${workLogId}.`);
-      await loadInspectorTaskWorkLogs(user, selectedMeta.id);
-      if (parsedCycleId) {
-        await loadSnapshotForUser(user);
-      }
-    } catch (error) {
-      setInspectTaskWorkLogsActionError(String(error instanceof Error ? error.message : error));
-    } finally {
-      setInspectTaskWorkLogPendingId((current) => (current === workLogId ? null : current));
-    }
-  }
-
-  async function handleAlignmentCreate(): Promise<void> {
-    if (!user || !selectedMeta || selectedMeta.type !== "OBJECTIVE") {
-      return;
-    }
-    const targetId = Number.parseInt(alignmentTargetObjectiveId, 10);
-    if (!Number.isFinite(targetId) || targetId <= 0) {
-      setAlignmentError("Choose a valid objective to link.");
-      return;
-    }
-    try {
-      const parentId = alignmentDirection === "parent" ? targetId : selectedMeta.id;
-      const childId = alignmentDirection === "parent" ? selectedMeta.id : targetId;
-      await createAlignmentMutation({
-        actor_username: user.username,
-        parent_id: parentId,
-        child_id: childId,
-        alignment_type: "SUPPORTS",
-      });
-      await loadAlignmentContext(user, selectedMeta.id);
-      setAlignmentTargetObjectiveId("");
-      setAlignmentError("");
-    } catch (error) {
-      setAlignmentError(String(error instanceof Error ? error.message : error));
-    }
-  }
-
-  async function handleAlignmentDelete(edgeId: number): Promise<void> {
-    if (!user || !selectedMeta || selectedMeta.type !== "OBJECTIVE") {
-      return;
-    }
-    try {
-      await deleteAlignmentMutation({
-        actor_username: user.username,
-        edge_id: edgeId,
-      });
-      await loadAlignmentContext(user, selectedMeta.id);
-      setAlignmentError("");
-    } catch (error) {
-      setAlignmentError(String(error instanceof Error ? error.message : error));
-    }
-  }
-
   async function loadMindmap(
     activeUser: AuthUser,
     nodeId: number,
@@ -4717,155 +4511,33 @@ export default function AtlasShell() {
 
       {mode === "atlas" ? (
       <>
-      <section className="panel" style={{ marginBottom: "0.9rem", padding: "0.75rem 0.9rem" }}>
-        <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-          Cycle:{" "}
-          <strong>{cycleDisplayLabel(resolvedCycle)}</strong>
-          {snapshotPending ? " • Loading..." : " • Auto-sync every 45s"}
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-            gap: "0.55rem",
-            marginTop: "0.5rem",
-          }}
-        >
-          <div>
-            <label
-              htmlFor="cycle-id"
-              style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}
-            >
-              Cycle ID
-            </label>
-            <input
-              id="cycle-id"
-              className="input"
-              value={cycleId}
-              onChange={(event) => setCycleId(event.target.value.trim())}
-              placeholder="e.g. 1"
-              style={{ marginTop: "0.2rem" }}
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="owner-ids"
-              style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}
-            >
-              Owner IDs (optional)
-            </label>
-            <input
-              id="owner-ids"
-              className="input"
-              value={ownerIdsInput}
-              onChange={(event) => setOwnerIdsInput(event.target.value)}
-              placeholder="e.g. 1,2,3"
-              style={{ marginTop: "0.2rem" }}
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="mode"
-              style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}
-            >
-              Mode
-            </label>
-            <select
-              id="mode"
-              className="input"
-              value={mode}
-              onChange={(event) => handleSidebarModeSelect(event.target.value)}
-              style={{ marginTop: "0.2rem" }}
-            >
-              {sidebarItems.map((item) => (
-                <option key={`mode-${item.mode}`} value={item.mode}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label
-              htmlFor="lens"
-              style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}
-            >
-              Lens
-            </label>
-            <select
-              id="lens"
-              className="input"
-              value={lens}
-              onChange={(event) => setLens(event.target.value)}
-              style={{ marginTop: "0.2rem" }}
-            >
-              <option value="Scope">Scope</option>
-              <option value="Branch">Branch</option>
-            </select>
-          </div>
-        </div>
-        {parsedOwnerIds.error ? (
-          <p style={{ margin: "0.25rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-            {parsedOwnerIds.error}
-          </p>
-        ) : null}
-        {cycleResolveError ? (
-          <p style={{ margin: "0.25rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>{cycleResolveError}</p>
-        ) : null}
-        {snapshotError ? (
-          <p style={{ margin: "0.25rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>{snapshotError}</p>
-        ) : null}
-      </section>
+      <AtlasModeControlsPanel
+        cycleLabel={cycleDisplayLabel(resolvedCycle)}
+        snapshotPending={snapshotPending}
+        cycleId={cycleId}
+        onCycleIdChange={setCycleId}
+        ownerIdsInput={ownerIdsInput}
+        onOwnerIdsInputChange={setOwnerIdsInput}
+        mode={mode}
+        onModeChange={handleSidebarModeSelect}
+        sidebarItems={sidebarItems}
+        lens={lens}
+        onLensChange={setLens}
+        parsedOwnerIdsError={parsedOwnerIds.error}
+        cycleResolveError={cycleResolveError}
+        snapshotError={snapshotError}
+      />
       <section className="panel atlas-parity-panel" style={{ marginTop: "0.9rem", padding: "0.9rem" }}>
-        <div className="atlas-map-pane">
-          <p className="kicker">Focus Map</p>
-          <h2 style={{ margin: "0.1rem 0 0.4rem", fontSize: "1.05rem" }}>
-            Focus Map Nodes ({filteredRefs.length})
-          </h2>
-          <input
-            className="input"
-            value={nodeQuery}
-            onChange={(event) => setNodeQuery(event.target.value)}
-            placeholder="Search title, description, owner, or ref"
-            style={{ marginBottom: "0.65rem" }}
-          />
-
-          <div className="atlas-node-list">
-            {filteredRefs.length > 0 && atlasRuntime ? (
-              filteredRefs.map((ref) => {
-                const meta = atlasRuntime.index[ref];
-                if (!meta) {
-                  return null;
-                }
-                const treeIndentRem = 0.7 + meta.depth * 0.95;
-                const treeDepthClass = `depth-${Math.min(meta.depth, 8)}`;
-                return (
-                  <div
-                    key={ref}
-                    className={`atlas-tree-row ${treeDepthClass}`}
-                    data-depth={meta.depth > 0 ? "1" : "0"}
-                  >
-                    <button
-                      type="button"
-                      className={`atlas-node-item atlas-node-item-tree${selectedRef === ref ? " is-active" : ""}`}
-                      onClick={() => setSelectedRef(ref)}
-                      style={{ paddingLeft: `${treeIndentRem}rem` }}
-                    >
-                      <span className="atlas-node-tag">{TYPE_TAG[meta.type]}</span>
-                      <span className="atlas-node-title">{meta.title}</span>
-                      <span className="atlas-node-progress">{meta.progress}%</span>
-                    </button>
-                  </div>
-                );
-              })
-            ) : (
-              <p style={{ margin: 0, color: "var(--ink-soft)" }}>
-                {snapshotPayload
-                  ? "No matching nodes for current filter."
-                  : "No snapshot payload yet."}
-              </p>
-            )}
-          </div>
-        </div>
+        <AtlasFocusMapPanel
+          filteredRefs={filteredRefs}
+          atlasIndex={atlasRuntime?.index || null}
+          selectedRef={selectedRef}
+          onSelectRef={setSelectedRef}
+          nodeQuery={nodeQuery}
+          onNodeQueryChange={setNodeQuery}
+          hasSnapshotPayload={Boolean(snapshotPayload)}
+          nodeTagForType={(type) => TYPE_TAG[type as keyof typeof TYPE_TAG] || "N"}
+        />
 
         <div className="atlas-inspector-pane">
           <p className="kicker">Inspector</p>
@@ -4875,89 +4547,32 @@ export default function AtlasShell() {
               : "Select a node"}
           </h2>
 
-          <div
-            style={{
-              border: "1px solid var(--line)",
-              borderRadius: 10,
-              background: "var(--surface)",
-              padding: "0.55rem 0.6rem",
-              marginBottom: "0.72rem",
+          <InspectorAiAssistPanel
+            aiSyncMaxDelta={AI_SYNC_MAX_DELTA}
+            aiSyncPending={aiSyncPending}
+            aiSuggestPending={aiSuggestPending}
+            hasUser={Boolean(user)}
+            hasAtlasRuntime={Boolean(atlasRuntime)}
+            rolloutAllowed={rolloutAllowed}
+            hasAiUndoItems={aiProgressUndoItems.length > 0}
+            hasTaskRefs={taskRefs.length > 0}
+            aiSyncReport={aiSyncReport}
+            aiSuggestion={aiSuggestion}
+            aiSyncError={aiSyncError}
+            aiSyncMessage={aiSyncMessage}
+            onPreviewAiSync={() => {
+              void handleAiProgressSync(true);
             }}
-          >
-            <p className="kicker" style={{ margin: 0 }}>
-              AI Assist
-            </p>
-            <p style={{ margin: "0.24rem 0 0.3rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-              Sync KR progress from AI scores, rollback, and auto-suggest next focus task.
-            </p>
-
-            <p style={{ margin: "0.24rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-              Uses a fixed safety policy: max {AI_SYNC_MAX_DELTA}-point change per KR per run; decreases are blocked.
-            </p>
-
-            <div className="grid-2" style={{ marginTop: "0.45rem", gap: "0.45rem" }}>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => void handleAiProgressSync(true)}
-                disabled={aiSyncPending || aiSuggestPending || !user || !atlasRuntime || !rolloutAllowed}
-              >
-                {aiSyncPending ? "Working..." : "Preview AI Sync"}
-              </button>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => void handleAiProgressSync(false)}
-                disabled={aiSyncPending || aiSuggestPending || !user || !atlasRuntime || !rolloutAllowed}
-              >
-                {aiSyncPending ? "Working..." : "Apply AI Sync"}
-              </button>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => void handleAiProgressUndo()}
-                disabled={aiSyncPending || aiSuggestPending || !aiProgressUndoItems.length || !user || !rolloutAllowed}
-              >
-                {aiSyncPending ? "Working..." : "Undo Sync"}
-              </button>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => void handleAiSuggestNextTask()}
-                disabled={aiSyncPending || aiSuggestPending || !taskRefs.length || !user || !rolloutAllowed}
-              >
-                {aiSuggestPending ? "Working..." : "Suggest Next Task"}
-              </button>
-            </div>
-
-            {aiSyncReport ? (
-              <p style={{ margin: "0.34rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                KR sync: analyzed {aiSyncReport.analyzed}/{aiSyncReport.total}, planned {aiSyncReport.planned}, applied {aiSyncReport.applied}, unchanged {aiSyncReport.unchanged}, missing AI score {aiSyncReport.missingAiScore}, skipped by delta {aiSyncReport.skippedDeltaCap}, skipped by decrease policy {aiSyncReport.skippedDecrease}.
-              </p>
-            ) : null}
-            {aiSuggestion ? (
-              <p style={{ margin: "0.34rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                Suggested: {aiSuggestion.taskRef}
-                {aiSuggestion.confidence !== null ? ` (${aiSuggestion.confidence}% confidence)` : ""}
-                {aiSuggestion.reason ? ` - ${aiSuggestion.reason}` : ""}
-              </p>
-            ) : null}
-            {aiSyncError ? (
-              <p style={{ margin: "0.34rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>{aiSyncError}</p>
-            ) : null}
-            {aiSyncMessage ? (
-              <p style={{ margin: "0.34rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>{aiSyncMessage}</p>
-            ) : null}
-            {aiSyncReport?.failed?.length ? (
-              <div className="atlas-node-list" style={{ marginTop: "0.35rem", maxHeight: "16vh" }}>
-                {aiSyncReport.failed.map((row) => (
-                  <p key={row} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--warn)" }}>
-                    {row}
-                  </p>
-                ))}
-              </div>
-            ) : null}
-          </div>
+            onApplyAiSync={() => {
+              void handleAiProgressSync(false);
+            }}
+            onUndoAiSync={() => {
+              void handleAiProgressUndo();
+            }}
+            onSuggestNextTask={() => {
+              void handleAiSuggestNextTask();
+            }}
+          />
 
           {selectedMeta && atlasRuntime ? (
             <>
@@ -4982,386 +4597,51 @@ export default function AtlasShell() {
                 Path: {selectedMeta.path.map((ref) => atlasRuntime.index[ref]?.title || ref).join(" > ")}
               </p>
 
-              <div
-                style={{
-                  marginTop: "0.72rem",
-                  border: "1px solid var(--line)",
-                  borderRadius: 10,
-                  background: "var(--surface)",
-                  padding: "0.55rem 0.6rem",
+              <InspectorEditAnalysisPanel
+                inspectDraft={inspectDraft}
+                onInspectDraftChange={(patch) => {
+                  setInspectDraft((prev) => ({ ...prev, ...patch }));
                 }}
-              >
-                <p className="kicker" style={{ margin: 0 }}>
-                  Edit Node
-                </p>
-                <label
-                  htmlFor="inspect-title"
-                  style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                >
-                  Title
-                </label>
-                <input
-                  id="inspect-title"
-                  className="input"
-                  value={inspectDraft.title}
-                  onChange={(event) =>
-                    setInspectDraft((prev) => ({ ...prev, title: event.target.value }))
-                  }
-                  style={{ marginTop: "0.2rem" }}
-                />
-
-                <label
-                  htmlFor="inspect-description"
-                  style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                >
-                  Description
-                </label>
-                <input
-                  id="inspect-description"
-                  className="input"
-                  value={inspectDraft.description}
-                  onChange={(event) =>
-                    setInspectDraft((prev) => ({ ...prev, description: event.target.value }))
-                  }
-                  style={{ marginTop: "0.2rem" }}
-                />
-
-                <label
-                  htmlFor="inspect-progress"
-                  style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                >
-                  Progress (0-100)
-                </label>
-                <input
-                  id="inspect-progress"
-                  className="input"
-                  value={inspectDraft.progress}
-                  onChange={(event) =>
-                    setInspectDraft((prev) => ({ ...prev, progress: event.target.value }))
-                  }
-                  style={{ marginTop: "0.2rem" }}
-                />
-
-                <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.46rem", flexWrap: "wrap" }}>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={handleInspectorSave}
-                    disabled={inspectPending || !user || !rolloutAllowed}
-                  >
-                    {inspectPending ? "Saving..." : "Edit"}
-                  </button>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={handleNodeDelete}
-                    disabled={deletePending || !user || !rolloutAllowed}
-                  >
-                    {deletePending ? "Deleting..." : `Delete ${nodeTypeLabel(selectedMeta.type)}`}
-                  </button>
-                </div>
-
-                {inspectError ? (
-                  <p style={{ margin: "0.34rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-                    {inspectError}
-                  </p>
-                ) : null}
-                {inspectMessage ? (
-                  <p style={{ margin: "0.34rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
-                    {inspectMessage}
-                  </p>
-                ) : null}
-              </div>
-
-              {(selectedMeta.type === "KEY_RESULT" || selectedMeta.type === "OBJECTIVE") ? (
-                <div
-                  style={{
-                    marginTop: "0.72rem",
-                    border: "1px solid var(--line)",
-                    borderRadius: 10,
-                    background: "var(--surface)",
-                    padding: "0.55rem 0.6rem",
-                  }}
-                >
-                  <p className="kicker" style={{ margin: 0 }}>
-                    AI Analysis
-                  </p>
-                  <p style={{ margin: "0.24rem 0 0.34rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                    Generate analysis for the selected {selectedMeta.type === "KEY_RESULT" ? "key result" : "objective"}.
-                  </p>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={() => void handleInspectorRunAnalysis()}
-                    disabled={inspectAnalysisPending || !user || !rolloutAllowed}
-                  >
-                    {inspectAnalysisPending ? "Analyzing..." : "Run Analysis"}
-                  </button>
-
-                  {inspectAnalysisError ? (
-                    <p style={{ margin: "0.34rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-                      {inspectAnalysisError}
-                    </p>
-                  ) : null}
-                  {inspectAnalysis ? (
-                    <>
-                      <div className="atlas-rollup" style={{ marginTop: "0.45rem" }}>
-                        <span>Efficiency: {inspectAnalysis.efficiencyScore ?? "-"}</span>
-                        <span>Effectiveness: {inspectAnalysis.effectivenessScore ?? "-"}</span>
-                        <span>Overall: {inspectAnalysis.overallScore ?? "-"}</span>
-                      </div>
-                      {inspectAnalysis.summary ? (
-                        <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
-                          {inspectAnalysis.summary}
-                        </p>
-                      ) : null}
-                      {inspectAnalysis.gapAnalysis ? (
-                        <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
-                          Gap: {inspectAnalysis.gapAnalysis}
-                        </p>
-                      ) : null}
-                      {inspectAnalysis.qualityAssessment ? (
-                        <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
-                          Quality: {inspectAnalysis.qualityAssessment}
-                        </p>
-                      ) : null}
-                      {inspectAnalysis.deadlineWarnings.length ? (
-                        <div className="atlas-node-list" style={{ marginTop: "0.35rem", maxHeight: "14vh" }}>
-                          {inspectAnalysis.deadlineWarnings.map((item) => (
-                            <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--warn)" }}>
-                              {item}
-                            </p>
-                          ))}
-                        </div>
-                      ) : null}
-                      {inspectAnalysis.proposedTasks.length ? (
-                        <div className="atlas-node-list" style={{ marginTop: "0.35rem", maxHeight: "14vh" }}>
-                          {inspectAnalysis.proposedTasks.map((item) => (
-                            <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
-                              {item}
-                            </p>
-                          ))}
-                        </div>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div
-                style={{
-                  marginTop: "0.72rem",
-                  border: "1px solid var(--line)",
-                  borderRadius: 10,
-                  background: "var(--surface)",
-                  padding: "0.55rem 0.6rem",
+                onInspectorSave={handleInspectorSave}
+                inspectPending={inspectPending}
+                hasUser={Boolean(user)}
+                rolloutAllowed={rolloutAllowed}
+                onNodeDelete={handleNodeDelete}
+                deletePending={deletePending}
+                selectedTypeLabel={nodeTypeLabel(selectedMeta.type)}
+                inspectError={inspectError}
+                inspectMessage={inspectMessage}
+                showAiAnalysis={selectedMeta.type === "KEY_RESULT" || selectedMeta.type === "OBJECTIVE"}
+                aiAnalysisTargetLabel={selectedMeta.type === "KEY_RESULT" ? "key result" : "objective"}
+                onRunAnalysis={() => {
+                  void handleInspectorRunAnalysis();
                 }}
-              >
-                <p className="kicker" style={{ margin: 0 }}>
-                  Manage Nodes
-                </p>
-                <p style={{ margin: "0.24rem 0 0.3rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                  Create Goal/Objective/Key Result/Task nodes.
-                </p>
+                inspectAnalysisPending={inspectAnalysisPending}
+                inspectAnalysisError={inspectAnalysisError}
+                inspectAnalysis={inspectAnalysis}
+              />
 
-                <p style={{ margin: "0.36rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                  Next Type (auto): <strong>{createTypeLabel(createDraft.createType)}</strong>
-                </p>
-
-                <label
-                  htmlFor="create-title"
-                  style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                >
-                  {createTypeLabel(createDraft.createType)} Title
-                </label>
-                <input
-                  id="create-title"
-                  className="input"
-                  value={createDraft.title}
-                  onChange={(event) =>
-                    setCreateDraft((prev) => ({ ...prev, title: event.target.value }))
-                  }
-                  style={{ marginTop: "0.2rem" }}
-                />
-
-                <label
-                  htmlFor="create-description"
-                  style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                >
-                  Description
-                </label>
-                <input
-                  id="create-description"
-                  className="input"
-                  value={createDraft.description}
-                  onChange={(event) =>
-                    setCreateDraft((prev) => ({ ...prev, description: event.target.value }))
-                  }
-                  style={{ marginTop: "0.2rem" }}
-                />
-
-                {createDraft.createType === "goal" ? (
-                  <>
-                    <p style={{ margin: "0.36rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                      Cycle:{" "}
-                      {cycleDisplayLabel(resolvedCycle)}
-                    </p>
-                    <label
-                      htmlFor="create-goal-tags"
-                      style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                    >
-                      Strategy Tags (optional, comma-separated)
-                    </label>
-                    <input
-                      id="create-goal-tags"
-                      className="input"
-                      value={createDraft.tags}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, tags: event.target.value }))
-                      }
-                      style={{ marginTop: "0.2rem" }}
-                    />
-                  </>
-                ) : null}
-
-                {createDraft.createType === "objective" ? (
-                  <p style={{ margin: "0.36rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                    Parent Goal ID: {createContext.goalId ?? "-"}
-                  </p>
-                ) : null}
-
-                {createDraft.createType === "key_result" ? (
-                  <>
-                    <p style={{ margin: "0.36rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                      Parent Objective ID: {createContext.objectiveId ?? "-"}
-                    </p>
-                    <label
-                      htmlFor="create-kr-target"
-                      style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                    >
-                      Target Value
-                    </label>
-                    <input
-                      id="create-kr-target"
-                      className="input"
-                      value={createDraft.targetValue}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, targetValue: event.target.value }))
-                      }
-                      style={{ marginTop: "0.2rem" }}
-                    />
-                    <label
-                      htmlFor="create-kr-unit"
-                      style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                    >
-                      Unit
-                    </label>
-                    <input
-                      id="create-kr-unit"
-                      className="input"
-                      value={createDraft.unit}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, unit: event.target.value }))
-                      }
-                      style={{ marginTop: "0.2rem" }}
-                    />
-                    <label
-                      htmlFor="create-kr-tags"
-                      style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                    >
-                      Initiative Tags (optional, comma-separated)
-                    </label>
-                    <input
-                      id="create-kr-tags"
-                      className="input"
-                      value={createDraft.tags}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, tags: event.target.value }))
-                      }
-                      style={{ marginTop: "0.2rem" }}
-                    />
-                  </>
-                ) : null}
-
-                {createDraft.createType === "task" ? (
-                  <>
-                    <p style={{ margin: "0.36rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                      Parent Key Result ID: {createContext.keyResultId ?? "-"}
-                    </p>
-                    <label
-                      htmlFor="create-task-estimate"
-                      style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                    >
-                      Estimated Minutes
-                    </label>
-                    <input
-                      id="create-task-estimate"
-                      className="input"
-                      value={createDraft.estimatedMinutes}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, estimatedMinutes: event.target.value }))
-                      }
-                      style={{ marginTop: "0.2rem" }}
-                    />
-                    <label
-                      htmlFor="create-task-assignee"
-                      style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-                    >
-                      Assignee ID (optional)
-                    </label>
-                    <input
-                      id="create-task-assignee"
-                      className="input"
-                      value={createDraft.assigneeId}
-                      onChange={(event) =>
-                        setCreateDraft((prev) => ({ ...prev, assigneeId: event.target.value }))
-                      }
-                      style={{ marginTop: "0.2rem" }}
-                    />
-                  </>
-                ) : null}
-
-                {!canCreateForContext && createDraft.createType !== "goal" ? (
-                  <p style={{ margin: "0.36rem 0 0", color: "var(--warn)", fontSize: "0.82rem" }}>
-                    Current selection does not provide a valid parent for this create type.
-                  </p>
-                ) : null}
-
-                <div style={{ marginTop: "0.46rem" }}>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={handleNodeCreate}
-                    disabled={createPending || !user || !rolloutAllowed || !canCreateForContext}
-                  >
-                    {createPending ? "Creating..." : `Create ${createTypeLabel(createDraft.createType)}`}
-                  </button>
-                </div>
-
-                {createError ? (
-                  <p style={{ margin: "0.34rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-                    {createError}
-                  </p>
-                ) : null}
-                {createMessage ? (
-                  <p style={{ margin: "0.34rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
-                    {createMessage}
-                  </p>
-                ) : null}
-                {deleteError ? (
-                  <p style={{ margin: "0.34rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-                    {deleteError}
-                  </p>
-                ) : null}
-                {deleteMessage ? (
-                  <p style={{ margin: "0.34rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
-                    {deleteMessage}
-                  </p>
-                ) : null}
-              </div>
+              <InspectorManageNodesPanel
+                createDraft={createDraft}
+                onCreateDraftChange={(patch) => {
+                  setCreateDraft((prev) => ({ ...prev, ...patch }));
+                }}
+                createContext={createContext}
+                canCreateForContext={canCreateForContext}
+                createTypeLabel={createTypeLabel}
+                cycleLabel={cycleDisplayLabel(resolvedCycle)}
+                onCreateNode={handleNodeCreate}
+                createPending={createPending}
+                hasUser={Boolean(user)}
+                rolloutAllowed={rolloutAllowed}
+                createError={createError}
+                createMessage={createMessage}
+                deleteError={deleteError}
+                deleteMessage={deleteMessage}
+              />
 
               <dl className="atlas-kv-grid">
-                {selectedNodeDetails(selectedMeta).map(([label, value]) => (
+                {selectedNodeDetails(selectedMeta, { formatOptionalDate, formatOptionalNumber }).map(([label, value]) => (
                   <div key={`${label}-${value}`}>
                     <dt>{label}</dt>
                     <dd>{value}</dd>
@@ -5370,159 +4650,38 @@ export default function AtlasShell() {
               </dl>
 
               {selectedMeta.type === "TASK" ? (
-                <div
-                  style={{
-                    marginTop: "0.72rem",
-                    border: "1px solid var(--line)",
-                    borderRadius: 10,
-                    background: "var(--surface)",
-                    padding: "0.55rem 0.6rem",
+                <InspectorTaskWorkHistoryPanel
+                  inspectTaskWorkLogsPending={inspectTaskWorkLogsPending}
+                  inspectTaskWorkLogsError={inspectTaskWorkLogsError}
+                  inspectTaskWorkLogsActionError={inspectTaskWorkLogsActionError}
+                  inspectTaskWorkLogsActionMessage={inspectTaskWorkLogsActionMessage}
+                  inspectTaskWorkHistoryRows={inspectTaskWorkHistoryRows}
+                  inspectTaskWorkLogPendingId={inspectTaskWorkLogPendingId}
+                  hasUser={Boolean(user)}
+                  rolloutAllowed={rolloutAllowed}
+                  formatOptionalDate={formatOptionalDate}
+                  onDeleteWorkLog={(workLogId) => {
+                    void handleInspectorDeleteWorkLog(workLogId);
                   }}
-                >
-                  <p className="kicker" style={{ margin: 0 }}>
-                    Work History
-                  </p>
-                  <p style={{ margin: "0.24rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                    ended_at | duration | summary
-                  </p>
-                  {inspectTaskWorkLogsPending ? (
-                    <p style={{ margin: "0.36rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
-                      Loading work history...
-                    </p>
-                  ) : null}
-                  {inspectTaskWorkLogsError ? (
-                    <p style={{ margin: "0.36rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-                      {inspectTaskWorkLogsError}
-                    </p>
-                  ) : null}
-                  {inspectTaskWorkLogsActionError ? (
-                    <p style={{ margin: "0.36rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-                      {inspectTaskWorkLogsActionError}
-                    </p>
-                  ) : null}
-                  {inspectTaskWorkLogsActionMessage ? (
-                    <p style={{ margin: "0.36rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
-                      {inspectTaskWorkLogsActionMessage}
-                    </p>
-                  ) : null}
-                  {!inspectTaskWorkLogsPending && !inspectTaskWorkLogsError && !inspectTaskWorkHistoryRows.length ? (
-                    <p style={{ margin: "0.36rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
-                      No work logs found for this task.
-                    </p>
-                  ) : null}
-                  {inspectTaskWorkHistoryRows.length ? (
-                    <div className="atlas-node-list" style={{ marginTop: "0.4rem", maxHeight: "24vh" }}>
-                      {inspectTaskWorkHistoryRows.map((log) => {
-                        const endedAt = log.end_time ? formatOptionalDate(log.end_time) : "Running";
-                        const duration = Math.round(Number(log.duration_minutes || 0) * 10) / 10;
-                        const summaryFull = String(log.summary || "").trim() || "-";
-                        const summaryPreview =
-                          summaryFull.length > 120
-                            ? `${summaryFull.slice(0, 117).trimEnd()}...`
-                            : summaryFull;
-                        return (
-                          <div
-                            key={log.id}
-                            style={{
-                              display: "grid",
-                              gridTemplateColumns: "1fr auto",
-                              gap: "0.45rem",
-                              alignItems: "start",
-                              padding: "0.3rem 0",
-                              borderBottom: "1px solid var(--line)",
-                            }}
-                          >
-                            <details>
-                              <summary style={{ cursor: "pointer", fontSize: "0.82rem", color: "var(--ink)" }}>
-                                <strong>{endedAt}</strong> | {duration}m | {summaryPreview}
-                              </summary>
-                              <p
-                                style={{
-                                  margin: "0.34rem 0 0",
-                                  fontSize: "0.82rem",
-                                  color: "var(--ink-soft)",
-                                  whiteSpace: "pre-wrap",
-                                }}
-                              >
-                                {summaryFull}
-                              </p>
-                            </details>
-                            <button
-                              className="primary-button"
-                              type="button"
-                              onClick={() => void handleInspectorDeleteWorkLog(log.id)}
-                              disabled={inspectTaskWorkLogPendingId === log.id || !user || !rolloutAllowed}
-                              style={{ minWidth: 84 }}
-                            >
-                              {inspectTaskWorkLogPendingId === log.id ? "Deleting..." : "Delete"}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
+                />
               ) : null}
 
               {selectedMeta.type === "OBJECTIVE" ? (
-                <div
-                  style={{
-                    marginTop: "0.72rem",
-                    border: "1px solid var(--line)",
-                    borderRadius: 10,
-                    background: "var(--surface)",
-                    padding: "0.55rem 0.6rem",
+                <InspectorAlignmentPanel
+                  alignmentPending={alignmentPending}
+                  alignmentError={alignmentError}
+                  alignmentContext={alignmentContext}
+                  alignmentDirection={alignmentDirection}
+                  alignmentTargetObjectiveId={alignmentTargetObjectiveId}
+                  onAlignmentDirectionChange={setAlignmentDirection}
+                  onAlignmentTargetObjectiveIdChange={setAlignmentTargetObjectiveId}
+                  onAlignmentCreate={() => {
+                    void handleAlignmentCreate();
                   }}
-                >
-                  <p className="kicker" style={{ margin: 0 }}>
-                    Alignment
-                  </p>
-                  {alignmentPending ? (
-                    <p style={{ margin: "0.3rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>Loading alignment...</p>
-                  ) : null}
-                  {alignmentError ? (
-                    <p style={{ margin: "0.3rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>{alignmentError}</p>
-                  ) : null}
-                  <p style={{ margin: "0.3rem 0 0", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                    Parents: {(alignmentContext?.parents || []).length} • Children: {(alignmentContext?.children || []).length}
-                  </p>
-                  <div style={{ display: "flex", gap: "0.4rem", marginTop: "0.4rem", flexWrap: "wrap" }}>
-                    <select className="input" value={alignmentDirection} onChange={(event) => setAlignmentDirection(event.target.value as "parent" | "child")} style={{ maxWidth: 180 }}>
-                      <option value="parent">Add parent link</option>
-                      <option value="child">Add child link</option>
-                    </select>
-                    <select className="input" value={alignmentTargetObjectiveId} onChange={(event) => setAlignmentTargetObjectiveId(event.target.value)} style={{ minWidth: 260 }}>
-                      <option value="">Choose objective...</option>
-                      {(alignmentContext?.all_objectives || []).map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.title || `Objective #${item.id}`}
-                        </option>
-                      ))}
-                    </select>
-                    <button className="primary-button" type="button" onClick={() => void handleAlignmentCreate()}>
-                      Add link
-                    </button>
-                  </div>
-                  {(alignmentContext?.edges || []).length ? (
-                    <div className="atlas-node-list" style={{ marginTop: "0.45rem", maxHeight: "28vh" }}>
-                      {(alignmentContext?.edges || []).map((edge) => (
-                        <div key={edge.id} style={{ padding: "0.35rem 0", borderBottom: "1px solid var(--line)" }}>
-                          <span style={{ fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                            {edge.parent_id} {" -> "} {edge.child_id} ({edge.alignment_type || "SUPPORTS"})
-                          </span>
-                          <button
-                            className="primary-button"
-                            type="button"
-                            style={{ marginLeft: "0.4rem" }}
-                            onClick={() => void handleAlignmentDelete(edge.id)}
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
+                  onAlignmentDelete={(edgeId) => {
+                    void handleAlignmentDelete(edgeId);
+                  }}
+                />
               ) : null}
 
             </>
@@ -5536,376 +4695,63 @@ export default function AtlasShell() {
 
       </>
       ) : mode === "admin" ? (
-      <section className="panel" style={{ marginTop: "0.9rem", padding: "0.9rem" }}>
-        <p className="kicker">Admin</p>
-        <h2 style={{ margin: "0.1rem 0 0.45rem", fontSize: "1.05rem" }}>
-          Platform Controls
-        </h2>
-        {!isAdmin ? (
-          <p style={{ margin: 0, color: "var(--error)" }}>
-            Admin role required.
-          </p>
-        ) : (
-          <>
-            <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
-              <button className="primary-button" type="button" onClick={() => setAdminTab("cycles")}>Cycles</button>
-              <button className="primary-button" type="button" onClick={() => setAdminTab("users")}>Users</button>
-              <button className="primary-button" type="button" onClick={() => setAdminTab("teams")}>Teams</button>
-              <button className="primary-button" type="button" onClick={() => setAdminTab("security")}>Security</button>
-              <button className="primary-button" type="button" onClick={() => setAdminTab("backup")}>Backup</button>
-              <button className="primary-button" type="button" onClick={() => setAdminTab("ai")}>AI/PDF Health</button>
-            </div>
-            <div
-              style={{
-                border: "1px solid var(--line)",
-                borderRadius: 10,
-                background: "var(--surface)",
-                padding: "0.6rem",
-                marginBottom: "0.8rem",
-              }}
-            >
-              {adminTab === "cycles" ? (
-                <>
-                  <p className="kicker" style={{ margin: 0 }}>Create cycle</p>
-                  <div className="grid-2" style={{ marginTop: "0.45rem", gap: "0.5rem" }}>
-                    <input
-                      className="input"
-                      value={adminCreateCycleDraft.title}
-                      onChange={(event) =>
-                        setAdminCreateCycleDraft((prev) => ({ ...prev, title: event.target.value }))
-                      }
-                      placeholder="Cycle title (example: Q1-2026)"
-                    />
-                    <label style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.86rem" }}>
-                      <input
-                        type="checkbox"
-                        checked={adminCreateCycleDraft.isActive}
-                        onChange={(event) =>
-                          setAdminCreateCycleDraft((prev) => ({ ...prev, isActive: event.target.checked }))
-                        }
-                      />
-                      Active cycle
-                    </label>
-                    <input
-                      type="date"
-                      className="input"
-                      value={adminCreateCycleDraft.startDate}
-                      onChange={(event) =>
-                        setAdminCreateCycleDraft((prev) => ({ ...prev, startDate: event.target.value }))
-                      }
-                    />
-                    <input
-                      type="date"
-                      className="input"
-                      value={adminCreateCycleDraft.endDate}
-                      onChange={(event) =>
-                        setAdminCreateCycleDraft((prev) => ({ ...prev, endDate: event.target.value }))
-                      }
-                    />
-                  </div>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={handleAdminCreateCycle}
-                    style={{ marginTop: "0.5rem" }}
-                  >
-                    Create cycle
-                  </button>
-                </>
-              ) : null}
-
-              {adminTab === "users" ? (
-                <>
-                  <p className="kicker" style={{ margin: 0 }}>Create user</p>
-                  <div className="grid-2" style={{ marginTop: "0.45rem", gap: "0.5rem" }}>
-                    <input className="input" value={adminUserDraft.username} onChange={(event) => setAdminUserDraft((prev) => ({ ...prev, username: event.target.value }))} placeholder="Username" />
-                    <input className="input" value={adminUserDraft.displayName} onChange={(event) => setAdminUserDraft((prev) => ({ ...prev, displayName: event.target.value }))} placeholder="Display name" />
-                    <input className="input" type="password" value={adminUserDraft.password} onChange={(event) => setAdminUserDraft((prev) => ({ ...prev, password: event.target.value }))} placeholder="Password" />
-                    <select className="input" value={adminUserDraft.role} onChange={(event) => setAdminUserDraft((prev) => ({ ...prev, role: event.target.value as "admin" | "manager" | "member" }))}>
-                      <option value="member">member</option>
-                      <option value="manager">manager</option>
-                      <option value="admin">admin</option>
-                    </select>
-                    <input className="input" value={adminUserDraft.managerId} onChange={(event) => setAdminUserDraft((prev) => ({ ...prev, managerId: event.target.value }))} placeholder="Manager ID (optional)" />
-                    <input className="input" value={adminUserDraft.teamId} onChange={(event) => setAdminUserDraft((prev) => ({ ...prev, teamId: event.target.value }))} placeholder="Team ID (optional)" />
-                  </div>
-                  <label style={{ marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.86rem" }}>
-                    <input type="checkbox" checked={adminUserDraft.mustChangePassword} onChange={(event) => setAdminUserDraft((prev) => ({ ...prev, mustChangePassword: event.target.checked }))} />
-                    Require password change at first login
-                  </label>
-                  <button className="primary-button" type="button" onClick={handleAdminCreateUser} style={{ marginTop: "0.5rem" }}>
-                    Create user
-                  </button>
-                </>
-              ) : null}
-
-              {adminTab === "teams" ? (
-                <>
-                  <p className="kicker" style={{ margin: 0 }}>Create team</p>
-                  <div className="grid-2" style={{ marginTop: "0.45rem", gap: "0.5rem" }}>
-                    <input className="input" value={adminTeamDraft.name} onChange={(event) => setAdminTeamDraft((prev) => ({ ...prev, name: event.target.value }))} placeholder="Team name" />
-                    <input className="input" value={adminTeamDraft.description} onChange={(event) => setAdminTeamDraft((prev) => ({ ...prev, description: event.target.value }))} placeholder="Description (optional)" />
-                  </div>
-                  <button className="primary-button" type="button" onClick={handleAdminCreateTeam} style={{ marginTop: "0.5rem" }}>
-                    Create team
-                  </button>
-                </>
-              ) : null}
-
-              {adminTab === "security" ? (
-                <>
-                  <p className="kicker" style={{ margin: 0 }}>Reset user password</p>
-                  <div className="grid-2" style={{ marginTop: "0.45rem", gap: "0.5rem" }}>
-                    <input className="input" value={adminResetDraft.userId} onChange={(event) => setAdminResetDraft((prev) => ({ ...prev, userId: event.target.value }))} placeholder="User ID" />
-                    <input className="input" type="password" value={adminResetDraft.newPassword} onChange={(event) => setAdminResetDraft((prev) => ({ ...prev, newPassword: event.target.value }))} placeholder="New password" />
-                  </div>
-                  <label style={{ marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.86rem" }}>
-                    <input type="checkbox" checked={adminResetDraft.requireChange} onChange={(event) => setAdminResetDraft((prev) => ({ ...prev, requireChange: event.target.checked }))} />
-                    Require change at next login
-                  </label>
-                  <button className="primary-button" type="button" onClick={handleAdminResetPassword} style={{ marginTop: "0.5rem" }}>
-                    Reset password
-                  </button>
-                </>
-              ) : null}
-
-              {adminTab === "backup" ? (
-                <>
-                  <p className="kicker" style={{ margin: 0 }}>Database backup/restore</p>
-                  <p style={{ margin: "0.35rem 0 0", color: "var(--ink-soft)" }}>
-                    Restore is guarded and requires `OKR_ENABLE_DIRECT_DB_RESTORE=true` plus non-production runtime.
-                  </p>
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={handleAdminBackupExport}
-                    disabled={adminBackupPending}
-                    style={{ marginTop: "0.5rem" }}
-                  >
-                    {adminBackupPending ? "Working..." : "Download Backup JSON"}
-                  </button>
-                  <div style={{ marginTop: "0.6rem" }}>
-                    <input
-                      type="file"
-                      accept=".json,application/json"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] || null;
-                        setAdminBackupFile(file);
-                        setAdminBackupRestoreResult(null);
-                      }}
-                    />
-                  </div>
-                  <input
-                    className="input"
-                    value={adminBackupConfirm}
-                    onChange={(event) => setAdminBackupConfirm(event.target.value)}
-                    placeholder='Type RESTORE to confirm'
-                    style={{ marginTop: "0.45rem" }}
-                  />
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={handleAdminBackupRestore}
-                    disabled={adminBackupPending}
-                    style={{ marginTop: "0.5rem" }}
-                  >
-                    {adminBackupPending ? "Working..." : "Restore Backup"}
-                  </button>
-                  {adminBackupRestoreResult ? (
-                    <div style={{ marginTop: "0.55rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
-                      <div style={{ fontSize: "0.84rem", color: "var(--ink-soft)" }}>Restore summary</div>
-                      <p style={{ margin: "0.2rem 0 0" }}>
-                        Format: {String(adminBackupRestoreResult.format || "-")}
-                      </p>
-                      <p style={{ margin: "0.2rem 0 0" }}>
-                        Exported at: {formatOptionalDate(adminBackupRestoreResult.exported_at)}
-                      </p>
-                      <details style={{ marginTop: "0.3rem" }}>
-                        <summary style={{ cursor: "pointer", fontSize: "0.84rem", color: "var(--ink-soft)" }}>
-                          Restored row counts
-                        </summary>
-                        <pre style={{ margin: "0.3rem 0 0", whiteSpace: "pre-wrap", fontSize: "0.8rem" }}>
-                          {JSON.stringify(adminBackupRestoreResult.restored_counts || {}, null, 2)}
-                        </pre>
-                      </details>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-
-              {adminTab === "ai" ? (
-                <>
-                  <p className="kicker" style={{ margin: 0 }}>AI/PDF health</p>
-                  <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.45rem", flexWrap: "wrap" }}>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      disabled={adminHealthPending}
-                      onClick={() => {
-                        if (!user) {
-                          return;
-                        }
-                        void loadAdminHealth(user, false);
-                      }}
-                    >
-                      {adminHealthPending ? "Checking..." : "Check Config Only"}
-                    </button>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      disabled={adminHealthPending}
-                      onClick={() => {
-                        if (!user) {
-                          return;
-                        }
-                        void loadAdminHealth(user, true);
-                      }}
-                    >
-                      {adminHealthPending ? "Checking..." : "Run Live Probe"}
-                    </button>
-                  </div>
-                  {adminAiHealth ? (
-                    <div style={{ marginTop: "0.55rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
-                      <div style={{ fontSize: "0.84rem", color: "var(--ink-soft)" }}>AI Provider</div>
-                      <p style={{ margin: "0.2rem 0 0" }}>
-                        {String(adminAiHealth.provider || "unknown")} • status: {String(adminAiHealth.status || "unknown")}
-                      </p>
-                      <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
-                        {String(adminAiHealth.probe_message || adminAiHealth.config_message || "")}
-                      </p>
-                    </div>
-                  ) : null}
-                  {adminPdfHealth ? (
-                    <div style={{ marginTop: "0.55rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
-                      <div style={{ fontSize: "0.84rem", color: "var(--ink-soft)" }}>PDF Runtime</div>
-                      <p style={{ margin: "0.2rem 0 0" }}>
-                        method: {String(adminPdfHealth.method || "unknown")} • supported: {adminPdfHealth.supported_method ? "yes" : "no"}
-                      </p>
-                      <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
-                        playwright: {adminPdfHealth.playwright_available ? "available" : "missing"} • pdfshift key: {adminPdfHealth.pdfshift_api_key_configured ? "set" : "missing"}
-                      </p>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-
-            {adminCyclesPending || adminDataPending ? (
-              <p style={{ margin: "0.3rem 0", color: "var(--ink-soft)" }}>Loading admin data...</p>
-            ) : null}
-            {adminCycleError ? (
-              <p style={{ margin: "0.3rem 0", color: "var(--error)" }}>{adminCycleError}</p>
-            ) : null}
-            {adminDataError ? (
-              <p style={{ margin: "0.3rem 0", color: "var(--error)" }}>{adminDataError}</p>
-            ) : null}
-            {adminCycleMessage ? (
-              <p style={{ margin: "0.3rem 0", color: "var(--accent)" }}>{adminCycleMessage}</p>
-            ) : null}
-
-            {adminTab === "cycles" ? (
-            <div className="atlas-node-list" style={{ maxHeight: "52vh" }}>
-              {adminCycles.length ? (
-                adminCycles.map((cycle) => (
-                  <div
-                    key={cycle.id}
-                    style={{
-                      border: "1px solid var(--line)",
-                      borderRadius: 10,
-                      background: "var(--surface-alt)",
-                      padding: "0.58rem 0.62rem",
-                      marginBottom: "0.45rem",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
-                      <div>
-                        <strong>{cycle.title}</strong>
-                        <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)", marginTop: "0.1rem" }}>
-                          {cyclePeriodLabel(cycle) || `${toDateInputValue(cycle.start_date)} to ${toDateInputValue(cycle.end_date)}`}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: "0.82rem", color: cycle.is_active ? "var(--accent)" : "var(--ink-soft)" }}>
-                        {cycle.is_active ? "Active" : "Inactive"}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.48rem", flexWrap: "wrap" }}>
-                      <button
-                        className="primary-button"
-                        type="button"
-                        onClick={() => handleAdminSetCycleActive(cycle, !cycle.is_active)}
-                      >
-                        {cycle.is_active ? "Deactivate" : "Activate"}
-                      </button>
-                      <button
-                        className="primary-button"
-                        type="button"
-                        onClick={() => handleAdminDeleteCycle(cycle)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p style={{ margin: 0, color: "var(--ink-soft)" }}>No cycles found.</p>
-              )}
-            </div>
-            ) : null}
-
-            {adminTab === "users" ? (
-            <div className="atlas-node-list" style={{ maxHeight: "52vh" }}>
-              {adminUsers.length ? (
-                adminUsers.map((row) => (
-                  <div key={row.id} style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-alt)", padding: "0.58rem 0.62rem", marginBottom: "0.45rem" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: "0.5rem", flexWrap: "wrap" }}>
-                      <div>
-                        <strong>{row.display_name || row.username}</strong>
-                        <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                          @{row.username} • {row.role} • id {row.id}
-                        </div>
-                      </div>
-                      <div style={{ fontSize: "0.82rem", color: row.is_active ? "var(--accent)" : "var(--ink-soft)" }}>
-                        {row.is_active ? "Active" : "Inactive"}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.48rem", flexWrap: "wrap" }}>
-                      <button className="primary-button" type="button" onClick={() => handleAdminToggleUserActive(row)}>
-                        {row.is_active ? "Deactivate" : "Activate"}
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p style={{ margin: 0, color: "var(--ink-soft)" }}>No users found.</p>
-              )}
-            </div>
-            ) : null}
-
-            {adminTab === "teams" ? (
-            <div className="atlas-node-list" style={{ maxHeight: "52vh" }}>
-              {adminTeams.length ? (
-                adminTeams.map((team) => (
-                  <div key={team.id} style={{ border: "1px solid var(--line)", borderRadius: 10, background: "var(--surface-alt)", padding: "0.58rem 0.62rem", marginBottom: "0.45rem" }}>
-                    <input className="input" value={team.name} onChange={(event) => setAdminTeams((prev) => prev.map((item) => item.id === team.id ? { ...item, name: event.target.value } : item))} />
-                    <input className="input" value={String(team.description || "")} onChange={(event) => setAdminTeams((prev) => prev.map((item) => item.id === team.id ? { ...item, description: event.target.value } : item))} style={{ marginTop: "0.35rem" }} />
-                    <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.48rem", flexWrap: "wrap" }}>
-                      <button className="primary-button" type="button" onClick={() => handleAdminUpdateTeam(team)}>
-                        Update
-                      </button>
-                      <button className="primary-button" type="button" onClick={() => handleAdminDeleteTeam(team)}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p style={{ margin: 0, color: "var(--ink-soft)" }}>No teams found.</p>
-              )}
-            </div>
-            ) : null}
-          </>
-        )}
-      </section>
+      <AdminModePanel
+        isAdmin={isAdmin}
+        adminTab={adminTab}
+        setAdminTab={setAdminTab}
+        adminCreateCycleDraft={adminCreateCycleDraft}
+        setAdminCreateCycleDraft={setAdminCreateCycleDraft}
+        onAdminCreateCycle={handleAdminCreateCycle}
+        adminUserDraft={adminUserDraft}
+        setAdminUserDraft={setAdminUserDraft}
+        onAdminCreateUser={handleAdminCreateUser}
+        adminTeamDraft={adminTeamDraft}
+        setAdminTeamDraft={setAdminTeamDraft}
+        onAdminCreateTeam={handleAdminCreateTeam}
+        adminResetDraft={adminResetDraft}
+        setAdminResetDraft={setAdminResetDraft}
+        onAdminResetPassword={handleAdminResetPassword}
+        adminBackupPending={adminBackupPending}
+        onAdminBackupExport={handleAdminBackupExport}
+        setAdminBackupFile={setAdminBackupFile}
+        setAdminBackupRestoreResult={setAdminBackupRestoreResult}
+        adminBackupConfirm={adminBackupConfirm}
+        setAdminBackupConfirm={setAdminBackupConfirm}
+        onAdminBackupRestore={handleAdminBackupRestore}
+        adminBackupRestoreResult={adminBackupRestoreResult}
+        formatOptionalDate={formatOptionalDate}
+        adminHealthPending={adminHealthPending}
+        onLoadAdminHealthConfig={() => {
+          if (!user) {
+            return;
+          }
+          void loadAdminHealth(user, false);
+        }}
+        onLoadAdminHealthLive={() => {
+          if (!user) {
+            return;
+          }
+          void loadAdminHealth(user, true);
+        }}
+        adminAiHealth={adminAiHealth}
+        adminPdfHealth={adminPdfHealth}
+        adminCyclesPending={adminCyclesPending}
+        adminDataPending={adminDataPending}
+        adminCycleError={adminCycleError}
+        adminDataError={adminDataError}
+        adminCycleMessage={adminCycleMessage}
+        adminCycles={adminCycles}
+        onAdminSetCycleActive={handleAdminSetCycleActive}
+        onAdminDeleteCycle={handleAdminDeleteCycle}
+        cyclePeriodLabel={cyclePeriodLabel}
+        toDateInputValue={toDateInputValue}
+        adminUsers={adminUsers}
+        onAdminToggleUserActive={handleAdminToggleUserActive}
+        adminTeams={adminTeams}
+        setAdminTeams={setAdminTeams}
+        onAdminUpdateTeam={handleAdminUpdateTeam}
+        onAdminDeleteTeam={handleAdminDeleteTeam}
+      />
       ) : (
       <section className="panel" style={{ marginTop: "0.9rem", padding: "0.9rem" }}>
         <p className="kicker">{modeDisplayLabel(mode)}</p>
@@ -6115,1102 +4961,183 @@ export default function AtlasShell() {
               ) : null}
             </section>
 
-            {(isAdmin || String(user.role || "").toLowerCase() === "manager") ? (
-              <div className="report-panel" style={{ marginTop: "0.55rem" }}>
-                <div className="report-panel-head">
-                  <h3>Leadership Insights</h3>
-                  <div className="report-action-row">
-                    <button
-                      className="primary-button"
-                      type="button"
-                      onClick={() => void loadLeadershipMetricsSnapshot(user)}
-                      disabled={leadershipPending || !parsedCycleId}
-                    >
-                      {leadershipPending ? "Loading..." : "Refresh Metrics"}
-                    </button>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      onClick={() => void handleGenerateTeamCoachSummary()}
-                      disabled={teamCoachPending || leadershipPending || !parsedCycleId}
-                    >
-                      {teamCoachPending ? "Generating..." : "Generate Team Coach"}
-                    </button>
-                    <button
-                      className="primary-button"
-                      type="button"
-                      onClick={() => void handleGenerateStrategyPulseSummary()}
-                      disabled={strategyPulsePending || leadershipPending || !parsedCycleId}
-                    >
-                      {strategyPulsePending ? "Generating..." : "Generate Strategy Pulse"}
-                    </button>
-                  </div>
-                </div>
-                {leadershipError ? <p style={{ margin: "0.3rem 0 0", color: "var(--error)" }}>{leadershipError}</p> : null}
-                {teamCoachError ? <p style={{ margin: "0.3rem 0 0", color: "var(--error)" }}>{teamCoachError}</p> : null}
-                {strategyPulseError ? <p style={{ margin: "0.3rem 0 0", color: "var(--error)" }}>{strategyPulseError}</p> : null}
-
-                <div className="report-card-grid" style={{ marginTop: "0.45rem" }}>
-                  {leadershipMetrics ? (
-                    <>
-                      <article className="report-metric-card">
-                        <p className="kicker" style={{ margin: 0 }}>Hygiene</p>
-                        <strong>{Math.round(Number(leadershipMetrics.hygiene_pct || 0))}%</strong>
-                        <span>Check-in + update consistency</span>
-                      </article>
-                      <article className="report-metric-card">
-                        <p className="kicker" style={{ margin: 0 }}>Average Confidence</p>
-                        <strong>{Number(leadershipMetrics.avg_confidence || 0).toFixed(1)}/10</strong>
-                        <span>Team-reported delivery confidence</span>
-                      </article>
-                    </>
-                  ) : null}
-                </div>
-
-                <div className="report-two-col" style={{ marginTop: "0.45rem" }}>
-                  {teamCoachSummary ? (
-                    <article className="report-panel accent">
-                      <div className="report-panel-head">
-                        <h4>Team Coach</h4>
-                        <span className="report-inline-score">
-                          {teamCoachSummary.healthGrade || "N/A"}
-                          {teamCoachSummary.healthScore !== null ? ` • ${Math.round(teamCoachSummary.healthScore)}%` : ""}
-                        </span>
-                      </div>
-                      {teamCoachSummary.topPriorities.length ? (
-                        <p className="report-inline-list">Priorities: {teamCoachSummary.topPriorities.join(" | ")}</p>
-                      ) : null}
-                      {teamCoachSummary.quickWins.length ? (
-                        <p className="report-inline-list">Quick wins: {teamCoachSummary.quickWins.join(" | ")}</p>
-                      ) : null}
-                      {teamCoachSummary.watchOuts.length ? (
-                        <p className="report-inline-list">Watch-outs: {teamCoachSummary.watchOuts.join(" | ")}</p>
-                      ) : null}
-                    </article>
-                  ) : null}
-
-                  {strategyPulseSummary ? (
-                    <article className="report-panel accent">
-                      <div className="report-panel-head">
-                        <h4>Strategy Pulse</h4>
-                      </div>
-                      {strategyPulseSummary.burnoutRisk ? (
-                        <p className="report-inline-list">
-                          Burnout risk: {strategyPulseSummary.burnoutRisk}
-                          {strategyPulseSummary.burnoutScore !== null
-                            ? ` (${Math.round(strategyPulseSummary.burnoutScore)}/100)`
-                            : ""}
-                        </p>
-                      ) : null}
-                      {(strategyPulseSummary.avgDailyMinutes !== null ||
-                        strategyPulseSummary.completedTasks14d !== null) ? (
-                          <p className="report-inline-list">
-                            {strategyPulseSummary.avgDailyMinutes !== null
-                              ? `Avg daily focus: ${Math.round(strategyPulseSummary.avgDailyMinutes)}m`
-                              : ""}
-                            {strategyPulseSummary.avgDailyMinutes !== null &&
-                            strategyPulseSummary.completedTasks14d !== null
-                              ? " | "
-                              : ""}
-                            {strategyPulseSummary.completedTasks14d !== null
-                              ? `14d output: ${Math.round(strategyPulseSummary.completedTasks14d)} tasks`
-                              : ""}
-                          </p>
-                        ) : null}
-                      {strategyPulseSummary.predictiveOutlook ? (
-                        <p className="report-inline-list">
-                          Outlook: {strategyPulseSummary.predictiveOutlook}
-                          {strategyPulseSummary.confidenceLevel !== null
-                            ? ` (confidence ${Math.round(strategyPulseSummary.confidenceLevel)}%)`
-                            : ""}
-                        </p>
-                      ) : null}
-                      {strategyPulseSummary.gapSignals.length ? (
-                        <p className="report-inline-list">Gap signals: {strategyPulseSummary.gapSignals.join(" | ")}</p>
-                      ) : null}
-                    </article>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
+            <DashboardLeadershipPanel
+              canViewLeadership={isAdmin || String(user.role || "").toLowerCase() === "manager"}
+              leadershipPending={leadershipPending}
+              teamCoachPending={teamCoachPending}
+              strategyPulsePending={strategyPulsePending}
+              parsedCycleId={parsedCycleId}
+              leadershipError={leadershipError}
+              teamCoachError={teamCoachError}
+              strategyPulseError={strategyPulseError}
+              leadershipMetrics={leadershipMetrics}
+              teamCoachSummary={teamCoachSummary}
+              strategyPulseSummary={strategyPulseSummary}
+              onRefreshMetrics={() => {
+                void loadLeadershipMetricsSnapshot(user);
+              }}
+              onGenerateTeamCoach={() => {
+                void handleGenerateTeamCoachSummary();
+              }}
+              onGenerateStrategyPulse={() => {
+                void handleGenerateStrategyPulseSummary();
+              }}
+            />
           </>
         ) : null}
 
         {mode === "weekly" ? (
-          <>
-            <div className="report-panel-head" style={{ marginTop: "0.35rem" }}>
-              <div>
-                <p className="kicker" style={{ margin: 0 }}>Streamlit Report Bridge</p>
-                <p className="kicker" style={{ margin: 0 }}>Week Window</p>
-                <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
-                  {startOfWeekIso()} to {endOfWeekIso()} • {cycleDisplayLabel(resolvedCycle)}
-                </p>
-              </div>
-              <div className="report-action-row">
-                <button className="primary-button" type="button" onClick={() => void handleReportExport("pdf")} disabled={reportExportPending}>
-                  {reportExportPending ? "Exporting..." : "Export Weekly PDF"}
-                </button>
-                <button className="primary-button" type="button" onClick={() => void handleReportExport("html")} disabled={reportExportPending}>
-                  Export Weekly HTML
-                </button>
-                <button className="primary-button" type="button" onClick={() => void handleReportAiSummaryGenerate()} disabled={reportAiPending}>
-                  {reportAiPending ? "Generating..." : "Generate AI Summary"}
-                </button>
-              </div>
-            </div>
-            {reportExportError ? (
-              <p style={{ margin: "0.3rem 0 0", color: "var(--error)" }}>{reportExportError}</p>
-            ) : null}
-            {reportAiError ? (
-              <p style={{ margin: "0.3rem 0 0", color: "var(--error)" }}>{reportAiError}</p>
-            ) : null}
-
-            <div className="report-card-grid" style={{ marginTop: "0.45rem" }}>
-              <article className="report-metric-card">
-                <p className="kicker" style={{ margin: 0 }}>Focus Minutes</p>
-                <strong>{weeklyTotalMinutes} min</strong>
-                <span>{weeklyLogs.length} sessions this week</span>
-              </article>
-              <article className="report-metric-card">
-                <p className="kicker" style={{ margin: 0 }}>Average Session</p>
-                <strong>{weeklyAverageMinutes} min</strong>
-                <span>Per work-log block</span>
-              </article>
-              <article className="report-metric-card">
-                <p className="kicker" style={{ margin: 0 }}>Priority Coverage</p>
-                <strong>{weeklyPriorityCoverage.pct}%</strong>
-                <div className="report-progress-track" aria-hidden="true">
-                  <span className="report-progress-fill" style={{ width: `${weeklyPriorityCoverage.pct}%` }} />
-                </div>
-                <span>
-                  {weeklyPriorityCoverage.filled}/{weeklyPriorityCoverage.total} weekly priorities set
-                </span>
-              </article>
-              <article className="report-metric-card">
-                <p className="kicker" style={{ margin: 0 }}>Check-In Backlog</p>
-                <strong>{weeklyKrsNeedingCheckIn.length}</strong>
-                <span>KRs requiring check-in updates</span>
-              </article>
-            </div>
-
-            {reportAiSummary ? (
-              <section className="report-panel accent" style={{ marginTop: "0.5rem" }}>
-                <div className="report-panel-head">
-                  <h3>AI Weekly Summary</h3>
-                </div>
-                {reportAiSummary.summaryMarkdown ? (
-                  <p style={{ margin: "0.24rem 0 0", whiteSpace: "pre-wrap" }}>{reportAiSummary.summaryMarkdown}</p>
-                ) : null}
-                {reportAiSummary.highlights.length ? (
-                  <ul style={{ margin: "0.28rem 0 0", paddingLeft: "1rem" }}>
-                    {reportAiSummary.highlights.map((item) => (
-                      <li key={item} style={{ margin: "0.15rem 0" }}>{item}</li>
-                    ))}
-                  </ul>
-                ) : null}
-                {reportAiSummary.focusAnalysis ? (
-                  <p className="report-inline-list">Focus analysis: {reportAiSummary.focusAnalysis}</p>
-                ) : null}
-              </section>
-            ) : null}
-
-            <div className="report-two-col" style={{ marginTop: "0.5rem" }}>
-              <section className="report-panel">
-                <div className="report-panel-head">
-                  <h3>Weekly Priorities</h3>
-                </div>
-                {weeklyPlanData ? (
-                  <div className="report-list" style={{ marginTop: "0.35rem" }}>
-                    <article className="report-list-row compact">
-                      <strong>Current plan</strong>
-                      <span>1. {weeklyPlanData.priority_1 || "-"}</span>
-                      <span>2. {weeklyPlanData.priority_2 || "-"}</span>
-                      <span>3. {weeklyPlanData.priority_3 || "-"}</span>
-                    </article>
-                  </div>
-                ) : (
-                  <p className="report-empty" style={{ marginTop: "0.35rem" }}>
-                    No active weekly plan yet.
-                  </p>
-                )}
-                <div style={{ marginTop: "0.55rem", display: "grid", gap: "0.35rem" }}>
-                  <input className="input" value={weeklyDraft.p1} onChange={(event) => setWeeklyDraft((prev) => ({ ...prev, p1: event.target.value }))} placeholder="Priority 1 (required)" />
-                  <input className="input" value={weeklyDraft.p2} onChange={(event) => setWeeklyDraft((prev) => ({ ...prev, p2: event.target.value }))} placeholder="Priority 2" />
-                  <input className="input" value={weeklyDraft.p3} onChange={(event) => setWeeklyDraft((prev) => ({ ...prev, p3: event.target.value }))} placeholder="Priority 3" />
-                  <button className="primary-button" type="button" onClick={() => void handleWeeklyPlanSave()} disabled={modeActionPending}>
-                    {modeActionPending ? "Saving..." : "Save Weekly Priorities"}
-                  </button>
-                </div>
-              </section>
-
-              <section className="report-panel">
-                <div className="report-panel-head">
-                  <h3>Execution Signals</h3>
-                </div>
-                <div className="report-list" style={{ marginTop: "0.35rem" }}>
-                  <article className="report-list-row compact">
-                    <strong>Top Focus Tasks</strong>
-                    {weeklyTopTasks.length ? (
-                      weeklyTopTasks.map((row) => (
-                        <span key={`${row.taskId || "none"}-${row.title}`}>
-                          {row.title}: {row.minutes} min ({row.sessions} sessions)
-                        </span>
-                      ))
-                    ) : (
-                      <span className="muted">No task-level focus logs this week.</span>
-                    )}
-                  </article>
-                  <article className="report-list-row compact">
-                    <strong>KRs Needing Check-In</strong>
-                    {weeklyKrsNeedingCheckIn.length ? (
-                      weeklyKrsNeedingCheckIn.slice(0, 6).map((kr) => (
-                        <span key={kr.id}>
-                          {kr.title || `KR #${kr.id}`} ({Math.round(Number(kr.progress || 0))}%)
-                        </span>
-                      ))
-                    ) : (
-                      <span className="muted">No outstanding KR check-ins this week.</span>
-                    )}
-                  </article>
-                  <article className="report-list-row compact">
-                    <strong>Experiments in Review Window</strong>
-                    {weeklyReviewExperiments.length ? (
-                      weeklyReviewExperiments.slice(0, 6).map((exp) => (
-                        <span key={exp.id}>
-                          #{exp.id} • {String(exp.status || "PLANNED")} • KR #{exp.key_result_id}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="muted">No experiments recorded in this review window.</span>
-                    )}
-                  </article>
-                </div>
-              </section>
-            </div>
-          </>
+          <WeeklyModePanel
+            weekRangeLabel={`${startOfWeekIso()} to ${endOfWeekIso()}`}
+            cycleLabel={cycleDisplayLabel(resolvedCycle)}
+            reportExportPending={reportExportPending}
+            reportAiPending={reportAiPending}
+            reportExportError={reportExportError}
+            reportAiError={reportAiError}
+            onReportExport={(format) => {
+              void handleReportExport(format);
+            }}
+            onGenerateAiSummary={() => {
+              void handleReportAiSummaryGenerate();
+            }}
+            weeklyTotalMinutes={weeklyTotalMinutes}
+            weeklySessionCount={weeklyLogs.length}
+            weeklyAverageMinutes={weeklyAverageMinutes}
+            weeklyPriorityCoverage={weeklyPriorityCoverage}
+            weeklyKrsNeedingCheckInCount={weeklyKrsNeedingCheckIn.length}
+            reportAiSummary={reportAiSummary}
+            weeklyPlanData={weeklyPlanData}
+            weeklyDraft={weeklyDraft}
+            setWeeklyDraft={setWeeklyDraft}
+            onSaveWeeklyPlan={() => {
+              void handleWeeklyPlanSave();
+            }}
+            modeActionPending={modeActionPending}
+            weeklyTopTasks={weeklyTopTasks}
+            weeklyKrsNeedingCheckIn={weeklyKrsNeedingCheckIn}
+            weeklyReviewExperiments={weeklyReviewExperiments}
+          />
         ) : null}
 
         {mode === "daily" ? (
-          <div style={{ marginTop: "0.35rem" }}>
-            <div className="report-panel-head">
-              <div>
-                <p className="kicker" style={{ margin: 0 }}>Streamlit Report Bridge</p>
-                <p className="kicker" style={{ margin: 0 }}>Daily Focus Report</p>
-                <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
-                  {new Date().toLocaleDateString()} • {cycleDisplayLabel(resolvedCycle)}
-                </p>
-              </div>
-              <div className="report-action-row">
-                <button className="primary-button" type="button" onClick={() => void handleReportExport("pdf")} disabled={reportExportPending}>
-                  {reportExportPending ? "Exporting..." : "Export Daily PDF"}
-                </button>
-                <button className="primary-button" type="button" onClick={() => void handleReportExport("html")} disabled={reportExportPending}>
-                  Export Daily HTML
-                </button>
-                <button className="primary-button" type="button" onClick={() => void handleReportAiSummaryGenerate()} disabled={reportAiPending}>
-                  {reportAiPending ? "Generating..." : "Generate AI Summary"}
-                </button>
-              </div>
-            </div>
-            {reportExportError ? (
-              <p style={{ margin: "0.3rem 0 0", color: "var(--error)" }}>{reportExportError}</p>
-            ) : null}
-            {reportAiError ? (
-              <p style={{ margin: "0.3rem 0 0", color: "var(--error)" }}>{reportAiError}</p>
-            ) : null}
-
-            <div className="report-card-grid" style={{ marginTop: "0.45rem" }}>
-              <article className="report-metric-card">
-                <p className="kicker" style={{ margin: 0 }}>Sessions</p>
-                <strong>{dailyLogsFiltered.length}</strong>
-                <span>Total work-log blocks (filtered)</span>
-              </article>
-              <article className="report-metric-card">
-                <p className="kicker" style={{ margin: 0 }}>Focus Minutes</p>
-                <strong>{dailyTotalMinutes}</strong>
-                <span>Minutes tracked today</span>
-              </article>
-              <article className="report-metric-card">
-                <p className="kicker" style={{ margin: 0 }}>Average Session</p>
-                <strong>{dailyAverageMinutes} min</strong>
-                <span>Per focus block</span>
-              </article>
-              <article className="report-metric-card">
-                <p className="kicker" style={{ margin: 0 }}>Deep Work Share</p>
-                <strong>{dailyDeepWorkShare}%</strong>
-                <div className="report-progress-track" aria-hidden="true">
-                  <span className="report-progress-fill" style={{ width: `${dailyDeepWorkShare}%` }} />
-                </div>
-                <span>Share of sessions lasting 45+ minutes</span>
-              </article>
-            </div>
-
-            {reportAiSummary ? (
-              <section className="report-panel accent" style={{ marginTop: "0.5rem" }}>
-                <div className="report-panel-head">
-                  <h3>AI Daily Summary</h3>
-                </div>
-                {reportAiSummary.summaryMarkdown ? (
-                  <p style={{ margin: "0.24rem 0 0", whiteSpace: "pre-wrap" }}>{reportAiSummary.summaryMarkdown}</p>
-                ) : null}
-                {reportAiSummary.highlights.length ? (
-                  <ul style={{ margin: "0.28rem 0 0", paddingLeft: "1rem" }}>
-                    {reportAiSummary.highlights.map((item) => (
-                      <li key={item} style={{ margin: "0.15rem 0" }}>{item}</li>
-                    ))}
-                  </ul>
-                ) : null}
-                {reportAiSummary.focusAnalysis ? (
-                  <p className="report-inline-list">Focus analysis: {reportAiSummary.focusAnalysis}</p>
-                ) : null}
-              </section>
-            ) : null}
-
-            <div className="report-two-col" style={{ marginTop: "0.5rem" }}>
-              <section className="report-panel">
-                <div className="report-panel-head">
-                  <h3>Time Distribution</h3>
-                  <input
-                    className="input"
-                    value={dailyLogQuery}
-                    onChange={(event) => setDailyLogQuery(event.target.value)}
-                    placeholder="Filter by task, summary, or time"
-                    style={{ maxWidth: "17rem" }}
-                  />
-                </div>
-                <div className="band-row">
-                  <span>Morning</span>
-                  <div className="report-progress-track" aria-hidden="true">
-                    <span
-                      className="report-progress-fill"
-                      style={{
-                        width: `${dailyTotalMinutes ? Math.round((dailyTimeBands.morning / dailyTotalMinutes) * 100) : 0}%`,
-                      }}
-                    />
-                  </div>
-                  <strong>{dailyTimeBands.morning}m</strong>
-                </div>
-                <div className="band-row">
-                  <span>Afternoon</span>
-                  <div className="report-progress-track" aria-hidden="true">
-                    <span
-                      className="report-progress-fill"
-                      style={{
-                        width: `${dailyTotalMinutes ? Math.round((dailyTimeBands.afternoon / dailyTotalMinutes) * 100) : 0}%`,
-                      }}
-                    />
-                  </div>
-                  <strong>{dailyTimeBands.afternoon}m</strong>
-                </div>
-                <div className="band-row">
-                  <span>Evening</span>
-                  <div className="report-progress-track" aria-hidden="true">
-                    <span
-                      className="report-progress-fill"
-                      style={{
-                        width: `${dailyTotalMinutes ? Math.round((dailyTimeBands.evening / dailyTotalMinutes) * 100) : 0}%`,
-                      }}
-                    />
-                  </div>
-                  <strong>{dailyTimeBands.evening}m</strong>
-                </div>
-
-                <div className="report-list" style={{ marginTop: "0.45rem" }}>
-                  <article className="report-list-row compact">
-                    <strong>Top Tasks</strong>
-                    {dailyTopTasks.length ? (
-                      dailyTopTasks.map((row) => (
-                        <span key={`${row.taskId || "none"}-${row.title}`}>
-                          {row.title}: {row.minutes} min ({row.sessions} sessions)
-                        </span>
-                      ))
-                    ) : (
-                      <span className="muted">No tasks captured in today logs.</span>
-                    )}
-                  </article>
-                </div>
-              </section>
-
-              <section className="report-panel">
-                <div className="report-panel-head">
-                  <h3>Activity Feed</h3>
-                </div>
-                <div className="report-list activity" style={{ marginTop: "0.3rem" }}>
-                  {dailyLogsFiltered.length ? (
-                    dailyLogsFiltered.map((log) => (
-                      <article key={log.id} className="report-list-row">
-                        <strong>{String(log.task?.title || `Task #${log.task_id || "-"}`)}</strong>
-                        <span>
-                          {Math.round(Number(log.duration_minutes || 0))} min • {formatOptionalDate(log.start_time)}
-                        </span>
-                        {log.summary ? <span className="muted">{log.summary}</span> : null}
-                      </article>
-                    ))
-                  ) : (
-                    <p className="report-empty">No logs for today (or no logs match the current filter).</p>
-                  )}
-                </div>
-              </section>
-            </div>
-          </div>
+          <DailyModePanel
+            todayLabel={new Date().toLocaleDateString()}
+            cycleLabel={cycleDisplayLabel(resolvedCycle)}
+            reportExportPending={reportExportPending}
+            reportAiPending={reportAiPending}
+            reportExportError={reportExportError}
+            reportAiError={reportAiError}
+            onReportExport={(format) => {
+              void handleReportExport(format);
+            }}
+            onGenerateAiSummary={() => {
+              void handleReportAiSummaryGenerate();
+            }}
+            dailyLogsFiltered={dailyLogsFiltered}
+            dailyTotalMinutes={dailyTotalMinutes}
+            dailyAverageMinutes={dailyAverageMinutes}
+            dailyDeepWorkShare={dailyDeepWorkShare}
+            reportAiSummary={reportAiSummary}
+            dailyLogQuery={dailyLogQuery}
+            onDailyLogQueryChange={setDailyLogQuery}
+            dailyTimeBands={dailyTimeBands}
+            dailyTopTasks={dailyTopTasks}
+            formatOptionalDate={formatOptionalDate}
+          />
         ) : null}
 
         {mode === "ritual" ? (
-          <div style={{ marginTop: "0.5rem" }}>
-            <div className="checkin-stepper">
-              <button
-                type="button"
-                className="primary-button"
-                aria-current={ritualStep === 1 ? "step" : undefined}
-                onClick={() => setRitualStep(1)}
-              >
-                1. Review
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                aria-current={ritualStep === 2 ? "step" : undefined}
-                onClick={() => setRitualStep(2)}
-              >
-                2. Check-Ins
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                aria-current={ritualStep === 3 ? "step" : undefined}
-                onClick={() => setRitualStep(3)}
-              >
-                3. Plan
-              </button>
-            </div>
-
-            <div className="atlas-rollup" style={{ marginTop: "0.45rem" }}>
-              <span>Cycle: {cycleDisplayLabel(resolvedCycle)}</span>
-              <span>KRs needing check-in: {ritualKrs.length}</span>
-              <span>
-                Submitted: {ritualSubmittedCount}/{ritualKrs.length}
-              </span>
-              <span>Remaining: {Math.max(0, ritualKrs.length - ritualSubmittedCount)}</span>
-              <span>
-                7-day focus:{" "}
-                {Math.round(
-                  ritualReviewLogs.reduce((sum, item) => sum + Number(item.duration_minutes || 0), 0),
-                )}{" "}
-                minutes
-              </span>
-              <span>Experiments reviewed: {ritualReviewExperiments.length}</span>
-            </div>
-
-            {ritualStep === 1 ? (
-              <div style={{ marginTop: "0.55rem" }}>
-                <p style={{ margin: 0, color: "var(--ink-soft)" }}>
-                  Review window: {toDateShortLabel(ritualReviewRange.start)} to{" "}
-                  {toDateShortLabel(ritualReviewRange.end)}
-                </p>
-
-                <div style={{ marginTop: "0.5rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
-                  <p className="kicker" style={{ margin: 0 }}>Retrospective</p>
-                  <textarea
-                    className="input"
-                    value={retroDraft.content}
-                    onChange={(event) => setRetroDraft((prev) => ({ ...prev, content: event.target.value }))}
-                    rows={4}
-                    placeholder="What moved this week? What blocked progress? What will you change next week?"
-                    style={{ marginTop: "0.35rem" }}
-                  />
-                  <input
-                    className="input"
-                    value={retroDraft.sentiment}
-                    onChange={(event) => setRetroDraft((prev) => ({ ...prev, sentiment: event.target.value }))}
-                    placeholder="Sentiment (optional)"
-                    style={{ marginTop: "0.35rem" }}
-                  />
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={() => void handleRetroCreate("ritual", startOfWeekIso())}
-                    disabled={modeActionPending}
-                    style={{ marginTop: "0.42rem" }}
-                  >
-                    {modeActionPending ? "Saving..." : "Save Retrospective"}
-                  </button>
-                </div>
-
-                <div style={{ marginTop: "0.5rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
-                  <p className="kicker" style={{ margin: 0 }}>Experiments Reviewed</p>
-                  <div className="atlas-node-list" style={{ marginTop: "0.35rem", maxHeight: "28vh" }}>
-                    {ritualReviewExperiments.length ? (
-                      ritualReviewExperiments.map((exp) => (
-                        <div key={exp.id} style={{ padding: "0.38rem 0", borderBottom: "1px solid var(--line)" }}>
-                          <strong>#{exp.id} • {String(exp.status || "PLANNED")}</strong>
-                          <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                            KR #{exp.key_result_id}
-                          </div>
-                          <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                            {String(exp.hypothesis || "").trim() || "No hypothesis captured."}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <p style={{ margin: 0, color: "var(--ink-soft)" }}>
-                        No experiments in this review window.
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.5rem" }}>
-                  <button className="primary-button" type="button" onClick={() => setRitualStep(2)}>
-                    Next: Check-Ins
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {ritualStep === 2 ? (
-              <>
-                <div className="atlas-node-list" style={{ marginTop: "0.45rem", maxHeight: "52vh" }}>
-                  {ritualKrs.length ? (
-                    ritualKrs.map((kr) => {
-                    const draft = ritualCheckInDrafts[kr.id];
-                    const experiments = ritualExperimentsByKr[kr.id] || [];
-                    const experimentDraft = ritualExperimentDrafts[kr.id] || {
-                      hypothesis: "",
-                      changeDescription: "",
-                      expectedEffectDirection: "",
-                      expectedEffectSize: "",
-                    };
-                    const runningExperiments = experiments.filter(
-                      (exp) => String(exp.status || "").toUpperCase() === "RUNNING",
-                    );
-                    const variationType = draft?.variationType || "COMMON_CAUSE";
-                    const isSaved = Boolean(ritualCheckInMessage[kr.id]);
-                    return (
-                      <div
-                        key={kr.id}
-                        className={`checkin-kr-card${isSaved ? " is-saved" : ""}`}
-                        style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--line)" }}
-                      >
-                        <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap" }}>
-                          <strong>{kr.title || `KR #${kr.id}`}</strong>
-                          {isSaved ? (
-                            <span style={{ fontSize: "0.74rem", color: "var(--accent)" }}>Saved</span>
-                          ) : null}
-                        </div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                          Progress {Math.round(Number(kr.progress || 0))}% • {kr.objective?.title || "No objective"}
-                        </div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: "0.15rem" }}>
-                          Current value: {formatOptionalNumber(kr.current_value)}
-                        </div>
-
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem", marginTop: "0.4rem" }}>
-                          <input
-                            className="input"
-                            value={draft?.value || ""}
-                            onChange={(event) => updateRitualCheckInDraft(kr.id, { value: event.target.value })}
-                            placeholder="Metric value"
-                          />
-                          <input
-                            className="input"
-                            value={draft?.confidence || ""}
-                            onChange={(event) => updateRitualCheckInDraft(kr.id, { confidence: event.target.value })}
-                            placeholder="Confidence (0-10)"
-                          />
-                        </div>
-
-                        <textarea
-                          className="input"
-                          value={draft?.comment || ""}
-                          onChange={(event) => updateRitualCheckInDraft(kr.id, { comment: event.target.value })}
-                          placeholder="Check-in comment (required when confidence is 0-5)"
-                          rows={2}
-                          style={{ marginTop: "0.35rem" }}
-                        />
-
-                        <select
-                          className="input"
-                          value={variationType}
-                          onChange={(event) =>
-                            updateRitualCheckInDraft(kr.id, {
-                              variationType: event.target.value as "COMMON_CAUSE" | "SPECIAL_CAUSE",
-                            })
-                          }
-                          style={{ marginTop: "0.35rem" }}
-                        >
-                          <option value="COMMON_CAUSE">Common cause</option>
-                          <option value="SPECIAL_CAUSE">Special cause</option>
-                        </select>
-
-                        {variationType === "SPECIAL_CAUSE" ? (
-                          <input
-                            className="input"
-                            value={draft?.specialCauseNote || ""}
-                            onChange={(event) =>
-                              updateRitualCheckInDraft(kr.id, { specialCauseNote: event.target.value })
-                            }
-                            placeholder="Special-cause note (required)"
-                            style={{ marginTop: "0.35rem" }}
-                          />
-                        ) : (
-                          <div style={{ marginTop: "0.35rem" }}>
-                            <select
-                              className="input"
-                              value={draft?.experimentId || ""}
-                              onChange={(event) =>
-                                updateRitualCheckInDraft(kr.id, { experimentId: event.target.value })
-                              }
-                            >
-                              <option value="">No linked experiment</option>
-                              {runningExperiments.map((exp) => (
-                                <option key={exp.id} value={exp.id}>
-                                  #{exp.id} • RUNNING •{" "}
-                                  {String(exp.hypothesis || "").slice(0, 72)}
-                                </option>
-                              ))}
-                            </select>
-                            <div style={{ display: "flex", gap: "0.35rem", marginTop: "0.35rem", flexWrap: "wrap" }}>
-                              <button
-                                className="primary-button"
-                                type="button"
-                                onClick={() =>
-                                  setRitualExperimentFormOpen((prev) => ({
-                                    ...prev,
-                                    [kr.id]: !prev[kr.id],
-                                  }))
-                                }
-                              >
-                                {ritualExperimentFormOpen[kr.id] ? "Hide Experiment Form" : "Create Experiment"}
-                              </button>
-                            </div>
-                            {ritualExperimentFormOpen[kr.id] ? (
-                              <div style={{ marginTop: "0.35rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.45rem" }}>
-                                <input
-                                  className="input"
-                                  value={experimentDraft.hypothesis}
-                                  onChange={(event) =>
-                                    updateRitualExperimentDraft(kr.id, { hypothesis: event.target.value })
-                                  }
-                                  placeholder="Hypothesis"
-                                />
-                                <input
-                                  className="input"
-                                  value={experimentDraft.changeDescription}
-                                  onChange={(event) =>
-                                    updateRitualExperimentDraft(kr.id, { changeDescription: event.target.value })
-                                  }
-                                  placeholder="Change description"
-                                  style={{ marginTop: "0.35rem" }}
-                                />
-                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem", marginTop: "0.35rem" }}>
-                                  <select
-                                    className="input"
-                                    value={experimentDraft.expectedEffectDirection}
-                                    onChange={(event) =>
-                                      updateRitualExperimentDraft(kr.id, {
-                                        expectedEffectDirection: event.target.value as "" | "UP" | "DOWN",
-                                      })
-                                    }
-                                  >
-                                    <option value="">Effect direction (optional)</option>
-                                    <option value="UP">Up</option>
-                                    <option value="DOWN">Down</option>
-                                  </select>
-                                  <input
-                                    className="input"
-                                    value={experimentDraft.expectedEffectSize}
-                                    onChange={(event) =>
-                                      updateRitualExperimentDraft(kr.id, { expectedEffectSize: event.target.value })
-                                    }
-                                    placeholder="Effect size (optional)"
-                                  />
-                                </div>
-                                <button
-                                  className="primary-button"
-                                  type="button"
-                                  onClick={() => void handleRitualExperimentCreate(kr)}
-                                  disabled={Boolean(ritualExperimentPending[kr.id])}
-                                  style={{ marginTop: "0.4rem" }}
-                                >
-                                  {ritualExperimentPending[kr.id] ? "Creating..." : "Create Experiment"}
-                                </button>
-                                {ritualExperimentError[kr.id] ? (
-                                  <p style={{ margin: "0.28rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-                                    {ritualExperimentError[kr.id]}
-                                  </p>
-                                ) : null}
-                                {ritualExperimentMessage[kr.id] ? (
-                                  <p style={{ margin: "0.28rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
-                                    {ritualExperimentMessage[kr.id]}
-                                  </p>
-                                ) : null}
-                              </div>
-                            ) : null}
-                            <div
-                              style={{
-                                marginTop: "0.35rem",
-                                border: "1px solid var(--line)",
-                                borderRadius: 10,
-                                padding: "0.45rem",
-                              }}
-                            >
-                              <p className="kicker" style={{ margin: 0 }}>
-                                Experiment Lifecycle
-                              </p>
-                              {experiments.length ? (
-                                <div style={{ marginTop: "0.28rem", display: "grid", gap: "0.35rem" }}>
-                                  {experiments.map((exp) => {
-                                    const expId = Number(exp.id);
-                                    const status = String(exp.status || "PLANNED").toUpperCase();
-                                    const closeDraft = ritualExperimentCloseDrafts[expId] || {
-                                      decision: "ITERATE" as ExperimentDecisionType,
-                                      rationale: "",
-                                    };
-                                    const actionPending = Boolean(ritualExperimentActionPending[expId]);
-                                    return (
-                                      <div
-                                        key={expId}
-                                        style={{
-                                          border: "1px solid var(--line)",
-                                          borderRadius: 8,
-                                          padding: "0.38rem",
-                                          background: "var(--surface)",
-                                        }}
-                                      >
-                                        <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexWrap: "wrap" }}>
-                                          <strong>#{expId}</strong>
-                                          <span style={{ fontSize: "0.74rem", color: "var(--ink-soft)" }}>
-                                            {status}
-                                          </span>
-                                        </div>
-                                        <div style={{ marginTop: "0.18rem", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-                                          {String(exp.hypothesis || "").trim() || "No hypothesis captured."}
-                                        </div>
-
-                                        {status === "PLANNED" ? (
-                                          <button
-                                            className="primary-button"
-                                            type="button"
-                                            onClick={() => void handleRitualExperimentStart(expId)}
-                                            disabled={actionPending}
-                                            style={{ marginTop: "0.32rem" }}
-                                          >
-                                            {actionPending ? "Starting..." : "Start"}
-                                          </button>
-                                        ) : null}
-
-                                        {status === "RUNNING" ? (
-                                          <div style={{ marginTop: "0.32rem", display: "grid", gap: "0.28rem" }}>
-                                            <select
-                                              className="input"
-                                              value={closeDraft.decision}
-                                              onChange={(event) =>
-                                                updateRitualExperimentCloseDraft(expId, {
-                                                  decision: event.target.value as ExperimentDecisionType,
-                                                })
-                                              }
-                                            >
-                                              <option value="ADOPT">Adopt</option>
-                                              <option value="ITERATE">Iterate</option>
-                                              <option value="ABANDON">Abandon</option>
-                                            </select>
-                                            <textarea
-                                              className="input"
-                                              value={closeDraft.rationale}
-                                              onChange={(event) =>
-                                                updateRitualExperimentCloseDraft(expId, {
-                                                  rationale: event.target.value,
-                                                })
-                                              }
-                                              rows={2}
-                                              placeholder="Decision rationale (required)"
-                                            />
-                                            <button
-                                              className="primary-button"
-                                              type="button"
-                                              onClick={() => void handleRitualExperimentClose(expId)}
-                                              disabled={actionPending}
-                                            >
-                                              {actionPending ? "Closing..." : "Close Experiment"}
-                                            </button>
-                                          </div>
-                                        ) : null}
-
-                                        {status === "DECIDED" ? (
-                                          <p style={{ margin: "0.28rem 0 0", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
-                                            Decision: {String(exp.decision || "N/A")}
-                                          </p>
-                                        ) : null}
-
-                                        {ritualExperimentActionError[expId] ? (
-                                          <p style={{ margin: "0.28rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-                                            {ritualExperimentActionError[expId]}
-                                          </p>
-                                        ) : null}
-                                        {ritualExperimentActionMessage[expId] ? (
-                                          <p style={{ margin: "0.28rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
-                                            {ritualExperimentActionMessage[expId]}
-                                          </p>
-                                        ) : null}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
-                                  No experiments created for this KR yet.
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        <button
-                          className="primary-button"
-                          type="button"
-                          style={{ marginTop: "0.4rem" }}
-                          onClick={() => void handleRitualCheckInSubmit(kr)}
-                          disabled={Boolean(ritualCheckInPending[kr.id])}
-                        >
-                          {ritualCheckInPending[kr.id] ? "Saving..." : "Submit Check-In"}
-                        </button>
-                        {ritualCheckInError[kr.id] ? (
-                          <p style={{ margin: "0.28rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
-                            {ritualCheckInError[kr.id]}
-                          </p>
-                        ) : null}
-                        {ritualCheckInMessage[kr.id] ? (
-                          <p style={{ margin: "0.28rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
-                            {ritualCheckInMessage[kr.id]}
-                          </p>
-                        ) : null}
-                      </div>
-                    );
-                    })
-                  ) : (
-                    <p style={{ margin: 0, color: "var(--ink-soft)" }}>All clear for this cycle.</p>
-                  )}
-                </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.45rem" }}>
-                  <button className="primary-button" type="button" onClick={() => setRitualStep(3)}>
-                    Next: Plan
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            {ritualStep === 3 ? (
-              <div style={{ marginTop: "0.5rem" }}>
-                <p style={{ margin: 0, color: "var(--ink-soft)" }}>
-                  Week: {startOfWeekIso()} to {endOfWeekIso()}
-                </p>
-                {weeklyPlanData ? (
-                  <div style={{ marginTop: "0.35rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.5rem" }}>
-                    <strong>Current plan</strong>
-                    <p style={{ margin: "0.24rem 0 0" }}>1. {weeklyPlanData.priority_1 || "-"}</p>
-                    <p style={{ margin: "0.2rem 0 0" }}>2. {weeklyPlanData.priority_2 || "-"}</p>
-                    <p style={{ margin: "0.2rem 0 0" }}>3. {weeklyPlanData.priority_3 || "-"}</p>
-                  </div>
-                ) : null}
-                <div style={{ marginTop: "0.42rem", display: "grid", gap: "0.35rem" }}>
-                  <input className="input" value={weeklyDraft.p1} onChange={(event) => setWeeklyDraft((prev) => ({ ...prev, p1: event.target.value }))} placeholder="Priority 1 (required)" />
-                  <input className="input" value={weeklyDraft.p2} onChange={(event) => setWeeklyDraft((prev) => ({ ...prev, p2: event.target.value }))} placeholder="Priority 2" />
-                  <input className="input" value={weeklyDraft.p3} onChange={(event) => setWeeklyDraft((prev) => ({ ...prev, p3: event.target.value }))} placeholder="Priority 3" />
-                  <button
-                    className="primary-button"
-                    type="button"
-                    onClick={() => void handleWeeklyPlanSave("ritual")}
-                    disabled={modeActionPending}
-                    style={{ marginTop: "0.1rem" }}
-                  >
-                    {modeActionPending ? "Saving..." : "Finish Check-In"}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.6rem", gap: "0.5rem" }}>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => setRitualStep((prev) => (prev > 1 ? ((prev - 1) as 1 | 2 | 3) : prev))}
-                disabled={ritualStep === 1}
-              >
-                Back
-              </button>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => setRitualStep((prev) => (prev < 3 ? ((prev + 1) as 1 | 2 | 3) : prev))}
-                disabled={ritualStep === 3}
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <RitualModePanel
+            ritualStep={ritualStep}
+            setRitualStep={setRitualStep}
+            cycleLabel={cycleDisplayLabel(resolvedCycle)}
+            ritualKrs={ritualKrs}
+            ritualSubmittedCount={ritualSubmittedCount}
+            ritualReviewLogs={ritualReviewLogs}
+            ritualReviewExperiments={ritualReviewExperiments}
+            toDateShortLabel={toDateShortLabel}
+            ritualReviewRange={ritualReviewRange}
+            retroDraft={retroDraft}
+            setRetroDraft={setRetroDraft}
+            handleRetroCreate={handleRetroCreate}
+            startOfWeekIso={startOfWeekIso}
+            modeActionPending={modeActionPending}
+            ritualCheckInDrafts={ritualCheckInDrafts}
+            ritualExperimentsByKr={ritualExperimentsByKr}
+            ritualExperimentDrafts={ritualExperimentDrafts}
+            ritualExperimentFormOpen={ritualExperimentFormOpen}
+            setRitualExperimentFormOpen={setRitualExperimentFormOpen}
+            ritualExperimentPending={ritualExperimentPending}
+            ritualExperimentError={ritualExperimentError}
+            ritualExperimentMessage={ritualExperimentMessage}
+            ritualExperimentCloseDrafts={ritualExperimentCloseDrafts}
+            ritualExperimentActionPending={ritualExperimentActionPending}
+            updateRitualExperimentCloseDraft={updateRitualExperimentCloseDraft}
+            ritualExperimentActionError={ritualExperimentActionError}
+            ritualExperimentActionMessage={ritualExperimentActionMessage}
+            updateRitualCheckInDraft={updateRitualCheckInDraft}
+            updateRitualExperimentDraft={updateRitualExperimentDraft}
+            handleRitualExperimentCreate={handleRitualExperimentCreate}
+            handleRitualExperimentStart={handleRitualExperimentStart}
+            handleRitualExperimentClose={handleRitualExperimentClose}
+            formatOptionalNumber={formatOptionalNumber}
+            ritualCheckInPending={ritualCheckInPending}
+            handleRitualCheckInSubmit={handleRitualCheckInSubmit}
+            ritualCheckInError={ritualCheckInError}
+            ritualCheckInMessage={ritualCheckInMessage}
+            weeklyPlanData={weeklyPlanData}
+            weeklyDraft={weeklyDraft}
+            setWeeklyDraft={setWeeklyDraft}
+            handleWeeklyPlanSave={handleWeeklyPlanSave}
+            endOfWeekIso={endOfWeekIso}
+          />
         ) : null}
 
         {mode === "retrobox" ? (
-          <div style={{ marginTop: "0.5rem" }}>
-            <label style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>Retro content</label>
-            <textarea
-              className="input"
-              value={retroDraft.content}
-              onChange={(event) => setRetroDraft((prev) => ({ ...prev, content: event.target.value }))}
-              rows={4}
-            />
-            <label style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>Sentiment (optional)</label>
-            <input
-              className="input"
-              value={retroDraft.sentiment}
-              onChange={(event) => setRetroDraft((prev) => ({ ...prev, sentiment: event.target.value }))}
-            />
-            <button className="primary-button" type="button" onClick={() => void handleRetroCreate()} disabled={modeActionPending} style={{ marginTop: "0.5rem" }}>
-              {modeActionPending ? "Saving..." : "Add retrospective"}
-            </button>
-            <div className="atlas-node-list" style={{ marginTop: "0.55rem", maxHeight: "42vh" }}>
-              {retroItems.length ? (
-                retroItems.map((retro) => (
-                  <div key={retro.id} style={{ padding: "0.42rem 0", borderBottom: "1px solid var(--line)" }}>
-                    <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)" }}>
-                      {formatOptionalDate(retro.week_start_date)} • {retro.sentiment || "n/a"}
-                    </div>
-                    <p style={{ margin: "0.2rem 0 0", whiteSpace: "pre-wrap" }}>{retro.content || ""}</p>
-                  </div>
-                ))
-              ) : (
-                <p style={{ margin: 0, color: "var(--ink-soft)" }}>No retrospectives yet.</p>
-              )}
-            </div>
-          </div>
+          <RetroboxModePanel
+            retroDraft={retroDraft}
+            onRetroDraftChange={(patch) => {
+              setRetroDraft((prev) => ({ ...prev, ...patch }));
+            }}
+            modeActionPending={modeActionPending}
+            onAddRetrospective={() => {
+              void handleRetroCreate();
+            }}
+            retroItems={retroItems}
+            formatOptionalDate={formatOptionalDate}
+          />
         ) : null}
 
         {mode === "timeline" ? (
-          <div style={{ marginTop: "0.5rem" }}>
-            <div className="atlas-rollup">
-              <span>Tasks in cycle: {timelineRows.length}</span>
-              <span>Visible: {timelineRowsFiltered.length}</span>
-              <span>Done: {timelineStatusCounts.done}</span>
-              <span>In progress: {timelineStatusCounts.inProgress}</span>
-              <span>Blocked/Overdue: {timelineStatusCounts.blocked + timelineStatusCounts.overdue}</span>
-            </div>
-            <div className="timeline-controls" style={{ marginTop: "0.45rem" }}>
-              <input
-                className="input"
-                value={timelineQuery}
-                onChange={(event) => setTimelineQuery(event.target.value)}
-                placeholder="Filter timeline by task, owner, objective, goal, or status"
-              />
-              <select
-                className="input"
-                value={timelineStatusFilter}
-                onChange={(event) =>
-                  setTimelineStatusFilter(
-                    event.target.value as "all" | "todo" | "in_progress" | "done" | "blocked" | "overdue",
-                  )
-                }
-              >
-                <option value="all">All statuses</option>
-                <option value="todo">Todo</option>
-                <option value="in_progress">In Progress</option>
-                <option value="done">Done</option>
-                <option value="blocked">Blocked</option>
-                <option value="overdue">Overdue</option>
-              </select>
-            </div>
-            {timelineWindow ? (
-              <div className="timeline-board" style={{ marginTop: "0.45rem" }}>
-                <div className="timeline-board-header">
-                  <strong>Project Gantt</strong>
-                  <span>
-                    {toDateShortLabel(timelineWindow.start)} to {toDateShortLabel(timelineWindow.end)}
-                  </span>
-                </div>
-                <div className="timeline-rows">
-                  {timelineRowsFiltered.map((row) => {
-                    const startPct =
-                      ((row.startAt.getTime() - timelineWindow.start.getTime()) / timelineWindow.spanMs) * 100;
-                    const endPct =
-                      ((row.endAt.getTime() - timelineWindow.start.getTime()) / timelineWindow.spanMs) * 100;
-                    const leftPct = Math.max(0, Math.min(100, startPct));
-                    const widthPct = Math.max(1.2, Math.min(100 - leftPct, endPct - leftPct));
-                    const statusClass = row.status.toLowerCase().replace("_", "-");
-                    return (
-                      <div key={row.id} className="timeline-row">
-                        <div className="timeline-meta">
-                          <strong>{row.title}</strong>
-                          <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)" }}>
-                            {timelineStatusLabel(row.status)} • {row.assigneeName}
-                          </div>
-                          <div style={{ fontSize: "0.75rem", color: "var(--ink-soft)" }}>
-                            {row.objectiveTitle || row.keyResultTitle || row.goalTitle || "No lineage"}
-                          </div>
-                          <button
-                            className="primary-button"
-                            type="button"
-                            style={{ marginTop: "0.3rem", padding: "0.32rem 0.48rem", fontSize: "0.72rem" }}
-                            onClick={() => {
-                              const ref = `task_${row.id}`;
-                              const routePath = pathForMode("atlas");
-                              const query = buildDeepLinkQuery({
-                                cycle: cycleId,
-                                mode: "atlas",
-                                sel: ref,
-                                ft: ref,
-                                lens,
-                              });
-                              router.replace(query ? `${routePath}?${query}` : routePath);
-                              setSelectedRef(ref);
-                              setFocusTaskRef(ref);
-                              setMode("atlas");
-                            }}
-                          >
-                            Open in Atlas
-                          </button>
-                        </div>
-                        <div className="timeline-lane">
-                          <div className="timeline-today-line" style={{ left: `${timelineWindow.todayLeftPct}%` }} />
-                          <div
-                            className={`timeline-bar timeline-status-${statusClass}${row.isProjectedEnd ? " is-projected" : ""}${row.isOverdue ? " is-overdue" : ""}`}
-                            style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                            title={`${row.title}: ${toDateShortLabel(row.startAt)} -> ${toDateShortLabel(row.endAt)}`}
-                          >
-                            <span className="timeline-bar-label">{Math.round(row.progress)}%</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {!timelineRowsFiltered.length ? (
-                    <p style={{ margin: "0.3rem 0 0", color: "var(--ink-soft)" }}>
-                      No tasks match current timeline filters.
-                    </p>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <p style={{ margin: "0.45rem 0 0", color: "var(--ink-soft)" }}>
-                {timelineQuery || timelineStatusFilter !== "all"
-                  ? "No tasks match current timeline filters."
-                  : "No tasks found for the current cycle."}
-              </p>
-            )}
-
-            <div className="atlas-node-list" style={{ marginTop: "0.55rem", maxHeight: "24vh" }}>
-              {timelineLogs.length ? (
-                timelineLogs.slice(0, 40).map((log) => (
-                  <div key={log.id} style={{ padding: "0.35rem 0", borderBottom: "1px solid var(--line)" }}>
-                    <strong>{String(log.task?.title || `Task #${log.task_id || "-"}`)}</strong>
-                    <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)" }}>
-                      {formatOptionalDate(log.start_time)} • {Math.round(Number(log.duration_minutes || 0))} min
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p style={{ margin: 0, color: "var(--ink-soft)" }}>No recent work logs for current actor.</p>
-              )}
-            </div>
-          </div>
+          <TimelineModePanel
+            timelineRows={timelineRows}
+            timelineRowsFiltered={timelineRowsFiltered}
+            timelineStatusCounts={timelineStatusCounts}
+            timelineQuery={timelineQuery}
+            onTimelineQueryChange={setTimelineQuery}
+            timelineStatusFilter={timelineStatusFilter}
+            onTimelineStatusFilterChange={setTimelineStatusFilter}
+            timelineWindow={timelineWindow}
+            timelineLogs={timelineLogs}
+            timelineStatusLabel={timelineStatusLabel}
+            toDateShortLabel={toDateShortLabel}
+            formatOptionalDate={formatOptionalDate}
+            onOpenTaskInAtlas={(taskId) => {
+              const ref = `task_${taskId}`;
+              const routePath = pathForMode("atlas");
+              const query = buildDeepLinkQuery({
+                cycle: cycleId,
+                mode: "atlas",
+                sel: ref,
+                ft: ref,
+                lens,
+              });
+              router.replace(query ? `${routePath}?${query}` : routePath);
+              setSelectedRef(ref);
+              setFocusTaskRef(ref);
+              setMode("atlas");
+            }}
+          />
         ) : null}
       </section>
       )}

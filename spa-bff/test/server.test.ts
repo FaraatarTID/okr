@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createServer } from "../src/server.js";
 import type { BffConfig } from "../src/config.js";
+import { createServer } from "../src/server.js";
+import { issueSessionToken, type SessionUser } from "../src/session.js";
 
 const baseConfig: BffConfig = {
   host: "127.0.0.1",
@@ -10,6 +11,19 @@ const baseConfig: BffConfig = {
   backendServiceToken: "test-token",
   backendSigningSecret: "test-signing-secret",
   requestTimeoutMs: 5_000,
+  sessionSecret: "test-session-secret",
+  sessionTtlSeconds: 28_800,
+  cookieSecure: false,
+};
+
+const DEFAULT_USER: SessionUser = {
+  id: 1,
+  username: "member-1",
+  display_name: "Member One",
+  role: "member",
+  team_id: 11,
+  manager_id: null,
+  must_change_password: false,
 };
 
 const NODE_CREATE_CASES = [
@@ -85,6 +99,15 @@ const NODE_DELETE_CASES = [
   },
 ] as const;
 
+function sessionCookie(user: SessionUser = DEFAULT_USER): string {
+  const token = issueSessionToken({
+    user,
+    secret: baseConfig.sessionSecret,
+    ttlSeconds: baseConfig.sessionTtlSeconds,
+  });
+  return `okr_spa_session=${encodeURIComponent(token)}`;
+}
+
 describe("spa-bff server", () => {
   it("returns health payload", async () => {
     const app = createServer(baseConfig, {
@@ -105,6 +128,83 @@ describe("spa-bff server", () => {
     });
   });
 
+  it("creates session cookie via /session/login", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          user: {
+            id: 2,
+            username: "admin",
+            display_name: "Admin",
+            role: "admin",
+            team_id: 9,
+            manager_id: null,
+            must_change_password: false,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({
+      method: "POST",
+      url: "/session/login",
+      payload: {
+        username: "admin",
+        password: "secret",
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().user.username).toBe("admin");
+    const setCookie = response.headers["set-cookie"];
+    expect(String(setCookie)).toContain("okr_spa_session=");
+    expect(String(setCookie)).toContain("HttpOnly");
+    expect(String(setCookie)).toContain("SameSite=Lax");
+  });
+
+  it("returns session user for /session/me", async () => {
+    const app = createServer(baseConfig, { fetchFn: vi.fn() });
+    const response = await app.inject({
+      method: "GET",
+      url: "/session/me",
+      headers: {
+        cookie: sessionCookie(),
+      },
+    });
+    await app.close();
+    expect(response.statusCode).toBe(200);
+    expect(response.json().user.username).toBe("member-1");
+  });
+
+  it("rejects /session/me when cookie is missing", async () => {
+    const app = createServer(baseConfig, { fetchFn: vi.fn() });
+    const response = await app.inject({
+      method: "GET",
+      url: "/session/me",
+    });
+    await app.close();
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("clears session cookie on /session/logout", async () => {
+    const app = createServer(baseConfig, { fetchFn: vi.fn() });
+    const response = await app.inject({
+      method: "POST",
+      url: "/session/logout",
+    });
+    await app.close();
+    expect(response.statusCode).toBe(200);
+    const setCookie = String(response.headers["set-cookie"] ?? "");
+    expect(setCookie).toContain("okr_spa_session=");
+    expect(setCookie).toContain("Max-Age=0");
+  });
+
   it("rejects non-allowlisted routes", async () => {
     const app = createServer(baseConfig, {
       fetchFn: vi.fn(),
@@ -113,6 +213,7 @@ describe("spa-bff server", () => {
       method: "POST",
       url: "/api/backend/v1/state/forbidden",
       payload: { value: "x" },
+      headers: { cookie: sessionCookie() },
     });
     await app.close();
 
@@ -120,7 +221,7 @@ describe("spa-bff server", () => {
     expect(response.json().error).toContain("allowlisted");
   });
 
-  it("proxies allowlisted route to backend and returns response", async () => {
+  it("uses session actor for actor-scoped routes and ignores forged client actor header", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ status: "ok" }), {
         status: 200,
@@ -133,12 +234,17 @@ describe("spa-bff server", () => {
       method: "POST",
       url: "/api/backend/v1/read/query",
       headers: {
-        "x-okr-actor": "admin",
+        cookie: sessionCookie({
+          ...DEFAULT_USER,
+          username: "admin",
+          role: "admin",
+        }),
+        "x-okr-actor": "forged-user",
       },
       payload: {
         kind: "node",
         params: { node_type: "GOAL", node_id: 1 },
-        actor_username: "mallory",
+        actor_username: "forged-payload-user",
       },
     });
     await app.close();
@@ -156,7 +262,7 @@ describe("spa-bff server", () => {
     expect(headers["x-okr-nonce"]).toMatch(/^[a-f0-9]{32}$/);
   });
 
-  it("rejects actor-scoped routes when x-okr-actor is missing", async () => {
+  it("rejects actor-scoped routes when session is missing", async () => {
     const fetchFn = vi.fn();
     const app = createServer(baseConfig, { fetchFn });
     const response = await app.inject({
@@ -165,14 +271,33 @@ describe("spa-bff server", () => {
       payload: {
         kind: "cycles.active",
         params: {},
-        actor_username: "payload-only",
       },
     });
     await app.close();
 
-    expect(response.statusCode).toBe(400);
-    expect(response.json().error).toContain("x-okr-actor");
+    expect(response.statusCode).toBe(401);
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("allows login route through backend proxy without session", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ success: false, error_code: "INVALID_CREDENTIALS" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/backend/v1/auth/login",
+      payload: {
+        username: "admin",
+        password: "bad",
+      },
+    });
+    await app.close();
+    expect(response.statusCode).toBe(401);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
   it("omits signing headers when signing secret is not configured", async () => {
@@ -194,7 +319,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/read/query",
-      headers: { "x-okr-actor": "member-1" },
+      headers: { cookie: sessionCookie() },
       payload: { kind: "atlas_scope", params: {}, actor_username: "member-1" },
     });
     await app.close();
@@ -220,7 +345,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/timer/start",
-      headers: { "x-okr-actor": "member-1" },
+      headers: { cookie: sessionCookie() },
       payload: { task_id: 42, user_id: "member-1" },
     });
     await app.close();
@@ -255,7 +380,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/timer/stop",
-      headers: { "x-okr-actor": "member-1" },
+      headers: { cookie: sessionCookie() },
       payload: { task_id: 42, user_id: "member-1", summary: "Completed focus run" },
     });
     await app.close();
@@ -292,7 +417,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "PATCH",
       url: "/api/backend/v1/nodes/task/77",
-      headers: { "x-okr-actor": "member-1" },
+      headers: { cookie: sessionCookie() },
       payload: {
         actor_username: "member-1",
         updates: { title: "Task A", description: "Refined by SPA probe", progress: 60 },
@@ -332,7 +457,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/ai/analyze-node",
-      headers: { "x-okr-actor": "member-1" },
+      headers: { cookie: sessionCookie() },
       payload: {
         node_id: 77,
         node_type: "KEY_RESULT",
@@ -361,7 +486,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/ai/team-coach",
-      headers: { "x-okr-actor": "manager-1" },
+      headers: { cookie: sessionCookie() },
       payload: {
         actor_username: "payload-user",
         team_data: { total_krs: 9, avg_confidence: 7.2 },
@@ -371,10 +496,6 @@ describe("spa-bff server", () => {
 
     expect(response.statusCode).toBe(400);
     expect(response.json().detail).toContain("unavailable");
-
-    const [, options] = fetchFn.mock.calls[0] as [string, RequestInit];
-    const headers = (options.headers ?? {}) as Record<string, string>;
-    expect(headers["x-okr-actor"]).toBe("manager-1");
   });
 
   it("proxies ai strategy-pulse route and returns payload", async () => {
@@ -397,7 +518,9 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/ai/strategy-pulse",
-      headers: { "x-okr-actor": "manager-1" },
+      headers: {
+        cookie: sessionCookie({ ...DEFAULT_USER, username: "manager-1", role: "manager" }),
+      },
       payload: {
         actor_username: "payload-user",
         cycle_id: 8,
@@ -436,7 +559,7 @@ describe("spa-bff server", () => {
       const response = await app.inject({
         method: "POST",
         url: path,
-        headers: { "x-okr-actor": "member-1" },
+        headers: { cookie: sessionCookie() },
         payload,
       });
       await app.close();
@@ -472,7 +595,7 @@ describe("spa-bff server", () => {
       const response = await app.inject({
         method: "DELETE",
         url: path,
-        headers: { "x-okr-actor": "member-1" },
+        headers: { cookie: sessionCookie() },
       });
       await app.close();
 
@@ -497,7 +620,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "DELETE",
       url: "/api/backend/v1/nodes/task/999",
-      headers: { "x-okr-actor": "member-1" },
+      headers: { cookie: sessionCookie() },
     });
     await app.close();
 

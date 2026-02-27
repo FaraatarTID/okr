@@ -6,7 +6,7 @@ Next.js frontend shell for Atlas migration.
 
 Current phase:
 - Read-first migration probe through `spa-bff`.
-- Login and Atlas snapshot checks via `/api/backend/*` rewrite.
+- Login and Atlas snapshot checks via Next.js API route proxy (`/api/backend/*` -> `spa-bff`).
 - Focus Map hierarchy and Inspector detail rendering from snapshot contracts.
 - Deep-link query support for migration keys: `cycle`, `mode`, `sel`, `ft`, `lens`.
 - Timer start/stop mutation probes for focused task validation.
@@ -14,6 +14,17 @@ Current phase:
 - Node CRUD mutation probes for Goal/Objective/KR/Task create + delete paths via BFF.
 - Guided Check-In flow (Review -> Check-Ins -> Plan) with experiment linkage/creation.
 - Timeline mode with cycle-scoped Gantt visualization.
+
+## API client layout
+
+- `src/lib/api.ts` is a compatibility barrel for callers.
+- Domain modules hold implementation:
+  - `src/lib/api/auth.ts`
+  - `src/lib/api/atlas.ts`
+  - `src/lib/api/admin.ts`
+  - `src/lib/api/ritual.ts`
+  - `src/lib/api/jobs.ts`
+  - shared helpers in `src/lib/api/http.ts`
 
 ## Runtime expectations
 
@@ -23,7 +34,7 @@ Current phase:
 ## Environment variables
 
 - `BFF_PUBLIC_ORIGIN` (optional, default `http://127.0.0.1:3001`)
-  - Used by Next.js rewrite rule from `/api/backend/:path*` to BFF.
+  - Used by server-side route handlers to proxy `/api/backend/*` and `/api/session/*` to BFF.
 - `OKR_SPA_ROLLOUT_ENABLED` (optional, default `false`)
   - Enables SPA rollout gating policy.
 - `OKR_SPA_ROLLOUT_ALLOW_ALL` (optional, default `false`)
@@ -53,4 +64,11 @@ Open:
 ```bash
 cd spa-web
 npm run build
+```
+
+## Frontend tests
+
+```bash
+cd spa-web
+npm test
 ```

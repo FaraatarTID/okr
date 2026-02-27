@@ -332,7 +332,7 @@ docker compose -f deploy/docker/docker-compose.yml up -d --build backend-api bac
 
 A Next.js frontend is the primary UI:
 - Path: `spa-web/`
-- Uses rewrite-based proxying to BFF for `/api/backend/*` calls.
+- Uses Next.js API route proxying to BFF for `/api/backend/*` and `/api/session/*` calls.
 - Supports runtime cohort rollout controls via `OKR_SPA_ROLLOUT_*` environment policy.
 - Cohort rollout and rollback procedure: `docs/HYBRID_FRONTEND_COHORT_ROLLOUT_PLAYBOOK.md`.
 - Unified SPA report/dashboards/check-in/admin workflow (no Streamlit bridge dependency for core operation).
@@ -506,20 +506,20 @@ Benchmark hot paths when changing performance-sensitive code:
 python scripts/perf_hotpaths.py
 ```
 
-Run Playwright happy-path e2e test (login -> focus map -> start timer):
+Run Playwright SPA happy-path e2e test (login -> focus map -> start timer):
 
 Windows PowerShell:
 
 ```powershell
-$env:OKR_RUN_PLAYWRIGHT_E2E="1"
-python -m pytest -q tests/test_e2e_playwright_login_to_atlas.py
+$env:OKR_RUN_PLAYWRIGHT_SPA_E2E="1"
+python -m pytest -q tests/test_e2e_playwright_spa_login_to_atlas.py
 ```
 
 macOS/Linux bash:
 
 ```bash
-export OKR_RUN_PLAYWRIGHT_E2E=1
-python -m pytest -q tests/test_e2e_playwright_login_to_atlas.py
+export OKR_RUN_PLAYWRIGHT_SPA_E2E=1
+python -m pytest -q tests/test_e2e_playwright_spa_login_to_atlas.py
 ```
 
 Install browser runtime once if needed:
