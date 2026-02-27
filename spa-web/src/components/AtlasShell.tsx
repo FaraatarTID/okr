@@ -4522,10 +4522,18 @@ export default function AtlasShell() {
     return (
       <main className="page-shell">
         <section className="panel" style={{ padding: "1rem" }}>
-          <p className="kicker">Authentication Required</p>
-          <h2 style={{ margin: "0.1rem 0 0.4rem", fontSize: "1.05rem" }}>Redirecting to login...</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.62rem" }}>
+            <img
+              src="/okr-logo.webp"
+              alt="OKR logo"
+              width={30}
+              height={54}
+              style={{ display: "block", width: "30px", height: "54px", objectFit: "contain" }}
+            />
+            <h2 style={{ margin: 0, fontSize: "1.5rem" }}>OKR</h2>
+          </div>
           <p style={{ margin: 0, color: "var(--ink-soft)" }}>
-            Atlas requires an authenticated session.{" "}
+            Redirecting to login.{" "}
             <a href="/login" style={{ textDecoration: "underline" }}>
               Open login page
             </a>
@@ -4784,18 +4792,25 @@ export default function AtlasShell() {
                 if (!meta) {
                   return null;
                 }
+                const treeIndentRem = 0.7 + meta.depth * 0.95;
+                const treeDepthClass = `depth-${Math.min(meta.depth, 8)}`;
                 return (
-                  <button
+                  <div
                     key={ref}
-                    type="button"
-                    className={`atlas-node-item${selectedRef === ref ? " is-active" : ""}`}
-                    onClick={() => setSelectedRef(ref)}
-                    style={{ paddingLeft: `${0.7 + meta.depth * 0.95}rem` }}
+                    className={`atlas-tree-row ${treeDepthClass}`}
+                    data-depth={meta.depth > 0 ? "1" : "0"}
                   >
-                    <span className="atlas-node-tag">{TYPE_TAG[meta.type]}</span>
-                    <span className="atlas-node-title">{meta.title}</span>
-                    <span className="atlas-node-progress">{meta.progress}%</span>
-                  </button>
+                    <button
+                      type="button"
+                      className={`atlas-node-item atlas-node-item-tree${selectedRef === ref ? " is-active" : ""}`}
+                      onClick={() => setSelectedRef(ref)}
+                      style={{ paddingLeft: `${treeIndentRem}rem` }}
+                    >
+                      <span className="atlas-node-tag">{TYPE_TAG[meta.type]}</span>
+                      <span className="atlas-node-title">{meta.title}</span>
+                      <span className="atlas-node-progress">{meta.progress}%</span>
+                    </button>
+                  </div>
                 );
               })
             ) : (
