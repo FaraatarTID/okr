@@ -56,22 +56,37 @@ async function proxyToBff(request: NextRequest, context: RouteContext): Promise<
     body = buffered.byteLength > 0 ? buffered : undefined;
   }
 
-  const response = await fetch(targetUrl, {
-    method: request.method,
-    headers,
-    body,
-    cache: "no-store",
-  });
+  try {
+    const response = await fetch(targetUrl, {
+      method: request.method,
+      headers,
+      body,
+      cache: "no-store",
+    });
 
-  const responseHeaders = new Headers(response.headers);
-  for (const headerName of HOP_BY_HOP_RESPONSE_HEADERS) {
-    responseHeaders.delete(headerName);
+    const responseHeaders = new Headers(response.headers);
+    for (const headerName of HOP_BY_HOP_RESPONSE_HEADERS) {
+      responseHeaders.delete(headerName);
+    }
+
+    return new NextResponse(response.body, {
+      status: response.status,
+      headers: responseHeaders,
+    });
+  } catch (error) {
+    const detail =
+      error instanceof Error && error.message
+        ? error.message
+        : String(error ?? "unknown proxy failure");
+    return NextResponse.json(
+      {
+        error: "BFF request failed.",
+        detail,
+        bff_origin: BFF_ORIGIN,
+      },
+      { status: 502 },
+    );
   }
-
-  return new NextResponse(response.body, {
-    status: response.status,
-    headers: responseHeaders,
-  });
 }
 
 export async function GET(request: NextRequest, context: RouteContext): Promise<NextResponse> {
