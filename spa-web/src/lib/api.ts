@@ -253,8 +253,19 @@ async function responseDetail(response: Response): Promise<string> {
       detail?: string;
       error?: string;
       error_code?: string;
+      bff_origin?: string;
     };
-    detail = String(payload.detail || payload.error || payload.error_code || detail);
+    const message = String(payload.error || payload.detail || payload.error_code || detail);
+    const reason = String(payload.detail || "").trim();
+    const bffOrigin = String(payload.bff_origin || "").trim();
+    const extra: string[] = [];
+    if (reason && reason !== message) {
+      extra.push(`reason: ${reason}`);
+    }
+    if (bffOrigin) {
+      extra.push(`bff_origin: ${bffOrigin}`);
+    }
+    detail = extra.length > 0 ? `${message} (${extra.join("; ")})` : message;
   } catch {
     // ignore body parse failure
   }
