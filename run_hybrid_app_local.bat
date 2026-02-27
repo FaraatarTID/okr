@@ -19,6 +19,7 @@ set "BFF_OUT_LOG=%LOG_DIR%\spa-bff.out.log"
 set "BFF_ERR_LOG=%LOG_DIR%\spa-bff.err.log"
 set "SPA_OUT_LOG=%LOG_DIR%\spa-web.out.log"
 set "SPA_ERR_LOG=%LOG_DIR%\spa-web.err.log"
+set "PID_FILE=%LOG_DIR%\local-hybrid.pids"
 
 echo ==========================================
 echo  OKR Tracker - Hybrid Local Launcher
@@ -180,6 +181,7 @@ if exist "%BFF_OUT_LOG%" del /q "%BFF_OUT_LOG%" >nul 2>&1
 if exist "%BFF_ERR_LOG%" del /q "%BFF_ERR_LOG%" >nul 2>&1
 if exist "%SPA_OUT_LOG%" del /q "%SPA_OUT_LOG%" >nul 2>&1
 if exist "%SPA_ERR_LOG%" del /q "%SPA_ERR_LOG%" >nul 2>&1
+if exist "%PID_FILE%" del /q "%PID_FILE%" >nul 2>&1
 
 echo [INFO] Stopping stale local hybrid processes (if any)...
 call :stop_stale_hybrid_processes
@@ -190,6 +192,7 @@ set "SPAWN_EXE=%PYEXE%"
 set "SPAWN_ARGS=-m backend_app.run_api"
 set "SPAWN_OUT=%BACKEND_OUT_LOG%"
 set "SPAWN_ERR=%BACKEND_ERR_LOG%"
+set "SPAWN_PID_FILE=%PID_FILE%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_backend_failed
 
@@ -199,6 +202,7 @@ set "SPAWN_EXE=%PYEXE%"
 set "SPAWN_ARGS=-m backend_app.worker"
 set "SPAWN_OUT=%WORKER_OUT_LOG%"
 set "SPAWN_ERR=%WORKER_ERR_LOG%"
+set "SPAWN_PID_FILE=%PID_FILE%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_worker_failed
 
@@ -208,6 +212,7 @@ set "SPAWN_EXE=cmd.exe"
 set "SPAWN_ARGS=/d /c npm run dev"
 set "SPAWN_OUT=%BFF_OUT_LOG%"
 set "SPAWN_ERR=%BFF_ERR_LOG%"
+set "SPAWN_PID_FILE=%PID_FILE%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_bff_failed
 
@@ -217,6 +222,7 @@ set "SPAWN_EXE=cmd.exe"
 set "SPAWN_ARGS=/d /c npm run start -- -p 3000 -H 127.0.0.1"
 set "SPAWN_OUT=%SPA_OUT_LOG%"
 set "SPAWN_ERR=%SPA_ERR_LOG%"
+set "SPAWN_PID_FILE=%PID_FILE%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_spa_failed
 
@@ -241,6 +247,7 @@ echo - Backend Worker: active
 echo - SPA BFF:     http://127.0.0.1:3001
 echo - SPA Web:     http://127.0.0.1:3000
 echo - Logs:        %LOG_DIR%
+echo - PID file:    %PID_FILE%
 echo.
 echo [INFO] Opening SPA Web...
 start "" "http://127.0.0.1:3000"
@@ -365,16 +372,21 @@ exit /b 0
     "$args=[Environment]::GetEnvironmentVariable('SPAWN_ARGS');" ^
     "$out=[Environment]::GetEnvironmentVariable('SPAWN_OUT');" ^
     "$err=[Environment]::GetEnvironmentVariable('SPAWN_ERR');" ^
-    "try { Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $cwd -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden -ErrorAction Stop | Out-Null; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
+    "$pidFile=[Environment]::GetEnvironmentVariable('SPAWN_PID_FILE');" ^
+    "try { $proc = Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $cwd -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden -PassThru -ErrorAction Stop; if ($pidFile) { Add-Content -Path $pidFile -Value $proc.Id }; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
 exit /b %ERRORLEVEL%
 
 :stop_stale_hybrid_processes
 "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$root = [Environment]::GetEnvironmentVariable('ROOT_CLEAN');" ^
+    "$root = [string][Environment]::GetEnvironmentVariable('ROOT_CLEAN');" ^
+    "$rootNorm = $root.ToLowerInvariant();" ^
+    "$pidFile = [string][Environment]::GetEnvironmentVariable('PID_FILE');" ^
     "$regex = 'backend_app.run_api|backend_app.worker|spa-bff|spa-web\\\\node_modules\\\\.*next\\\\dist\\\\bin\\\\next|next start -- -p 3000|tsx watch';" ^
     "$currentPid = $PID;" ^
-    "$byCommand = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $cmd = [string]$_.CommandLine; $name = [string]$_.Name; $_.ProcessId -ne $currentPid -and $cmd -and $cmd.Contains($root) -and ($name -in @('python.exe','node.exe','cmd.exe')) -and ($cmd -match $regex) } | Select-Object -ExpandProperty ProcessId;" ^
+    "$byCommand = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $cmd = [string]$_.CommandLine; $name = [string]$_.Name; $cmdNorm = $cmd.ToLowerInvariant(); $_.ProcessId -ne $currentPid -and $cmd -and (($rootNorm -eq '') -or $cmdNorm.Contains($rootNorm)) -and ($name -in @('python.exe','node.exe','cmd.exe')) -and ($cmd -imatch $regex) } | Select-Object -ExpandProperty ProcessId;" ^
     "$byPort = @(); foreach ($port in @(8100, 3001, 3000)) { try { $byPort += (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction Stop | Select-Object -ExpandProperty OwningProcess) } catch {} };" ^
-    "$targets = @($byCommand + $byPort) | Where-Object { $_ } | Sort-Object -Unique;" ^
-    "foreach ($procId in $targets) { try { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue } catch {} }"
+    "$byPidFile = @(); if ($pidFile -and (Test-Path $pidFile)) { $byPidFile = Get-Content -Path $pidFile -ErrorAction SilentlyContinue | ForEach-Object { ($_ -as [int]) } | Where-Object { $_ -gt 0 } };" ^
+    "$targets = @($byCommand + $byPort + $byPidFile) | Where-Object { $_ } | Sort-Object -Unique;" ^
+    "foreach ($procId in $targets) { try { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue } catch {} };" ^
+    "if ($pidFile) { try { Remove-Item -Path $pidFile -Force -ErrorAction SilentlyContinue } catch {} }"
 exit /b 0

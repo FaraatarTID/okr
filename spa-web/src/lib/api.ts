@@ -272,6 +272,61 @@ async function responseDetail(response: Response): Promise<string> {
   return detail;
 }
 
+function waitMs(durationMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, Math.floor(durationMs)));
+  });
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, Math.floor(timeoutMs)));
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function isTransientNetworkError(error: unknown): boolean {
+  const text = String(error instanceof Error ? error.message : error || "")
+    .trim()
+    .toLowerCase();
+  if (!text) {
+    return false;
+  }
+  return (
+    text.includes("socket hang up") ||
+    text.includes("econnreset") ||
+    text.includes("econnrefused") ||
+    text.includes("etimedout") ||
+    text.includes("aborted") ||
+    text.includes("networkerror") ||
+    text.includes("fetch failed")
+  );
+}
+
+function isTransientCycleQueryFailure(status: number, detail: string): boolean {
+  if (status >= 500) {
+    return true;
+  }
+  const normalized = String(detail || "").trim().toLowerCase();
+  return (
+    normalized.includes("socket hang up") ||
+    normalized.includes("econnreset") ||
+    normalized.includes("econnrefused") ||
+    normalized.includes("etimedout") ||
+    normalized.includes("timeout")
+  );
+}
+
 function normalizeBackendDateTime(value: unknown): string {
   const text = String(value || "").trim();
   if (!text) {
@@ -491,21 +546,50 @@ export async function readCyclesQuery(input: {
   actor_username: string;
   kind: "cycles.active" | "cycles.all";
 }): Promise<CycleSummary[]> {
-  const response = await fetch("/api/backend/v1/read/query", {
-    method: "POST",
-    cache: "no-store",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
-      kind: input.kind,
-      params: {},
-      actor_username: input.actor_username,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Cycle query failed: ${await responseDetail(response)}`);
+  const maxAttempts = 4;
+  const perAttemptTimeoutMs = 8_000;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(
+        "/api/backend/v1/read/query",
+        {
+          method: "POST",
+          cache: "no-store",
+          headers: jsonHeaders(input.actor_username),
+          body: JSON.stringify({
+            kind: input.kind,
+            params: {},
+            actor_username: input.actor_username,
+          }),
+        },
+        perAttemptTimeoutMs,
+      );
+    } catch (error) {
+      const retryable = isTransientNetworkError(error);
+      if (retryable && attempt < maxAttempts) {
+        await waitMs(250 * 2 ** (attempt - 1));
+        continue;
+      }
+      throw new Error(
+        `Cycle query failed: ${String(error instanceof Error ? error.message : error)}`,
+      );
+    }
+
+    if (response.ok) {
+      const payload = (await response.json()) as { cycles?: CycleSummary[] };
+      return Array.isArray(payload.cycles) ? payload.cycles : [];
+    }
+
+    const detail = await responseDetail(response);
+    const retryable = isTransientCycleQueryFailure(response.status, detail);
+    if (retryable && attempt < maxAttempts) {
+      await waitMs(250 * 2 ** (attempt - 1));
+      continue;
+    }
+    throw new Error(`Cycle query failed: ${detail}`);
   }
-  const payload = (await response.json()) as { cycles?: CycleSummary[] };
-  return Array.isArray(payload.cycles) ? payload.cycles : [];
+  throw new Error("Cycle query failed: retry attempts exhausted.");
 }
 
 export async function createCycleMutation(input: {

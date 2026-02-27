@@ -1819,6 +1819,12 @@ def api_read_query(
             status_code=_status_for_value_error(str(exc)),
             detail=str(exc),
         ) from exc
+    except Exception as exc:
+        error_log("backend_read_query_unhandled_error", exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Unexpected server error while processing read query.",
+        ) from exc
 
 
 @app.get("/healthz")
@@ -3226,4 +3232,3 @@ def api_delete_work_log(
     if not deleted:
         raise HTTPException(status_code=404, detail="Work log not found.")
     return WorkLogDeleteResponse(id=int(work_log_id), deleted=True)
-

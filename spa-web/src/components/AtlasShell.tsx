@@ -1370,6 +1370,18 @@ export default function AtlasShell() {
     ) {
       return;
     }
+
+    const cachedMatch = sessionCycles.find((cycle) => cycle.id === parsedCycleId);
+    if (cachedMatch) {
+      setResolvedCycle({
+        id: cachedMatch.id,
+        title: cachedMatch.title,
+        start_date: cachedMatch.start_date || null,
+        end_date: cachedMatch.end_date || null,
+      });
+      return;
+    }
+
     let active = true;
     void (async () => {
       try {
@@ -1398,7 +1410,7 @@ export default function AtlasShell() {
     return () => {
       active = false;
     };
-  }, [parsedCycleId, resolvedCycle, user]);
+  }, [parsedCycleId, resolvedCycle, sessionCycles, user]);
 
   const parsedOwnerIds = useMemo(() => parseOwnerIds(ownerIdsInput), [ownerIdsInput]);
 
@@ -2116,6 +2128,41 @@ export default function AtlasShell() {
 
     void (async () => {
       try {
+        const activeCycles = await readCyclesQuery({
+          actor_username: user.username,
+          kind: "cycles.active",
+        });
+        if (!active) {
+          return;
+        }
+        const sortedActive = [...activeCycles].sort((left, right) => right.id - left.id);
+        const selectedActive = pickCycle(sortedActive);
+        if (selectedActive) {
+          setSessionCycles(sortedActive);
+          setResolvedCycle({
+            id: selectedActive.id,
+            title: selectedActive.title,
+            start_date: selectedActive.start_date || null,
+            end_date: selectedActive.end_date || null,
+          });
+          setCycleId(String(selectedActive.id));
+          void (async () => {
+            try {
+              const allCycles = await readCyclesQuery({
+                actor_username: user.username,
+                kind: "cycles.all",
+              });
+              if (!active) {
+                return;
+              }
+              setSessionCycles([...allCycles].sort((left, right) => right.id - left.id));
+            } catch {
+              // keep active-cycle bootstrap state if full list hydration fails
+            }
+          })();
+          return;
+        }
+
         const cycles = await readCyclesQuery({
           actor_username: user.username,
           kind: "cycles.all",
@@ -4761,9 +4808,6 @@ export default function AtlasShell() {
             {parsedOwnerIds.error}
           </p>
         ) : null}
-        <p style={{ margin: "0.25rem 0 0", color: "var(--ink-soft)", fontSize: "0.8rem" }}>
-          Streamlit Report Bridge: available via workspace report modes.
-        </p>
         {cycleResolveError ? (
           <p style={{ margin: "0.25rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>{cycleResolveError}</p>
         ) : null}
