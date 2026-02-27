@@ -272,6 +272,25 @@ h4 {
   padding-right: 0.2rem;
 }
 
+.atlas-tree-row {
+  position: relative;
+}
+
+.atlas-tree-row[data-depth="1"]::before {
+  content: "";
+  position: absolute;
+  left: 1.23rem;
+  top: 0.34rem;
+  bottom: 0.34rem;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--line-strong) 80%, transparent),
+    color-mix(in srgb, var(--line) 60%, transparent)
+  );
+  pointer-events: none;
+}
+
 .atlas-node-item {
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -292,6 +311,60 @@ h4 {
   transform: translateY(-1px);
   border-color: var(--line-strong);
   box-shadow: 0 14px 22px -22px rgba(20, 36, 45, 0.8);
+}
+
+.atlas-node-item-tree {
+  position: relative;
+}
+
+.atlas-node-item-tree::before {
+  content: "";
+  position: absolute;
+  left: 1.23rem;
+  top: 50%;
+  width: 0.44rem;
+  border-top: 1px solid color-mix(in srgb, var(--line-strong) 84%, transparent);
+  transform: translate(calc(-100% + 1px), -50%);
+  pointer-events: none;
+}
+
+.atlas-tree-row[data-depth="0"] .atlas-node-item-tree::before {
+  display: none;
+}
+
+.atlas-tree-row.depth-2::before,
+.atlas-tree-row.depth-2 .atlas-node-item-tree::before {
+  left: 2.18rem;
+}
+
+.atlas-tree-row.depth-3::before,
+.atlas-tree-row.depth-3 .atlas-node-item-tree::before {
+  left: 3.13rem;
+}
+
+.atlas-tree-row.depth-4::before,
+.atlas-tree-row.depth-4 .atlas-node-item-tree::before {
+  left: 4.08rem;
+}
+
+.atlas-tree-row.depth-5::before,
+.atlas-tree-row.depth-5 .atlas-node-item-tree::before {
+  left: 5.03rem;
+}
+
+.atlas-tree-row.depth-6::before,
+.atlas-tree-row.depth-6 .atlas-node-item-tree::before {
+  left: 5.98rem;
+}
+
+.atlas-tree-row.depth-7::before,
+.atlas-tree-row.depth-7 .atlas-node-item-tree::before {
+  left: 6.93rem;
+}
+
+.atlas-tree-row.depth-8::before,
+.atlas-tree-row.depth-8 .atlas-node-item-tree::before {
+  left: 7.88rem;
 }
 
 .atlas-node-item.is-active {
