@@ -6240,6 +6240,7 @@ export default function AtlasShell() {
           <>
             <div className="report-panel-head" style={{ marginTop: "0.35rem" }}>
               <div>
+                <p className="kicker" style={{ margin: 0 }}>Streamlit Report Bridge</p>
                 <p className="kicker" style={{ margin: 0 }}>Week Window</p>
                 <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
                   {startOfWeekIso()} to {endOfWeekIso()} • {cycleDisplayLabel(resolvedCycle)}
@@ -6393,6 +6394,7 @@ export default function AtlasShell() {
           <div style={{ marginTop: "0.35rem" }}>
             <div className="report-panel-head">
               <div>
+                <p className="kicker" style={{ margin: 0 }}>Streamlit Report Bridge</p>
                 <p className="kicker" style={{ margin: 0 }}>Daily Focus Report</p>
                 <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
                   {new Date().toLocaleDateString()} • {cycleDisplayLabel(resolvedCycle)}
