@@ -4,7 +4,7 @@ sqlmodel==0.0.32
 sqlalchemy==2.0.46
 pydantic==2.12.5
 google-genai==1.61.0
-plotly==6.5.2
+plotly==6.6.0
 python-dotenv==1.2.1
 streamlit-agraph==0.0.45
 streamlit-plotly-events==0.0.6
