@@ -8,7 +8,7 @@ plotly==6.5.2
 python-dotenv==1.2.1
 streamlit-agraph==0.0.45
 streamlit-plotly-events==0.0.6
-requests==2.32.5
+requests==2.33.1
 bcrypt==5.0.0
 alembic==1.18.3
 psycopg2-binary==2.9.11
