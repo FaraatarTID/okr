@@ -95,6 +95,7 @@ from src.crud import (
     delete_task,
     delete_team,
     delete_work_log,
+    ensure_admin_exists,
     get_active_cycles,
     get_active_experiments_for_kr,
     get_active_weekly_plan,
@@ -164,6 +165,9 @@ from src.audit import audit_log, error_log
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     init_database()
+    # Hybrid SPA startup relies on the backend API process to seed the first
+    # bootstrap admin when running against a fresh local SQLite database.
+    ensure_admin_exists()
     yield
 
 
@@ -3226,4 +3230,3 @@ def api_delete_work_log(
     if not deleted:
         raise HTTPException(status_code=404, detail="Work log not found.")
     return WorkLogDeleteResponse(id=int(work_log_id), deleted=True)
-
