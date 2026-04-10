@@ -413,3 +413,103 @@ def test_get_node_enforces_read_scope_when_actor_is_provided(isolated_db):
 
     with pytest.raises(PermissionError):
         get_node(member_goal.id, "GOAL", actor_username="ghost_user")
+
+
+def test_admin_create_member_requires_valid_manager_chain(isolated_db):
+    from src.crud import create_user
+    from src.models import UserRole
+
+    create_user("admin_user", "admin-pass", role=UserRole.ADMIN)
+    manager = create_user("manager_user", "manager-pass", role=UserRole.MANAGER)
+    non_manager = create_user("plain_member", "member-pass", role=UserRole.MEMBER)
+
+    with pytest.raises(ValueError, match="must have a manager_id"):
+        create_user(
+            "member_missing_manager",
+            "member-pass",
+            role=UserRole.MEMBER,
+            actor_username="admin_user",
+        )
+
+    with pytest.raises(ValueError, match="manager or admin"):
+        create_user(
+            "member_bad_manager",
+            "member-pass",
+            role=UserRole.MEMBER,
+            manager_id=non_manager.id,
+            actor_username="admin_user",
+        )
+
+    created = create_user(
+        "member_ok",
+        "member-pass",
+        role=UserRole.MEMBER,
+        manager_id=manager.id,
+        actor_username="admin_user",
+    )
+    assert created.manager_id == manager.id
+
+
+def test_admin_update_member_requires_valid_manager_chain(isolated_db):
+    from src.crud import create_user, update_user
+    from src.models import UserRole
+
+    create_user("admin_user", "admin-pass", role=UserRole.ADMIN)
+    manager = create_user("manager_user", "manager-pass", role=UserRole.MANAGER)
+    non_manager = create_user("plain_member", "member-pass", role=UserRole.MEMBER)
+    member = create_user("member_target", "member-pass", role=UserRole.MEMBER)
+
+    with pytest.raises(ValueError, match="must have a manager_id"):
+        update_user(
+            member.id,
+            display_name="still member, but unmanaged",
+            actor_username="admin_user",
+        )
+
+    updated = update_user(
+        member.id,
+        manager_id=manager.id,
+        actor_username="admin_user",
+    )
+    assert updated is not None
+    assert updated.manager_id == manager.id
+
+    with pytest.raises(ValueError, match="manager or admin"):
+        update_user(
+            member.id,
+            manager_id=non_manager.id,
+            actor_username="admin_user",
+        )
+
+
+def test_cycle_governance_allows_manager_and_blocks_member(isolated_db):
+    from src.crud import create_cycle, create_user
+    from src.models import UserRole
+
+    create_user("admin_cycle", "admin-pass", role=UserRole.ADMIN)
+    create_user("manager_cycle", "manager-pass", role=UserRole.MANAGER)
+    create_user("member_cycle", "member-pass", role=UserRole.MEMBER)
+
+    manager_cycle = create_cycle(
+        "Q-Manager",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+        actor_username="manager_cycle",
+    )
+    assert manager_cycle is not None
+
+    admin_cycle = create_cycle(
+        "Q-Admin",
+        start_date=_utc_now_naive(),
+        end_date=_utc_now_naive() + timedelta(days=90),
+        actor_username="admin_cycle",
+    )
+    assert admin_cycle is not None
+
+    with pytest.raises(PermissionError, match="Admin or manager"):
+        create_cycle(
+            "Q-Member",
+            start_date=_utc_now_naive(),
+            end_date=_utc_now_naive() + timedelta(days=90),
+            actor_username="member_cycle",
+        )

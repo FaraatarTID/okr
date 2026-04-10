@@ -21,8 +21,11 @@ The main execution workspace is Atlas (`render_atlas_workspace`), composed of:
 
 ### Focus Map tab
 - Quick Jump search for any goal/objective/KR/task.
-- Scope selector is role-aware (`My OKRs`, team/user scopes for manager/admin).
-- Map Lens supports `Scope` and `Branch` views.
+- Cycle selector is role-aware:
+  - Admin/manager can select from their visible owned cycles.
+  - Member is pinned to the manager/admin active cycle.
+- Owner filter is available for admin users to narrow Atlas reads.
+- Map Lens supports `Focus`, `Health`, and `Owner` views.
 - Map key includes:
   - Performance bands for Goals/Objectives/KRs: `0.0-0.3 Missed`, `0.4-0.6 At Risk`, `0.7-0.9 On Track`, `1.0 Superstar`.
   - Health labels for task/branch state: `Needs care`, `On track`, `Complete`.
@@ -30,6 +33,7 @@ The main execution workspace is Atlas (`render_atlas_workspace`), composed of:
 ### Inspector tab
 - Opens details for the selected node.
 - Use it for edits, lifecycle updates, alignment links, and task schedule/work history.
+- On empty hierarchies, `Manage Nodes` still appears so you can create the first `Goal` without pre-selecting a node.
 
 ### 1.1 Goal vs Objective vs KR (Use Before Editing)
 
@@ -219,7 +223,10 @@ Project Timeline dialog:
 - Visualizes start, finish/deadline fallback, and status colors.
 
 Current implementation note:
-- Timeline is now strictly scoped to the selected `active_cycle_id` and filtered by role visibility (`member` own scope, `manager` team scope, `admin` full cycle scope).
+- Timeline is strictly scoped to an authorized cycle and role visibility:
+  - Member: manager/admin active cycle only.
+  - Manager: owned cycles only.
+  - Admin: any cycle.
 
 Other useful tools:
 - Weekly Focus card in sidebar for top 3 priorities.
@@ -260,7 +267,7 @@ Timing note:
 | Tool / Feature | Primary Owner | Process | Recommended Timing | Frequency | Expected Output |
 |---|---|---|---|---|---|
 | Focus Task (Atlas) | Member / Manager / Admin | Pick one task, run sprint timer, stop with summary. | Start of each focused work block. | Multiple times per day. | Work logs with clear execution evidence. |
-| Focus Map + Map Lens | Member / Manager / Admin | Choose scope (`My OKRs`/team), switch `Scope`/`Branch`, identify `Needs care`. | At session start and when priorities shift. | Daily. | Clear next branch/task decision. |
+| Focus Map + Map Lens | Member / Manager / Admin | Select cycle (if role allows), optionally filter owners (admin), switch `Focus`/`Health`/`Owner`, identify `Needs care`. | At session start and when priorities shift. | Daily. | Clear next branch/task decision. |
 | Inspector | Role-authorized user | Edit node fields (KR metrics, lifecycle, assignments, dates). | Immediately when data quality gaps are found. | Ad hoc (usually daily/weekly). | Correct and auditable OKR data. |
 | Lifecycle & Closing (Inspector) | Objective/KR owner, Manager, Admin | Move state (`DRAFT/ACTIVE/GRADING/ARCHIVED`) and capture reflection. | At phase boundaries of the quarter. | Few times per quarter. | Valid state transitions and closure notes. |
 | Organizational Alignment (Objective Inspector) | Manager / Admin (or authorized owner) | Add/remove objective alignment edges with cycle-safe validation. | During planning and mid-quarter replanning. | Weekly or milestone-based. | Traceable cross-objective dependencies. |
@@ -277,9 +284,9 @@ Timing note:
 ## 10. Manager Visibility + Privilege Clarification
 
 How managers see team OKRs/tasks:
-1. In Atlas Focus Map, choose `My Team` in scope selector.
+1. In Atlas Focus Map, choose a cycle where you are assigned as cycle owner.
 2. In Strategic Dashboard, use team/member filter.
-3. In Project Timeline, manager sees role-filtered team-visible tasks for active cycle.
+3. In Project Timeline, manager sees role-filtered team-visible tasks for the selected owned cycle.
 
 Read/Edit/None rules (current behavior):
 1. Manager read: own nodes + direct-report nodes + same-team visibility.
@@ -294,5 +301,3 @@ Gemini retrieval boundary:
 
 Manager step-by-step operating guide:
 - [Manager Playbook](MANAGER_PLAYBOOK.md)
-
-

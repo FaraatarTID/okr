@@ -48,6 +48,9 @@ export async function proxyToBff(
     const buffered = await request.arrayBuffer();
     body = buffered.byteLength > 0 ? buffered : undefined;
   }
+  if (!body) {
+    headers.delete("content-type");
+  }
 
   try {
     const response = await fetch(targetUrl, {

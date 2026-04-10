@@ -148,14 +148,17 @@ jobs:
       - name: SPA BFF build
         run: npm --prefix spa-bff run build
 
+      - name: SPA Web build
+        run: npm --prefix spa-web run build
+
       - name: SPA Web typecheck
         run: npm --prefix spa-web run typecheck
 
       - name: SPA Web tests
         run: npm --prefix spa-web test
 
-      - name: SPA Web build
-        run: npm --prefix spa-web run build
+      - name: SPA Web coverage gate
+        run: npm --prefix spa-web run test:coverage
 
   spa-e2e:
     runs-on: ubuntu-latest
