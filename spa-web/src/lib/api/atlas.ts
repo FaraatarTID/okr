@@ -148,7 +148,7 @@ export async function deleteNodeMutation(input: {
 }): Promise<NodeDeleteResponse> {
   const response = await fetch(`/api/backend/v1/nodes/${input.node_type}/${input.node_id}`, {
     method: "DELETE",
-    headers: jsonHeaders(input.actor_username),
+    headers: jsonHeaders(input.actor_username, false),
   });
   if (!response.ok) {
     throw new Error(`Node delete failed: ${await responseDetail(response)}`);
@@ -162,7 +162,7 @@ export async function deleteWorkLogMutation(input: {
 }): Promise<WorkLogDeleteResponse> {
   const response = await fetch(`/api/backend/v1/work-logs/${input.work_log_id}`, {
     method: "DELETE",
-    headers: jsonHeaders(input.actor_username),
+    headers: jsonHeaders(input.actor_username, false),
   });
   if (!response.ok) {
     throw new Error(`Work log delete failed: ${await responseDetail(response)}`);
@@ -226,6 +226,7 @@ export async function createCycleMutation(input: {
   start_date: string;
   end_date: string;
   is_active: boolean;
+  owner_manager_id?: number;
 }): Promise<CycleSummary> {
   const response = await fetch("/api/backend/v1/cycles", {
     method: "POST",
@@ -236,6 +237,7 @@ export async function createCycleMutation(input: {
       start_date: input.start_date,
       end_date: input.end_date,
       is_active: input.is_active,
+      owner_manager_id: input.owner_manager_id,
     }),
   });
   if (!response.ok) {
@@ -251,6 +253,7 @@ export async function updateCycleMutation(input: {
   start_date: string;
   end_date: string;
   is_active: boolean;
+  owner_manager_id?: number;
 }): Promise<CycleSummary> {
   const response = await fetch(`/api/backend/v1/cycles/${input.cycle_id}`, {
     method: "PATCH",
@@ -261,6 +264,7 @@ export async function updateCycleMutation(input: {
       start_date: input.start_date,
       end_date: input.end_date,
       is_active: input.is_active,
+      owner_manager_id: input.owner_manager_id,
     }),
   });
   if (!response.ok) {
@@ -275,7 +279,7 @@ export async function deleteCycleMutation(input: {
 }): Promise<CycleDeleteResponse> {
   const response = await fetch(`/api/backend/v1/cycles/${input.cycle_id}`, {
     method: "DELETE",
-    headers: jsonHeaders(input.actor_username),
+    headers: jsonHeaders(input.actor_username, false),
   });
   if (!response.ok) {
     throw new Error(`Cycle delete failed: ${await responseDetail(response)}`);
@@ -353,7 +357,7 @@ export async function deleteAlignmentMutation(input: {
 }): Promise<AlignmentDeleteResponse> {
   const response = await fetch(`/api/backend/v1/alignments/${input.edge_id}`, {
     method: "DELETE",
-    headers: jsonHeaders(input.actor_username),
+    headers: jsonHeaders(input.actor_username, false),
   });
   if (!response.ok) {
     throw new Error(`Alignment delete failed: ${await responseDetail(response)}`);

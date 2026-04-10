@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs run",
-    "test:watch": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs"
+    "test:watch": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs",
+    "test:coverage": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs run --coverage"
   },
   "dependencies": {
     "next": "^15.4.6",

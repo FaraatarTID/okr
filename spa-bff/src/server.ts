@@ -123,10 +123,22 @@ export function createServer(
         });
       }
 
-      const user = normalizeSessionUser((payload as { user?: unknown }).user);
-      if (!user) {
-        return reply.code(502).send({
-          error: "Backend login response is missing user context.",
+      const payloadRecord =
+        payload && typeof payload === "object"
+          ? (payload as Record<string, unknown>)
+          : {};
+      const loginSuccess = Boolean(payloadRecord.success);
+      const user = normalizeSessionUser(payloadRecord.user);
+      if (!loginSuccess || !user) {
+        const detail = String(payloadRecord.detail ?? "").trim();
+        const errorCode = String(payloadRecord.error_code ?? "").trim();
+        const message =
+          detail ||
+          (errorCode ? `Login failed: ${errorCode}` : "Invalid username or password.");
+        return reply.code(401).send({
+          success: false,
+          error_code: errorCode || "INVALID_CREDENTIALS",
+          detail: message,
         });
       }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import type { Dispatch, SetStateAction } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
 import type {
   AdminAiHealthResponse,
@@ -39,6 +39,7 @@ export type AdminCreateCycleDraft = {
   startDate: string;
   endDate: string;
   isActive: boolean;
+  ownerManagerId: string;
 };
 
 type AdminModePanelProps = {
@@ -78,6 +79,7 @@ type AdminModePanelProps = {
   adminCycleMessage: string;
   adminCycles: CycleSummary[];
   onAdminSetCycleActive: (cycle: CycleSummary, isActive: boolean) => void;
+  onAdminUpdateCycleOwner: (cycle: CycleSummary, ownerManagerId: number | null) => void;
   onAdminDeleteCycle: (cycle: CycleSummary) => void;
   cyclePeriodLabel: (cycle: Pick<CycleSummary, "start_date" | "end_date"> | null) => string;
   toDateInputValue: (value: unknown) => string;
@@ -126,6 +128,7 @@ export default function AdminModePanel({
   adminCycleMessage,
   adminCycles,
   onAdminSetCycleActive,
+  onAdminUpdateCycleOwner,
   onAdminDeleteCycle,
   cyclePeriodLabel,
   toDateInputValue,
@@ -136,6 +139,32 @@ export default function AdminModePanel({
   onAdminUpdateTeam,
   onAdminDeleteTeam,
 }: AdminModePanelProps) {
+  const [cycleOwnerDraftById, setCycleOwnerDraftById] = useState<Record<number, string>>({});
+  const managerOptions = useMemo(
+    () =>
+      adminUsers
+        .filter((row) => row.is_active && (row.role === "manager" || row.role === "admin"))
+        .sort((a, b) =>
+          String(a.display_name || a.username || "")
+            .toLowerCase()
+            .localeCompare(String(b.display_name || b.username || "").toLowerCase()),
+        ),
+    [adminUsers],
+  );
+  const userLabelById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const row of adminUsers) {
+      map.set(row.id, String(row.display_name || row.username || "").trim() || row.username);
+    }
+    return map;
+  }, [adminUsers]);
+  const teamLabelById = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const row of adminTeams) {
+      map.set(row.id, String(row.name || "").trim() || `Team ${row.id}`);
+    }
+    return map;
+  }, [adminTeams]);
   return (
     <section className="panel" style={{ marginTop: "0.9rem", padding: "0.9rem" }}>
       <p className="kicker">Admin</p>
@@ -213,6 +242,20 @@ export default function AdminModePanel({
                       setAdminCreateCycleDraft((prev) => ({ ...prev, endDate: event.target.value }))
                     }
                   />
+                  <select
+                    className="input"
+                    value={adminCreateCycleDraft.ownerManagerId}
+                    onChange={(event) =>
+                      setAdminCreateCycleDraft((prev) => ({ ...prev, ownerManagerId: event.target.value }))
+                    }
+                  >
+                    <option value="">Select cycle owner (manager/admin)</option>
+                    {managerOptions.map((row) => (
+                      <option key={`cycle-owner-${row.id}`} value={String(row.id)}>
+                        {String(row.display_name || row.username || "").trim() || row.username}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <button
                   className="primary-button"
@@ -264,18 +307,36 @@ export default function AdminModePanel({
                     <option value="manager">manager</option>
                     <option value="admin">admin</option>
                   </select>
-                  <input
+                  <select
                     className="input"
                     value={adminUserDraft.managerId}
                     onChange={(event) => setAdminUserDraft((prev) => ({ ...prev, managerId: event.target.value }))}
-                    placeholder="Manager ID (optional)"
-                  />
-                  <input
+                    disabled={adminUserDraft.role !== "member"}
+                  >
+                    <option value="">
+                      {adminUserDraft.role === "member" ? "Select manager" : "Manager not required"}
+                    </option>
+                    {managerOptions.map((row) => (
+                      <option key={`user-manager-${row.id}`} value={String(row.id)}>
+                        {String(row.display_name || row.username || "").trim() || row.username}
+                      </option>
+                    ))}
+                  </select>
+                  <select
                     className="input"
                     value={adminUserDraft.teamId}
                     onChange={(event) => setAdminUserDraft((prev) => ({ ...prev, teamId: event.target.value }))}
-                    placeholder="Team ID (optional)"
-                  />
+                  >
+                    <option value="">Select team (optional)</option>
+                    {adminTeams
+                      .slice()
+                      .sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")))
+                      .map((row) => (
+                        <option key={`user-team-${row.id}`} value={String(row.id)}>
+                          {String(row.name || "").trim() || `Team ${row.id}`}
+                        </option>
+                      ))}
+                  </select>
                 </div>
                 <label style={{ marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.86rem" }}>
                   <input
@@ -324,12 +385,25 @@ export default function AdminModePanel({
                   Reset user password
                 </p>
                 <div className="grid-2" style={{ marginTop: "0.45rem", gap: "0.5rem" }}>
-                  <input
+                  <select
                     className="input"
                     value={adminResetDraft.userId}
                     onChange={(event) => setAdminResetDraft((prev) => ({ ...prev, userId: event.target.value }))}
-                    placeholder="User ID"
-                  />
+                  >
+                    <option value="">Select user</option>
+                    {adminUsers
+                      .slice()
+                      .sort((a, b) =>
+                        String(a.display_name || a.username || "")
+                          .toLowerCase()
+                          .localeCompare(String(b.display_name || b.username || "").toLowerCase()),
+                      )
+                      .map((row) => (
+                        <option key={`security-user-${row.id}`} value={String(row.id)}>
+                          {String(row.display_name || row.username || "").trim() || row.username}
+                        </option>
+                      ))}
+                  </select>
                   <input
                     className="input"
                     type="password"
@@ -443,7 +517,7 @@ export default function AdminModePanel({
                   <div style={{ marginTop: "0.55rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
                     <div style={{ fontSize: "0.84rem", color: "var(--ink-soft)" }}>AI Provider</div>
                     <p style={{ margin: "0.2rem 0 0" }}>
-                      {String(adminAiHealth.provider || "unknown")} • status: {String(adminAiHealth.status || "unknown")}
+                      {String(adminAiHealth.provider || "unknown")} - status: {String(adminAiHealth.status || "unknown")}
                     </p>
                     <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
                       {String(adminAiHealth.probe_message || adminAiHealth.config_message || "")}
@@ -454,10 +528,10 @@ export default function AdminModePanel({
                   <div style={{ marginTop: "0.55rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
                     <div style={{ fontSize: "0.84rem", color: "var(--ink-soft)" }}>PDF Runtime</div>
                     <p style={{ margin: "0.2rem 0 0" }}>
-                      method: {String(adminPdfHealth.method || "unknown")} • supported: {adminPdfHealth.supported_method ? "yes" : "no"}
+                      method: {String(adminPdfHealth.method || "unknown")} - supported: {adminPdfHealth.supported_method ? "yes" : "no"}
                     </p>
                     <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
-                      playwright: {adminPdfHealth.playwright_available ? "available" : "missing"} • pdfshift key:{" "}
+                      playwright: {adminPdfHealth.playwright_available ? "available" : "missing"} - pdfshift key:{" "}
                       {adminPdfHealth.pdfshift_api_key_configured ? "set" : "missing"}
                     </p>
                   </div>
@@ -493,12 +567,41 @@ export default function AdminModePanel({
                         <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)", marginTop: "0.1rem" }}>
                           {cyclePeriodLabel(cycle) || `${toDateInputValue(cycle.start_date)} to ${toDateInputValue(cycle.end_date)}`}
                         </div>
+                        <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: "0.1rem" }}>
+                          Owner: {cycle.owner_manager_id ? (userLabelById.get(cycle.owner_manager_id) || "Unknown manager") : "Unassigned"}
+                        </div>
                       </div>
                       <div style={{ fontSize: "0.82rem", color: cycle.is_active ? "var(--accent)" : "var(--ink-soft)" }}>
                         {cycle.is_active ? "Active" : "Inactive"}
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.48rem", flexWrap: "wrap" }}>
+                      <select
+                        className="input"
+                        value={cycleOwnerDraftById[cycle.id] ?? String(cycle.owner_manager_id || "")}
+                        onChange={(event) =>
+                          setCycleOwnerDraftById((prev) => ({ ...prev, [cycle.id]: event.target.value }))
+                        }
+                        style={{ minWidth: 220 }}
+                      >
+                        <option value="">Select owner</option>
+                        {managerOptions.map((row) => (
+                          <option key={`cycle-owner-row-${cycle.id}-${row.id}`} value={String(row.id)}>
+                            {String(row.display_name || row.username || "").trim() || row.username}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="primary-button"
+                        type="button"
+                        onClick={() => {
+                          const raw = cycleOwnerDraftById[cycle.id] ?? String(cycle.owner_manager_id || "");
+                          const parsed = Number.parseInt(raw, 10);
+                          onAdminUpdateCycleOwner(cycle, Number.isFinite(parsed) && parsed > 0 ? parsed : null);
+                        }}
+                      >
+                        Save owner
+                      </button>
                       <button
                         className="primary-button"
                         type="button"
@@ -527,7 +630,11 @@ export default function AdminModePanel({
                       <div>
                         <strong>{row.display_name || row.username}</strong>
                         <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                          @{row.username} • {row.role} • id {row.id}
+                          @{row.username} - {row.role}
+                        </div>
+                        <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: "0.1rem" }}>
+                          Manager: {row.manager_id ? (userLabelById.get(row.manager_id) || "Unknown") : "None"} | Team:{" "}
+                          {row.team_id ? (teamLabelById.get(row.team_id) || "Unknown") : "None"}
                         </div>
                       </div>
                       <div style={{ fontSize: "0.82rem", color: row.is_active ? "var(--accent)" : "var(--ink-soft)" }}>
@@ -593,3 +700,4 @@ export default function AdminModePanel({
     </section>
   );
 }
+

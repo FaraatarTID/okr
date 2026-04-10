@@ -181,10 +181,10 @@ Examples:
 
 Use this flow to understand the product in one short pass:
 1. Sign in and open Atlas.
-2. Select your scope (`My OKRs` for individual work, `My Team` for manager view).
-3. Open one Objective/KR in Focus Map and check current status.
+2. Pick your cycle (manager/admin) or continue in the manager-assigned cycle (member).
+3. Open one Objective/KR in Focus Map, then switch lens (`Focus`, `Health`, `Owner`) to review priorities.
 4. Start one Focus Task timer, then stop it with a short summary.
-5. Open Inspector and update KR progress only with outcome evidence (not BAU task completion).
+5. Open Inspector and update KR progress only with outcome evidence (not BAU task completion). On empty workspaces, use `Create Goal` in Inspector to seed the first hierarchy node.
 
 ## Start Here
 
@@ -382,8 +382,14 @@ Run commands from repository root (`okr`).
 Prerequisites:
 
 - Python 3.11+
-- A reachable Postgres/Supabase database
+- A reachable Postgres/Supabase database (recommended)
 - Database URL set as `OKR_DATABASE_URL` (recommended) or `DATABASE_URL` (alias)
+
+Local launcher fallback behavior:
+- If the configured remote database host is unreachable, `run_hybrid_app_local.bat` can auto-fallback to local SQLite at `tmp/okr-local-dev.sqlite3`.
+- Control fallback with:
+  - `OKR_LOCAL_DB_FALLBACK=true|false` (default: `true`)
+  - `OKR_LOCAL_DB_RESET=true|false` (default: `false`, set `true` to rebuild local SQLite on launch)
 
 Set database URL (required):
 

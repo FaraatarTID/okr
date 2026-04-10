@@ -17,13 +17,24 @@ describe("AtlasModeControlsPanel", () => {
         cycleLabel="Q3-2026"
         snapshotPending={false}
         cycleId="7"
+        cycleOptions={[
+          { id: 7, label: "Q3-2026" },
+          { id: 8, label: "Q4-2026" },
+        ]}
+        canManageCycleSelection
         onCycleIdChange={vi.fn()}
         ownerIdsInput="1,2"
         onOwnerIdsInputChange={vi.fn()}
+        canManageOwnerFilter
+        ownerFilterOptions={[
+          { id: 1, label: "Alice" },
+          { id: 2, label: "Bob" },
+        ]}
+        selectedOwnerIds={[1, 2]}
         mode="atlas"
         onModeChange={vi.fn()}
         sidebarItems={sidebarItems}
-        lens="Scope"
+        lens="focus"
         onLensChange={vi.fn()}
         parsedOwnerIdsError="owner parse error"
         cycleResolveError="cycle resolve error"
@@ -31,8 +42,11 @@ describe("AtlasModeControlsPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Cycle ID")).toBeInTheDocument();
-    expect(screen.getByText("Owner IDs (optional)")).toBeInTheDocument();
+    expect(screen.getByText("Cycle")).toBeInTheDocument();
+    expect(screen.getByText("Owner Filter")).toBeInTheDocument();
+    expect(screen.getByText("Leave empty to include all owners.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Alice x" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bob x" })).toBeInTheDocument();
     expect(screen.getByText("Mode")).toBeInTheDocument();
     expect(screen.getByText("Lens")).toBeInTheDocument();
     expect(screen.getByText("owner parse error")).toBeInTheDocument();
@@ -41,7 +55,7 @@ describe("AtlasModeControlsPanel", () => {
     expect(screen.getByText(/Auto-sync every 45s/)).toBeInTheDocument();
   });
 
-  it("emits callbacks for cycle/owner/mode/lens changes and trims cycle id", async () => {
+  it("emits callbacks for cycle/owner/mode/lens changes", async () => {
     const user = userEvent.setup();
     const onCycleIdChange = vi.fn();
     const onOwnerIdsInputChange = vi.fn();
@@ -53,13 +67,24 @@ describe("AtlasModeControlsPanel", () => {
         cycleLabel="Q3-2026"
         snapshotPending
         cycleId=""
+        cycleOptions={[
+          { id: 42, label: "Q4-2026" },
+          { id: 7, label: "Q3-2026" },
+        ]}
+        canManageCycleSelection
         onCycleIdChange={onCycleIdChange}
         ownerIdsInput=""
         onOwnerIdsInputChange={onOwnerIdsInputChange}
+        canManageOwnerFilter
+        ownerFilterOptions={[
+          { id: 1, label: "Alice" },
+          { id: 3, label: "Charlie" },
+        ]}
+        selectedOwnerIds={[]}
         mode="atlas"
         onModeChange={onModeChange}
         sidebarItems={sidebarItems}
-        lens="Scope"
+        lens="focus"
         onLensChange={onLensChange}
         parsedOwnerIdsError=""
         cycleResolveError=""
@@ -67,15 +92,48 @@ describe("AtlasModeControlsPanel", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Cycle ID"), { target: { value: " 42 " } });
-    fireEvent.change(screen.getByLabelText("Owner IDs (optional)"), { target: { value: "1, 3" } });
+    await user.selectOptions(screen.getByLabelText("Cycle"), "42");
+    fireEvent.change(screen.getByLabelText("Owner Filter"), { target: { value: "Alice" } });
+    await user.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.change(screen.getByLabelText("Owner Filter"), { target: { value: "Charlie" } });
+    await user.click(screen.getByRole("button", { name: "Add" }));
     await user.selectOptions(screen.getByLabelText("Mode"), "timeline");
-    await user.selectOptions(screen.getByLabelText("Lens"), "Branch");
+    await user.selectOptions(screen.getByLabelText("Lens"), "owner");
 
     expect(onCycleIdChange).toHaveBeenCalledWith("42");
-    expect(onOwnerIdsInputChange).toHaveBeenCalledWith("1, 3");
+    expect(onOwnerIdsInputChange).toHaveBeenCalledWith("1");
+    expect(onOwnerIdsInputChange).toHaveBeenCalledWith("3");
     expect(onModeChange).toHaveBeenCalledWith("timeline");
-    expect(onLensChange).toHaveBeenCalledWith("Branch");
+    expect(onLensChange).toHaveBeenCalledWith("owner");
     expect(screen.getByText(/Loading/)).toBeInTheDocument();
+  });
+
+  it("hides owner filter controls for non-admin users", () => {
+    render(
+      <AtlasModeControlsPanel
+        cycleLabel="Q3-2026"
+        snapshotPending={false}
+        cycleId="7"
+        cycleOptions={[{ id: 7, label: "Q3-2026" }]}
+        canManageCycleSelection={false}
+        onCycleIdChange={vi.fn()}
+        ownerIdsInput=""
+        onOwnerIdsInputChange={vi.fn()}
+        canManageOwnerFilter={false}
+        ownerFilterOptions={[{ id: 1, label: "Alice" }]}
+        selectedOwnerIds={[]}
+        mode="atlas"
+        onModeChange={vi.fn()}
+        sidebarItems={sidebarItems}
+        lens="focus"
+        onLensChange={vi.fn()}
+        parsedOwnerIdsError="owner parse error"
+        cycleResolveError=""
+        snapshotError=""
+      />,
+    );
+
+    expect(screen.queryByText("Owner Filter")).not.toBeInTheDocument();
+    expect(screen.queryByText("owner parse error")).not.toBeInTheDocument();
   });
 });
