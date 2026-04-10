@@ -11,6 +11,7 @@ set "VENV_DIR=.venv"
 set "PYEXE=%ROOT%%VENV_DIR%\Scripts\python.exe"
 set "POWERSHELL_EXE=powershell"
 set "LOG_DIR=%ROOT%tmp\local-hybrid-logs"
+set "PID_FILE=%LOG_DIR%\local-hybrid.pids"
 set "BACKEND_OUT_LOG=%LOG_DIR%\backend-api.out.log"
 set "BACKEND_ERR_LOG=%LOG_DIR%\backend-api.err.log"
 set "WORKER_OUT_LOG=%LOG_DIR%\backend-worker.out.log"
@@ -89,6 +90,8 @@ if not defined OKR_DATABASE_URL (
     exit /b 1
 )
 set "DATABASE_URL=%OKR_DATABASE_URL%"
+call :fallback_to_local_sqlite_if_remote_unreachable
+set "DATABASE_URL=%OKR_DATABASE_URL%"
 
 echo [4/7] Preparing Python environment...
 if not exist "%PYEXE%" (
@@ -142,6 +145,7 @@ if not exist "%ROOT%spa-web\node_modules" (
         exit /b 1
     )
 )
+
 echo [INFO] Clearing stale Next.js cache...
 if exist "%ROOT%spa-web\.next" rd /s /q "%ROOT%spa-web\.next" >nul 2>&1
 echo [INFO] Building spa-web production bundle...
@@ -155,14 +159,15 @@ if errorlevel 1 (
 echo [6/7] Setting runtime environment...
 set "PYTHONPATH=%ROOT%;%PYTHONPATH%"
 set "OKR_ENV=development"
+set "OKR_ALLOW_NON_SUPABASE_DB=true"
 set "OKR_BACKEND_HOST=127.0.0.1"
 set "OKR_BACKEND_PORT=8100"
+set "OKR_BACKEND_API_URL=http://127.0.0.1:8100"
 set "OKR_BACKEND_ENFORCE_TOKEN=true"
 set "OKR_BACKEND_SERVICE_TOKEN=local-development-secret-token"
 set "OKR_BACKEND_ENFORCE_REQUEST_SIGNING=false"
 set "OKR_BACKEND_SIGNING_SECRET="
 set "OKR_BACKEND_SECURITY_STATE_BACKEND=memory"
-set "OKR_BACKEND_API_URL=http://127.0.0.1:8100"
 set "BFF_HOST=127.0.0.1"
 set "BFF_PORT=3001"
 set "BFF_PUBLIC_ORIGIN=http://127.0.0.1:3001"
@@ -172,6 +177,7 @@ set "OKR_SPA_ROLLOUT_ALLOW_ALL=true"
 
 echo [7/9] Launching backend + worker + BFF + SPA...
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
+if exist "%PID_FILE%" del /q "%PID_FILE%" >nul 2>&1
 if exist "%BACKEND_OUT_LOG%" del /q "%BACKEND_OUT_LOG%" >nul 2>&1
 if exist "%BACKEND_ERR_LOG%" del /q "%BACKEND_ERR_LOG%" >nul 2>&1
 if exist "%WORKER_OUT_LOG%" del /q "%WORKER_OUT_LOG%" >nul 2>&1
@@ -193,6 +199,10 @@ set "SPAWN_ERR=%BACKEND_ERR_LOG%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_backend_failed
 
+echo [8/9] Waiting for service readiness...
+call :wait_for_http "Backend API" "http://127.0.0.1:8100/healthz" 90
+if errorlevel 1 goto :startup_failed
+
 echo [INFO] Launching Backend Worker process...
 set "SPAWN_CWD=%ROOT_CLEAN%"
 set "SPAWN_EXE=%PYEXE%"
@@ -201,6 +211,8 @@ set "SPAWN_OUT=%WORKER_OUT_LOG%"
 set "SPAWN_ERR=%WORKER_ERR_LOG%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_worker_failed
+call :wait_for_worker "Backend Worker" "backend_app.worker" 60
+if errorlevel 1 goto :startup_failed
 
 echo [INFO] Launching SPA BFF process...
 set "SPAWN_CWD=%ROOT_CLEAN%\spa-bff"
@@ -210,6 +222,8 @@ set "SPAWN_OUT=%BFF_OUT_LOG%"
 set "SPAWN_ERR=%BFF_ERR_LOG%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_bff_failed
+call :wait_for_http "SPA BFF" "http://127.0.0.1:3001/healthz" 60
+if errorlevel 1 goto :startup_failed
 
 echo [INFO] Launching SPA Web process...
 set "SPAWN_CWD=%ROOT_CLEAN%\spa-web"
@@ -219,14 +233,6 @@ set "SPAWN_OUT=%SPA_OUT_LOG%"
 set "SPAWN_ERR=%SPA_ERR_LOG%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_spa_failed
-
-echo [8/9] Waiting for service readiness...
-call :wait_for_http "Backend API" "http://127.0.0.1:8100/healthz" 60
-if errorlevel 1 goto :startup_failed
-call :wait_for_worker "Backend Worker" "backend_app.worker" 60
-if errorlevel 1 goto :startup_failed
-call :wait_for_http "SPA BFF" "http://127.0.0.1:3001/healthz" 60
-if errorlevel 1 goto :startup_failed
 call :wait_for_http "SPA Web" "http://127.0.0.1:3000" 120
 if errorlevel 1 goto :startup_failed
 
@@ -287,6 +293,37 @@ if /I "%DB_URL_CHECK%"=="docker_internal" (
 echo [WARN] Ignoring DB URL from %DB_URL_SOURCE%.
 exit /b 1
 
+:fallback_to_local_sqlite_if_remote_unreachable
+"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$u = [string]$env:OKR_DATABASE_URL;" ^
+    "if ([string]::IsNullOrWhiteSpace($u)) { exit 0 }" ^
+    "try { $uri = [Uri]$u } catch { exit 0 }" ^
+    "$scheme = ([string]$uri.Scheme).ToLowerInvariant();" ^
+    "if ($scheme -eq 'sqlite') { exit 0 }" ^
+    "if ($scheme -ne 'postgresql' -and $scheme -ne 'postgres') { exit 0 }" ^
+    "$dbHost = [string]$uri.Host;" ^
+    "$dbPort = if ($uri.Port -gt 0) { [int]$uri.Port } else { 5432 };" ^
+    "try {" ^
+    "  $tcp = New-Object Net.Sockets.TcpClient;" ^
+    "  $iar = $tcp.BeginConnect($dbHost, $dbPort, $null, $null);" ^
+    "  if (-not $iar.AsyncWaitHandle.WaitOne(3000)) { throw 'timeout' }" ^
+    "  $tcp.EndConnect($iar) | Out-Null;" ^
+    "  $tcp.Close();" ^
+    "  exit 0" ^
+    "} catch {" ^
+    "  exit 42" ^
+    "}"
+if not %ERRORLEVEL% EQU 42 exit /b 0
+if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
+set "LOCAL_SQLITE_PATH=%LOG_DIR%\okr-local.sqlite3"
+set "LOCAL_SQLITE_URI_PATH=%LOCAL_SQLITE_PATH:\=/%"
+set "LOCAL_SQLITE_URL=sqlite:///%LOCAL_SQLITE_URI_PATH%"
+echo [WARN] Remote Postgres is unreachable from this machine.
+echo [WARN] Falling back to local SQLite for hybrid local startup:
+echo        %LOCAL_SQLITE_URL%
+set "OKR_DATABASE_URL=%LOCAL_SQLITE_URL%"
+exit /b 0
+
 :wait_for_http
 set "SERVICE_NAME=%~1"
 set "SERVICE_URL=%~2"
@@ -294,8 +331,8 @@ set "MAX_RETRIES=%~3"
 set /a RETRY_COUNT=0
 :wait_for_http_loop
 set /a RETRY_COUNT=RETRY_COUNT+1
-"%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
-    "try { $r = Invoke-WebRequest -UseBasicParsing -Uri '%SERVICE_URL%' -TimeoutSec 2; if ($r.StatusCode -ge 200 -and $r.StatusCode -lt 500) { exit 0 } ; exit 1 } catch { exit 1 }"
+rem Previous implementation used Invoke-WebRequest here, but python urlopen is more stable in tight batch loops.
+"%PYEXE%" -c "import urllib.request; urllib.request.urlopen(r'%SERVICE_URL%', timeout=2)" >nul 2>&1
 if not errorlevel 1 (
     echo [OK] %SERVICE_NAME% is reachable.
     exit /b 0
@@ -360,18 +397,26 @@ exit /b 0
 
 :spawn_with_logs
 "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$cwd=[Environment]::GetEnvironmentVariable('SPAWN_CWD');" ^
-    "$exe=[Environment]::GetEnvironmentVariable('SPAWN_EXE');" ^
-    "$args=[Environment]::GetEnvironmentVariable('SPAWN_ARGS');" ^
-    "$out=[Environment]::GetEnvironmentVariable('SPAWN_OUT');" ^
-    "$err=[Environment]::GetEnvironmentVariable('SPAWN_ERR');" ^
-    "try { Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $cwd -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden -ErrorAction Stop | Out-Null; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
+    "$cwd = [Environment]::GetEnvironmentVariable('SPAWN_CWD');" ^
+    "$exe = [Environment]::GetEnvironmentVariable('SPAWN_EXE');" ^
+    "$args = [Environment]::GetEnvironmentVariable('SPAWN_ARGS');" ^
+    "$out = [Environment]::GetEnvironmentVariable('SPAWN_OUT');" ^
+    "$err = [Environment]::GetEnvironmentVariable('SPAWN_ERR');" ^
+    "$pidFile = [Environment]::GetEnvironmentVariable('PID_FILE');" ^
+    "try {" ^
+    "  $proc = Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $cwd -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden -PassThru -ErrorAction Stop;" ^
+    "  if ($pidFile) { Add-Content -Path $pidFile -Value $proc.Id }" ^
+    "  exit 0" ^
+    "} catch {" ^
+    "  Write-Host $_.Exception.Message;" ^
+    "  exit 1" ^
+    "}"
 exit /b %ERRORLEVEL%
 
 :stop_stale_hybrid_processes
 "%POWERSHELL_EXE%" -NoProfile -ExecutionPolicy Bypass -Command ^
     "$root = [Environment]::GetEnvironmentVariable('ROOT_CLEAN');" ^
-    "$regex = 'backend_app.run_api|backend_app.worker|spa-bff|spa-web\\\\node_modules\\\\.*next\\\\dist\\\\bin\\\\next|next start -- -p 3000|tsx watch';" ^
+    "$regex = 'backend_app.run_api|backend_app.worker|spa-bff|spa-web\\node_modules\\.*next\\dist\\bin\\next|next start -- -p 3000|tsx watch';" ^
     "$currentPid = $PID;" ^
     "$byCommand = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $cmd = [string]$_.CommandLine; $name = [string]$_.Name; $_.ProcessId -ne $currentPid -and $cmd -and $cmd.Contains($root) -and ($name -in @('python.exe','node.exe','cmd.exe')) -and ($cmd -match $regex) } | Select-Object -ExpandProperty ProcessId;" ^
     "$byPort = @(); foreach ($port in @(8100, 3001, 3000)) { try { $byPort += (Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction Stop | Select-Object -ExpandProperty OwningProcess) } catch {} };" ^
