@@ -281,6 +281,7 @@ class Cycle(SQLModel, table=True):
     __tablename__ = "cycle"
     __table_args__ = (
         Index("ix_cycle_is_active", "is_active"),
+        Index("ix_cycle_owner_manager_active", "owner_manager_id", "is_active"),
         {"extend_existing": True},
     )
 
@@ -289,6 +290,7 @@ class Cycle(SQLModel, table=True):
     start_date: datetime
     end_date: datetime
     is_active: bool = Field(default=True)
+    owner_manager_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
 
     # Relationships
     goals: List["Goal"] = Relationship(
