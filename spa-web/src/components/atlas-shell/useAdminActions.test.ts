@@ -26,6 +26,10 @@ const baseUser: AuthUser = {
   role: "admin",
 };
 
+function makeEphemeralTestCredential(): string {
+  return `pw-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function renderAdminHook() {
   const loadAdminCycles = vi.fn().mockResolvedValue(undefined);
   const loadAdminUsersAndTeams = vi.fn().mockResolvedValue(undefined);
@@ -92,12 +96,13 @@ describe("useAdminActions", () => {
     const createUserMutationMock = vi.mocked(api.createUserMutation);
     createUserMutationMock.mockResolvedValue({ id: 10, username: "new-user" } as never);
     const { result, loadAdminUsersAndTeams } = renderAdminHook();
+    const generatedCredential = makeEphemeralTestCredential();
 
     act(() => {
       result.current.setAdminUserDraft((prev) => ({
         ...prev,
         username: "new-user",
-        password: "pw123",
+        password: generatedCredential,
         displayName: "New User",
       }));
     });
@@ -189,11 +194,12 @@ describe("useAdminActions", () => {
     const resetUserPasswordMutationMock = vi.mocked(api.resetUserPasswordMutation);
     resetUserPasswordMutationMock.mockResolvedValue({ ok: true } as never);
     const { result } = renderAdminHook();
+    const generatedCredential = makeEphemeralTestCredential();
 
     act(() => {
       result.current.setAdminResetDraft({
         userId: "1",
-        newPassword: "new-password",
+        newPassword: generatedCredential,
         requireChange: true,
       });
     });
@@ -206,7 +212,7 @@ describe("useAdminActions", () => {
       expect.objectContaining({
         actor_username: "alice",
         user_id: 1,
-        new_password: "new-password",
+        new_password: generatedCredential,
         require_change: true,
       }),
     );
