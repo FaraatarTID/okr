@@ -966,6 +966,7 @@ def create_cycle(
     start_date: datetime,
     end_date: datetime,
     is_active: bool = True,
+    owner_manager_id: int | None = None,
     actor_username: Optional[str] = None,
 ) -> Cycle:
     """Create a new OKR cycle."""
@@ -975,6 +976,7 @@ def create_cycle(
         start_date=start_date,
         end_date=end_date,
         is_active=is_active,
+        owner_manager_id=owner_manager_id,
         actor_username=actor_username,
     )
 
@@ -1015,6 +1017,7 @@ def update_cycle(
     start_date: datetime,
     end_date: datetime,
     is_active: bool,
+    owner_manager_id: int | None = None,
     actor_username: Optional[str] = None,
 ) -> Optional[Cycle]:
     """Update an existing cycle."""
@@ -1025,6 +1028,7 @@ def update_cycle(
         start_date=start_date,
         end_date=end_date,
         is_active=is_active,
+        owner_manager_id=owner_manager_id,
         actor_username=actor_username,
     )
 

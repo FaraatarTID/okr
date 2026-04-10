@@ -1,7 +1,8 @@
 ﻿# User Guide
 Documentation HQ: [README](../README.md)
 
-This guide describes the current behavior implemented in the codebase (`streamlit_app/app.py`, `streamlit_app/src/ui/*`, `streamlit_app/src/crud.py`).
+This guide describes the current SPA-first behavior implemented in `spa-web/`, `spa-bff/`, `backend_app/`, and shared domain modules under `src/`.
+Legacy `streamlit_app/` files are retained for compatibility/testing paths and should not be treated as the primary runtime UX source.
 
 Learning Loop canonical guide (EN+FA, synced headings): [`docs/learning-loop.md`](learning-loop.md).
 

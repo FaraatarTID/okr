@@ -21,23 +21,20 @@ from src.services.http_client import request_with_retry
 
 
 def is_backend_enabled() -> bool:
-    """Detect if we are running in a Streamlit context."""
-    try:
-        from streamlit.runtime.scriptrunner import get_script_run_ctx
-
-        return get_script_run_ctx() is not None
-    except ImportError:
+    """Detect if backend API integration is configured for current runtime."""
+    runtime_role = str(os.getenv("OKR_RUNTIME_ROLE", "")).strip().lower()
+    if runtime_role in {"backend", "worker"}:
         return False
+    configured = str(get_config_value("OKR_BACKEND_API_URL", "")).strip()
+    return bool(configured)
 
 
 def _base_url() -> str:
     url = str(get_config_value("OKR_BACKEND_API_URL", "")).strip().rstrip("/")
-    is_cloud = bool(
-        os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD")
-    )
+    is_cloud = bool(os.getenv("OKR_MANAGED_CLOUD") or os.getenv("IS_CLOUD_RUNTIME"))
 
     # Case 1: explicit 'auto' keyword
-    # Case 2: URL is empty and we're on Streamlit Cloud
+    # Case 2: URL is empty and we're on managed cloud runtime
     if url.lower() == "auto" or (not url and is_cloud):
         host = (
             str(get_config_value("OKR_BACKEND_HOST", "127.0.0.1")).strip()
@@ -46,7 +43,7 @@ def _base_url() -> str:
         port = str(get_config_value("OKR_BACKEND_PORT", "8100")).strip() or "8100"
         return f"http://{host}:{port}"
 
-    # Case 3: localhost URL on Streamlit Cloud — the embedded launcher handles
+    # Case 3: localhost URL on managed cloud runtime — embedded launcher handles
     # the process; all we need is to correctly resolve the URL (already is localhost).
     # No transformation needed — the URL is already correct.
     return url
@@ -55,9 +52,7 @@ def _base_url() -> str:
 def _is_embedded_mode() -> bool:
     """Return True when the backend is running as an embedded subprocess."""
     url = str(get_config_value("OKR_BACKEND_API_URL", "")).strip()
-    is_cloud = bool(
-        os.getenv("STREAMLIT_SHARING_MODE") or os.getenv("IS_STREAMLIT_CLOUD")
-    )
+    is_cloud = bool(os.getenv("OKR_MANAGED_CLOUD") or os.getenv("IS_CLOUD_RUNTIME"))
     if url.lower() == "auto" or (not url and is_cloud):
         return True
     # localhost URL on cloud = embedded
@@ -310,16 +305,8 @@ def resolve_actor_username(actor_username: Optional[str] = None) -> str:
     actor = str(actor_username or "").strip()
     if actor:
         return actor
-    try:
-        import streamlit as st
-
-        for key in ("username", "current_username"):
-            candidate = str(st.session_state.get(key) or "").strip()
-            if candidate:
-                return candidate
-    except Exception:
-        return ""
-    return ""
+    fallback = str(os.getenv("OKR_ACTOR_USERNAME", "")).strip()
+    return fallback
 
 
 def _try_parse_datetime(value: Any, *, key: str | None = None):
@@ -1175,6 +1162,7 @@ def create_cycle(
     start_date: Any,
     end_date: Any,
     is_active: bool,
+    owner_manager_id: Optional[int] = None,
     actor_username: str,
 ) -> Dict[str, Any]:
     return _request_json(
@@ -1186,6 +1174,7 @@ def create_cycle(
             "start_date": _json_safe(start_date),
             "end_date": _json_safe(end_date),
             "is_active": bool(is_active),
+            "owner_manager_id": int(owner_manager_id) if owner_manager_id is not None else None,
             "actor_username": str(actor_username),
         },
         timeout=(3.0, 25.0),
@@ -1200,6 +1189,7 @@ def update_cycle(
     start_date: Any,
     end_date: Any,
     is_active: bool,
+    owner_manager_id: Optional[int] = None,
     actor_username: str,
 ) -> Dict[str, Any]:
     return _request_json(
@@ -1211,6 +1201,7 @@ def update_cycle(
             "start_date": _json_safe(start_date),
             "end_date": _json_safe(end_date),
             "is_active": bool(is_active),
+            "owner_manager_id": int(owner_manager_id) if owner_manager_id is not None else None,
             "actor_username": str(actor_username),
         },
         timeout=(3.0, 25.0),
