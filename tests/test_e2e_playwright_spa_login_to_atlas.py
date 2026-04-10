@@ -369,6 +369,10 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
 
         active_task_select = page.locator("#focus-task-ref")
         expect(active_task_select).to_be_visible(timeout=90_000)
+        page.wait_for_function(
+            "() => (document.querySelectorAll('#focus-task-ref option') || []).length >= 2",
+            timeout=90_000,
+        )
         option_count = active_task_select.locator("option").count()
         if option_count < 2:
             pytest.fail(
