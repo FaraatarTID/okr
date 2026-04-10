@@ -2,12 +2,21 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "@/lib/api";
+import * as deeplink from "@/lib/deeplink";
 import type { AuthUser, CycleSummary } from "@/lib/api";
 import useDeepLinkCycleBootstrap from "@/components/atlas-shell/useDeepLinkCycleBootstrap";
 
 vi.mock("@/lib/api", () => ({
   readCyclesQuery: vi.fn(),
 }));
+
+vi.mock("@/lib/deeplink", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/deeplink")>("@/lib/deeplink");
+  return {
+    ...actual,
+    parseDeepLink: vi.fn(actual.parseDeepLink),
+  };
+});
 
 const baseUser: AuthUser = {
   id: 1,
@@ -46,6 +55,13 @@ describe("useDeepLinkCycleBootstrap", () => {
       "/?cycle=8&mode=timeline&lens=owner&sel=task_3&ft=task_4&spa_preview=1",
     );
     const setters = createSetters();
+    vi.mocked(deeplink.parseDeepLink).mockReturnValue({
+      cycle: "8",
+      mode: "timeline",
+      lens: "owner",
+      sel: "task_3",
+      ft: "task_4",
+    });
 
     renderHook(() =>
       useDeepLinkCycleBootstrap({
