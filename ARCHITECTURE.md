@@ -8,25 +8,23 @@ Maintainer file ownership and change map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
 
 ## System Overview
 
-This repository is a Streamlit-based OKR product with a SQLModel persistence layer on Supabase PostgreSQL.
+This repository is an OKR platform with a SPA-first runtime (`spa-web` + `spa-bff` + backend services) and a retained legacy Streamlit runtime for compatibility/testing paths.
 
-Current runtime topology has two profiles:
+Current runtime topology has two active implementation tracks:
 
-- `Backend-segregated mode` (default):
-  - Streamlit UI renders pages and handles session UX.
-  - Synchronous reads and mutations route through internal backend services:
-    - `backend-api` (FastAPI control plane)
-    - `backend-worker` (async execution plane for heavy jobs)
-  - Jobs are persisted in `async_job` table and processed out-of-band.
-- `Embedded mode` (Streamlit Cloud / auto):
-  - Used when `OKR_BACKEND_API_URL` is `"auto"`.
-  - Streamlit frontend automatically launches `backend-api` as a background subprocess via `backend_launcher.py`.
-  - Provides a single-container deployment experience while maintaining backend-first integrity.
+- `SPA-first track` (default for local/prod flows):
+  - `spa-web` (Next.js) provides primary UX.
+  - `spa-bff` provides browser-facing API boundary, auth/session mediation, and allowlisted proxying.
+  - `backend-api` (FastAPI control plane) and `backend-worker` (async execution plane) own mutations, reads, and heavy/background work.
+- `Legacy Streamlit track` (compatibility/testing only):
+  - `streamlit_app/app.py` runtime remains available for validation/rollback/reference workflows.
+  - Embedded backend launch (`OKR_BACKEND_API_URL="auto"`) is still supported for Streamlit Cloud-style operation.
+  - Not the primary UX source for current rollout.
 
-- UI entrypoint: `streamlit_app/app.py`
-- UI composition: `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`, `streamlit_app/src/ui/visualizations.py`
-  - Primary hierarchy UX: Atlas focus-first workspace (`Focus Map` + `Inspector`)
-- Domain/data operations: `streamlit_app/src/crud.py`
+- Primary UI entrypoint: `spa-web/`
+- Browser/API boundary: `spa-bff/`
+- Legacy UI entrypoint: `streamlit_app/app.py`
+- Shared domain/data operations: `streamlit_app/src/crud.py` and shared runtime modules under `src/`
 - Extracted domain modules:
   - `streamlit_app/src/domain/authorization.py` (ownership/RBAC predicates + authorizers)
   - `streamlit_app/src/domain/analytics.py` (hot-path analytics/reporting queries)
@@ -39,22 +37,23 @@ Current runtime topology has two profiles:
 
 ## Runtime Topology
 
-Primary data/control flow in backend-segregated mode:
+Primary data/control flow in SPA-first mode:
 
 1. UI and session:
 
-- Browser -> Streamlit (`okr` service).
-- Streamlit handles page rendering, state, and role-aware UX.
+- Browser -> `spa-web` -> `spa-bff`.
+- `spa-web` handles rendering/state and role-aware UX for active rollout.
+- `spa-bff` enforces boundary policy before forwarding to backend services.
 
 2. Synchronous domain mutations:
 
-- Streamlit -> `backend-api` mutation endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
+- `spa-bff` -> `backend-api` mutation endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
 - Default behavior (all environments): fail closed with explicit user-facing error when backend transport fails.
 - Scope (frontend write paths): Goal/Objective/KeyResult/Task CRUD, timer start/stop, user/cycle/team admin mutations, Learning Loop mutations (check-ins/experiments/retrospectives/weekly plans/outcomes), alignment mutations, and work-log deletes.
 
 3. Synchronous read/query paths:
 
-- Streamlit -> `backend-api` read endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
+- `spa-bff` -> `backend-api` read endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
 - Atlas snapshot/runtime reads and leadership read paths are backend-served in runtime mode.
 
 4. Async heavy workflows:
@@ -252,4 +251,3 @@ To move toward higher-concurrency internal production:
 - Keep all frontend read/write contracts backend-owned (implemented) and continue tightening backend API contract/version governance.
 - Keep Streamlit as presentation/workflow shell.
 - Preserve SQLModel domain logic while expanding backend-side query composition to reduce UI rerun pressure.
-

@@ -1,7 +1,8 @@
 ﻿# راهنمای کاربر
 Documentation HQ: [README](../README.md)
 
-این راهنما رفتار واقعی فعلی سامانه را بر اساس کد (`streamlit_app/app.py`، `streamlit_app/src/ui/*`، `streamlit_app/src/crud.py`) توضیح می‌دهد.
+این راهنما رفتار فعلی سامانه را در مسیر `SPA-first` توضیح می‌دهد (بر پایه `spa-web/`، `spa-bff/`، `backend_app/` و ماژول‌های دامنه‌ی مشترک در `src/`).
+فایل‌های `streamlit_app/` برای مسیرهای سازگاری/تست نگه‌داری شده‌اند و نباید به‌عنوان UX اصلی فعلی در نظر گرفته شوند.
 
 راهنمای canonical مربوط به Learning Loop (دو‌زبانه EN+FA با headingهای همگام): [`docs/learning-loop.md`](learning-loop.md).
 
@@ -197,5 +198,4 @@ Task:
 
 راهنمای اجرایی گام‌به‌گام مدیر:
 - [راهنمای عملیاتی مدیر](MANAGER_PLAYBOOK_FA.md)
-
 
