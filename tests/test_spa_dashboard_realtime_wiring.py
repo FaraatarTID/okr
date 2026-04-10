@@ -191,8 +191,8 @@ def test_atlas_shell_uses_admin_resources_hook() -> None:
 
     assert "from \"@/components/atlas-shell/useAdminResources\"" in shell_source
     assert "} = useAdminResources()" in shell_source
-    assert "loadAdminResources(" in hook_source
-    assert "loadAdminHealth(" in hook_source
+    assert "const loadAdminResources = useCallback(" in hook_source
+    assert "const loadAdminHealth = useCallback(" in hook_source
 
 
 def test_atlas_shell_uses_mode_actions_hook() -> None:
