@@ -50,6 +50,7 @@ describe("useDeepLinkCycleBootstrap", () => {
     renderHook(() =>
       useDeepLinkCycleBootstrap({
         user: null,
+        canManageCycleSelection: true,
         parsedCycleId: null,
         resolvedCycle: null,
         sessionCycles: [],

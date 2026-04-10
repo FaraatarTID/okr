@@ -26,6 +26,10 @@ const baseUser: AuthUser = {
   role: "admin",
 };
 
+function makeEphemeralTestCredential(): string {
+  return `pw-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function renderAdminHook() {
   const loadAdminCycles = vi.fn().mockResolvedValue(undefined);
   const loadAdminUsersAndTeams = vi.fn().mockResolvedValue(undefined);
@@ -92,6 +96,7 @@ describe("useAdminActions", () => {
     const createUserMutationMock = vi.mocked(api.createUserMutation);
     createUserMutationMock.mockResolvedValue({ id: 10, username: "new-user" } as never);
     const { result, loadAdminUsersAndTeams } = renderAdminHook();
+    const generatedCredential = makeEphemeralTestCredential();
 
     act(() => {
       result.current.setAdminUserDraft((prev) => ({
@@ -189,6 +194,7 @@ describe("useAdminActions", () => {
     const resetUserPasswordMutationMock = vi.mocked(api.resetUserPasswordMutation);
     resetUserPasswordMutationMock.mockResolvedValue({ ok: true } as never);
     const { result } = renderAdminHook();
+    const generatedCredential = makeEphemeralTestCredential();
 
     act(() => {
       result.current.setAdminResetDraft({
