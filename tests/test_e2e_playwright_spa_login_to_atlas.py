@@ -390,6 +390,11 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
             timeout=90_000
         )
 
+        timer_dialog = page.get_by_role("dialog", name="Focus timer session")
+        expect(timer_dialog).to_be_visible(timeout=90_000)
+        timer_dialog.get_by_role("button", name="Close", exact=True).click()
+        expect(timer_dialog).not_to_be_visible(timeout=90_000)
+
         page.get_by_role("button", name="Sign out", exact=True).click()
         expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(
             timeout=90_000
