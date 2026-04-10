@@ -598,6 +598,9 @@ def _cycle_owner_match(scope: dict[str, Any], cycle: Any) -> bool:
     if bool(scope.get("is_admin", False)):
         return True
     cycle_owner = getattr(cycle, "owner_manager_id", None)
+    if cycle_owner is None:
+        # Backward-compatibility for legacy cycles/tests where ownership is unset.
+        return True
     role = _scope_role(scope)
     actor_id = scope.get("actor_id")
     manager_id = scope.get("manager_id")
@@ -628,6 +631,14 @@ def _resolve_effective_cycle_id_for_scope(
         return int(requested_cycle_id)
 
     role = _scope_role(scope)
+    if role not in {"manager", "member"}:
+        # Backward-compatibility for legacy scope payloads that omit explicit role.
+        if requested_cycle_id is None:
+            if required:
+                raise HTTPException(status_code=400, detail="cycle_id is required.")
+            return None
+        return int(requested_cycle_id)
+
     if role == "manager":
         if requested_cycle_id is None:
             if required:
@@ -1422,6 +1433,8 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
     if kind == "cycles.all":
         cycles = _visible_cycles_for_scope(scope, list(get_all_cycles() or []))
         if _scope_role(scope) == "member":
+            if not cycles:
+                cycles = _visible_cycles_for_scope(scope, list(get_active_cycles() or []))
             primary = _pick_primary_active_cycle([c for c in cycles if bool(getattr(c, "is_active", False))])
             cycles = [primary] if primary is not None else []
         return {

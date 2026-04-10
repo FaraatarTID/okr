@@ -5,6 +5,30 @@ from __future__ import annotations
 from typing import Optional
 
 
+def _require_cycle_governance_actor(*, crud_module, session, actor_username: Optional[str]):
+    actor = crud_module._require_actor_user(session, actor_username)
+    if getattr(actor, "role", None) not in (
+        crud_module.UserRole.ADMIN,
+        crud_module.UserRole.MANAGER,
+    ):
+        raise PermissionError("Admin or manager privileges are required for cycle operations.")
+    return actor
+
+
+def _validate_cycle_owner(*, crud_module, session, owner_manager_id: Optional[int]) -> Optional[int]:
+    if owner_manager_id is None:
+        return None
+    manager_user = session.get(crud_module.User, int(owner_manager_id))
+    if not manager_user or not bool(getattr(manager_user, "is_active", False)):
+        raise ValueError("owner_manager_id must reference an active user.")
+    if getattr(manager_user, "role", None) not in (
+        crud_module.UserRole.MANAGER,
+        crud_module.UserRole.ADMIN,
+    ):
+        raise ValueError("owner_manager_id must reference a manager or admin.")
+    return int(owner_manager_id)
+
+
 def create_cycle_from_crud(
     *,
     crud_module,
@@ -12,6 +36,7 @@ def create_cycle_from_crud(
     start_date,
     end_date,
     is_active: bool = True,
+    owner_manager_id: Optional[int] = None,
     actor_username: Optional[str] = None,
 ):
     if crud_module._backend_mutation_proxy_enabled():
@@ -24,6 +49,7 @@ def create_cycle_from_crud(
             start_date=start_date,
             end_date=end_date,
             is_active=is_active,
+            owner_manager_id=owner_manager_id,
             actor_username=actor_username,
         )
         if "error" not in backend_result:
@@ -35,16 +61,35 @@ def create_cycle_from_crud(
         raise ValueError("Cycle start_date must be before end_date.")
 
     with crud_module.get_session_context() as session:
+        actor = None
         if actor_username:
-            crud_module._require_admin_actor(session, actor_username)
+            actor = _require_cycle_governance_actor(
+                crud_module=crud_module,
+                session=session,
+                actor_username=actor_username,
+            )
         elif crud_module._backend_mutation_proxy_enabled():
             raise PermissionError("Actor username is required for this operation")
+
+        resolved_owner_manager_id = _validate_cycle_owner(
+            crud_module=crud_module,
+            session=session,
+            owner_manager_id=owner_manager_id,
+        )
+        if actor is not None:
+            actor_id = int(getattr(actor, "id", 0) or 0)
+            actor_role = getattr(actor, "role", None)
+            if actor_role == crud_module.UserRole.MANAGER:
+                resolved_owner_manager_id = actor_id
+            elif resolved_owner_manager_id is None:
+                resolved_owner_manager_id = actor_id
 
         cycle = crud_module.Cycle(
             title=title,
             start_date=start_date,
             end_date=end_date,
             is_active=is_active,
+            owner_manager_id=resolved_owner_manager_id,
         )
         session.add(cycle)
         session.commit()
@@ -83,6 +128,7 @@ def update_cycle_from_crud(
     start_date,
     end_date,
     is_active: bool,
+    owner_manager_id: Optional[int] = None,
     actor_username: Optional[str] = None,
 ):
     if crud_module._backend_mutation_proxy_enabled():
@@ -96,6 +142,7 @@ def update_cycle_from_crud(
             start_date=start_date,
             end_date=end_date,
             is_active=is_active,
+            owner_manager_id=owner_manager_id,
             actor_username=actor_username,
         )
         if "error" not in backend_result:
@@ -107,19 +154,36 @@ def update_cycle_from_crud(
         raise ValueError("Cycle start_date must be before end_date.")
 
     with crud_module.get_session_context() as session:
+        actor = None
         if actor_username:
-            crud_module._require_admin_actor(session, actor_username)
+            actor = _require_cycle_governance_actor(
+                crud_module=crud_module,
+                session=session,
+                actor_username=actor_username,
+            )
         elif crud_module._backend_mutation_proxy_enabled():
             raise PermissionError("Actor username is required for this operation")
 
         cycle = session.get(crud_module.Cycle, cycle_id)
         if not cycle:
             return None
+        if actor is not None and getattr(actor, "role", None) == crud_module.UserRole.MANAGER:
+            actor_id = int(getattr(actor, "id", 0) or 0)
+            if int(getattr(cycle, "owner_manager_id", 0) or 0) != actor_id:
+                raise PermissionError("Managers can only update their owned cycles.")
 
         cycle.title = title
         cycle.start_date = start_date
         cycle.end_date = end_date
         cycle.is_active = is_active
+        if actor is not None and getattr(actor, "role", None) == crud_module.UserRole.MANAGER:
+            cycle.owner_manager_id = int(getattr(actor, "id"))
+        elif owner_manager_id is not None:
+            cycle.owner_manager_id = _validate_cycle_owner(
+                crud_module=crud_module,
+                session=session,
+                owner_manager_id=owner_manager_id,
+            )
 
         session.add(cycle)
         session.commit()
@@ -155,14 +219,23 @@ def delete_cycle_from_crud(
         crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
     with crud_module.get_session_context() as session:
+        actor = None
         if actor_username:
-            crud_module._require_admin_actor(session, actor_username)
+            actor = _require_cycle_governance_actor(
+                crud_module=crud_module,
+                session=session,
+                actor_username=actor_username,
+            )
         elif crud_module._backend_mutation_proxy_enabled():
             raise PermissionError("Actor username is required for this operation")
 
         cycle = session.get(crud_module.Cycle, cycle_id)
         if not cycle:
             return False
+        if actor is not None and getattr(actor, "role", None) == crud_module.UserRole.MANAGER:
+            actor_id = int(getattr(actor, "id", 0) or 0)
+            if int(getattr(cycle, "owner_manager_id", 0) or 0) != actor_id:
+                raise PermissionError("Managers can only delete their owned cycles.")
 
         goals = session.exec(
             crud_module.select(crud_module.Goal).where(
