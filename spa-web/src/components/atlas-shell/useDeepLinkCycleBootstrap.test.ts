@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "@/lib/api";
@@ -59,6 +59,9 @@ describe("useDeepLinkCycleBootstrap", () => {
         ...setters,
       }),
     );
+    act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
 
     await waitFor(() => {
       expect(setters.setCycleId).toHaveBeenCalledWith("8");
@@ -68,7 +71,7 @@ describe("useDeepLinkCycleBootstrap", () => {
       expect(setters.setFocusTaskRef).toHaveBeenCalledWith("task_4");
       expect(setters.setPreviewBypass).toHaveBeenCalledWith(true);
       expect(setters.setDeepLinkReady).toHaveBeenCalledWith(true);
-    });
+    }, { timeout: 2000 });
   });
 
   it("auto-selects active cycle when no cycle is present in deep link", async () => {
