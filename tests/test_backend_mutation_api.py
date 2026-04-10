@@ -14,6 +14,27 @@ def _make_client(monkeypatch):
     return TestClient(backend_main.app), backend_main
 
 
+def test_backend_startup_bootstraps_admin_user(monkeypatch):
+    import backend_app.main as backend_main
+
+    calls = {"count": 0}
+
+    monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
+    monkeypatch.setattr(backend_main, "init_database", lambda: None)
+
+    def _fake_ensure_admin_exists():
+        calls["count"] += 1
+        return True
+
+    monkeypatch.setattr(backend_main, "ensure_admin_exists", _fake_ensure_admin_exists)
+
+    with TestClient(backend_main.app) as client:
+        response = client.get("/healthz")
+
+    assert response.status_code == 200
+    assert calls["count"] == 1
+
+
 def test_create_goal_endpoint_normalizes_tag_list(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
     captured = {}
