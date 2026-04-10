@@ -4,6 +4,10 @@ export const DEFAULT_MODE = "atlas";
 export const DEFAULT_LENS = "focus";
 
 const ALLOWED_LENSES = new Set(["focus", "health", "owner"]);
+const LENS_ALIASES = new Map<string, string>([
+  ["scope", "focus"],
+  ["branch", "owner"],
+]);
 const ALLOWED_MODES = new Set([
   "atlas",
   "weekly",
@@ -53,7 +57,8 @@ function normalizeMode(raw: string | null | undefined): string {
 }
 
 function normalizeLens(raw: string | null | undefined): string {
-  const text = String(raw || "").trim().toLowerCase();
+  const source = String(raw || "").trim().toLowerCase();
+  const text = LENS_ALIASES.get(source) || source;
   if (!text) {
     return DEFAULT_LENS;
   }

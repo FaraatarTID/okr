@@ -168,6 +168,38 @@ describe("spa-bff server", () => {
     expect(String(setCookie)).toContain("SameSite=Lax");
   });
 
+  it("returns invalid-credentials response when backend login is unsuccessful", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error_code: "INVALID_CREDENTIALS",
+          detail: "Invalid username or password.",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({
+      method: "POST",
+      url: "/session/login",
+      payload: {
+        username: "admin",
+        password: "bad",
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({
+      success: false,
+      error_code: "INVALID_CREDENTIALS",
+    });
+  });
+
   it("returns session user for /session/me", async () => {
     const app = createServer(baseConfig, { fetchFn: vi.fn() });
     const response = await app.inject({

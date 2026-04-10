@@ -134,7 +134,7 @@ export async function deleteTeamMutation(input: {
 }): Promise<TeamDeleteResponse> {
   const response = await fetch(`/api/backend/v1/teams/${input.team_id}`, {
     method: "DELETE",
-    headers: jsonHeaders(input.actor_username),
+    headers: jsonHeaders(input.actor_username, false),
   });
   if (!response.ok) {
     throw new Error(`Team delete failed: ${await responseDetail(response)}`);

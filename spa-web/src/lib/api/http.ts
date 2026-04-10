@@ -24,10 +24,11 @@ export async function responseDetail(response: Response): Promise<string> {
   return detail;
 }
 
-export function jsonHeaders(actor?: string): Record<string, string> {
-  const headers: Record<string, string> = {
-    "content-type": "application/json",
-  };
+export function jsonHeaders(actor?: string, includeJsonContentType = true): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (includeJsonContentType) {
+    headers["content-type"] = "application/json";
+  }
   if (actor) {
     headers["x-okr-actor"] = actor;
   }

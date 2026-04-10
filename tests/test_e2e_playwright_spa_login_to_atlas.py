@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -26,6 +27,14 @@ def _free_local_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def _npm_command() -> list[str]:
+    npm_name = "npm.cmd" if os.name == "nt" else "npm"
+    npm_path = shutil.which(npm_name)
+    if not npm_path:
+        pytest.skip(f"{npm_name} is required for SPA e2e but was not found on PATH.")
+    return [npm_path]
 
 
 def _wait_for_http(url: str, *, timeout_seconds: float) -> bool:
@@ -256,7 +265,7 @@ def e2e_stack(tmp_path_factory: pytest.TempPathFactory) -> E2EStack:
                 }
             )
             bff_process = subprocess.Popen(
-                ["npm", "run", "dev"],
+                [*_npm_command(), "run", "dev"],
                 cwd=repo_root / "spa-bff",
                 env=bff_env,
                 stdout=bff_log,
@@ -284,7 +293,7 @@ def e2e_stack(tmp_path_factory: pytest.TempPathFactory) -> E2EStack:
             )
             spa_process = subprocess.Popen(
                 [
-                    "npm",
+                    *_npm_command(),
                     "run",
                     "dev",
                     "--",
