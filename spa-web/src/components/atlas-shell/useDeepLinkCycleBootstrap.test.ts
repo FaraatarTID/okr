@@ -28,7 +28,6 @@ vi.mock("@/components/atlas-shell/shellUiUtils", async () => {
     parsePreviewBypass: vi.fn(actual.parsePreviewBypass),
   };
 });
-
 const baseUser: AuthUser = {
   id: 1,
   username: "alice",
