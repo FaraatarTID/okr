@@ -326,6 +326,8 @@ def create_user_from_crud(
     actor_username: Optional[str] = None,
 ):
     validate_password_policy(password)
+    if not isinstance(role, crud_module.UserRole):
+        role = crud_module.UserRole(str(role))
 
     if crud_module._backend_mutation_proxy_enabled():
         if not actor_username:
@@ -352,6 +354,20 @@ def create_user_from_crud(
             crud_module._require_admin_actor(session, actor_username)
         elif crud_module._backend_mutation_proxy_enabled():
             raise PermissionError("Actor username is required for this operation")
+
+        enforce_manager_chain = bool(actor_username)
+        manager_user = None
+        if manager_id is not None:
+            manager_user = session.get(crud_module.User, int(manager_id))
+            if not manager_user or not bool(getattr(manager_user, "is_active", False)):
+                raise ValueError("manager_id must reference an active user.")
+            if getattr(manager_user, "role", None) not in (
+                crud_module.UserRole.MANAGER,
+                crud_module.UserRole.ADMIN,
+            ):
+                raise ValueError("manager_id must reference a manager or admin.")
+        if enforce_manager_chain and role == crud_module.UserRole.MEMBER and manager_id is None:
+            raise ValueError("Member users must have a manager_id.")
 
         user = crud_module.User(
             username=username,
@@ -841,15 +857,32 @@ def update_user_from_crud(
         user = session.get(crud_module.User, user_id)
         if not user:
             return None
-        if display_name is not None:
-            user.display_name = display_name
+        next_role = user.role
         if role is not None:
             if not isinstance(role, crud_module.UserRole):
                 role = crud_module.UserRole(str(role))
+            next_role = role
+        next_manager_id = user.manager_id if manager_id is None else int(manager_id)
+
+        if next_manager_id is not None:
+            if int(next_manager_id) == int(user_id):
+                raise ValueError("User cannot be their own manager.")
+            manager_user = session.get(crud_module.User, int(next_manager_id))
+            if not manager_user or not bool(getattr(manager_user, "is_active", False)):
+                raise ValueError("manager_id must reference an active user.")
+            if getattr(manager_user, "role", None) not in (
+                crud_module.UserRole.MANAGER,
+                crud_module.UserRole.ADMIN,
+            ):
+                raise ValueError("manager_id must reference a manager or admin.")
+        if actor_username and next_role == crud_module.UserRole.MEMBER and next_manager_id is None:
+            raise ValueError("Member users must have a manager_id.")
+
+        if display_name is not None:
+            user.display_name = display_name
+        if role is not None:
             user.role = role
         if manager_id is not None:
-            if int(manager_id) == int(user_id):
-                raise ValueError("User cannot be their own manager.")
             user.manager_id = manager_id
         if team_id is not None:
             user.team_id = team_id

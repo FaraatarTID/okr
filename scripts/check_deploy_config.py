@@ -306,6 +306,7 @@ def validate(
             "OKR_DATABASE_URL",
             "OKR_BACKEND_SERVICE_TOKEN",
             "OKR_BACKEND_SIGNING_SECRET",
+            "BFF_SESSION_SECRET",
             "OKR_BOOTSTRAP_ADMIN_PASSWORD",
         )
         for key in required_runtime_keys:

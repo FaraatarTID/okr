@@ -8,6 +8,7 @@ export interface ProxyRequest {
   path: string;
   queryString: string;
   body: unknown;
+  actor: string | null;
   incomingHeaders: Record<string, string | string[] | undefined>;
 }
 
@@ -61,7 +62,7 @@ export async function proxyToBackend(
   const path = String(request.path || "").trim();
   const queryString = String(request.queryString || "").trim();
   const bodyBytes = encodeJsonBody(request.body, method);
-  const actor = firstHeaderValue(request.incomingHeaders["x-okr-actor"]);
+  const actor = String(request.actor || "").trim();
   const idempotencyKey = firstHeaderValue(
     request.incomingHeaders["x-okr-idempotency-key"],
   );

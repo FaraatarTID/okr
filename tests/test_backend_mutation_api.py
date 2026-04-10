@@ -1518,3 +1518,80 @@ def test_ai_strategy_pulse_endpoint_rejects_invalid_outlook_payload(monkeypatch)
 
     assert response.status_code == 500
     assert "invalid payload" in str(response.json().get("detail", "")).lower()
+
+
+def test_read_query_cycles_all_returns_primary_active_cycle_for_member(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_scope_for_actor",
+        lambda _actor: {
+            "is_admin": False,
+            "role": "member",
+            "owner_ids": {7},
+            "usernames": {"member_user"},
+        },
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "get_active_cycles",
+        lambda: [
+            SimpleNamespace(id=3, title="Q1", start_date=None, end_date=None, is_active=True),
+            SimpleNamespace(id=8, title="Q2", start_date=None, end_date=None, is_active=True),
+        ],
+    )
+    monkeypatch.setattr(backend_main, "get_all_cycles", lambda: [])
+
+    response = client.post(
+        "/v1/read/query",
+        headers={"X-OKR-Actor": "member_user"},
+        json={"kind": "cycles.all", "params": {}},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload.get("cycles"), list)
+    assert len(payload["cycles"]) == 1
+    assert int(payload["cycles"][0]["id"]) == 8
+
+
+def test_member_snapshot_rejects_non_active_cycle_override(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _fake_session_context():
+        yield object()
+
+    monkeypatch.setattr(backend_main, "get_session_context", _fake_session_context)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_actor_scope",
+        lambda _session, _actor: {
+            "is_admin": False,
+            "role": "member",
+            "owner_ids": {7},
+            "usernames": {"member_user"},
+        },
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "get_active_cycles",
+        lambda: [
+            SimpleNamespace(id=5, title="Q-active", start_date=None, end_date=None, is_active=True),
+        ],
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "build_atlas_scope_snapshot",
+        lambda *_args, **_kwargs: {"goals": [], "users_map": {}},
+    )
+
+    response = client.post(
+        "/v1/read/atlas/snapshot",
+        headers={"X-OKR-Actor": "member_user"},
+        json={"actor_username": "member_user", "cycle_id": 99},
+    )
+
+    assert response.status_code == 403
+    assert "active cycle" in str(response.json().get("detail", "")).lower()
