@@ -29,7 +29,7 @@ Exit Rule
 | Item | Required | Evidence |
 | --- | --- | --- |
 | Unit/integration suite pass: `python -m pytest -q` | Yes | Test run summary |
-| E2E pass: `OKR_RUN_PLAYWRIGHT_E2E=1` + `python -m pytest -q tests/test_e2e_playwright_login_to_atlas.py` | Yes | Test run summary |
+| E2E pass: `OKR_RUN_PLAYWRIGHT_SPA_E2E=1` + `python -m pytest -q tests/test_e2e_playwright_spa_login_to_atlas.py` | Yes | Test run summary |
 | Self-hosted services healthy (`okr`, `backend-api`, `backend-worker`) | Yes | `docker compose ... ps` output snapshot |
 | Backend health endpoint responds: `curl -f http://127.0.0.1:8100/healthz` | Yes | Response snapshot |
 | Login -> Atlas -> timer start/stop manual smoke is successful | Yes | Tester + timestamp |

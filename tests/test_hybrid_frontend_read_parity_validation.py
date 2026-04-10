@@ -11,12 +11,23 @@ VALIDATION_PATH = ROOT / "docs" / "HYBRID_FRONTEND_READ_PARITY_VALIDATION_2026-0
 FIXTURE_PATH = ROOT / "docs" / "fixtures" / "hybrid_frontend" / "atlas_snapshot.response.json"
 ATLAS_LIB_PATH = ROOT / "spa-web" / "src" / "lib" / "atlas.ts"
 ATLAS_SHELL_PATH = ROOT / "spa-web" / "src" / "components" / "AtlasShell.tsx"
+ATLAS_SHELL_COMPONENTS_DIR = ROOT / "spa-web" / "src" / "components" / "atlas-shell"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8-sig"))
     assert isinstance(payload, dict)
     return payload
+
+
+def _load_spa_shell_source_bundle() -> str:
+    parts = [ATLAS_SHELL_PATH.read_text(encoding="utf-8")]
+    if ATLAS_SHELL_COMPONENTS_DIR.exists():
+        for path in sorted(ATLAS_SHELL_COMPONENTS_DIR.glob("*.ts")):
+            parts.append(path.read_text(encoding="utf-8"))
+        for path in sorted(ATLAS_SHELL_COMPONENTS_DIR.glob("*.tsx")):
+            parts.append(path.read_text(encoding="utf-8"))
+    return "\n".join(parts)
 
 
 def _count_tree(snapshot: dict[str, Any]) -> dict[str, int]:
@@ -104,7 +115,7 @@ def test_read_parity_validation_required_fields_exist_in_fixture() -> None:
 def test_read_parity_validation_spa_sources_expose_read_parity_signals() -> None:
     payload = _load_json(VALIDATION_PATH)
     atlas_lib = ATLAS_LIB_PATH.read_text(encoding="utf-8")
-    atlas_shell = ATLAS_SHELL_PATH.read_text(encoding="utf-8")
+    source_bundle = _load_spa_shell_source_bundle()
 
     for marker in (
         "export interface AtlasGoalSnapshot",
@@ -120,10 +131,10 @@ def test_read_parity_validation_spa_sources_expose_read_parity_signals() -> None
     assert render_signals.get("inspector_section_present") is True
 
     for label in ("Focus Map", "Inspector"):
-        assert label in atlas_shell
+        assert label in source_bundle
 
     for inspector_field in render_signals["inspector_fields_present"]:
-        assert str(inspector_field) in atlas_shell
+        assert str(inspector_field) in source_bundle
 
     result = payload["result"]
     assert isinstance(result, dict)

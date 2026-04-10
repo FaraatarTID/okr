@@ -81,10 +81,11 @@ The following kinds are currently implemented in backend read-query dispatch and
 
 ### Actor Propagation Policy (Machine-Checked)
 
-- For actor-scoped routes, `spa-bff` requires `X-OKR-Actor` and rejects missing actor headers (`400`).
+- For actor-scoped routes, `spa-bff` requires a valid BFF session cookie and rejects missing/invalid session (`401`).
 - `POST /v1/auth/login` is the only allowlisted route that does not require actor header forwarding.
+- Client-supplied `X-OKR-Actor` is ignored for actor-scoped routes.
 - Backend actor resolution precedence is explicit:
-  1. `X-OKR-Actor` header (canonical)
+  1. `X-OKR-Actor` header set by BFF session actor (canonical)
   2. payload actor field fallback (`actor_username`/`user_id`) if header is absent
 - Unauthorized actors are rejected by backend authorization scope checks (`403`).
 
@@ -194,4 +195,3 @@ CI guards:
 ## Open Items
 
 1. Define versioning strategy for BFF public routes before exposing SPA to wider cohorts.
-
