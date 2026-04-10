@@ -562,9 +562,97 @@ def _resolve_actor_scope(session: Session, actor_username: str) -> dict[str, Any
 
     return {
         "is_admin": role == UserRole.ADMIN,
+        "role": str(role.value if hasattr(role, "value") else role),
+        "actor_id": actor_id_int,
+        "manager_id": (
+            int(getattr(actor, "manager_id"))
+            if getattr(actor, "manager_id", None) is not None
+            else None
+        ),
         "owner_ids": owner_ids,
         "usernames": usernames,
     }
+
+
+def _scope_role(scope: dict[str, Any]) -> str:
+    return str(scope.get("role") or "").strip().lower()
+
+
+def _is_scope_admin_or_manager(scope: dict[str, Any]) -> bool:
+    if bool(scope.get("is_admin", False)):
+        return True
+    return _scope_role(scope) == "manager"
+
+
+def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
+    if not cycles:
+        return None
+    return sorted(
+        cycles,
+        key=lambda cycle: int(getattr(cycle, "id", 0) or 0),
+        reverse=True,
+    )[0]
+
+
+def _cycle_owner_match(scope: dict[str, Any], cycle: Any) -> bool:
+    if bool(scope.get("is_admin", False)):
+        return True
+    cycle_owner = getattr(cycle, "owner_manager_id", None)
+    role = _scope_role(scope)
+    actor_id = scope.get("actor_id")
+    manager_id = scope.get("manager_id")
+    if role == "manager":
+        return actor_id is not None and cycle_owner is not None and int(cycle_owner) == int(actor_id)
+    if role == "member":
+        return manager_id is not None and cycle_owner is not None and int(cycle_owner) == int(manager_id)
+    return actor_id is not None and cycle_owner is not None and int(cycle_owner) == int(actor_id)
+
+
+def _visible_cycles_for_scope(scope: dict[str, Any], cycles: list[Any]) -> list[Any]:
+    if bool(scope.get("is_admin", False)):
+        return list(cycles)
+    return [cycle for cycle in cycles if _cycle_owner_match(scope, cycle)]
+
+
+def _resolve_effective_cycle_id_for_scope(
+    scope: dict[str, Any],
+    requested_cycle_id: Optional[int],
+    *,
+    required: bool = True,
+) -> Optional[int]:
+    if bool(scope.get("is_admin", False)):
+        if requested_cycle_id is None:
+            if required:
+                raise HTTPException(status_code=400, detail="cycle_id is required.")
+            return None
+        return int(requested_cycle_id)
+
+    role = _scope_role(scope)
+    if role == "manager":
+        if requested_cycle_id is None:
+            if required:
+                raise HTTPException(status_code=400, detail="cycle_id is required.")
+            return None
+        candidate = int(requested_cycle_id)
+        owned_cycles = _visible_cycles_for_scope(scope, list(get_all_cycles() or []))
+        if any(int(getattr(cycle, "id", 0) or 0) == candidate for cycle in owned_cycles):
+            return candidate
+        raise HTTPException(status_code=403, detail="Managers can only use their owned cycles.")
+
+    active_cycles = _visible_cycles_for_scope(scope, list(get_active_cycles() or []))
+    selected = _pick_primary_active_cycle(active_cycles)
+    if not selected or getattr(selected, "id", None) is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No active cycle available for this user scope.",
+        )
+    selected_id = int(getattr(selected, "id"))
+    if requested_cycle_id is not None and int(requested_cycle_id) != selected_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Members must use the manager/admin active cycle.",
+        )
+    return selected_id
 
 
 def _coerce_owner_ids(values: Optional[list[int]]) -> list[int]:
@@ -853,6 +941,7 @@ def _serialize_cycle(cycle) -> dict | None:
         "start_date": getattr(cycle, "start_date", None),
         "end_date": getattr(cycle, "end_date", None),
         "is_active": bool(getattr(cycle, "is_active", True)),
+        "owner_manager_id": getattr(cycle, "owner_manager_id", None),
     }
 
 
@@ -1331,7 +1420,10 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         return {"team": _serialize_team(get_team_by_id(team_id))}
 
     if kind == "cycles.all":
-        cycles = list(get_all_cycles() or [])
+        cycles = _visible_cycles_for_scope(scope, list(get_all_cycles() or []))
+        if _scope_role(scope) == "member":
+            primary = _pick_primary_active_cycle([c for c in cycles if bool(getattr(c, "is_active", False))])
+            cycles = [primary] if primary is not None else []
         return {
             "cycles": [
                 payload
@@ -1341,7 +1433,10 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         }
 
     if kind == "cycles.active":
-        cycles = list(get_active_cycles() or [])
+        cycles = _visible_cycles_for_scope(scope, list(get_active_cycles() or []))
+        if _scope_role(scope) == "member":
+            primary = _pick_primary_active_cycle(cycles)
+            cycles = [primary] if primary is not None else []
         return {
             "cycles": [
                 payload
@@ -1382,7 +1477,10 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         return {"node_type": None}
 
     if kind == "krs.by_cycle":
-        cycle_id = _coerce_int(params.get("cycle_id"), field_name="cycle_id")
+        cycle_id = _resolve_effective_cycle_id_for_scope(
+            scope,
+            _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
+        )
         limit_raw = params.get("limit")
         offset_raw = params.get("offset", 0)
         limit = (
@@ -1421,7 +1519,10 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         }
 
     if kind == "tasks.by_cycle":
-        cycle_id = _coerce_int(params.get("cycle_id"), field_name="cycle_id")
+        cycle_id = _resolve_effective_cycle_id_for_scope(
+            scope,
+            _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
+        )
         limit_raw = params.get("limit")
         offset_raw = params.get("offset", 0)
         limit = (
@@ -1496,7 +1597,10 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         if not user_id:
             raise HTTPException(status_code=400, detail="user_id is required.")
         _require_allowed_username(scope, user_id)
-        cycle_id = _coerce_int(params.get("cycle_id"), field_name="cycle_id")
+        cycle_id = _resolve_effective_cycle_id_for_scope(
+            scope,
+            _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
+        )
         days_threshold = _coerce_int(
             params.get("days_threshold", 7),
             field_name="days_threshold",
@@ -1570,7 +1674,10 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         }
 
     if kind == "experiments.for_retro_window":
-        cycle_id = _coerce_int(params.get("cycle_id"), field_name="cycle_id")
+        cycle_id = _resolve_effective_cycle_id_for_scope(
+            scope,
+            _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
+        )
         window_start = _coerce_datetime(
             params.get("window_start"),
             field_name="window_start",
@@ -1602,10 +1709,15 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         user_id = _coerce_int(params.get("user_id"), field_name="user_id")
         _require_allowed_user_id(scope, user_id)
         cycle_id_raw = params.get("cycle_id")
-        cycle_id = (
+        requested_cycle_id = (
             _coerce_int(cycle_id_raw, field_name="cycle_id")
             if cycle_id_raw is not None
             else None
+        )
+        cycle_id = _resolve_effective_cycle_id_for_scope(
+            scope,
+            requested_cycle_id,
+            required=False,
         )
         retros = list(get_user_retrospectives(user_id=user_id, cycle_id=cycle_id) or [])
         return {
@@ -1622,10 +1734,15 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         manager_id = _coerce_int(params.get("manager_id"), field_name="manager_id")
         _require_allowed_user_id(scope, manager_id)
         cycle_id_raw = params.get("cycle_id")
-        cycle_id = (
+        requested_cycle_id = (
             _coerce_int(cycle_id_raw, field_name="cycle_id")
             if cycle_id_raw is not None
             else None
+        )
+        cycle_id = _resolve_effective_cycle_id_for_scope(
+            scope,
+            requested_cycle_id,
+            required=False,
         )
         retros = list(
             get_team_retrospectives(manager_id=manager_id, cycle_id=cycle_id) or []
@@ -1960,6 +2077,7 @@ def api_read_atlas_snapshot(
     with get_session_context() as session:
         scope = _resolve_actor_scope(session, actor)
         allowed_owner_ids = set(scope.get("owner_ids") or set())
+        cycle_id = _resolve_effective_cycle_id_for_scope(scope, int(payload.cycle_id))
         if bool(scope.get("is_admin", False)):
             owner_ids = requested_owner_ids or None
         else:
@@ -1971,7 +2089,7 @@ def api_read_atlas_snapshot(
                 owner_ids = sorted(allowed_owner_ids)
         snapshot = build_atlas_scope_snapshot(
             session,
-            cycle_id=int(payload.cycle_id),
+            cycle_id=int(cycle_id),
             owner_ids=owner_ids,
             include_analysis=bool(payload.include_analysis),
         )
@@ -1996,6 +2114,7 @@ def api_read_leadership_metrics(
     with get_session_context() as session:
         scope = _resolve_actor_scope(session, actor)
         allowed_usernames = {str(value) for value in (scope.get("usernames") or set())}
+    cycle_id = _resolve_effective_cycle_id_for_scope(scope, int(payload.cycle_id))
     if bool(scope.get("is_admin", False)):
         usernames = (
             sorted(requested_usernames)
@@ -2010,7 +2129,7 @@ def api_read_leadership_metrics(
         )
     if not usernames:
         return {}
-    return get_leadership_metrics(usernames, int(payload.cycle_id))
+    return get_leadership_metrics(usernames, int(cycle_id))
 
 
 @app.post(
@@ -2620,6 +2739,7 @@ def api_create_cycle(
             start_date=payload.start_date,
             end_date=payload.end_date,
             is_active=payload.is_active,
+            owner_manager_id=payload.owner_manager_id,
             actor_username=actor,
         )
     except PermissionError as exc:
@@ -2649,6 +2769,7 @@ def api_update_cycle(
             start_date=payload.start_date,
             end_date=payload.end_date,
             is_active=payload.is_active,
+            owner_manager_id=payload.owner_manager_id,
             actor_username=actor,
         )
     except PermissionError as exc:

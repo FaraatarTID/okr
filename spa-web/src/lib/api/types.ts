@@ -42,6 +42,7 @@ export interface CycleSummary {
   start_date?: string | null;
   end_date?: string | null;
   is_active: boolean;
+  owner_manager_id?: number | null;
 }
 
 export interface CycleDeleteResponse {
