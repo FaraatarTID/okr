@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "@/lib/api";
 import * as deeplink from "@/lib/deeplink";
+import * as shellUiUtils from "@/components/atlas-shell/shellUiUtils";
 import type { AuthUser, CycleSummary } from "@/lib/api";
 import useDeepLinkCycleBootstrap from "@/components/atlas-shell/useDeepLinkCycleBootstrap";
 
@@ -15,6 +16,16 @@ vi.mock("@/lib/deeplink", async () => {
   return {
     ...actual,
     parseDeepLink: vi.fn(actual.parseDeepLink),
+  };
+});
+
+vi.mock("@/components/atlas-shell/shellUiUtils", async () => {
+  const actual = await vi.importActual<typeof import("@/components/atlas-shell/shellUiUtils")>(
+    "@/components/atlas-shell/shellUiUtils",
+  );
+  return {
+    ...actual,
+    parsePreviewBypass: vi.fn(actual.parsePreviewBypass),
   };
 });
 
@@ -62,6 +73,7 @@ describe("useDeepLinkCycleBootstrap", () => {
       sel: "task_3",
       ft: "task_4",
     });
+    vi.mocked(shellUiUtils.parsePreviewBypass).mockReturnValue(true);
 
     renderHook(() =>
       useDeepLinkCycleBootstrap({
