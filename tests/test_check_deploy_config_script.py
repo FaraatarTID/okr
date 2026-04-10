@@ -45,6 +45,9 @@ def _write_env(
     bootstrap_pw = (
         "CHANGE_ME_BOOTSTRAP_PASSWORD" if placeholder_values else "Admin!Passw0rd"
     )
+    bff_session_secret = (
+        "CHANGE_ME_BFF_SESSION_SECRET" if placeholder_values else "bff_session_secret_123"
+    )
     db_url = (
         "postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"
         if placeholder_values
@@ -60,6 +63,7 @@ def _write_env(
         "OKR_BACKEND_API_URL=http://backend-api:8100",
         f"OKR_BACKEND_SERVICE_TOKEN={service_token}",
         f"OKR_BACKEND_SIGNING_SECRET={signing_secret}",
+        f"BFF_SESSION_SECRET={bff_session_secret}",
         f"OKR_BOOTSTRAP_ADMIN_PASSWORD={bootstrap_pw}",
         "OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true",
         "OKR_BACKEND_PROXY_MUTATIONS=true",

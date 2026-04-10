@@ -2,16 +2,38 @@ Documentation HQ: [README](../README.md)
 
 Troubleshooting
 
-### Streamlit Cloud Startup Issues
+### Runtime scope (important)
+
+- Primary runtime and deployment path is SPA-first: `backend-api` + `backend-worker` + `spa-bff` + `spa-web`.
+- Streamlit runtime notes below are legacy/reference-only and apply only if you intentionally run archived Streamlit flows.
+
+### Streamlit Cloud Startup Issues (Legacy Reference)
 
 - **Backend Startup Timeout**: The embedded backend has a 60-second timeout to complete database migrations and cold-starts. If the app fails with "Backend read failed", check the Streamlit logs for the last 30 lines of the backend output.
 - **Viewing Backend Logs**: On Streamlit Cloud, the backend `stderr` is redirected to `/tmp/okr_backend.log`. If the app is up but backend features fail, you can try to view this file in a debug session.
-- **ModuleNotFoundError: No module named 'src'**: This usually indicates a broken `PYTHONPATH`. Ensure you are using the latest version of `backend_launcher.py` and `run_api.py` which have auto-reinforcement logic.
+- **ModuleNotFoundError: No module named 'src'**: This usually indicates a broken `PYTHONPATH`. Ensure you are using compatible legacy launcher/runtime files if running Streamlit-only paths.
 
 ### Blank page or reconnecting loop
 
 - Check reverse proxy websocket headers (Upgrade/Connection)
 - Verify BASE_URL_PATH is set when using subpath hosting
+
+### Hybrid local launcher: remote DB unreachable
+
+- `run_hybrid_app_local.bat` now probes DB connectivity before startup.
+- If remote DB DNS/TCP checks fail, launcher can auto-fallback to local SQLite:
+  - Path: `tmp/okr-local-dev.sqlite3`
+  - Toggle fallback: `OKR_LOCAL_DB_FALLBACK=true|false` (default `true`)
+  - Reset local DB on launch: `OKR_LOCAL_DB_RESET=true|false` (default `false`)
+- If fallback is disabled and remote DB is unreachable, startup stops early with a clear error.
+
+### Atlas Inspector does not show `Create Goal`
+
+- On current SPA builds, `Manage Nodes` should be visible even when no node is selected.
+- If you still do not see `Create Goal`:
+  - Make sure you launched the SPA hybrid stack (`run_hybrid_app_local.bat`) and not a stale browser tab.
+  - Fully reload the browser (`Ctrl+F5`) after pulling code updates.
+  - Check `tmp/local-hybrid-logs/spa-web.err.log` for build/runtime errors.
 
 PDF export fails
 
@@ -29,7 +51,7 @@ Runtime preflight shows configuration errors
   - Change `PDF_METHOD` to `pdfshift` or `chromium`
 - If preflight says `OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set` even after changing secrets:
   - Check the new `Config trace` info line in the UI; it shows effective value and source (`env`, `secrets_root`, `secrets_app`, `default`).
-  - In Streamlit secrets TOML, prefer native booleans (avoid wrapping an entire block in quotes):
+  - In secrets TOML (including Streamlit-managed secrets where applicable), prefer native booleans (avoid wrapping an entire block in quotes):
     - `OKR_BACKEND_PROXY_MUTATIONS = false` (recommended)
     - `OKR_BACKEND_PROXY_MUTATIONS = "false"` (works with current parser, but not preferred)
     - `"PDF_METHOD = \"pdfshift\"\nOKR_BACKEND_PROXY_MUTATIONS=false"` (invalid TOML blob)
@@ -38,7 +60,7 @@ Runtime preflight shows configuration errors
 
 AI features unavailable
 
-- Run provider check: `python streamlit_app/scripts/ai_provider_health_check.py --json`
+- Run provider check: `python scripts/ai_provider_health_check.py --json`
 - If using Gemini:
   - Verify `AI_PROVIDER=gemini`
   - Verify `GEMINI_API_KEY` is set and not placeholder-like
@@ -98,7 +120,8 @@ Supabase connection errors
 Hosting under subpath breaks assets
 
 - Ensure proxy rewrite strips the prefix
-- Ensure Streamlit CLI flag --server.baseUrlPath is set (container CMD handles this)
+- For SPA stack, ensure reverse-proxy base path and rewrite rules align with `spa-web` and `spa-bff` routes.
+- Streamlit CLI `--server.baseUrlPath` is legacy-only guidance.
 
 Timeouts on long interactions
 

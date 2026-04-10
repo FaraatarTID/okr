@@ -3,8 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { bffLogin } from "@/lib/api";
-import { loadAuthUser, saveAuthUser } from "@/lib/auth-session";
+import { bffLogin, readSessionUser } from "@/lib/api";
 
 function safeReturnPath(raw: string | null): string {
   const value = String(raw || "").trim();
@@ -25,9 +24,21 @@ function LoginPageContent() {
   const returnTo = safeReturnPath(searchParams.get("return_to"));
 
   useEffect(() => {
-    if (loadAuthUser()) {
-      router.replace(returnTo);
-    }
+    let active = true;
+    void (async () => {
+      try {
+        await readSessionUser();
+        if (!active) {
+          return;
+        }
+        router.replace(returnTo);
+      } catch {
+        // no active session; keep login view
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [returnTo, router]);
 
   async function handleLogin(): Promise<void> {
@@ -42,7 +53,6 @@ function LoginPageContent() {
         setError(payload.detail || payload.error_code || "Login failed. Verify credentials.");
         return;
       }
-      saveAuthUser(payload.user);
       router.replace(returnTo);
     } catch (loginError) {
       setError(String(loginError instanceof Error ? loginError.message : loginError));

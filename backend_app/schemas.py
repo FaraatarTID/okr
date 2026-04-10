@@ -185,6 +185,7 @@ class CycleCreateRequest(BaseModel):
     start_date: datetime
     end_date: datetime
     is_active: bool = True
+    owner_manager_id: Optional[int] = Field(default=None, gt=0)
     actor_username: Optional[str] = None
 
 
@@ -193,6 +194,7 @@ class CycleUpdateRequest(BaseModel):
     start_date: datetime
     end_date: datetime
     is_active: bool
+    owner_manager_id: Optional[int] = Field(default=None, gt=0)
     actor_username: Optional[str] = None
 
 
@@ -202,6 +204,7 @@ class CycleMutationView(BaseModel):
     start_date: datetime
     end_date: datetime
     is_active: bool
+    owner_manager_id: Optional[int] = None
 
 
 class CycleDeleteResponse(BaseModel):
@@ -420,4 +423,3 @@ class AiStrategyPulseRequest(BaseModel):
     cycle_title: Optional[str] = Field(default=None, max_length=255)
     days: int = Field(default=14, ge=7, le=90)
     actor_username: Optional[str] = None
-

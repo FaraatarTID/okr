@@ -46,7 +46,11 @@ def test_phase0_baseline_required_command_outcomes() -> None:
     assert pytest_cmd["status"] == "pass"
 
     playwright_cmd = by_name["playwright_happy_path"]
-    assert "tests/test_e2e_playwright_login_to_atlas.py" in str(playwright_cmd["command"])
+    playwright_command = str(playwright_cmd["command"])
+    assert (
+        "tests/test_e2e_playwright_login_to_atlas.py" in playwright_command
+        or "tests/test_e2e_playwright_spa_login_to_atlas.py" in playwright_command
+    )
     assert int(playwright_cmd["exit_code"]) == 0
     assert str(playwright_cmd["status"]) in {"pass", "skipped"}
     if playwright_cmd["status"] == "skipped":
