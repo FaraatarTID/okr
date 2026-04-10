@@ -26,8 +26,17 @@ import src.models as models
 import src.domain.authorization as auth
 import src.crud as crud
 
-db_path = Path(tempfile.mkdtemp(prefix="okr_hot_reload_rebind_")) / "rebind.db"
-db_url = f"sqlite:///{db_path}"
+temp_root = repo_root / ".test-artifacts" / "pytest-subproc"
+temp_root.mkdir(parents=True, exist_ok=True)
+os.environ["TMP"] = str(temp_root)
+os.environ["TEMP"] = str(temp_root)
+os.environ["OKR_BACKEND_API_URL"] = ""
+tempfile.tempdir = str(temp_root)
+
+db_path = temp_root / f"rebind_{os.getpid()}.db"
+if db_path.exists():
+    db_path.unlink()
+db_url = f"sqlite:///{db_path.as_posix()}"
 os.environ["OKR_DATABASE_URL"] = db_url
 database.DATABASE_URL = db_url
 database._engine = None
