@@ -363,21 +363,30 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
         expect(sign_in_button).to_be_enabled(timeout=60_000)
         sign_in_button.click()
 
-        expect(page.get_by_role("button", name="Logout").first).to_be_visible(timeout=90_000)
-
-        use_suggested_button = page.get_by_role("button", name="Use Suggested").first
-        if use_suggested_button.count() > 0 and use_suggested_button.is_visible():
-            use_suggested_button.click()
-
-        start_button = page.get_by_role("button", name="Start").first
-        expect(start_button).to_be_visible(timeout=90_000)
-        expect(start_button).to_be_enabled(timeout=90_000)
-        start_button.click()
-        expect(page.get_by_role("button", name="Stop & Log").first).to_be_visible(
+        expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
             timeout=90_000
         )
 
-        page.get_by_role("button", name="Logout").first.click()
+        active_task_select = page.locator("#focus-task-ref")
+        expect(active_task_select).to_be_visible(timeout=90_000)
+        option_count = active_task_select.locator("option").count()
+        if option_count < 2:
+            pytest.fail(
+                "Active Task selector has no task options after login; cannot start timer."
+            )
+        active_task_select.select_option(index=1)
+
+        start_button = page.get_by_role("button", name="Start timer", exact=True)
+        expect(start_button).to_be_visible(timeout=90_000)
+        expect(start_button).to_be_enabled(timeout=90_000)
+        start_button.click()
+        expect(
+            page.get_by_role("button", name="Stop timer + save log", exact=True)
+        ).to_be_visible(
+            timeout=90_000
+        )
+
+        page.get_by_role("button", name="Sign out", exact=True).click()
         expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(
             timeout=90_000
         )
