@@ -142,6 +142,40 @@ from src.services.ai_service import (
     analyze_team_health,
     generate_predictive_outlook,
 )
+from src.services.supabase_api_mode import (
+    authenticate_user_detailed_via_supabase_api,
+    build_atlas_scope_snapshot_via_supabase_api,
+    close_experiment_via_supabase_api,
+    create_check_in_via_supabase_api,
+    create_experiment_via_supabase_api,
+    create_goal_via_supabase_api,
+    create_key_result_via_supabase_api,
+    create_objective_via_supabase_api,
+    create_retrospective_via_supabase_api,
+    create_task_via_supabase_api,
+    create_team_via_supabase_api,
+    create_user_via_supabase_api,
+    create_weekly_plan_via_supabase_api,
+    create_cycle_via_supabase_api,
+    create_alignment_via_supabase_api,
+    delete_cycle_via_supabase_api,
+    delete_alignment_via_supabase_api,
+    delete_team_via_supabase_api,
+    delete_node_via_supabase_api,
+    ensure_supabase_api_ready,
+    get_leadership_metrics_via_supabase_api,
+    is_supabase_api_mode_enabled,
+    read_query_via_supabase_api,
+    start_timer_via_supabase_api,
+    stop_timer_via_supabase_api,
+    reset_user_password_via_supabase_api,
+    update_cycle_via_supabase_api,
+    update_team_via_supabase_api,
+    update_user_via_supabase_api,
+    update_experiment_via_supabase_api,
+    update_node_via_supabase_api,
+    upsert_retro_experiment_outcome_via_supabase_api,
+)
 from src.services.pdf_service import get_pdf_runtime_diagnostics
 from src.database import BACKUP_FORMAT_VERSION, export_database_backup, import_database_backup
 from src.models import (
@@ -164,10 +198,13 @@ from src.audit import audit_log, error_log
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
-    init_database()
-    # Hybrid SPA startup relies on the backend API process to seed the first
-    # bootstrap admin when running against a fresh local SQLite database.
-    ensure_admin_exists()
+    if is_supabase_api_mode_enabled():
+        ensure_supabase_api_ready()
+    else:
+        init_database()
+        # Hybrid SPA startup relies on the backend API process to seed the first
+        # bootstrap admin when running against a fresh local SQLite database.
+        ensure_admin_exists()
     yield
 
 
@@ -568,6 +605,7 @@ def _resolve_actor_scope(session: Session, actor_username: str) -> dict[str, Any
         "is_admin": role == UserRole.ADMIN,
         "role": str(role.value if hasattr(role, "value") else role),
         "actor_id": actor_id_int,
+        "actor_username": str(actor.username),
         "manager_id": (
             int(getattr(actor, "manager_id"))
             if getattr(actor, "manager_id", None) is not None
@@ -576,6 +614,105 @@ def _resolve_actor_scope(session: Session, actor_username: str) -> dict[str, Any
         "owner_ids": owner_ids,
         "usernames": usernames,
     }
+
+
+def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]:
+    actor_resp = read_query_via_supabase_api(
+        kind="users.by_username",
+        params={"username": str(actor_username or "").strip()},
+        actor=str(actor_username or "").strip(),
+    )
+    actor = dict((actor_resp or {}).get("user") or {})
+    if not actor or not bool(actor.get("is_active", True)):
+        raise HTTPException(status_code=403, detail="Actor is not authorized.")
+
+    actor_id_int = int(actor.get("id") or 0)
+    if actor_id_int <= 0:
+        raise HTTPException(status_code=403, detail="Actor is not authorized.")
+
+    role = str(actor.get("role") or "member").strip().lower()
+    rows: list[dict[str, Any]] = []
+    if role == "admin":
+        rows = list((read_query_via_supabase_api(
+            kind="users.all",
+            params={},
+            actor=str(actor_username or "").strip(),
+        ) or {}).get("users") or [])
+    elif role == "manager":
+        manager_rows = list((read_query_via_supabase_api(
+            kind="users.team_members",
+            params={"manager_id": actor_id_int},
+            actor=str(actor_username or "").strip(),
+        ) or {}).get("users") or [])
+        rows = [dict(actor)] + [dict(row) for row in manager_rows if isinstance(row, dict)]
+    else:
+        rows = [dict(actor)]
+
+    owner_ids: set[int] = set()
+    usernames: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not bool(row.get("is_active", True)):
+            continue
+        try:
+            user_id_int = int(row.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        username_text = str(row.get("username") or "").strip()
+        if user_id_int <= 0 or not username_text:
+            continue
+        owner_ids.add(user_id_int)
+        usernames.add(username_text)
+
+    if not owner_ids:
+        owner_ids.add(actor_id_int)
+        usernames.add(str(actor.get("username") or actor_username))
+
+    manager_id_raw = actor.get("manager_id")
+    manager_id = int(manager_id_raw) if manager_id_raw is not None else None
+    return {
+        "is_admin": role == "admin",
+        "role": role,
+        "actor_id": actor_id_int,
+        "actor_username": str(actor.get("username") or actor_username),
+        "manager_id": manager_id,
+        "owner_ids": owner_ids,
+        "usernames": usernames,
+    }
+
+
+def _scope_cycle_id(cycle: Any) -> int:
+    if isinstance(cycle, dict):
+        return int(cycle.get("id") or 0)
+    return int(getattr(cycle, "id", 0) or 0)
+
+
+def _scope_cycle_owner_id(cycle: Any) -> int | None:
+    raw = cycle.get("owner_manager_id") if isinstance(cycle, dict) else getattr(cycle, "owner_manager_id", None)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _scope_cycle_is_active(cycle: Any) -> bool:
+    value = cycle.get("is_active") if isinstance(cycle, dict) else getattr(cycle, "is_active", False)
+    return bool(value)
+
+
+def _list_cycles_for_scope(*, scope: dict[str, Any], active_only: bool = False) -> list[Any]:
+    if is_supabase_api_mode_enabled():
+        kind = "cycles.active" if active_only else "cycles.all"
+        payload = read_query_via_supabase_api(
+            kind=kind,
+            params={},
+            actor=str(scope.get("actor_username") or ""),
+        )
+        return list((payload or {}).get("cycles") or [])
+    return list(get_active_cycles() or []) if active_only else list(get_all_cycles() or [])
 
 
 def _scope_role(scope: dict[str, Any]) -> str:
@@ -593,7 +730,7 @@ def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
         return None
     return sorted(
         cycles,
-        key=lambda cycle: int(getattr(cycle, "id", 0) or 0),
+        key=lambda cycle: _scope_cycle_id(cycle),
         reverse=True,
     )[0]
 
@@ -601,7 +738,7 @@ def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
 def _cycle_owner_match(scope: dict[str, Any], cycle: Any) -> bool:
     if bool(scope.get("is_admin", False)):
         return True
-    cycle_owner = getattr(cycle, "owner_manager_id", None)
+    cycle_owner = _scope_cycle_owner_id(cycle)
     if cycle_owner is None:
         # Backward-compatibility for legacy cycles/tests where ownership is unset.
         return True
@@ -649,19 +786,19 @@ def _resolve_effective_cycle_id_for_scope(
                 raise HTTPException(status_code=400, detail="cycle_id is required.")
             return None
         candidate = int(requested_cycle_id)
-        owned_cycles = _visible_cycles_for_scope(scope, list(get_all_cycles() or []))
-        if any(int(getattr(cycle, "id", 0) or 0) == candidate for cycle in owned_cycles):
+        owned_cycles = _visible_cycles_for_scope(scope, _list_cycles_for_scope(scope=scope, active_only=False))
+        if any(_scope_cycle_id(cycle) == candidate for cycle in owned_cycles):
             return candidate
         raise HTTPException(status_code=403, detail="Managers can only use their owned cycles.")
 
-    active_cycles = _visible_cycles_for_scope(scope, list(get_active_cycles() or []))
+    active_cycles = _visible_cycles_for_scope(scope, _list_cycles_for_scope(scope=scope, active_only=True))
     selected = _pick_primary_active_cycle(active_cycles)
-    if not selected or getattr(selected, "id", None) is None:
+    if not selected or _scope_cycle_id(selected) <= 0:
         raise HTTPException(
             status_code=404,
             detail="No active cycle available for this user scope.",
         )
-    selected_id = int(getattr(selected, "id"))
+    selected_id = _scope_cycle_id(selected)
     if requested_cycle_id is not None and int(requested_cycle_id) != selected_id:
         raise HTTPException(
             status_code=403,
@@ -1325,6 +1462,8 @@ def _serialize_node_for_type(node_type: str, node):
 
 
 def _resolve_scope_for_actor(actor: str) -> dict[str, Any]:
+    if is_supabase_api_mode_enabled():
+        return _resolve_actor_scope_via_supabase_api(actor)
     with get_session_context() as session:
         return _resolve_actor_scope(session, actor)
 
@@ -1335,6 +1474,64 @@ def _require_allowed_user_id(scope: dict[str, Any], user_id: int) -> None:
         return
     if int(user_id) not in owner_ids:
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
+
+
+def _read_node_row_via_supabase(*, node_type: str, node_id: int, actor: str) -> dict[str, Any] | None:
+    payload = read_query_via_supabase_api(
+        kind="node.get",
+        params={"node_type": str(node_type or "").strip().upper(), "node_id": int(node_id)},
+        actor=actor,
+    )
+    row = (payload or {}).get("node")
+    return dict(row) if isinstance(row, dict) else None
+
+
+def _resolve_goal_owner_id_for_node_via_supabase(*, node_type: str, node_id: int, actor: str) -> int | None:
+    normalized = str(node_type or "").strip().upper()
+    node = _read_node_row_via_supabase(node_type=normalized, node_id=int(node_id), actor=actor)
+    if not node:
+        return None
+
+    if normalized == "GOAL":
+        owner_id = node.get("owner_id")
+        return int(owner_id) if owner_id is not None else None
+
+    if normalized == "OBJECTIVE":
+        goal_id = node.get("goal_id")
+        if goal_id is None:
+            return None
+        goal = _read_node_row_via_supabase(node_type="GOAL", node_id=int(goal_id), actor=actor)
+        if not goal:
+            return None
+        owner_id = goal.get("owner_id")
+        return int(owner_id) if owner_id is not None else None
+
+    if normalized == "KEY_RESULT":
+        objective_id = node.get("objective_id")
+        if objective_id is None:
+            return None
+        objective = _read_node_row_via_supabase(node_type="OBJECTIVE", node_id=int(objective_id), actor=actor)
+        if not objective:
+            return None
+        goal_id = objective.get("goal_id")
+        if goal_id is None:
+            return None
+        goal = _read_node_row_via_supabase(node_type="GOAL", node_id=int(goal_id), actor=actor)
+        if not goal:
+            return None
+        owner_id = goal.get("owner_id")
+        return int(owner_id) if owner_id is not None else None
+
+    if normalized == "TASK":
+        key_result_id = node.get("key_result_id")
+        if key_result_id is None:
+            return None
+        return _resolve_goal_owner_id_for_node_via_supabase(
+            node_type="KEY_RESULT",
+            node_id=int(key_result_id),
+            actor=actor,
+        )
+    return None
 
 
 def _require_allowed_username(scope: dict[str, Any], username: str) -> None:
@@ -1370,6 +1567,16 @@ def _filter_tasks_for_scope(tasks: list[Any], scope: dict[str, Any]) -> list[Any
 
 
 def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
+    if is_supabase_api_mode_enabled():
+        try:
+            return read_query_via_supabase_api(
+                kind=str(kind or "").strip(),
+                params=dict(params or {}),
+                actor=str(actor or "").strip(),
+            )
+        except NotImplementedError as exc:
+            raise HTTPException(status_code=501, detail=str(exc)) from exc
+
     scope = _resolve_scope_for_actor(actor)
 
     if kind == "users.by_username":
@@ -1916,11 +2123,18 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
     dependencies=[Depends(require_service_access)],
 )
 def api_auth_login(payload: LoginRequest) -> dict:
-    auth = authenticate_user_detailed(
-        username=str(payload.username or "").strip(),
-        password=payload.password,
-        client_ip=(str(payload.client_ip).strip() if payload.client_ip else None),
-    )
+    if is_supabase_api_mode_enabled():
+        auth = authenticate_user_detailed_via_supabase_api(
+            username=str(payload.username or "").strip(),
+            password=payload.password,
+            client_ip=(str(payload.client_ip).strip() if payload.client_ip else None),
+        )
+    else:
+        auth = authenticate_user_detailed(
+            username=str(payload.username or "").strip(),
+            password=payload.password,
+            client_ip=(str(payload.client_ip).strip() if payload.client_ip else None),
+        )
     output = dict(auth or {})
     output["user"] = _serialize_user((auth or {}).get("user"))
     return output
@@ -1963,13 +2177,20 @@ def api_read_query(
 
 @app.get("/healthz")
 def healthz() -> dict:
-    return {"status": "ok"}
+    mode = "supabase_api" if is_supabase_api_mode_enabled() else "database"
+    return {"status": "ok", "data_access_mode": mode}
 
 
 def _require_admin_actor_scope(actor: str) -> None:
     scope = _resolve_scope_for_actor(actor)
     if not bool(scope.get("is_admin", False)):
         raise HTTPException(status_code=403, detail="Admin privileges required.")
+
+
+def _require_admin_or_manager_actor_scope(actor: str) -> None:
+    scope = _resolve_scope_for_actor(actor)
+    if not _is_scope_admin_or_manager(scope):
+        raise HTTPException(status_code=403, detail="Manager or admin privileges required.")
 
 
 @app.get(
@@ -2091,26 +2312,32 @@ def api_read_atlas_snapshot(
         payload_actor=payload.actor_username,
     )
     requested_owner_ids = _coerce_owner_ids(payload.owner_ids)
-    with get_session_context() as session:
-        scope = _resolve_actor_scope(session, actor)
-        allowed_owner_ids = set(scope.get("owner_ids") or set())
-        cycle_id = _resolve_effective_cycle_id_for_scope(scope, int(payload.cycle_id))
-        if bool(scope.get("is_admin", False)):
-            owner_ids = requested_owner_ids or None
+    scope = _resolve_scope_for_actor(actor)
+    allowed_owner_ids = set(scope.get("owner_ids") or set())
+    cycle_id = _resolve_effective_cycle_id_for_scope(scope, int(payload.cycle_id))
+    if bool(scope.get("is_admin", False)):
+        owner_ids = requested_owner_ids or None
+    else:
+        if requested_owner_ids:
+            owner_ids = sorted(
+                allowed_owner_ids.intersection(set(requested_owner_ids))
+            )
         else:
-            if requested_owner_ids:
-                owner_ids = sorted(
-                    allowed_owner_ids.intersection(set(requested_owner_ids))
-                )
-            else:
-                owner_ids = sorted(allowed_owner_ids)
-        snapshot = build_atlas_scope_snapshot(
+            owner_ids = sorted(allowed_owner_ids)
+    if is_supabase_api_mode_enabled():
+        return build_atlas_scope_snapshot_via_supabase_api(
+            cycle_id=int(cycle_id),
+            owner_ids=owner_ids,
+            include_analysis=bool(payload.include_analysis),
+            actor=actor,
+        )
+    with get_session_context() as session:
+        return build_atlas_scope_snapshot(
             session,
             cycle_id=int(cycle_id),
             owner_ids=owner_ids,
             include_analysis=bool(payload.include_analysis),
         )
-    return snapshot
 
 
 @app.post(
@@ -2128,9 +2355,8 @@ def api_read_leadership_metrics(
     requested_usernames = {
         str(value).strip() for value in (payload.usernames or []) if str(value).strip()
     }
-    with get_session_context() as session:
-        scope = _resolve_actor_scope(session, actor)
-        allowed_usernames = {str(value) for value in (scope.get("usernames") or set())}
+    scope = _resolve_scope_for_actor(actor)
+    allowed_usernames = {str(value) for value in (scope.get("usernames") or set())}
     cycle_id = _resolve_effective_cycle_id_for_scope(scope, int(payload.cycle_id))
     if bool(scope.get("is_admin", False)):
         usernames = (
@@ -2146,6 +2372,12 @@ def api_read_leadership_metrics(
         )
     if not usernames:
         return {}
+    if is_supabase_api_mode_enabled():
+        return get_leadership_metrics_via_supabase_api(
+            usernames=list(usernames),
+            cycle_id=int(cycle_id),
+            actor=actor,
+        )
     return get_leadership_metrics(usernames, int(cycle_id))
 
 
@@ -2282,8 +2514,20 @@ def api_start_timer(
         header_actor=x_okr_actor,
         payload_actor=payload.user_id,
     )
+    if is_supabase_api_mode_enabled():
+        scope = _resolve_scope_for_actor(actor)
+        owner_id = _resolve_goal_owner_id_for_node_via_supabase(
+            node_type="TASK",
+            node_id=int(payload.task_id),
+            actor=actor,
+        )
+        if owner_id is not None:
+            _require_allowed_user_id(scope, int(owner_id))
     try:
-        work_log = start_timer(payload.task_id, actor)
+        if is_supabase_api_mode_enabled():
+            work_log = start_timer_via_supabase_api(task_id=payload.task_id, actor_username=actor)
+        else:
+            work_log = start_timer(payload.task_id, actor)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2311,8 +2555,24 @@ def api_stop_timer(
         header_actor=x_okr_actor,
         payload_actor=payload.user_id,
     )
+    if is_supabase_api_mode_enabled():
+        scope = _resolve_scope_for_actor(actor)
+        owner_id = _resolve_goal_owner_id_for_node_via_supabase(
+            node_type="TASK",
+            node_id=int(payload.task_id),
+            actor=actor,
+        )
+        if owner_id is not None:
+            _require_allowed_user_id(scope, int(owner_id))
     try:
-        work_log = stop_timer(payload.task_id, summary=payload.summary, user_id=actor)
+        if is_supabase_api_mode_enabled():
+            work_log = stop_timer_via_supabase_api(
+                task_id=payload.task_id,
+                summary=payload.summary,
+                user_id=actor,
+            )
+        else:
+            work_log = stop_timer(payload.task_id, summary=payload.summary, user_id=actor)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2458,14 +2718,24 @@ def api_create_goal(
         payload_actor=payload.actor_username or payload.user_id,
     )
     try:
-        goal = create_goal(
-            user_id=payload.user_id,
-            title=payload.title,
-            description=payload.description,
-            cycle_id=payload.cycle_id,
-            strategy_tags=_normalize_tags(payload.strategy_tags),
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            goal = create_goal_via_supabase_api(
+                user_id=payload.user_id,
+                title=payload.title,
+                description=payload.description,
+                cycle_id=payload.cycle_id,
+                strategy_tags=_normalize_tags(payload.strategy_tags),
+                actor_username=actor,
+            )
+        else:
+            goal = create_goal(
+                user_id=payload.user_id,
+                title=payload.title,
+                description=payload.description,
+                cycle_id=payload.cycle_id,
+                strategy_tags=_normalize_tags(payload.strategy_tags),
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2487,13 +2757,22 @@ def api_create_objective(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     try:
-        objective = create_objective(
-            goal_id=payload.goal_id,
-            title=payload.title,
-            description=payload.description,
-            weight=payload.weight,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            objective = create_objective_via_supabase_api(
+                goal_id=payload.goal_id,
+                title=payload.title,
+                description=payload.description,
+                weight=payload.weight,
+                actor_username=actor,
+            )
+        else:
+            objective = create_objective(
+                goal_id=payload.goal_id,
+                title=payload.title,
+                description=payload.description,
+                weight=payload.weight,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2515,16 +2794,28 @@ def api_create_key_result(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     try:
-        key_result = create_key_result(
-            objective_id=payload.objective_id,
-            title=payload.title,
-            description=payload.description,
-            target_value=payload.target_value,
-            unit=payload.unit,
-            initiative_tags=_normalize_tags(payload.initiative_tags),
-            weight=payload.weight,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            key_result = create_key_result_via_supabase_api(
+                objective_id=payload.objective_id,
+                title=payload.title,
+                description=payload.description,
+                target_value=payload.target_value,
+                unit=payload.unit,
+                initiative_tags=_normalize_tags(payload.initiative_tags),
+                weight=payload.weight,
+                actor_username=actor,
+            )
+        else:
+            key_result = create_key_result(
+                objective_id=payload.objective_id,
+                title=payload.title,
+                description=payload.description,
+                target_value=payload.target_value,
+                unit=payload.unit,
+                initiative_tags=_normalize_tags(payload.initiative_tags),
+                weight=payload.weight,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2546,16 +2837,28 @@ def api_create_task(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     try:
-        task = create_task(
-            key_result_id=payload.key_result_id,
-            title=payload.title,
-            description=payload.description,
-            estimated_minutes=payload.estimated_minutes,
-            start_date=payload.start_date,
-            deadline=payload.deadline,
-            assignee_id=payload.assignee_id,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            task = create_task_via_supabase_api(
+                key_result_id=payload.key_result_id,
+                title=payload.title,
+                description=payload.description,
+                estimated_minutes=payload.estimated_minutes,
+                start_date=payload.start_date,
+                deadline=payload.deadline,
+                assignee_id=payload.assignee_id,
+                actor_username=actor,
+            )
+        else:
+            task = create_task(
+                key_result_id=payload.key_result_id,
+                title=payload.title,
+                description=payload.description,
+                estimated_minutes=payload.estimated_minutes,
+                start_date=payload.start_date,
+                deadline=payload.deadline,
+                assignee_id=payload.assignee_id,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2579,16 +2882,32 @@ def api_update_node(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     updates = _normalize_updates(normalized_type, payload.updates)
+    if is_supabase_api_mode_enabled():
+        scope = _resolve_scope_for_actor(actor)
+        owner_id = _resolve_goal_owner_id_for_node_via_supabase(
+            node_type=normalized_type,
+            node_id=int(node_id),
+            actor=actor,
+        )
+        if owner_id is not None:
+            _require_allowed_user_id(scope, int(owner_id))
 
     try:
-        if normalized_type == "GOAL":
-            node = update_goal(node_id, actor_username=actor, **updates)
-        elif normalized_type == "OBJECTIVE":
-            node = update_objective(node_id, actor_username=actor, **updates)
-        elif normalized_type == "KEY_RESULT":
-            node = update_key_result(node_id, actor_username=actor, **updates)
+        if is_supabase_api_mode_enabled():
+            node = update_node_via_supabase_api(
+                node_type=normalized_type,
+                node_id=int(node_id),
+                updates=updates,
+            )
         else:
-            node = update_task(node_id, actor_username=actor, **updates)
+            if normalized_type == "GOAL":
+                node = update_goal(node_id, actor_username=actor, **updates)
+            elif normalized_type == "OBJECTIVE":
+                node = update_objective(node_id, actor_username=actor, **updates)
+            elif normalized_type == "KEY_RESULT":
+                node = update_key_result(node_id, actor_username=actor, **updates)
+            else:
+                node = update_task(node_id, actor_username=actor, **updates)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2611,16 +2930,31 @@ def api_delete_node(
 ) -> NodeDeleteResponse:
     normalized_type = _normalize_node_type(node_type)
     actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    if is_supabase_api_mode_enabled():
+        scope = _resolve_scope_for_actor(actor)
+        owner_id = _resolve_goal_owner_id_for_node_via_supabase(
+            node_type=normalized_type,
+            node_id=int(node_id),
+            actor=actor,
+        )
+        if owner_id is not None:
+            _require_allowed_user_id(scope, int(owner_id))
 
     try:
-        if normalized_type == "GOAL":
-            deleted = delete_goal(node_id, actor_username=actor)
-        elif normalized_type == "OBJECTIVE":
-            deleted = delete_objective(node_id, actor_username=actor)
-        elif normalized_type == "KEY_RESULT":
-            deleted = delete_key_result(node_id, actor_username=actor)
+        if is_supabase_api_mode_enabled():
+            deleted = delete_node_via_supabase_api(
+                node_type=normalized_type,
+                node_id=int(node_id),
+            )
         else:
-            deleted = delete_task(node_id, actor_username=actor)
+            if normalized_type == "GOAL":
+                deleted = delete_goal(node_id, actor_username=actor)
+            elif normalized_type == "OBJECTIVE":
+                deleted = delete_objective(node_id, actor_username=actor)
+            elif normalized_type == "KEY_RESULT":
+                deleted = delete_key_result(node_id, actor_username=actor)
+            else:
+                deleted = delete_task(node_id, actor_username=actor)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
@@ -2646,17 +2980,30 @@ def api_create_user(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    _require_admin_actor_scope(actor)
     try:
-        user = create_user(
-            username=payload.username,
-            password=payload.password,
-            role=_coerce_enum(payload.role, UserRole, field_name="role"),
-            display_name=payload.display_name,
-            manager_id=payload.manager_id,
-            team_id=payload.team_id,
-            must_change_password=payload.must_change_password,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            user = create_user_via_supabase_api(
+                username=payload.username,
+                password=payload.password,
+                role=_coerce_enum(payload.role, UserRole, field_name="role"),
+                display_name=payload.display_name,
+                manager_id=payload.manager_id,
+                team_id=payload.team_id,
+                must_change_password=payload.must_change_password,
+                actor_username=actor,
+            )
+        else:
+            user = create_user(
+                username=payload.username,
+                password=payload.password,
+                role=_coerce_enum(payload.role, UserRole, field_name="role"),
+                display_name=payload.display_name,
+                manager_id=payload.manager_id,
+                team_id=payload.team_id,
+                must_change_password=payload.must_change_password,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2680,19 +3027,31 @@ def api_update_user(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    _require_admin_actor_scope(actor)
     role = None
     if payload.role is not None:
         role = _coerce_enum(payload.role, UserRole, field_name="role")
     try:
-        user = update_user(
-            user_id=int(user_id),
-            display_name=payload.display_name,
-            role=role,
-            manager_id=payload.manager_id,
-            team_id=payload.team_id,
-            is_active=payload.is_active,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            user = update_user_via_supabase_api(
+                user_id=int(user_id),
+                display_name=payload.display_name,
+                role=role,
+                manager_id=payload.manager_id,
+                team_id=payload.team_id,
+                is_active=payload.is_active,
+                actor_username=actor,
+            )
+        else:
+            user = update_user(
+                user_id=int(user_id),
+                display_name=payload.display_name,
+                role=role,
+                manager_id=payload.manager_id,
+                team_id=payload.team_id,
+                is_active=payload.is_active,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2718,13 +3077,22 @@ def api_reset_user_password(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    _require_admin_actor_scope(actor)
     try:
-        reset_ok = reset_user_password(
-            user_id=int(user_id),
-            new_password=payload.new_password,
-            require_change=bool(payload.require_change),
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            reset_ok = reset_user_password_via_supabase_api(
+                user_id=int(user_id),
+                new_password=payload.new_password,
+                require_change=bool(payload.require_change),
+                actor_username=actor,
+            )
+        else:
+            reset_ok = reset_user_password(
+                user_id=int(user_id),
+                new_password=payload.new_password,
+                require_change=bool(payload.require_change),
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2750,15 +3118,26 @@ def api_create_cycle(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    _require_admin_or_manager_actor_scope(actor)
     try:
-        cycle = create_cycle(
-            title=payload.title,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
-            is_active=payload.is_active,
-            owner_manager_id=payload.owner_manager_id,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            cycle = create_cycle_via_supabase_api(
+                title=payload.title,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                is_active=payload.is_active,
+                owner_manager_id=payload.owner_manager_id,
+                actor_username=actor,
+            )
+        else:
+            cycle = create_cycle(
+                title=payload.title,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                is_active=payload.is_active,
+                owner_manager_id=payload.owner_manager_id,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2779,16 +3158,28 @@ def api_update_cycle(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    _require_admin_or_manager_actor_scope(actor)
     try:
-        cycle = update_cycle(
-            cycle_id=int(cycle_id),
-            title=payload.title,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
-            is_active=payload.is_active,
-            owner_manager_id=payload.owner_manager_id,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            cycle = update_cycle_via_supabase_api(
+                cycle_id=int(cycle_id),
+                title=payload.title,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                is_active=payload.is_active,
+                owner_manager_id=payload.owner_manager_id,
+                actor_username=actor,
+            )
+        else:
+            cycle = update_cycle(
+                cycle_id=int(cycle_id),
+                title=payload.title,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                is_active=payload.is_active,
+                owner_manager_id=payload.owner_manager_id,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2808,8 +3199,12 @@ def api_delete_cycle(
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> CycleDeleteResponse:
     actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    _require_admin_or_manager_actor_scope(actor)
     try:
-        deleted = delete_cycle(int(cycle_id), actor_username=actor)
+        if is_supabase_api_mode_enabled():
+            deleted = delete_cycle_via_supabase_api(int(cycle_id), actor_username=actor)
+        else:
+            deleted = delete_cycle(int(cycle_id), actor_username=actor)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2832,12 +3227,20 @@ def api_create_team(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    _require_admin_actor_scope(actor)
     try:
-        team = create_team(
-            name=payload.name,
-            description=payload.description,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            team = create_team_via_supabase_api(
+                name=payload.name,
+                description=payload.description,
+                actor_username=actor,
+            )
+        else:
+            team = create_team(
+                name=payload.name,
+                description=payload.description,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2858,17 +3261,25 @@ def api_update_team(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    _require_admin_actor_scope(actor)
     updates = {}
     if payload.name is not None:
         updates["name"] = payload.name
     if payload.description is not None:
         updates["description"] = payload.description
     try:
-        team = update_team(
-            int(team_id),
-            actor_username=actor,
-            **updates,
-        )
+        if is_supabase_api_mode_enabled():
+            team = update_team_via_supabase_api(
+                team_id=int(team_id),
+                updates=updates,
+                actor_username=actor,
+            )
+        else:
+            team = update_team(
+                int(team_id),
+                actor_username=actor,
+                **updates,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2888,8 +3299,15 @@ def api_delete_team(
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> TeamDeleteResponse:
     actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    _require_admin_actor_scope(actor)
     try:
-        deleted = delete_team(int(team_id), actor_username=actor)
+        if is_supabase_api_mode_enabled():
+            deleted = delete_team_via_supabase_api(
+                team_id=int(team_id),
+                actor_username=actor,
+            )
+        else:
+            deleted = delete_team(int(team_id), actor_username=actor)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2925,20 +3343,36 @@ def api_create_check_in(
             detail="Special-cause check-ins require a special_cause_note.",
         )
     try:
-        check_in = create_check_in(
-            kr_id=payload.kr_id,
-            value=payload.value,
-            confidence=payload.confidence,
-            comment=comment_text,
-            actor_username=actor,
-            variation_type=_coerce_enum(
-                payload.variation_type,
-                VariationType,
-                field_name="variation_type",
-            ),
-            special_cause_note=special_cause_note or None,
-            experiment_id=payload.experiment_id,
-        )
+        if is_supabase_api_mode_enabled():
+            check_in = create_check_in_via_supabase_api(
+                kr_id=payload.kr_id,
+                value=payload.value,
+                confidence=payload.confidence,
+                comment=comment_text,
+                actor_username=actor,
+                variation_type=_coerce_enum(
+                    payload.variation_type,
+                    VariationType,
+                    field_name="variation_type",
+                ),
+                special_cause_note=special_cause_note or None,
+                experiment_id=payload.experiment_id,
+            )
+        else:
+            check_in = create_check_in(
+                kr_id=payload.kr_id,
+                value=payload.value,
+                confidence=payload.confidence,
+                comment=comment_text,
+                actor_username=actor,
+                variation_type=_coerce_enum(
+                    payload.variation_type,
+                    VariationType,
+                    field_name="variation_type",
+                ),
+                special_cause_note=special_cause_note or None,
+                experiment_id=payload.experiment_id,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -2974,20 +3408,36 @@ def api_create_experiment(
     if replay:
         return _experiment_view_from_payload(replay)
     try:
-        experiment = create_experiment(
-            key_result_id=payload.key_result_id,
-            cycle_id=payload.cycle_id,
-            hypothesis=payload.hypothesis,
-            change_description=payload.change_description,
-            actor_username=actor,
-            start_at=payload.start_at,
-            expected_effect_direction=_coerce_enum(
-                payload.expected_effect_direction,
-                ExpectedEffectDirection,
-                field_name="expected_effect_direction",
-            ),
-            expected_effect_size=payload.expected_effect_size,
-        )
+        if is_supabase_api_mode_enabled():
+            experiment = create_experiment_via_supabase_api(
+                key_result_id=payload.key_result_id,
+                cycle_id=payload.cycle_id,
+                hypothesis=payload.hypothesis,
+                change_description=payload.change_description,
+                actor_username=actor,
+                start_at=payload.start_at,
+                expected_effect_direction=_coerce_enum(
+                    payload.expected_effect_direction,
+                    ExpectedEffectDirection,
+                    field_name="expected_effect_direction",
+                ),
+                expected_effect_size=payload.expected_effect_size,
+            )
+        else:
+            experiment = create_experiment(
+                key_result_id=payload.key_result_id,
+                cycle_id=payload.cycle_id,
+                hypothesis=payload.hypothesis,
+                change_description=payload.change_description,
+                actor_username=actor,
+                start_at=payload.start_at,
+                expected_effect_direction=_coerce_enum(
+                    payload.expected_effect_direction,
+                    ExpectedEffectDirection,
+                    field_name="expected_effect_direction",
+                ),
+                expected_effect_size=payload.expected_effect_size,
+            )
     except PermissionError as exc:
         _audit_experiment_failure(
             action="create_failed",
@@ -3063,11 +3513,18 @@ def api_update_experiment(
         return _experiment_view_from_payload(replay)
 
     try:
-        experiment = update_experiment(
-            int(experiment_id),
-            actor_username=actor,
-            **updates,
-        )
+        if is_supabase_api_mode_enabled():
+            experiment = update_experiment_via_supabase_api(
+                experiment_id=int(experiment_id),
+                actor_username=actor,
+                updates=updates,
+            )
+        else:
+            experiment = update_experiment(
+                int(experiment_id),
+                actor_username=actor,
+                **updates,
+            )
     except PermissionError as exc:
         _audit_experiment_failure(
             action="update_failed",
@@ -3143,16 +3600,28 @@ def api_close_experiment(
         return _experiment_view_from_payload(replay)
 
     try:
-        experiment = close_experiment(
-            experiment_id=int(experiment_id),
-            decision=_coerce_enum(
-                payload.decision,
-                ExperimentDecision,
-                field_name="decision",
-            ),
-            rationale=payload.rationale,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            experiment = close_experiment_via_supabase_api(
+                experiment_id=int(experiment_id),
+                decision=_coerce_enum(
+                    payload.decision,
+                    ExperimentDecision,
+                    field_name="decision",
+                ),
+                rationale=payload.rationale,
+                actor_username=actor,
+            )
+        else:
+            experiment = close_experiment(
+                experiment_id=int(experiment_id),
+                decision=_coerce_enum(
+                    payload.decision,
+                    ExperimentDecision,
+                    field_name="decision",
+                ),
+                rationale=payload.rationale,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         _audit_experiment_failure(
             action="close_failed",
@@ -3211,14 +3680,24 @@ def api_create_retrospective(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     try:
-        retro = create_retrospective(
-            user_id=payload.user_id,
-            cycle_id=payload.cycle_id,
-            week_start_date=payload.week_start_date,
-            content=payload.content,
-            sentiment=payload.sentiment,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            retro = create_retrospective_via_supabase_api(
+                user_id=payload.user_id,
+                cycle_id=payload.cycle_id,
+                week_start_date=payload.week_start_date,
+                content=payload.content,
+                sentiment=payload.sentiment,
+                actor_username=actor,
+            )
+        else:
+            retro = create_retrospective(
+                user_id=payload.user_id,
+                cycle_id=payload.cycle_id,
+                week_start_date=payload.week_start_date,
+                content=payload.content,
+                sentiment=payload.sentiment,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -3243,17 +3722,30 @@ def api_upsert_retro_experiment_outcome(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     try:
-        outcome = upsert_retro_experiment_outcome(
-            retrospective_id=int(retrospective_id),
-            experiment_id=payload.experiment_id,
-            decision=_coerce_enum(
-                payload.decision,
-                ExperimentDecision,
-                field_name="decision",
-            ),
-            rationale=payload.rationale,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            outcome = upsert_retro_experiment_outcome_via_supabase_api(
+                retrospective_id=int(retrospective_id),
+                experiment_id=payload.experiment_id,
+                decision=_coerce_enum(
+                    payload.decision,
+                    ExperimentDecision,
+                    field_name="decision",
+                ),
+                rationale=payload.rationale,
+                actor_username=actor,
+            )
+        else:
+            outcome = upsert_retro_experiment_outcome(
+                retrospective_id=int(retrospective_id),
+                experiment_id=payload.experiment_id,
+                decision=_coerce_enum(
+                    payload.decision,
+                    ExperimentDecision,
+                    field_name="decision",
+                ),
+                rationale=payload.rationale,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -3278,15 +3770,26 @@ def api_create_weekly_plan(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     try:
-        plan = create_weekly_plan(
-            user_id=payload.user_id,
-            start_date=payload.start_date,
-            end_date=payload.end_date,
-            p1=payload.p1,
-            p2=payload.p2,
-            p3=payload.p3,
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            plan = create_weekly_plan_via_supabase_api(
+                user_id=payload.user_id,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                p1=payload.p1,
+                p2=payload.p2,
+                p3=payload.p3,
+                actor_username=actor,
+            )
+        else:
+            plan = create_weekly_plan(
+                user_id=payload.user_id,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                p1=payload.p1,
+                p2=payload.p2,
+                p3=payload.p3,
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -3316,12 +3819,20 @@ def api_create_alignment(
         field_name="alignment_type",
     )
     try:
-        edge = create_alignment(
-            parent_id=payload.parent_id,
-            child_id=payload.child_id,
-            alignment_type=str(_enum_value(alignment_type)),
-            actor_username=actor,
-        )
+        if is_supabase_api_mode_enabled():
+            edge = create_alignment_via_supabase_api(
+                parent_id=payload.parent_id,
+                child_id=payload.child_id,
+                alignment_type=str(_enum_value(alignment_type)),
+                actor_username=actor,
+            )
+        else:
+            edge = create_alignment(
+                parent_id=payload.parent_id,
+                child_id=payload.child_id,
+                alignment_type=str(_enum_value(alignment_type)),
+                actor_username=actor,
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -3343,7 +3854,13 @@ def api_delete_alignment(
 ) -> AlignmentDeleteResponse:
     actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
     try:
-        deleted = delete_alignment(int(edge_id), actor_username=actor)
+        if is_supabase_api_mode_enabled():
+            deleted = delete_alignment_via_supabase_api(
+                edge_id=int(edge_id),
+                actor_username=actor,
+            )
+        else:
+            deleted = delete_alignment(int(edge_id), actor_username=actor)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:

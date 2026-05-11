@@ -52,6 +52,17 @@ function encodeJsonBody(body: unknown, method: string): Uint8Array | null {
   return new TextEncoder().encode(JSON.stringify(body));
 }
 
+function resolveTimeoutMs(path: string, defaultTimeoutMs: number): number {
+  const normalized = String(path || "").trim().toLowerCase();
+  if (
+    normalized.startsWith("/v1/read/atlas/snapshot") ||
+    normalized.startsWith("/v1/read/leadership/metrics")
+  ) {
+    return Math.max(defaultTimeoutMs, 90_000);
+  }
+  return defaultTimeoutMs;
+}
+
 export async function proxyToBackend(
   config: BffConfig,
   request: ProxyRequest,
@@ -93,11 +104,12 @@ export async function proxyToBackend(
   Object.assign(outboundHeaders, securityHeaders);
 
   const backendUrl = new URL(`${path}${queryString}`, `${config.backendApiUrl}/`).toString();
+  const timeoutMs = resolveTimeoutMs(path, config.requestTimeoutMs);
   const response = await fetchFn(backendUrl, {
     method,
     headers: outboundHeaders,
     body: bodyBytes ? Buffer.from(bodyBytes) : undefined,
-    signal: AbortSignal.timeout(config.requestTimeoutMs),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   const arrayBuffer = await response.arrayBuffer();

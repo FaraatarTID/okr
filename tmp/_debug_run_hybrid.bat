@@ -1,4 +1,4 @@
-@echo off
+echo on
 setlocal EnableExtensions
 
 cd /d "%~dp0"
@@ -86,26 +86,13 @@ if not defined OKR_DATABASE_URL if exist "%SECRETS_FILE%" set "OKR_SECRETS_FILE=
 if not defined OKR_DATABASE_URL if exist "%SECRETS_FILE%" for /f "usebackq delims=" %%U in (`python -c "import os,pathlib,tomllib; p=pathlib.Path(os.environ.get('OKR_SECRETS_FILE','')); d=tomllib.load(p.open('rb')) if p.exists() else {}; db=d.get('OKR_DATABASE_URL') or d.get('DATABASE_URL') or ((d.get('database') or {}).get('url')) or ''; print(str(db).strip())" 2^>nul`) do set "DB_URL_CANDIDATE=%%U"
 if not defined OKR_DATABASE_URL if defined DB_URL_CANDIDATE call :accept_db_url_if_valid "%DB_URL_CANDIDATE%" "%SECRETS_FILE%"
 call :resolve_supabase_https_env
-if not defined OKR_DATA_ACCESS_MODE if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" OKR_DATA_ACCESS_MODE 2^>nul`) do set "OKR_DATA_ACCESS_MODE=%%V"
-if not defined OKR_DATA_ACCESS_MODE set "OKR_DATA_ACCESS_MODE=database"
-set "SUPABASE_MODE_CANDIDATE=false"
-if defined SUPABASE_URL if defined SUPABASE_SERVICE_ROLE_KEY set "SUPABASE_MODE_CANDIDATE=true"
-if not defined OKR_FORCE_DATABASE_MODE if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" OKR_FORCE_DATABASE_MODE 2^>nul`) do set "OKR_FORCE_DATABASE_MODE=%%V"
-if /I "%SUPABASE_MODE_CANDIDATE%"=="true" if /I "%OKR_FORCE_DATABASE_MODE%" NEQ "true" if /I "%OKR_DATA_ACCESS_MODE%"=="database" set "OKR_DATA_ACCESS_MODE=supabase_api"
-if not defined OKR_BACKEND_SERVICE_TOKEN for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" OKR_BACKEND_SERVICE_TOKEN 2^>nul`) do set "OKR_BACKEND_SERVICE_TOKEN=%%V"
-set "SUPABASE_HTTPS_CREDENTIALS=missing"
-if defined SUPABASE_URL if defined SUPABASE_SERVICE_ROLE_KEY set "SUPABASE_HTTPS_CREDENTIALS=detected"
-echo [INFO] Data access mode: %OKR_DATA_ACCESS_MODE% ^| Supabase HTTPS credentials: %SUPABASE_HTTPS_CREDENTIALS%
-set "NEXT_PUBLIC_OKR_DATA_ACCESS_MODE=%OKR_DATA_ACCESS_MODE%"
 
 if not defined OKR_DATABASE_URL (
-    if /I "%OKR_DATA_ACCESS_MODE%"=="supabase_api" goto :skip_db_url_required_for_supabase_api
     echo [ERROR] Could not resolve a valid OKR_DATABASE_URL.
     echo Checked env vars, %DOCKER_ENV_FILE%, and %SECRETS_FILE%.
     pause
     exit /b 1
 )
-if /I "%OKR_DATA_ACCESS_MODE%"=="supabase_api" goto :skip_db_connectivity_check
 call :ensure_local_db_reachable
 if errorlevel 1 (
     pause
@@ -114,27 +101,6 @@ if errorlevel 1 (
 set "DATABASE_URL=%OKR_DATABASE_URL%"
 call :ensure_local_db_reachable
 set "DATABASE_URL=%OKR_DATABASE_URL%"
-goto :after_db_resolution
-
-:skip_db_url_required_for_supabase_api
-echo [INFO] OKR_DATA_ACCESS_MODE=supabase_api; skipping direct DB URL requirement.
-goto :skip_db_connectivity_check
-
-:skip_db_connectivity_check
-echo [INFO] OKR_DATA_ACCESS_MODE=supabase_api; skipping DB TCP reachability checks.
-if not defined SUPABASE_URL (
-    echo [ERROR] OKR_DATA_ACCESS_MODE=supabase_api requires SUPABASE_URL.
-    echo Set SUPABASE_URL in env or %DOCKER_ENV_FILE%.
-    pause
-    exit /b 1
-)
-if not defined SUPABASE_SERVICE_ROLE_KEY (
-    echo [ERROR] OKR_DATA_ACCESS_MODE=supabase_api requires SUPABASE_SERVICE_ROLE_KEY.
-    echo Set SUPABASE_SERVICE_ROLE_KEY in env or %DOCKER_ENV_FILE%.
-    pause
-    exit /b 1
-)
-:after_db_resolution
 
 echo [4/7] Preparing Python environment...
 if not exist "%PYEXE%" (
@@ -207,7 +173,7 @@ set "OKR_BACKEND_HOST=127.0.0.1"
 set "OKR_BACKEND_PORT=8100"
 set "OKR_BACKEND_API_URL=http://127.0.0.1:8100"
 set "OKR_BACKEND_ENFORCE_TOKEN=true"
-if not defined OKR_BACKEND_SERVICE_TOKEN set "OKR_BACKEND_SERVICE_TOKEN=local-development-secret-token"
+set "OKR_BACKEND_SERVICE_TOKEN=local-development-secret-token"
 set "OKR_BACKEND_ENFORCE_REQUEST_SIGNING=false"
 set "OKR_BACKEND_SIGNING_SECRET="
 set "OKR_BACKEND_SECURITY_STATE_BACKEND=memory"
@@ -223,8 +189,6 @@ set "BFF_SESSION_TTL_SECONDS=28800"
 set "BFF_COOKIE_SECURE=false"
 set "OKR_SPA_ROLLOUT_ENABLED=true"
 set "OKR_SPA_ROLLOUT_ALLOW_ALL=true"
-if not defined OKR_DATA_ACCESS_MODE set "OKR_DATA_ACCESS_MODE=database"
-set "NEXT_PUBLIC_OKR_DATA_ACCESS_MODE=%OKR_DATA_ACCESS_MODE%"
 
 echo [7/9] Launching backend + worker + BFF + SPA...
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
@@ -400,7 +364,13 @@ if defined DB_CONNECTIVITY_REASON (
     call set "DATABASE_URL=%%OKR_DATABASE_URL%%"
     echo [WARN] %DB_CONNECTIVITY_REASON% Falling back to local SQLite:
     call echo        %%OKR_DATABASE_URL%%
-    call :maybe_probe_supabase_https
+    if defined SUPABASE_URL (
+        echo [INFO] Running Supabase HTTPS probe (port 443)...
+        python scripts\supabase_https_probe.py --url "%SUPABASE_URL%"
+    ) else (
+        echo [INFO] Set SUPABASE_URL to auto-run HTTPS probe on DB fallback.
+        echo        Example: https://YOUR_PROJECT_REF.supabase.co
+    )
     exit /b 0
 )
 echo [ERROR] Invalid OKR_DATABASE_URL value.
@@ -410,28 +380,9 @@ exit /b 1
 :resolve_supabase_https_env
 if defined SUPABASE_URL exit /b 0
 if not exist "%DOCKER_ENV_FILE%" exit /b 0
-for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" SUPABASE_URL 2^>nul`) do set "SUPABASE_URL=%%V"
-if not defined SUPABASE_SERVICE_ROLE_KEY for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" SUPABASE_SERVICE_ROLE_KEY 2^>nul`) do set "SUPABASE_SERVICE_ROLE_KEY=%%V"
-exit /b 0
-
-:resolve_data_access_mode
-if not defined OKR_DATA_ACCESS_MODE if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" OKR_DATA_ACCESS_MODE 2^>nul`) do set "OKR_DATA_ACCESS_MODE=%%V"
-if not defined OKR_DATA_ACCESS_MODE set "OKR_DATA_ACCESS_MODE=database"
-set "SUPABASE_MODE_CANDIDATE=false"
-if defined SUPABASE_URL if defined SUPABASE_SERVICE_ROLE_KEY set "SUPABASE_MODE_CANDIDATE=true"
-if not defined OKR_FORCE_DATABASE_MODE if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" OKR_FORCE_DATABASE_MODE 2^>nul`) do set "OKR_FORCE_DATABASE_MODE=%%V"
-if /I "%SUPABASE_MODE_CANDIDATE%"=="true" if /I "%OKR_FORCE_DATABASE_MODE%" NEQ "true" if /I "%OKR_DATA_ACCESS_MODE%"=="database" set "OKR_DATA_ACCESS_MODE=supabase_api"
-exit /b 0
-
-:maybe_probe_supabase_https
-if not defined SUPABASE_URL call :resolve_supabase_https_env
-if not defined SUPABASE_URL (
-    echo [INFO] Set SUPABASE_URL to auto-run HTTPS probe on DB fallback.
-    echo        Example: https://YOUR_PROJECT_REF.supabase.co
-    exit /b 0
-)
-echo [INFO] Running Supabase HTTPS probe (port 443)...
-python scripts\supabase_https_probe.py --url "%SUPABASE_URL%"
+for /f "usebackq tokens=1,* delims==" %%A in (`findstr /B /I "SUPABASE_URL=" "%DOCKER_ENV_FILE%"`) do if /I "%%A"=="SUPABASE_URL" set "SUPABASE_URL=%%~B"
+if not defined SUPABASE_SERVICE_ROLE_KEY for /f "usebackq tokens=1,* delims==" %%A in (`findstr /B /I "SUPABASE_SERVICE_ROLE_KEY=" "%DOCKER_ENV_FILE%"`) do if /I "%%A"=="SUPABASE_SERVICE_ROLE_KEY" set "SUPABASE_SERVICE_ROLE_KEY=%%~B"
+if not defined SUPABASE_ANON_KEY for /f "usebackq tokens=1,* delims==" %%A in (`findstr /B /I "SUPABASE_ANON_KEY=" "%DOCKER_ENV_FILE%"`) do if /I "%%A"=="SUPABASE_ANON_KEY" set "SUPABASE_ANON_KEY=%%~B"
 exit /b 0
 
 :wait_for_http

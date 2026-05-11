@@ -14,6 +14,14 @@ type UseSnapshotLifecycleInput = {
   rolloutAllowed: boolean;
 };
 
+function resolveSnapshotPollIntervalMs(): number {
+  const mode = String(process.env.NEXT_PUBLIC_OKR_DATA_ACCESS_MODE || "").trim().toLowerCase();
+  if (mode === "supabase_api" || mode === "supabase-http" || mode === "supabase_https") {
+    return 120_000;
+  }
+  return 45_000;
+}
+
 export default function useSnapshotLifecycle({
   user,
   mode,
@@ -22,6 +30,7 @@ export default function useSnapshotLifecycle({
   ownerIdsError,
   rolloutAllowed,
 }: UseSnapshotLifecycleInput) {
+  const snapshotPollIntervalMs = resolveSnapshotPollIntervalMs();
   const [snapshotPending, setSnapshotPending] = useState(false);
   const [snapshotError, setSnapshotError] = useState("");
   const [snapshotPayload, setSnapshotPayload] = useState<AtlasSnapshotResponse | null>(null);
@@ -103,18 +112,19 @@ export default function useSnapshotLifecycle({
           setSnapshotError(String(error instanceof Error ? error.message : error));
         }
       })();
-    }, 45000);
+    }, snapshotPollIntervalMs);
 
     return () => {
       active = false;
       window.clearInterval(pollTimer);
     };
-  }, [loadSnapshotForUser, mode, ownerIds, ownerIdsError, parsedCycleId, rolloutAllowed, user]);
+  }, [loadSnapshotForUser, mode, ownerIds, ownerIdsError, parsedCycleId, rolloutAllowed, snapshotPollIntervalMs, user]);
 
   return {
     snapshotPending,
     snapshotError,
     snapshotPayload,
+    snapshotPollIntervalMs,
     clearSnapshot,
     loadSnapshotForUser,
   };
