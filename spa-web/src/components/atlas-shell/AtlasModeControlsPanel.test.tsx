@@ -16,6 +16,7 @@ describe("AtlasModeControlsPanel", () => {
       <AtlasModeControlsPanel
         cycleLabel="Q3-2026"
         snapshotPending={false}
+        snapshotPollIntervalMs={45000}
         cycleId="7"
         cycleOptions={[
           { id: 7, label: "Q3-2026" },
@@ -66,6 +67,7 @@ describe("AtlasModeControlsPanel", () => {
       <AtlasModeControlsPanel
         cycleLabel="Q3-2026"
         snapshotPending
+        snapshotPollIntervalMs={45000}
         cycleId=""
         cycleOptions={[
           { id: 42, label: "Q4-2026" },
@@ -113,6 +115,7 @@ describe("AtlasModeControlsPanel", () => {
       <AtlasModeControlsPanel
         cycleLabel="Q3-2026"
         snapshotPending={false}
+        snapshotPollIntervalMs={45000}
         cycleId="7"
         cycleOptions={[{ id: 7, label: "Q3-2026" }]}
         canManageCycleSelection={false}

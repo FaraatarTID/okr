@@ -390,6 +390,20 @@ Local launcher fallback behavior:
 - Control fallback with:
   - `OKR_LOCAL_DB_FALLBACK=true|false` (default: `true`)
   - `OKR_LOCAL_DB_RESET=true|false` (default: `false`, set `true` to rebuild local SQLite on launch)
+- If your network blocks Postgres ports (`5432`/`6543`), verify Supabase HTTPS access over port `443`:
+  - `python scripts/supabase_https_probe.py --url https://<project-ref>.supabase.co`
+  - Optional API key checks use `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_ANON_KEY`.
+ - Experimental HTTPS-only data mode:
+   - Set `OKR_DATA_ACCESS_MODE=supabase_api`
+   - Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY`)
+   - Current scope:
+     - backend startup health + `/v1/auth/login`
+     - read-query kinds: `users.by_username`, `users.by_id`, `users.all`, `users.team_members`, `teams.all`, `teams.by_id`, `cycles.all`, `cycles.active`, `node.detect_type`, `node.get`, `mindmap.root`, `alignments.context`, `krs.by_cycle`, `tasks.by_cycle`, `weekly_plan.active`, `work_logs.by_task`, `work_logs.by_range`, `krs.needing_checkin`, `experiments.active_for_kr`, `experiments.for_kr`, `experiments.for_retro_window`, `retros.user`, `retros.team`
+     - create mutations: `/v1/nodes/goal`, `/v1/nodes/objective`, `/v1/nodes/key_result`, `/v1/nodes/task`
+     - update/delete mutations: `PATCH /v1/nodes/{node_type}/{node_id}`, `DELETE /v1/nodes/{node_type}/{node_id}`
+     - additional mutations: `/v1/timer/start`, `/v1/timer/stop`, `/v1/check-ins`, `/v1/experiments`, `PATCH /v1/experiments/{experiment_id}`, `/v1/experiments/{experiment_id}/close`, `/v1/retrospectives`, `PUT /v1/retrospectives/{retrospective_id}/experiment-outcomes`, `/v1/weekly-plans`, `/v1/alignments`, `DELETE /v1/alignments/{edge_id}`
+     - admin mutations: `/v1/users`, `PATCH /v1/users/{user_id}`, `/v1/users/{user_id}/reset-password`, `/v1/cycles`, `PATCH /v1/cycles/{cycle_id}`, `DELETE /v1/cycles/{cycle_id}`, `/v1/teams`, `PATCH /v1/teams/{team_id}`, `DELETE /v1/teams/{team_id}`
+   - Unsupported read/mutation kinds currently return `501` in API mode until migrated.
 
 Set database URL (required):
 
