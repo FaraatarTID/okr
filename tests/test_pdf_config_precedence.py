@@ -9,10 +9,9 @@ def test_pdfshift_api_key_env_takes_precedence_over_secrets(monkeypatch):
     monkeypatch.setenv("PDFSHIFT_API_KEY", "env-key")
     monkeypatch.setattr(
         pdf_service,
-        "st",
-        SimpleNamespace(secrets={"pdfshift_api_key": "secret-key", "app": {}}),
+        "_load_file_secrets",
+        lambda: {"pdfshift_api_key": "secret-key", "app": {}},
     )
-    monkeypatch.setattr(pdf_service, "_load_file_secrets", lambda: {})
 
     assert pdf_service._resolve_pdfshift_api_key() == "env-key"
 
@@ -24,10 +23,9 @@ def test_pdf_method_env_takes_precedence_over_secrets(monkeypatch):
     monkeypatch.delenv("OKR_PDF_METHOD", raising=False)
     monkeypatch.setattr(
         pdf_service,
-        "st",
-        SimpleNamespace(secrets={"PDF_METHOD": "unsupported", "app": {}}),
+        "_load_file_secrets",
+        lambda: {"PDF_METHOD": "unsupported", "app": {}},
     )
-    monkeypatch.setattr(pdf_service, "_load_file_secrets", lambda: {})
 
     assert pdf_service.is_deployed_environment() is True
 
@@ -39,10 +37,9 @@ def test_pdf_method_falls_back_to_secrets_when_env_missing(monkeypatch):
     monkeypatch.delenv("OKR_PDF_METHOD", raising=False)
     monkeypatch.setattr(
         pdf_service,
-        "st",
-        SimpleNamespace(secrets={"PDF_METHOD": "pdfshift", "app": {}}),
+        "_load_file_secrets",
+        lambda: {"PDF_METHOD": "pdfshift", "app": {}},
     )
-    monkeypatch.setattr(pdf_service, "_load_file_secrets", lambda: {})
 
     assert pdf_service.is_deployed_environment() is True
 
@@ -54,10 +51,9 @@ def test_pdf_method_supports_chromium_from_env(monkeypatch):
     monkeypatch.delenv("OKR_PDF_METHOD", raising=False)
     monkeypatch.setattr(
         pdf_service,
-        "st",
-        SimpleNamespace(secrets={"PDF_METHOD": "pdfshift", "app": {}}),
+        "_load_file_secrets",
+        lambda: {"PDF_METHOD": "pdfshift", "app": {}},
     )
-    monkeypatch.setattr(pdf_service, "_load_file_secrets", lambda: {})
 
     assert pdf_service.get_pdf_method() == "chromium"
     assert pdf_service.is_deployed_environment() is True

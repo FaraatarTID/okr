@@ -21,6 +21,8 @@ def isolated_db(monkeypatch, tmp_path):
 
     db_path = tmp_path / "okr_integrity_test.db"
     db_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     engine = database._create_engine(db_url)
 
     monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
@@ -148,7 +150,8 @@ def test_run_migrations_bootstraps_fresh_database(monkeypatch, tmp_path):
 
     db_path = tmp_path / "okr_bootstrap.db"
     db_url = f"sqlite:///{db_path}"
-
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
     monkeypatch.setattr(database, "_engine", None, raising=False)
 
@@ -174,7 +177,7 @@ def test_run_migrations_bootstraps_fresh_database(monkeypatch, tmp_path):
     assert "owner_id" in goal_columns
 
 
-def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(tmp_path):
+def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(monkeypatch, tmp_path):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine
@@ -182,7 +185,8 @@ def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(tmp_path):
 
     db_path = tmp_path / "okr_fresh_cli_upgrade.db"
     db_url = f"sqlite:///{db_path}"
-
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
     script_location = ROOT_DIR / "streamlit_app" / "alembic"
     cfg = Config(str(ini_path))
@@ -222,6 +226,8 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(
 
     db_path = tmp_path / "okr_legacy_no_alembic.db"
     db_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     engine = database._create_engine(db_url)
 
     # Simulate a legacy install: app tables exist but Alembic tracking does not.
@@ -242,7 +248,7 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(
     assert "sync_retry_event" not in tables
 
 
-def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(tmp_path):
+def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(monkeypatch, tmp_path):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine
@@ -250,6 +256,8 @@ def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(tmp_path)
 
     db_path = tmp_path / "okr_goal_hard_cutover.db"
     db_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     engine = _create_engine(db_url)
     with engine.begin() as conn:
         conn.execute(
@@ -322,13 +330,15 @@ def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(tmp_path)
     engine.dispose()
 
 
-def test_goal_hard_cutover_migration_blocks_unresolved_ownerless_goals(tmp_path):
+def test_goal_hard_cutover_migration_blocks_unresolved_ownerless_goals(monkeypatch, tmp_path):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine
 
     db_path = tmp_path / "okr_goal_hard_cutover_blocked.db"
     db_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     engine = _create_engine(db_url)
     with engine.begin() as conn:
         conn.execute(
@@ -387,13 +397,15 @@ def test_goal_hard_cutover_migration_blocks_unresolved_ownerless_goals(tmp_path)
     engine.dispose()
 
 
-def test_integrity_migration_tolerates_legacy_orphaned_fk_metadata(tmp_path):
+def test_integrity_migration_tolerates_legacy_orphaned_fk_metadata(monkeypatch, tmp_path):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine
 
     db_path = tmp_path / "okr_integrity_orphan_fk.db"
     db_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     engine = _create_engine(db_url)
 
     with engine.begin() as conn:
@@ -425,7 +437,7 @@ def test_integrity_migration_tolerates_legacy_orphaned_fk_metadata(tmp_path):
     engine.dispose()
 
 
-def test_worklog_unique_open_index_migration_heals_duplicates(tmp_path):
+def test_worklog_unique_open_index_migration_heals_duplicates(monkeypatch, tmp_path):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine
@@ -433,6 +445,8 @@ def test_worklog_unique_open_index_migration_heals_duplicates(tmp_path):
 
     db_path = tmp_path / "okr_worklog_idx_upgrade.db"
     db_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     engine = _create_engine(db_url)
 
     with engine.begin() as conn:
@@ -478,7 +492,7 @@ def test_worklog_unique_open_index_migration_heals_duplicates(tmp_path):
     engine.dispose()
 
 
-def test_auth_throttle_state_table_is_created_by_migration(tmp_path):
+def test_auth_throttle_state_table_is_created_by_migration(monkeypatch, tmp_path):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine
@@ -486,6 +500,8 @@ def test_auth_throttle_state_table_is_created_by_migration(tmp_path):
 
     db_path = tmp_path / "okr_auth_throttle_table_migration.db"
     db_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     engine = _create_engine(db_url)
     SQLModel.metadata.create_all(engine)
 

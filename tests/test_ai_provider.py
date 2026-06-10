@@ -40,13 +40,8 @@ def test_ai_provider_env_takes_precedence_over_secrets(monkeypatch):
     monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
     monkeypatch.setattr(
         ai_provider,
-        "st",
-        SimpleNamespace(
-            secrets={
-                "AI_PROVIDER": "gemini",
-                "app": {"AI_PROVIDER": "gemini"},
-            }
-        ),
+        "get_config_value",
+        lambda key, default="": "gemini",
     )
     assert get_ai_provider() == "openai_compatible"
 
@@ -55,13 +50,8 @@ def test_ai_provider_falls_back_to_secrets_when_env_missing(monkeypatch):
     _clear_ai_env(monkeypatch)
     monkeypatch.setattr(
         ai_provider,
-        "st",
-        SimpleNamespace(
-            secrets={
-                "AI_PROVIDER": "openai_compatible",
-                "app": {},
-            }
-        ),
+        "get_config_value",
+        lambda key, default="": "openai_compatible",
     )
     assert get_ai_provider() == "openai_compatible"
 
@@ -70,6 +60,12 @@ def test_runtime_status_openai_provider_missing_required_fields(monkeypatch):
     _clear_ai_env(monkeypatch)
     monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
     monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
+    # Prevent falling back to active secrets.toml values during testing
+    monkeypatch.setattr(
+        ai_provider,
+        "get_config_value",
+        lambda key, default="": "",
+    )
     status = get_ai_provider_runtime_status()
     assert status.provider == "openai_compatible"
     assert status.ready is False
@@ -86,9 +82,15 @@ def test_generate_json_respects_external_ai_policy(monkeypatch):
 
 def test_generate_json_defaults_to_external_ai_disabled(monkeypatch):
     _clear_ai_env(monkeypatch)
+    monkeypatch.setattr(
+        ai_provider,
+        "get_config_value",
+        lambda key, default="": "",
+    )
     result = generate_json("hello")
     assert "error" in result
     assert "disabled by policy" in str(result.get("error")).lower()
+
 
 
 def test_generate_json_openai_compatible_success_path(monkeypatch):
