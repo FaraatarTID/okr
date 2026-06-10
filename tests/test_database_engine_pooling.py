@@ -57,10 +57,10 @@ def test_postgres_engine_reads_null_pool_flag_from_streamlit_secrets(monkeypatch
 
     monkeypatch.setattr(database, "create_engine", _fake_create_engine)
     monkeypatch.delenv("OKR_DB_USE_NULL_POOL", raising=False)
-    monkeypatch.setitem(
-        sys.modules,
-        "streamlit",
-        SimpleNamespace(secrets={"OKR_DB_USE_NULL_POOL": False}),
+    monkeypatch.setattr(
+        database,
+        "get_bool_config",
+        lambda name, default=False: False if name == "OKR_DB_USE_NULL_POOL" else default,
     )
     engine = database._create_engine(
         "postgresql+psycopg2://okr_app.PROJECT:secret@"
@@ -102,13 +102,14 @@ def test_postgres_queue_pool_invalid_values_fallback_to_safe_bounds(monkeypatch)
 
 def test_database_validation_flags_can_come_from_streamlit_secrets(monkeypatch):
     monkeypatch.delenv("OKR_ALLOW_NON_SUPABASE_DB", raising=False)
-    monkeypatch.setitem(
-        sys.modules,
-        "streamlit",
-        SimpleNamespace(secrets={"OKR_ALLOW_NON_SUPABASE_DB": False}),
+    monkeypatch.setattr(
+        database,
+        "get_bool_config",
+        lambda name, default=False: False if name == "OKR_ALLOW_NON_SUPABASE_DB" else default,
     )
 
     with pytest.raises(RuntimeError, match="Supabase pooler URL is required"):
         database._validate_database_url(
             "postgresql+psycopg2://app:secret@db.internal.example:5432/postgres"
         )
+

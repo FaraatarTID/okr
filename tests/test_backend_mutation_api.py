@@ -714,7 +714,21 @@ def test_create_user_endpoint_parses_role_and_team(monkeypatch):
             must_change_password=bool(kwargs.get("must_change_password")),
         )
 
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_actor_scope",
+        lambda *args, **kwargs: {
+            "is_admin": True,
+            "role": "admin",
+            "actor_id": 1,
+            "actor_username": "admin",
+            "manager_id": None,
+            "owner_ids": {1},
+            "usernames": {"admin"},
+        },
+    )
     monkeypatch.setattr(backend_main, "create_user", _fake_create_user)
+
 
     response = client.post(
         "/v1/users",

@@ -68,9 +68,13 @@ def test_audit_log_persists_event_to_database(monkeypatch, tmp_path):
     db_path = tmp_path / "audit_events.db"
     db_url = f"sqlite:///{db_path}"
 
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
     monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
     monkeypatch.setattr(database, "_engine", None, raising=False)
     database.run_migrations()
+
+
 
     stub_logger = _StubAuditLogger()
     monkeypatch.setattr(audit, "_get_logger", lambda: stub_logger)
