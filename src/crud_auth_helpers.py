@@ -18,6 +18,13 @@ from sqlalchemy import or_
 from src.domain.password_policy import is_production_runtime, validate_password_policy
 from src.utils.time_utils import ensure_utc
 
+_BOOTSTRAP_ADMIN_PASSWORD_PLACEHOLDERS = {
+    "CHANGE_ME",
+    "CHANGE_ME_STRONG_BOOTSTRAP_PASSWORD",
+    "YOUR_STRONG_BOOTSTRAP_PASSWORD",
+    "REPLACE_ME",
+}
+
 
 def auth_throttle_fail_open_allowed_from_crud(*, crud_module) -> bool:
     if is_production_runtime():
@@ -28,8 +35,22 @@ def auth_throttle_fail_open_allowed_from_crud(*, crud_module) -> bool:
     )
 
 
+def is_placeholder_bootstrap_admin_password(value: str) -> bool:
+    normalized = str(value or "").strip().upper()
+    if not normalized:
+        return False
+    return normalized in _BOOTSTRAP_ADMIN_PASSWORD_PLACEHOLDERS
+
+
 def resolve_bootstrap_admin_password_from_crud(*, crud_module) -> str:
     configured = str(os.getenv(crud_module._BOOTSTRAP_ADMIN_PASSWORD_ENV, "")).strip()
+    if configured:
+        if is_placeholder_bootstrap_admin_password(configured):
+            if is_production_runtime():
+                raise RuntimeError(
+                    f"{crud_module._BOOTSTRAP_ADMIN_PASSWORD_ENV} is still a placeholder."
+                )
+            configured = ""
     if configured:
         validate_password_policy(
             configured,
@@ -45,6 +66,10 @@ def resolve_bootstrap_admin_password_from_crud(*, crud_module) -> str:
         )
 
     return "admin"
+
+
+def legacy_placeholder_bootstrap_admin_passwords() -> tuple[str, ...]:
+    return tuple(sorted(_BOOTSTRAP_ADMIN_PASSWORD_PLACEHOLDERS))
 
 
 def hash_password_from_crud(*, password: str) -> str:
@@ -1013,6 +1038,28 @@ def ensure_admin_exists_once_from_crud(*, crud_module) -> bool:
                 crud_module.User.username == "admin"
             )
         ).first()
+        if admin and admin.must_change_password:
+            placeholder_passwords = legacy_placeholder_bootstrap_admin_passwords()
+            was_created_with_placeholder = any(
+                crud_module.verify_password(placeholder_password, admin.password_hash)
+                for placeholder_password in placeholder_passwords
+            )
+            if was_created_with_placeholder and not crud_module.verify_password(
+                bootstrap_admin_password,
+                admin.password_hash,
+            ):
+                admin.password_hash = crud_module.hash_password(bootstrap_admin_password)
+                admin.password_changed_at = None
+                session.add(admin)
+                session.commit()
+                crud_module.audit_log(
+                    "update",
+                    "user",
+                    actor="admin",
+                    details={"placeholder_bootstrap_password_reset": True},
+                )
+                crud_module.clear_cache_safe()
+                return True
         if (
             admin
             and crud_module.verify_password(

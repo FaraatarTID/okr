@@ -134,6 +134,11 @@ if not defined SUPABASE_SERVICE_ROLE_KEY (
     pause
     exit /b 1
 )
+call :ensure_supabase_api_reachable
+if errorlevel 1 (
+    pause
+    exit /b 1
+)
 :after_db_resolution
 
 echo [4/7] Preparing Python environment...
@@ -383,29 +388,12 @@ set "DB_CONNECTIVITY_REASON="
 if /I "%DB_CONNECTIVITY_CHECK%"=="dns_fail" set "DB_CONNECTIVITY_REASON=Remote database host is not resolvable."
 if /I "%DB_CONNECTIVITY_CHECK%"=="tcp_fail" set "DB_CONNECTIVITY_REASON=Remote database host is not reachable on its TCP port."
 if defined DB_CONNECTIVITY_REASON (
-    set "ALLOW_SQLITE_FALLBACK=%OKR_LOCAL_DB_FALLBACK%"
-    if not defined ALLOW_SQLITE_FALLBACK set "ALLOW_SQLITE_FALLBACK=true"
-    if /I "%ALLOW_SQLITE_FALLBACK%"=="false" (
+    if /I "%OKR_LOCAL_DB_FALLBACK%"=="false" (
         echo [ERROR] %DB_CONNECTIVITY_REASON% Fallback is disabled.
         echo Set OKR_LOCAL_DB_FALLBACK=true to auto-fallback to local SQLite.
         exit /b 1
     )
-    set "ALLOW_SQLITE_RESET=%OKR_LOCAL_DB_RESET%"
-    if not defined ALLOW_SQLITE_RESET set "ALLOW_SQLITE_RESET=false"
-    if /I "%ALLOW_SQLITE_RESET%"=="true" (
-        if exist "%LOCAL_SQLITE_PATH%" (
-            echo [INFO] Resetting stale local SQLite database: %LOCAL_SQLITE_PATH%
-            del /q "%LOCAL_SQLITE_PATH%" >nul 2>&1
-        )
-    ) else (
-        if exist "%LOCAL_SQLITE_PATH%" (
-            echo [INFO] Reusing local SQLite database: %LOCAL_SQLITE_PATH%
-        )
-    )
-    for /f "usebackq delims=" %%U in (`python -c "import os,pathlib; p=pathlib.Path(os.environ.get('LOCAL_SQLITE_PATH','')).resolve(); p.parent.mkdir(parents=True, exist_ok=True); print(f'sqlite:///{p.as_posix()}')"`) do set "OKR_DATABASE_URL=%%U"
-    call set "DATABASE_URL=%%OKR_DATABASE_URL%%"
-    echo [WARN] %DB_CONNECTIVITY_REASON% Falling back to local SQLite:
-    call echo        %%OKR_DATABASE_URL%%
+    call :use_local_sqlite_fallback "%DB_CONNECTIVITY_REASON%"
     call :maybe_probe_supabase_https
     exit /b 0
 )
@@ -413,11 +401,60 @@ echo [ERROR] Invalid OKR_DATABASE_URL value.
 echo        %OKR_DATABASE_URL%
 exit /b 1
 
+:use_local_sqlite_fallback
+set "SQLITE_FALLBACK_REASON=%~1"
+set "ALLOW_SQLITE_RESET=%OKR_LOCAL_DB_RESET%"
+if not defined ALLOW_SQLITE_RESET set "ALLOW_SQLITE_RESET=false"
+if /I "%ALLOW_SQLITE_RESET%"=="true" (
+    if exist "%LOCAL_SQLITE_PATH%" (
+        echo [INFO] Resetting stale local SQLite database: %LOCAL_SQLITE_PATH%
+        del /q "%LOCAL_SQLITE_PATH%" >nul 2>&1
+    )
+) else (
+    if exist "%LOCAL_SQLITE_PATH%" (
+        echo [INFO] Reusing local SQLite database: %LOCAL_SQLITE_PATH%
+    )
+)
+for /f "usebackq delims=" %%U in (`python -c "import os,pathlib; p=pathlib.Path(os.environ.get('LOCAL_SQLITE_PATH','')).resolve(); p.parent.mkdir(parents=True, exist_ok=True); print(f'sqlite:///{p.as_posix()}')"`) do set "OKR_DATABASE_URL=%%U"
+call set "DATABASE_URL=%%OKR_DATABASE_URL%%"
+set "OKR_DATA_ACCESS_MODE=database"
+set "NEXT_PUBLIC_OKR_DATA_ACCESS_MODE=database"
+if defined SQLITE_FALLBACK_REASON (
+    echo [WARN] %SQLITE_FALLBACK_REASON% Falling back to local SQLite:
+) else (
+    echo [WARN] Falling back to local SQLite:
+)
+call echo        %%OKR_DATABASE_URL%%
+exit /b 0
+
 :resolve_supabase_https_env
 if defined SUPABASE_URL exit /b 0
 if not exist "%DOCKER_ENV_FILE%" exit /b 0
 for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" SUPABASE_URL 2^>nul`) do set "SUPABASE_URL=%%V"
 if not defined SUPABASE_SERVICE_ROLE_KEY for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" SUPABASE_SERVICE_ROLE_KEY 2^>nul`) do set "SUPABASE_SERVICE_ROLE_KEY=%%V"
+exit /b 0
+
+:ensure_supabase_api_reachable
+if /I "%OKR_SUPABASE_API_SKIP_PROBE%"=="true" (
+    echo [WARN] Skipping Supabase HTTPS startup probe because OKR_SUPABASE_API_SKIP_PROBE=true.
+    exit /b 0
+)
+echo [INFO] Checking Supabase HTTPS reachability...
+python scripts\supabase_https_probe.py --url "%SUPABASE_URL%" --timeout 5
+if not errorlevel 1 exit /b 0
+if /I "%OKR_SUPABASE_API_STRICT%"=="true" (
+    echo [ERROR] Supabase HTTPS is not reachable and OKR_SUPABASE_API_STRICT=true.
+    echo Set OKR_SUPABASE_API_STRICT=false or fix SUPABASE_URL/network access.
+    exit /b 1
+)
+set "ALLOW_SQLITE_FALLBACK=%OKR_LOCAL_DB_FALLBACK%"
+if not defined ALLOW_SQLITE_FALLBACK set "ALLOW_SQLITE_FALLBACK=true"
+if /I "%ALLOW_SQLITE_FALLBACK%"=="false" (
+    echo [ERROR] Supabase HTTPS is not reachable and OKR_LOCAL_DB_FALLBACK=false.
+    echo Fix SUPABASE_URL/network access or allow local SQLite fallback.
+    exit /b 1
+)
+call :use_local_sqlite_fallback "Supabase HTTPS is not reachable."
 exit /b 0
 
 :resolve_data_access_mode

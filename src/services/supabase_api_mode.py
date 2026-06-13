@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 import types
 import urllib.error
@@ -327,11 +328,30 @@ def _cycle_select_fields() -> str:
 
 
 def ensure_supabase_api_ready() -> None:
-    status, _payload = _request_json("/rest/v1/", query={"select": "*"})
-    if status in {200, 401, 404}:
-        # 404 can happen on strict setups; HTTPS path is still reachable.
-        return
-    raise RuntimeError(f"Supabase REST probe failed with status {status}.")
+    last_status: Optional[int] = None
+    last_error: Optional[BaseException] = None
+    for attempt in range(1, 4):
+        try:
+            status, _payload = _request_json("/rest/v1/", query={"select": "*"})
+        except (OSError, TimeoutError, urllib.error.URLError) as exc:
+            last_error = exc
+            if attempt < 3:
+                logger.warning("Supabase REST probe failed on attempt %s/3: %s", attempt, exc)
+                time.sleep(1)
+                continue
+            raise RuntimeError(f"Supabase REST probe failed after 3 attempts: {exc}") from exc
+        last_status = status
+        if status in {200, 401, 404}:
+            # 404 can happen on strict setups; HTTPS path is still reachable.
+            return
+        if attempt < 3 and status >= 500:
+            logger.warning("Supabase REST probe returned status %s on attempt %s/3.", status, attempt)
+            time.sleep(1)
+            continue
+        break
+    if last_error is not None:
+        raise RuntimeError(f"Supabase REST probe failed: {last_error}") from last_error
+    raise RuntimeError(f"Supabase REST probe failed with status {last_status}.")
 
 
 def authenticate_user_detailed_via_supabase_api(

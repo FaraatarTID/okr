@@ -154,6 +154,85 @@ def test_ensure_admin_exists_uses_configured_bootstrap_password_in_production(
     assert authenticate_user_detailed("admin", "ProdAdmin123!")["success"] is True
 
 
+def test_ensure_admin_exists_ignores_placeholder_bootstrap_password_in_development(
+    isolated_db, monkeypatch
+):
+    from src.crud import authenticate_user_detailed, ensure_admin_exists
+
+    monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.setenv(
+        "OKR_BOOTSTRAP_ADMIN_PASSWORD",
+        "CHANGE_ME_STRONG_BOOTSTRAP_PASSWORD",
+    )
+
+    assert ensure_admin_exists() is True
+    assert authenticate_user_detailed("admin", "admin")["success"] is True
+    assert (
+        authenticate_user_detailed(
+            "admin",
+            "CHANGE_ME_STRONG_BOOTSTRAP_PASSWORD",
+        )["success"]
+        is False
+    )
+
+
+def test_ensure_admin_exists_rejects_placeholder_bootstrap_password_in_production(
+    isolated_db, monkeypatch
+):
+    import src.crud as crud
+
+    monkeypatch.setenv("OKR_ENV", "production")
+    monkeypatch.setenv(
+        "OKR_BOOTSTRAP_ADMIN_PASSWORD",
+        "CHANGE_ME_STRONG_BOOTSTRAP_PASSWORD",
+    )
+
+    with pytest.raises(RuntimeError, match="placeholder"):
+        crud.ensure_admin_exists()
+
+
+def test_ensure_admin_exists_repairs_legacy_placeholder_admin_password(
+    isolated_db, monkeypatch
+):
+    from src.crud import (
+        User,
+        UserRole,
+        authenticate_user_detailed,
+        ensure_admin_exists,
+        get_session_context,
+        hash_password,
+    )
+
+    monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.setenv(
+        "OKR_BOOTSTRAP_ADMIN_PASSWORD",
+        "CHANGE_ME_STRONG_BOOTSTRAP_PASSWORD",
+    )
+
+    with get_session_context() as session:
+        session.add(
+            User(
+                username="admin",
+                password_hash=hash_password("CHANGE_ME_STRONG_BOOTSTRAP_PASSWORD"),
+                must_change_password=True,
+                password_changed_at=None,
+                display_name="Administrator",
+                role=UserRole.ADMIN,
+            )
+        )
+        session.commit()
+
+    assert ensure_admin_exists() is True
+    assert authenticate_user_detailed("admin", "admin")["success"] is True
+    assert (
+        authenticate_user_detailed(
+            "admin",
+            "CHANGE_ME_STRONG_BOOTSTRAP_PASSWORD",
+        )["success"]
+        is False
+    )
+
+
 def test_create_user_rejects_weak_password_when_strict_policy_enabled(
     isolated_db, monkeypatch
 ):
