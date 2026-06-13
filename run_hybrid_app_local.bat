@@ -172,7 +172,9 @@ if not exist "%ROOT%spa-web\package.json" (
 
 if not exist "%ROOT%spa-bff\node_modules" (
     echo [INFO] Installing spa-bff dependencies...
-    call npm --prefix "%ROOT%spa-bff" install
+    pushd "%ROOT%spa-bff"
+    call npm install
+    popd
     if errorlevel 1 (
         echo [ERROR] Failed to install spa-bff dependencies.
         pause
@@ -181,7 +183,9 @@ if not exist "%ROOT%spa-bff\node_modules" (
 )
 if not exist "%ROOT%spa-web\node_modules" (
     echo [INFO] Installing spa-web dependencies...
-    call npm --prefix "%ROOT%spa-web" install
+    pushd "%ROOT%spa-web"
+    call npm install
+    popd
     if errorlevel 1 (
         echo [ERROR] Failed to install spa-web dependencies.
         pause
@@ -192,7 +196,9 @@ if not exist "%ROOT%spa-web\node_modules" (
 echo [INFO] Clearing stale Next.js cache...
 if exist "%ROOT%spa-web\.next" rd /s /q "%ROOT%spa-web\.next" >nul 2>&1
 echo [INFO] Building spa-web production bundle...
-call npm --prefix "%ROOT%spa-web" run build
+pushd "%ROOT%spa-web"
+call npm run build
+popd
 if errorlevel 1 (
     echo [ERROR] Failed to build spa-web.
     pause
