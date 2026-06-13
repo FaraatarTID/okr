@@ -177,9 +177,7 @@ if not exist "%ROOT%spa-web\package.json" (
 
 if not exist "%ROOT%spa-bff\node_modules" (
     echo [INFO] Installing spa-bff dependencies...
-    pushd "%ROOT%spa-bff"
-    call npm install
-    popd
+    call npm --prefix "%ROOT%spa-bff" install
     if errorlevel 1 (
         echo [ERROR] Failed to install spa-bff dependencies.
         pause
@@ -188,9 +186,7 @@ if not exist "%ROOT%spa-bff\node_modules" (
 )
 if not exist "%ROOT%spa-web\node_modules" (
     echo [INFO] Installing spa-web dependencies...
-    pushd "%ROOT%spa-web"
-    call npm install
-    popd
+    call npm --prefix "%ROOT%spa-web" install
     if errorlevel 1 (
         echo [ERROR] Failed to install spa-web dependencies.
         pause
