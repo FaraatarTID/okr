@@ -10,8 +10,7 @@ Documentation HQ: [README](README.md)
 - Supabase PostgreSQL
 - Nginx reverse proxy
 - HTTPS
-- مسیر backend-assisted شامل `okr` + `backend-api` + `backend-worker`
-- در Streamlit Cloud، استفاده از **Embedded Mode** با تنظیم `OKR_BACKEND_API_URL="auto"`
+- مسیر backend-assisted شامل `spa-web` + `spa-bff` + `backend-api` + `backend-worker`
 
 الزامات مهم
 
@@ -74,13 +73,13 @@ python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.e
 ```bash
 docker compose -f deploy/docker/docker-compose.yml up -d --build
 docker compose -f deploy/docker/docker-compose.yml ps
-curl -I http://127.0.0.1:8501/
+curl -I http://127.0.0.1:3000/
 curl -f http://127.0.0.1:8100/healthz
 ```
 
 7. تنظیم Nginx + DNS + TLS
 
-- proxy را به `127.0.0.1:8501` بدهید.
+- proxy را به `127.0.0.1:3000` بدهید.
 - DNS دامنه را به IP سرور وصل کنید.
 - TLS را با Certbot یا PKI داخلی فعال کنید.
 
@@ -100,7 +99,6 @@ curl -f http://127.0.0.1:8100/healthz
 - report/PDF
 - نبود reconnect loop
 - عدم وجود خطای بحرانی preflight
-- در حالت Embedded: بررسی لاگ‌های Streamlit Cloud برای مشاهده پیام «Embedded backend is up»
 
 اسناد مرتبط
 

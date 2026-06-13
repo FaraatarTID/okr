@@ -39,12 +39,6 @@ export function parseOwnerIds(raw: string): { value: number[] | undefined; error
   };
 }
 
-export function parsePreviewBypass(search: string): boolean {
-  const params = new URLSearchParams(String(search || ""));
-  const raw = String(params.get("spa_preview") || "").trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
-}
-
 export function quarterLabel(dateLike: unknown): string {
   const text = String(dateLike || "").trim();
   if (!text) {

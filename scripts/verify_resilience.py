@@ -13,7 +13,6 @@ from typing import Iterable
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STREAMLIT_APP_DIR = ROOT / "streamlit_app"
 
 DEFAULT_PYTEST_TARGETS: tuple[str, ...] = (
     "tests/test_distributed_state_service.py",
@@ -87,10 +86,10 @@ def _run_pytest(*, targets: Iterable[str], extra_args: Iterable[str]) -> CheckRe
     )
 
 
-def _bootstrap_streamlit_import_path() -> None:
-    streamlit_src = str(STREAMLIT_APP_DIR.resolve())
-    if streamlit_src not in sys.path:
-        sys.path.insert(0, streamlit_src)
+def _bootstrap_import_path() -> None:
+    root_src = str(ROOT.resolve())
+    if root_src not in sys.path:
+        sys.path.insert(0, root_src)
 
 
 def _run_live_backend_checks(
@@ -99,7 +98,7 @@ def _run_live_backend_checks(
     probe_key_prefix: str,
     require_live_backend: bool,
 ) -> list[CheckResult]:
-    _bootstrap_streamlit_import_path()
+    _bootstrap_import_path()
     from src.config_runtime import get_config_value
     from src.services import distributed_state_service
 

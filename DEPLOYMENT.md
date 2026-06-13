@@ -22,13 +22,12 @@ This is the safest and easiest enterprise path for this repo.
 
 Architecture status and deployment intent (2026-02-24)
 
-- The app is designed for backend-server operation in enterprise environments (`okr` + `backend-api` + `backend-worker`).
-- The backend embedded in `streamlit_app/app.py` is implemented for Streamlit Cloud compatibility and has been validated in Streamlit Cloud.
-- For corporate deployments (AWS/ECS/Kubernetes/VM), use the decoupled backend-server model from this guide, not embedded mode.
+- The app is designed for backend-server operation in enterprise environments (`spa-web` + `spa-bff` + `backend-api` + `backend-worker`).
+- For corporate deployments (AWS/ECS/Kubernetes/VM), use the backend-server model from this guide.
 - The distributed resilience plan items are implemented:
   - cluster-wide cache invalidation signaling
   - URL-backed navigation-pointer restoration/synchronization
-  - resilience verification scripts and runbook (`scripts/verify_resilience.py`, `scripts/run_multi_instance_failover_drill.py`, `docs/RESILIENCE_VERIFICATION.md`)
+  - resilience verification scripts (`scripts/verify_resilience.py`)
 
 Readiness conclusion for corporate backend-server deployment:
 
@@ -42,7 +41,7 @@ What this deployment gives you
 - Non-root container runtime
 - Automatic DB migrations at app startup
 - Health checks and restart policy
-- Reverse-proxy compatible with Streamlit websocket traffic
+- Reverse-proxy compatible with websocket traffic
 - Internal backend API + async worker for timer/PDF/AI heavy flows
 - Optional CI/CD via GitHub Actions
 
@@ -81,14 +80,7 @@ Deployment modes (important)
 
 Use one of these modes:
 
-1. Streamlit Cloud (MVP/demo hosting only)
-
-- No SSH deploy secrets are required.
-- The app is deployed by Streamlit Cloud from your GitHub repo.
-- In this mode, the GitHub Actions SSH deploy step is expected to skip.
-- For confidential internal data or multi-user alpha, do not use Streamlit Cloud.
-
-2. Docker Compose on your own server (enterprise/self-hosted)
+1. Docker Compose on your own server (enterprise/self-hosted)
 
 - SSH deploy is disabled by default. Set `ENABLE_SSH_DEPLOY=true` (repo secret or variable) before adding SSH deploy secrets.
 - Use this when you want GitHub Actions to connect to your server and run `docker compose`.
@@ -96,9 +88,9 @@ Use one of these modes:
 Architecture profile (recommended)
 
 - Use backend-assisted profile:
-  - `okr` + `backend-api` + `backend-worker`
+  - `spa-web` + `spa-bff` + `backend-api` + `backend-worker`
   - shared DB + internal service token
-- This isolates heavy AI/PDF work from Streamlit rerun cycle and improves operational resilience.
+- This isolates heavy AI/PDF work and improves operational resilience.
 - Keep backend API internal; do not expose it via public reverse proxy.
 
 ---
@@ -160,9 +152,9 @@ Edit `deploy/docker/.env` and set at minimum:
 
 ```dotenv
 # Required
-PORT=8501
-HOST_PORT=8501
-BASE_URL_PATH=
+SPA_WEB_HOST_PORT=3000
+SPA_WEB_BIND_ADDRESS=127.0.0.1
+BFF_PUBLIC_ORIGIN=http://spa-bff:3001
 OKR_DATABASE_URL=postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
 OKR_BACKEND_API_URL=http://backend-api:8100
 OKR_BACKEND_SERVICE_TOKEN=CHANGE_ME_STRONG_SHARED_TOKEN
@@ -181,10 +173,12 @@ PDFSHIFT_API_KEY=CHANGE_ME_PDFSHIFT_KEY
 # PDF_METHOD=chromium
 # OKR_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 ALLOW_EXTERNAL_AI=false
+NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA=100
+NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE=true
 OKR_STRICT_RUNTIME_PREFLIGHT=true
 
 # Optional image pin (recommended after first stable release)
-# IMAGE=ghcr.io/your-org/okr-streamlit:2026-02-14
+# IMAGE=ghcr.io/your-org/okr-backend-api:2026-02-14
 ```
 
 Notes:
@@ -233,13 +227,13 @@ Health check:
 
 ```bash
 docker compose -f deploy/docker/docker-compose.yml ps
-curl -I http://127.0.0.1:8501/
+curl -I http://127.0.0.1:3000/
 curl -f http://127.0.0.1:8100/healthz
 ```
 
 Expected:
 
-- Services `okr`, `backend-api`, and `backend-worker` are `Up`
+- Services `spa-web`, `spa-bff`, `backend-api`, and `backend-worker` are `Up`
 - HTTP response from `/` is `200 OK`
 - Backend health endpoint returns `{"status":"ok"}`
 
@@ -260,7 +254,7 @@ server {
     server_name okr.mycompany.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8501/;
+        proxy_pass http://127.0.0.1:3000/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -331,7 +325,8 @@ Run these checks:
 curl -I https://okr.mycompany.com
 
 # Container logs
-docker compose -f deploy/docker/docker-compose.yml logs --tail=200 okr
+docker compose -f deploy/docker/docker-compose.yml logs --tail=200 spa-web
+docker compose -f deploy/docker/docker-compose.yml logs --tail=200 spa-bff
 docker compose -f deploy/docker/docker-compose.yml logs --tail=200 backend-api
 docker compose -f deploy/docker/docker-compose.yml logs --tail=200 backend-worker
 
@@ -356,15 +351,15 @@ Use this if you need high availability or need to scale compute resources indepe
 
 ### 1. De-coupled Architecture
 
-Unlike the "Embedded Mode" used on Streamlit Cloud, a cluster deployment splits the app into three distinct tiers:
+A cluster deployment splits the app into three distinct tiers:
 
 ```mermaid
 graph TD
     User((User)) --> LB[Load Balancer / Ingress]
-    LB -- "HTTP/WS (Sticky)" --> ST[Streamlit Frontend Replicas]
+    LB -- "HTTP/WS" --> SPA[SPA Frontend Replicas]
     LB -- "Internal" --> API[Backend API Replicas]
     API --> DB[(Shared PostgreSQL)]
-    ST -- "Authenticated API Calls" --> API
+    SPA -- "Authenticated API Calls" --> API
     Worker[Backend Worker Replicas] --> DB
     Worker --> API
 
@@ -380,7 +375,8 @@ graph TD
 
 | Service              | Replicas | Scaling Trigger | Notes                                            |
 | :------------------- | :------- | :-------------- | :----------------------------------------------- |
-| **`okr`**            | 2+       | User Sessions   | Must use **Sticky Sessions** (Session Affinity). |
+| **`spa-web`**        | 2+       | User Sessions   | Must use **Sticky Sessions** (Session Affinity). |
+| **`spa-bff`**        | 2+       | User Sessions   | Browser-facing API boundary.                     |
 | **`backend-api`**    | 2+       | Request Latency | Handles all DB writes and token verification.    |
 | **`backend-worker`** | 1+       | Queue Depth     | Handles async tasks (AI, PDF generation).        |
 
@@ -418,7 +414,8 @@ Operations (day 2)
 Logs
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml logs -f okr
+docker compose -f deploy/docker/docker-compose.yml logs -f spa-web
+docker compose -f deploy/docker/docker-compose.yml logs -f spa-bff
 docker compose -f deploy/docker/docker-compose.yml logs -f backend-api
 docker compose -f deploy/docker/docker-compose.yml logs -f backend-worker
 ```
@@ -426,7 +423,7 @@ docker compose -f deploy/docker/docker-compose.yml logs -f backend-worker
 Restart app
 
 ```bash
-docker compose -f deploy/docker/docker-compose.yml restart okr backend-api backend-worker
+docker compose -f deploy/docker/docker-compose.yml restart spa-web spa-bff backend-api backend-worker
 ```
 
 Upgrade (same server, new code/image)
@@ -456,7 +453,7 @@ Security hardening checklist
 
 - Use Supabase PostgreSQL only.
 - Keep only ports 80/443 exposed publicly.
-- Block direct public access to `8501`.
+- Block direct public access to port 3000 (SPA) and 3001 (BFF).
 - Keep backend API port (`8100`) private (default bind: `127.0.0.1`).
 - Use signed internal requests (`OKR_BACKEND_SIGNING_SECRET`) and keep enforcement enabled.
 - Keep secrets in `deploy/secrets/secrets.toml` or platform secret manager.
@@ -527,12 +524,6 @@ Where to set `SSH_KEY`:
 - GitHub repository -> `Settings` -> `Secrets and variables` -> `Actions` -> `New repository secret`
 - Name it `SSH_KEY` (or `DEPLOY_KEY` if you prefer fallback naming)
 - Paste the private key content for your deploy user (for example, `id_ed25519` private key)
-
-If you are using Streamlit Cloud and not SSH deploy:
-
-- Keep `ENABLE_SSH_DEPLOY` unset (or `false`).
-- Do not set SSH deploy secrets.
-- The SSH deploy job should be skipped automatically.
 
 Tip:
 

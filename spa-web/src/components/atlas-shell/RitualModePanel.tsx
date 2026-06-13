@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
 import type { Dispatch, SetStateAction } from "react";
+import { rtlStyle } from "@/lib/rtl";
 
 type WorkLogReadView = {
   duration_minutes?: number | null;
@@ -273,6 +274,19 @@ export default function RitualModePanel({
 
             {ritualStep === 2 ? (
               <>
+                <div style={{ marginTop: "0.45rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.45rem", background: "var(--surface)" }}>
+                  <p className="kicker" style={{ margin: 0 }}>Check-In Guide</p>
+                  <p style={{ margin: "0.2rem 0 0", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
+                    For each KR: enter the current metric value and classify the change.
+                    <br />
+                    <strong>Common Cause</strong> = normal system behavior. Optionally link to a running experiment.
+                    <br />
+                    <strong>Special Cause</strong> = exceptional event. Add a note explaining what happened.
+                    <br />
+                    If the AI projection differs from your actual progress, you planned too much or too little work — write this insight in your retro (Step 1).
+                  </p>
+                </div>
+
                 <div className="atlas-node-list" style={{ marginTop: "0.45rem", maxHeight: "52vh" }}>
                   {ritualKrs.length ? (
                     ritualKrs.map((kr) => {

@@ -16,7 +16,7 @@ from sqlmodel.main import default_registry
 
 from src.utils.time_utils import utc_now_naive
 
-# Streamlit hot-reload can import this module multiple times in one process.
+# This module can be imported multiple times in one process.
 # Reset mapper registry/metadata to avoid duplicate-class ambiguity (e.g. "User").
 default_registry.dispose()
 SQLModel.metadata.clear()
@@ -677,16 +677,6 @@ class TaskWithTimer(SQLModel):
     total_time_spent: int
     key_result_title: Optional[str] = None
     objective_title: Optional[str] = None
-
-
-class AnalysisContext(SQLModel):
-    """Context data sent to AI for analysis."""
-
-    objective: str
-    tasks_count: int
-    completed_tasks: int
-    total_minutes_spent: int
-    kr_progress: List[float]
 
 
 # ============================================================================

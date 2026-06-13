@@ -88,7 +88,7 @@ describe("useInspectorNodeActions", () => {
       useInspectorNodeActions({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: 7,
         createContext: { goalId: 1, objectiveId: 2, keyResultId: 3 },
         focusTaskRef: "",
@@ -133,7 +133,7 @@ describe("useInspectorNodeActions", () => {
       useInspectorNodeActions({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: 7,
         createContext: { goalId: 10, objectiveId: 20, keyResultId: 30 },
         focusTaskRef: "",
@@ -171,7 +171,7 @@ describe("useInspectorNodeActions", () => {
       useInspectorNodeActions({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: 7,
         createContext: { goalId: 10, objectiveId: 20, keyResultId: 30 },
         focusTaskRef: "",
@@ -222,7 +222,7 @@ describe("useInspectorNodeActions", () => {
       useInspectorNodeActions({
         user: baseUser,
         selectedMeta: null,
-        rolloutAllowed: true,
+
         parsedCycleId: 7,
         createContext: { goalId: null, objectiveId: null, keyResultId: null },
         focusTaskRef: "",
@@ -280,7 +280,7 @@ describe("useInspectorNodeActions", () => {
       useInspectorNodeActions({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: 7,
         createContext: { goalId: 10, objectiveId: 20, keyResultId: 30 },
         focusTaskRef: selectedMeta.ref,

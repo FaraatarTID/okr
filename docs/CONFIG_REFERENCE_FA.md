@@ -7,7 +7,7 @@ Documentation HQ: [README](../README.md)
 ## اولویت خواندن تنظیمات
 
 1. Environment variables
-2. Streamlit secrets (`streamlit_app/.streamlit/secrets.toml`)
+2. TOML config files (`deploy/secrets/secrets.toml`)
 
 ## دیتابیس
 
@@ -21,11 +21,10 @@ Documentation HQ: [README](../README.md)
   - `sslmode=require`
   - استفاده از کاربر کم‌اختیار (مثل `okr_app`) و نه `postgres`
 
-## Streamlit
+## SPA Server
 
-- `PORT` (پیش‌فرض `8501`)
-- `BASE_URL_PATH` (برای subpath)
-- فایل: `streamlit_app/.streamlit/config.toml`
+- `BFF_PORT` (پیش‌فرض `3001`)
+- SPA Web روی پورت `3000` اجرا می‌شود
 
 ## PDF
 
@@ -48,6 +47,11 @@ Documentation HQ: [README](../README.md)
   - `AI_MODEL`
   - `AI_API_KEY` (اختیاری)
 
+## کنترل‌های AI Sync در SPA
+
+- `NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA` (پیش‌فرض: `100`): حداکثر تغییر امتیاز KR در هر اجرای AI sync.
+- `NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE` (پیش‌فرض: `true`): اجازه کاهش پیشرفت KR توسط AI. روی `false` تنظیم کنید تا فقط افزایش مجاز باشد.
+
 ## Runtime Preflight
 
 - `OKR_STRICT_RUNTIME_PREFLIGHT`:
@@ -62,11 +66,10 @@ Documentation HQ: [README](../README.md)
 
 ## Backend API
 
-### مسیر Streamlit به Backend
+### مسیر Frontend به Backend
 
 - `OKR_BACKEND_API_URL`:
   - مثال: `http://backend-api:8100`
-  - **`"auto"`**: کلمه کلیدی ویژه برای راه‌اندازی خودکار backend به‌صورت subprocess (استفاده در Streamlit Cloud).
 - `OKR_BACKEND_SERVICE_TOKEN`
 - `OKR_BACKEND_SIGNING_SECRET`
 - `OKR_BACKEND_DEFAULT_ACTOR`
@@ -105,12 +108,6 @@ Documentation HQ: [README](../README.md)
 - وقتی backend روی `redis` باشد:
   - nonce replay و rate-limit در Redis shared key-space ذخیره می‌شوند.
   - `OKR_BACKEND_SECURITY_STATE_REDIS_URL` اجباری است و `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX` namespace کلیدها را تعیین می‌کند.
-- **Embedded Mode (Cloud)**:
-  - زمانی فعال می‌شود که `OKR_BACKEND_API_URL="auto"` باشد یا روی Streamlit Cloud بدون URL بک‌اند اجرا شود.
-  - بک‌بند را با **timeout سلامت‌سنجی ۶۰ ثانیه‌ای** اجرا می‌کند.
-  - خروجی `stderr` را به `/tmp/okr_backend.log` هدایت می‌کند و در صورت شکست راه‌اندازی، انتهای آن را چاپ می‌کند.
-  - `PYTHONPATH` را برای یافتن ماژول `src` اصلاح و تقویت می‌کند.
-
 ## Worker
 
 - `OKR_BACKEND_WORKER_POLL_SECONDS` (پیش‌فرض `2`)
@@ -168,6 +165,5 @@ Notes:
 ## Audit Trail
 
 - مخزن اصلی: جدول `audit_event`
-- fallback: فایل `streamlit_app/logs/audit.log` وقتی sink دیتابیس موقتاً در دسترس نیست
 - retention خودکار توسط worker:
   - `OKR_BACKEND_AUDIT_RETENTION_DAYS` (پیش‌فرض `365`)

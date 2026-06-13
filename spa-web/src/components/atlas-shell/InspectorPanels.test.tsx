@@ -29,7 +29,7 @@ describe("InspectorTaskWorkHistoryPanel", () => {
         ]}
         inspectTaskWorkLogPendingId={null}
         hasUser
-        rolloutAllowed
+
         formatOptionalDate={(value) => String(value || "")}
         onDeleteWorkLog={onDeleteWorkLog}
       />,
@@ -60,7 +60,7 @@ describe("InspectorTaskWorkHistoryPanel", () => {
         inspectTaskWorkHistoryRows={[]}
         inspectTaskWorkLogPendingId={null}
         hasUser
-        rolloutAllowed
+
         formatOptionalDate={(value) => String(value || "")}
         onDeleteWorkLog={onDeleteWorkLog}
       />,
@@ -77,7 +77,7 @@ describe("InspectorTaskWorkHistoryPanel", () => {
         inspectTaskWorkHistoryRows={[{ id: 10, summary: "Row", duration_minutes: 2 }]}
         inspectTaskWorkLogPendingId={10}
         hasUser
-        rolloutAllowed
+
         formatOptionalDate={(value) => String(value || "")}
         onDeleteWorkLog={onDeleteWorkLog}
       />,

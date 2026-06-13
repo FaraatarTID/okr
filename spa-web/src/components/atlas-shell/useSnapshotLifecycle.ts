@@ -11,7 +11,6 @@ type UseSnapshotLifecycleInput = {
   parsedCycleId: number | null;
   ownerIds: number[] | undefined;
   ownerIdsError: string;
-  rolloutAllowed: boolean;
 };
 
 function resolveSnapshotPollIntervalMs(): number {
@@ -28,7 +27,6 @@ export default function useSnapshotLifecycle({
   parsedCycleId,
   ownerIds,
   ownerIdsError,
-  rolloutAllowed,
 }: UseSnapshotLifecycleInput) {
   const snapshotPollIntervalMs = resolveSnapshotPollIntervalMs();
   const [snapshotPending, setSnapshotPending] = useState(false);
@@ -56,8 +54,8 @@ export default function useSnapshotLifecycle({
   );
 
   useEffect(() => {
-    if (!user || !parsedCycleId || ownerIdsError || !rolloutAllowed) {
-      if (!parsedCycleId || ownerIdsError || !rolloutAllowed) {
+    if (!user || !parsedCycleId || ownerIdsError) {
+      if (!parsedCycleId || ownerIdsError) {
         setSnapshotPayload(null);
       }
       setSnapshotPending(false);
@@ -90,10 +88,10 @@ export default function useSnapshotLifecycle({
       active = false;
       window.clearTimeout(timer);
     };
-  }, [loadSnapshotForUser, ownerIds, ownerIdsError, parsedCycleId, rolloutAllowed, user]);
+  }, [loadSnapshotForUser, ownerIds, ownerIdsError, parsedCycleId, user]);
 
   useEffect(() => {
-    if (!user || mode !== "atlas" || !parsedCycleId || ownerIdsError || !rolloutAllowed) {
+    if (!user || mode !== "atlas" || !parsedCycleId || ownerIdsError) {
       return;
     }
 
@@ -118,7 +116,7 @@ export default function useSnapshotLifecycle({
       active = false;
       window.clearInterval(pollTimer);
     };
-  }, [loadSnapshotForUser, mode, ownerIds, ownerIdsError, parsedCycleId, rolloutAllowed, snapshotPollIntervalMs, user]);
+  }, [loadSnapshotForUser, mode, ownerIds, ownerIdsError, parsedCycleId, snapshotPollIntervalMs, user]);
 
   return {
     snapshotPending,

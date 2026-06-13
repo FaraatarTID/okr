@@ -102,7 +102,7 @@ describe("useAiProgressAssist", () => {
     const { result } = renderHook(() =>
       useAiProgressAssist({
         user: baseUser,
-        rolloutAllowed: true,
+
         parsedCycleId: 7,
         atlasRuntime: { index: { [kr.ref]: kr } },
         allScopeRefs: [kr.ref],
@@ -121,7 +121,7 @@ describe("useAiProgressAssist", () => {
     expect(updateNodeMutationMock).not.toHaveBeenCalled();
     expect(result.current.aiSyncReport?.planned).toBe(1);
     expect(result.current.aiSyncReport?.applied).toBe(0);
-    expect(result.current.aiSyncMessage).toContain("Preview complete");
+    expect(result.current.aiSyncMessage).toContain("Preview");
     expect(loadSnapshotForUser).not.toHaveBeenCalled();
   });
 
@@ -135,7 +135,7 @@ describe("useAiProgressAssist", () => {
     const { result } = renderHook(() =>
       useAiProgressAssist({
         user: baseUser,
-        rolloutAllowed: true,
+
         parsedCycleId: 7,
         atlasRuntime: { index: { [kr.ref]: kr } },
         allScopeRefs: [kr.ref],
@@ -197,7 +197,7 @@ describe("useAiProgressAssist", () => {
     const { result } = renderHook(() =>
       useAiProgressAssist({
         user: baseUser,
-        rolloutAllowed: true,
+
         parsedCycleId: 7,
         atlasRuntime: {
           index: {

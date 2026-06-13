@@ -21,7 +21,7 @@ spec:
         fsGroup: 10001
       containers:
         - name: backend-worker
-          image: ghcr.io/your-org/okr-streamlit:latest
+          image: ghcr.io/your-org/okr-backend-worker:latest
           imagePullPolicy: IfNotPresent
           command: ["python", "-m", "backend_app.worker"]
           env:

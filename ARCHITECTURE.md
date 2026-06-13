@@ -1,48 +1,39 @@
-﻿# Architecture
+# Architecture
 
 Documentation HQ: [README](README.md)
-
-Learning Loop specific architecture contract (EN+FA, canonical): [docs/LEARNING_LOOP_ARCHITECTURE.md](docs/LEARNING_LOOP_ARCHITECTURE.md)
 
 Maintainer file ownership and change map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
 
 ## System Overview
 
-This repository is an OKR platform with a SPA-first runtime (`spa-web` + `spa-bff` + backend services) and a retained legacy Streamlit runtime for compatibility/testing paths.
+This repository is an OKR platform with a SPA-first runtime (`spa-web` + `spa-bff` + backend services).
 
-Current runtime topology has two active implementation tracks:
+Runtime topology:
 
-- `SPA-first track` (default for local/prod flows):
-  - `spa-web` (Next.js) provides primary UX.
-  - `spa-bff` provides browser-facing API boundary, auth/session mediation, and allowlisted proxying.
-  - `backend-api` (FastAPI control plane) and `backend-worker` (async execution plane) own mutations, reads, and heavy/background work.
-- `Legacy Streamlit track` (compatibility/testing only):
-  - `streamlit_app/app.py` runtime remains available for validation/rollback/reference workflows.
-  - Embedded backend launch (`OKR_BACKEND_API_URL="auto"`) is still supported for Streamlit Cloud-style operation.
-  - Not the primary UX source for current rollout.
+- `spa-web` (Next.js) provides primary UX.
+- `spa-bff` provides browser-facing API boundary, auth/session mediation, and allowlisted proxying.
+- `backend-api` (FastAPI control plane) and `backend-worker` (async execution plane) own mutations, reads, and heavy/background work.
 
 - Primary UI entrypoint: `spa-web/`
 - Browser/API boundary: `spa-bff/`
-- Legacy UI entrypoint: `streamlit_app/app.py`
-- Shared domain/data operations: `streamlit_app/src/crud.py` and shared runtime modules under `src/`
+- Shared domain/data operations: shared runtime modules under `src/`
 - Extracted domain modules:
-  - `streamlit_app/src/domain/authorization.py` (ownership/RBAC predicates + authorizers)
-  - `streamlit_app/src/domain/analytics.py` (hot-path analytics/reporting queries)
-- Persistence: `streamlit_app/src/database.py`, `streamlit_app/src/models.py`, Alembic migrations in `streamlit_app/alembic/`
-- External integrations: `streamlit_app/src/services/ai_service.py`, `streamlit_app/src/services/pdf_service.py`
-- Shared business helpers: `streamlit_app/src/utils/deadline_utils.py`
+  - `src/domain/authorization.py` (ownership/RBAC predicates + authorizers)
+  - `src/domain/analytics.py` (hot-path analytics/reporting queries)
+- Persistence: Alembic migrations in `alembic/`
+- External integrations: `src/services/ai_service.py`, `src/services/pdf_service.py`
+- Shared business helpers: `src/utils/deadline_utils.py`
 - Backend services & launcher:
-  - `streamlit_app/src/services/backend_launcher.py` (Embedded process manager)
   - `backend_app/main.py`, `backend_app/worker.py`, `backend_app/jobs.py`
 
 ## Runtime Topology
 
-Primary data/control flow in SPA-first mode:
+Primary data/control flow:
 
 1. UI and session:
 
 - Browser -> `spa-web` -> `spa-bff`.
-- `spa-web` handles rendering/state and role-aware UX for active rollout.
+- `spa-web` handles rendering/state and role-aware UX.
 - `spa-bff` enforces boundary policy before forwarding to backend services.
 
 2. Synchronous domain mutations:
@@ -54,18 +45,18 @@ Primary data/control flow in SPA-first mode:
 3. Synchronous read/query paths:
 
 - `spa-bff` -> `backend-api` read endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
-- Atlas snapshot/runtime reads and leadership read paths are backend-served in runtime mode.
+- Atlas snapshot/runtime reads and leadership read paths are backend-served.
 
 4. Async heavy workflows:
 
-- Streamlit -> `backend-api` (`/v1/jobs`) with `OKR_BACKEND_SERVICE_TOKEN`.
+- Frontend -> `backend-api` (`/v1/jobs`) with `OKR_BACKEND_SERVICE_TOKEN`.
 - `backend-api` enqueues durable jobs in `async_job`.
 - `backend-worker` claims and executes jobs (`ai.generate_json`, `pdf.weekly`).
-- Streamlit polls job status and renders result.
+- Frontend polls job status and renders result.
 
 5. Timer routing:
 
-- Streamlit timer service -> `backend-api` (`/v1/timer/start|stop`).
+- Timer service -> `backend-api` (`/v1/timer/start|stop`).
 - Runtime behavior is fail-closed if backend is unavailable (no local fallback execution).
 
 6. PDF rendering:
@@ -97,7 +88,7 @@ Primary data/control flow in SPA-first mode:
 
 1. UI boundary
 
-- Owns Streamlit rendering and session state orchestration.
+- Owns SPA rendering and session state orchestration.
 - Calls CRUD/service functions; does not own database transactions.
 
 2. Domain boundary (`crud.py` facade + `src/domain/*` + `deadline_utils.py`)
@@ -107,8 +98,7 @@ Primary data/control flow in SPA-first mode:
   - authorization checks (owner/manager/admin)
   - check-ins, reports, leadership metrics, timer semantics
   - deadline health/status logic
-- Keeps rules testable without Streamlit runtime.
-- `crud.py` remains the compatibility API used by UI/tests, while domain modules hold focused logic.
+- Keeps rules testable without UI runtime.
 
 3. Persistence boundary (`database.py`, `models.py`, migrations)
 
@@ -120,8 +110,7 @@ Primary data/control flow in SPA-first mode:
 
 - Owns AI analysis and PDF/report output.
 - Should not contain core authorization logic.
-- Backend API/worker isolate heavy operations from Streamlit request reruns.
-- **Migration Ownership**: In Embedded mode, the frontend skips migrations to avoid database lock contention; the backend subprocess is the sole owner of `alembic upgrade`.
+- Backend API/worker isolate heavy operations from frontend request cycles.
 
 ## Critical Request/Data Flows
 
@@ -139,12 +128,11 @@ Primary data/control flow in SPA-first mode:
 
 1b. Hierarchy navigation flow (Atlas mode)
 
-- `render_level` dispatches to `render_atlas_workspace` when `workspace_mode=Atlas`.
+- SPA routes dispatch to Atlas workspace views.
 - Top command bar handles quick jump and role-aware scope controls.
 - Focus selection and timer commitment are consolidated inside `Focus Map` to avoid duplicated surfaces.
 - Workspace uses two surfaces:
-  - `Focus Map`: first-glance clickable treemap + urgency legend + ranked focus candidates + commit spotlight
-    - `Commit Spotlight`: single dominant commit action with sprint presets (`25m`, `50m`, `Custom`)
+  - `Focus Map`: first-glance clickable treemap + urgency legend + ranked focus candidates
   - `Inspector`: deep edit/read context for selected node
 
 ## Atlas UX Architecture (v2)
@@ -157,7 +145,6 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Primary timer commitment happens in `Commit Spotlight`.
 - Focused task state is sticky across tab changes.
 - Human-first prompts and status chips provide instant context without metric overload.
-- `Suggested Next` ranks by: running session, needs-care urgency, ownership/actionability, then progress.
 
 2. Work-plane: Progressive disclosure
 
@@ -168,14 +155,13 @@ Interaction model is intentionally split into control-plane and work-plane:
   - tile fill colors represent status (`Needs care` / `On track` / `Complete`)
   - outline/ring states represent navigation context (`Focused task` / `Selected node` / `Path context`)
 - `Focus Map` defaults to full scope lens and supports branch lens for local drill-in.
-- Treemap click handling uses `streamlit-plotly-events` as primary click capture with Streamlit selection fallback, normalizing payload shape differences across runtimes.
 - `Inspector` is optimized for depth (details and edits).
 
 3. State contracts
 
-- `atlas_selected_ref`: single source of truth for current node context.
-- `atlas_focus_task_ref`: explicit focus target for timer operations.
-- A map click must update `atlas_selected_ref`; navigation path and `Inspector` are derived from that shared selected ref.
+- Selected node reference is the single source of truth for current node context.
+- Focus task reference is the explicit focus target for timer operations.
+- A map click must update the selected reference; navigation path and `Inspector` are derived from that shared selection.
 - `Focus Map` and `Inspector` mutate only these shared selection keys.
 
 4. Permission contract
@@ -212,12 +198,21 @@ Interaction model is intentionally split into control-plane and work-plane:
 - `run_job_and_wait` submits to `backend-api` when backend mode is enabled.
 - Job lifecycle: `pending -> running -> succeeded|failed|cancelled`.
 - Worker writes result/error payloads into `async_job`.
-- UI reads job state and surfaces final output.
+- Frontend reads job state and surfaces final output.
 - Job submission is guarded by per-user/per-team quotas and idempotency keys in backend API.
 - In PostgreSQL runtimes, worker claim path uses `FOR UPDATE SKIP LOCKED` semantics to reduce queue-head contention across concurrent workers.
 - Worker resiliency guardrails include capped attempts, terminal handling for non-retryable payload failures, and bounded error-text persistence.
 
 ## Invariants and Guardrails
+
+### OKR Methodology Rules
+- Goals and Objectives are time-bounded by the OKR cycle, NOT by individual deadlines.
+- Only Key Results have measurable progress (measured through check-in sessions).
+- Only Tasks have deadlines.
+- Progress on Goals/Objectives is a computed rollup from child KRs — it is not user-set.
+- AI sync projects KR progress based on completed work; discrepancies between projection and actual go into retro sessions as experiments.
+
+### Technical Guardrails
 
 - Goal ownership is anchored on `goal.owner_id`.
 - Mutations require `actor_username` for goal-scoped entities.
@@ -233,21 +228,17 @@ Interaction model is intentionally split into control-plane and work-plane:
 - `get_krs_needing_checkin`
 - `get_hours_by_goal`
 
-These paths now have explicit query-count budgets and a reproducible benchmark script:
-
-- `streamlit_app/scripts/perf_hotpaths.py`
+These paths now have explicit query-count budgets and a reproducible benchmark script.
 
 ## Current Architectural Limits
 
-- Streamlit rerun model still governs UI interaction cost and concurrency.
-- Backend API availability is now a hard runtime dependency for frontend reads/writes.
-- Direct Streamlit DB restore is disabled by default and blocked in production; enable only for controlled non-production operations via `OKR_ENABLE_DIRECT_DB_RESTORE=true`.
-- Backend-assisted Kubernetes manifests are available in `deploy/k8s/` for `okr-streamlit`, `okr-backend-api`, and `okr-backend-worker`.
+- Backend API availability is a hard runtime dependency for frontend reads/writes.
+- Direct DB restore is disabled by default and blocked in production; enable only for controlled non-production operations via `OKR_ENABLE_DIRECT_DB_RESTORE=true`.
+- Backend-assisted Kubernetes manifests are available in `deploy/k8s/` for `okr-backend-api` and `okr-backend-worker`.
 
 ## Recommended Next Refactor Boundary
 
 To move toward higher-concurrency internal production:
 
 - Keep all frontend read/write contracts backend-owned (implemented) and continue tightening backend API contract/version governance.
-- Keep Streamlit as presentation/workflow shell.
-- Preserve SQLModel domain logic while expanding backend-side query composition to reduce UI rerun pressure.
+- Preserve SQLModel domain logic while expanding backend-side query composition.

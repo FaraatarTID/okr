@@ -67,8 +67,7 @@ export default function DailyModePanel({
     <div style={{ marginTop: "0.35rem" }}>
       <div className="report-panel-head">
         <div>
-          <p className="kicker" style={{ margin: 0 }}>Streamlit Report Bridge</p>
-          <p className="kicker" style={{ margin: 0 }}>Daily Focus Report</p>
+          <p className="kicker" style={{ margin: 0 }}>Daily Report</p>
           <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
             {todayLabel} • {cycleLabel}
           </p>

@@ -286,9 +286,6 @@ def e2e_stack(tmp_path_factory: pytest.TempPathFactory) -> E2EStack:
             spa_env.update(
                 {
                     "BFF_PUBLIC_ORIGIN": f"http://127.0.0.1:{bff_port}",
-                    "OKR_SPA_ROLLOUT_ENABLED": "true",
-                    "OKR_SPA_ROLLOUT_ALLOW_ALL": "true",
-                    "OKR_SPA_ROLLOUT_ALLOW_PREVIEW_BYPASS": "false",
                 }
             )
             spa_process = subprocess.Popen(

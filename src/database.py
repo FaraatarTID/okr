@@ -277,7 +277,6 @@ _MODEL_BINDING_NAMES = (
     "RetroExperimentOutcome",
     "NodeBase",
     "GoalRead",
-    "AnalysisContext",
 )
 _last_models_identity: Optional[int] = None
 

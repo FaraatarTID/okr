@@ -61,7 +61,7 @@ describe("useInspectorAuxData", () => {
       useInspectorAuxData({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: null,
         loadSnapshotForUser: vi.fn().mockResolvedValue(undefined),
       }),
@@ -88,7 +88,7 @@ describe("useInspectorAuxData", () => {
       useInspectorAuxData({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: null,
         loadSnapshotForUser: vi.fn().mockResolvedValue(undefined),
       }),
@@ -114,7 +114,7 @@ describe("useInspectorAuxData", () => {
       useInspectorAuxData({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: null,
         loadSnapshotForUser: vi.fn().mockResolvedValue(undefined),
       }),
@@ -150,7 +150,7 @@ describe("useInspectorAuxData", () => {
       useInspectorAuxData({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: null,
         loadSnapshotForUser: vi.fn().mockResolvedValue(undefined),
       }),
@@ -184,7 +184,7 @@ describe("useInspectorAuxData", () => {
       useInspectorAuxData({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: null,
         loadSnapshotForUser: vi.fn().mockResolvedValue(undefined),
       }),
@@ -242,7 +242,7 @@ describe("useInspectorAuxData", () => {
       useInspectorAuxData({
         user: baseUser,
         selectedMeta,
-        rolloutAllowed: true,
+
         parsedCycleId: 4,
         loadSnapshotForUser,
       }),

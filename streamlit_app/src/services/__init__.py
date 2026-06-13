@@ -1,1 +1,0 @@
-# OKR Application - Services Package

@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "@/lib/api";
 import * as deeplink from "@/lib/deeplink";
-import * as shellUiUtils from "@/components/atlas-shell/shellUiUtils";
 import type { AuthUser, CycleSummary } from "@/lib/api";
 import useDeepLinkCycleBootstrap from "@/components/atlas-shell/useDeepLinkCycleBootstrap";
 
@@ -19,15 +18,6 @@ vi.mock("@/lib/deeplink", async () => {
   };
 });
 
-vi.mock("@/components/atlas-shell/shellUiUtils", async () => {
-  const actual = await vi.importActual<typeof import("@/components/atlas-shell/shellUiUtils")>(
-    "@/components/atlas-shell/shellUiUtils",
-  );
-  return {
-    ...actual,
-    parsePreviewBypass: vi.fn(actual.parsePreviewBypass),
-  };
-});
 const baseUser: AuthUser = {
   id: 1,
   username: "alice",
@@ -46,7 +36,6 @@ function createSetters() {
     setLens: vi.fn(),
     setSelectedRef: vi.fn(),
     setFocusTaskRef: vi.fn(),
-    setPreviewBypass: vi.fn(),
     setDeepLinkReady: vi.fn(),
   };
 }
@@ -62,7 +51,7 @@ describe("useDeepLinkCycleBootstrap", () => {
     window.history.replaceState(
       null,
       "",
-      "/?cycle=8&mode=timeline&lens=owner&sel=task_3&ft=task_4&spa_preview=1",
+      "/?cycle=8&mode=timeline&lens=owner&sel=task_3&ft=task_4",
     );
     const setters = createSetters();
     vi.mocked(deeplink.parseDeepLink).mockReturnValue({
@@ -72,7 +61,6 @@ describe("useDeepLinkCycleBootstrap", () => {
       sel: "task_3",
       ft: "task_4",
     });
-    vi.mocked(shellUiUtils.parsePreviewBypass).mockReturnValue(true);
 
     renderHook(() =>
       useDeepLinkCycleBootstrap({
@@ -96,7 +84,6 @@ describe("useDeepLinkCycleBootstrap", () => {
       expect(setters.setLens).toHaveBeenCalledWith("owner");
       expect(setters.setSelectedRef).toHaveBeenCalledWith("task_3");
       expect(setters.setFocusTaskRef).toHaveBeenCalledWith("task_4");
-      expect(setters.setPreviewBypass).toHaveBeenCalledWith(true);
       expect(setters.setDeepLinkReady).toHaveBeenCalledWith(true);
     }, { timeout: 2000 });
   });

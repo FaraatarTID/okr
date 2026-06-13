@@ -72,32 +72,6 @@ def get_config_value_with_source(name: str, default: Any = "") -> tuple[str, str
     if raw is not None:
         return str(raw), "env"
 
-    # Streamlit secrets fallback (useful during Streamlit runtime and testing)
-    try:
-        import sys
-        if "streamlit" in sys.modules:
-            st = sys.modules["streamlit"]
-            if hasattr(st, "secrets") and st.secrets:
-                # Direct check
-                try:
-                    if name in st.secrets:
-                        val = st.secrets[name]
-                        return str(val if val is not None else default), "streamlit_secrets"
-                except Exception:
-                    pass
-                # Section check
-                try:
-                    if hasattr(st.secrets, "get"):
-                        app_cfg = st.secrets.get("app", {})
-                        if isinstance(app_cfg, dict) and name in app_cfg:
-                            val = app_cfg.get(name)
-                            return str(val if val is not None else default), "secrets_app"
-                except Exception:
-                    pass
-    except Exception:
-        pass
-
-
     for path in _candidate_config_paths():
         data = _load_toml(str(path))
         if not data:

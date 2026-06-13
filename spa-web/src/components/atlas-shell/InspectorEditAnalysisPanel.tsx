@@ -1,9 +1,12 @@
 "use client";
 
+import { rtlStyle } from "@/lib/rtl";
+
 type InspectorEditDraftView = {
   title: string;
   description: string;
   progress: string;
+  deadline: string;
 };
 
 type AnalysisSummaryView = {
@@ -23,10 +26,12 @@ type InspectorEditAnalysisPanelProps = {
   onInspectorSave: () => void;
   inspectPending: boolean;
   hasUser: boolean;
-  rolloutAllowed: boolean;
   onNodeDelete: () => void;
   deletePending: boolean;
+  deleteError: string;
+  deleteMessage: string;
   selectedTypeLabel: string;
+  selectedNodeType: string;
   inspectError: string;
   inspectMessage: string;
   showAiAnalysis: boolean;
@@ -43,10 +48,12 @@ export default function InspectorEditAnalysisPanel({
   onInspectorSave,
   inspectPending,
   hasUser,
-  rolloutAllowed,
   onNodeDelete,
   deletePending,
+  deleteError,
+  deleteMessage,
   selectedTypeLabel,
+  selectedNodeType,
   inspectError,
   inspectMessage,
   showAiAnalysis,
@@ -98,26 +105,49 @@ export default function InspectorEditAnalysisPanel({
           style={{ marginTop: "0.2rem" }}
         />
 
-        <label
-          htmlFor="inspect-progress"
-          style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
-        >
-          Progress (0-100)
-        </label>
-        <input
-          id="inspect-progress"
-          className="input"
-          value={inspectDraft.progress}
-          onChange={(event) => onInspectDraftChange({ progress: event.target.value })}
-          style={{ marginTop: "0.2rem" }}
-        />
+        {selectedNodeType === "KEY_RESULT" ? (
+          <>
+            <label
+              htmlFor="inspect-progress"
+              style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
+            >
+              Progress (0-100)
+            </label>
+            <input
+              id="inspect-progress"
+              className="input"
+              value={inspectDraft.progress}
+              onChange={(event) => onInspectDraftChange({ progress: event.target.value })}
+              style={{ marginTop: "0.2rem" }}
+            />
+          </>
+        ) : null}
+
+        {selectedNodeType === "TASK" ? (
+          <>
+            <label
+              htmlFor="inspect-deadline"
+              style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
+            >
+              Deadline (optional)
+            </label>
+            <input
+              id="inspect-deadline"
+              type="date"
+              className="input"
+              value={inspectDraft.deadline}
+              onChange={(event) => onInspectDraftChange({ deadline: event.target.value })}
+              style={{ marginTop: "0.2rem" }}
+            />
+          </>
+        ) : null}
 
         <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.46rem", flexWrap: "wrap" }}>
           <button
             className="primary-button"
             type="button"
             onClick={onInspectorSave}
-            disabled={inspectPending || !hasUser || !rolloutAllowed}
+            disabled={inspectPending || !hasUser}
           >
             {inspectPending ? "Saving..." : "Edit"}
           </button>
@@ -125,7 +155,7 @@ export default function InspectorEditAnalysisPanel({
             className="primary-button"
             type="button"
             onClick={onNodeDelete}
-            disabled={deletePending || !hasUser || !rolloutAllowed}
+            disabled={deletePending || !hasUser}
           >
             {deletePending ? "Deleting..." : `Delete ${selectedTypeLabel}`}
           </button>
@@ -139,6 +169,16 @@ export default function InspectorEditAnalysisPanel({
         {inspectMessage ? (
           <p style={{ margin: "0.34rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
             {inspectMessage}
+          </p>
+        ) : null}
+        {deleteError ? (
+          <p style={{ margin: "0.34rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
+            {deleteError}
+          </p>
+        ) : null}
+        {deleteMessage ? (
+          <p style={{ margin: "0.34rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>
+            {deleteMessage}
           </p>
         ) : null}
       </div>
@@ -163,7 +203,7 @@ export default function InspectorEditAnalysisPanel({
             className="primary-button"
             type="button"
             onClick={onRunAnalysis}
-            disabled={inspectAnalysisPending || !hasUser || !rolloutAllowed}
+            disabled={inspectAnalysisPending || !hasUser}
           >
             {inspectAnalysisPending ? "Analyzing..." : "Run Analysis"}
           </button>
@@ -181,33 +221,33 @@ export default function InspectorEditAnalysisPanel({
                 <span>Overall: {inspectAnalysis.overallScore ?? "-"}</span>
               </div>
               {inspectAnalysis.summary ? (
-                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
+                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", ...rtlStyle(inspectAnalysis.summary) }}>
                   {inspectAnalysis.summary}
                 </p>
               ) : null}
               {inspectAnalysis.gapAnalysis ? (
-                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
+                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", ...rtlStyle(inspectAnalysis.gapAnalysis) }}>
                   Gap: {inspectAnalysis.gapAnalysis}
                 </p>
               ) : null}
               {inspectAnalysis.qualityAssessment ? (
-                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem" }}>
+                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", ...rtlStyle(inspectAnalysis.qualityAssessment) }}>
                   Quality: {inspectAnalysis.qualityAssessment}
                 </p>
               ) : null}
               {inspectAnalysis.deadlineWarnings.length ? (
-                <div className="atlas-node-list" style={{ marginTop: "0.35rem", maxHeight: "14vh" }}>
+                <div style={{ marginTop: "0.35rem" }}>
                   {inspectAnalysis.deadlineWarnings.map((item) => (
-                    <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--warn)" }}>
+                    <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--warn)", ...rtlStyle(item) }}>
                       {item}
                     </p>
                   ))}
                 </div>
               ) : null}
               {inspectAnalysis.proposedTasks.length ? (
-                <div className="atlas-node-list" style={{ marginTop: "0.35rem", maxHeight: "14vh" }}>
+                <div style={{ marginTop: "0.35rem" }}>
                   {inspectAnalysis.proposedTasks.map((item) => (
-                    <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
+                    <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--ink-soft)", ...rtlStyle(item) }}>
                       {item}
                     </p>
                   ))}

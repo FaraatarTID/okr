@@ -20,7 +20,7 @@ describe("InspectorAiAssistPanel", () => {
         aiSuggestPending={false}
         hasUser
         hasAtlasRuntime
-        rolloutAllowed
+
         hasAiUndoItems
         hasTaskRefs
         aiSyncReport={null}
@@ -53,7 +53,7 @@ describe("InspectorAiAssistPanel", () => {
         aiSuggestPending={false}
         hasUser
         hasAtlasRuntime
-        rolloutAllowed
+
         hasAiUndoItems
         hasTaskRefs
         aiSyncReport={null}
@@ -79,7 +79,7 @@ describe("InspectorAiAssistPanel", () => {
         aiSuggestPending={false}
         hasUser
         hasAtlasRuntime
-        rolloutAllowed
+
         hasAiUndoItems={false}
         hasTaskRefs={false}
         aiSyncReport={{
@@ -107,9 +107,8 @@ describe("InspectorAiAssistPanel", () => {
       />,
     );
 
-    expect(
-      screen.getByText(/KR sync: analyzed 4\/4, planned 3, applied 3, unchanged 0/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Analyzed 4 of 4 KRs/)).toBeInTheDocument();
+    expect(screen.getByText(/3 updates? applied/)).toBeInTheDocument();
     expect(
       screen.getByText("Suggested: task_42 (88% confidence) - highest risk-adjusted impact"),
     ).toBeInTheDocument();

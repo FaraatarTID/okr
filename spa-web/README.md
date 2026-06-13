@@ -35,18 +35,10 @@ Current phase:
 
 - `BFF_PUBLIC_ORIGIN` (optional, default `http://127.0.0.1:3001`)
   - Used by server-side route handlers to proxy `/api/backend/*` and `/api/session/*` to BFF.
-- `OKR_SPA_ROLLOUT_ENABLED` (optional, default `false`)
-  - Enables SPA rollout gating policy.
-- `OKR_SPA_ROLLOUT_ALLOW_ALL` (optional, default `false`)
-  - When `true`, all authenticated users are allowed.
-- `OKR_SPA_ROLLOUT_TEAM_IDS` (optional, CSV of numeric IDs)
-  - Team-scoped cohort allowlist.
-- `OKR_SPA_ROLLOUT_USERNAMES` (optional, CSV)
-  - Username-scoped cohort allowlist.
-- `OKR_SPA_ROLLOUT_ROLES` (optional, CSV, default `admin`)
-  - Role-scoped cohort allowlist.
-- `OKR_SPA_ROLLOUT_ALLOW_PREVIEW_BYPASS` (optional, default `false`)
-  - Allows temporary `?spa_preview=1` bypass for controlled testing.
+- `NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA` (optional, default `100`)
+  - Maximum KR point change allowed per AI sync run.
+- `NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE` (optional, default `true`)
+  - Allow AI to lower KR progress values. Set to `false` to only allow increases.
 
 ## Local development
 

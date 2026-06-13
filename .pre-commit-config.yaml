@@ -2,9 +2,7 @@ exclude: |
   (?x)^(
     android/\.idea/|
     android/.*/build/|
-    android/app/src/main/assets/public/|
-    streamlit_app/run_app\.log|
-    streamlit_app/\.deps_installed
+    android/app/src/main/assets/public/
   )
 
 repos:
@@ -39,22 +37,21 @@ repos:
 
       - id: ruff-check-critical-repo
         name: Ruff check (repo critical)
-        entry: python -m ruff check streamlit_app/src backend_app scripts tests --select E9,F63,F7,F82
+        entry: python -m ruff check backend_app scripts tests --select E9,F63,F7,F82
         language: system
         pass_filenames: false
         always_run: true
 
       - id: ruff-format-check-targeted
         name: Ruff format check (targeted)
-        entry: python -m ruff format --check streamlit_app/src/crud.py streamlit_app/src/utils/deadline_utils.py streamlit_app/scripts/perf_hotpaths.py tests/test_deadline_utils.py tests/test_performance_hotpaths.py
+        entry: python -m ruff format --check tests/test_deadline_utils.py tests/test_performance_hotpaths.py
         language: system
         pass_filenames: false
         always_run: true
 
       - id: mypy-check-expanded
         name: Mypy check (expanded)
-        entry: python -m mypy --ignore-missing-imports --follow-imports=skip streamlit_app/src/utils scripts streamlit_app/src/ui/app_entry_helpers.py streamlit_app/src/ui/session_keys.py backend_app/config.py backend_app/worker.py backend_app/run_api.py backend_app/path_setup.py
+        entry: python -m mypy --ignore-missing-imports --follow-imports=skip scripts backend_app/config.py backend_app/worker.py backend_app/run_api.py backend_app/path_setup.py
         language: system
         pass_filenames: false
         always_run: true
-

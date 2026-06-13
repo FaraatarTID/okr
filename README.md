@@ -1,4 +1,4 @@
-﻿# OKR Tracker
+# OKR Tracker
 
 An OKR system that keeps strategic change work separate from day-to-day operations.
 
@@ -258,7 +258,6 @@ If you are a first-time reader, skip this section until after `Start Here`.
 - OKR Rollout (EN): [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md)
 - OKR Rollout (FA): [docs/OKR_ROLLOUT_GUIDE_FA.md](docs/OKR_ROLLOUT_GUIDE_FA.md)
 - Learning Loop workflow (EN+FA): [docs/learning-loop.md](docs/learning-loop.md)
-- Learning Loop architecture contract (EN+FA): [docs/LEARNING_LOOP_ARCHITECTURE.md](docs/LEARNING_LOOP_ARCHITECTURE.md)
 
 ### Rollout Templates
 
@@ -279,7 +278,6 @@ All templates in this section are external governance documents, not app data-en
 - Enterprise deployment (FA, concise): [DEPLOYMENT_FA.md](DEPLOYMENT_FA.md)
 - Troubleshooting (EN): [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - Troubleshooting (FA): [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md)
-- Resilience verification runbook (EN): [docs/RESILIENCE_VERIFICATION.md](docs/RESILIENCE_VERIFICATION.md)
 - Config reference (EN): [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 - Config reference (FA): [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md)
 - Compatibility redirect: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
@@ -291,11 +289,9 @@ All templates in this section are external governance documents, not app data-en
 - Compatibility redirect: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
 - Compatibility redirect: [docs/REVERSE_PROXY_FA.md](docs/REVERSE_PROXY_FA.md)
 
-### Planning, Performance, and History
+### Planning and Performance
 
-- V2 prioritized backlog: [docs/V2_PRIORITIZED_ISSUE_LIST.md](docs/V2_PRIORITIZED_ISSUE_LIST.md)
 - Performance baselines: [performance.md](performance.md)
-- Documentation archive index: [docs/archive/README.md](docs/archive/README.md)
 
 ## Deployment Intent
 
@@ -333,16 +329,7 @@ docker compose -f deploy/docker/docker-compose.yml up -d --build backend-api bac
 A Next.js frontend is the primary UI:
 - Path: `spa-web/`
 - Uses Next.js API route proxying to BFF for `/api/backend/*` and `/api/session/*` calls.
-- Supports runtime cohort rollout controls via `OKR_SPA_ROLLOUT_*` environment policy.
-- Cohort rollout and rollback procedure: `docs/HYBRID_FRONTEND_COHORT_ROLLOUT_PLAYBOOK.md`.
-- Unified SPA report/dashboards/check-in/admin workflow (no Streamlit bridge dependency for core operation).
-- Iframe feasibility decision (`reject` for current phase): `docs/HYBRID_FRONTEND_IFRAME_FEASIBILITY.md`.
-- Cutover SLO dashboard/runbook and threshold contract: `docs/HYBRID_FRONTEND_SLO_DASHBOARD.md`, `docs/HYBRID_FRONTEND_SLO_TARGETS.json`.
-- Rollback drill evidence for cutover readiness: `docs/HYBRID_FRONTEND_ROLLBACK_DRILL_2026-02-25.md`.
-- Pilot completion review and cutover recommendation: `docs/HYBRID_FRONTEND_PILOT_COMPLETION_REVIEW_2026-02-25.md`.
-- Streamlit retirement phase execution record: `docs/HYBRID_FRONTEND_STREAMLIT_RETIREMENT_2026-02-26.md`.
-- SPA shell and read parity validation evidence: `docs/HYBRID_FRONTEND_SPA_SHELL_VALIDATION_2026-02-25.md`, `docs/HYBRID_FRONTEND_READ_PARITY_VALIDATION_2026-02-25.md`.
-- Phase 0 baseline snapshot and rollback toggle contract: `docs/HYBRID_FRONTEND_PHASE0_BASELINE_2026-02-25.md`, `docs/HYBRID_FRONTEND_ROLLBACK_TOGGLE_CONTRACT_2026-02-25.md`.
+- Unified SPA report/dashboards/check-in/admin workflow.
 
 Run locally:
 

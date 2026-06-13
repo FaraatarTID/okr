@@ -1,7 +1,7 @@
-﻿# Manager Playbook
+# Manager Playbook
 Documentation HQ: [README](../README.md)
 
-This playbook is a manager-operating guide for the current implementation in `streamlit_app/src/ui/*`, `streamlit_app/src/crud.py`, and `streamlit_app/src/services/ai_service.py`.
+This playbook is a manager-operating guide for the current implementation in `spa-web/`, `spa-bff/`, `src/crud.py`, and `src/services/ai_service.py`.
 
 For organization-wide rollout design, also use `docs/OKR_ROLLOUT_GUIDE.md`.
 For strict strategic-change vs BAU classification, use `docs/OKR_BAU_BOUNDARY_GUIDE.md`.

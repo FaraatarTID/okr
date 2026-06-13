@@ -7,6 +7,3 @@ Documentation HQ: [README](../README.md)
 - راهنمای استقرار سازمانی: [../DEPLOYMENT_FA.md](../DEPLOYMENT_FA.md)
 - مرجع تنظیمات و سیاست Runtime: [CONFIG_REFERENCE_FA.md](CONFIG_REFERENCE_FA.md)
 - عیب‌یابی رخدادها: [TROUBLESHOOTING_FA.md](TROUBLESHOOTING_FA.md)
-
-نسخه تاریخی:
-- [archive/deployment/DEPLOYMENT_OPERATIONS_GUIDE_FA_legacy_2026-02-23.md](archive/deployment/DEPLOYMENT_OPERATIONS_GUIDE_FA_legacy_2026-02-23.md)

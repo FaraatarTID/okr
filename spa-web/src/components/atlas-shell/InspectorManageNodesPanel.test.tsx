@@ -45,7 +45,7 @@ describe("InspectorManageNodesPanel", () => {
         onCreateNode={onCreateNode}
         createPending={false}
         hasUser
-        rolloutAllowed
+
         createError=""
         createMessage=""
         deleteError=""
@@ -92,7 +92,7 @@ describe("InspectorManageNodesPanel", () => {
         onCreateNode={vi.fn()}
         createPending={false}
         hasUser
-        rolloutAllowed
+
         createError="create error"
         createMessage="create ok"
         deleteError="delete error"
@@ -132,7 +132,7 @@ describe("InspectorManageNodesPanel", () => {
         onCreateNode={vi.fn()}
         createPending={false}
         hasUser
-        rolloutAllowed
+
         createError=""
         createMessage=""
         deleteError=""

@@ -1,4 +1,4 @@
-name: Build and deploy OKR Streamlit
+name: Build and deploy OKR
 
 on:
   push:

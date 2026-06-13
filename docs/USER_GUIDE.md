@@ -1,8 +1,7 @@
-﻿# User Guide
+# User Guide
 Documentation HQ: [README](../README.md)
 
 This guide describes the current SPA-first behavior implemented in `spa-web/`, `spa-bff/`, `backend_app/`, and shared domain modules under `src/`.
-Legacy `streamlit_app/` files are retained for compatibility/testing paths and should not be treated as the primary runtime UX source.
 
 Learning Loop canonical guide (EN+FA, synced headings): [`docs/learning-loop.md`](learning-loop.md).
 
@@ -47,6 +46,11 @@ Classification shortcut:
 - If it is a strategic outcome that needs multiple indicators -> `Objective`.
 - If it is one measurable line (`from A to B by date`) -> `KR`.
 - If it is an action step -> task/initiative (not objective/KR evidence).
+
+OKR time boundaries:
+- Goals and Objectives are time-bounded by the OKR cycle, NOT by individual deadlines.
+- Only Key Results have measurable progress (measured through check-in sessions).
+- Only Tasks have deadlines.
 
 Common writing mistakes:
 - Objective written as a single metric line -> should be a KR.

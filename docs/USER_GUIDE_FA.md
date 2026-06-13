@@ -1,8 +1,7 @@
-﻿# راهنمای کاربر
+# راهنمای کاربر
 Documentation HQ: [README](../README.md)
 
 این راهنما رفتار فعلی سامانه را در مسیر `SPA-first` توضیح می‌دهد (بر پایه `spa-web/`، `spa-bff/`، `backend_app/` و ماژول‌های دامنه‌ی مشترک در `src/`).
-فایل‌های `streamlit_app/` برای مسیرهای سازگاری/تست نگه‌داری شده‌اند و نباید به‌عنوان UX اصلی فعلی در نظر گرفته شوند.
 
 راهنمای canonical مربوط به Learning Loop (دو‌زبانه EN+FA با headingهای همگام): [`docs/learning-loop.md`](learning-loop.md).
 
@@ -43,6 +42,11 @@ Documentation HQ: [README](../README.md)
 - اگر متن یک وضعیت خروجی استراتژیک است که چند شاخص می‌خواهد -> `Objective`.
 - اگر متن یک خط عددی «از A به B تا تاریخ» است -> `KR`.
 - اگر متن صرفا اقدام اجرایی است -> task/initiative (نه شواهد Objective/KR).
+
+محدودیت‌های زمانی OKR:
+- Goals و Objectives توسط چرخه OKR محدود می‌شوند، نه deadline فردی.
+- فقط Key Results پیشرفت قابل اندازه‌گیری دارند (از طریق جلسات check-in).
+- فقط Tasks deadline دارند.
 
 خطاهای رایج نوشتاری:
 - Objective به‌صورت یک خط متریک نوشته شود -> باید KR شود.

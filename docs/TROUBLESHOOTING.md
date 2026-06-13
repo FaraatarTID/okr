@@ -5,13 +5,6 @@ Troubleshooting
 ### Runtime scope (important)
 
 - Primary runtime and deployment path is SPA-first: `backend-api` + `backend-worker` + `spa-bff` + `spa-web`.
-- Streamlit runtime notes below are legacy/reference-only and apply only if you intentionally run archived Streamlit flows.
-
-### Streamlit Cloud Startup Issues (Legacy Reference)
-
-- **Backend Startup Timeout**: The embedded backend has a 60-second timeout to complete database migrations and cold-starts. If the app fails with "Backend read failed", check the Streamlit logs for the last 30 lines of the backend output.
-- **Viewing Backend Logs**: On Streamlit Cloud, the backend `stderr` is redirected to `/tmp/okr_backend.log`. If the app is up but backend features fail, you can try to view this file in a debug session.
-- **ModuleNotFoundError: No module named 'src'**: This usually indicates a broken `PYTHONPATH`. Ensure you are using compatible legacy launcher/runtime files if running Streamlit-only paths.
 
 ### Blank page or reconnecting loop
 
@@ -54,7 +47,7 @@ Runtime preflight shows configuration errors
   - Change `PDF_METHOD` to `pdfshift` or `chromium`
 - If preflight says `OKR_BACKEND_PROXY_MUTATIONS=true but OKR_BACKEND_API_URL is not set` even after changing secrets:
   - Check the new `Config trace` info line in the UI; it shows effective value and source (`env`, `secrets_root`, `secrets_app`, `default`).
-  - In secrets TOML (including Streamlit-managed secrets where applicable), prefer native booleans (avoid wrapping an entire block in quotes):
+  - In secrets TOML, prefer native booleans (avoid wrapping an entire block in quotes):
     - `OKR_BACKEND_PROXY_MUTATIONS = false` (recommended)
     - `OKR_BACKEND_PROXY_MUTATIONS = "false"` (works with current parser, but not preferred)
     - `"PDF_METHOD = \"pdfshift\"\nOKR_BACKEND_PROXY_MUTATIONS=false"` (invalid TOML blob)
@@ -72,16 +65,16 @@ AI features unavailable
   - Verify `AI_BASE_URL` and `AI_MODEL` are set
   - Verify endpoint is reachable from app runtime
 - If backend mode is enabled:
-  - Verify `OKR_BACKEND_API_URL` is reachable from `okr`
-  - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between `okr` and `backend-api`
+  - Verify `OKR_BACKEND_API_URL` is reachable from `spa-web`/`spa-bff`
+  - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between `spa-bff` and `backend-api`
 
 CRUD save/update/delete errors in UI
 
 - If backend mutation proxy is enabled (`OKR_BACKEND_PROXY_MUTATIONS=true`):
-  - Verify `OKR_BACKEND_API_URL` resolves from `okr`
+  - Verify `OKR_BACKEND_API_URL` resolves from `spa-web`/`spa-bff`
   - Verify `backend-api` is healthy (`/healthz`)
   - Verify `OKR_BACKEND_SERVICE_TOKEN` matches between services
-  - If request signing is enabled, verify `OKR_BACKEND_SIGNING_SECRET` matches between `okr` and `backend-api`
+  - If request signing is enabled, verify `OKR_BACKEND_SIGNING_SECRET` matches between `spa-bff` and `backend-api`
   - Check backend logs for 403/400 details (permission or validation failures)
 - If backend is temporarily unstable, runtime remains fail-closed. Restore backend connectivity and retry; local read/mutation fallback execution is intentionally disabled.
 
@@ -95,11 +88,11 @@ Migrations fail
 Workspace runtime load fails with `Multiple classes found for path "User"`
 
 - Cause: SQLModel mapper registry/class references became stale after a code hot-reload.
-- Ensure all model imports use `src.models` (no `models` or `streamlit_app.src.models` imports).
+- Ensure all model imports use `src.models` (no bare `models` imports).
 - Ensure relationships are lambda-resolved (`sa_relationship=relationship(lambda: ...)`) instead of relying on string class lookup.
 - Run guard tests:
   - `python -m pytest tests/test_models_import_consistency.py tests/test_models_relationship_resolution.py tests/test_hot_reload_model_bindings.py tests/test_hot_reload_model_rebinding.py -q`
-- Restart the `okr` app process after a live code pull if the error loop persists.
+- Restart the `spa-web` app process after a live code pull if the error loop persists.
 
 Login not working
 
@@ -124,7 +117,6 @@ Hosting under subpath breaks assets
 
 - Ensure proxy rewrite strips the prefix
 - For SPA stack, ensure reverse-proxy base path and rewrite rules align with `spa-web` and `spa-bff` routes.
-- Streamlit CLI `--server.baseUrlPath` is legacy-only guidance.
 
 Timeouts on long interactions
 

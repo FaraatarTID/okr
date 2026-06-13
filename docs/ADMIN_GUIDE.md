@@ -1,8 +1,8 @@
-﻿# System Administrator Guide
+# System Administrator Guide
 
 Documentation HQ: [README](../README.md)
 
-This guide is aligned with current behavior in the codebase (`streamlit_app/app.py`, `streamlit_app/src/ui/*`, `streamlit_app/src/crud.py`, `streamlit_app/src/domain/*`).
+This guide is aligned with current behavior in the codebase (`backend_app/`, `spa-bff/`, `spa-web/`, `src/`).
 
 For strategic-change vs BAU policy enforcement, use `docs/OKR_BAU_BOUNDARY_GUIDE.md`.
 
@@ -71,14 +71,14 @@ Use this cockpit for controlled sync and correction, not blind bulk updates.
 
 Current recommended deployment topology:
 
-- `okr` (Streamlit UI/session workflow shell)
+- `spa-web` + `spa-bff` (SPA frontend)
 - `backend-api` (internal mutation + timer + job control plane)
 - `backend-worker` (async execution for AI/PDF jobs)
 - shared Supabase PostgreSQL database
 
 Key wiring:
 
-- `OKR_BACKEND_API_URL` from `okr` -> `backend-api`
+- `OKR_BACKEND_API_URL` from `spa-web`/`spa-bff` -> `backend-api`
 - `OKR_BACKEND_SERVICE_TOKEN` must match across caller and backend API
 - `OKR_BACKEND_PROXY_MUTATIONS=true` keeps frontend write flows routed via backend API
 - backend API should remain private/internal, not internet-exposed
@@ -88,8 +88,7 @@ Technical behavior (current):
 - Frontend read and write paths route through backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`, `OKR_BACKEND_PROXY_READS=true`).
 - If backend is unavailable, runtime is fail-closed (local read/mutation fallback execution is disabled).
 - AI/PDF heavy operations are executed asynchronously by `backend-worker` through `async_job`.
-- **Embedded Mode (Cloud)**: On Streamlit Cloud, the backend runs as a background subprocess. Monitor the Streamlit console for "Embedded backend is up" messages and diagnostic log tails in case of failures.
-- In backend-assisted mode, admin backup restore from the Streamlit UI is intentionally disabled; use backend maintenance/runbook procedures.
+- In backend-assisted mode, admin backup restore is intentionally disabled; use backend maintenance/runbook procedures.
 
 ## 3. Lifecycle and Rollup Rules You Must Enforce
 
@@ -266,8 +265,8 @@ Timing note:
 
 For production stability:
 
-1. Keep AI credentials in Streamlit secrets or secure environment variables, never in repository files.
-2. Set `AI_PROVIDER` explicitly (`gemini` or `openai_compatible`) and verify via `Admin Panel -> AI Health` or `python streamlit_app/scripts/ai_provider_health_check.py`.
+1. Keep AI credentials in secure environment variables or secrets files, never in repository files.
+2. Set `AI_PROVIDER` explicitly (`gemini` or `openai_compatible`) and verify via `Admin Panel -> AI Health`.
 3. If using Gemini, set `GEMINI_API_KEY`.
 4. For PDF export:
    - `PDF_METHOD=pdfshift` with a valid PDFShift API key, or

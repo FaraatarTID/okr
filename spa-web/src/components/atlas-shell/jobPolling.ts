@@ -5,7 +5,7 @@ import { readBackendJob, type AuthUser, type AsyncJobView } from "@/lib/api";
 export async function waitForBackendJobResult(
   activeUser: AuthUser,
   jobId: string,
-  timeoutMs = 120_000,
+  timeoutMs = 300_000,
   pollIntervalMs = 1_000,
 ): Promise<AsyncJobView> {
   const started = Date.now();

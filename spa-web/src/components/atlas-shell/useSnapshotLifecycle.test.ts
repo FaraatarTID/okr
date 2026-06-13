@@ -34,7 +34,7 @@ describe("useSnapshotLifecycle", () => {
         parsedCycleId: 12,
         ownerIds: [1, 2],
         ownerIdsError: "",
-        rolloutAllowed: true,
+
       }),
     );
 
@@ -63,7 +63,7 @@ describe("useSnapshotLifecycle", () => {
         parsedCycleId: 9,
         ownerIds: undefined,
         ownerIdsError: "",
-        rolloutAllowed: false,
+
       }),
     );
 
@@ -88,7 +88,7 @@ describe("useSnapshotLifecycle", () => {
         parsedCycleId: null,
         ownerIds: undefined,
         ownerIdsError: "",
-        rolloutAllowed: false,
+
       }),
     );
 

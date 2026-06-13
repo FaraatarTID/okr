@@ -466,15 +466,21 @@ def create_goal_via_supabase_api(
         )
         resolved_title = f"Goal #{n + 1}"
 
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     payload = {
         "owner_id": owner_id,
         "team_id": owner.get("team_id"),
         "title": resolved_title,
         "description": description or "",
+        "progress": 0,
         "cycle_id": int(cycle_id) if cycle_id is not None else None,
         "strategy_tags": strategy_tags,
         "created_by": str(actor_username or user_id or "").strip() or None,
         "updated_by": str(actor_username or user_id or "").strip() or None,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "is_expanded": True,
     }
     status, rows = _rest_insert("goal", payload=payload)
     if status >= 400 or not rows:
@@ -508,6 +514,8 @@ def create_objective_via_supabase_api(
         n = _count_rows("objective", query={"goal_id": f"eq.{int(goal_id)}", "select": "id"})
         resolved_title = f"Objective #{n + 1}"
 
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     payload = {
         "goal_id": int(goal_id),
         "owner_id": goal.get("owner_id"),
@@ -515,8 +523,12 @@ def create_objective_via_supabase_api(
         "title": resolved_title,
         "description": description or "",
         "weight": float(weight if weight is not None else 1.0),
+        "progress": 0,
         "created_by": str(actor_username or "").strip() or None,
         "updated_by": str(actor_username or "").strip() or None,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "is_expanded": True,
     }
     status, rows = _rest_insert("objective", payload=payload)
     if status >= 400 or not rows:
@@ -553,6 +565,8 @@ def create_key_result_via_supabase_api(
         n = _count_rows("key_result", query={"objective_id": f"eq.{int(objective_id)}", "select": "id"})
         resolved_title = f"Key Result #{n + 1}"
 
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     payload = {
         "objective_id": int(objective_id),
         "owner_id": obj.get("owner_id"),
@@ -560,11 +574,20 @@ def create_key_result_via_supabase_api(
         "title": resolved_title,
         "description": description or "",
         "target_value": float(target_value),
+        "current_value": 0.0,
+        "start_value": 0.0,
         "unit": unit,
+        "metric_type": "NUMERIC",
+        "state": "DRAFT",
         "initiative_tags": initiative_tags,
         "weight": float(weight if weight is not None else 1.0),
+        "progress": 0,
+        "gemini_analysis": None,
         "created_by": str(actor_username or "").strip() or None,
         "updated_by": str(actor_username or "").strip() or None,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "is_expanded": True,
     }
     status, rows = _rest_insert("key_result", payload=payload)
     if status >= 400 or not rows:
@@ -603,22 +626,38 @@ def create_task_via_supabase_api(
         n = _count_rows("task", query={"key_result_id": f"eq.{int(key_result_id)}", "select": "id"})
         resolved_title = f"Task #{n + 1}"
 
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     payload = {
         "key_result_id": int(key_result_id),
         "owner_id": kr.get("owner_id"),
         "team_id": kr.get("team_id"),
         "title": resolved_title,
         "description": description or "",
+        "progress": 0,
         "estimated_minutes": int(estimated_minutes or 0),
+        "total_time_spent": 0,
+        "status": "TODO",
         "start_date": start_date.isoformat() if start_date else None,
         "deadline": deadline.isoformat() if deadline else None,
         "assignee_id": int(assignee_id) if assignee_id is not None else None,
         "created_by": str(actor_username or "").strip() or None,
         "updated_by": str(actor_username or "").strip() or None,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+        "is_expanded": True,
     }
     status, rows = _rest_insert("task", payload=payload)
     if status >= 400 or not rows:
-        raise ValueError(f"Supabase API error (create_task): {status}")
+        error_detail = ""
+        if isinstance(rows, dict):
+            error_detail = f": {rows.get('message', rows.get('hint', rows.get('details', '')))}"
+        import logging
+        logging.getLogger(__name__).error(
+            "create_task failed: status=%s payload=%s response=%s",
+            status, payload, rows,
+        )
+        raise ValueError(f"Supabase API error (create_task): {status}{error_detail}")
     row = rows[0]
     return types.SimpleNamespace(
         id=row.get("id"),
@@ -700,6 +739,47 @@ def delete_node_via_supabase_api(*, node_type: str, node_id: int) -> bool:
         raise ValueError(f"Supabase API error (delete_node/{table}/exists): {status}")
     if not rows:
         return False
+    # Delete dependent rows that the REST API won't cascade.
+    if normalized == "TASK":
+        _rest_delete("work_log", match_query={"task_id": f"eq.{int(node_id)}"})
+    elif normalized == "KEY_RESULT":
+        _rest_delete("check_in", match_query={"key_result_id": f"eq.{int(node_id)}"})
+        _rest_delete("experiment", match_query={"key_result_id": f"eq.{int(node_id)}"})
+    elif normalized == "OBJECTIVE":
+        # Delete child key results and their dependents first.
+        status, kr_rows = _rest_select(
+            "key_result",
+            query={"objective_id": f"eq.{int(node_id)}", "select": "id", "limit": "500"},
+        )
+        if status < 400 and kr_rows:
+            for kr_row in kr_rows:
+                kr_id = kr_row.get("id")
+                if kr_id is not None:
+                    _rest_delete("check_in", match_query={"key_result_id": f"eq.{int(kr_id)}"})
+                    _rest_delete("experiment", match_query={"key_result_id": f"eq.{int(kr_id)}"})
+            _rest_delete("key_result", match_query={"objective_id": f"eq.{int(node_id)}"})
+    elif normalized == "GOAL":
+        # Delete child objectives and their dependents first.
+        status, obj_rows = _rest_select(
+            "objective",
+            query={"goal_id": f"eq.{int(node_id)}", "select": "id", "limit": "500"},
+        )
+        if status < 400 and obj_rows:
+            for obj_row in obj_rows:
+                obj_id = obj_row.get("id")
+                if obj_id is not None:
+                    status2, kr_rows = _rest_select(
+                        "key_result",
+                        query={"objective_id": f"eq.{int(obj_id)}", "select": "id", "limit": "500"},
+                    )
+                    if status2 < 400 and kr_rows:
+                        for kr_row in kr_rows:
+                            kr_id = kr_row.get("id")
+                            if kr_id is not None:
+                                _rest_delete("check_in", match_query={"key_result_id": f"eq.{int(kr_id)}"})
+                                _rest_delete("experiment", match_query={"key_result_id": f"eq.{int(kr_id)}"})
+                        _rest_delete("key_result", match_query={"objective_id": f"eq.{int(obj_id)}"})
+            _rest_delete("objective", match_query={"goal_id": f"eq.{int(node_id)}"})
     status = _rest_delete(table, match_query={"id": f"eq.{int(node_id)}"})
     if status >= 400:
         raise ValueError(f"Supabase API error (delete_node/{table}): {status}")

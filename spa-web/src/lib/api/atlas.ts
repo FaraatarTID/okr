@@ -1,5 +1,4 @@
 import type { AtlasSnapshotResponse } from "@/lib/atlas";
-import type { SpaRolloutConfig } from "@/lib/rollout";
 
 import {
   fetchWithTimeout,
@@ -89,17 +88,6 @@ export async function stopTaskTimer(input: {
     start_time: normalizeBackendDateTime(payload.start_time),
     end_time: normalizeBackendDateTime(payload.end_time),
   };
-}
-
-export async function readSpaRolloutConfig(): Promise<SpaRolloutConfig> {
-  const response = await fetch("/api/rollout", {
-    method: "GET",
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`Rollout config fetch failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as SpaRolloutConfig;
 }
 
 export async function updateNodeMutation(input: {

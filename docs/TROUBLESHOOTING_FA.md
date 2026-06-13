@@ -2,12 +2,6 @@
 
 Documentation HQ: [README](../README.md)
 
-### مسائل راه‌اندازی در Streamlit Cloud
-
-- **Timeout راه‌اندازی بک‌اند**: بک‌اندِ توکار (Embedded) یک مهلت ۶۰ ثانیه‌ای برای اتمام migrationها و شروع اولیه دارد. اگر اپلیکیشن با خطای «Backend read failed» مواجه شد، لاگ‌های Streamlit را برای مشاهده ۳۰ خط آخر خروجی بک‌اند بررسی کنید.
-- **مشاهده لاگ‌های بک‌اند**: در Streamlit Cloud، خروجی خطا (`stderr`) بک‌اند به فایل `/tmp/okr_backend.log` هدایت می‌شود. اگر اپلیکیشن بالا است اما قابلیت‌های بک‌اند کار نمی‌کنند، می‌توانید سعی کنید این فایل را در یک نشست عیب‌یابی (debug session) مشاهده کنید.
-- **خطای ماژول src**: این خطا معمولاً نشانه مشکل در `PYTHONPATH` است. اطمینان حاصل کنید که از آخرین نسخه `backend_launcher.py` و `run_api.py` که دارای منطق تقویت خودکار مسیر هستند استفاده می‌کنیم.
-
 صفحه خالی یا reconnect loop
 
 - هدرهای websocket در proxy (`Upgrade`/`Connection`) را بررسی کنید.
@@ -37,7 +31,7 @@ Documentation HQ: [README](../README.md)
 AI در دسترس نیست
 
 - بررسی provider:
-  - `python streamlit_app/scripts/ai_provider_health_check.py --json`
+  - از مسیر `Admin Panel -> AI Health` وضعیت را بررسی کنید
 - اگر Gemini:
   - `AI_PROVIDER=gemini`
   - `GEMINI_API_KEY` معتبر و غیر placeholder
@@ -46,7 +40,7 @@ AI در دسترس نیست
   - `AI_BASE_URL` و `AI_MODEL` تنظیم شده
   - endpoint از runtime قابل‌دسترسی باشد
 - اگر backend mode فعال است:
-  - `OKR_BACKEND_API_URL` از `okr` قابل‌دسترسی باشد
+  - `OKR_BACKEND_API_URL` از `spa-web`/`spa-bff` قابل‌دسترسی باشد
   - `OKR_BACKEND_SERVICE_TOKEN` بین سرویس‌ها یکسان باشد
 
 خطاهای CRUD در UI
@@ -55,7 +49,7 @@ AI در دسترس نیست
   - `OKR_BACKEND_API_URL` resolve شود
   - `/healthz` روی backend سالم باشد
   - `OKR_BACKEND_SERVICE_TOKEN` یکسان باشد
-  - اگر signing فعال است، `OKR_BACKEND_SIGNING_SECRET` بین `okr` و `backend-api` یکسان باشد
+  - اگر signing فعال است، `OKR_BACKEND_SIGNING_SECRET` بین `spa-bff` و `backend-api` یکسان باشد
   - لاگ backend برای 400/403 بررسی شود
 - در اختلال ارتباط backend، رفتار runtime به‌صورت fail-closed است و fallback محلی اجرا نمی‌شود.
 
@@ -74,7 +68,7 @@ AI در دسترس نیست
 - relationshipها ترجیحا lambda-resolved باشند
 - تست‌های guard:
   - `python -m pytest tests/test_models_import_consistency.py tests/test_models_relationship_resolution.py tests/test_hot_reload_model_bindings.py tests/test_hot_reload_model_rebinding.py -q`
-- اگر ادامه داشت، پروسه `okr` را restart کنید.
+- اگر ادامه داشت، پروسه `spa-web` را restart کنید.
 
 مشکل ورود
 

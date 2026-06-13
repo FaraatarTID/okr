@@ -92,8 +92,7 @@ export default function WeeklyModePanel({
     <>
       <div className="report-panel-head" style={{ marginTop: "0.35rem" }}>
         <div>
-          <p className="kicker" style={{ margin: 0 }}>Streamlit Report Bridge</p>
-          <p className="kicker" style={{ margin: 0 }}>Week Window</p>
+          <p className="kicker" style={{ margin: 0 }}>Weekly Report</p>
           <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
             {weekRangeLabel} • {cycleLabel}
           </p>

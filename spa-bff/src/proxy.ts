@@ -60,6 +60,9 @@ function resolveTimeoutMs(path: string, defaultTimeoutMs: number): number {
   ) {
     return Math.max(defaultTimeoutMs, 90_000);
   }
+  if (normalized.startsWith("/v1/jobs")) {
+    return Math.max(defaultTimeoutMs, 120_000);
+  }
   return defaultTimeoutMs;
 }
 

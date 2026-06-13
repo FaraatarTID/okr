@@ -21,9 +21,6 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
-          cache-dependency-path: |
-            streamlit_app/requirements.txt
-            streamlit_app/requirements-dev.txt
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -39,32 +36,13 @@ jobs:
       - name: Quality Baseline Expiry Gate
         run: python scripts/check_quality_gate_baseline.py
 
-      - name: Install Python Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --require-hashes -r streamlit_app/requirements-dev.txt
-
-      - name: Security Scan (pip-audit)
-        run: |
-          python -m pip_audit -r streamlit_app/requirements.txt --progress-spinner off
-
       - name: Lint (Ruff)
         run: |
           python -m ruff check \
-            streamlit_app/src \
             backend_app \
             scripts \
             tests \
             --select E9,F63,F7,F82
-
-      - name: Format Check (Ruff)
-        run: |
-          python -m ruff format --check \
-            streamlit_app/src/crud.py \
-            streamlit_app/src/utils/deadline_utils.py \
-            streamlit_app/scripts/perf_hotpaths.py \
-            tests/test_deadline_utils.py \
-            tests/test_performance_hotpaths.py
 
       - name: Duplication Check (JSCPD <= 1%)
         run: |
@@ -74,15 +52,12 @@ jobs:
             --threshold 1 \
             --reporters console \
             --ignore "**/__pycache__/**,**/.git/**,**/.venv/**,**/venv/**,**/.pytest_cache/**" \
-            streamlit_app backend_app tests
+            backend_app tests
 
       - name: Type Check (Mypy)
         run: |
           python -m mypy --ignore-missing-imports --follow-imports=skip \
-            streamlit_app/src/utils \
             scripts \
-            streamlit_app/src/ui/app_entry_helpers.py \
-            streamlit_app/src/ui/session_keys.py \
             backend_app/config.py \
             backend_app/worker.py \
             backend_app/run_api.py \
@@ -94,13 +69,6 @@ jobs:
             tests/test_crud_authorization.py \
             tests/test_rbac_permissions.py \
             tests/test_alignment_dag.py
-
-      - name: Session-State Governance Gate
-        run: |
-          python -m pytest -q \
-            tests/test_session_keys_policy.py \
-            tests/test_app_entry_helpers.py::test_record_rerun_metrics_warns_once_per_window \
-            tests/test_app_entry_helpers.py::test_record_rerun_metrics_window_reset_allows_new_warning
 
       - name: Python Test Suite
         run: |
@@ -170,15 +138,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
-          cache-dependency-path: |
-            streamlit_app/requirements.txt
-            streamlit_app/requirements-dev.txt
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -187,11 +146,6 @@ jobs:
           cache-dependency-path: |
             spa-bff/package-lock.json
             spa-web/package-lock.json
-
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install --require-hashes -r streamlit_app/requirements-dev.txt
 
       - name: Install SPA dependencies
         run: |

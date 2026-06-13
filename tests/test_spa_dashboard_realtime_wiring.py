@@ -221,7 +221,6 @@ def test_atlas_shell_uses_auth_bootstrap_hook() -> None:
     assert "from \"@/components/atlas-shell/useAuthBootstrap\"" in shell_source
     assert "useAuthBootstrap()" in shell_source
     assert "readSessionUser" in hook_source
-    assert "readSpaRolloutConfig" in hook_source
 
 
 def test_atlas_shell_uses_snapshot_lifecycle_hook() -> None:

@@ -1,7 +1,7 @@
-﻿# Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø¹Ù…Ù„ÛŒØ§ØªÛŒ Ù…Ø¯ÛŒØ± (Manager Playbook)
+# Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø¹Ù…Ù„ÛŒØ§ØªÛŒ Ù…Ø¯ÛŒØ± (Manager Playbook)
 Documentation HQ: [README](../README.md)
 
-Ø§ÛŒÙ† Ø³Ù†Ø¯ØŒ Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø§Ø¬Ø±Ø§ÛŒ Ù†Ù‚Ø´ Ù…Ø¯ÛŒØ± Ø¨Ø± Ø§Ø³Ø§Ø³ Ø±ÙØªØ§Ø± ÙØ¹Ù„ÛŒ Ú©Ø¯ Ø¯Ø± `streamlit_app/src/ui/*`ØŒ `streamlit_app/src/crud.py` Ùˆ `streamlit_app/src/services/ai_service.py` Ø§Ø³Øª.
+Ø§ÛŒÙ† Ø³Ù†Ø¯ØŒ Ø±Ø§Ù‡Ù†Ù…Ø§ÛŒ Ø§Ø¬Ø±Ø§ÛŒ Ù†Ù‚Ø´ Ù…Ø¯ÛŒØ± Ø¨Ø± Ø§Ø³Ø§Ø³ Ø±ÙØªØ§Ø± ÙØ¹Ù„ÛŒ Ú©Ø¯ Ø¯Ø± `spa-web/`ØŒ `spa-bff/`ØŒ `src/crud.py` Ùˆ `src/services/ai_service.py` Ø§Ø³Øª.
 
 Ø¨Ø±Ø§ÛŒ Ø·Ø±Ø§Ø­ÛŒ rollout Ø³Ø§Ø²Ù…Ø§Ù†ÛŒØŒ Ø§Ø² `docs/OKR_ROLLOUT_GUIDE_FA.md` Ù†ÛŒØ² Ø§Ø³ØªÙØ§Ø¯Ù‡ Ú©Ù†ÛŒØ¯.
 Ø¨Ø±Ø§ÛŒ Ù…Ø±Ø²Ø¨Ù†Ø¯ÛŒ Ø³Ø®Øª Â«Ú©Ø§Ø± Ø§Ø³ØªØ±Ø§ØªÚ˜ÛŒÚ©Â» Ùˆ Â«BAUÂ»ØŒ Ø§Ø² `docs/OKR_BAU_BOUNDARY_GUIDE_FA.md` Ø§Ø³ØªÙØ§Ø¯Ù‡ Ú©Ù†ÛŒØ¯.

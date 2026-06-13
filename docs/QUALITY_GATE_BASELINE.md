@@ -14,7 +14,7 @@ Active Baseline Items
 | ID | Scope | Rationale | Expires On |
 | --- | --- | --- | --- |
 | QG-001 | Repo-wide Ruff format check is still targeted. | Formatting debt is reduced in planned batches to avoid high-churn refactors in release branches. | 2026-06-30 |
-| QG-002 | Repo-wide mypy remains staged; broad default coverage is active for `scripts`, `streamlit_app/src/utils`, and runtime-core modules (`app_entry_helpers`, `session_keys`, selected `backend_app` runtime files). | Type debt is being retired incrementally while keeping CI stable. | 2026-06-30 |
+| QG-002 | Repo-wide mypy remains staged; broad default coverage is active for `scripts` and `backend_app` runtime-core modules. | Type debt is being retired incrementally while keeping CI stable. | 2026-06-30 |
 
 Enforcement
 - CI and pre-commit run `python scripts/check_quality_gate_baseline.py`.

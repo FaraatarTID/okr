@@ -1,7 +1,7 @@
-﻿# AI Features Guide
+# AI Features Guide
 Documentation HQ: [README](../README.md)
 
-This guide documents AI behavior that is currently implemented in code (`streamlit_app/src/services/ai_service.py`, `streamlit_app/src/ui/components.py`, `streamlit_app/src/ui/dialogs.py`).
+This guide documents AI behavior that is currently implemented in code (`src/services/ai_service.py`, `spa-web/`, `spa-bff/`).
 
 ## 1. Where AI Is Available in the UI
 
@@ -16,10 +16,10 @@ AI is used in these places:
 ## 1.1 Runtime Execution Path
 
 Runtime path is backend-segregated:
-- Streamlit submits `ai.generate_json` jobs to `backend-api`.
+- Frontend submits `ai.generate_json` jobs to `backend-api`.
 - `backend-worker` executes provider calls asynchronously.
 
-This keeps heavy AI calls off Streamlit rerun threads and provides durable job status tracking.
+This keeps heavy AI calls off the frontend and provides durable job status tracking.
 
 Related architecture detail:
 - Frontend reads/writes that participate in AI-assisted workflows route via backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`, `OKR_BACKEND_PROXY_READS=true`).

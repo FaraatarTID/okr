@@ -4,7 +4,6 @@ from src.runtime_preflight import evaluate_runtime_preflight
 def test_pdfshift_requires_api_key():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=True,
         has_pdfshift_key=False,
         gemini_api_key="valid-key",
     )
@@ -15,7 +14,6 @@ def test_pdfshift_requires_api_key():
 def test_pdfkit_mode_is_rejected_in_secure_runtime():
     report = evaluate_runtime_preflight(
         pdf_method="pdfkit",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
     )
@@ -26,7 +24,6 @@ def test_pdfkit_mode_is_rejected_in_secure_runtime():
 def test_chromium_mode_requires_runtime_support():
     report = evaluate_runtime_preflight(
         pdf_method="chromium",
-        is_streamlit_cloud=False,
         has_pdfshift_key=False,
         has_chromium_runtime=False,
         gemini_api_key="valid-key",
@@ -38,7 +35,6 @@ def test_chromium_mode_requires_runtime_support():
 def test_chromium_mode_does_not_require_pdfshift_key():
     report = evaluate_runtime_preflight(
         pdf_method="chromium",
-        is_streamlit_cloud=False,
         has_pdfshift_key=False,
         has_chromium_runtime=True,
         gemini_api_key="valid-key",
@@ -50,7 +46,6 @@ def test_chromium_mode_does_not_require_pdfshift_key():
 def test_missing_or_placeholder_gemini_key_warns():
     missing = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key=None,
         external_ai_allowed=True,
@@ -59,7 +54,6 @@ def test_missing_or_placeholder_gemini_key_warns():
 
     placeholder = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="your-api-key",
         external_ai_allowed=True,
@@ -70,7 +64,6 @@ def test_missing_or_placeholder_gemini_key_warns():
 def test_valid_cloud_profile_is_clean():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=True,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_api_url="http://backend-api",
@@ -81,7 +74,6 @@ def test_valid_cloud_profile_is_clean():
 def test_external_ai_policy_disables_key_requirement():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key=None,
         external_ai_allowed=False,
@@ -95,7 +87,6 @@ def test_external_ai_policy_disables_key_requirement():
 def test_openai_compatible_provider_does_not_require_gemini_key():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key=None,
         external_ai_allowed=True,
@@ -110,7 +101,6 @@ def test_openai_compatible_provider_does_not_require_gemini_key():
 def test_provider_not_ready_warns():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key=None,
         external_ai_allowed=True,
@@ -124,7 +114,6 @@ def test_provider_not_ready_warns():
 def test_backend_proxy_missing_url_is_error_in_production():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=True,
@@ -137,7 +126,6 @@ def test_backend_proxy_missing_url_is_error_in_production():
 def test_backend_proxy_missing_url_is_error_in_development():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=True,
@@ -150,7 +138,6 @@ def test_backend_proxy_missing_url_is_error_in_development():
 def test_production_backend_requires_signing_secret():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=True,
@@ -165,7 +152,6 @@ def test_production_backend_requires_signing_secret():
 def test_production_requires_backend_api_url():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=False,
@@ -178,7 +164,6 @@ def test_production_requires_backend_api_url():
 def test_production_requires_bootstrap_admin_password():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=True,
@@ -194,7 +179,6 @@ def test_production_requires_bootstrap_admin_password():
 def test_production_requires_strong_bootstrap_admin_password():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=True,
@@ -210,7 +194,6 @@ def test_production_requires_strong_bootstrap_admin_password():
 def test_production_requires_distributed_security_state_backend():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=True,
@@ -227,7 +210,6 @@ def test_production_requires_distributed_security_state_backend():
 def test_production_accepts_database_security_state_backend():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=True,
@@ -244,7 +226,6 @@ def test_production_accepts_database_security_state_backend():
 def test_production_requires_redis_url_when_redis_backend_selected():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=True,
@@ -262,7 +243,6 @@ def test_production_requires_redis_url_when_redis_backend_selected():
 def test_production_accepts_redis_security_state_backend_with_url():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",
-        is_streamlit_cloud=False,
         has_pdfshift_key=True,
         gemini_api_key="valid-key",
         backend_proxy_mutations=True,

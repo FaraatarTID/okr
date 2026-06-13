@@ -1,7 +1,7 @@
 # OKR Lifecycle Guide
 Documentation HQ: [README](../README.md)
 
-This guide reflects the lifecycle logic currently implemented in `streamlit_app/src/models.py`, `streamlit_app/src/domain/lifecycle.py`, and `streamlit_app/src/crud.py`.
+This guide reflects the lifecycle logic currently implemented in `src/models.py`, `src/domain/lifecycle.py`, and `src/crud.py`.
 
 For enterprise rollout sequencing and change-management guidance, see `docs/OKR_ROLLOUT_GUIDE.md`.
 

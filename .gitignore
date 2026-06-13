@@ -2,37 +2,27 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
 venv/
 env/
 .env
 
-# Streamlit
-.streamlit/*
-!.streamlit/config.toml
-.streamlit/secrets.toml
-secrets.toml
-streamlit_app/.deps_hash
-streamlit_app/.deps_installed
-
 # Data
 *.db
 *.sqlite
 *.sqlite3
-*.json
-okr_data*.json
 node_modules/
 
-# Keep migration governance artifacts and frontend contract fixtures versioned.
-!docs/**/*.json
+# Generated reports
+.jscpd-report/
 
-# Node service manifests for SPA BFF migration
-!spa-bff/package.json
-!spa-bff/package-lock.json
-!spa-bff/tsconfig.json
-!spa-web/package.json
-!spa-web/package-lock.json
-!spa-web/tsconfig.json
+# Test artifacts
+.test-artifacts/
+
+# Runtime tmp
+tmp/
 
 # Logs
 *.log
@@ -46,7 +36,6 @@ tests_output.txt
 logs/
 log/
 **/logs/
-streamlit_app/run_app.log
 
 # OS/editor
 .DS_Store

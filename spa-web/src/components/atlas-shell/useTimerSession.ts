@@ -11,7 +11,6 @@ import {
 
 type UseTimerSessionInput = {
   user: AuthUser | null;
-  rolloutAllowed: boolean;
   focusTaskId: number | null;
   focusTaskStartedAt: string;
   parsedCycleId: number | null;
@@ -22,7 +21,6 @@ type UseTimerSessionInput = {
 
 export default function useTimerSession({
   user,
-  rolloutAllowed,
   focusTaskId,
   focusTaskStartedAt,
   parsedCycleId,
@@ -94,7 +92,7 @@ export default function useTimerSession({
   }, [focusTaskRunning]);
 
   const handleTimerStart = useCallback(async (): Promise<void> => {
-    if (!user || !focusTaskId || !rolloutAllowed) {
+    if (!user || !focusTaskId) {
       return;
     }
     setTimerPending(true);
@@ -139,12 +137,11 @@ export default function useTimerSession({
     mode,
     parsedCycleId,
     refreshDashboardModeData,
-    rolloutAllowed,
     user,
   ]);
 
   const handleTimerStop = useCallback(async (): Promise<void> => {
-    if (!user || !rolloutAllowed) {
+    if (!user) {
       return;
     }
     const resolvedTaskId = timerSessionTaskId || focusTaskId || null;
@@ -185,7 +182,6 @@ export default function useTimerSession({
     mode,
     parsedCycleId,
     refreshDashboardModeData,
-    rolloutAllowed,
     timerSessionTaskId,
     timerSummary,
     user,

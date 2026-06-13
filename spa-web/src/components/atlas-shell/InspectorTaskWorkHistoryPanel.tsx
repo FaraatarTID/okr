@@ -1,5 +1,7 @@
 "use client";
 
+import { rtlStyle } from "@/lib/rtl";
+
 type WorkLogHistoryRowView = {
   id: number;
   duration_minutes?: number | null;
@@ -15,7 +17,6 @@ type InspectorTaskWorkHistoryPanelProps = {
   inspectTaskWorkHistoryRows: WorkLogHistoryRowView[];
   inspectTaskWorkLogPendingId: number | null;
   hasUser: boolean;
-  rolloutAllowed: boolean;
   formatOptionalDate: (value?: string | null) => string;
   onDeleteWorkLog: (workLogId: number) => void;
 };
@@ -28,7 +29,6 @@ export default function InspectorTaskWorkHistoryPanel({
   inspectTaskWorkHistoryRows,
   inspectTaskWorkLogPendingId,
   hasUser,
-  rolloutAllowed,
   formatOptionalDate,
   onDeleteWorkLog,
 }: InspectorTaskWorkHistoryPanelProps) {
@@ -103,6 +103,7 @@ export default function InspectorTaskWorkHistoryPanel({
                       fontSize: "0.82rem",
                       color: "var(--ink-soft)",
                       whiteSpace: "pre-wrap",
+                      ...rtlStyle(summaryFull),
                     }}
                   >
                     {summaryFull}
@@ -112,7 +113,7 @@ export default function InspectorTaskWorkHistoryPanel({
                   className="primary-button"
                   type="button"
                   onClick={() => onDeleteWorkLog(log.id)}
-                  disabled={inspectTaskWorkLogPendingId === log.id || !hasUser || !rolloutAllowed}
+                  disabled={inspectTaskWorkLogPendingId === log.id || !hasUser}
                   style={{ minWidth: 84 }}
                 >
                   {inspectTaskWorkLogPendingId === log.id ? "Deleting..." : "Delete"}

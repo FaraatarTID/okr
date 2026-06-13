@@ -1,7 +1,7 @@
 # راهنمای چرخه حیات OKR
 Documentation HQ: [README](../README.md)
 
-این راهنما با منطق چرخه‌حیات پیاده‌سازی‌شده در `streamlit_app/src/models.py`، `streamlit_app/src/domain/lifecycle.py` و `streamlit_app/src/crud.py` هم‌راستا است.
+این راهنما با منطق چرخه‌حیات پیاده‌سازی‌شده در `src/models.py`، `src/domain/lifecycle.py` و `src/crud.py` هم‌راستا است.
 
 ## مدل مفهومی (Goal، Objective، KR)
 

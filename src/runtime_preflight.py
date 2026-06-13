@@ -29,7 +29,6 @@ def _normalize_pdf_method(pdf_method: str) -> str:
 def evaluate_runtime_preflight(
     *,
     pdf_method: str,
-    is_streamlit_cloud: bool,
     has_pdfshift_key: bool,
     gemini_api_key: Optional[str],
     has_chromium_runtime: bool = False,
@@ -79,9 +78,7 @@ def evaluate_runtime_preflight(
     is_production = env_name in {"prod", "production"}
 
     # Resolve embedded backend status
-    is_embedded = (backend_url.lower() == "auto") or (
-        is_streamlit_cloud and not backend_url
-    )
+    is_embedded = backend_url.lower() == "auto"
 
     if is_embedded:
         report.infos.append("Backend mode: Embedded (auto-launching background API).")

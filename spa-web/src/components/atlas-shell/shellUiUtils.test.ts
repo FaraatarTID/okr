@@ -6,7 +6,6 @@ import {
   cyclePeriodLabel,
   normalizeTaskStatus,
   parseOwnerIds,
-  parsePreviewBypass,
   quarterLabel,
   timelineStatusLabel,
 } from "@/components/atlas-shell/shellUiUtils";
@@ -23,14 +22,6 @@ describe("shellUiUtils", () => {
       value: undefined,
       error: "Owner IDs must be comma-separated positive integers.",
     });
-  });
-
-  it("parses preview bypass query values", () => {
-    expect(parsePreviewBypass("?spa_preview=1")).toBe(true);
-    expect(parsePreviewBypass("?spa_preview=yes")).toBe(true);
-    expect(parsePreviewBypass("?spa_preview=on")).toBe(true);
-    expect(parsePreviewBypass("?spa_preview=false")).toBe(false);
-    expect(parsePreviewBypass("")).toBe(false);
   });
 
   it("builds cycle labels from dates/titles", () => {

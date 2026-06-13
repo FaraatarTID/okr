@@ -22,6 +22,7 @@ export type InspectorEditDraft = {
   title: string;
   description: string;
   progress: string;
+  deadline: string;
 };
 
 export type NodeCreateDraft = {
@@ -45,7 +46,6 @@ type CreateContext = {
 type UseInspectorNodeActionsInput = {
   user: AuthUser | null;
   selectedMeta: AtlasIndexNode | null;
-  rolloutAllowed: boolean;
   parsedCycleId: number | null;
   createContext: CreateContext;
   focusTaskRef: string;
@@ -57,7 +57,6 @@ type UseInspectorNodeActionsInput = {
 export default function useInspectorNodeActions({
   user,
   selectedMeta,
-  rolloutAllowed,
   parsedCycleId,
   createContext,
   focusTaskRef,
@@ -75,6 +74,7 @@ export default function useInspectorNodeActions({
     title: "",
     description: "",
     progress: "",
+    deadline: "",
   });
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -128,6 +128,7 @@ export default function useInspectorNodeActions({
         title: "",
         description: "",
         progress: "",
+        deadline: "",
       });
       setCreateError("");
       setCreateMessage("");
@@ -135,10 +136,14 @@ export default function useInspectorNodeActions({
       setDeleteMessage("");
       return;
     }
+    const taskNode = selectedMeta.node as unknown as Record<string, unknown>;
+    const rawDeadline = taskNode.deadline || taskNode.due_date || "";
+    const deadlineStr = rawDeadline ? String(rawDeadline).slice(0, 10) : "";
     setInspectDraft({
       title: selectedMeta.title,
       description: selectedMeta.description,
       progress: `${selectedMeta.progress}`,
+      deadline: deadlineStr,
     });
     setCreateDraft((prev) => ({
       ...prev,
@@ -160,7 +165,7 @@ export default function useInspectorNodeActions({
   }, [selectedMeta]);
 
   const handleInspectorRunAnalysis = useCallback(async (): Promise<void> => {
-    if (!user || !selectedMeta || !rolloutAllowed) {
+    if (!user || !selectedMeta) {
       return;
     }
     if (selectedMeta.type !== "KEY_RESULT" && selectedMeta.type !== "OBJECTIVE") {
@@ -199,10 +204,10 @@ export default function useInspectorNodeActions({
     } finally {
       setInspectAnalysisPending(false);
     }
-  }, [loadSnapshotForUser, parsedCycleId, rolloutAllowed, selectedMeta, user]);
+  }, [loadSnapshotForUser, parsedCycleId, user, selectedMeta, user]);
 
   const handleInspectorSave = useCallback(async (): Promise<void> => {
-    if (!user || !selectedMeta || !rolloutAllowed) {
+    if (!user || !selectedMeta) {
       return;
     }
     const parsedProgress = Number.parseInt(inspectDraft.progress, 10);
@@ -216,15 +221,22 @@ export default function useInspectorNodeActions({
     setInspectError("");
     setInspectMessage("");
     try {
-      await updateNodeMutation({
-        actor_username: user.username,
-        node_type: nodeTypeToPath(selectedMeta.type),
-        node_id: selectedMeta.id,
-        updates: {
+      const updates: Record<string, unknown> = {
           title: inspectDraft.title.trim(),
           description: inspectDraft.description.trim(),
           progress: parsedProgress,
-        },
+        };
+        const deadlineVal = inspectDraft.deadline.trim();
+        if (deadlineVal) {
+          updates.deadline = deadlineVal;
+        } else {
+          updates.deadline = null;
+        }
+        await updateNodeMutation({
+        actor_username: user.username,
+        node_type: nodeTypeToPath(selectedMeta.type),
+        node_id: selectedMeta.id,
+        updates,
       });
       setInspectMessage(`Saved changes for ${nodeTypeLabel(selectedMeta.type)} #${selectedMeta.id}.`);
       if (parsedCycleId) {
@@ -235,10 +247,10 @@ export default function useInspectorNodeActions({
     } finally {
       setInspectPending(false);
     }
-  }, [inspectDraft.description, inspectDraft.progress, inspectDraft.title, loadSnapshotForUser, parsedCycleId, rolloutAllowed, selectedMeta, user]);
+  }, [inspectDraft.deadline, inspectDraft.description, inspectDraft.progress, inspectDraft.title, loadSnapshotForUser, parsedCycleId, user, selectedMeta, user]);
 
   const handleNodeCreate = useCallback(async (): Promise<void> => {
-    if (!user || !rolloutAllowed) {
+    if (!user) {
       return;
     }
     const title = createDraft.title.trim();
@@ -345,10 +357,10 @@ export default function useInspectorNodeActions({
     } finally {
       setCreatePending(false);
     }
-  }, [canCreateForContext, createContext.goalId, createContext.keyResultId, createContext.objectiveId, createDraft, loadSnapshotForUser, parsedCycleId, rolloutAllowed, setSelectedRef, user]);
+  }, [canCreateForContext, createContext.goalId, createContext.keyResultId, createContext.objectiveId, createDraft, loadSnapshotForUser, parsedCycleId, user, setSelectedRef, user]);
 
   const handleNodeDelete = useCallback(async (): Promise<void> => {
-    if (!user || !selectedMeta || !rolloutAllowed) {
+    if (!user || !selectedMeta) {
       return;
     }
     if (typeof window !== "undefined") {
@@ -383,7 +395,7 @@ export default function useInspectorNodeActions({
     } finally {
       setDeletePending(false);
     }
-  }, [focusTaskRef, loadSnapshotForUser, parsedCycleId, rolloutAllowed, selectedMeta, setFocusTaskRef, setSelectedRef, user]);
+  }, [focusTaskRef, loadSnapshotForUser, parsedCycleId, user, selectedMeta, setFocusTaskRef, setSelectedRef, user]);
 
   return {
     inspectPending,

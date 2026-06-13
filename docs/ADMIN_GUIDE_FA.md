@@ -1,8 +1,8 @@
-﻿# راهنمای مدیر سیستم (Admin)
+# راهنمای مدیر سیستم (Admin)
 
 Documentation HQ: [README](../README.md)
 
-این راهنما با رفتار فعلی کد هم‌راستا است (`streamlit_app/app.py`، `streamlit_app/src/ui/*`، `streamlit_app/src/crud.py`، `streamlit_app/src/domain/*`).
+این راهنما با رفتار فعلی کد هم‌راستا است (`backend_app/`، `spa-bff/`، `spa-web/`، `src/`).
 
 برای اعمال سیاست مرزبندی «کار استراتژیک» در برابر BAU از `docs/OKR_BAU_BOUNDARY_GUIDE_FA.md` استفاده کنید.
 
@@ -71,14 +71,14 @@ Documentation HQ: [README](../README.md)
 
 توپولوژی پیشنهادی تولید:
 
-- `okr` (Streamlit UI)
+- `spa-web` + `spa-bff` (رابط کاربری SPA)
 - `backend-api` (کنترل‌پلین داخلی برای mutation + timer + job)
 - `backend-worker` (اجرای async برای AI/PDF)
 - پایگاه‌داده مشترک Supabase PostgreSQL
 
 نکات wiring:
 
-- `OKR_BACKEND_API_URL` از `okr` به `backend-api`
+- `OKR_BACKEND_API_URL` از `spa-web`/`spa-bff` به `backend-api`
 - `OKR_BACKEND_SERVICE_TOKEN` باید بین caller و backend-api یکسان باشد
 - `OKR_BACKEND_PROXY_MUTATIONS=true` باعث می‌شود جریان‌های نوشتنی فرانت‌اند (نودها، تایمر، کاربران/چرخه‌ها/تیم‌ها، و تغییرات Learning Loop) از مسیر backend API انجام شوند
 - پورت backend-api باید داخلی/خصوصی بماند و عمومی expose نشود
@@ -88,8 +88,6 @@ Documentation HQ: [README](../README.md)
 - مسیرهای خواندنی و نوشتنی فرانت‌اند (Atlas/leadership reads + نودها، timer، مدیریت کاربران/چرخه‌ها/تیم‌ها، Learning Loop و alignment) از backend API عبور می‌کنند (`OKR_BACKEND_PROXY_MUTATIONS=true`, `OKR_BACKEND_PROXY_READS=true`).
 - در اختلال backend، رفتار runtime به‌صورت fail-closed است و fallback محلی اجرا نمی‌شود.
 - عملیات سنگین AI/PDF به‌صورت async توسط `backend-worker` و جدول `async_job` اجرا می‌شود.
-- **حالت Embedded (Cloud)**: در Streamlit Cloud، بک‌اند به‌صورت خودکار در پس‌زمینه (subprocess) اجرا می‌شود. اپراتورها باید به پیام «Embedded backend is up» در لاگ‌های کنسول Streamlit توجه کنند. در صورت بروز خطا، ۳۰ خط آخر لاگ‌های داخلی بک‌اند برای عیب‌یابی در کنسول نمایش داده می‌شود.
-
 ## ۳. قواعد چرخه‌حیات و Rollup که باید رعایت شوند
 
 برای Objective و KR:
@@ -265,8 +263,8 @@ Definition of done برای کیفیت پایش مدیر:
 
 برای پایداری تولید:
 
-1. اطلاعات محرمانه AI را فقط در Streamlit secrets یا env امن نگه دارید و هرگز داخل repository قرار ندهید.
-2. `AI_PROVIDER` را صریح تنظیم کنید (`gemini` یا `openai_compatible`) و از مسیر `Admin Panel -> AI Health` یا دستور `python streamlit_app/scripts/ai_provider_health_check.py` وضعیت را بررسی کنید.
+1. اطلاعات محرمانه AI را فقط در env امن یا secrets files نگه دارید و هرگز داخل repository قرار ندهید.
+2. `AI_PROVIDER` را صریح تنظیم کنید (`gemini` یا `openai_compatible`) و از مسیر `Admin Panel -> AI Health` وضعیت را بررسی کنید.
 3. اگر Gemini استفاده می‌کنید، `GEMINI_API_KEY` را تنظیم کنید.
 4. برای خروجی PDF:
    - `PDF_METHOD=pdfshift` با کلید معتبر PDFShift، یا

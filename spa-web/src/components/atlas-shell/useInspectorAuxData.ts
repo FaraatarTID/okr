@@ -30,7 +30,6 @@ type AlignmentContextPayload = {
 type UseInspectorAuxDataInput = {
   user: AuthUser | null;
   selectedMeta: AtlasIndexNode | null;
-  rolloutAllowed: boolean;
   parsedCycleId: number | null;
   loadSnapshotForUser: (activeUser: AuthUser) => Promise<void>;
 };
@@ -46,7 +45,6 @@ function parseDateOrNull(value: string | null | undefined): Date | null {
 export default function useInspectorAuxData({
   user,
   selectedMeta,
-  rolloutAllowed,
   parsedCycleId,
   loadSnapshotForUser,
 }: UseInspectorAuxDataInput) {
@@ -113,7 +111,7 @@ export default function useInspectorAuxData({
 
   const handleInspectorDeleteWorkLog = useCallback(
     async (workLogId: number): Promise<void> => {
-      if (!user || !selectedMeta || selectedMeta.type !== "TASK" || !rolloutAllowed) {
+      if (!user || !selectedMeta || selectedMeta.type !== "TASK") {
         return;
       }
       if (typeof window !== "undefined") {
@@ -141,7 +139,7 @@ export default function useInspectorAuxData({
         setInspectTaskWorkLogPendingId((current) => (current === workLogId ? null : current));
       }
     },
-    [loadInspectorTaskWorkLogs, loadSnapshotForUser, parsedCycleId, rolloutAllowed, selectedMeta, user],
+    [loadInspectorTaskWorkLogs, loadSnapshotForUser, parsedCycleId, selectedMeta, user],
   );
 
   const handleAlignmentCreate = useCallback(async (): Promise<void> => {

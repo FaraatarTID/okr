@@ -35,7 +35,7 @@ describe("useTimerSession", () => {
     const { result } = renderHook(() =>
       useTimerSession({
         user: baseUser,
-        rolloutAllowed: true,
+
         focusTaskId: 11,
         focusTaskStartedAt: "",
         parsedCycleId: 7,
@@ -68,7 +68,7 @@ describe("useTimerSession", () => {
     const { result } = renderHook(() =>
       useTimerSession({
         user: baseUser,
-        rolloutAllowed: true,
+
         focusTaskId: null,
         focusTaskStartedAt: "",
         parsedCycleId: 7,
@@ -101,7 +101,7 @@ describe("useTimerSession", () => {
     const { result } = renderHook(() =>
       useTimerSession({
         user: baseUser,
-        rolloutAllowed: true,
+
         focusTaskId: 11,
         focusTaskStartedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
         parsedCycleId: 7,

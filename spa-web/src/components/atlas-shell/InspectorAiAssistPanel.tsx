@@ -24,7 +24,6 @@ type InspectorAiAssistPanelProps = {
   aiSuggestPending: boolean;
   hasUser: boolean;
   hasAtlasRuntime: boolean;
-  rolloutAllowed: boolean;
   hasAiUndoItems: boolean;
   hasTaskRefs: boolean;
   aiSyncReport: AiSyncReportView | null;
@@ -43,7 +42,6 @@ export default function InspectorAiAssistPanel({
   aiSuggestPending,
   hasUser,
   hasAtlasRuntime,
-  rolloutAllowed,
   hasAiUndoItems,
   hasTaskRefs,
   aiSyncReport,
@@ -68,20 +66,13 @@ export default function InspectorAiAssistPanel({
       <p className="kicker" style={{ margin: 0 }}>
         AI Assist
       </p>
-      <p style={{ margin: "0.24rem 0 0.3rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-        Sync KR progress from AI scores, rollback, and auto-suggest next focus task.
-      </p>
-
-      <p style={{ margin: "0.24rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-        Uses a fixed safety policy: max {aiSyncMaxDelta}-point change per KR per run; decreases are blocked.
-      </p>
 
       <div className="grid-2" style={{ marginTop: "0.45rem", gap: "0.45rem" }}>
         <button
           className="primary-button"
           type="button"
           onClick={onPreviewAiSync}
-          disabled={aiSyncPending || aiSuggestPending || !hasUser || !hasAtlasRuntime || !rolloutAllowed}
+          disabled={aiSyncPending || aiSuggestPending || !hasUser || !hasAtlasRuntime}
         >
           {aiSyncPending ? "Working..." : "Preview AI Sync"}
         </button>
@@ -89,7 +80,7 @@ export default function InspectorAiAssistPanel({
           className="primary-button"
           type="button"
           onClick={onApplyAiSync}
-          disabled={aiSyncPending || aiSuggestPending || !hasUser || !hasAtlasRuntime || !rolloutAllowed}
+          disabled={aiSyncPending || aiSuggestPending || !hasUser || !hasAtlasRuntime}
         >
           {aiSyncPending ? "Working..." : "Apply AI Sync"}
         </button>
@@ -97,7 +88,7 @@ export default function InspectorAiAssistPanel({
           className="primary-button"
           type="button"
           onClick={onUndoAiSync}
-          disabled={aiSyncPending || aiSuggestPending || !hasAiUndoItems || !hasUser || !rolloutAllowed}
+          disabled={aiSyncPending || aiSuggestPending || !hasAiUndoItems || !hasUser}
         >
           {aiSyncPending ? "Working..." : "Undo Sync"}
         </button>
@@ -105,19 +96,48 @@ export default function InspectorAiAssistPanel({
           className="primary-button"
           type="button"
           onClick={onSuggestNextTask}
-          disabled={aiSyncPending || aiSuggestPending || !hasTaskRefs || !hasUser || !rolloutAllowed}
+          disabled={aiSyncPending || aiSuggestPending || !hasTaskRefs || !hasUser}
         >
           {aiSuggestPending ? "Working..." : "Suggest Next Task"}
         </button>
       </div>
 
       {aiSyncReport ? (
-        <p style={{ margin: "0.34rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-          KR sync: analyzed {aiSyncReport.analyzed}/{aiSyncReport.total}, planned {aiSyncReport.planned}, applied{" "}
-          {aiSyncReport.applied}, unchanged {aiSyncReport.unchanged}, missing AI score {aiSyncReport.missingAiScore},
-          skipped by delta {aiSyncReport.skippedDeltaCap}, skipped by decrease policy{" "}
-          {aiSyncReport.skippedDecrease}.
-        </p>
+        <div style={{ marginTop: "0.34rem", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+          <p style={{ margin: "0 0 0.15rem" }}>
+            Analyzed {aiSyncReport.analyzed} of {aiSyncReport.total} KRs.
+          </p>
+          {aiSyncReport.planned > 0 && (
+            <p style={{ margin: "0 0 0.15rem", color: "var(--accent)" }}>
+              {aiSyncReport.planned} change{aiSyncReport.planned !== 1 ? "s" : ""} ready to apply.
+            </p>
+          )}
+          {aiSyncReport.applied > 0 && (
+            <p style={{ margin: "0 0 0.15rem", color: "var(--accent)" }}>
+              {aiSyncReport.applied} update{aiSyncReport.applied !== 1 ? "s" : ""} applied.
+            </p>
+          )}
+          {aiSyncReport.unchanged > 0 && (
+            <p style={{ margin: "0 0 0.15rem" }}>
+              {aiSyncReport.unchanged} unchanged (AI score matches current).
+            </p>
+          )}
+          {aiSyncReport.missingAiScore > 0 && (
+            <p style={{ margin: "0 0 0.15rem" }}>
+              {aiSyncReport.missingAiScore} skipped (no AI score available).
+            </p>
+          )}
+          {aiSyncReport.skippedDeltaCap > 0 && (
+            <p style={{ margin: "0 0 0.15rem" }}>
+              {aiSyncReport.skippedDeltaCap} skipped (change exceeds safety cap).
+            </p>
+          )}
+          {aiSyncReport.skippedDecrease > 0 && (
+            <p style={{ margin: "0 0 0.15rem" }}>
+              {aiSyncReport.skippedDecrease} skipped (AI suggests lower value; use Preview to review).
+            </p>
+          )}
+        </div>
       ) : null}
       {aiSuggestion ? (
         <p style={{ margin: "0.34rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>

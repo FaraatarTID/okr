@@ -187,8 +187,8 @@ def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(monkeypatch, tmp_path
     db_url = f"sqlite:///{db_path}"
     monkeypatch.setenv("DATABASE_URL", db_url)
     monkeypatch.setenv("OKR_DATABASE_URL", db_url)
-    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
-    script_location = ROOT_DIR / "streamlit_app" / "alembic"
+    ini_path = ROOT_DIR / "alembic.ini"
+    script_location = ROOT_DIR / "alembic"
     cfg = Config(str(ini_path))
     cfg.set_main_option("sqlalchemy.url", db_url)
     cfg.set_main_option("script_location", str(script_location))
@@ -307,8 +307,8 @@ def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(monkeypat
             )
         )
 
-    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
-    script_location = ROOT_DIR / "streamlit_app" / "alembic"
+    ini_path = ROOT_DIR / "alembic.ini"
+    script_location = ROOT_DIR / "alembic"
     cfg = Config(str(ini_path))
     cfg.set_main_option("sqlalchemy.url", db_url)
     cfg.set_main_option("script_location", str(script_location))
@@ -383,8 +383,8 @@ def test_goal_hard_cutover_migration_blocks_unresolved_ownerless_goals(monkeypat
             )
         )
 
-    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
-    script_location = ROOT_DIR / "streamlit_app" / "alembic"
+    ini_path = ROOT_DIR / "alembic.ini"
+    script_location = ROOT_DIR / "alembic"
     cfg = Config(str(ini_path))
     cfg.set_main_option("sqlalchemy.url", db_url)
     cfg.set_main_option("script_location", str(script_location))
@@ -425,8 +425,8 @@ def test_integrity_migration_tolerates_legacy_orphaned_fk_metadata(monkeypatch, 
             )
         )
 
-    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
-    script_location = ROOT_DIR / "streamlit_app" / "alembic"
+    ini_path = ROOT_DIR / "alembic.ini"
+    script_location = ROOT_DIR / "alembic"
     cfg = Config(str(ini_path))
     cfg.set_main_option("sqlalchemy.url", db_url)
     cfg.set_main_option("script_location", str(script_location))
@@ -474,8 +474,8 @@ def test_worklog_unique_open_index_migration_heals_duplicates(monkeypatch, tmp_p
             )
         )
 
-    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
-    script_location = ROOT_DIR / "streamlit_app" / "alembic"
+    ini_path = ROOT_DIR / "alembic.ini"
+    script_location = ROOT_DIR / "alembic"
     cfg = Config(str(ini_path))
     cfg.set_main_option("sqlalchemy.url", db_url)
     cfg.set_main_option("script_location", str(script_location))
@@ -508,8 +508,8 @@ def test_auth_throttle_state_table_is_created_by_migration(monkeypatch, tmp_path
     with engine.begin() as conn:
         conn.execute(sa_text("DROP TABLE IF EXISTS auth_throttle_state"))
 
-    ini_path = ROOT_DIR / "streamlit_app" / "alembic.ini"
-    script_location = ROOT_DIR / "streamlit_app" / "alembic"
+    ini_path = ROOT_DIR / "alembic.ini"
+    script_location = ROOT_DIR / "alembic"
     cfg = Config(str(ini_path))
     cfg.set_main_option("sqlalchemy.url", db_url)
     cfg.set_main_option("script_location", str(script_location))

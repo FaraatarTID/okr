@@ -20,14 +20,14 @@ def test_models_import_path_is_consistent() -> None:
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
                 module = str(node.module or "")
-                if module == "models" or module == "streamlit_app.src.models":
+                if module == "models":
                     issues.append(
                         f"{rel}:{node.lineno} imports models via `{module}`; use `src.models` only"
                     )
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     name = str(alias.name or "")
-                    if name in {"models", "streamlit_app.src.models"}:
+                    if name == "models":
                         issues.append(
                             f"{rel}:{node.lineno} imports `{name}`; use `src.models` only"
                         )

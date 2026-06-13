@@ -1,55 +1,36 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
+import useAuthBootstrap from "./useAuthBootstrap";
 import * as api from "@/lib/api";
-import useAuthBootstrap from "@/components/atlas-shell/useAuthBootstrap";
 
 vi.mock("@/lib/api", () => ({
   readSessionUser: vi.fn(),
-  readSpaRolloutConfig: vi.fn(),
 }));
 
 describe("useAuthBootstrap", () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    vi.clearAllMocks();
-  });
-
-  it("hydrates session user and rollout config", async () => {
+  it("hydrates session user", async () => {
     const readSessionUserMock = vi.mocked(api.readSessionUser);
-    const readSpaRolloutConfigMock = vi.mocked(api.readSpaRolloutConfig);
     readSessionUserMock.mockResolvedValue({
-      id: 7,
       username: "alice",
       display_name: "Alice",
       role: "admin",
-    } as never);
-    readSpaRolloutConfigMock.mockResolvedValue({
-      enabled: true,
-      allow_admins: true,
-      allow_managers: true,
-      allow_members: true,
-      preview_bypass_enabled: true,
-    } as never);
+      manager_id: null,
+    } as api.AuthUser);
 
     const { result } = renderHook(() => useAuthBootstrap());
-
     await waitFor(() => {
       expect(result.current.authHydrated).toBe(true);
-      expect(result.current.user?.username).toBe("alice");
-      expect(result.current.rolloutConfig?.enabled).toBe(true);
     });
+    expect(result.current.user?.username).toBe("alice");
   });
 
-  it("falls back to anonymous when session user read fails", async () => {
-    const readSessionUserMock = vi.mocked(api.readSessionUser);
-    readSessionUserMock.mockRejectedValue(new Error("unauthorized"));
-
+  it("sets user to null on session fetch failure", async () => {
+    vi.mocked(api.readSessionUser).mockRejectedValue(new Error("no session"));
     const { result } = renderHook(() => useAuthBootstrap());
-
     await waitFor(() => {
       expect(result.current.authHydrated).toBe(true);
-      expect(result.current.user).toBeNull();
     });
+    expect(result.current.user).toBeNull();
   });
 });

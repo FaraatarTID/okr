@@ -7,7 +7,6 @@ import { DEFAULT_LENS, DEFAULT_MODE, normalizeFocusTaskRef, parseDeepLink } from
 import { modeForPath } from "@/components/atlas-shell/navigation";
 import {
   cyclePeriodLabel,
-  parsePreviewBypass,
 } from "@/components/atlas-shell/shellUiUtils";
 
 type ResolvedCycleState = Pick<CycleSummary, "id" | "title" | "start_date" | "end_date">;
@@ -29,7 +28,6 @@ type UseDeepLinkCycleBootstrapInput = {
   setLens: Dispatch<SetStateAction<string>>;
   setSelectedRef: Dispatch<SetStateAction<string>>;
   setFocusTaskRef: Dispatch<SetStateAction<string>>;
-  setPreviewBypass: Dispatch<SetStateAction<boolean>>;
   setDeepLinkReady: Dispatch<SetStateAction<boolean>>;
 };
 
@@ -50,7 +48,6 @@ export default function useDeepLinkCycleBootstrap({
   setLens,
   setSelectedRef,
   setFocusTaskRef,
-  setPreviewBypass,
   setDeepLinkReady,
 }: UseDeepLinkCycleBootstrapInput) {
   useEffect(() => {
@@ -123,7 +120,6 @@ export default function useDeepLinkCycleBootstrap({
     const syncFromLocation = () => {
       const parsed = parseDeepLink(window.location.search);
       const pathMode = modeForPath(window.location.pathname);
-      setPreviewBypass(parsePreviewBypass(window.location.search));
       if (parsed.cycle && canManageCycleSelection) {
         setResolvedCycle(null);
         setCycleId(parsed.cycle);
@@ -153,7 +149,6 @@ export default function useDeepLinkCycleBootstrap({
     setFocusTaskRef,
     setLens,
     setMode,
-    setPreviewBypass,
     setResolvedCycle,
     setSelectedRef,
   ]);

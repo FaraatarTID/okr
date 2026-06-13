@@ -49,7 +49,6 @@ export type AiTaskSuggestion = {
 
 type UseAiProgressAssistInput = {
   user: AuthUser | null;
-  rolloutAllowed: boolean;
   parsedCycleId: number | null;
   atlasRuntime: AtlasRuntimeLike | null;
   allScopeRefs: string[];
@@ -62,7 +61,6 @@ type UseAiProgressAssistInput = {
 
 export default function useAiProgressAssist({
   user,
-  rolloutAllowed,
   parsedCycleId,
   atlasRuntime,
   allScopeRefs,
@@ -89,7 +87,7 @@ export default function useAiProgressAssist({
   }, [parsedCycleId]);
 
   const handleAiProgressSync = useCallback(async (previewOnly: boolean): Promise<void> => {
-    if (!user || !atlasRuntime || !rolloutAllowed) {
+    if (!user || !atlasRuntime) {
       return;
     }
     setAiSyncPending(true);
@@ -175,9 +173,17 @@ export default function useAiProgressAssist({
       }
 
       if (previewOnly) {
-        setAiSyncMessage(`Preview complete: ${planned} KR changes planned (${analyzed}/${krRefs.length} analyzed).`);
+        if (planned > 0) {
+          setAiSyncMessage(`Preview: ${planned} KR update${planned !== 1 ? "s" : ""} ready to apply. Click "Apply AI Sync" to confirm.`);
+        } else {
+          setAiSyncMessage(`Preview: no KR changes recommended. ${unchanged} unchanged, ${missingAiScore} without AI score.`);
+        }
       } else {
-        setAiSyncMessage(`AI sync complete: ${applied} KR updates applied (${analyzed}/${krRefs.length} analyzed).`);
+        if (applied > 0) {
+          setAiSyncMessage(`Applied ${applied} KR update${applied !== 1 ? "s" : ""}.`);
+        } else {
+          setAiSyncMessage(`No KR updates applied. ${unchanged} unchanged, ${skippedDecrease} decreases skipped.`);
+        }
       }
 
       if (!previewOnly && parsedCycleId) {
@@ -195,12 +201,11 @@ export default function useAiProgressAssist({
     atlasRuntime,
     loadSnapshotForUser,
     parsedCycleId,
-    rolloutAllowed,
     user,
   ]);
 
   const handleAiProgressUndo = useCallback(async (): Promise<void> => {
-    if (!user || !rolloutAllowed) {
+    if (!user) {
       return;
     }
     if (!aiProgressUndoItems.length) {
@@ -247,19 +252,22 @@ export default function useAiProgressAssist({
     } finally {
       setAiSyncPending(false);
     }
-  }, [aiProgressUndoItems, loadSnapshotForUser, parsedCycleId, rolloutAllowed, user]);
+  }, [aiProgressUndoItems, loadSnapshotForUser, parsedCycleId, user]);
 
   const handleAiSuggestNextTask = useCallback(async (): Promise<void> => {
-    if (!user || !atlasRuntime || !rolloutAllowed) {
+    if (!user || !atlasRuntime) {
       return;
     }
-    const candidates = taskRefs
+    // Capture refs at call time to avoid race with snapshot refresh.
+    const snapshotRefs = [...taskRefs];
+    const snapshotIndex = { ...atlasRuntime.index };
+    const candidates = snapshotRefs
       .map((ref) => {
-        const taskMeta = atlasRuntime.index[ref];
+        const taskMeta = snapshotIndex[ref];
         if (!taskMeta || taskMeta.type !== "TASK") {
           return null;
         }
-        const parentKr = taskMeta.parent ? atlasRuntime.index[taskMeta.parent] : null;
+        const parentKr = taskMeta.parent ? snapshotIndex[taskMeta.parent] : null;
         const parentKrScore =
           parentKr && parentKr.type === "KEY_RESULT"
             ? clampProgress((parentKr.node as AtlasKeyResultSnapshot).ai_overall_score)
@@ -278,7 +286,7 @@ export default function useAiProgressAssist({
           progress: clampProgress(taskMeta.progress),
           status: String(task.status || "IN_PROGRESS"),
           deadline: task.deadline || null,
-          path: taskMeta.path.map((pathRef) => atlasRuntime.index[pathRef]?.title || pathRef).join(" > "),
+          path: taskMeta.path.map((pathRef) => snapshotIndex[pathRef]?.title || pathRef).join(" > "),
           priority_score: Number(priorityScore.toFixed(2)),
         };
       })
@@ -298,11 +306,14 @@ export default function useAiProgressAssist({
     setAiSuggestion(null);
     try {
       const prompt = [
-        "Pick exactly one task_ref from the candidate list.",
-        "Return strict JSON only with keys: task_ref, reason, confidence.",
-        "confidence must be an integer from 0 to 100.",
-        "Prefer highest urgency and impact.",
-        `Candidates: ${JSON.stringify(candidates)}`,
+        "You are a task prioritization assistant.",
+        "Given a list of tasks, pick the single best next task to work on.",
+        "You MUST return strict JSON with exactly these keys: task_ref, reason, confidence.",
+        "task_ref: copy the exact task_ref string from the candidates (e.g. 'task_1'). Do NOT invent new refs.",
+        "reason: one sentence explaining why this task is the best next action.",
+        "confidence: an integer from 0 to 100.",
+        "Candidates:",
+        JSON.stringify(candidates, null, 0),
       ].join("\n");
       const submitted = await submitBackendJob({
         actor_username: user.username,
@@ -314,9 +325,38 @@ export default function useAiProgressAssist({
         throw new Error(String(done.error_text || "AI suggestion failed."));
       }
       const result = (done.result || {}) as Record<string, unknown>;
-      const pickedRef = String(result.task_ref || "").trim();
-      if (!pickedRef || !taskRefs.includes(pickedRef) || !atlasRuntime.index[pickedRef]) {
-        throw new Error("AI returned an invalid task_ref outside current scope.");
+      let pickedRef = String(result.task_ref || "").trim().replace(/^["']|["']$/g, "");
+      // If AI returned empty, fall back to top-priority candidate.
+      if (!pickedRef && candidates.length > 0) {
+        pickedRef = candidates[0].task_ref;
+      }
+      // Normalize: AI may return bare ID, "Task 123", or title instead of "task_123".
+      if (pickedRef && !snapshotRefs.includes(pickedRef) && !snapshotIndex[pickedRef]) {
+        const stripped = pickedRef.replace(/^(task|Task)\s*/i, "").trim();
+        const numericId = Number.parseInt(stripped, 10);
+        if (Number.isFinite(numericId) && numericId > 0) {
+          const normalized = `task_${numericId}`;
+          if (snapshotRefs.includes(normalized)) {
+            pickedRef = normalized;
+          }
+        }
+      }
+      // Last resort: fuzzy match by title.
+      if (pickedRef && !snapshotRefs.includes(pickedRef) && !snapshotIndex[pickedRef]) {
+        const lower = pickedRef.toLowerCase();
+        const match = snapshotRefs.find((ref) => {
+          const meta = snapshotIndex[ref];
+          return meta && String(meta.title || "").toLowerCase() === lower;
+        });
+        if (match) {
+          pickedRef = match;
+        }
+      }
+      if (!pickedRef || !snapshotRefs.includes(pickedRef) || !snapshotIndex[pickedRef]) {
+        const aiRaw = String(result.task_ref || "");
+        throw new Error(
+          `AI returned an invalid task_ref outside current scope. AI raw: "${aiRaw}", available refs: ${snapshotRefs.slice(0, 5).join(", ")}${snapshotRefs.length > 5 ? "..." : ""}`,
+        );
       }
       const reason = String(result.reason || "").trim();
       const confidenceRaw = Number(result.confidence);
@@ -327,13 +367,13 @@ export default function useAiProgressAssist({
         reason,
         confidence,
       });
-      setAiSyncMessage(`Suggested next task: ${atlasRuntime.index[pickedRef]?.title || pickedRef}`);
+      setAiSyncMessage(`Suggested next task: ${snapshotIndex[pickedRef]?.title || pickedRef}`);
     } catch (error) {
       setAiSyncError(String(error instanceof Error ? error.message : error));
     } finally {
       setAiSuggestPending(false);
     }
-  }, [atlasRuntime, onTaskSuggested, rolloutAllowed, taskRefs, user]);
+  }, [atlasRuntime, onTaskSuggested, taskRefs, user]);
 
   return {
     aiSyncPending,

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -104,11 +104,6 @@ import {
   cyclePeriodLabel,
   timelineStatusLabel,
 } from "@/components/atlas-shell/shellUiUtils";
-import {
-  evaluateSpaRollout,
-  rolloutReasonMessage,
-  type RolloutDecision,
-} from "@/lib/rollout";
 
 type ResolvedCycle = Pick<CycleSummary, "id" | "title" | "start_date" | "end_date">;
 type WeeklyPlanRead = {
@@ -182,8 +177,8 @@ const TYPE_TAG: Record<AtlasIndexNode["type"], string> = {
   TASK: "T",
 };
 
-const AI_SYNC_MAX_DELTA = 40;
-const AI_SYNC_ALLOW_DECREASE = false;
+const AI_SYNC_MAX_DELTA = Number.parseInt(process.env.NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA || "100", 10) || 100;
+const AI_SYNC_ALLOW_DECREASE = (process.env.NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE || "true").toLowerCase() !== "false";
 
 export default function AtlasShell() {
   const router = useRouter();
@@ -207,9 +202,8 @@ export default function AtlasShell() {
   const [nodeQuery, setNodeQuery] = useState("");
   const [selectedRef, setSelectedRef] = useState("");
   const [focusTaskRef, setFocusTaskRef] = useState("");
-  const [previewBypass, setPreviewBypass] = useState(false);
   const [deepLinkReady, setDeepLinkReady] = useState(false);
-  const { user, setUser, authHydrated, rolloutConfig } = useAuthBootstrap();
+  const { user, setUser, authHydrated } = useAuthBootstrap();
 
   const isAdmin = String(user?.role || "").trim().toLowerCase() === "admin";
   const isManager = String(user?.role || "").trim().toLowerCase() === "manager";
@@ -225,17 +219,6 @@ export default function AtlasShell() {
   const effectiveOwnerIdsInput = isAdmin ? ownerIdsInput : "";
   const parsedOwnerIds = useMemo(() => parseOwnerIds(effectiveOwnerIdsInput), [effectiveOwnerIdsInput]);
   const selectedOwnerIds = parsedOwnerIds.value || [];
-  const rolloutDecision = useMemo<RolloutDecision>(() => {
-    if (!rolloutConfig) {
-      return { allowed: false, reason: "disabled" };
-    }
-    return evaluateSpaRollout(user, rolloutConfig, { previewBypass });
-  }, [rolloutConfig, user, previewBypass]);
-  const rolloutMessage = useMemo(
-    () => rolloutReasonMessage(rolloutDecision.reason),
-    [rolloutDecision.reason],
-  );
-  const rolloutAllowed = Boolean(rolloutConfig && rolloutDecision.allowed);
   const {
     snapshotPending,
     snapshotError,
@@ -249,7 +232,6 @@ export default function AtlasShell() {
     parsedCycleId,
     ownerIds: parsedOwnerIds.value,
     ownerIdsError: parsedOwnerIds.error,
-    rolloutAllowed,
   });
   const {
     leadershipMetrics,
@@ -889,11 +871,8 @@ export default function AtlasShell() {
       lens,
     });
     const params = new URLSearchParams(baseQuery);
-    if (previewBypass) {
-      params.set("spa_preview", "1");
-    }
     return params.toString();
-  }, [effectiveCycleId, mode, selectedRef, focusTaskRef, lens, previewBypass]);
+  }, [effectiveCycleId, mode, selectedRef, focusTaskRef, lens]);
   useDeepLinkCycleBootstrap({
     user,
     canManageCycleSelection,
@@ -911,7 +890,6 @@ export default function AtlasShell() {
     setLens,
     setSelectedRef,
     setFocusTaskRef,
-    setPreviewBypass,
     setDeepLinkReady,
   });
   const { handleSidebarModeSelect, handleOpenTaskInAtlas } = useAtlasNavigation({
@@ -1071,7 +1049,6 @@ export default function AtlasShell() {
     handleAiSuggestNextTask,
   } = useAiProgressAssist({
     user,
-    rolloutAllowed,
     parsedCycleId,
     atlasRuntime,
     allScopeRefs,
@@ -1104,7 +1081,6 @@ export default function AtlasShell() {
   } = useInspectorAuxData({
     user,
     selectedMeta,
-    rolloutAllowed,
     parsedCycleId,
     loadSnapshotForUser,
   });
@@ -1133,7 +1109,6 @@ export default function AtlasShell() {
   } = useInspectorNodeActions({
     user,
     selectedMeta,
-    rolloutAllowed,
     parsedCycleId,
     createContext,
     focusTaskRef,
@@ -1185,7 +1160,6 @@ export default function AtlasShell() {
     handleTimerStop,
   } = useTimerSession({
     user,
-    rolloutAllowed,
     focusTaskId: focusTaskMeta?.id ?? null,
     focusTaskStartedAt,
     parsedCycleId,
@@ -1364,7 +1338,7 @@ export default function AtlasShell() {
                 className="primary-button"
                 type="button"
                 onClick={() => setTimerModalOpen(true)}
-                disabled={!user || !focusTaskMeta || !rolloutAllowed}
+                disabled={!user || !focusTaskMeta}
                 style={{ width: "100%" }}
               >
                 Open timer modal
@@ -1374,7 +1348,7 @@ export default function AtlasShell() {
                 className="primary-button"
                 type="button"
                 onClick={handleTimerStart}
-                disabled={timerPending || !user || !focusTaskMeta || !rolloutAllowed}
+                disabled={timerPending || !user || !focusTaskMeta}
                 style={{ width: "100%" }}
               >
                 {timerPending ? "Working..." : "Start timer"}
@@ -1416,9 +1390,6 @@ export default function AtlasShell() {
           >
             <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>Signed in as</div>
             <strong style={{ display: "block", marginTop: "0.2rem" }}>{user.display_name}</strong>
-            <div style={{ marginTop: "0.16rem", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-              @{user.username} - {user.role}
-            </div>
             <button
               className="primary-button"
               type="button"
@@ -1481,7 +1452,6 @@ export default function AtlasShell() {
             aiSuggestPending={aiSuggestPending}
             hasUser={Boolean(user)}
             hasAtlasRuntime={Boolean(atlasRuntime)}
-            rolloutAllowed={rolloutAllowed}
             hasAiUndoItems={aiProgressUndoItems.length > 0}
             hasTaskRefs={taskRefs.length > 0}
             aiSyncReport={aiSyncReport}
@@ -1533,10 +1503,12 @@ export default function AtlasShell() {
                 onInspectorSave={handleInspectorSave}
                 inspectPending={inspectPending}
                 hasUser={Boolean(user)}
-                rolloutAllowed={rolloutAllowed}
                 onNodeDelete={handleNodeDelete}
                 deletePending={deletePending}
+                deleteError={deleteError}
+                deleteMessage={deleteMessage}
                 selectedTypeLabel={nodeTypeLabel(selectedMeta.type)}
+                selectedNodeType={selectedMeta.type}
                 inspectError={inspectError}
                 inspectMessage={inspectMessage}
                 showAiAnalysis={selectedMeta.type === "KEY_RESULT" || selectedMeta.type === "OBJECTIVE"}
@@ -1567,7 +1539,6 @@ export default function AtlasShell() {
                   inspectTaskWorkHistoryRows={inspectTaskWorkHistoryRows}
                   inspectTaskWorkLogPendingId={inspectTaskWorkLogPendingId}
                   hasUser={Boolean(user)}
-                  rolloutAllowed={rolloutAllowed}
                   formatOptionalDate={formatOptionalDate}
                   onDeleteWorkLog={(workLogId) => {
                     void handleInspectorDeleteWorkLog(workLogId);
@@ -1612,7 +1583,6 @@ export default function AtlasShell() {
             onCreateNode={handleNodeCreate}
             createPending={createPending}
             hasUser={Boolean(user)}
-            rolloutAllowed={rolloutAllowed}
             createError={createError}
             createMessage={createMessage}
             deleteError={deleteError}
@@ -2103,7 +2073,7 @@ export default function AtlasShell() {
                 className="primary-button"
                 type="button"
                 onClick={handleTimerStop}
-                disabled={timerPending || !user || !rolloutAllowed}
+                disabled={timerPending || !user}
               >
                 {timerPending ? "Saving..." : "Stop timer + save log"}
               </button>

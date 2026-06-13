@@ -48,7 +48,7 @@ def test_postgres_engine_allows_opt_in_queue_pool(monkeypatch):
         engine.dispose()
 
 
-def test_postgres_engine_reads_null_pool_flag_from_streamlit_secrets(monkeypatch):
+def test_postgres_engine_reads_null_pool_flag_from_config(monkeypatch):
     captured = {}
 
     def _fake_create_engine(url, **kwargs):
@@ -100,7 +100,7 @@ def test_postgres_queue_pool_invalid_values_fallback_to_safe_bounds(monkeypatch)
         engine.dispose()
 
 
-def test_database_validation_flags_can_come_from_streamlit_secrets(monkeypatch):
+def test_database_validation_flags_can_come_from_config(monkeypatch):
     monkeypatch.delenv("OKR_ALLOW_NON_SUPABASE_DB", raising=False)
     monkeypatch.setattr(
         database,

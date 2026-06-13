@@ -6,7 +6,7 @@ Overview
 
 - The app reads configuration from, in order of precedence:
   1. Environment variables
-  2. Streamlit secrets (mounted at streamlit_app/.streamlit/secrets.toml)
+  2. TOML config files (`deploy/secrets/secrets.toml`)
 
 Database
 
@@ -15,7 +15,7 @@ Database
   - DATABASE_URL (optional alias)
   - Example:
     - `postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
-- Streamlit secrets:
+- TOML config:
   - root keys:
     - `OKR_DATABASE_URL` (supported)
     - `DATABASE_URL` (supported alias)
@@ -45,7 +45,7 @@ Database
   - Do not use `postgres` as runtime app user.
   - Treat this as a release gate even if startup guards are temporarily relaxed.
 - Pooling controls:
-  - These flags are resolved via standard runtime config precedence (env first, then Streamlit secrets).
+  - These flags are resolved via standard runtime config precedence (env first, then TOML config).
   - `OKR_DB_USE_NULL_POOL` (default: `1`, recommended for Supabase PgBouncer transaction mode)
   - If `OKR_DB_USE_NULL_POOL=0`, app-side SQLAlchemy pool sizing controls apply:
     - `OKR_DB_POOL_SIZE` (default: `5`)
@@ -53,40 +53,16 @@ Database
     - `OKR_DB_POOL_TIMEOUT` (default: `30`)
     - `OKR_DB_POOL_RECYCLE` (default: `1800`)
 
-Streamlit server
+SPA server
 
 - Environment variables:
-  - PORT (default 8501)
-  - BASE_URL_PATH (empty for subdomain; set to e.g. okr for subpath hosting)
-- Streamlit config: [streamlit_app/.streamlit/config.toml](../streamlit_app/.streamlit/config.toml)
-  - server.headless=true, enableCORS=true, enableXsrfProtection=true
-  - browser.gatherUsageStats=false
-
-Streamlit rerun observability
-
-- Runtime rerun monitor controls:
-  - `OKR_RERUN_MONITOR_WINDOW_SECONDS` (default: `60`, minimum: `5`)
-  - `OKR_RERUN_WARN_THRESHOLD` (default: `40`, minimum: `5`)
-- Behavior:
-  - Runtime tracks rerun counts per sliding window and stores telemetry in session state.
-  - When threshold is exceeded, server logs a warning with current rerun pressure.
-  - Regression tests enforce warning budget behavior (warn-once-per-window + reset semantics) in `tests/test_app_entry_helpers.py`.
-
-Atlas session-state governance
-
-- Canonical Atlas keys are centralized in `streamlit_app/src/ui/session_keys.py`.
-  - Governed fixed-key bundle: `ATLAS_FIXED_SESSION_KEYS`.
-  - Dynamic draft namespace: `ATLAS_STOP_SUMMARY_DRAFT_PREFIX`.
-- Lifecycle policy contract:
-  - `ATLAS_KEY_LIFECYCLE_POLICY` documents owner/set/reset/persistence per Atlas key.
-  - `validate_atlas_key_lifecycle_policy()` enforces policy completeness and structure.
-- Audit gates:
-  - `tests/test_session_keys_policy.py` blocks raw Atlas key literals outside `session_keys.py`.
-  - CI includes `Session-State Governance Gate` in `.github/workflows/ci.yml`.
+  - BFF_PORT (default 3001)
+  - SPA Web runs on port 3000
+  - CI includes quality gates in `.github/workflows/ci.yml`.
 
 PDF generation
 
-- Streamlit secrets keys:
+- Config keys:
   - PDF_METHOD: `pdfshift` or `chromium`
   - pdfshift_api_key: required only when `PDF_METHOD=pdfshift`
   - chromium_executable_path: optional executable path when `PDF_METHOD=chromium`
@@ -103,7 +79,7 @@ PDF generation
 
 AI integration
 
-- Streamlit secrets keys:
+- Config keys:
   - AI_PROVIDER: `gemini` (default) or `openai_compatible`
   - ALLOW_EXTERNAL_AI: policy gate (`true`/`false`); default `false`
   - GEMINI_API_KEY: required when `AI_PROVIDER=gemini`
@@ -132,6 +108,11 @@ AI integration
   - `AI_PROVIDER=openai_compatible` uses Chat Completions-style APIs, so self-hosted models can be used without Gemini.
   - Runtime preflight reports this policy as an informational status.
 
+SPA AI sync controls
+
+- `NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA` (default: `100`): maximum KR point change allowed per AI sync run.
+- `NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE` (default: `true`): allow AI to lower KR progress values. Set to `false` to only allow increases.
+
 Runtime preflight policy
 
 - Strict mode default:
@@ -150,12 +131,10 @@ Backend API (recommended for scale)
 
 - Deployment intent:
   - Corporate/self-hosted production should run a separate backend server tier (`backend-api` + `backend-worker`).
-  - `OKR_BACKEND_API_URL="auto"` embedded mode is intended for Streamlit Cloud compatibility.
-- Streamlit-to-backend routing:
-  - Source precedence: environment variables first, then Streamlit secrets (root key or `[app]` section).
+- Frontend-to-backend routing:
+  - Source precedence: environment variables first, then TOML config files.
   - `OKR_BACKEND_API_URL`:
     - Example: `http://backend-api:8100`
-    - **`"auto"`**: Special keyword to automatically launch an embedded backend subprocess (used on Streamlit Cloud).
   - `OKR_BACKEND_SERVICE_TOKEN`: Shared token for service-to-service auth.
   - `OKR_BACKEND_SIGNING_SECRET`: Shared HMAC signing secret for signed internal requests.
   - `OKR_BACKEND_DEFAULT_ACTOR`: Fallback actor for system-initiated AI requests; default: `system`.
@@ -164,7 +143,7 @@ Backend API (recommended for scale)
   - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (required secure value: `false`): retained as deployment-policy gate; runtime executes fail-closed.
   - `OKR_ALLOW_LOCAL_READ_FALLBACK` (required secure value: `false`): retained as deployment-policy gate; runtime executes fail-closed.
   - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy key): keep `false`; runtime local fallback is not used.
-  - `OKR_ENABLE_DIRECT_DB_RESTORE` (default: `false`): Direct Streamlit DB restore is disabled by default and blocked in production.
+  - `OKR_ENABLE_DIRECT_DB_RESTORE` (default: `false`): Direct DB restore is disabled by default and blocked in production.
 - Backend API runtime:
   - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
   - `OKR_BACKEND_PORT` (default: `8100`)
@@ -206,19 +185,13 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
   - If proxied backend transport fails, runtime behavior is fail-closed (local read/mutation fallback execution is disabled).
-  - Direct DB restore in Streamlit Admin is opt-in (`OKR_ENABLE_DIRECT_DB_RESTORE=true`) and intended for controlled non-production scenarios only.
-  - **Embedded Mode (Cloud)**:
-    - Automatically active when `OKR_BACKEND_API_URL="auto"` or running on Streamlit Cloud with an empty backend URL.
-    - Launches `backend_app.run_api` with a **60-second health check timeout**.
-    - Redirects `stderr` to `/tmp/okr_backend.log`; tail of this log is printed on startup failure for debugging.
-    - Reinforces `PYTHONPATH` to include both repo root and `streamlit_app` directory to ensure `src` module resolution.
+  - Direct DB restore is opt-in (`OKR_ENABLE_DIRECT_DB_RESTORE=true`) and intended for controlled non-production scenarios only.
   - In the provided Docker Compose profile, backend API is bound to `127.0.0.1` by default for reduced exposure.
 
 Recommended deployment profiles
 
-- Streamlit Cloud:
-  - MVP/demo only (not recommended for confidential internal company data)
-  - PDF_METHOD=pdfshift (recommended on hosted environments)
+- Docker Compose (local dev):
+  - PDF_METHOD=pdfshift (recommended)
   - AI_PROVIDER=gemini (or your approved hosted gateway via `openai_compatible`)
   - pdfshift_api_key must be present
   - OKR_STRICT_RUNTIME_PREFLIGHT defaults to strict (recommended)
@@ -228,7 +201,7 @@ Recommended deployment profiles
   - If `PDF_METHOD=chromium`: install Playwright and Chromium runtime
   - AI_PROVIDER=openai_compatible for local/self-hosted LLM routing
   - If openai_compatible: set AI_BASE_URL and AI_MODEL
-  - Deploy `okr`, `backend-api`, and `backend-worker` services together
+  - Deploy `spa-web`, `spa-bff`, `backend-api`, and `backend-worker` services together
   - OKR_STRICT_RUNTIME_PREFLIGHT defaults to strict (recommended)
   - Recommended for confidential internal company data.
 
@@ -238,8 +211,8 @@ Release governance (CI)
   - Docs HQ link check
   - Deploy config template gate
   - Quality baseline expiry gate (`scripts/check_quality_gate_baseline.py`)
-  - Repo-critical lint gate (Ruff `E9,F63,F7,F82` across `streamlit_app/src`, `backend_app`, `scripts`, `tests`)
-  - Expanded mypy gate (`streamlit_app/src/utils`, `scripts`, runtime-core modules)
+  - Repo-critical lint gate (Ruff `E9,F63,F7,F82` across `backend_app`, `scripts`, `tests`)
+  - Expanded mypy gate (`scripts`, `backend_app` runtime-core modules)
   - RBAC regression gate
   - Session-state governance gate
   - Full pytest suite
@@ -266,7 +239,7 @@ Admin bootstrap
     - production: `OKR_BOOTSTRAP_ADMIN_PASSWORD` (required; minimum 12 chars including upper/lowercase, number, symbol)
     - non-production: defaults to `admin` for local/dev convenience
 - The initial admin is forced to change password on first login.
-- `OKR_BOOTSTRAP_ADMIN_PASSWORD` is read from environment variables at runtime (not Streamlit secrets).
+- `OKR_BOOTSTRAP_ADMIN_PASSWORD` is read from environment variables at runtime.
 
 Authentication policy controls
 
@@ -281,9 +254,8 @@ Authentication policy controls
 
 Logging & health
 
-- HTTP health check: GET /
-- Logs: Streamlit stdout (container logs or service logs)
+- HTTP health check: GET /healthz
+- Logs: backend-api stdout/stderr (container logs or service logs)
 - Audit trail:
   - Primary: `audit_event` table (`actor`, `action`, `entity`, `result`, `details_json`, `created_at`, correlation/request ids).
-  - Fallback: `streamlit_app/logs/audit.log` when DB sink is temporarily unavailable.
   - Worker-driven retention: `OKR_BACKEND_AUDIT_RETENTION_DAYS` (default `365`).

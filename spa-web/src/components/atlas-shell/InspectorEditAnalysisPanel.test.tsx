@@ -15,15 +15,18 @@ describe("InspectorEditAnalysisPanel", () => {
 
     render(
       <InspectorEditAnalysisPanel
-        inspectDraft={{ title: "T", description: "D", progress: "10" }}
+        inspectDraft={{ title: "T", description: "D", progress: "10", deadline: "2026-12-31" }}
         onInspectDraftChange={onInspectDraftChange}
         onInspectorSave={onInspectorSave}
         inspectPending={false}
         hasUser
-        rolloutAllowed
+
         onNodeDelete={onNodeDelete}
         deletePending={false}
+        deleteError=""
+        deleteMessage=""
         selectedTypeLabel="task"
+        selectedNodeType="TASK"
         inspectError=""
         inspectMessage=""
         showAiAnalysis={false}
@@ -37,11 +40,9 @@ describe("InspectorEditAnalysisPanel", () => {
 
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "New title" } });
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "New description" } });
-    fireEvent.change(screen.getByLabelText("Progress (0-100)"), { target: { value: "45" } });
 
     expect(onInspectDraftChange).toHaveBeenCalledWith({ title: "New title" });
     expect(onInspectDraftChange).toHaveBeenCalledWith({ description: "New description" });
-    expect(onInspectDraftChange).toHaveBeenCalledWith({ progress: "45" });
 
     await user.click(screen.getByRole("button", { name: "Edit" }));
     await user.click(screen.getByRole("button", { name: "Delete task" }));
@@ -53,15 +54,18 @@ describe("InspectorEditAnalysisPanel", () => {
   it("disables mutation buttons when pending", () => {
     render(
       <InspectorEditAnalysisPanel
-        inspectDraft={{ title: "T", description: "D", progress: "10" }}
+        inspectDraft={{ title: "T", description: "D", progress: "10", deadline: "" }}
         onInspectDraftChange={vi.fn()}
         onInspectorSave={vi.fn()}
         inspectPending
         hasUser
-        rolloutAllowed
+
         onNodeDelete={vi.fn()}
         deletePending
+        deleteError=""
+        deleteMessage=""
         selectedTypeLabel="objective"
+        selectedNodeType="OBJECTIVE"
         inspectError="Update failed"
         inspectMessage="Saved"
         showAiAnalysis={false}
@@ -85,15 +89,18 @@ describe("InspectorEditAnalysisPanel", () => {
 
     render(
       <InspectorEditAnalysisPanel
-        inspectDraft={{ title: "T", description: "D", progress: "10" }}
+        inspectDraft={{ title: "T", description: "D", progress: "10", deadline: "" }}
         onInspectDraftChange={vi.fn()}
         onInspectorSave={vi.fn()}
         inspectPending={false}
         hasUser
-        rolloutAllowed
+
         onNodeDelete={vi.fn()}
         deletePending={false}
+        deleteError=""
+        deleteMessage=""
         selectedTypeLabel="key result"
+        selectedNodeType="KEY_RESULT"
         inspectError=""
         inspectMessage=""
         showAiAnalysis

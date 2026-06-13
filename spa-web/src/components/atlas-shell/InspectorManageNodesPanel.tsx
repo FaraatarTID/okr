@@ -30,7 +30,6 @@ type InspectorManageNodesPanelProps = {
   onCreateNode: () => void;
   createPending: boolean;
   hasUser: boolean;
-  rolloutAllowed: boolean;
   createError: string;
   createMessage: string;
   deleteError: string;
@@ -47,7 +46,6 @@ export default function InspectorManageNodesPanel({
   onCreateNode,
   createPending,
   hasUser,
-  rolloutAllowed,
   createError,
   createMessage,
   deleteError,
@@ -70,9 +68,24 @@ export default function InspectorManageNodesPanel({
         Create Goal/Objective/Key Result/Task nodes.
       </p>
 
-      <p style={{ margin: "0.36rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
-        Next Type (auto): <strong>{createTypeLabel(createDraft.createType)}</strong>
-      </p>
+      <label
+        htmlFor="create-type"
+        style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
+      >
+        Create Type
+      </label>
+      <select
+        id="create-type"
+        className="input"
+        value={createDraft.createType}
+        onChange={(event) => onCreateDraftChange({ createType: event.target.value as CreateTypeView })}
+        style={{ marginTop: "0.2rem" }}
+      >
+        <option value="goal">Goal</option>
+        <option value="objective">Objective</option>
+        <option value="key_result">Key Result</option>
+        <option value="task">Task</option>
+      </select>
 
       <label
         htmlFor="create-title"
@@ -221,7 +234,7 @@ export default function InspectorManageNodesPanel({
           className="primary-button"
           type="button"
           onClick={onCreateNode}
-          disabled={createPending || !hasUser || !rolloutAllowed || !canCreateForContext}
+          disabled={createPending || !hasUser || !canCreateForContext}
         >
           {createPending ? "Creating..." : `Create ${createTypeLabel(createDraft.createType)}`}
         </button>
