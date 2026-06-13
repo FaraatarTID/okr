@@ -38,8 +38,12 @@ def _request(url: str, *, api_key: str | None, timeout: float) -> tuple[bool, in
         headers["apikey"] = api_key
         headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(url, method="GET", headers=headers)
+    import ssl
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
             code = int(resp.status)
             body = resp.read(512).decode("utf-8", errors="replace")
             return True, code, body

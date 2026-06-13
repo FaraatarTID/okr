@@ -73,8 +73,12 @@ def _request_json_with_method(
     if prefer_representation:
         headers["Prefer"] = "return=representation"
     req = urllib.request.Request(url, method=str(method or "GET").upper(), headers=headers, data=payload)
+    import ssl
+    ssl_ctx = ssl.create_default_context()
+    ssl_ctx.check_hostname = False
+    ssl_ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=ssl_ctx) as resp:
             body = resp.read().decode("utf-8", errors="replace")
             payload = json.loads(body) if body.strip() else None
             return int(resp.status), payload
