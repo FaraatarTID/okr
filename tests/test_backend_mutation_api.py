@@ -721,7 +721,7 @@ def test_create_user_endpoint_parses_role_and_team(monkeypatch):
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": "secret123",
+            "password": "TestPass1__!",
             "role": "manager",
             "display_name": "Member One",
             "manager_id": 2,
@@ -749,7 +749,7 @@ def test_create_user_endpoint_rejects_weak_password_when_strict_policy_enabled(
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": "weakpass",
+            "password": "tooshort",
             "role": "member",
         },
     )

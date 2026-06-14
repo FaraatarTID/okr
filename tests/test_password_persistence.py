@@ -40,7 +40,7 @@ def test_admin_password_change_persists_for_next_login(isolated_db):
 
     assert authenticate_user_detailed("admin", "admin")["success"] is True
 
-    new_password = "AdminPass123!"
+    new_password = "TestPass1__!"
     assert reset_user_password(admin.id, new_password) is True
 
     old_auth = authenticate_user_detailed("admin", "admin")
@@ -68,7 +68,7 @@ def test_ensure_admin_exists_does_not_restore_default_password(isolated_db):
     admin = get_user_by_username("admin")
     assert admin is not None
 
-    new_password = "SuperSafePass456!"
+    new_password = "AnotherTest1__!"
     assert reset_user_password(admin.id, new_password) is True
 
     # Startup guard should not revert a changed admin password.
@@ -147,11 +147,11 @@ def test_ensure_admin_exists_uses_configured_bootstrap_password_in_production(
     from src.crud import authenticate_user_detailed, ensure_admin_exists
 
     monkeypatch.setenv("OKR_ENV", "production")
-    monkeypatch.setenv("OKR_BOOTSTRAP_ADMIN_PASSWORD", "ProdAdmin123!")
+    monkeypatch.setenv("OKR_BOOTSTRAP_ADMIN_PASSWORD", "ProdTest1__!")
 
     assert ensure_admin_exists() is True
     assert authenticate_user_detailed("admin", "admin")["success"] is False
-    assert authenticate_user_detailed("admin", "ProdAdmin123!")["success"] is True
+    assert authenticate_user_detailed("admin", "ProdTest1__!")["success"] is True
 
 
 def test_create_user_rejects_weak_password_when_strict_policy_enabled(
@@ -161,7 +161,7 @@ def test_create_user_rejects_weak_password_when_strict_policy_enabled(
 
     monkeypatch.setenv("OKR_ENFORCE_STRONG_PASSWORD_POLICY", "true")
     with pytest.raises(ValueError):
-        create_user("weak_user", "weakpass")
+        create_user("weak_user", "tooshort")
 
 
 def test_reset_password_rejects_weak_password_when_strict_policy_enabled(
@@ -175,4 +175,4 @@ def test_reset_password_rejects_weak_password_when_strict_policy_enabled(
 
     monkeypatch.setenv("OKR_ENFORCE_STRONG_PASSWORD_POLICY", "true")
     with pytest.raises(ValueError):
-        reset_user_password(admin.id, "weakpass")
+        reset_user_password(admin.id, "tooshort")
