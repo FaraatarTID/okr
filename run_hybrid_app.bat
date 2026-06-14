@@ -6,8 +6,6 @@ cd /d "%~dp0"
 set "COMPOSE_FILE=deploy\docker\docker-compose.yml"
 set "ENV_FILE=deploy\docker\.env"
 set "ENV_TEMPLATE=deploy\docker\.env.example"
-set "SECRETS_FILE=deploy\secrets\secrets.toml"
-set "SECRETS_TEMPLATE=deploy\secrets\secrets.toml.example"
 set "DOCKER_EXE="
 
 echo ==========================================
@@ -76,18 +74,6 @@ if not exist "%ENV_FILE%" (
     exit /b 1
 )
 
-if not exist "%SECRETS_FILE%" (
-    if exist "%SECRETS_TEMPLATE%" (
-        echo [INFO] %SECRETS_FILE% is missing. Creating from template...
-        copy /Y "%SECRETS_TEMPLATE%" "%SECRETS_FILE%" >nul
-        echo [WARN] Review %SECRETS_FILE% and set real runtime values, then rerun this launcher.
-    ) else (
-        echo [ERROR] Missing secrets file and template: %SECRETS_FILE%
-    )
-    pause
-    exit /b 1
-)
-
 echo [4/6] Checking Python for runtime gate...
 where python >nul 2>&1
 if %errorlevel% neq 0 (
@@ -98,7 +84,7 @@ if %errorlevel% neq 0 (
 )
 
 echo [5/6] Running runtime config gate...
-python scripts/check_deploy_config.py --mode runtime --env-file "%ENV_FILE%" --secrets-file "%SECRETS_FILE%"
+python scripts/check_deploy_config.py --mode runtime --env-file "%ENV_FILE%"
 if %errorlevel% neq 0 (
     echo [ERROR] Runtime config gate failed. Fix config values and rerun.
     pause

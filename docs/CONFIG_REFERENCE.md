@@ -4,9 +4,7 @@ Configuration reference
 
 Overview
 
-- The app reads configuration from, in order of precedence:
-  1. Environment variables
-  2. TOML config files (`deploy/secrets/secrets.toml`)
+- The app reads configuration from environment variables.
 
 Database
 
@@ -15,13 +13,6 @@ Database
   - DATABASE_URL (optional alias)
   - Example:
     - `postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require`
-- TOML config:
-  - root keys:
-    - `OKR_DATABASE_URL` (supported)
-    - `DATABASE_URL` (supported alias)
-  - [database]
-    - url: full connection string
-  - See template: [deploy/secrets/secrets.toml.example](../deploy/secrets/secrets.toml.example)
 - Runtime validation behavior:
   - URL must start with `postgresql+psycopg2://` (or `sqlite:///` for local/test only).
   - PostgreSQL URLs must include a host.
@@ -227,9 +218,8 @@ Release governance (CI)
   - GitHub Actions workflow: `.github/workflows/release-runtime-gate.yml` (`workflow_dispatch`)
   - Required repository/environment secrets:
     - `OKR_RUNTIME_ENV_DOTENV` (runtime `.env` content)
-    - `OKR_RUNTIME_SECRETS_TOML` (runtime `secrets.toml` content)
   - Gate command executed by workflow:
-    - `python scripts/check_deploy_config.py --mode runtime --env-file /tmp/okr-runtime-gate/runtime.env --secrets-file /tmp/okr-runtime-gate/runtime.secrets.toml`
+    - `python scripts/check_deploy_config.py --mode runtime --env-file /tmp/okr-runtime-gate/runtime.env`
 
 Admin bootstrap
 

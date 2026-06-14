@@ -13,7 +13,6 @@ import logging
 from functools import lru_cache
 from html import escape as html_escape
 from io import BytesIO
-from pathlib import Path
 from src.services.http_client import post_json_with_retry
 
 # Try importing optional PDFShift dependency.
@@ -52,57 +51,16 @@ def _escape(value):
     return html_escape(str(value), quote=True)
 
 
-@lru_cache(maxsize=1)
-def _load_file_secrets() -> dict:
-    """Best-effort secrets loader for backend/api runtimes."""
-    try:
-        import tomllib
-    except ModuleNotFoundError:
-        return {}
-
-    candidates = []
-    env_path = str(os.getenv("STREAMLIT_SECRETS_PATH", "")).strip()
-    if env_path:
-        candidates.append(Path(env_path))
-
-    repo_root = Path(__file__).resolve().parents[2]
-    candidates.extend(
-        [
-            repo_root / "deploy" / "secrets" / "secrets.toml",
-            Path.cwd() / "deploy" / "secrets" / "secrets.toml",
-            Path.cwd() / "secrets.toml",
-            Path("/app/deploy/secrets/secrets.toml"),
-        ]
-    )
-
-    for candidate in candidates:
-        try:
-            if not candidate.exists():
-                continue
-            with candidate.open("rb") as fh:
-                data = tomllib.load(fh)
-            if isinstance(data, dict):
-                return data
-        except (OSError, ValueError, TypeError):
-            continue
-    return {}
+def _get_env(name: str, default: str = "") -> str:
+    """Read a config value from environment variables only."""
+    return str(os.getenv(name, default)).strip()
 
 
 def _get_secret_value(*keys: str) -> str:
-    key_list = [str(k) for k in keys if str(k).strip()]
-    if not key_list:
-        return ""
-
-    file_secrets = _load_file_secrets()
-    app_cfg = file_secrets.get("app", {}) if isinstance(file_secrets, dict) else {}
-    for key in key_list:
-        value = file_secrets.get(key) if isinstance(file_secrets, dict) else None
+    for key in keys:
+        value = os.getenv(key)
         if value not in (None, ""):
             return str(value).strip()
-        if isinstance(app_cfg, dict):
-            value = app_cfg.get(key)
-            if value not in (None, ""):
-                return str(value).strip()
     return ""
 
 

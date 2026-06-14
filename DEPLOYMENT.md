@@ -53,7 +53,6 @@ Key files used by this guide
 - `deploy/docker/.env.mycompany.example`
 - `deploy/nginx.conf`
 - `deploy/nginx.okr.mycompany.com.conf`
-- `deploy/secrets/secrets.toml.example`
 - `.github/workflows/docker-deploy.yml`
 
 ---
@@ -194,20 +193,10 @@ Notes:
 - In production, set `OKR_BOOTSTRAP_ADMIN_PASSWORD` before first startup (minimum 12 chars including uppercase, lowercase, number, symbol).
 - Keep `OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN` unset/false in production; production runtime ignores fail-open overrides and returns `AUTH_TEMP_UNAVAILABLE` on throttle subsystem errors.
 
-Step 4: Configure optional secrets (PDF/API integrations)
+Step 4: Validate deploy config policy
 
 ```bash
-mkdir -p deploy/secrets
-cp deploy/secrets/secrets.toml.example deploy/secrets/secrets.toml
-```
-
-Then edit `deploy/secrets/secrets.toml` with your real keys if needed.
-Do not commit this file.
-
-Step 5: Validate deploy config policy
-
-```bash
-python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml
+python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env
 ```
 
 Expected:
@@ -456,7 +445,7 @@ Security hardening checklist
 - Block direct public access to port 3000 (SPA) and 3001 (BFF).
 - Keep backend API port (`8100`) private (default bind: `127.0.0.1`).
 - Use signed internal requests (`OKR_BACKEND_SIGNING_SECRET`) and keep enforcement enabled.
-- Keep secrets in `deploy/secrets/secrets.toml` or platform secret manager.
+- Keep secrets in environment variables or platform secret manager.
 - Do not commit secrets to git.
 - Rotate DB/API credentials periodically.
 - Keep TLS certificates valid and auto-renewed.

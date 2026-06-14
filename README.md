@@ -358,7 +358,7 @@ run_hybrid_app_local.bat
 ```
 
 Database URL resolution precedence for the local launcher:
-`OKR_DATABASE_URL` env -> `DATABASE_URL` env -> `deploy/docker/.env` -> `deploy/secrets/secrets.toml`.
+`OKR_DATABASE_URL` env -> `DATABASE_URL` env -> `deploy/docker/.env`.
 
 If startup fails, review local logs under `tmp/local-hybrid-logs/`.
 
@@ -457,14 +457,14 @@ Success check (local):
 Prerequisites:
 
 - Docker Desktop (or Docker Engine + Docker Compose v2 plugin)
-- `deploy/secrets/secrets.toml` is present and configured
+- `deploy/docker/.env` is present and configured
 - Network access for pulling images/packages
 
 Windows PowerShell:
 
 ```powershell
 Copy-Item deploy/docker/.env.example deploy/docker/.env
-python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml
+python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env
 docker compose -f deploy/docker/docker-compose.yml up -d --build
 ```
 
@@ -472,7 +472,7 @@ macOS/Linux bash:
 
 ```bash
 cp deploy/docker/.env.example deploy/docker/.env
-python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml
+python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env
 docker compose -f deploy/docker/docker-compose.yml up -d --build
 ```
 

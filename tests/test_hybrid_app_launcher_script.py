@@ -27,14 +27,12 @@ def test_local_hybrid_launcher_exists_and_starts_backend_bff_spa_without_docker(
 
     assert "OKR Tracker - Hybrid Local Launcher" in payload
     assert "set \"DOCKER_ENV_FILE=deploy\\docker\\.env\"" in payload
-    assert "set \"SECRETS_FILE=deploy\\secrets\\secrets.toml\"" in payload
     assert "Node.js v20+ is required." in payload
     assert "set \"LOG_DIR=%ROOT%tmp\\local-hybrid-logs\"" in payload
     assert "Could not resolve a valid OKR_DATABASE_URL." in payload
     assert ":accept_db_url_if_valid" in payload
     assert "Ignoring DB URL from" in payload
     assert "Using OKR_DATABASE_URL from" in payload
-    assert "tomllib.load" in payload
     assert "set \"ROOT_CLEAN=%ROOT%\"" in payload
     assert "if \"%ROOT_CLEAN:~-1%\"==\"\\\" set \"ROOT_CLEAN=%ROOT_CLEAN:~0,-1%\"" in payload
     assert "set \"SPAWN_CWD=%ROOT_CLEAN%\"" in payload

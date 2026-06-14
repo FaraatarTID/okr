@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import sys
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlparse
@@ -108,29 +107,6 @@ def _parse_dotenv(path: Path) -> dict[str, str]:
     return data
 
 
-def _load_toml(path: Path) -> dict:
-    with path.open("rb") as fh:
-        payload = tomllib.load(fh)
-    if not isinstance(payload, dict):
-        raise ValueError("Top-level TOML payload must be a table/object.")
-    return payload
-
-
-def _secret_value(secrets: dict, *names: str) -> str:
-    for name in names:
-        if name in secrets and secrets[name] is not None:
-            return str(secrets[name]).strip()
-    return ""
-
-
-def _secret_database_url(secrets: dict) -> str:
-    db_section = secrets.get("database", {})
-    if not hasattr(db_section, "get"):
-        return ""
-    value = db_section.get("url")
-    return str(value).strip() if value is not None else ""
-
-
 def _validate_database_url(url: str, report: ValidationReport, *, strict: bool) -> None:
     raw = str(url or "").strip()
     if not raw:
@@ -199,7 +175,6 @@ def _validate_backend_bind_address(value: str, report: ValidationReport) -> None
 def validate(
     *,
     env_file: Path,
-    secrets_file: Path,
     mode: str,
 ) -> ValidationReport:
     report = ValidationReport()
@@ -215,20 +190,6 @@ def validate(
             f"Failed reading env file {_display_path(env_file)}: {exc}"
         )
         return report
-
-    secrets: dict = {}
-    if secrets_file.exists():
-        try:
-            secrets = _load_toml(secrets_file)
-        except Exception as exc:
-            report.errors.append(
-                f"Failed reading TOML file {_display_path(secrets_file)}: {exc}"
-            )
-            return report
-    elif mode == "template":
-        report.errors.append(f"Missing secrets template: {_display_path(secrets_file)}")
-    else:
-        report.warnings.append(f"Secrets file not found: {_display_path(secrets_file)}")
 
     for key in REQUIRED_ENV_KEYS:
         if key not in env:
@@ -286,21 +247,6 @@ def validate(
 
     _validate_backend_bind_address(env.get("OKR_BACKEND_BIND_ADDRESS", ""), report)
 
-    if secrets:
-        secret_pdf_method = _normalize_pdf_method(
-            _secret_value(secrets, "PDF_METHOD", "pdf_method")
-        )
-        if secret_pdf_method and secret_pdf_method not in ALLOWED_PDF_METHODS:
-            report.errors.append(
-                "Secrets PDF method must be one of: "
-                f"{', '.join(sorted(ALLOWED_PDF_METHODS))}; found '{secret_pdf_method}'."
-            )
-
-        if "database" not in secrets:
-            report.errors.append("Missing '[database]' table in secrets TOML.")
-        elif not _secret_database_url(secrets):
-            report.errors.append("Missing 'database.url' value in secrets TOML.")
-
     if mode == "runtime":
         required_runtime_keys = (
             "OKR_DATABASE_URL",
@@ -321,19 +267,13 @@ def validate(
 
         if pdf_method == "pdfshift":
             pdf_env = env.get("PDFSHIFT_API_KEY", "")
-            pdf_secret = _secret_value(secrets, "pdfshift_api_key", "PDFSHIFT_API_KEY")
-            provided_values = [v for v in [pdf_env, pdf_secret] if str(v).strip()]
-            if not provided_values:
+            if not str(pdf_env).strip():
                 report.errors.append(
-                    "PDFShift API key is missing in both env and secrets runtime config."
+                    "PDFSHIFT_API_KEY is missing in env runtime config."
                 )
-            elif all(_looks_placeholder(v) for v in provided_values):
+            elif _looks_placeholder(pdf_env):
                 report.errors.append(
-                    "PDFShift API key appears to be a placeholder in runtime mode."
-                )
-            if secrets and "pdfshift_api_key" not in secrets:
-                report.errors.append(
-                    "Missing 'pdfshift_api_key' in secrets TOML root table."
+                    "PDFSHIFT_API_KEY appears to be a placeholder in runtime mode."
                 )
 
     return report
@@ -350,12 +290,6 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Path to dotenv file (default: deploy/docker/.env.example).",
     )
     parser.add_argument(
-        "--secrets-file",
-        type=Path,
-        default=ROOT / "deploy" / "secrets" / "secrets.toml.example",
-        help="Path to runtime secrets TOML file.",
-    )
-    parser.add_argument(
         "--mode",
         choices=("template", "runtime"),
         default="template",
@@ -368,7 +302,6 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv or sys.argv[1:])
     report = validate(
         env_file=args.env_file.resolve(),
-        secrets_file=args.secrets_file.resolve(),
         mode=args.mode,
     )
 

@@ -20,7 +20,6 @@ jobs:
       - name: Materialize Runtime Config
         env:
           OKR_RUNTIME_ENV_DOTENV: ${{ secrets.OKR_RUNTIME_ENV_DOTENV }}
-          OKR_RUNTIME_SECRETS_TOML: ${{ secrets.OKR_RUNTIME_SECRETS_TOML }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/okr-runtime-gate
@@ -30,17 +29,10 @@ jobs:
             exit 1
           fi
 
-          if [ -z "${OKR_RUNTIME_SECRETS_TOML:-}" ]; then
-            echo "Missing required secret: OKR_RUNTIME_SECRETS_TOML"
-            exit 1
-          fi
-
           printf "%s" "${OKR_RUNTIME_ENV_DOTENV}" > /tmp/okr-runtime-gate/runtime.env
-          printf "%s" "${OKR_RUNTIME_SECRETS_TOML}" > /tmp/okr-runtime-gate/runtime.secrets.toml
 
       - name: Runtime Deploy Config Gate
         run: |
           python scripts/check_deploy_config.py \
             --mode runtime \
-            --env-file /tmp/okr-runtime-gate/runtime.env \
-            --secrets-file /tmp/okr-runtime-gate/runtime.secrets.toml
+            --env-file /tmp/okr-runtime-gate/runtime.env

@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
-from src.config_runtime import get_bool_config, get_config_value
+from src.config_runtime import get_bool_config
 
 logger = logging.getLogger(__name__)
 
@@ -30,74 +30,13 @@ def _get_database_url() -> str:
     """Resolve the database URL with the following precedence:
     1. Environment variable OKR_DATABASE_URL
     2. Environment variable DATABASE_URL
-    3. Runtime TOML config [database][url]
     """
-    # 1/2: Environment
     env_url = os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL")
     if env_url:
         return str(env_url).strip()
 
-    configured_url = str(get_config_value("OKR_DATABASE_URL", "")).strip()
-    if configured_url:
-        return configured_url
-    configured_url = str(get_config_value("DATABASE_URL", "")).strip()
-    if configured_url:
-        return configured_url
-
-    try:
-        import tomllib
-
-        repo_root = os.path.dirname(os.path.dirname(__file__))
-        explicit = str(
-            os.getenv("OKR_SECRETS_FILE", os.getenv("OKR_CONFIG_FILE", ""))
-        ).strip()
-        candidate_paths = []
-        if explicit:
-            candidate_paths.append(explicit)
-        candidate_paths.extend(
-            [
-                os.path.join(repo_root, "deploy", "secrets", "secrets.toml"),
-                os.path.join(os.getcwd(), "deploy", "secrets", "secrets.toml"),
-                os.path.join(os.getcwd(), "secrets.toml"),
-            ]
-        )
-
-        seen_paths: set[str] = set()
-        for candidate in candidate_paths:
-            normalized = os.path.abspath(str(candidate))
-            if normalized in seen_paths or not os.path.exists(normalized):
-                continue
-            seen_paths.add(normalized)
-            with open(normalized, "rb") as fh:
-                payload = tomllib.load(fh)
-            if not isinstance(payload, Mapping):
-                continue
-
-            for key in ("OKR_DATABASE_URL", "DATABASE_URL"):
-                value = payload.get(key)
-                if value:
-                    return str(value).strip()
-
-            db_section = payload.get("database")
-            if isinstance(db_section, Mapping):
-                if db_section.get("url"):
-                    return str(db_section["url"]).strip()
-                # Build URL from parts if provided
-                driver = db_section.get("driver", "postgresql+psycopg2")
-                user = db_section.get("user")
-                password = db_section.get("password")
-                host = db_section.get("host")
-                port = db_section.get("port")
-                name = db_section.get("name")
-                if user and password and host and name:
-                    port_part = f":{port}" if port else ""
-                    return f"{driver}://{user}:{password}@{host}{port_part}/{name}"
-    except Exception as exc:
-        logger.debug("TOML config unavailable while resolving database URL: %s", exc)
-
     raise RuntimeError(
-        "Database URL is required. Set OKR_DATABASE_URL, DATABASE_URL, or "
-        "deploy/secrets/secrets.toml [database].url."
+        "Database URL is required. Set OKR_DATABASE_URL or DATABASE_URL environment variable."
     )
 
 

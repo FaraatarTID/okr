@@ -7,7 +7,6 @@ Documentation HQ: [README](../README.md)
 ## اولویت خواندن تنظیمات
 
 1. Environment variables
-2. TOML config files (`deploy/secrets/secrets.toml`)
 
 ## دیتابیس
 

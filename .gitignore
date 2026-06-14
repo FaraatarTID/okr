@@ -9,6 +9,9 @@ venv/
 env/
 .env
 
+# Secrets
+deploy/secrets/secrets.toml
+
 # Data
 *.db
 *.sqlite

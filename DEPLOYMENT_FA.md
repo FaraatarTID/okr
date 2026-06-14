@@ -53,17 +53,10 @@ cp deploy/docker/.env.example deploy/docker/.env
 cp deploy/docker/.env.mycompany.example deploy/docker/.env
 ```
 
-4. تنظیم secrets اختیاری
+4. اجرای گیت پیکربندی قبل از startup
 
 ```bash
-mkdir -p deploy/secrets
-cp deploy/secrets/secrets.toml.example deploy/secrets/secrets.toml
-```
-
-5. اجرای گیت پیکربندی قبل از startup
-
-```bash
-python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env --secrets-file deploy/secrets/secrets.toml
+python scripts/check_deploy_config.py --mode runtime --env-file deploy/docker/.env
 ```
 
 باید بدون `ERROR` تمام شود.

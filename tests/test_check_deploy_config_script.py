@@ -9,7 +9,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_deploy_config.
 
 
 def _run_checker(
-    env_file: Path, secrets_file: Path, mode: str
+    env_file: Path, mode: str
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
@@ -17,8 +17,6 @@ def _run_checker(
             str(SCRIPT),
             "--env-file",
             str(env_file),
-            "--secrets-file",
-            str(secrets_file),
             "--mode",
             mode,
         ],
@@ -84,29 +82,11 @@ def _write_env(
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
-def _write_secrets(path: Path) -> None:
-    path.write_text(
-        "\n".join(
-            [
-                'pdfshift_api_key = ""',
-                'PDF_METHOD = "pdfshift"',
-                "",
-                "[database]",
-                'url = "postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"',
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-
 def test_template_mode_accepts_examples_with_secure_defaults(tmp_path: Path):
     env_file = tmp_path / ".env.example"
-    secrets_file = tmp_path / "secrets.toml.example"
     _write_env(env_file, placeholder_values=True)
-    _write_secrets(secrets_file)
 
-    result = _run_checker(env_file, secrets_file, mode="template")
+    result = _run_checker(env_file, mode="template")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Deploy config check passed (mode=template)" in result.stdout
@@ -114,11 +94,9 @@ def test_template_mode_accepts_examples_with_secure_defaults(tmp_path: Path):
 
 def test_template_mode_fails_when_required_key_is_missing(tmp_path: Path):
     env_file = tmp_path / ".env.example"
-    secrets_file = tmp_path / "secrets.toml.example"
     _write_env(env_file, placeholder_values=True, include_throttle_key=False)
-    _write_secrets(secrets_file)
 
-    result = _run_checker(env_file, secrets_file, mode="template")
+    result = _run_checker(env_file, mode="template")
 
     assert result.returncode == 1
     assert "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN" in result.stdout
@@ -126,11 +104,9 @@ def test_template_mode_fails_when_required_key_is_missing(tmp_path: Path):
 
 def test_runtime_mode_rejects_placeholder_values(tmp_path: Path):
     env_file = tmp_path / ".env"
-    secrets_file = tmp_path / "secrets.toml"
     _write_env(env_file, placeholder_values=True)
-    _write_secrets(secrets_file)
 
-    result = _run_checker(env_file, secrets_file, mode="runtime")
+    result = _run_checker(env_file, mode="runtime")
 
     assert result.returncode == 1
     assert "appears to be a placeholder" in result.stdout
@@ -138,11 +114,9 @@ def test_runtime_mode_rejects_placeholder_values(tmp_path: Path):
 
 def test_runtime_mode_passes_with_non_placeholder_values(tmp_path: Path):
     env_file = tmp_path / ".env"
-    secrets_file = tmp_path / "secrets.toml"
     _write_env(env_file, placeholder_values=False)
-    _write_secrets(secrets_file)
 
-    result = _run_checker(env_file, secrets_file, mode="runtime")
+    result = _run_checker(env_file, mode="runtime")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Deploy config check passed (mode=runtime)" in result.stdout
@@ -150,16 +124,14 @@ def test_runtime_mode_passes_with_non_placeholder_values(tmp_path: Path):
 
 def test_runtime_mode_rejects_redis_backend_without_redis_url(tmp_path: Path):
     env_file = tmp_path / ".env"
-    secrets_file = tmp_path / "secrets.toml"
     _write_env(
         env_file,
         placeholder_values=False,
         security_state_backend="redis",
         security_state_redis_url="",
     )
-    _write_secrets(secrets_file)
 
-    result = _run_checker(env_file, secrets_file, mode="runtime")
+    result = _run_checker(env_file, mode="runtime")
 
     assert result.returncode == 1
     assert "OKR_BACKEND_SECURITY_STATE_REDIS_URL is required" in result.stdout
@@ -167,16 +139,14 @@ def test_runtime_mode_rejects_redis_backend_without_redis_url(tmp_path: Path):
 
 def test_runtime_mode_accepts_redis_backend_with_valid_redis_url(tmp_path: Path):
     env_file = tmp_path / ".env"
-    secrets_file = tmp_path / "secrets.toml"
     _write_env(
         env_file,
         placeholder_values=False,
         security_state_backend="redis",
         security_state_redis_url="redis://redis.internal:6379/0",
     )
-    _write_secrets(secrets_file)
 
-    result = _run_checker(env_file, secrets_file, mode="runtime")
+    result = _run_checker(env_file, mode="runtime")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Deploy config check passed (mode=runtime)" in result.stdout
@@ -184,13 +154,11 @@ def test_runtime_mode_accepts_redis_backend_with_valid_redis_url(tmp_path: Path)
 
 def test_runtime_mode_accepts_chromium_without_pdfshift_key(tmp_path: Path):
     env_file = tmp_path / ".env"
-    secrets_file = tmp_path / "secrets.toml"
     _write_env(
         env_file,
         placeholder_values=False,
         pdf_method="chromium",
     )
-    _write_secrets(secrets_file)
 
     lines = env_file.read_text(encoding="utf-8").splitlines()
     lines = [
@@ -199,7 +167,7 @@ def test_runtime_mode_accepts_chromium_without_pdfshift_key(tmp_path: Path):
     ]
     env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    result = _run_checker(env_file, secrets_file, mode="runtime")
+    result = _run_checker(env_file, mode="runtime")
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Deploy config check passed (mode=runtime)" in result.stdout
@@ -207,9 +175,7 @@ def test_runtime_mode_accepts_chromium_without_pdfshift_key(tmp_path: Path):
 
 def test_template_mode_rejects_disabled_request_signing(tmp_path: Path):
     env_file = tmp_path / ".env.example"
-    secrets_file = tmp_path / "secrets.toml.example"
     _write_env(env_file, placeholder_values=True)
-    _write_secrets(secrets_file)
 
     lines = env_file.read_text(encoding="utf-8").splitlines()
     lines = [
@@ -220,7 +186,7 @@ def test_template_mode_rejects_disabled_request_signing(tmp_path: Path):
     ]
     env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    result = _run_checker(env_file, secrets_file, mode="template")
+    result = _run_checker(env_file, mode="template")
 
     assert result.returncode == 1
     assert "OKR_BACKEND_ENFORCE_REQUEST_SIGNING" in result.stdout
@@ -228,9 +194,7 @@ def test_template_mode_rejects_disabled_request_signing(tmp_path: Path):
 
 def test_template_mode_rejects_disabled_backend_read_proxy(tmp_path: Path):
     env_file = tmp_path / ".env.example"
-    secrets_file = tmp_path / "secrets.toml.example"
     _write_env(env_file, placeholder_values=True)
-    _write_secrets(secrets_file)
 
     lines = env_file.read_text(encoding="utf-8").splitlines()
     lines = [
@@ -241,7 +205,7 @@ def test_template_mode_rejects_disabled_backend_read_proxy(tmp_path: Path):
     ]
     env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    result = _run_checker(env_file, secrets_file, mode="template")
+    result = _run_checker(env_file, mode="template")
 
     assert result.returncode == 1
     assert "OKR_BACKEND_PROXY_READS" in result.stdout
@@ -249,15 +213,13 @@ def test_template_mode_rejects_disabled_backend_read_proxy(tmp_path: Path):
 
 def test_runtime_mode_rejects_non_loopback_backend_bind_address(tmp_path: Path):
     env_file = tmp_path / ".env"
-    secrets_file = tmp_path / "secrets.toml"
     _write_env(
         env_file,
         placeholder_values=False,
         backend_bind_address="0.0.0.0",
     )
-    _write_secrets(secrets_file)
 
-    result = _run_checker(env_file, secrets_file, mode="runtime")
+    result = _run_checker(env_file, mode="runtime")
 
     assert result.returncode == 1
     assert "OKR_BACKEND_BIND_ADDRESS" in result.stdout

@@ -60,7 +60,6 @@ def test_runtime_status_openai_provider_missing_required_fields(monkeypatch):
     _clear_ai_env(monkeypatch)
     monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
     monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
-    # Prevent falling back to active secrets.toml values during testing
     monkeypatch.setattr(
         ai_provider,
         "get_config_value",

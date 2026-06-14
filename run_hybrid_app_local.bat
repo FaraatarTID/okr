@@ -6,7 +6,6 @@ set "ROOT=%~dp0"
 set "ROOT_CLEAN=%ROOT%"
 if "%ROOT_CLEAN:~-1%"=="\" set "ROOT_CLEAN=%ROOT_CLEAN:~0,-1%"
 set "DOCKER_ENV_FILE=deploy\docker\.env"
-set "SECRETS_FILE=deploy\secrets\secrets.toml"
 set "VENV_DIR=.venv"
 set "PYEXE=%ROOT%%VENV_DIR%\Scripts\python.exe"
 set "POWERSHELL_EXE=powershell"
@@ -81,10 +80,6 @@ if not defined OKR_DATABASE_URL if exist "%DOCKER_ENV_FILE%" for /f "usebackq eo
 if not defined OKR_DATABASE_URL if exist "%DOCKER_ENV_FILE%" for /f "usebackq eol=# tokens=1,* delims==" %%A in ("%DOCKER_ENV_FILE%") do if not defined DB_URL_CANDIDATE if not "%%B"=="" if /I "%%A"=="DATABASE_URL" set "DB_URL_CANDIDATE=%%~B"
 if not defined OKR_DATABASE_URL if defined DB_URL_CANDIDATE call :accept_db_url_if_valid "%DB_URL_CANDIDATE%" "%DOCKER_ENV_FILE%"
 
-set "DB_URL_CANDIDATE="
-if not defined OKR_DATABASE_URL if exist "%SECRETS_FILE%" set "OKR_SECRETS_FILE=%SECRETS_FILE%"
-if not defined OKR_DATABASE_URL if exist "%SECRETS_FILE%" for /f "usebackq delims=" %%U in (`python -c "import os,pathlib,tomllib; p=pathlib.Path(os.environ.get('OKR_SECRETS_FILE','')); d=tomllib.load(p.open('rb')) if p.exists() else {}; db=d.get('OKR_DATABASE_URL') or d.get('DATABASE_URL') or ((d.get('database') or {}).get('url')) or ''; print(str(db).strip())" 2^>nul`) do set "DB_URL_CANDIDATE=%%U"
-if not defined OKR_DATABASE_URL if defined DB_URL_CANDIDATE call :accept_db_url_if_valid "%DB_URL_CANDIDATE%" "%SECRETS_FILE%"
 call :resolve_supabase_https_env
 if not defined OKR_DATA_ACCESS_MODE if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" OKR_DATA_ACCESS_MODE 2^>nul`) do set "OKR_DATA_ACCESS_MODE=%%V"
 if not defined OKR_DATA_ACCESS_MODE set "OKR_DATA_ACCESS_MODE=database"
@@ -101,7 +96,7 @@ set "NEXT_PUBLIC_OKR_DATA_ACCESS_MODE=%OKR_DATA_ACCESS_MODE%"
 if not defined OKR_DATABASE_URL (
     if /I "%OKR_DATA_ACCESS_MODE%"=="supabase_api" goto :skip_db_url_required_for_supabase_api
     echo [ERROR] Could not resolve a valid OKR_DATABASE_URL.
-    echo Checked env vars, %DOCKER_ENV_FILE%, and %SECRETS_FILE%.
+    echo Checked env vars and %DOCKER_ENV_FILE%.
     pause
     exit /b 1
 )
