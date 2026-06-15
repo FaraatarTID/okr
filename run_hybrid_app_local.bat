@@ -205,6 +205,7 @@ echo [6/7] Setting runtime environment...
 set "PYTHONPATH=%ROOT%;%PYTHONPATH%"
 set "OKR_ENV=development"
 set "OKR_ALLOW_NON_SUPABASE_DB=true"
+set "OKR_RUNTIME_ROLE=backend"
 set "OKR_BACKEND_HOST=127.0.0.1"
 set "OKR_BACKEND_PORT=8100"
 set "OKR_BACKEND_API_URL=http://127.0.0.1:8100"

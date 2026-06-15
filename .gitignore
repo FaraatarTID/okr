@@ -48,3 +48,4 @@ log/
 # Android build outputs
 android/**/build/
 stash_backup_stash0.patch
+*.exe

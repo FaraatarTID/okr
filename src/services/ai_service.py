@@ -6,6 +6,7 @@ Context-aware AI analysis with aggregated data preprocessing.
 import os
 import json
 import logging
+import types
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from dotenv import load_dotenv
@@ -72,17 +73,187 @@ def analyze_node(
     Analyze a node (typically a Key Result) by fetching its data directly from SQL.
     Replaced legacy dictionary-based version for better performance and consistency.
     """
-    from src.crud import get_node
-
-    node_type_upper = str(node_type or "KEY_RESULT").upper()
-
-    # Fetch node with all relationships for context (RBAC-aware when actor is provided)
     try:
-        node = get_node(node_id, node_type_upper, actor_username=actor_username)
+        return _analyze_node_inner(node_id, node_type, actor_username)
     except PermissionError as exc:
         return {"error": str(exc)}
-    if not node:
-        return {"error": f"Node {node_id} ({node_type_upper}) not found"}
+    except Exception as exc:
+        logger.exception(
+            "Unhandled error in analyze_node(%s, %s)", node_id, node_type
+        )
+        return {"error": f"Node analysis failed: {exc}"}
+
+
+def _fetch_node_for_analysis(
+    node_id: int,
+    node_type: str,
+    actor_username: Optional[str] = None,
+):
+    """Try direct PostgreSQL first; fall back to Supabase REST API (HTTPS 443)."""
+    from src.crud import get_node
+
+    try:
+        node = get_node(node_id, node_type, actor_username=actor_username)
+        if not node:
+            return {"error": f"Node {node_id} ({node_type}) not found"}
+        return node
+    except Exception as direct_err:
+        logger.warning(
+            "Direct DB fetch failed for %s %s: %s — trying REST API fallback",
+            node_type, node_id, direct_err,
+        )
+
+    try:
+        from src.services.supabase_api_mode import (
+            is_supabase_api_mode_enabled,
+        )
+        if not is_supabase_api_mode_enabled():
+            raise RuntimeError("Supabase REST API not configured; cannot fall back.")
+
+        rest_result = _fetch_node_via_rest(node_id, node_type, actor_username)
+        if rest_result is None:
+            return {"error": f"Node {node_id} ({node_type}) not found"}
+        return rest_result
+    except Exception as rest_err:
+        logger.error(
+            "REST API fallback also failed for %s %s: %s",
+            node_type, node_id, rest_err,
+        )
+        return {"error": f"Node fetch failed (direct + REST): {rest_err}"}
+
+
+def _fetch_node_via_rest(
+    node_id: int, node_type: str, actor_username: Optional[str] = None
+):
+    """Fetch a node via Supabase REST API and return a lightweight namespace object."""
+    from src.services.supabase_api_mode import _rest_select
+
+    table_map = {
+        "GOAL": "goal",
+        "OBJECTIVE": "objective",
+        "KEY_RESULT": "key_result",
+        "KEYRESULT": "key_result",
+        "TASK": "task",
+    }
+    table = table_map.get(node_type)
+    if not table:
+        return None
+
+    status, rows = _rest_select(
+        table,
+        query={"id": f"eq.{node_id}", "select": "*"},
+    )
+    if status >= 400 or not rows:
+        return None
+    row = rows[0]
+
+    child_table_map = {
+        "GOAL": ("objective", "goal_id"),
+        "OBJECTIVE": ("key_result", "objective_id"),
+        "KEY_RESULT": ("task", "key_result_id"),
+        "KEYRESULT": ("task", "key_result_id"),
+        "TASK": (None, None),
+    }
+    child_table, fk_col = child_table_map.get(node_type, (None, None))
+
+    children = []
+    if child_table and fk_col:
+        _, child_rows = _rest_select(
+            child_table,
+            query={fk_col: f"eq.{node_id}", "select": "*"},
+        )
+        children = child_rows or []
+
+    child_attr_map = {
+        "GOAL": "objectives",
+        "OBJECTIVE": "key_results",
+        "KEY_RESULT": "tasks",
+        "KEYRESULT": "tasks",
+        "TASK": "work_logs",
+    }
+    child_attr = child_attr_map.get(node_type, "children")
+
+    ns = types.SimpleNamespace(**row)
+    setattr(ns, child_attr, [_simple_namespace_from_row(c) for c in children])
+    ns.__tablename__ = table.upper()
+
+    return ns
+
+
+def _simple_namespace_from_row(row: dict):
+    """Convert a REST API row dict to a SimpleNamespace with __tablename__."""
+    ns = types.SimpleNamespace(**row)
+    if "title" in row:
+        table = "task" if "deadline" in row and "key_result_id" in row else (
+            "key_result" if "target_value" in row else (
+                "objective" if "goal_id" in row else "goal"
+            )
+        )
+        ns.__tablename__ = table
+    return ns
+
+
+def _fetch_recent_worklog_summaries(task_id: int) -> list:
+    """Try direct DB first for WorkLog summaries; fall back to REST API."""
+    try:
+        from src.database import get_session_context
+        from sqlmodel import select
+        from src.models import WorkLog
+
+        with get_session_context() as s:
+            recent_logs = s.exec(
+                select(WorkLog)
+                .where(WorkLog.task_id == task_id)
+                .order_by(WorkLog.start_time.desc())
+            ).all()[:5]
+        return [
+            log_row.summary
+            for log_row in recent_logs
+            if getattr(log_row, "summary", None)
+        ]
+    except Exception as direct_err:
+        logger.debug(
+            "Direct DB worklog fetch failed for task %s: %s — trying REST API",
+            task_id, direct_err,
+        )
+
+    try:
+        from src.services.supabase_api_mode import (
+            is_supabase_api_mode_enabled, _rest_select,
+        )
+
+        if not is_supabase_api_mode_enabled():
+            return []
+        _, rows = _rest_select(
+            "work_log",
+            query={
+                "task_id": f"eq.{task_id}",
+                "select": "summary,start_time",
+                "order": "start_time.desc",
+                "limit": "5",
+            },
+        )
+        return [r["summary"] for r in rows if r.get("summary")]
+    except Exception as rest_err:
+        logger.debug(
+            "REST API worklog fallback also failed for task %s: %s",
+            task_id, rest_err,
+        )
+        return []
+
+
+def _analyze_node_inner(
+    node_id: int,
+    node_type: Optional[str] = "KEY_RESULT",
+    actor_username: Optional[str] = None,
+):
+    node_type_upper = str(node_type or "KEY_RESULT").upper()
+
+    node = _fetch_node_for_analysis(
+        node_id, node_type_upper, actor_username=actor_username
+    )
+    if isinstance(node, dict):
+        return node
 
     # Identify children and context
     # Usually we analyze Key Results (children = Tasks) or Objectives (children = KRs)
@@ -140,31 +311,9 @@ def analyze_node(
         # Get recent work history if it's a Task
         work_summ_text = ""
         if c_type == "TASK":
-            # Fetch recent logs in a live session to avoid detached lazy loads
-            try:
-                from src.database import get_session_context
-                from sqlmodel import select
-                from src.models import WorkLog
-
-                with get_session_context() as s:
-                    recent_logs = s.exec(
-                        select(WorkLog)
-                        .where(WorkLog.task_id == child.id)
-                        .order_by(WorkLog.start_time.desc())
-                    ).all()[:5]
-                summaries = [
-                    log_row.summary
-                    for log_row in recent_logs
-                    if getattr(log_row, "summary", None)
-                ]
-                if summaries:
-                    work_summ_text = "\n  Recent Work: " + "; ".join(summaries)
-            except Exception as exc:
-                logger.debug(
-                    "Failed to load recent worklog summaries for child '%s': %s",
-                    getattr(child, "id", None),
-                    exc,
-                )
+            summaries = _fetch_recent_worklog_summaries(child.id)
+            if summaries:
+                work_summ_text = "\n  Recent Work: " + "; ".join(summaries)
 
         # Deadline information (robust parsing)
         deadline_info = ""
