@@ -20,14 +20,24 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def _check_constraint_names(table_name: str) -> set[str]:
     inspector = inspect(op.get_bind())
-    return {
-        c["name"]
-        for c in inspector.get_check_constraints(table_name)
-        if c.get("name")
-    }
+    try:
+        return {
+            c["name"]
+            for c in inspector.get_check_constraints(table_name)
+            if c.get("name")
+        }
+    except Exception:
+        return set()
+
+
+def _has_table(table_name: str) -> bool:
+    inspector = inspect(op.get_bind())
+    return table_name in inspector.get_table_names()
 
 
 def upgrade() -> None:
+    if not _has_table("task"):
+        return
     existing = _check_constraint_names("task")
     if "ck_task_progress_range" in existing:
         with op.batch_alter_table("task") as batch_op:
@@ -40,6 +50,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if not _has_table("task"):
+        return
     existing = _check_constraint_names("task")
     if "ck_task_progress_non_negative" in existing:
         with op.batch_alter_table("task") as batch_op:
