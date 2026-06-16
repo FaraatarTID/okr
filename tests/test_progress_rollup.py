@@ -1,4 +1,5 @@
 import pytest
+from sqlmodel import select
 from src.models import (
     Goal,
     Objective,
@@ -221,11 +222,12 @@ def test_create_objectives_auto_equal_weights_when_unspecified(isolated_db):
     create_objective(goal.id, "Obj 3", actor_username="diana")
 
     with get_session_context() as session:
-        objectives = (
-            session.query(Objective)
-            .filter(Objective.goal_id == goal.id)
-            .order_by(Objective.id.asc())
-            .all()
+        objectives = list(
+            session.exec(
+                select(Objective)
+                .where(Objective.goal_id == goal.id)
+                .order_by(Objective.id.asc())
+            )
         )
         assert len(objectives) == 3
         for objective in objectives:
@@ -246,11 +248,12 @@ def test_create_key_results_auto_equal_weights_when_unspecified(isolated_db):
     create_key_result(objective.id, "KR 3", actor_username="erin")
 
     with get_session_context() as session:
-        key_results = (
-            session.query(KeyResult)
-            .filter(KeyResult.objective_id == objective.id)
-            .order_by(KeyResult.id.asc())
-            .all()
+        key_results = list(
+            session.exec(
+                select(KeyResult)
+                .where(KeyResult.objective_id == objective.id)
+                .order_by(KeyResult.id.asc())
+            )
         )
         assert len(key_results) == 3
         for kr in key_results:
@@ -269,11 +272,12 @@ def test_auto_equal_weights_do_not_override_existing_manual_distribution(isolate
     create_objective(goal.id, "Obj auto", actor_username="frank")
 
     with get_session_context() as session:
-        objectives = (
-            session.query(Objective)
-            .filter(Objective.goal_id == goal.id)
-            .order_by(Objective.id.asc())
-            .all()
+        objectives = list(
+            session.exec(
+                select(Objective)
+                .where(Objective.goal_id == goal.id)
+                .order_by(Objective.id.asc())
+            )
         )
         assert len(objectives) == 2
         assert abs(float(objectives[0].weight or 0.0) - 0.8) < 1e-6
