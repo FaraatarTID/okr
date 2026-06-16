@@ -182,7 +182,9 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 3. Progress and scoring flow
 
-- Task/KR fields are stored in DB and consumed by dashboard/report aggregations.
+- Task progress is auto-computed: `total_time_spent / estimated_minutes * 100` (can exceed 100%).
+- KR progress is set via check-ins or AI Sync.
+- Goal/Objective progress is a computed rollup from child KRs — not user-set.
 - Deadline health is computed via `get_deadline_status` (supports both ORM objects and dict payloads).
 - Leadership rollups aggregate task progress, deadline status, check-in freshness, confidence, and risk.
 
@@ -192,6 +194,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Owner, manager-of-owner, and admin paths are enforced before changes are committed.
 - Read-sensitive node retrieval can be actor-scoped via `get_node(..., actor_username=...)`.
 - AI node analysis (`analyze_node`) can use this actor-scoped read path before prompt context assembly.
+- DB fallback: `analyze_node` tries direct PostgreSQL (port 6543) first, falls back to Supabase REST API (HTTPS 443) on failure.
 
 5. Async job flow
 
@@ -210,13 +213,14 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Only Key Results have measurable progress (measured through check-in sessions).
 - Only Tasks have deadlines.
 - Progress on Goals/Objectives is a computed rollup from child KRs — it is not user-set.
-- AI sync projects KR progress based on completed work; discrepancies between projection and actual go into retro sessions as experiments.
+- Task progress is auto-computed from `total_time_spent / estimated_minutes * 100` (can exceed 100%).
+- AI analysis provides advisory insights; KR progress is entered exclusively by users via check-in sessions.
 
 ### Technical Guardrails
 
 - Goal ownership is anchored on `goal.owner_id`.
 - Mutations require `actor_username` for goal-scoped entities.
-- DB constraints enforce progress ranges, non-negative durations, and single open work log per task.
+- DB constraints enforce non-negative progress and durations, and single open work log per task. Task progress can exceed 100% (auto-computed from time tracking).
 - Hot-path query budgets are tested in `tests/test_performance_hotpaths.py` to prevent N+1 regressions.
 - Runtime preflight defaults to strict (`OKR_STRICT_RUNTIME_PREFLIGHT=true`) for fail-fast misconfiguration detection.
 - Runtime preflight validates backend production wiring (API URL/token/signing secret/distributed security backend) when backend mode is enabled.

@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - master
+      - Pure-SPA-BFF
 
 jobs:
   backend-quality:

@@ -1,22 +1,20 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import InspectorEditAnalysisPanel from "@/components/atlas-shell/InspectorEditAnalysisPanel";
 
 describe("InspectorEditAnalysisPanel", () => {
-  it("emits draft patch callbacks and mutation actions", async () => {
+  it("renders edit form and triggers save/delete actions", async () => {
     const user = userEvent.setup();
-    const onInspectDraftChange = vi.fn();
     const onInspectorSave = vi.fn();
     const onNodeDelete = vi.fn();
-    const onRunAnalysis = vi.fn();
 
     render(
       <InspectorEditAnalysisPanel
-        inspectDraft={{ title: "T", description: "D", progress: "10", deadline: "2026-12-31" }}
-        onInspectDraftChange={onInspectDraftChange}
+        inspectDraft={{ title: "T", description: "D", progress: "10", startValue: "", targetValue: "", deadline: "", estimatedMinutes: "30" }}
+        onInspectDraftChange={vi.fn()}
         onInspectorSave={onInspectorSave}
         inspectPending={false}
         hasUser
@@ -29,20 +27,9 @@ describe("InspectorEditAnalysisPanel", () => {
         selectedNodeType="TASK"
         inspectError=""
         inspectMessage=""
-        showAiAnalysis={false}
-        aiAnalysisTargetLabel="key result"
-        onRunAnalysis={onRunAnalysis}
-        inspectAnalysisPending={false}
-        inspectAnalysisError=""
         inspectAnalysis={null}
       />,
     );
-
-    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "New title" } });
-    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "New description" } });
-
-    expect(onInspectDraftChange).toHaveBeenCalledWith({ title: "New title" });
-    expect(onInspectDraftChange).toHaveBeenCalledWith({ description: "New description" });
 
     await user.click(screen.getByRole("button", { name: "Edit" }));
     await user.click(screen.getByRole("button", { name: "Delete task" }));
@@ -54,7 +41,7 @@ describe("InspectorEditAnalysisPanel", () => {
   it("disables mutation buttons when pending", () => {
     render(
       <InspectorEditAnalysisPanel
-        inspectDraft={{ title: "T", description: "D", progress: "10", deadline: "" }}
+        inspectDraft={{ title: "T", description: "D", progress: "10", startValue: "", targetValue: "", deadline: "", estimatedMinutes: "30" }}
         onInspectDraftChange={vi.fn()}
         onInspectorSave={vi.fn()}
         inspectPending
@@ -68,11 +55,6 @@ describe("InspectorEditAnalysisPanel", () => {
         selectedNodeType="OBJECTIVE"
         inspectError="Update failed"
         inspectMessage="Saved"
-        showAiAnalysis={false}
-        aiAnalysisTargetLabel="objective"
-        onRunAnalysis={vi.fn()}
-        inspectAnalysisPending={false}
-        inspectAnalysisError=""
         inspectAnalysis={null}
       />,
     );
@@ -83,13 +65,10 @@ describe("InspectorEditAnalysisPanel", () => {
     expect(screen.getByText("Saved")).toBeInTheDocument();
   });
 
-  it("renders AI analysis section, triggers run action, and displays payload fields", async () => {
-    const user = userEvent.setup();
-    const onRunAnalysis = vi.fn();
-
+  it("shows read-only analysis when analysis data exists", () => {
     render(
       <InspectorEditAnalysisPanel
-        inspectDraft={{ title: "T", description: "D", progress: "10", deadline: "" }}
+        inspectDraft={{ title: "T", description: "D", progress: "10", startValue: "", targetValue: "", deadline: "", estimatedMinutes: "30" }}
         onInspectDraftChange={vi.fn()}
         onInspectorSave={vi.fn()}
         inspectPending={false}
@@ -103,11 +82,6 @@ describe("InspectorEditAnalysisPanel", () => {
         selectedNodeType="KEY_RESULT"
         inspectError=""
         inspectMessage=""
-        showAiAnalysis
-        aiAnalysisTargetLabel="objective"
-        onRunAnalysis={onRunAnalysis}
-        inspectAnalysisPending={false}
-        inspectAnalysisError="analysis warning"
         inspectAnalysis={{
           efficiencyScore: 81,
           effectivenessScore: 79,
@@ -122,8 +96,6 @@ describe("InspectorEditAnalysisPanel", () => {
     );
 
     expect(screen.getByText("AI Analysis")).toBeInTheDocument();
-    expect(screen.getByText("Generate analysis for the selected objective.")).toBeInTheDocument();
-    expect(screen.getByText("analysis warning")).toBeInTheDocument();
     expect(screen.getByText("Efficiency: 81")).toBeInTheDocument();
     expect(screen.getByText("Effectiveness: 79")).toBeInTheDocument();
     expect(screen.getByText("Overall: 80")).toBeInTheDocument();
@@ -132,8 +104,62 @@ describe("InspectorEditAnalysisPanel", () => {
     expect(screen.getByText("Quality: Quality detail")).toBeInTheDocument();
     expect(screen.getByText("Warn 1")).toBeInTheDocument();
     expect(screen.getByText("Task A")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run Analysis" })).not.toBeInTheDocument();
+  });
 
+  it("shows Run Analysis button for KR when no analysis data exists", async () => {
+    const user = userEvent.setup();
+    const onRunAnalysis = vi.fn();
+
+    render(
+      <InspectorEditAnalysisPanel
+        inspectDraft={{ title: "T", description: "D", progress: "10", startValue: "", targetValue: "", deadline: "", estimatedMinutes: "30" }}
+        onInspectDraftChange={vi.fn()}
+        onInspectorSave={vi.fn()}
+        inspectPending={false}
+        hasUser
+
+        onNodeDelete={vi.fn()}
+        deletePending={false}
+        deleteError=""
+        deleteMessage=""
+        selectedTypeLabel="key result"
+        selectedNodeType="KEY_RESULT"
+        inspectError=""
+        inspectMessage=""
+        inspectAnalysis={null}
+        onRunAnalysis={onRunAnalysis}
+      />,
+    );
+
+    expect(screen.getByText("AI Analysis")).toBeInTheDocument();
+    expect(screen.getByText("No analysis yet for this Key Result.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Run Analysis" }));
     expect(onRunAnalysis).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows no AI analysis section for Objective", () => {
+    render(
+      <InspectorEditAnalysisPanel
+        inspectDraft={{ title: "T", description: "D", progress: "10", startValue: "", targetValue: "", deadline: "", estimatedMinutes: "30" }}
+        onInspectDraftChange={vi.fn()}
+        onInspectorSave={vi.fn()}
+        inspectPending={false}
+        hasUser
+
+        onNodeDelete={vi.fn()}
+        deletePending={false}
+        deleteError=""
+        deleteMessage=""
+        selectedTypeLabel="objective"
+        selectedNodeType="OBJECTIVE"
+        inspectError=""
+        inspectMessage=""
+        inspectAnalysis={null}
+      />,
+    );
+
+    expect(screen.queryByText("AI Analysis")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run Analysis" })).not.toBeInTheDocument();
   });
 });

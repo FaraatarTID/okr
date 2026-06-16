@@ -8,6 +8,7 @@ import * as jobPolling from "@/components/atlas-shell/jobPolling";
 import useAiProgressAssist from "@/components/atlas-shell/useAiProgressAssist";
 
 vi.mock("@/lib/api", () => ({
+  analyzeNodeAi: vi.fn(),
   submitBackendJob: vi.fn(),
   updateNodeMutation: vi.fn(),
 }));
@@ -38,6 +39,7 @@ function buildKeyResultNode(
       description: "",
       progress,
       ai_overall_score: aiOverallScore,
+      analysis_updated_at: new Date().toISOString(),
       tasks: [],
     } as AtlasKeyResultSnapshot,
     type: "KEY_RESULT",
@@ -64,18 +66,19 @@ function buildTaskNode(id: number, parentRef: string, title = `Task ${id}`): Atl
       id,
       title,
       description: "",
-      progress: 15,
+      progress: 0,
       deadline: null,
       timer_started_at: null,
-      status: "TODO",
+      status: "IN_PROGRESS",
       total_time_spent: 0,
-      assignee_id: 1,
+      estimated_minutes: 30,
+      assignee_id: null,
     } as AtlasTaskSnapshot,
     type: "TASK",
     title,
     titleLower: title.toLowerCase(),
     description: "",
-    progress: 15,
+    progress: 0,
     depth: 1,
     parent: parentRef,
     path: [parentRef, `task_${id}`],
@@ -93,55 +96,21 @@ describe("useAiProgressAssist", () => {
     vi.clearAllMocks();
   });
 
-  it("previews KR sync without mutating progress", async () => {
-    const updateNodeMutationMock = vi.mocked(api.updateNodeMutation);
+  it("runs analysis without mutating progress", async () => {
     const loadSnapshotForUser = vi.fn().mockResolvedValue(undefined);
     const onTaskSuggested = vi.fn();
-    const kr = buildKeyResultNode(1, "KR 1", 20, 60);
+    const kr = buildKeyResultNode(1, "KR 1", 20, null);
+
+    vi.mocked(api.analyzeNodeAi).mockResolvedValue({ overall_score: 65 } as never);
+    vi.mocked(api.updateNodeMutation).mockResolvedValue({} as never);
 
     const { result } = renderHook(() =>
       useAiProgressAssist({
         user: baseUser,
-
         parsedCycleId: 7,
         atlasRuntime: { index: { [kr.ref]: kr } },
         allScopeRefs: [kr.ref],
         taskRefs: [],
-        aiSyncMaxDelta: 40,
-        aiSyncAllowDecrease: false,
-        loadSnapshotForUser,
-        onTaskSuggested,
-      }),
-    );
-
-    await act(async () => {
-      await result.current.handleAiProgressSync(true);
-    });
-
-    expect(updateNodeMutationMock).not.toHaveBeenCalled();
-    expect(result.current.aiSyncReport?.planned).toBe(1);
-    expect(result.current.aiSyncReport?.applied).toBe(0);
-    expect(result.current.aiSyncMessage).toContain("Preview");
-    expect(loadSnapshotForUser).not.toHaveBeenCalled();
-  });
-
-  it("applies sync and supports undo of applied KR updates", async () => {
-    const updateNodeMutationMock = vi.mocked(api.updateNodeMutation);
-    const loadSnapshotForUser = vi.fn().mockResolvedValue(undefined);
-    const onTaskSuggested = vi.fn();
-    const kr = buildKeyResultNode(2, "KR 2", 20, 60);
-    updateNodeMutationMock.mockResolvedValue({} as never);
-
-    const { result } = renderHook(() =>
-      useAiProgressAssist({
-        user: baseUser,
-
-        parsedCycleId: 7,
-        atlasRuntime: { index: { [kr.ref]: kr } },
-        allScopeRefs: [kr.ref],
-        taskRefs: [],
-        aiSyncMaxDelta: 40,
-        aiSyncAllowDecrease: false,
         loadSnapshotForUser,
         onTaskSuggested,
       }),
@@ -151,64 +120,30 @@ describe("useAiProgressAssist", () => {
       await result.current.handleAiProgressSync(false);
     });
 
-    expect(updateNodeMutationMock).toHaveBeenCalledWith({
-      actor_username: "alice",
-      node_type: "key_result",
-      node_id: 2,
-      updates: { progress: 60 },
-    });
-    expect(result.current.aiProgressUndoItems).toHaveLength(1);
-    expect(loadSnapshotForUser).toHaveBeenCalledWith(baseUser);
-
-    updateNodeMutationMock.mockClear();
-
-    await act(async () => {
-      await result.current.handleAiProgressUndo();
-    });
-
-    expect(updateNodeMutationMock).toHaveBeenCalledWith({
-      actor_username: "alice",
-      node_type: "key_result",
-      node_id: 2,
-      updates: { progress: 20 },
-    });
-    expect(result.current.aiProgressUndoItems).toHaveLength(0);
-    expect(result.current.aiSyncMessage).toContain("Undo complete");
+    expect(result.current.aiSyncReport?.reanalyzed).toBe(1);
+    expect(result.current.aiSyncMessage).toContain("Analysis complete");
+    expect(loadSnapshotForUser).toHaveBeenCalled();
   });
 
   it("suggests next task and emits task-selection callback", async () => {
-    const submitBackendJobMock = vi.mocked(api.submitBackendJob);
-    const waitForBackendJobResultMock = vi.mocked(jobPolling.waitForBackendJobResult);
     const loadSnapshotForUser = vi.fn().mockResolvedValue(undefined);
     const onTaskSuggested = vi.fn();
-    const kr = buildKeyResultNode(3, "KR 3", 10, 65);
-    const task = buildTaskNode(10, kr.ref, "Draft rollout checklist");
+    const task = buildTaskNode(10, "key_result_1", "Fix bug");
+    const kr = buildKeyResultNode(1, "KR 1", 20, 60);
 
-    submitBackendJobMock.mockResolvedValue({ id: "job-suggest-1" } as never);
-    waitForBackendJobResultMock.mockResolvedValue({
-      status: "SUCCEEDED",
-      result: {
-        task_ref: task.ref,
-        reason: "High urgency and high impact",
-        confidence: 88,
-      },
+    vi.mocked(api.submitBackendJob).mockResolvedValue({ id: "job-1" } as never);
+    vi.mocked(jobPolling.waitForBackendJobResult).mockResolvedValue({
+      status: "succeeded",
+      result: { task_ref: "task_10", reason: "High priority", confidence: 85 },
     } as never);
 
     const { result } = renderHook(() =>
       useAiProgressAssist({
         user: baseUser,
-
         parsedCycleId: 7,
-        atlasRuntime: {
-          index: {
-            [kr.ref]: kr,
-            [task.ref]: task,
-          },
-        },
-        allScopeRefs: [kr.ref, task.ref],
+        atlasRuntime: { index: { [kr.ref]: kr, [task.ref]: task } },
+        allScopeRefs: [kr.ref],
         taskRefs: [task.ref],
-        aiSyncMaxDelta: 40,
-        aiSyncAllowDecrease: false,
         loadSnapshotForUser,
         onTaskSuggested,
       }),
@@ -218,15 +153,8 @@ describe("useAiProgressAssist", () => {
       await result.current.handleAiSuggestNextTask();
     });
 
-    expect(submitBackendJobMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        actor_username: "alice",
-        kind: "ai.generate_json",
-      }),
-    );
-    expect(waitForBackendJobResultMock).toHaveBeenCalledWith(baseUser, "job-suggest-1");
-    await waitFor(() => expect(result.current.aiSuggestion?.taskRef).toBe(task.ref));
-    expect(onTaskSuggested).toHaveBeenCalledWith(task.ref);
+    expect(onTaskSuggested).toHaveBeenCalledWith("task_10");
+    expect(result.current.aiSuggestion?.taskRef).toBe("task_10");
     expect(result.current.aiSyncMessage).toContain("Suggested next task");
   });
 });

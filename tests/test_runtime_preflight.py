@@ -50,7 +50,7 @@ def test_missing_or_placeholder_gemini_key_warns():
         gemini_api_key=None,
         external_ai_allowed=True,
     )
-    assert any("Gemini API key is not configured" in msg for msg in missing.warnings)
+    assert any("AI API key is not configured" in msg for msg in missing.warnings)
 
     placeholder = evaluate_runtime_preflight(
         pdf_method="pdfshift",
@@ -78,7 +78,7 @@ def test_external_ai_policy_disables_key_requirement():
         gemini_api_key=None,
         external_ai_allowed=False,
     )
-    assert not any("Gemini API key is not configured" in msg for msg in report.warnings)
+    assert not any("AI API key is not configured" in msg for msg in report.warnings)
     assert any(
         "External AI calls are disabled by policy" in msg for msg in report.infos
     )
@@ -94,7 +94,7 @@ def test_openai_compatible_provider_does_not_require_gemini_key():
         ai_provider_ready=True,
         ai_provider_message="AI provider 'openai_compatible' is configured.",
     )
-    assert not any("Gemini API key is not configured" in msg for msg in report.warnings)
+    assert not any("AI API key is not configured" in msg for msg in report.warnings)
     assert any("AI provider is openai_compatible." in msg for msg in report.infos)
 
 

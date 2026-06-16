@@ -1,4 +1,4 @@
-﻿export type AtlasNodeType = "GOAL" | "OBJECTIVE" | "KEY_RESULT" | "TASK";
+export type AtlasNodeType = "GOAL" | "OBJECTIVE" | "KEY_RESULT" | "TASK";
 
 export interface AtlasTaskSnapshot {
   id: number;
@@ -9,6 +9,7 @@ export interface AtlasTaskSnapshot {
   timer_started_at: string | null;
   status: string;
   total_time_spent: number;
+  estimated_minutes: number;
   assignee_id: number | null;
 }
 
@@ -25,7 +26,8 @@ export interface AtlasKeyResultSnapshot {
   metric_type?: string | null;
   weight?: number | null;
   unit?: string | null;
-  gemini_analysis?: string | null;
+  ai_analysis?: string | null;
+  analysis_updated_at?: string | null;
   tasks: AtlasTaskSnapshot[];
 }
 

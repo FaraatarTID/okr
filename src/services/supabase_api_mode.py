@@ -19,6 +19,7 @@ from typing import Any, Optional
 import bcrypt
 
 from src.config_runtime import get_config_value
+from src.domain.scoring import calculate_kr_score
 
 logger = logging.getLogger(__name__)
 _CYCLE_OWNER_COLUMN_SUPPORTED: Optional[bool] = None
@@ -196,6 +197,91 @@ def _coerce_progress(value: Any) -> int:
     if parsed > 100:
         return 100
     return parsed
+
+
+def _coerce_float(value: Any, default: float = 0.0) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if numeric != numeric:
+        return float(default)
+    return numeric
+
+
+def _recalculate_objective_progress_via_supabase(objective_id: int) -> int:
+    status, krs = _rest_select(
+        "key_result",
+        query={
+            "objective_id": f"eq.{int(objective_id)}",
+            "select": "progress,weight",
+            "order": "id.asc",
+        },
+    )
+    if status >= 400 or not krs:
+        return 0
+
+    scores: list[float] = []
+    weights: list[float] = []
+    for kr in krs:
+        scores.append(_coerce_float(kr.get("progress"), 0.0) / 100.0)
+        weights.append(_coerce_float(kr.get("weight"), 1.0))
+
+    total_weight = sum(weights)
+    if total_weight < 1e-9:
+        obj_score = sum(scores) / len(scores) if scores else 0.0
+    else:
+        obj_score = sum(s * w for s, w in zip(scores, weights)) / total_weight
+
+    new_progress = max(0, min(100, int(round(obj_score * 100))))
+    _rest_update(
+        "objective",
+        match_query={"id": f"eq.{int(objective_id)}"},
+        payload={"progress": new_progress},
+    )
+
+    obj_status, obj_rows = _rest_select(
+        "objective",
+        query={"id": f"eq.{int(objective_id)}", "select": "goal_id", "limit": "1"},
+    )
+    if obj_status < 400 and obj_rows:
+        goal_id = _as_int(obj_rows[0].get("goal_id"), 0)
+        if goal_id > 0:
+            _recalculate_goal_progress_via_supabase(goal_id)
+
+    return new_progress
+
+
+def _recalculate_goal_progress_via_supabase(goal_id: int) -> None:
+    status, objectives = _rest_select(
+        "objective",
+        query={
+            "goal_id": f"eq.{int(goal_id)}",
+            "select": "progress,weight",
+            "order": "id.asc",
+        },
+    )
+    if status >= 400 or not objectives:
+        return
+
+    scores: list[float] = []
+    weights: list[float] = []
+    for obj in objectives:
+        scores.append(_coerce_float(obj.get("progress"), 0.0) / 100.0)
+        weights.append(_coerce_float(obj.get("weight"), 1.0))
+
+    total_weight = sum(weights)
+    if total_weight < 1e-9:
+        goal_score = sum(scores) / len(scores) if scores else 0.0
+    else:
+        goal_score = sum(s * w for s, w in zip(scores, weights)) / total_weight
+
+    new_progress = max(0, min(100, int(round(goal_score * 100))))
+    _rest_update(
+        "goal",
+        match_query={"id": f"eq.{int(goal_id)}"},
+        payload={"progress": new_progress},
+    )
 
 
 def _deadline_status_code_fast(
@@ -582,7 +668,7 @@ def create_key_result_via_supabase_api(
         "initiative_tags": initiative_tags,
         "weight": float(weight if weight is not None else 1.0),
         "progress": 0,
-        "gemini_analysis": None,
+        "ai_analysis": None,
         "created_by": str(actor_username or "").strip() or None,
         "updated_by": str(actor_username or "").strip() or None,
         "created_at": now.isoformat(),
@@ -688,7 +774,7 @@ def update_node_via_supabase_api(
     allowed = {
         "GOAL": {"title", "description", "progress", "cycle_id", "strategy_tags", "is_expanded", "deadline"},
         "OBJECTIVE": {"title", "description", "progress", "score_mode", "weight", "is_expanded", "deadline", "state", "final_reflection"},
-        "KEY_RESULT": {"title", "description", "progress", "start_value", "target_value", "current_value", "metric_type", "unit", "weight", "initiative_tags", "gemini_analysis", "is_expanded", "deadline", "state", "final_reflection"},
+        "KEY_RESULT": {"title", "description", "progress", "start_value", "target_value", "current_value", "metric_type", "unit", "weight", "initiative_tags", "ai_analysis", "is_expanded", "deadline", "state", "final_reflection"},
         "TASK": {"title", "description", "progress", "deadline", "assignee_id", "is_expanded", "status", "estimated_minutes", "start_date"},
     }
     payload: dict[str, Any] = {}
@@ -865,6 +951,32 @@ def stop_timer_via_supabase_api(*, task_id: int, summary: Optional[str], user_id
     )
     if status >= 400 or not updated:
         raise ValueError(f"Supabase API error (timer.stop/update): {status}")
+
+    # Fetch task to update total_time_spent and auto-compute progress
+    _, task_rows = _rest_select(
+        "task",
+        query={
+            "id": f"eq.{int(task_id)}",
+            "select": "id,total_time_spent,estimated_minutes",
+        },
+    )
+    if task_rows:
+        t = task_rows[0]
+        new_total = int(t.get("total_time_spent") or 0) + int(duration)
+        estimated = int(t.get("estimated_minutes") or 0)
+        if estimated > 0:
+            new_progress = min(999, max(0, int(new_total / estimated * 100)))
+        else:
+            new_progress = min(999, max(0, new_total))
+        _rest_update(
+            "task",
+            match_query={"id": f"eq.{int(task_id)}"},
+            payload={
+                "total_time_spent": new_total,
+                "progress": new_progress,
+            },
+        )
+
     u = updated[0]
     return types.SimpleNamespace(
         id=u.get("id"),
@@ -890,7 +1002,7 @@ def create_check_in_via_supabase_api(
     _ = actor_username
     status, krs = _rest_select(
         "key_result",
-        query={"id": f"eq.{int(kr_id)}", "select": "id", "limit": "1"},
+        query={"id": f"eq.{int(kr_id)}", "select": "id,start_value,target_value,current_value,metric_type", "limit": "1"},
     )
     if status >= 400:
         raise ValueError(f"Supabase API error (check_in/key_result): {status}")
@@ -909,6 +1021,33 @@ def create_check_in_via_supabase_api(
     status, rows = _rest_insert("check_in", payload=payload)
     if status >= 400 or not rows:
         raise ValueError(f"Supabase API error (check_in/insert): {status}")
+
+    kr_row = krs[0]
+    score = calculate_kr_score(
+        current=float(value),
+        target=_coerce_float(kr_row.get("target_value"), 100.0),
+        start=_coerce_float(kr_row.get("start_value"), 0.0),
+        metric_type=str(kr_row.get("metric_type") or "numeric"),
+    )
+    new_progress = max(0, min(100, int(round(score * 100))))
+
+    _rest_update(
+        "key_result",
+        match_query={"id": f"eq.{int(kr_id)}"},
+        payload={"current_value": float(value), "progress": new_progress},
+    )
+
+    objective_id = None
+    kr_obj_status, kr_obj_rows = _rest_select(
+        "key_result",
+        query={"id": f"eq.{int(kr_id)}", "select": "objective_id", "limit": "1"},
+    )
+    if kr_obj_status < 400 and kr_obj_rows:
+        objective_id = _as_int(kr_obj_rows[0].get("objective_id"), 0)
+
+    if objective_id > 0:
+        _recalculate_objective_progress_via_supabase(objective_id)
+
     row = rows[0]
     return types.SimpleNamespace(
         id=row.get("id"),
@@ -1113,17 +1252,21 @@ def create_weekly_plan_via_supabase_api(
         "priority_2": p2,
         "priority_3": p3,
         "is_active": True,
+        "created_at": _utc_now_iso(),
     }
     if existing:
         status, rows = _rest_update(
             "weekly_plan",
             match_query={"id": f"eq.{_as_int(existing[0].get('id'), 0)}"},
-            payload=payload,
+            payload={k: v for k, v in payload.items() if k != "created_at"},
         )
     else:
         status, rows = _rest_insert("weekly_plan", payload=payload)
     if status >= 400 or not rows:
-        raise ValueError(f"Supabase API error (weekly_plan/upsert): {status}")
+        detail = ""
+        if isinstance(rows, dict):
+            detail = rows.get("message", rows.get("hint", str(rows)))
+        raise ValueError(f"Supabase API error (weekly_plan/upsert): {status} {detail}".strip())
     return types.SimpleNamespace(**rows[0])
 
 
@@ -1493,7 +1636,7 @@ def build_atlas_scope_snapshot_via_supabase_api(
             "key_result",
             query={
                 "objective_id": f"in.({_in_clause_ids(objective_ids)})",
-                "select": "id,objective_id,title,description,progress,gemini_analysis,start_value,target_value,current_value,metric_type,weight,unit",
+                "select": "id,objective_id,title,description,progress,ai_analysis,analysis_updated_at,start_value,target_value,current_value,metric_type,weight,unit",
                 "order": "id.asc",
             },
         )
@@ -1505,7 +1648,7 @@ def build_atlas_scope_snapshot_via_supabase_api(
             if kr_id_int <= 0 or objective_id_int <= 0:
                 continue
             key_result_ids.append(str(kr_id_int))
-            ai_score, ai_deadline_state = _atlas_extract_ai_snapshot_fields(row.get("gemini_analysis"))
+            ai_score, ai_deadline_state = _atlas_extract_ai_snapshot_fields(row.get("ai_analysis"))
             payload = {
                 "id": kr_id_int,
                 "title": row.get("title"),
@@ -1522,7 +1665,8 @@ def build_atlas_scope_snapshot_via_supabase_api(
                 "tasks": [],
             }
             if include_analysis:
-                payload["gemini_analysis"] = row.get("gemini_analysis")
+                payload["ai_analysis"] = row.get("ai_analysis")
+                payload["analysis_updated_at"] = row.get("analysis_updated_at")
             key_results_by_objective.setdefault(objective_id_int, []).append(payload)
 
     tasks_by_kr: dict[int, list[dict[str, Any]]] = {}
@@ -1531,7 +1675,7 @@ def build_atlas_scope_snapshot_via_supabase_api(
             "task",
             query={
                 "key_result_id": f"in.({_in_clause_ids(key_result_ids)})",
-                "select": "id,key_result_id,title,description,progress,deadline,timer_started_at,status,total_time_spent,assignee_id",
+                "select": "id,key_result_id,title,description,progress,deadline,timer_started_at,status,total_time_spent,estimated_minutes,assignee_id",
                 "order": "id.asc",
             },
         )
@@ -1722,7 +1866,7 @@ def get_leadership_metrics_via_supabase_api(*, usernames: list[str], cycle_id: i
         "key_result",
         query={
             "objective_id": f"in.({_in_clause_ids([str(v) for v in active_objective_ids])})",
-            "select": "id,objective_id,title,gemini_analysis",
+                "select": "id,objective_id,title,ai_analysis,analysis_updated_at",
             "order": "id.asc",
         },
     )
@@ -1742,7 +1886,7 @@ def get_leadership_metrics_via_supabase_api(*, usernames: list[str], cycle_id: i
             continue
         kr_owner_username[kr_id] = owner_username
         kr_title_map[kr_id] = str(row.get("title") or "")
-        kr_analysis_map[kr_id] = row.get("gemini_analysis")
+        kr_analysis_map[kr_id] = row.get("ai_analysis")
 
     if not kr_ids:
         return {

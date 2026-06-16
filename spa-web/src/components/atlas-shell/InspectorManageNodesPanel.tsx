@@ -11,7 +11,7 @@ type NodeCreateDraftView = {
   targetValue: string;
   unit: string;
   estimatedMinutes: string;
-  assigneeId: string;
+  deadline: string;
 };
 
 type CreateContextView = {
@@ -63,9 +63,6 @@ export default function InspectorManageNodesPanel({
     >
       <p className="kicker" style={{ margin: 0 }}>
         Manage Nodes
-      </p>
-      <p style={{ margin: "0.24rem 0 0.3rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-        Create Goal/Objective/Key Result/Task nodes.
       </p>
 
       <label
@@ -208,16 +205,17 @@ export default function InspectorManageNodesPanel({
             style={{ marginTop: "0.2rem" }}
           />
           <label
-            htmlFor="create-task-assignee"
+            htmlFor="create-task-deadline"
             style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
           >
-            Assignee ID (optional)
+            Deadline (optional)
           </label>
           <input
-            id="create-task-assignee"
+            id="create-task-deadline"
+            type="date"
             className="input"
-            value={createDraft.assigneeId}
-            onChange={(event) => onCreateDraftChange({ assigneeId: event.target.value })}
+            value={createDraft.deadline}
+            onChange={(event) => onCreateDraftChange({ deadline: event.target.value })}
             style={{ marginTop: "0.2rem" }}
           />
         </>

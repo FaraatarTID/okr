@@ -113,13 +113,13 @@ def get_user_data_from_sql_from_crud(
                                 exc,
                             )
 
-                    gemini_analysis = None
-                    if kr.gemini_analysis:
+                    ai_analysis_data = None
+                    if kr.ai_analysis:
                         try:
-                            gemini_analysis = json.loads(kr.gemini_analysis)
+                            ai_analysis_data = json.loads(kr.ai_analysis)
                         except Exception as exc:
                             crud_module.logger.debug(
-                                "Failed to parse gemini_analysis for key_result_id=%s: %s",
+                                "Failed to parse ai_analysis for key_result_id=%s: %s",
                                 kr.id,
                                 exc,
                             )
@@ -137,7 +137,7 @@ def get_user_data_from_sql_from_crud(
                         "current_value": kr.current_value,
                         "unit": kr.unit,
                         "initiative_tags": init_tags,
-                        "geminiAnalysis": gemini_analysis,
+                        "aiAnalysis": ai_analysis_data,
                     }
 
                     for task in kr.tasks:

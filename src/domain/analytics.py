@@ -443,7 +443,7 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 select(
                     KeyResult.id,
                     KeyResult.title,
-                    KeyResult.gemini_analysis,
+                    KeyResult.ai_analysis,
                     User.username,
                     latest_checkin_ranked.c.latest_created_at,
                     latest_checkin_ranked.c.latest_confidence,
@@ -486,7 +486,7 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
             for (
                 _kr_id,
                 kr_title,
-                gemini_analysis,
+                ai_analysis_data,
                 owner,
                 latest_created_at,
                 latest_confidence_raw,
@@ -495,14 +495,14 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 latest_confidence = int(latest_confidence_raw or 0)
 
                 analysis = None
-                if gemini_analysis:
-                    cached = parse_cache.get(gemini_analysis, _PARSE_MISS)
+                if ai_analysis_data:
+                    cached = parse_cache.get(ai_analysis_data, _PARSE_MISS)
                     if cached is _PARSE_MISS:
                         try:
-                            cached = json.loads(gemini_analysis)
+                            cached = json.loads(ai_analysis_data)
                         except ValueError:
                             cached = None
-                        parse_cache[gemini_analysis] = cached
+                        parse_cache[ai_analysis_data] = cached
                     analysis = cached
 
                 risk_reasons = []

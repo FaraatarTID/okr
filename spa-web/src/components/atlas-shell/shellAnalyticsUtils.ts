@@ -136,6 +136,17 @@ export function aiProgressDecision(
   return { action: "apply", reason: "within_policy", current, proposed, delta };
 }
 
+const ANALYSIS_STALE_MS = 24 * 60 * 60 * 1000;
+
+export function isAnalysisStale(
+  analysisUpdatedAt: string | null | undefined,
+): boolean {
+  if (!analysisUpdatedAt) return true;
+  const updated = new Date(analysisUpdatedAt).getTime();
+  if (!Number.isFinite(updated)) return true;
+  return Date.now() - updated > ANALYSIS_STALE_MS;
+}
+
 export function parseNumberOrNull(value: unknown): number | null {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : null;

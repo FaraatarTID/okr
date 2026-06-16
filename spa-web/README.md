@@ -14,6 +14,9 @@ Current phase:
 - Node CRUD mutation probes for Goal/Objective/KR/Task create + delete paths via BFF.
 - Guided Check-In flow (Review -> Check-Ins -> Plan) with experiment linkage/creation.
 - Timeline mode with cycle-scoped Gantt visualization.
+- **Unified AI Analysis**: single button auto-analyzes all KRs in scope.
+- **Task progress auto-compute**: progress computed from `total_time_spent / estimated_minutes * 100`.
+- **Modal Inspector/Manage Nodes**: clicking entities in Focus Map opens Inspector or Manage Nodes as popup modals.
 
 ## API client layout
 

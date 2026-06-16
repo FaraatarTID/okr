@@ -14,7 +14,7 @@ from src.utils.time_utils import from_epoch_millis, from_epoch_seconds, utc_now
 
 from src.services.ai_provider import (
     generate_json as generate_ai_json,
-    get_gemini_api_key,
+    get_gemini_api_key as _get_gemini_api_key,
     is_external_ai_allowed as provider_external_ai_allowed,
 )
 from src.config_runtime import get_config_value
@@ -39,7 +39,7 @@ def is_external_ai_allowed() -> bool:
 
 def get_api_key() -> Optional[str]:
     """Backward-compatible export for existing runtime checks."""
-    return get_gemini_api_key()
+    return _get_gemini_api_key()
 
 
 def _run_ai_json_prompt(prompt: str) -> Dict[str, Any]:
@@ -242,6 +242,143 @@ def _fetch_recent_worklog_summaries(task_id: int) -> list:
         return []
 
 
+def _resolve_cycle_context(node, node_type: str) -> str:
+    """Resolve cycle title, dates, and elapsed percentage for the prompt."""
+    from datetime import date as _date
+
+    cycle = _get_cycle(node, node_type)
+    if not cycle:
+        return ""
+
+    title = getattr(cycle, "title", "Unknown Cycle")
+    start = getattr(cycle, "start_date", None)
+    end = getattr(cycle, "end_date", None)
+    today = _date.today()
+
+    parts = [f"Cycle: {title}"]
+    if start and end:
+        s = start.date() if hasattr(start, "date") else start
+        e = end.date() if hasattr(end, "date") else end
+        total_days = (e - s).days
+        elapsed_days = (today - s).days
+        if total_days > 0:
+            pct = min(100, max(0, round(elapsed_days / total_days * 100)))
+            remaining = max(0, (e - today).days)
+            parts.append(
+                f"Period: {s} to {e} ({total_days} days total, "
+                f"{pct}% elapsed, {remaining} days remaining)"
+            )
+        else:
+            parts.append(f"Period: {s} to {e}")
+    return "\n    ".join(parts)
+
+
+def _get_cycle_date_range(node, node_type: str):
+    """Return (cycle_start_date, cycle_end_date) or (None, None)."""
+    from datetime import date as _date
+
+    cycle = _get_cycle(node, node_type)
+    if not cycle:
+        return None, None
+    start = getattr(cycle, "start_date", None)
+    end = getattr(cycle, "end_date", None)
+    s = start.date() if start and hasattr(start, "date") else start
+    e = end.date() if end and hasattr(end, "date") else end
+    return s, e
+
+
+def _get_cycle(node, node_type: str):
+    """Traverse parent chain to find the Cycle object."""
+    if node_type in ("KEY_RESULT", "KEYRESULT"):
+        obj = getattr(node, "objective", None)
+        if obj:
+            goal = getattr(obj, "goal", None)
+            if goal:
+                return getattr(goal, "cycle", None)
+    elif node_type == "OBJECTIVE":
+        goal = getattr(node, "goal", None)
+        if goal:
+            return getattr(goal, "cycle", None)
+    elif node_type == "GOAL":
+        return getattr(node, "cycle", None)
+    return None
+
+
+def _build_parent_context(node, node_type: str) -> str:
+    """Build parent Objective and Goal context for the prompt."""
+    parts = []
+    if node_type in ("KEY_RESULT", "KEYRESULT"):
+        obj = getattr(node, "objective", None)
+        if obj:
+            parts.append(
+                f"Objective: \"{getattr(obj, 'title', 'N/A')}\" "
+                f"(progress: {getattr(obj, 'progress', 0)}%)"
+            )
+            goal = getattr(obj, "goal", None)
+            if goal:
+                parts.append(
+                    f"Goal: \"{getattr(goal, 'title', 'N/A')}\" "
+                    f"(progress: {getattr(goal, 'progress', 0)}%)"
+                )
+    elif node_type == "OBJECTIVE":
+        goal = getattr(node, "goal", None)
+        if goal:
+            parts.append(
+                f"Goal: \"{getattr(goal, 'title', 'N/A')}\" "
+                f"(progress: {getattr(goal, 'progress', 0)}%)"
+            )
+    return "\n    ".join(parts)
+
+
+def _build_experiment_text(node) -> str:
+    """Fetch and format experiments for the current KR, scoped to current cycle."""
+    try:
+        from src.database import get_session_context
+        from src.models import Experiment
+        from sqlmodel import select
+
+        cycle = _get_cycle(node, "KEY_RESULT")
+        cycle_id = getattr(cycle, "id", None) if cycle else None
+
+        with get_session_context() as s:
+            stmt = select(Experiment).where(
+                Experiment.key_result_id == node.id
+            )
+            if cycle_id:
+                stmt = stmt.where(Experiment.cycle_id == cycle_id)
+            experiments = s.exec(stmt.order_by(Experiment.created_at.desc())).all()
+
+        if not experiments:
+            return ""
+
+        lines = []
+        for exp in experiments[:5]:
+            status = getattr(exp, "status", "unknown")
+            hypothesis = (getattr(exp, "hypothesis", "") or "").strip()
+            change = (getattr(exp, "change_description", "") or "").strip()
+            decision = getattr(exp, "decision", None)
+            decision_val = decision.value if decision else "pending"
+            rationale = (getattr(exp, "decision_rationale", "") or "").strip()
+            direction = getattr(exp, "expected_effect_direction", None)
+            direction_val = direction.value if direction else "N/A"
+
+            line = (
+                f"  - [{status.value if hasattr(status, 'value') else status}] "
+                f"Hypothesis: {hypothesis[:150]}"
+            )
+            if change:
+                line += f"\n    Change: {change[:150]}"
+            line += f"\n    Expected effect: {direction_val}, Decision: {decision_val}"
+            if rationale:
+                line += f"\n    Rationale: {rationale[:150]}"
+            lines.append(line)
+
+        return "\n".join(lines)
+    except Exception as exc:
+        logger.debug("Failed to fetch experiments for KR %s: %s", getattr(node, "id", "?"), exc)
+        return ""
+
+
 def _analyze_node_inner(
     node_id: int,
     node_type: Optional[str] = "KEY_RESULT",
@@ -378,8 +515,66 @@ def _analyze_node_inner(
 
         children_text += f"- [{c_type}] {c_title}\n  Description: {c_desc}\n  Status: {c_status} ({c_progress}%)\n  Time: {c_time}m{start_date_info}{deadline_info}{work_summ_text}\n"
 
+    # Build check-in history text (for KRs, scoped to current cycle)
+    checkin_text = ""
+    cycle_check_ins = []
+    if node_type_upper in ("KEY_RESULT", "KEYRESULT") and hasattr(node, "check_ins"):
+        cycle_start, cycle_end = _get_cycle_date_range(node, node_type_upper)
+        all_check_ins = sorted(
+            node.check_ins or [],
+            key=lambda c: getattr(c, "created_at", datetime.min) or datetime.min,
+        )
+        # Filter to only check-ins within the current cycle
+        cycle_check_ins = []
+        for ci in all_check_ins:
+            created = getattr(ci, "created_at", None)
+            if created and cycle_start and cycle_end:
+                ci_date = created.date() if hasattr(created, "date") else created
+                if cycle_start <= ci_date <= cycle_end:
+                    cycle_check_ins.append(ci)
+            elif not cycle_start:
+                cycle_check_ins.append(ci)
+        if cycle_check_ins:
+            lines = []
+            for ci in cycle_check_ins[-10:]:
+                val = getattr(ci, "value", None)
+                conf = getattr(ci, "confidence_score", None)
+                comment = (getattr(ci, "comment", None) or "").strip()
+                created = getattr(ci, "created_at", None)
+                date_str = created.strftime("%Y-%m-%d") if created else "?"
+                variation = getattr(ci, "variation_type", None)
+                var_tag = f" [{variation.value}]" if variation else ""
+                line = f"  {date_str}: value={val}, confidence={conf}/10{var_tag}"
+                if comment:
+                    line += f' — "{comment[:120]}"'
+                lines.append(line)
+            checkin_text = "\n".join(lines)
+
+    # Build cycle context
+    cycle_text = ""
+    try:
+        cycle_ctx = _resolve_cycle_context(node, node_type_upper)
+        if cycle_ctx:
+            cycle_text = cycle_ctx
+    except Exception as exc:
+        logger.debug("Failed to resolve cycle context: %s", exc)
+
+    # Build parent context (Objective + Goal)
+    parent_text = _build_parent_context(node, node_type_upper)
+
+    # Build experiments text (for KRs, scoped to current cycle)
+    experiment_text = ""
+    if node_type_upper in ("KEY_RESULT", "KEYRESULT"):
+        experiment_text = _build_experiment_text(node)
+
     prompt = f"""
     You are an expert Strategic OKR Analyst.
+
+    PARENT CONTEXT:
+    {parent_text or "N/A"}
+
+    CYCLE CONTEXT:
+    {cycle_text or "N/A"}
 
     OKR METHODOLOGY RULES:
     - Goals and Objectives are time-bounded by the OKR cycle, NOT by individual deadlines.
@@ -395,10 +590,12 @@ def _analyze_node_inner(
     {json.dumps(current_snapshot["metrics"], indent=2, ensure_ascii=False)}
     Defined Scope (Children):
     {children_text}
+    {f"CHECK-IN HISTORY (last {min(len(cycle_check_ins), 10)} of {len(cycle_check_ins)} this cycle):" + chr(10) + checkin_text if checkin_text else ""}
+    {f"EXPERIMENTS (this cycle):" + chr(10) + experiment_text if experiment_text else ""}
 
     ---
     PREVIOUS ANALYSIS RESULTS:
-    {json.dumps(node.gemini_analysis, indent=2, ensure_ascii=False) if node.gemini_analysis else "N/A (First Run)"}
+    {json.dumps(node.ai_analysis, indent=2, ensure_ascii=False) if node.ai_analysis else "N/A (First Run)"}
 
     ---
     YOUR OBJECTIVE:

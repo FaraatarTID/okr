@@ -411,7 +411,7 @@ class KeyResult(NodeBase, table=True):
     weight: float = Field(default=1.0)
 
     # AI Analysis cache
-    gemini_analysis: Optional[str] = None  # JSON string of analysis results
+    ai_analysis: Optional[str] = None  # JSON string of analysis results
     analysis_updated_at: Optional[datetime] = None
 
     # Phase 2: Lifecycle
@@ -444,7 +444,7 @@ class Task(NodeBase, table=True):
     __tablename__ = "task"
     __table_args__ = (
         CheckConstraint(
-            "progress >= 0 AND progress <= 100", name="ck_task_progress_range"
+            "progress >= 0", name="ck_task_progress_non_negative"
         ),
         CheckConstraint(
             "estimated_minutes >= 0", name="ck_task_estimated_minutes_non_negative"
@@ -466,6 +466,8 @@ class Task(NodeBase, table=True):
     start_date: Optional[datetime] = None
     estimated_minutes: int = Field(default=0)
     total_time_spent: int = Field(default=0)  # Cached sum of work logs (minutes)
+    # progress is auto-computed: total_time_spent / estimated_minutes * 100
+    # Can exceed 100 when task takes longer than estimated.
 
     # Active timer tracking
     timer_started_at: Optional[datetime] = None

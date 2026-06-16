@@ -6,10 +6,11 @@ This guide documents AI behavior that is currently implemented in code (`src/ser
 ## 1. Where AI Is Available in the UI
 
 AI is used in these places:
-- `Inspector` (KR/Object analysis via `analyze_node`).
+- **AI Analysis button** (Atlas workspace, below Focus Map): batch-analyzes all KRs in scope.
+- **KR Inspector modal** (popup): shows cached AI analysis for a Key Result, with "Run Analysis" button to re-analyze.
+- **Suggest Next Task** (timer section, top sidebar): picks the single best next task.
 - `Weekly Check-In` step 1 (AI weekly summary generation).
 - `Weekly Report` (AI executive brief generation).
-- `Atlas -> Focus Map` sidebar (`AI Progress Sync` controls).
 - `Leadership Insights -> Execution` (`AI Team Coach`, manager/admin).
 - `Leadership Insights -> Strategy Pulse` (burnout, strategy gaps, predictive outlook, achievement portfolio PDF).
 
@@ -19,74 +20,50 @@ Runtime path is backend-segregated:
 - Frontend submits `ai.generate_json` jobs to `backend-api`.
 - `backend-worker` executes provider calls asynchronously.
 
-This keeps heavy AI calls off the frontend and provides durable job status tracking.
-
-Related architecture detail:
-- Frontend reads/writes that participate in AI-assisted workflows route via backend API (`OKR_BACKEND_PROXY_MUTATIONS=true`, `OKR_BACKEND_PROXY_READS=true`).
-- If backend transport fails, behavior is fail-closed (local execution fallback is disabled).
+For `analyze_node` specifically, the backend calls the AI provider directly (synchronously) rather than through the job queue, since the result is needed immediately.
 
 ## 2. Implemented AI Capabilities
 
-### A) Node Analysis (Magic Wand / Run Analysis)
+### A) AI Analysis (Atlas workspace)
 
-Scope:
-- Primarily for Key Results, with objective-aware context.
+The primary AI interaction point. A single "AI Analysis" button analyzes all KRs in scope.
 
-Typical outputs:
-- `efficiency_score`
-- `effectiveness_score`
-- `overall_score`
-- `gap_analysis`
-- `proposed_tasks`
-- short summary and warnings
+**Flow:**
+1. User clicks "AI Analysis" below the Focus Map.
+2. System auto-analyzes all KRs that need analysis (no existing `ai_analysis` or stale >24h).
+3. Analysis results are stored on each KR as `ai_analysis` JSON.
+4. Report shows: analyzed count, cached count, errors.
 
-How it is applied:
-- Analysis is generated on demand.
-- Results are stored in KR analysis fields.
-- No autonomous structural change is applied unless user confirms follow-up actions.
+**Key design principle:** AI provides analysis only — it does NOT estimate or update KR progress. KR progress is entered exclusively by users via check-in sessions.
 
-### B) AI Weekly Summary
+**Data sent to AI per KR:**
+- KR title, description, metrics (target/current/progress).
+- Children (tasks) with title, description, progress, time spent, deadlines, work log summaries.
+- Check-in history (cycle-scoped, last 10): value, confidence (0-10), variation type, comment.
+- Experiments (cycle-scoped): hypothesis, change description, status, decision, expected effect direction.
+- Parent context: Objective title/progress + Goal title/progress.
+- Cycle context: cycle title, start/end dates, elapsed percentage, days remaining.
+- Previous analysis results (for delta comparison with prior run).
 
-Available in:
-- Weekly Check-In (week review step)
-- Weekly Report
+### B) Per-Node AI Analysis (KR Inspector)
 
-Input basis:
-- Work log text
-- total minutes
-- completed tasks
-- KR update count
+Available as a read-only display in the Inspector modal for Key Results only. Shows:
+- Efficiency/effectiveness/overall scores
+- Gap analysis, quality assessment
+- Proposed tasks, deadline warnings
+- Summary
 
-Output shape:
-- markdown summary
-- highlights list
-- focus analysis sentence
+If no analysis exists, a "Run Analysis" button appears to trigger on-demand analysis.
 
-### C) AI Progress Sync in Atlas
+**Objectives do NOT have AI analysis** — their score is a weighted rollup from child KRs.
 
-Location:
-- Focus Map sidebar under `AI` controls.
+### C) Suggest Next Task (Timer section)
 
-Capabilities:
-- Refresh AI analysis across visible KRs.
-- Optional `Apply AI overall score to KR progress`.
-- Policy controls: preview mode, max delta, allow/disallow decreases.
-- Undo support for recently applied progress updates.
+Located in the task timer section of the top sidebar.
 
-Important behavior:
-- DRAFT KRs are skipped during bulk sync.
-- Progress writes happen only when user runs sync with write mode enabled.
+Uses local priority scoring (urgency, progress gaps, parent KR scores) to pick the single best next task.
 
-### D) Suggested Next Task
-
-Two sources are used:
-- Local ranking logic in Atlas (`Suggested Next`).
-- Optional AI suggestion (`suggest_critical_task`) during AI sync flow.
-
-Purpose:
-- Pick one high-priority next task using urgency, progress, and strategic context.
-
-### E) AI Team Coach (Dashboard)
+### D) AI Team Coach (Dashboard)
 
 Available for manager/admin in Strategic Dashboard.
 
@@ -95,46 +72,69 @@ Uses aggregated team metrics to return:
 - per-dimension insights (productivity, deadlines, alignment, workload, momentum)
 - top priorities, quick wins, and watch-out signal
 
-### F) Strategy Pulse (Leadership Insights)
+### E) Strategy Pulse (Leadership Insights)
 
 Location:
 - Open `Strategic Dashboard`, then switch to `Strategy Pulse` tab in `Leadership Insights`.
 
 Capabilities:
-- Burnout risk scoring from recent effort/output signals (`calculate_burnout_risk`).
-- Ghost-goal / strategy-gap detection for active objectives (`detect_strategy_gaps`).
-- AI predictive forecast generation (`generate_predictive_outlook`).
-- Achievement portfolio generation and PDF export (`generate_achievement_portfolio`, `generate_achievement_portfolio_pdf`).
+- Burnout risk scoring from recent effort/output signals.
+- Ghost-goal / strategy-gap detection for active objectives.
+- AI predictive forecast generation.
+- Achievement portfolio generation and PDF export.
 
-Manager leadership use:
-- Team monitoring: detect workload risk and stalled objectives early.
-- Team building/coaching: use mitigation suggestions and portfolio evidence in 1:1 and team reviews.
+## 3. Task Progress: Auto-Computed
 
-## 3. Human-in-the-Loop Rules
+Task progress is no longer manually set. It is auto-computed from time tracking:
 
-- AI suggestions are advisory until the user applies them.
-- KR progress changes from AI require explicit user action.
-- Manual KR edits/check-ins remain first-class and can override AI-driven values.
+```
+progress = total_time_spent / estimated_minutes * 100
+```
 
-## 4. RBAC Boundaries for AI Access
+- If `estimated_minutes > 0`: progress is computed as percentage (can exceed 100% when task takes longer than estimated).
+- If `estimated_minutes = 0` (no estimate): falls back to `total_time_spent` as raw minutes.
+- Progress is recomputed automatically when a work log is created (timer stopped) or deleted.
+- The `progress <= 100` CHECK constraint has been removed for tasks.
+
+## 4. AI Analysis Data Storage
+
+- Analysis results are stored in the `ai_analysis` column on KeyResult.
+- `ai_overall_score` is a virtual/derived field computed at read time from `ai_analysis` JSON.
+- Analysis staleness is tracked via `analysis_updated_at` (24h threshold for re-analysis).
+
+## 5. Human-in-the-Loop Rules
+
+- AI suggestions are advisory only — no autonomous mutations.
+- KR progress is entered exclusively by users via check-in sessions.
+- Manual KR edits/check-ins remain first-class.
+
+## 6. RBAC Boundaries for AI Access
 
 - UI analysis actions pass actor context into `analyze_node`.
 - `analyze_node` reads node context through `get_node(..., actor_username=...)` when actor context is provided.
 - `get_node` performs `READ` authorization against the node's ancestor goal before returning data.
-- AI result writes still use normal mutation paths (for example `update_key_result(..., actor_username=...)`).
-- Objective alignment mutations are separately authorization-gated (`create_alignment` / `delete_alignment`).
+- AI result writes still use normal mutation paths.
 
-## 5. Data Quality Requirements
+## 7. Data Quality Requirements
 
 AI output quality depends on:
 - clear KR titles and descriptions
 - current KR metric values (`start/current/target`)
 - clean work log summaries
 - regular Weekly Check-In check-ins (confidence + comments)
+- task estimated minutes (for AI to assess effort allocation)
 
 If these inputs are weak, AI recommendations become generic.
 
-## 6. Limits and Non-Features (Current Build)
+## 8. DB Connection Fallback
+
+For `analyze_node`, the system implements a two-tier fallback:
+1. **Default**: Direct PostgreSQL via port 6543 (transaction mode pooler).
+2. **Fallback**: If port 6543 is unreachable → Supabase REST API via HTTPS 443.
+
+This ensures AI analysis works even when direct database connectivity is unavailable.
+
+## 9. Limits and Non-Features (Current Build)
 
 The current implementation does not guarantee:
 - citation-number outputs in every response,
@@ -143,32 +143,25 @@ The current implementation does not guarantee:
 - a separate global AI control center outside Atlas/Dashboard surfaces.
 
 Deployment policy control:
-- Set `ALLOW_EXTERNAL_AI=false` (or `OKR_ALLOW_EXTERNAL_AI=false`) to hard-disable outbound AI calls.
-- Set `AI_PROVIDER=openai_compatible` with `AI_BASE_URL` + `AI_MODEL` to route AI to local/self-hosted OpenAI-compatible runtimes (for example Ollama, LM Studio, vLLM gateways).
+- Set `ALLOW_EXTERNAL_AI=false` to hard-disable outbound AI calls.
+- Set `AI_PROVIDER=openai_compatible` with `AI_BASE_URL` + `AI_MODEL` to route AI to local/self-hosted OpenAI-compatible runtimes.
 
-## 7. AI Data and Privacy Notice
+## 10. AI Data and Privacy Notice
 
 AI features are optional and provider-driven:
 - `AI_PROVIDER=gemini` uses Google Gemini (`GEMINI_API_KEY` required).
 - `AI_PROVIDER=openai_compatible` routes to any OpenAI-compatible endpoint using `AI_BASE_URL` + `AI_MODEL` (optional `AI_API_KEY`).
 
 Hard-disable policy:
-- Set `ALLOW_EXTERNAL_AI=false` (or `OKR_ALLOW_EXTERNAL_AI=false`) to block all outbound AI calls.
+- Set `ALLOW_EXTERNAL_AI=false` to block all outbound AI calls.
 
 When AI is enabled, relevant OKR content can be sent to the configured provider, including:
 - titles and descriptions
 - progress and deadlines
 - work-log summaries/reflections used for analysis
+- check-in history (cycle-scoped)
+- experiment outcomes (cycle-scoped)
+- parent Objective/Goal context
+- cycle timeline (start/end dates, elapsed percentage)
 
 Before enabling AI in production, confirm provider/data-flow compliance with your company privacy and data-classification policies.
-
-## 8. Practical Prompt Patterns
-
-Use short, constrained prompts in Inspector analysis flows:
-- "What is the main blocker to this KR reaching target?"
-- "Which proposed task has the highest impact in the next 3 days?"
-- "Is current progress realistic relative to logged effort?"
-
-For team coaching:
-- "Prioritize top 3 interventions for next week and explain tradeoffs."
-

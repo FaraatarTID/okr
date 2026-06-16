@@ -177,9 +177,6 @@ const TYPE_TAG: Record<AtlasIndexNode["type"], string> = {
   TASK: "T",
 };
 
-const AI_SYNC_MAX_DELTA = Number.parseInt(process.env.NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA || "100", 10) || 100;
-const AI_SYNC_ALLOW_DECREASE = (process.env.NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE || "true").toLowerCase() !== "false";
-
 export default function AtlasShell() {
   const router = useRouter();
   const [cycleId, setCycleId] = useState("");
@@ -1041,11 +1038,9 @@ export default function AtlasShell() {
     aiSyncError,
     aiSyncMessage,
     aiSyncReport,
-    aiProgressUndoItems,
     aiSuggestPending,
     aiSuggestion,
     handleAiProgressSync,
-    handleAiProgressUndo,
     handleAiSuggestNextTask,
   } = useAiProgressAssist({
     user,
@@ -1053,14 +1048,30 @@ export default function AtlasShell() {
     atlasRuntime,
     allScopeRefs,
     taskRefs,
-    aiSyncMaxDelta: AI_SYNC_MAX_DELTA,
-    aiSyncAllowDecrease: AI_SYNC_ALLOW_DECREASE,
     loadSnapshotForUser,
     onTaskSuggested: (taskRef) => {
       setFocusTaskRef(taskRef);
       setSelectedRef(taskRef);
     },
   });
+  const [inspectorModalOpen, setInspectorModalOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalParentRef, setCreateModalParentRef] = useState("");
+  const createModalContext = useMemo(() => {
+    if (!createModalParentRef || !atlasRuntime) {
+      return { goalId: null, objectiveId: null, keyResultId: null };
+    }
+    const parentMeta = atlasRuntime.index[createModalParentRef];
+    if (!parentMeta) {
+      return { goalId: null, objectiveId: null, keyResultId: null };
+    }
+    const type = parentMeta.type;
+    return {
+      goalId: type === "GOAL" ? parentMeta.id : null,
+      objectiveId: type === "OBJECTIVE" ? parentMeta.id : null,
+      keyResultId: type === "KEY_RESULT" ? parentMeta.id : null,
+    };
+  }, [createModalParentRef, atlasRuntime]);
   const {
     alignmentContext,
     alignmentPending,
@@ -1361,6 +1372,23 @@ export default function AtlasShell() {
             {timerMessage ? (
               <p style={{ margin: "0.36rem 0 0", color: "var(--accent)", fontSize: "0.82rem" }}>{timerMessage}</p>
             ) : null}
+
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => void handleAiSuggestNextTask()}
+              disabled={aiSuggestPending || !user || taskRefs.length === 0}
+              style={{ width: "100%", marginTop: "0.36rem" }}
+            >
+              {aiSuggestPending ? "Suggesting..." : "Suggest Next Task"}
+            </button>
+            {aiSuggestion ? (
+              <p style={{ margin: "0.34rem 0 0", fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+                Suggested: {aiSuggestion.taskRef}
+                {aiSuggestion.confidence !== null ? ` (${aiSuggestion.confidence}%)` : ""}
+                {aiSuggestion.reason ? ` — ${aiSuggestion.reason}` : ""}
+              </p>
+            ) : null}
           </div>
           <h2 style={{ margin: "0.65rem 0 0.65rem", fontSize: "1.05rem" }}>Workspace</h2>
           <div className="spa-sidebar-links">
@@ -1431,164 +1459,43 @@ export default function AtlasShell() {
           filteredRefs={filteredRefs}
           atlasIndex={atlasRuntime?.index || null}
           selectedRef={selectedRef}
-          onSelectRef={setSelectedRef}
+          onSelectRef={(ref) => {
+            setSelectedRef(ref);
+            setInspectorModalOpen(true);
+          }}
+          onAddChild={(parentRef) => {
+            const parentMeta = atlasRuntime?.index[parentRef];
+            if (parentMeta) {
+              setCreateDraft((prev) => ({
+                ...prev,
+                createType:
+                  parentMeta.type === "GOAL"
+                    ? "objective"
+                    : parentMeta.type === "OBJECTIVE"
+                      ? "key_result"
+                      : "task",
+              }));
+            }
+            setCreateModalParentRef(parentRef);
+            setCreateModalOpen(true);
+          }}
           nodeQuery={nodeQuery}
           onNodeQueryChange={setNodeQuery}
           hasSnapshotPayload={Boolean(snapshotPayload)}
           nodeTagForType={(type) => TYPE_TAG[type as keyof typeof TYPE_TAG] || "N"}
         />
 
-        <div className="atlas-inspector-pane">
-          <p className="kicker">Inspector</p>
-          <h2 style={{ margin: "0.1rem 0 0.4rem", fontSize: "1.05rem" }}>
-            {selectedMeta
-              ? selectedInspectorTitle
-              : "Select a node"}
-          </h2>
-
-          <InspectorAiAssistPanel
-            aiSyncMaxDelta={AI_SYNC_MAX_DELTA}
-            aiSyncPending={aiSyncPending}
-            aiSuggestPending={aiSuggestPending}
-            hasUser={Boolean(user)}
-            hasAtlasRuntime={Boolean(atlasRuntime)}
-            hasAiUndoItems={aiProgressUndoItems.length > 0}
-            hasTaskRefs={taskRefs.length > 0}
-            aiSyncReport={aiSyncReport}
-            aiSuggestion={aiSuggestion}
-            aiSyncError={aiSyncError}
-            aiSyncMessage={aiSyncMessage}
-            onPreviewAiSync={() => {
-              void handleAiProgressSync(true);
-            }}
-            onApplyAiSync={() => {
-              void handleAiProgressSync(false);
-            }}
-            onUndoAiSync={() => {
-              void handleAiProgressUndo();
-            }}
-            onSuggestNextTask={() => {
-              void handleAiSuggestNextTask();
-            }}
-          />
-
-          {selectedMeta && atlasRuntime ? (
-            <>
-              <p style={{ margin: 0, color: "var(--ink-soft)", minHeight: "2.5rem" }}>
-                {selectedMeta.description || "No description."}
-              </p>
-
-              <div className="atlas-progress-wrap" style={{ marginTop: "0.75rem" }}>
-                <div className="atlas-progress-track">
-                  <div
-                    className="atlas-progress-fill"
-                    style={{ width: `${Math.max(0, Math.min(100, selectedMeta.progress))}%` }}
-                  />
-                </div>
-                <span className="atlas-progress-label">Progress {selectedMeta.progress}%</span>
-              </div>
-
-              <p style={{ margin: "0.55rem 0 0", fontSize: "0.84rem", color: "var(--ink-soft)" }}>
-                Owner: {selectedMeta.ownerName}
-              </p>
-              <p style={{ margin: "0.2rem 0 0", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                Path: {selectedMeta.path.map((ref) => atlasRuntime.index[ref]?.title || ref).join(" > ")}
-              </p>
-
-              <InspectorEditAnalysisPanel
-                inspectDraft={inspectDraft}
-                onInspectDraftChange={(patch) => {
-                  setInspectDraft((prev) => ({ ...prev, ...patch }));
-                }}
-                onInspectorSave={handleInspectorSave}
-                inspectPending={inspectPending}
-                hasUser={Boolean(user)}
-                onNodeDelete={handleNodeDelete}
-                deletePending={deletePending}
-                deleteError={deleteError}
-                deleteMessage={deleteMessage}
-                selectedTypeLabel={nodeTypeLabel(selectedMeta.type)}
-                selectedNodeType={selectedMeta.type}
-                inspectError={inspectError}
-                inspectMessage={inspectMessage}
-                showAiAnalysis={selectedMeta.type === "KEY_RESULT" || selectedMeta.type === "OBJECTIVE"}
-                aiAnalysisTargetLabel={selectedMeta.type === "KEY_RESULT" ? "key result" : "objective"}
-                onRunAnalysis={() => {
-                  void handleInspectorRunAnalysis();
-                }}
-                inspectAnalysisPending={inspectAnalysisPending}
-                inspectAnalysisError={inspectAnalysisError}
-                inspectAnalysis={inspectAnalysis}
-              />
-
-              <dl className="atlas-kv-grid">
-                {selectedNodeDetails(selectedMeta, { formatOptionalDate, formatOptionalNumber }).map(([label, value]) => (
-                  <div key={`${label}-${value}`}>
-                    <dt>{label}</dt>
-                    <dd>{value}</dd>
-                  </div>
-                ))}
-              </dl>
-
-              {selectedMeta.type === "TASK" ? (
-                <InspectorTaskWorkHistoryPanel
-                  inspectTaskWorkLogsPending={inspectTaskWorkLogsPending}
-                  inspectTaskWorkLogsError={inspectTaskWorkLogsError}
-                  inspectTaskWorkLogsActionError={inspectTaskWorkLogsActionError}
-                  inspectTaskWorkLogsActionMessage={inspectTaskWorkLogsActionMessage}
-                  inspectTaskWorkHistoryRows={inspectTaskWorkHistoryRows}
-                  inspectTaskWorkLogPendingId={inspectTaskWorkLogPendingId}
-                  hasUser={Boolean(user)}
-                  formatOptionalDate={formatOptionalDate}
-                  onDeleteWorkLog={(workLogId) => {
-                    void handleInspectorDeleteWorkLog(workLogId);
-                  }}
-                />
-              ) : null}
-
-              {selectedMeta.type === "OBJECTIVE" ? (
-                <InspectorAlignmentPanel
-                  alignmentPending={alignmentPending}
-                  alignmentError={alignmentError}
-                  alignmentContext={alignmentContext}
-                  alignmentDirection={alignmentDirection}
-                  alignmentTargetObjectiveId={alignmentTargetObjectiveId}
-                  onAlignmentDirectionChange={setAlignmentDirection}
-                  onAlignmentTargetObjectiveIdChange={setAlignmentTargetObjectiveId}
-                  onAlignmentCreate={() => {
-                    void handleAlignmentCreate();
-                  }}
-                  onAlignmentDelete={(edgeId) => {
-                    void handleAlignmentDelete(edgeId);
-                  }}
-                />
-              ) : null}
-
-            </>
-          ) : (
-            <p style={{ margin: 0, color: "var(--ink-soft)" }}>
-              Choose a Goal/Objective/KR/Task from Focus Map to inspect and edit details, or create your first Goal below.
-            </p>
-          )}
-
-          <InspectorManageNodesPanel
-            createDraft={createDraft}
-            onCreateDraftChange={(patch) => {
-              setCreateDraft((prev) => ({ ...prev, ...patch }));
-            }}
-            createContext={createContext}
-            canCreateForContext={canCreateForContext}
-            createTypeLabel={createTypeLabel}
-            cycleLabel={cycleDisplayLabel(resolvedCycle)}
-            onCreateNode={handleNodeCreate}
-            createPending={createPending}
-            hasUser={Boolean(user)}
-            createError={createError}
-            createMessage={createMessage}
-            deleteError={deleteError}
-            deleteMessage={deleteMessage}
-          />
-        </div>
+        <InspectorAiAssistPanel
+          aiSyncPending={aiSyncPending}
+          hasUser={Boolean(user)}
+          hasAtlasRuntime={Boolean(atlasRuntime)}
+          aiSyncReport={aiSyncReport}
+          aiSyncError={aiSyncError}
+          aiSyncMessage={aiSyncMessage}
+          onRunAiSync={() => {
+            void handleAiProgressSync(false);
+          }}
+        />
       </section>
 
       </>
@@ -2028,6 +1935,168 @@ export default function AtlasShell() {
       )}
         </div>
       </div>
+      {inspectorModalOpen && selectedMeta && atlasRuntime ? (
+        <div className="timer-modal-overlay" role="dialog" aria-modal="true" aria-label="Inspector">
+          <div className="timer-modal panel" style={{ maxWidth: "28rem", maxHeight: "85vh", overflowY: "auto" }}>
+            <div className="timer-modal-head">
+              <div>
+                <p className="kicker" style={{ margin: 0 }}>Inspector</p>
+                <h3 style={{ margin: "0.12rem 0 0" }}>
+                  {selectedInspectorTitle}
+                </h3>
+              </div>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => setInspectorModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <p style={{ margin: "0.4rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", minHeight: "2rem" }}>
+              {selectedMeta.description || "No description."}
+            </p>
+
+            <div className="atlas-progress-wrap" style={{ marginTop: "0.5rem" }}>
+              <div className="atlas-progress-track">
+                <div
+                  className="atlas-progress-fill"
+                  style={{ width: `${Math.max(0, Math.min(100, selectedMeta.progress))}%` }}
+                />
+              </div>
+              <span className="atlas-progress-label">Progress {selectedMeta.progress}%</span>
+            </div>
+
+            <p style={{ margin: "0.4rem 0 0", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
+              Owner: {selectedMeta.ownerName}
+            </p>
+            <p style={{ margin: "0.2rem 0 0", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
+              Path: {selectedMeta.path.map((ref) => atlasRuntime.index[ref]?.title || ref).join(" > ")}
+            </p>
+
+            <InspectorEditAnalysisPanel
+              inspectDraft={inspectDraft}
+              onInspectDraftChange={(patch) => {
+                setInspectDraft((prev) => ({ ...prev, ...patch }));
+              }}
+              onInspectorSave={handleInspectorSave}
+              inspectPending={inspectPending}
+              hasUser={Boolean(user)}
+              onNodeDelete={() => {
+                void handleNodeDelete();
+                setInspectorModalOpen(false);
+              }}
+              deletePending={deletePending}
+              deleteError={deleteError}
+              deleteMessage={deleteMessage}
+              selectedTypeLabel={nodeTypeLabel(selectedMeta.type)}
+              selectedNodeType={selectedMeta.type}
+              inspectError={inspectError}
+              inspectMessage={inspectMessage}
+              inspectAnalysis={inspectAnalysis}
+              onRunAnalysis={selectedMeta.type === "KEY_RESULT" ? () => {
+                void handleInspectorRunAnalysis();
+              } : undefined}
+              inspectAnalysisPending={inspectAnalysisPending}
+              inspectAnalysisError={inspectAnalysisError}
+            />
+
+            <dl className="atlas-kv-grid">
+              {selectedNodeDetails(selectedMeta, { formatOptionalDate, formatOptionalNumber }).map(([label, value]) => (
+                <div key={`${label}-${value}`}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+
+            {selectedMeta.type === "TASK" ? (
+              <InspectorTaskWorkHistoryPanel
+                inspectTaskWorkLogsPending={inspectTaskWorkLogsPending}
+                inspectTaskWorkLogsError={inspectTaskWorkLogsError}
+                inspectTaskWorkLogsActionError={inspectTaskWorkLogsActionError}
+                inspectTaskWorkLogsActionMessage={inspectTaskWorkLogsActionMessage}
+                inspectTaskWorkHistoryRows={inspectTaskWorkHistoryRows}
+                inspectTaskWorkLogPendingId={inspectTaskWorkLogPendingId}
+                hasUser={Boolean(user)}
+                formatOptionalDate={formatOptionalDate}
+                onDeleteWorkLog={(workLogId) => {
+                  void handleInspectorDeleteWorkLog(workLogId);
+                }}
+              />
+            ) : null}
+
+            {selectedMeta.type === "OBJECTIVE" ? (
+              <InspectorAlignmentPanel
+                alignmentPending={alignmentPending}
+                alignmentError={alignmentError}
+                alignmentContext={alignmentContext}
+                alignmentDirection={alignmentDirection}
+                alignmentTargetObjectiveId={alignmentTargetObjectiveId}
+                onAlignmentDirectionChange={setAlignmentDirection}
+                onAlignmentTargetObjectiveIdChange={setAlignmentTargetObjectiveId}
+                onAlignmentCreate={() => {
+                  void handleAlignmentCreate();
+                }}
+                onAlignmentDelete={(edgeId) => {
+                  void handleAlignmentDelete(edgeId);
+                }}
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {createModalOpen ? (
+        <div className="timer-modal-overlay" role="dialog" aria-modal="true" aria-label="Create node">
+          <div className="timer-modal panel" style={{ maxWidth: "28rem", maxHeight: "85vh", overflowY: "auto" }}>
+            <div className="timer-modal-head">
+              <div>
+                <p className="kicker" style={{ margin: 0 }}>Manage Nodes</p>
+                <h3 style={{ margin: "0.12rem 0 0" }}>
+                  Create {createTypeLabel(createDraft.createType)}
+                </h3>
+              </div>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => setCreateModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <InspectorManageNodesPanel
+              createDraft={createDraft}
+              onCreateDraftChange={(patch) => {
+                setCreateDraft((prev) => ({ ...prev, ...patch }));
+              }}
+              createContext={createModalContext}
+              canCreateForContext={Boolean(
+                createDraft.createType === "goal" ||
+                (createDraft.createType === "objective" && createModalContext.goalId) ||
+                (createDraft.createType === "key_result" && createModalContext.objectiveId) ||
+                (createDraft.createType === "task" && createModalContext.keyResultId),
+              )}
+              createTypeLabel={createTypeLabel}
+              cycleLabel={cycleDisplayLabel(resolvedCycle)}
+              onCreateNode={() => {
+                void handleNodeCreate().then(() => {
+                  setCreateModalOpen(false);
+                });
+              }}
+              createPending={createPending}
+              hasUser={Boolean(user)}
+              createError={createError}
+              createMessage={createMessage}
+              deleteError={deleteError}
+              deleteMessage={deleteMessage}
+            />
+          </div>
+        </div>
+      ) : null}
+
       {timerModalOpen && focusTaskRunning ? (
         <div className="timer-modal-overlay" role="dialog" aria-modal="true" aria-label="Focus timer session">
           <div className="timer-modal panel">

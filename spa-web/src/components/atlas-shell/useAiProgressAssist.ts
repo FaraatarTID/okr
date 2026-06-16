@@ -3,14 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import {
+  analyzeNodeAi,
   submitBackendJob,
-  updateNodeMutation,
   type AuthUser,
 } from "@/lib/api";
-import {
-  clampProgress,
-  aiProgressDecision,
-} from "@/components/atlas-shell/shellAnalyticsUtils";
+import { isAnalysisStale, clampProgress } from "@/components/atlas-shell/shellAnalyticsUtils";
 import { waitForBackendJobResult } from "@/components/atlas-shell/jobPolling";
 import type {
   AtlasIndexNode,
@@ -22,21 +19,10 @@ type AtlasRuntimeLike = {
   index: Record<string, AtlasIndexNode>;
 };
 
-export type AiProgressUndoItem = {
-  krId: number;
-  title: string;
-  previousProgress: number;
-  newProgress: number;
-};
-
-export type AiSyncReport = {
+export type AiAnalysisReport = {
   total: number;
   analyzed: number;
-  applied: number;
-  planned: number;
-  missingAiScore: number;
-  skippedDeltaCap: number;
-  skippedDecrease: number;
+  reanalyzed: number;
   unchanged: number;
   failed: string[];
 };
@@ -53,8 +39,6 @@ type UseAiProgressAssistInput = {
   atlasRuntime: AtlasRuntimeLike | null;
   allScopeRefs: string[];
   taskRefs: string[];
-  aiSyncMaxDelta: number;
-  aiSyncAllowDecrease: boolean;
   loadSnapshotForUser: (activeUser: AuthUser) => Promise<void>;
   onTaskSuggested: (taskRef: string) => void;
 };
@@ -65,22 +49,18 @@ export default function useAiProgressAssist({
   atlasRuntime,
   allScopeRefs,
   taskRefs,
-  aiSyncMaxDelta,
-  aiSyncAllowDecrease,
   loadSnapshotForUser,
   onTaskSuggested,
 }: UseAiProgressAssistInput) {
   const [aiSyncPending, setAiSyncPending] = useState(false);
   const [aiSyncError, setAiSyncError] = useState("");
   const [aiSyncMessage, setAiSyncMessage] = useState("");
-  const [aiSyncReport, setAiSyncReport] = useState<AiSyncReport | null>(null);
-  const [aiProgressUndoItems, setAiProgressUndoItems] = useState<AiProgressUndoItem[]>([]);
+  const [aiSyncReport, setAiSyncReport] = useState<AiAnalysisReport | null>(null);
   const [aiSuggestPending, setAiSuggestPending] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<AiTaskSuggestion | null>(null);
 
   useEffect(() => {
     setAiSyncReport(null);
-    setAiProgressUndoItems([]);
     setAiSuggestion(null);
     setAiSyncError("");
     setAiSyncMessage("");
@@ -97,153 +77,75 @@ export default function useAiProgressAssist({
     try {
       const krRefs = allScopeRefs.filter((ref) => atlasRuntime.index[ref]?.type === "KEY_RESULT");
       let analyzed = 0;
-      let applied = 0;
-      let planned = 0;
-      let missingAiScore = 0;
-      let skippedDeltaCap = 0;
-      let skippedDecrease = 0;
+      let reanalyzed = 0;
       let unchanged = 0;
       const failed: string[] = [];
-      const undoItems: AiProgressUndoItem[] = [];
 
-      for (const ref of krRefs) {
-        const meta = atlasRuntime.index[ref];
-        if (!meta || meta.type !== "KEY_RESULT") {
-          continue;
-        }
-        analyzed += 1;
-        const krNode = meta.node as AtlasKeyResultSnapshot;
-        const decision = aiProgressDecision(
-          meta.progress,
-          krNode.ai_overall_score,
-          aiSyncMaxDelta,
-          aiSyncAllowDecrease,
+      const BATCH_SIZE = 3;
+      for (let i = 0; i < krRefs.length; i += BATCH_SIZE) {
+        const batch = krRefs.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map(async (ref) => {
+            const meta = atlasRuntime.index[ref];
+            if (!meta || meta.type !== "KEY_RESULT") return;
+            const krNode = meta.node as AtlasKeyResultSnapshot;
+            if (
+              krNode.ai_overall_score != null &&
+              !isAnalysisStale(krNode.analysis_updated_at)
+            ) {
+              unchanged += 1;
+              return;
+            }
+            const analysisRaw = await analyzeNodeAi({
+              actor_username: user.username,
+              node_id: meta.id,
+              node_type: "KEY_RESULT",
+            });
+            await import("@/lib/api").then(({ updateNodeMutation }) =>
+              updateNodeMutation({
+                actor_username: user.username,
+                node_type: "key_result",
+                node_id: meta.id,
+                updates: { ai_analysis: analysisRaw },
+              }),
+            );
+            reanalyzed += 1;
+          }),
         );
-        if (decision.action !== "apply") {
-          if (decision.reason === "missing_ai_score") {
-            missingAiScore += 1;
-          } else if (decision.reason === "delta_cap") {
-            skippedDeltaCap += 1;
-          } else if (decision.reason === "decrease_blocked") {
-            skippedDecrease += 1;
-          } else if (decision.reason === "no_change") {
-            unchanged += 1;
+        results.forEach((r, idx) => {
+          if (r.status === "rejected") {
+            failed.push(`${batch[idx]}: ${String(r.reason || "analysis failed")}`);
           }
-          continue;
-        }
-        if (previewOnly) {
-          planned += 1;
-          continue;
-        }
-        try {
-          await updateNodeMutation({
-            actor_username: user.username,
-            node_type: "key_result",
-            node_id: meta.id,
-            updates: {
-              progress: decision.proposed,
-            },
-          });
-          undoItems.push({
-            krId: meta.id,
-            title: meta.title,
-            previousProgress: decision.current,
-            newProgress: decision.proposed || 0,
-          });
-          applied += 1;
-        } catch (error) {
-          failed.push(`${meta.title}: ${String(error instanceof Error ? error.message : error)}`);
-        }
+        });
+        analyzed += batch.length;
+      }
+
+      if (reanalyzed > 0 && parsedCycleId) {
+        await loadSnapshotForUser(user);
       }
 
       setAiSyncReport({
         total: krRefs.length,
         analyzed,
-        applied,
-        planned,
-        missingAiScore,
-        skippedDeltaCap,
-        skippedDecrease,
+        reanalyzed,
         unchanged,
         failed: failed.slice(0, 8),
       });
 
-      if (!previewOnly && undoItems.length > 0) {
-        setAiProgressUndoItems(undoItems);
-      }
-
       if (previewOnly) {
-        if (planned > 0) {
-          setAiSyncMessage(`Preview: ${planned} KR update${planned !== 1 ? "s" : ""} ready to apply. Click "Apply AI Sync" to confirm.`);
+        if (reanalyzed > 0) {
+          setAiSyncMessage(`Analyzed ${reanalyzed} KR${reanalyzed !== 1 ? "s" : ""} (${unchanged} cached).`);
         } else {
-          setAiSyncMessage(`Preview: no KR changes recommended. ${unchanged} unchanged, ${missingAiScore} without AI score.`);
+          setAiSyncMessage(`All ${krRefs.length} KRs already have fresh analysis.`);
         }
       } else {
-        if (applied > 0) {
-          setAiSyncMessage(`Applied ${applied} KR update${applied !== 1 ? "s" : ""}.`);
+        if (reanalyzed > 0) {
+          setAiSyncMessage(`Analysis complete for ${reanalyzed} KR${reanalyzed !== 1 ? "s" : ""}.`);
         } else {
-          setAiSyncMessage(`No KR updates applied. ${unchanged} unchanged, ${skippedDecrease} decreases skipped.`);
+          setAiSyncMessage(`No new analysis needed. All ${krRefs.length} KRs are up to date.`);
         }
       }
 
-      if (!previewOnly && parsedCycleId) {
-        await loadSnapshotForUser(user);
-      }
-    } catch (error) {
-      setAiSyncError(String(error instanceof Error ? error.message : error));
-    } finally {
-      setAiSyncPending(false);
-    }
-  }, [
-    aiSyncAllowDecrease,
-    aiSyncMaxDelta,
-    allScopeRefs,
-    atlasRuntime,
-    loadSnapshotForUser,
-    parsedCycleId,
-    user,
-  ]);
-
-  const handleAiProgressUndo = useCallback(async (): Promise<void> => {
-    if (!user) {
-      return;
-    }
-    if (!aiProgressUndoItems.length) {
-      setAiSyncError("No AI progress sync changes available to undo.");
-      setAiSyncMessage("");
-      return;
-    }
-    setAiSyncPending(true);
-    setAiSyncError("");
-    setAiSyncMessage("");
-    try {
-      let restored = 0;
-      const failed: string[] = [];
-      for (const item of aiProgressUndoItems) {
-        try {
-          await updateNodeMutation({
-            actor_username: user.username,
-            node_type: "key_result",
-            node_id: item.krId,
-            updates: {
-              progress: item.previousProgress,
-            },
-          });
-          restored += 1;
-        } catch (error) {
-          failed.push(`${item.title}: ${String(error instanceof Error ? error.message : error)}`);
-        }
-      }
-      setAiProgressUndoItems([]);
-      setAiSyncReport((prev) =>
-        prev
-          ? {
-              ...prev,
-              failed: [...prev.failed, ...failed].slice(0, 8),
-            }
-          : null,
-      );
-      setAiSyncMessage(`Undo complete: restored ${restored} KR progress values.`);
       if (parsedCycleId) {
         await loadSnapshotForUser(user);
       }
@@ -252,13 +154,12 @@ export default function useAiProgressAssist({
     } finally {
       setAiSyncPending(false);
     }
-  }, [aiProgressUndoItems, loadSnapshotForUser, parsedCycleId, user]);
+  }, [allScopeRefs, atlasRuntime, loadSnapshotForUser, parsedCycleId, user]);
 
   const handleAiSuggestNextTask = useCallback(async (): Promise<void> => {
     if (!user || !atlasRuntime) {
       return;
     }
-    // Capture refs at call time to avoid race with snapshot refresh.
     const snapshotRefs = [...taskRefs];
     const snapshotIndex = { ...atlasRuntime.index };
     const candidates = snapshotRefs
@@ -326,11 +227,9 @@ export default function useAiProgressAssist({
       }
       const result = (done.result || {}) as Record<string, unknown>;
       let pickedRef = String(result.task_ref || "").trim().replace(/^["']|["']$/g, "");
-      // If AI returned empty, fall back to top-priority candidate.
       if (!pickedRef && candidates.length > 0) {
         pickedRef = candidates[0].task_ref;
       }
-      // Normalize: AI may return bare ID, "Task 123", or title instead of "task_123".
       if (pickedRef && !snapshotRefs.includes(pickedRef) && !snapshotIndex[pickedRef]) {
         const stripped = pickedRef.replace(/^(task|Task)\s*/i, "").trim();
         const numericId = Number.parseInt(stripped, 10);
@@ -341,7 +240,6 @@ export default function useAiProgressAssist({
           }
         }
       }
-      // Last resort: fuzzy match by title.
       if (pickedRef && !snapshotRefs.includes(pickedRef) && !snapshotIndex[pickedRef]) {
         const lower = pickedRef.toLowerCase();
         const match = snapshotRefs.find((ref) => {
@@ -380,11 +278,9 @@ export default function useAiProgressAssist({
     aiSyncError,
     aiSyncMessage,
     aiSyncReport,
-    aiProgressUndoItems,
     aiSuggestPending,
     aiSuggestion,
     handleAiProgressSync,
-    handleAiProgressUndo,
     handleAiSuggestNextTask,
   };
 }

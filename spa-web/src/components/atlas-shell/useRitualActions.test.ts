@@ -69,7 +69,7 @@ describe("useRitualActions", () => {
     });
 
     await waitFor(() => expect(result.current.ritualCheckInDrafts[10]?.value).toBe("42"));
-    expect(result.current.ritualCheckInDrafts[10]?.confidence).toBe("7");
+    expect(result.current.ritualCheckInDrafts[10]?.confidence).toBe("CONFIDENT");
     expect(result.current.ritualCheckInDrafts[10]?.variationType).toBe("COMMON_CAUSE");
   });
 
@@ -121,7 +121,7 @@ describe("useRitualActions", () => {
     act(() => {
       result.current.updateRitualCheckInDraft(1, {
         value: "25",
-        confidence: "5",
+        confidence: "UNCERTAIN",
         comment: "",
       });
     });
@@ -131,7 +131,7 @@ describe("useRitualActions", () => {
     });
 
     expect(createCheckInMutationMock).not.toHaveBeenCalled();
-    expect(result.current.ritualCheckInError[1]).toContain("Low-confidence check-ins require a comment");
+    expect(result.current.ritualCheckInError[1]).toContain("Uncertain check-ins require a comment");
   });
 
   it("submits check-in with running experiment link and refreshes ritual mode", async () => {
@@ -147,7 +147,7 @@ describe("useRitualActions", () => {
     act(() => {
       result.current.updateRitualCheckInDraft(1, {
         value: "45",
-        confidence: "7",
+        confidence: "CONFIDENT",
         comment: "On-track",
         variationType: "COMMON_CAUSE",
         experimentId: "9",

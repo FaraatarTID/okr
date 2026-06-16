@@ -174,7 +174,8 @@ def build_atlas_scope_snapshot(
                     KeyResult.title,
                     KeyResult.description,
                     KeyResult.progress,
-                    KeyResult.gemini_analysis,
+                    KeyResult.ai_analysis,
+                    KeyResult.analysis_updated_at,
                     KeyResult.start_value,
                     KeyResult.target_value,
                     KeyResult.current_value,
@@ -194,7 +195,8 @@ def build_atlas_scope_snapshot(
             title,
             description,
             progress,
-            gemini_analysis,
+            ai_analysis,
+            analysis_updated_at,
             start_value,
             target_value,
             current_value,
@@ -207,7 +209,7 @@ def build_atlas_scope_snapshot(
             key_result_id_int = int(key_result_id)
             objective_id_int = int(objective_id)
             key_result_ids.append(key_result_id_int)
-            ai_overall_score, ai_deadline_state = extractor(gemini_analysis)
+            ai_overall_score, ai_deadline_state = extractor(ai_analysis)
             payload = {
                 "id": key_result_id_int,
                 "title": title,
@@ -215,6 +217,9 @@ def build_atlas_scope_snapshot(
                 "progress": int(progress or 0),
                 "ai_overall_score": ai_overall_score,
                 "ai_deadline_state": ai_deadline_state,
+                "analysis_updated_at": (
+                    analysis_updated_at.isoformat() if analysis_updated_at else None
+                ),
                 "start_value": start_value,
                 "target_value": target_value,
                 "current_value": current_value,
@@ -224,7 +229,7 @@ def build_atlas_scope_snapshot(
                 "tasks": [],
             }
             if include_analysis:
-                payload["gemini_analysis"] = gemini_analysis
+                payload["ai_analysis"] = ai_analysis
             key_result_payload_by_id[key_result_id_int] = payload
             objective_payload = objective_payload_by_id.get(objective_id_int)
             if objective_payload is not None:
@@ -243,6 +248,7 @@ def build_atlas_scope_snapshot(
                     Task.timer_started_at,
                     Task.status,
                     Task.total_time_spent,
+                    Task.estimated_minutes,
                     Task.assignee_id,
                 )
                 .where(Task.key_result_id.in_(key_result_ids))
@@ -259,6 +265,7 @@ def build_atlas_scope_snapshot(
             timer_started_at,
             status,
             total_time_spent,
+            estimated_minutes,
             assignee_id,
         ) in task_rows:
             if task_id is None or key_result_id is None:
@@ -276,6 +283,7 @@ def build_atlas_scope_snapshot(
                     "timer_started_at": timer_started_at,
                     "status": str(getattr(status, "value", status)),
                     "total_time_spent": int(total_time_spent or 0),
+                    "estimated_minutes": int(estimated_minutes or 0),
                     "assignee_id": int(assignee_id)
                     if assignee_id is not None
                     else None,

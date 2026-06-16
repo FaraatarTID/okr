@@ -478,7 +478,7 @@ def generate_pdf_html(
             kr_title = _escape(kr.get("title", "Untitled"))
             progress = kr.get("progress", 0)
 
-            an = kr.get("geminiAnalysis")
+            an = kr.get("aiAnalysis")
             eff_score = "N/A"
             qual_score = "N/A"
             fulfillment = "N/A"

@@ -102,6 +102,14 @@ def stop_all_active_timers_from_crud(
             work_log.duration_minutes = duration_minutes
 
             task.total_time_spent += duration_minutes
+            # Auto-recompute progress
+            estimated = getattr(task, "estimated_minutes", 0) or 0
+            if estimated > 0:
+                task.progress = min(
+                    999, max(0, int(task.total_time_spent / estimated * 100))
+                )
+            else:
+                task.progress = min(999, max(0, task.total_time_spent))
             session.add(work_log)
 
         task.timer_started_at = None
@@ -198,6 +206,17 @@ def stop_timer_from_crud(
 
         task.total_time_spent += credited_minutes
         task.timer_started_at = None
+
+        # Auto-compute progress from time spent vs estimate
+        estimated = getattr(task, "estimated_minutes", 0) or 0
+        if estimated > 0:
+            task.progress = min(
+                999,
+                max(0, int(task.total_time_spent / estimated * 100)),
+            )
+        else:
+            # No estimate: treat any time spent as progress indicator
+            task.progress = min(999, max(0, task.total_time_spent))
 
         session.add(work_log)
         session.add(task)
@@ -346,6 +365,15 @@ def delete_work_log_from_crud(
                 task.total_time_spent = max(
                     0, task.total_time_spent - work_log.duration_minutes
                 )
+                # Auto-recompute progress after deletion
+                estimated = getattr(task, "estimated_minutes", 0) or 0
+                if estimated > 0:
+                    task.progress = min(
+                        999,
+                        max(0, int(task.total_time_spent / estimated * 100)),
+                    )
+                else:
+                    task.progress = min(999, max(0, task.total_time_spent))
                 session.add(task)
 
             session.delete(work_log)

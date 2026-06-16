@@ -70,6 +70,9 @@ def get_gemini_api_key() -> Optional[str]:
     return str(value).strip() if value is not None else None
 
 
+get_ai_api_key = get_gemini_api_key
+
+
 def get_ai_provider() -> str:
     raw = _get_config_value(["AI_PROVIDER", "OKR_AI_PROVIDER"])
     value = str(raw or "gemini").strip().lower()
@@ -80,6 +83,9 @@ def get_gemini_model() -> str:
     value = _get_config_value(["GEMINI_MODEL", "AI_MODEL"])
     model = str(value or "").strip()
     return model or "gemini-flash-latest"
+
+
+get_ai_model = get_gemini_model
 
 
 def get_openai_base_url() -> Optional[str]:
@@ -116,7 +122,7 @@ def get_ai_provider_runtime_status() -> AIProviderStatus:
                 ready=False,
                 message="AI provider 'gemini' requires google-genai package.",
             )
-        if not get_gemini_api_key():
+        if not get_ai_api_key():
             return AIProviderStatus(
                 provider=provider,
                 ready=False,
@@ -196,14 +202,14 @@ def _call_gemini_json(prompt: str) -> Dict[str, Any]:
     if not _GENAI_AVAILABLE:
         return {"error": "AI provider 'gemini' requires google-genai package."}
 
-    api_key = get_gemini_api_key()
+    api_key = get_ai_api_key()
     if not api_key:
         return {"error": "AI provider 'gemini' requires GEMINI_API_KEY."}
 
     try:
         client = genai.Client(api_key=api_key)
         response = client.models.generate_content(
-            model=get_gemini_model(),
+            model=get_ai_model(),
             contents=prompt,
             config={"response_mime_type": "application/json"},
         )

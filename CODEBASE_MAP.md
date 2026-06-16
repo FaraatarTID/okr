@@ -62,6 +62,12 @@ Maintainer-focused map for the primary files and helper boundaries.
 - Do not place new business logic directly in `crud.py`.
 - Preserve compatibility exports used by monkeypatch-based tests.
 
+## AI Service Files
+
+- `src/services/ai_service.py` — Core AI analysis logic (`analyze_node`), prompt construction with cycle context, check-in history, experiments, parent context. Has DB fallback (6543 → 443).
+- `src/services/ai_provider.py` — AI provider abstraction (Gemini, openai_compatible). Public aliases: `get_ai_api_key`, `get_ai_model`.
+- `src/services/supabase_api_mode.py` — Supabase REST API read/write operations. Includes timer stop with auto-computed task progress.
+
 ## Suggested Ownership Convention
 
 - Coordinator/facade files should primarily change for:

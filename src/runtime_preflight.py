@@ -30,7 +30,8 @@ def evaluate_runtime_preflight(
     *,
     pdf_method: str,
     has_pdfshift_key: bool,
-    gemini_api_key: Optional[str],
+    ai_api_key: Optional[str] = None,
+    gemini_api_key: Optional[str] = None,
     has_chromium_runtime: bool = False,
     external_ai_allowed: bool = True,
     ai_provider: str = "gemini",
@@ -136,14 +137,14 @@ def evaluate_runtime_preflight(
         except ValueError as exc:
             report.errors.append(str(exc))
 
-    key = str(gemini_api_key or "").strip()
+    key = str(ai_api_key or gemini_api_key or "").strip()
     if not external_ai_allowed:
         report.infos.append(
             "External AI calls are disabled by policy (ALLOW_EXTERNAL_AI=false)."
         )
         if key:
             report.infos.append(
-                "Gemini API key is set but ignored while external AI is disabled."
+                "AI API key is set but ignored while external AI is disabled."
             )
         return report
 
@@ -170,7 +171,7 @@ def evaluate_runtime_preflight(
 
     if not key:
         report.warnings.append(
-            "Gemini API key is not configured; AI features will be disabled."
+            "AI API key is not configured; AI features will be disabled."
         )
         return report
 
@@ -180,7 +181,7 @@ def evaluate_runtime_preflight(
         for token in ["your-api-key", "replace-me", "changeme", "<api-key>"]
     ):
         report.warnings.append(
-            "Gemini API key looks like a placeholder; AI calls may fail."
+            "AI API key looks like a placeholder; AI calls may fail."
         )
 
     return report

@@ -15,7 +15,7 @@ import { parseNumberOrNull } from "@/components/atlas-shell/shellAnalyticsUtils"
 
 type CheckInDraft = {
   value: string;
-  confidence: string;
+  confidence: "CONFIDENT" | "UNCERTAIN";
   comment: string;
   variationType: "COMMON_CAUSE" | "SPECIAL_CAUSE";
   specialCauseNote: string;
@@ -119,7 +119,7 @@ export default function useRitualActions({
         const fallbackValue = parseNumberOrNull(kr.progress);
         next[krId] = {
           value: `${currentValue ?? fallbackValue ?? 0}`,
-          confidence: "7",
+          confidence: "CONFIDENT",
           comment: "",
           variationType: "COMMON_CAUSE",
           specialCauseNote: "",
@@ -136,7 +136,7 @@ export default function useRitualActions({
     setRitualCheckInDrafts((prev) => {
       const base = prev[krId] || {
         value: "0",
-        confidence: "7",
+        confidence: "CONFIDENT",
         comment: "",
         variationType: "COMMON_CAUSE" as const,
         specialCauseNote: "",
@@ -373,20 +373,16 @@ export default function useRitualActions({
       return;
     }
     const value = Number(draft.value);
-    const confidence = Number.parseInt(draft.confidence, 10);
     if (!Number.isFinite(value)) {
       setRitualCheckInError((prev) => ({ ...prev, [krId]: "Check-in value must be numeric." }));
       return;
     }
-    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 10) {
-      setRitualCheckInError((prev) => ({ ...prev, [krId]: "Confidence must be between 0 and 10." }));
-      return;
-    }
+    const confidenceScore = draft.confidence === "UNCERTAIN" ? 0 : 10;
     const comment = draft.comment.trim();
-    if (confidence <= 5 && !comment) {
+    if (draft.confidence === "UNCERTAIN" && !comment) {
       setRitualCheckInError((prev) => ({
         ...prev,
-        [krId]: "Low-confidence check-ins require a comment explaining risks and next action.",
+        [krId]: "Uncertain check-ins require a comment explaining risks and next action.",
       }));
       return;
     }
@@ -431,7 +427,7 @@ export default function useRitualActions({
         actor_username: user.username,
         kr_id: krId,
         value,
-        confidence,
+        confidence: confidenceScore,
         comment,
         variation_type: draft.variationType,
         special_cause_note: draft.variationType === "SPECIAL_CAUSE" ? specialCauseNote : "",

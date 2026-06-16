@@ -183,8 +183,8 @@ Use this flow to understand the product in one short pass:
 1. Sign in and open Atlas.
 2. Pick your cycle (manager/admin) or continue in the manager-assigned cycle (member).
 3. Open one Objective/KR in Focus Map, then switch lens (`Focus`, `Health`, `Owner`) to review priorities.
-4. Start one Focus Task timer, then stop it with a short summary.
-5. Open Inspector and update KR progress only with outcome evidence (not BAU task completion). On empty workspaces, use `Create Goal` in Inspector to seed the first hierarchy node.
+4. Start one Focus Task timer, set an estimated time, then stop it with a short summary. Task progress auto-computes from time spent vs estimate.
+5. Click "AI Analysis" below the Focus Map to auto-analyze all KRs and view results in their Inspector modals.
 
 ## Start Here
 

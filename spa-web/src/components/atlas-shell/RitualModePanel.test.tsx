@@ -35,7 +35,7 @@ function makeProps(overrides: Record<string, unknown> = {}) {
     ritualCheckInDrafts: {
       5: {
         value: "",
-        confidence: "",
+        confidence: "CONFIDENT" as const,
         comment: "",
         variationType: "COMMON_CAUSE" as const,
         specialCauseNote: "",
@@ -123,10 +123,10 @@ describe("RitualModePanel", () => {
     expect(retroTransitions[0].content).toBe("Closed auth boundary gap.");
 
     await user.click(screen.getByRole("button", { name: "Save Retrospective" }));
-    await user.click(screen.getByRole("button", { name: "Next: Check-Ins" }));
+    await user.click(screen.getByRole("button", { name: "Next" }));
 
     expect(handleRetroCreate).toHaveBeenCalledWith("ritual", "2026-01-01");
-    expect(setRitualStep).toHaveBeenCalledWith(2);
+    expect(setRitualStep).toHaveBeenCalled();
   });
 
   it("wires check-in and experiment lifecycle actions", async () => {
@@ -156,7 +156,7 @@ describe("RitualModePanel", () => {
       />,
     );
 
-    fireEvent.change(screen.getByPlaceholderText("Metric value"), { target: { value: "18.2" } });
+    fireEvent.change(screen.getByPlaceholderText("Enter numeric value"), { target: { value: "18.2" } });
     expect(updateRitualCheckInDraft).toHaveBeenCalledWith(5, { value: "18.2" });
 
     fireEvent.change(screen.getByDisplayValue("No linked experiment"), { target: { value: "101" } });

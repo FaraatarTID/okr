@@ -22,7 +22,10 @@ export type InspectorEditDraft = {
   title: string;
   description: string;
   progress: string;
+  startValue: string;
+  targetValue: string;
   deadline: string;
+  estimatedMinutes: string;
 };
 
 export type NodeCreateDraft = {
@@ -34,7 +37,7 @@ export type NodeCreateDraft = {
   targetValue: string;
   unit: string;
   estimatedMinutes: string;
-  assigneeId: string;
+  deadline: string;
 };
 
 type CreateContext = {
@@ -74,7 +77,10 @@ export default function useInspectorNodeActions({
     title: "",
     description: "",
     progress: "",
+    startValue: "",
+    targetValue: "",
     deadline: "",
+    estimatedMinutes: "",
   });
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -88,7 +94,7 @@ export default function useInspectorNodeActions({
     targetValue: "100",
     unit: "%",
     estimatedMinutes: "30",
-    assigneeId: "",
+    deadline: "",
   });
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -114,7 +120,7 @@ export default function useInspectorNodeActions({
     }
     if (selectedMeta.type === "KEY_RESULT") {
       const keyResult = selectedMeta.node as AtlasKeyResultSnapshot;
-      setInspectAnalysis(parseAnalysisSummary(keyResult.gemini_analysis || null));
+      setInspectAnalysis(parseAnalysisSummary(keyResult.ai_analysis || null));
       setInspectAnalysisError("");
       return;
     }
@@ -128,7 +134,10 @@ export default function useInspectorNodeActions({
         title: "",
         description: "",
         progress: "",
+        startValue: "",
+        targetValue: "",
         deadline: "",
+        estimatedMinutes: "",
       });
       setCreateError("");
       setCreateMessage("");
@@ -139,11 +148,17 @@ export default function useInspectorNodeActions({
     const taskNode = selectedMeta.node as unknown as Record<string, unknown>;
     const rawDeadline = taskNode.deadline || taskNode.due_date || "";
     const deadlineStr = rawDeadline ? String(rawDeadline).slice(0, 10) : "";
+    const estimatedMin = taskNode.estimated_minutes != null
+      ? String(taskNode.estimated_minutes)
+      : "";
     setInspectDraft({
       title: selectedMeta.title,
       description: selectedMeta.description,
       progress: `${selectedMeta.progress}`,
+      startValue: taskNode.start_value != null ? String(taskNode.start_value) : "",
+      targetValue: taskNode.target_value != null ? String(taskNode.target_value) : "",
       deadline: deadlineStr,
+      estimatedMinutes: estimatedMin,
     });
     setCreateDraft((prev) => ({
       ...prev,
@@ -188,7 +203,7 @@ export default function useInspectorNodeActions({
         node_type: selectedMeta.type === "KEY_RESULT" ? "key_result" : "objective",
         node_id: selectedMeta.id,
         updates: {
-          gemini_analysis: analysis.raw || analysisRaw,
+          ai_analysis: analysis.raw || analysisRaw,
         },
       });
       setInspectMessage(
@@ -211,8 +226,11 @@ export default function useInspectorNodeActions({
       return;
     }
     const parsedProgress = Number.parseInt(inspectDraft.progress, 10);
-    if (!Number.isFinite(parsedProgress) || parsedProgress < 0 || parsedProgress > 100) {
-      setInspectError("Progress must be an integer between 0 and 100.");
+    const isTask = selectedMeta.type === "TASK";
+    if (!Number.isFinite(parsedProgress) || parsedProgress < 0 || (!isTask && parsedProgress > 100)) {
+      setInspectError(isTask
+        ? "Progress must be a non-negative integer."
+        : "Progress must be an integer between 0 and 100.");
       setInspectMessage("");
       return;
     }
@@ -232,6 +250,16 @@ export default function useInspectorNodeActions({
         } else {
           updates.deadline = null;
         }
+        if (isTask) {
+          const estMin = Number.parseInt(inspectDraft.estimatedMinutes, 10);
+          updates.estimated_minutes = Number.isFinite(estMin) && estMin >= 0 ? estMin : 0;
+        }
+        if (selectedMeta.type === "KEY_RESULT") {
+          const sv = inspectDraft.startValue.trim();
+          const tv = inspectDraft.targetValue.trim();
+          updates.start_value = sv !== "" ? Number(sv) : null;
+          updates.target_value = tv !== "" ? Number(tv) : null;
+        }
         await updateNodeMutation({
         actor_username: user.username,
         node_type: nodeTypeToPath(selectedMeta.type),
@@ -247,7 +275,7 @@ export default function useInspectorNodeActions({
     } finally {
       setInspectPending(false);
     }
-  }, [inspectDraft.deadline, inspectDraft.description, inspectDraft.progress, inspectDraft.title, loadSnapshotForUser, parsedCycleId, user, selectedMeta, user]);
+  }, [inspectDraft.deadline, inspectDraft.description, inspectDraft.estimatedMinutes, inspectDraft.progress, inspectDraft.title, loadSnapshotForUser, parsedCycleId, user, selectedMeta]);
 
   const handleNodeCreate = useCallback(async (): Promise<void> => {
     if (!user) {
@@ -320,15 +348,9 @@ export default function useInspectorNodeActions({
       payload.key_result_id = createContext.keyResultId;
       payload.estimated_minutes = estimatedMinutes;
 
-      const assigneeCandidate = createDraft.assigneeId.trim();
-      if (assigneeCandidate) {
-        const assigneeId = Number.parseInt(assigneeCandidate, 10);
-        if (!Number.isFinite(assigneeId) || assigneeId <= 0) {
-          setCreateError("Assignee ID must be a positive integer.");
-          setCreateMessage("");
-          return;
-        }
-        payload.assignee_id = assigneeId;
+      const deadlineCandidate = createDraft.deadline.trim();
+      if (deadlineCandidate) {
+        payload.deadline = deadlineCandidate;
       }
     }
 

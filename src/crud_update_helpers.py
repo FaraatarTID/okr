@@ -249,7 +249,7 @@ def update_key_result_from_crud(
 
             for key, value in updates.items():
                 if (
-                    key == "gemini_analysis"
+                    key == "ai_analysis"
                     and value is not None
                     and not isinstance(value, str)
                 ):
@@ -257,7 +257,7 @@ def update_key_result_from_crud(
                         value = json.dumps(value, ensure_ascii=False)
                     except Exception as exc:
                         crud_module.logger.debug(
-                            "Failed to JSON-serialize KR gemini_analysis for key_result_id=%s: %s",
+                            "Failed to JSON-serialize KR ai_analysis for key_result_id=%s: %s",
                             key_result_id,
                             exc,
                         )
@@ -371,7 +371,7 @@ def update_key_result_analysis_from_crud(
                 node_id=key_result_id,
                 actor_username=actor_username,
             )
-            kr.gemini_analysis = analysis_json
+            kr.ai_analysis = analysis_json
             kr.analysis_updated_at = crud_module.utc_now_naive()
             session.add(kr)
             session.commit()

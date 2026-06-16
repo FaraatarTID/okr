@@ -12,6 +12,7 @@ type AtlasFocusMapPanelProps = {
   atlasIndex: Record<string, FocusMapNodeView> | null;
   selectedRef: string;
   onSelectRef: (ref: string) => void;
+  onAddChild: (parentRef: string) => void;
   nodeQuery: string;
   onNodeQueryChange: (value: string) => void;
   hasSnapshotPayload: boolean;
@@ -23,6 +24,7 @@ export default function AtlasFocusMapPanel({
   atlasIndex,
   selectedRef,
   onSelectRef,
+  onAddChild,
   nodeQuery,
   onNodeQueryChange,
   hasSnapshotPayload,
@@ -61,12 +63,36 @@ export default function AtlasFocusMapPanel({
                   type="button"
                   className={`atlas-node-item atlas-node-item-tree${selectedRef === ref ? " is-active" : ""}`}
                   onClick={() => onSelectRef(ref)}
-                  style={{ paddingLeft: `${treeIndentRem}rem` }}
+                  style={{ paddingLeft: `${treeIndentRem}rem`, flex: "1 1 0", minWidth: 0 }}
                 >
                   <span className="atlas-node-tag">{nodeTagForType(meta.type)}</span>
                   <span className="atlas-node-title">{meta.title}</span>
-                  <span className="atlas-node-progress">{meta.progress}%</span>
+                  {(meta.type === "KEY_RESULT" || meta.type === "TASK") && (
+                    <span className="atlas-node-progress">{meta.progress}%</span>
+                  )}
                 </button>
+                {meta.type !== "TASK" && (
+                  <button
+                    type="button"
+                    className="atlas-node-add"
+                    onClick={() => onAddChild(ref)}
+                    title={`Add child to ${meta.title}`}
+                    style={{
+                      marginLeft: "0.2rem",
+                      padding: "0.1rem 0.4rem",
+                      fontSize: "0.75rem",
+                      lineHeight: 1.4,
+                      border: "1px solid var(--line)",
+                      borderRadius: 4,
+                      background: "var(--surface)",
+                      color: "var(--ink-soft)",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                    }}
+                  >
+                    +
+                  </button>
+                )}
               </div>
             );
           })

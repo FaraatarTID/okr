@@ -1241,7 +1241,7 @@ def _serialize_key_result(
         "initiative_tags": getattr(key_result, "initiative_tags", None),
         "state": _enum_value(getattr(key_result, "state", None)),
         "final_reflection": getattr(key_result, "final_reflection", None),
-        "gemini_analysis": getattr(key_result, "gemini_analysis", None),
+        "ai_analysis": getattr(key_result, "ai_analysis", None),
         "created_at": getattr(key_result, "created_at", None),
         "updated_at": getattr(key_result, "updated_at", None),
     }

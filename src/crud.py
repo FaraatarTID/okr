@@ -112,7 +112,7 @@ _ALLOWED_KEY_RESULT_UPDATE_FIELDS = {
     "unit",
     "weight",
     "initiative_tags",
-    "gemini_analysis",
+    "ai_analysis",
     "is_expanded",
     "deadline",
     "state",

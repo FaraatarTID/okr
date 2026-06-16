@@ -34,7 +34,7 @@ function buildSelectedMeta(nodeType: AtlasNodeType, id: number): AtlasIndexNode 
       : nodeType === "OBJECTIVE"
         ? { ...base, key_results: [] }
         : nodeType === "KEY_RESULT"
-          ? { ...base, gemini_analysis: null, tasks: [] }
+          ? { ...base, ai_analysis: null, tasks: [] }
           : {
               ...base,
               deadline: null,
@@ -112,7 +112,7 @@ describe("useInspectorNodeActions", () => {
       node_type: "key_result",
       node_id: 12,
       updates: {
-        gemini_analysis: expect.objectContaining({
+        ai_analysis: expect.objectContaining({
           overall_score: 87,
         }),
       },

@@ -6,7 +6,10 @@ type InspectorEditDraftView = {
   title: string;
   description: string;
   progress: string;
+  startValue: string;
+  targetValue: string;
   deadline: string;
+  estimatedMinutes: string;
 };
 
 type AnalysisSummaryView = {
@@ -34,13 +37,56 @@ type InspectorEditAnalysisPanelProps = {
   selectedNodeType: string;
   inspectError: string;
   inspectMessage: string;
-  showAiAnalysis: boolean;
-  aiAnalysisTargetLabel: "key result" | "objective";
-  onRunAnalysis: () => void;
-  inspectAnalysisPending: boolean;
-  inspectAnalysisError: string;
   inspectAnalysis: AnalysisSummaryView | null;
+  onRunAnalysis?: () => void;
+  inspectAnalysisPending?: boolean;
+  inspectAnalysisError?: string;
 };
+
+function AnalysisDetailView({ analysis }: { analysis: AnalysisSummaryView }) {
+  return (
+    <>
+      <div className="atlas-rollup" style={{ marginTop: "0.45rem" }}>
+        <span>Efficiency: {analysis.efficiencyScore ?? "-"}</span>
+        <span>Effectiveness: {analysis.effectivenessScore ?? "-"}</span>
+        <span>Overall: {analysis.overallScore ?? "-"}</span>
+      </div>
+      {analysis.summary ? (
+        <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", ...rtlStyle(analysis.summary) }}>
+          {analysis.summary}
+        </p>
+      ) : null}
+      {analysis.gapAnalysis ? (
+        <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", ...rtlStyle(analysis.gapAnalysis) }}>
+          Gap: {analysis.gapAnalysis}
+        </p>
+      ) : null}
+      {analysis.qualityAssessment ? (
+        <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", ...rtlStyle(analysis.qualityAssessment) }}>
+          Quality: {analysis.qualityAssessment}
+        </p>
+      ) : null}
+      {analysis.deadlineWarnings.length ? (
+        <div style={{ marginTop: "0.35rem" }}>
+          {analysis.deadlineWarnings.map((item) => (
+            <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--warn)", ...rtlStyle(item) }}>
+              {item}
+            </p>
+          ))}
+        </div>
+      ) : null}
+      {analysis.proposedTasks.length ? (
+        <div style={{ marginTop: "0.35rem" }}>
+          {analysis.proposedTasks.map((item) => (
+            <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--ink-soft)", ...rtlStyle(item) }}>
+              {item}
+            </p>
+          ))}
+        </div>
+      ) : null}
+    </>
+  );
+}
 
 export default function InspectorEditAnalysisPanel({
   inspectDraft,
@@ -56,13 +102,14 @@ export default function InspectorEditAnalysisPanel({
   selectedNodeType,
   inspectError,
   inspectMessage,
-  showAiAnalysis,
-  aiAnalysisTargetLabel,
-  onRunAnalysis,
-  inspectAnalysisPending,
-  inspectAnalysisError,
   inspectAnalysis,
+  onRunAnalysis,
+  inspectAnalysisPending = false,
+  inspectAnalysisError = "",
 }: InspectorEditAnalysisPanelProps) {
+  const isKr = selectedNodeType === "KEY_RESULT";
+  const showRunAnalysis = isKr && onRunAnalysis;
+
   return (
     <>
       <div
@@ -105,7 +152,7 @@ export default function InspectorEditAnalysisPanel({
           style={{ marginTop: "0.2rem" }}
         />
 
-        {selectedNodeType === "KEY_RESULT" ? (
+        {isKr ? (
           <>
             <label
               htmlFor="inspect-progress"
@@ -120,6 +167,43 @@ export default function InspectorEditAnalysisPanel({
               onChange={(event) => onInspectDraftChange({ progress: event.target.value })}
               style={{ marginTop: "0.2rem" }}
             />
+            <label
+              htmlFor="inspect-start-value"
+              style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
+            >
+              Start Value
+            </label>
+            <input
+              id="inspect-start-value"
+              type="number"
+              className="input"
+              value={inspectDraft.startValue}
+              onChange={(event) => onInspectDraftChange({ startValue: event.target.value })}
+              style={{ marginTop: "0.2rem" }}
+              placeholder="Starting point"
+            />
+            <label
+              htmlFor="inspect-target-value"
+              style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
+            >
+              Target Value
+            </label>
+            <input
+              id="inspect-target-value"
+              type="number"
+              className="input"
+              value={inspectDraft.targetValue}
+              onChange={(event) => onInspectDraftChange({ targetValue: event.target.value })}
+              style={{ marginTop: "0.2rem" }}
+              placeholder="Goal to reach"
+            />
+            {inspectDraft.startValue !== "" && inspectDraft.targetValue !== "" && Number(inspectDraft.targetValue) !== Number(inspectDraft.startValue) && (
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.75rem", color: Number(inspectDraft.targetValue) > Number(inspectDraft.startValue) ? "var(--accent)" : "var(--error)" }}>
+                {Number(inspectDraft.targetValue) > Number(inspectDraft.startValue)
+                  ? "Higher is better"
+                  : "Lower is better"}
+              </p>
+            )}
           </>
         ) : null}
 
@@ -138,6 +222,21 @@ export default function InspectorEditAnalysisPanel({
               value={inspectDraft.deadline}
               onChange={(event) => onInspectDraftChange({ deadline: event.target.value })}
               style={{ marginTop: "0.2rem" }}
+            />
+            <label
+              htmlFor="inspect-estimated-minutes"
+              style={{ display: "block", marginTop: "0.36rem", fontSize: "0.78rem", color: "var(--ink-soft)" }}
+            >
+              Estimated Minutes
+            </label>
+            <input
+              id="inspect-estimated-minutes"
+              type="number"
+              className="input"
+              value={inspectDraft.estimatedMinutes}
+              onChange={(event) => onInspectDraftChange({ estimatedMinutes: event.target.value })}
+              style={{ marginTop: "0.2rem" }}
+              min={0}
             />
           </>
         ) : null}
@@ -183,7 +282,7 @@ export default function InspectorEditAnalysisPanel({
         ) : null}
       </div>
 
-      {showAiAnalysis ? (
+      {isKr && (
         <div
           style={{
             marginTop: "0.72rem",
@@ -196,67 +295,36 @@ export default function InspectorEditAnalysisPanel({
           <p className="kicker" style={{ margin: 0 }}>
             AI Analysis
           </p>
-          <p style={{ margin: "0.24rem 0 0.34rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-            Generate analysis for the selected {aiAnalysisTargetLabel}.
-          </p>
-          <button
-            className="primary-button"
-            type="button"
-            onClick={onRunAnalysis}
-            disabled={inspectAnalysisPending || !hasUser}
-          >
-            {inspectAnalysisPending ? "Analyzing..." : "Run Analysis"}
-          </button>
+
+          {inspectAnalysis ? (
+            <AnalysisDetailView analysis={inspectAnalysis} />
+          ) : showRunAnalysis ? (
+            <>
+              <p style={{ margin: "0.24rem 0 0.34rem", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
+                No analysis yet for this Key Result.
+              </p>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={onRunAnalysis}
+                disabled={inspectAnalysisPending || !hasUser}
+              >
+                {inspectAnalysisPending ? "Analyzing..." : "Run Analysis"}
+              </button>
+            </>
+          ) : (
+            <p style={{ margin: "0.24rem 0 0", fontSize: "0.82rem", color: "var(--ink-soft)" }}>
+              No analysis yet.
+            </p>
+          )}
 
           {inspectAnalysisError ? (
             <p style={{ margin: "0.34rem 0 0", color: "var(--error)", fontSize: "0.82rem" }}>
               {inspectAnalysisError}
             </p>
           ) : null}
-          {inspectAnalysis ? (
-            <>
-              <div className="atlas-rollup" style={{ marginTop: "0.45rem" }}>
-                <span>Efficiency: {inspectAnalysis.efficiencyScore ?? "-"}</span>
-                <span>Effectiveness: {inspectAnalysis.effectivenessScore ?? "-"}</span>
-                <span>Overall: {inspectAnalysis.overallScore ?? "-"}</span>
-              </div>
-              {inspectAnalysis.summary ? (
-                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", ...rtlStyle(inspectAnalysis.summary) }}>
-                  {inspectAnalysis.summary}
-                </p>
-              ) : null}
-              {inspectAnalysis.gapAnalysis ? (
-                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", ...rtlStyle(inspectAnalysis.gapAnalysis) }}>
-                  Gap: {inspectAnalysis.gapAnalysis}
-                </p>
-              ) : null}
-              {inspectAnalysis.qualityAssessment ? (
-                <p style={{ margin: "0.32rem 0 0", color: "var(--ink-soft)", fontSize: "0.82rem", ...rtlStyle(inspectAnalysis.qualityAssessment) }}>
-                  Quality: {inspectAnalysis.qualityAssessment}
-                </p>
-              ) : null}
-              {inspectAnalysis.deadlineWarnings.length ? (
-                <div style={{ marginTop: "0.35rem" }}>
-                  {inspectAnalysis.deadlineWarnings.map((item) => (
-                    <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--warn)", ...rtlStyle(item) }}>
-                      {item}
-                    </p>
-                  ))}
-                </div>
-              ) : null}
-              {inspectAnalysis.proposedTasks.length ? (
-                <div style={{ marginTop: "0.35rem" }}>
-                  {inspectAnalysis.proposedTasks.map((item) => (
-                    <p key={item} style={{ margin: "0.2rem 0", fontSize: "0.78rem", color: "var(--ink-soft)", ...rtlStyle(item) }}>
-                      {item}
-                    </p>
-                  ))}
-                </div>
-              ) : null}
-            </>
-          ) : null}
         </div>
-      ) : null}
+      )}
     </>
   );
 }

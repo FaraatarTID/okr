@@ -16,7 +16,7 @@ type UseSnapshotLifecycleInput = {
 function resolveSnapshotPollIntervalMs(): number {
   const mode = String(process.env.NEXT_PUBLIC_OKR_DATA_ACCESS_MODE || "").trim().toLowerCase();
   if (mode === "supabase_api" || mode === "supabase-http" || mode === "supabase_https") {
-    return 120_000;
+    return 600_000;
   }
   return 45_000;
 }

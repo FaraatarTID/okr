@@ -44,12 +44,16 @@ type RitualKrView = {
   title?: string | null;
   progress?: number | null;
   current_value?: number | null;
+  start_value?: number | null;
+  target_value?: number | null;
+  metric_type?: string | null;
+  unit?: string | null;
   objective?: { title?: string | null } | null;
 };
 
 type CheckInDraftView = {
   value: string;
-  confidence: string;
+  confidence: "CONFIDENT" | "UNCERTAIN";
   comment: string;
   variationType: "COMMON_CAUSE" | "SPECIAL_CAUSE";
   specialCauseNote: string;
@@ -261,13 +265,7 @@ export default function RitualModePanel({
                         No experiments in this review window.
                       </p>
                     )}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.5rem" }}>
-                  <button className="primary-button" type="button" onClick={() => setRitualStep(2)}>
-                    Next: Check-Ins
-                  </button>
+                   </div>
                 </div>
               </div>
             ) : null}
@@ -318,30 +316,50 @@ export default function RitualModePanel({
                         <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)" }}>
                           Progress {Math.round(Number(kr.progress || 0))}% • {kr.objective?.title || "No objective"}
                         </div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: "0.15rem" }}>
-                          Current value: {formatOptionalNumber(kr.current_value)}
+                        <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: "0.15rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                          <span>Current: {formatOptionalNumber(kr.current_value)}</span>
+                          <span>Start: {formatOptionalNumber(kr.start_value)}</span>
+                          <span>Target: {formatOptionalNumber(kr.target_value)}</span>
+                          {kr.start_value != null && kr.target_value != null && Number(kr.target_value) !== Number(kr.start_value) && (
+                            <span style={{ color: Number(kr.target_value) > Number(kr.start_value) ? "var(--accent)" : "var(--error)" }}>
+                              {Number(kr.target_value) > Number(kr.start_value) ? "↑ Higher better" : "↓ Lower better"}
+                            </span>
+                          )}
+                          {kr.unit ? <span>({kr.unit})</span> : null}
                         </div>
 
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem", marginTop: "0.4rem" }}>
-                          <input
-                            className="input"
-                            value={draft?.value || ""}
-                            onChange={(event) => updateRitualCheckInDraft(kr.id, { value: event.target.value })}
-                            placeholder="Metric value"
-                          />
-                          <input
-                            className="input"
-                            value={draft?.confidence || ""}
-                            onChange={(event) => updateRitualCheckInDraft(kr.id, { confidence: event.target.value })}
-                            placeholder="Confidence (0-10)"
-                          />
+                          <div>
+                            <label style={{ display: "block", fontSize: "0.72rem", color: "var(--ink-soft)", marginBottom: "0.15rem" }}>
+                              Metric Value
+                            </label>
+                            <input
+                              className="input"
+                              value={draft?.value || ""}
+                              onChange={(event) => updateRitualCheckInDraft(kr.id, { value: event.target.value })}
+                              placeholder={kr.target_value != null ? `e.g. ${formatOptionalNumber(kr.target_value)}` : "Enter numeric value"}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ display: "block", fontSize: "0.72rem", color: "var(--ink-soft)", marginBottom: "0.15rem" }}>
+                              Confidence
+                            </label>
+                            <select
+                              className="input"
+                              value={draft?.confidence || "CONFIDENT"}
+                              onChange={(event) => updateRitualCheckInDraft(kr.id, { confidence: event.target.value as "CONFIDENT" | "UNCERTAIN" })}
+                            >
+                              <option value="CONFIDENT">Confident</option>
+                              <option value="UNCERTAIN">Uncertain</option>
+                            </select>
+                          </div>
                         </div>
 
                         <textarea
                           className="input"
                           value={draft?.comment || ""}
                           onChange={(event) => updateRitualCheckInDraft(kr.id, { comment: event.target.value })}
-                          placeholder="Check-in comment (required when confidence is 0-5)"
+                          placeholder="Check-in comment (required when uncertain)"
                           rows={2}
                           style={{ marginTop: "0.35rem" }}
                         />

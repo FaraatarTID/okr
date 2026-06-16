@@ -35,7 +35,7 @@ describe("InspectorManageNodesPanel", () => {
           targetValue: "100",
           unit: "%",
           estimatedMinutes: "30",
-          assigneeId: "",
+          deadline: "",
         }}
         onCreateDraftChange={onCreateDraftChange}
         createContext={{ goalId: null, objectiveId: null, keyResultId: null }}
@@ -82,7 +82,7 @@ describe("InspectorManageNodesPanel", () => {
           targetValue: "55",
           unit: "%",
           estimatedMinutes: "30",
-          assigneeId: "",
+          deadline: "",
         }}
         onCreateDraftChange={vi.fn()}
         createContext={{ goalId: 1, objectiveId: 22, keyResultId: null }}
@@ -122,7 +122,7 @@ describe("InspectorManageNodesPanel", () => {
           targetValue: "100",
           unit: "%",
           estimatedMinutes: "25",
-          assigneeId: "9",
+          deadline: "2026-07-15",
         }}
         onCreateDraftChange={vi.fn()}
         createContext={{ goalId: 1, objectiveId: 2, keyResultId: null }}
@@ -142,7 +142,7 @@ describe("InspectorManageNodesPanel", () => {
 
     expect(screen.getByText("Parent Key Result ID: -")).toBeInTheDocument();
     expect(screen.getByLabelText("Estimated Minutes")).toBeInTheDocument();
-    expect(screen.getByLabelText("Assignee ID (optional)")).toBeInTheDocument();
+    expect(screen.getByLabelText("Deadline (optional)")).toBeInTheDocument();
     expect(
       screen.getByText("Current selection does not provide a valid parent for this create type."),
     ).toBeInTheDocument();

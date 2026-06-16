@@ -96,7 +96,7 @@ h4 {
 
 .spa-shell-sidebar {
   position: sticky;
-  top: 1rem;
+  top: 0.2rem;
   padding: 0.9rem 0.8rem;
 }
 
@@ -274,6 +274,8 @@ h4 {
 
 .atlas-tree-row {
   position: relative;
+  display: flex;
+  align-items: center;
 }
 
 .atlas-tree-row[data-depth="1"]::before {
