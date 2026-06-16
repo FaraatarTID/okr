@@ -18,33 +18,34 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def upgrade() -> None:
+def _check_constraint_names(table_name: str) -> set[str]:
     inspector = inspect(op.get_bind())
-    constraints = [
+    return {
         c["name"]
-        for c in inspector.get_check_constraints("task")
+        for c in inspector.get_check_constraints(table_name)
         if c.get("name")
-    ]
-    if "ck_task_progress_range" in constraints:
-        op.drop_constraint("ck_task_progress_range", "task", type_="check")
-    op.create_check_constraint(
-        "ck_task_progress_non_negative",
-        "task",
-        "progress >= 0",
-    )
+    }
+
+
+def upgrade() -> None:
+    existing = _check_constraint_names("task")
+    if "ck_task_progress_range" in existing:
+        with op.batch_alter_table("task") as batch_op:
+            batch_op.drop_constraint("ck_task_progress_range", type_="check")
+    with op.batch_alter_table("task") as batch_op:
+        batch_op.create_check_constraint(
+            "ck_task_progress_non_negative",
+            "progress >= 0",
+        )
 
 
 def downgrade() -> None:
-    inspector = inspect(op.get_bind())
-    constraints = [
-        c["name"]
-        for c in inspector.get_check_constraints("task")
-        if c.get("name")
-    ]
-    if "ck_task_progress_non_negative" in constraints:
-        op.drop_constraint("ck_task_progress_non_negative", "task", type_="check")
-    op.create_check_constraint(
-        "ck_task_progress_range",
-        "task",
-        "progress >= 0 AND progress <= 100",
-    )
+    existing = _check_constraint_names("task")
+    if "ck_task_progress_non_negative" in existing:
+        with op.batch_alter_table("task") as batch_op:
+            batch_op.drop_constraint("ck_task_progress_non_negative", type_="check")
+    with op.batch_alter_table("task") as batch_op:
+        batch_op.create_check_constraint(
+            "ck_task_progress_range",
+            "progress >= 0 AND progress <= 100",
+        )
