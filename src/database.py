@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
-from src.config_runtime import get_bool_config
+from src.config_runtime import get_bool_config, get_config_value
 
 logger = logging.getLogger(__name__)
 
