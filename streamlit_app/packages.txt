@@ -1,0 +1,2 @@
+# Required for PDF_METHOD=chromium renderer mode.
+chromium

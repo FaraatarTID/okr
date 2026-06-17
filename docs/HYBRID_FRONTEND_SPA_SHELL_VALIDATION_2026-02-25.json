@@ -1,0 +1,72 @@
+{
+  "id": "hfm-030-spa-shell-validation-2026-02-25",
+  "date": "2026-02-25",
+  "work_item": "HFM-030",
+  "source_files": [
+    "spa-web/src/components/AtlasShell.tsx",
+    "spa-web/src/lib/rollout.ts",
+    "spa-web/src/app/api/rollout/route.ts"
+  ],
+  "required_navigation_controls": [
+    {
+      "control_id": "cycle-id",
+      "type": "input",
+      "purpose": "Cycle selector for Atlas snapshot scope",
+      "present": true
+    },
+    {
+      "control_id": "owner-ids",
+      "type": "input",
+      "purpose": "Owner scope selector for pilot dataset filtering",
+      "present": true
+    },
+    {
+      "control_id": "mode",
+      "type": "select",
+      "purpose": "Base navigation mode selector",
+      "present": true
+    },
+    {
+      "control_id": "lens",
+      "type": "select",
+      "purpose": "Focus lens selector for Atlas view context",
+      "present": true
+    }
+  ],
+  "required_sections": [
+    {
+      "label": "Focus Map",
+      "present": true
+    },
+    {
+      "label": "Inspector",
+      "present": true
+    },
+    {
+      "label": "Streamlit Report Bridge",
+      "present": true
+    }
+  ],
+  "role_aware_entrypoints": {
+    "rollout_config_env_keys": [
+      "OKR_SPA_ROLLOUT_USERNAMES",
+      "OKR_SPA_ROLLOUT_ROLES",
+      "OKR_SPA_ROLLOUT_TEAM_IDS",
+      "OKR_SPA_ROLLOUT_ALLOW_ALL",
+      "OKR_SPA_ROLLOUT_ALLOW_PREVIEW_BYPASS"
+    ],
+    "decision_paths": [
+      "username",
+      "role",
+      "team",
+      "allow_all",
+      "preview_bypass",
+      "cohort_miss"
+    ],
+    "ui_rollout_status_message_present": true
+  },
+  "result": {
+    "acceptance_met": true,
+    "notes": "SPA shell includes base navigation, cycle/scope selectors, and role-aware rollout entrypoints."
+  }
+}
