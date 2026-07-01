@@ -2,13 +2,6 @@
 
 import { useMemo, useState } from "react";
 
-type SidebarItemView = {
-  id: string;
-  label: string;
-  mode: string;
-  path: string;
-};
-
 type OwnerFilterOption = {
   id: number;
   label: string;
@@ -32,9 +25,6 @@ type AtlasModeControlsPanelProps = {
   canManageOwnerFilter: boolean;
   ownerFilterOptions: OwnerFilterOption[];
   selectedOwnerIds: number[];
-  mode: string;
-  onModeChange: (mode: string) => void;
-  sidebarItems: SidebarItemView[];
   lens: string;
   onLensChange: (lens: string) => void;
   parsedOwnerIdsError: string;
@@ -55,9 +45,6 @@ export default function AtlasModeControlsPanel({
   canManageOwnerFilter,
   ownerFilterOptions,
   selectedOwnerIds,
-  mode,
-  onModeChange,
-  sidebarItems,
   lens,
   onLensChange,
   parsedOwnerIdsError,
@@ -152,7 +139,7 @@ export default function AtlasModeControlsPanel({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gridTemplateColumns: canManageOwnerFilter ? "repeat(3, minmax(0, 1fr))" : "repeat(2, minmax(0, 1fr))",
           gap: "0.55rem",
           marginTop: "0.5rem",
         }}
@@ -242,24 +229,6 @@ export default function AtlasModeControlsPanel({
           </div>
         ) : null}
 
-        <div>
-          <label htmlFor="mode" style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}>
-            Mode
-          </label>
-          <select
-            id="mode"
-            className="input"
-            value={mode}
-            onChange={(event) => onModeChange(event.target.value)}
-            style={{ marginTop: "0.2rem" }}
-          >
-            {sidebarItems.map((item) => (
-              <option key={`mode-${item.mode}`} value={item.mode}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </div>
         <div>
           <label htmlFor="lens" style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}>
             Lens

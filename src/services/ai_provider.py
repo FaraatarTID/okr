@@ -20,6 +20,7 @@ except ImportError:
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
+_DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS = 120.0
 _LOGGER = logging.getLogger(__name__)
 
 _PROVIDER_ALIASES = {
@@ -104,6 +105,20 @@ def get_openai_api_key() -> Optional[str]:
     value = _get_config_value(["AI_API_KEY", "OPENAI_API_KEY"])
     value = str(value or "").strip()
     return value or None
+
+
+def get_openai_request_timeout_seconds() -> float:
+    value = _get_config_value(
+        ["AI_REQUEST_TIMEOUT_SECONDS", "OPENAI_REQUEST_TIMEOUT_SECONDS"]
+    )
+    text = str(value or "").strip()
+    if not text:
+        return _DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS
+    try:
+        parsed = float(text)
+    except ValueError:
+        return _DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS
+    return parsed if parsed > 0 else _DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS
 
 
 def get_ai_provider_runtime_status() -> AIProviderStatus:
@@ -279,6 +294,7 @@ def _call_openai_compatible_json(prompt: str) -> Dict[str, Any]:
             headers=headers,
             json_payload=payload,
             retries=1,
+            timeout=(5.0, get_openai_request_timeout_seconds()),
         )
     except Exception as exc:
         return {"error": f"AI provider request failed: {exc}"}

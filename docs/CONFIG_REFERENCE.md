@@ -78,7 +78,8 @@ AI integration
   - AI_BASE_URL: required when `AI_PROVIDER=openai_compatible`
   - AI_MODEL: required when `AI_PROVIDER=openai_compatible`
   - AI_API_KEY: optional token for OpenAI-compatible gateways
-- Environment fallback:
+  - AI_REQUEST_TIMEOUT_SECONDS: optional provider read timeout for OpenAI-compatible calls (default: `120`)
+  - Environment fallback:
   - AI_PROVIDER
   - OKR_AI_PROVIDER
   - GEMINI_API_KEY
@@ -92,6 +93,8 @@ AI integration
   - OLLAMA_MODEL
   - AI_API_KEY
   - OPENAI_API_KEY
+  - AI_REQUEST_TIMEOUT_SECONDS
+  - OPENAI_REQUEST_TIMEOUT_SECONDS
   - ALLOW_EXTERNAL_AI
   - OKR_ALLOW_EXTERNAL_AI
 - Behavior:

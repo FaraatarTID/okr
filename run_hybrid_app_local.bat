@@ -158,6 +158,17 @@ if errorlevel 1 (
     )
 )
 
+call :refresh_jan_ai_context
+if errorlevel 1 (
+    echo [WARN] Jan AI context refresh skipped; continuing with existing env values.
+)
+if not errorlevel 1 (
+    echo [INFO] Jan AI context refreshed in %DOCKER_ENV_FILE%.
+)
+if defined AI_BASE_URL if defined AI_MODEL (
+    echo [INFO] Jan AI context: base_url=%AI_BASE_URL% ^| model=%AI_MODEL%
+)
+
 echo [5/7] Preparing Node dependencies...
 if not exist "%ROOT%spa-bff\package.json" (
     echo [ERROR] Missing spa-bff\package.json.
@@ -220,7 +231,11 @@ set "OKR_BACKEND_API_URL=http://127.0.0.1:8100"
 set "BFF_HOST=127.0.0.1"
 set "BFF_PORT=3001"
 set "BFF_PUBLIC_ORIGIN=http://127.0.0.1:3001"
-set "BFF_REQUEST_TIMEOUT_MS=20000"
+if not defined AI_BASE_URL if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" AI_BASE_URL 2^>nul`) do set "AI_BASE_URL=%%V"
+if not defined AI_MODEL if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" AI_MODEL 2^>nul`) do set "AI_MODEL=%%V"
+if not defined AI_API_KEY if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" AI_API_KEY 2^>nul`) do set "AI_API_KEY=%%V"
+if not defined AI_REQUEST_TIMEOUT_SECONDS if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" AI_REQUEST_TIMEOUT_SECONDS 2^>nul`) do set "AI_REQUEST_TIMEOUT_SECONDS=%%V"
+if not defined BFF_REQUEST_TIMEOUT_MS if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" BFF_REQUEST_TIMEOUT_MS 2^>nul`) do set "BFF_REQUEST_TIMEOUT_MS=%%V"
 set "BFF_SESSION_SECRET=local-dev-session-secret"
 set "BFF_SESSION_TTL_SECONDS=28800"
 set "BFF_COOKIE_SECURE=false"
@@ -529,6 +544,10 @@ if %RETRY_COUNT% equ 1 echo [INFO] Waiting for %SERVICE_NAME%...
 set /a WAIT_PROGRESS_REMAINDER=RETRY_COUNT%%10
 if %WAIT_PROGRESS_REMAINDER% equ 0 echo [INFO] Still waiting for %SERVICE_NAME%... (%RETRY_COUNT%s)
 goto :wait_for_worker_loop
+
+:refresh_jan_ai_context
+ "%PYEXE%" scripts\jan_context.py --write-env-file "%DOCKER_ENV_FILE%"
+exit /b %ERRORLEVEL%
 
 :startup_failed
 echo.
