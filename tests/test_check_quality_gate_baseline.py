@@ -27,7 +27,7 @@ def test_validate_baseline_expiry_passes_before_deadline():
 
 def test_validate_baseline_expiry_fails_after_deadline():
     errors = check_quality_gate_baseline.validate_baseline_expiry(
-        today=date(2026, 7, 1)
+        today=date(2026, 10, 1)
     )
     assert errors
     assert any("QG-001" in err for err in errors)
