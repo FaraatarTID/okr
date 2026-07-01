@@ -33,9 +33,6 @@ export default function AtlasFocusMapPanel({
   return (
     <div className="atlas-map-pane">
       <p className="kicker">Focus Map</p>
-      <h2 style={{ margin: "0.1rem 0 0.4rem", fontSize: "1.05rem" }}>
-        Focus Map Nodes ({filteredRefs.length})
-      </h2>
       <input
         className="input"
         value={nodeQuery}

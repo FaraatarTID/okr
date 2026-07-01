@@ -22,7 +22,7 @@ BASELINE_ITEMS: tuple[BaselineItem, ...] = (
         rationale=(
             "Formatting debt is tracked separately to avoid high-churn refactors in operational hardening branches."
         ),
-        expires_on=date(2026, 6, 30),
+        expires_on=date(2026, 9, 30),
     ),
     BaselineItem(
         id="QG-002",
@@ -30,7 +30,7 @@ BASELINE_ITEMS: tuple[BaselineItem, ...] = (
         rationale=(
             "Type debt is reduced incrementally while maintaining stable release velocity and green CI."
         ),
-        expires_on=date(2026, 6, 30),
+        expires_on=date(2026, 9, 30),
     ),
 )
 

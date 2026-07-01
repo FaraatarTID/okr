@@ -4,6 +4,12 @@ import sys
 import tempfile
 
 os.environ["OKR_BACKEND_API_URL"] = ""
+os.environ["OKR_BACKEND_ENFORCE_REQUEST_SIGNING"] = "false"
+os.environ["OKR_BACKEND_ENFORCE_TOKEN"] = "false"
+os.environ["OKR_DATA_ACCESS_MODE"] = "database"
+os.environ["OKR_ENFORCE_STRONG_PASSWORD_POLICY"] = "false"
+os.environ["OKR_STRICT_RUNTIME_PREFLIGHT"] = "false"
+os.environ["ALLOW_EXTERNAL_AI"] = "false"
 
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["OKR_DATABASE_URL"] = "sqlite:///:memory:"

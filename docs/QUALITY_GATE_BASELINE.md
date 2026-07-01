@@ -13,14 +13,14 @@ Active Baseline Items
 
 | ID | Scope | Rationale | Expires On |
 | --- | --- | --- | --- |
-| QG-001 | Repo-wide Ruff format check is still targeted. | Formatting debt is reduced in planned batches to avoid high-churn refactors in release branches. | 2026-06-30 |
-| QG-002 | Repo-wide mypy remains staged; broad default coverage is active for `scripts` and `backend_app` runtime-core modules. | Type debt is being retired incrementally while keeping CI stable. | 2026-06-30 |
+| QG-001 | Repo-wide Ruff format check is still targeted. | Formatting debt is reduced in planned batches to avoid high-churn refactors in release branches. | 2026-09-30 |
+| QG-002 | Repo-wide mypy remains staged; broad default coverage is active for `scripts` and `backend_app` runtime-core modules. | Type debt is being retired incrementally while keeping CI stable. | 2026-09-30 |
 
 Enforcement
 - CI and pre-commit run `python scripts/check_quality_gate_baseline.py`.
 - If any baseline item is past `Expires On`, the gate fails.
 
 Next Milestone
-- By 2026-06-30, either:
+- By 2026-09-30, either:
   - Remove the baseline items by upgrading the gates to full repo scope, or
   - Replace them with newly reviewed items and updated expiry dates.

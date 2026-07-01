@@ -19,7 +19,7 @@ Optional:
 - `OKR_BACKEND_SIGNING_SECRET` (recommended and expected in production)
 - `BFF_HOST` (default: `0.0.0.0`)
 - `BFF_PORT` (default: `3001`)
-- `BFF_REQUEST_TIMEOUT_MS` (default: `20000`)
+- `BFF_REQUEST_TIMEOUT_MS` (default: `120000`)
 - `BFF_SESSION_SECRET` (required in non-development runtime)
 - `BFF_SESSION_TTL_SECONDS` (default: `28800`)
 - `BFF_COOKIE_SECURE` (default: `true` outside development)

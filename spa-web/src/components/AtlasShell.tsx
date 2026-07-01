@@ -1445,9 +1445,6 @@ export default function AtlasShell() {
         canManageOwnerFilter={isAdmin}
         ownerFilterOptions={ownerFilterOptions}
         selectedOwnerIds={selectedOwnerIds}
-        mode={mode}
-        onModeChange={handleSidebarModeSelect}
-        sidebarItems={sidebarItems}
         lens={lens}
         onLensChange={setLens}
         parsedOwnerIdsError={parsedOwnerIds.error}

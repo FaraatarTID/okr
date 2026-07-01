@@ -5,6 +5,7 @@ from src.services.ai_provider import (
     generate_json,
     get_ai_provider,
     get_ai_provider_runtime_status,
+    get_openai_request_timeout_seconds,
     run_ai_health_check,
 )
 
@@ -23,6 +24,8 @@ def _clear_ai_env(monkeypatch):
         "OLLAMA_MODEL",
         "AI_API_KEY",
         "OPENAI_API_KEY",
+        "AI_REQUEST_TIMEOUT_SECONDS",
+        "OPENAI_REQUEST_TIMEOUT_SECONDS",
         "GEMINI_API_KEY",
         "VITE_GEMINI_API_KEY",
     ]:
@@ -117,6 +120,34 @@ def test_generate_json_openai_compatible_success_path(monkeypatch):
     assert result.get("score") == 87
 
 
+def test_generate_json_openai_compatible_uses_request_timeout(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("AI_BASE_URL", "http://localhost:11434")
+    monkeypatch.setenv("AI_MODEL", "llama3.1")
+    monkeypatch.setenv("AI_REQUEST_TIMEOUT_SECONDS", "180")
+
+    captured = {}
+    fake_response = SimpleNamespace(
+        status_code=200,
+        text='{"choices":[{"message":{"content":"{\\"ok\\": true}"}}]}',
+        json=lambda: {"choices": [{"message": {"content": '{"ok": true}'}}]},
+    )
+
+    def fake_post_json_with_retry(*args, **kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        return fake_response
+
+    monkeypatch.setattr(
+        "src.services.ai_provider.post_json_with_retry",
+        fake_post_json_with_retry,
+    )
+    result = generate_json("return json")
+    assert result.get("ok") is True
+    assert captured["timeout"] == (5.0, 180.0)
+
+
 def test_generate_json_openai_compatible_http_error(monkeypatch):
     _clear_ai_env(monkeypatch)
     monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
@@ -136,6 +167,11 @@ def test_generate_json_openai_compatible_http_error(monkeypatch):
     result = generate_json("return json")
     assert "error" in result
     assert "http 500" in str(result.get("error")).lower()
+
+
+def test_get_openai_request_timeout_seconds_defaults(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    assert get_openai_request_timeout_seconds() == 120.0
 
 
 def test_run_ai_health_check_disabled(monkeypatch):
