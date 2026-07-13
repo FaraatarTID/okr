@@ -62,6 +62,12 @@ class BackendSettings:
     job_prune_interval_seconds: int
     job_prune_batch_size: int
     worker_poll_seconds: int
+    security_state_db_use_null_pool: bool
+    security_state_db_pool_size: int
+    security_state_db_max_overflow: int
+    security_state_db_pool_timeout: int
+    security_state_db_pool_recycle: int
+
 
 
 def get_backend_settings() -> BackendSettings:
@@ -129,6 +135,30 @@ def get_backend_settings() -> BackendSettings:
                 )
             ).strip()
             or "okr:security"
+        ),
+        security_state_db_use_null_pool=_as_bool(
+            get_config_value("OKR_BACKEND_SECURITY_STATE_DB_USE_NULL_POOL", ""),
+            default=True,
+        ),
+        security_state_db_pool_size=_as_int(
+            get_config_value("OKR_BACKEND_SECURITY_STATE_DB_POOL_SIZE", ""),
+            default=5,
+            minimum=1,
+        ),
+        security_state_db_max_overflow=_as_int(
+            get_config_value("OKR_BACKEND_SECURITY_STATE_DB_MAX_OVERFLOW", ""),
+            default=5,
+            minimum=0,
+        ),
+        security_state_db_pool_timeout=_as_int(
+            get_config_value("OKR_BACKEND_SECURITY_STATE_DB_POOL_TIMEOUT", ""),
+            default=30,
+            minimum=1,
+        ),
+        security_state_db_pool_recycle=_as_int(
+            get_config_value("OKR_BACKEND_SECURITY_STATE_DB_POOL_RECYCLE", ""),
+            default=1800,
+            minimum=30,
         ),
         job_user_window_seconds=_as_int(
             get_config_value("OKR_BACKEND_JOB_USER_WINDOW_SECONDS", ""),

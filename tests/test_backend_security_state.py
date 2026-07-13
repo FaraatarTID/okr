@@ -276,3 +276,64 @@ def test_production_fails_closed_when_redis_backend_unavailable(monkeypatch):
         register_nonce_once(
             nonce="prod-no-redis", now_ts=1_700_000_000, window_seconds=120
         )
+
+
+def test_database_security_state_uses_null_pool_by_default(monkeypatch):
+    from backend_app.security_state import DatabaseSecurityStateStore
+    from sqlalchemy.pool import NullPool
+
+    monkeypatch.delenv("OKR_BACKEND_SECURITY_STATE_DB_USE_NULL_POOL", raising=False)
+
+    store = DatabaseSecurityStateStore(
+        database_url="postgresql+psycopg2://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
+    )
+    try:
+        assert store._engine.pool.__class__ is NullPool
+    finally:
+        store.dispose()
+
+
+def test_database_security_state_allows_opt_in_queue_pool(monkeypatch):
+    from backend_app.security_state import DatabaseSecurityStateStore
+    from sqlalchemy.pool import NullPool
+
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_USE_NULL_POOL", "0")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_POOL_SIZE", "7")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_MAX_OVERFLOW", "3")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_POOL_TIMEOUT", "15")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_POOL_RECYCLE", "600")
+
+    store = DatabaseSecurityStateStore(
+        database_url="postgresql+psycopg2://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
+    )
+    try:
+        assert store._engine.pool.__class__ is not NullPool
+        assert store._engine.pool.size() == 7
+        assert getattr(store._engine.pool, "_max_overflow", None) == 3
+        assert store._engine.pool._timeout == 15
+        assert store._engine.pool._recycle == 600
+    finally:
+        store.dispose()
+
+
+def test_database_security_state_pool_bounds_checks(monkeypatch):
+    from backend_app.security_state import DatabaseSecurityStateStore
+    from sqlalchemy.pool import NullPool
+
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_USE_NULL_POOL", "false")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_POOL_SIZE", "-5")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_MAX_OVERFLOW", "not-an-int")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_POOL_TIMEOUT", "0")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_DB_POOL_RECYCLE", "10")
+
+    store = DatabaseSecurityStateStore(
+        database_url="postgresql+psycopg2://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
+    )
+    try:
+        assert store._engine.pool.__class__ is not NullPool
+        assert store._engine.pool.size() == 1
+        assert getattr(store._engine.pool, "_max_overflow", None) == 5
+        assert store._engine.pool._timeout == 1
+        assert store._engine.pool._recycle == 30
+    finally:
+        store.dispose()

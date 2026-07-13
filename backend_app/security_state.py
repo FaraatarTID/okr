@@ -145,10 +145,25 @@ class DatabaseSecurityStateStore:
             )
         if safe_database_url.lower().startswith("sqlite"):
             _ensure_sqlite_datetime_adapter()
+
+        settings = get_backend_settings()
+        kwargs = {}
+        if safe_database_url.lower().startswith("postgresql"):
+            if settings.security_state_db_use_null_pool:
+                kwargs["poolclass"] = NullPool
+            else:
+                kwargs["pool_size"] = settings.security_state_db_pool_size
+                kwargs["max_overflow"] = settings.security_state_db_max_overflow
+                kwargs["pool_timeout"] = settings.security_state_db_pool_timeout
+                kwargs["pool_recycle"] = settings.security_state_db_pool_recycle
+                kwargs["pool_use_lifo"] = True
+        else:
+            kwargs["poolclass"] = NullPool
+
         self._engine = create_engine(
             safe_database_url,
             pool_pre_ping=True,
-            poolclass=NullPool,
+            **kwargs,
         )
         self._cleanup_interval_seconds = max(1, int(cleanup_interval_seconds))
         self._schema_ready = False
