@@ -100,3 +100,11 @@ def test_weekly_plan_cache_bucket_is_week_stable():
     assert app_module._weekly_plan_cache_bucket(monday) == "2026-02-16"
     assert app_module._weekly_plan_cache_bucket(wednesday) == "2026-02-16"
     assert app_module._weekly_plan_cache_bucket(next_monday) == "2026-02-23"
+
+
+def test_app_serializers_handle_missing_objects():
+    import app as app_module
+
+    assert app_module._serialize_cycle(None) is None
+    assert app_module._serialize_user(None) is None
+    assert app_module._serialize_weekly_plan(None) is None

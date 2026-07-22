@@ -60,6 +60,10 @@ function makeProps(overrides: Record<string, unknown> = {}) {
     adminHealthPending: false,
     onLoadAdminHealthConfig: vi.fn(),
     onLoadAdminHealthLive: vi.fn(),
+    adminAuditSummary: null,
+    adminAuditSummaryPending: false,
+    adminAuditSummaryError: "",
+    onLoadAdminAuditSummary: vi.fn(),
     adminAiHealth: null,
     adminPdfHealth: null,
     adminCyclesPending: false,
@@ -252,5 +256,48 @@ describe("AdminModePanel", () => {
     expect(onAdminCreateTeam).toHaveBeenCalledTimes(1);
     expect(onAdminUpdateTeam).toHaveBeenCalledWith(team);
     expect(onAdminDeleteTeam).toHaveBeenCalledWith(team);
+  });
+
+  it("shows audit summary content and refresh action", async () => {
+    const user = userEvent.setup();
+    const onLoadAdminAuditSummary = vi.fn();
+
+    render(
+      <AdminModePanel
+        {...makeProps({
+          adminTab: "audit",
+          onLoadAdminAuditSummary,
+          adminAuditSummary: {
+            total_events: 3,
+            success_events: 2,
+            failure_events: 1,
+            latest_event_at: "2026-07-22T00:00:00Z",
+            by_actor_role: [{ value: "admin", count: 3 }],
+            by_actor_team_id: [{ value: 8, count: 3 }],
+            by_target_type: [{ value: "goal", count: 2 }],
+            by_entity: [{ value: "goal", count: 2 }],
+            by_action: [{ value: "create", count: 2 }],
+            recent_events: [
+              {
+                id: 1,
+                actor: "alice",
+                action: "create",
+                entity: "goal",
+                result: "success",
+                target_type: "goal",
+                created_at: "2026-07-22T00:00:00Z",
+              },
+            ],
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Audit summary")).toBeInTheDocument();
+    expect(screen.getByText("Events")).toBeInTheDocument();
+    expect(screen.getByText("create / goal")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Refresh Summary" }));
+    expect(onLoadAdminAuditSummary).toHaveBeenCalledTimes(1);
   });
 });

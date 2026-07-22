@@ -4,11 +4,13 @@ import { useCallback, useState } from "react";
 
 import {
   readAdminAiHealth,
+  readAuditSummary,
   readAdminPdfHealth,
   readBackendQuery,
   readCyclesQuery,
   type AdminAiHealthResponse,
   type AdminPdfHealthResponse,
+  type AuditSummaryResponse,
   type AuthUser,
   type CycleSummary,
   type TeamMutationResponse,
@@ -29,6 +31,9 @@ export default function useAdminResources() {
   const [adminAiHealth, setAdminAiHealth] = useState<AdminAiHealthResponse | null>(null);
   const [adminPdfHealth, setAdminPdfHealth] = useState<AdminPdfHealthResponse | null>(null);
   const [adminHealthPending, setAdminHealthPending] = useState(false);
+  const [adminAuditSummary, setAdminAuditSummary] = useState<AuditSummaryResponse | null>(null);
+  const [adminAuditSummaryPending, setAdminAuditSummaryPending] = useState(false);
+  const [adminAuditSummaryError, setAdminAuditSummaryError] = useState("");
 
   const loadAdminCycles = useCallback(async (activeUser: AuthUser): Promise<void> => {
     setAdminCyclesPending(true);
@@ -105,6 +110,24 @@ export default function useAdminResources() {
     }
   }, []);
 
+  const loadAdminAuditSummary = useCallback(async (activeUser: AuthUser): Promise<void> => {
+    setAdminAuditSummaryPending(true);
+    setAdminAuditSummaryError("");
+    try {
+      const summary = await readAuditSummary({
+        actor_username: activeUser.username,
+        days: 30,
+        recent_limit: 10,
+      });
+      setAdminAuditSummary(summary);
+    } catch (error) {
+      setAdminAuditSummaryError(String(error instanceof Error ? error.message : error));
+      setAdminAuditSummary(null);
+    } finally {
+      setAdminAuditSummaryPending(false);
+    }
+  }, []);
+
   return {
     adminCycles,
     adminCyclesPending,
@@ -119,9 +142,13 @@ export default function useAdminResources() {
     adminAiHealth,
     adminPdfHealth,
     adminHealthPending,
+    adminAuditSummary,
+    adminAuditSummaryPending,
+    adminAuditSummaryError,
     loadAdminCycles,
     loadAdminUsersAndTeams,
     loadAdminResources,
     loadAdminHealth,
+    loadAdminAuditSummary,
   };
 }

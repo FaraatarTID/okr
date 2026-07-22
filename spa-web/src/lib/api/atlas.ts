@@ -280,20 +280,47 @@ export async function readBackendQuery(input: {
   kind: string;
   params?: Record<string, unknown>;
 }): Promise<Record<string, unknown>> {
-  const response = await fetch("/api/backend/v1/read/query", {
-    method: "POST",
-    cache: "no-store",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
-      kind: input.kind,
-      params: input.params || {},
-      actor_username: input.actor_username,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Read query failed: ${await responseDetail(response)}`);
+  const maxAttempts = 4;
+  const perAttemptTimeoutMs = 8_000;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetchWithTimeout(
+        "/api/backend/v1/read/query",
+        {
+          method: "POST",
+          cache: "no-store",
+          headers: jsonHeaders(input.actor_username),
+          body: JSON.stringify({
+            kind: input.kind,
+            params: input.params || {},
+            actor_username: input.actor_username,
+          }),
+        },
+        perAttemptTimeoutMs,
+      );
+    } catch (error) {
+      const retryable = isTransientNetworkError(error);
+      if (retryable && attempt < maxAttempts) {
+        await waitMs(250 * 2 ** (attempt - 1));
+        continue;
+      }
+      throw new Error(`Read query failed: ${String(error instanceof Error ? error.message : error)}`);
+    }
+
+    if (response.ok) {
+      return (await response.json()) as Record<string, unknown>;
+    }
+
+    const detail = await responseDetail(response);
+    const retryable = isTransientCycleQueryFailure(response.status, detail);
+    if (retryable && attempt < maxAttempts) {
+      await waitMs(250 * 2 ** (attempt - 1));
+      continue;
+    }
+    throw new Error(`Read query failed: ${detail}`);
   }
-  return (await response.json()) as Record<string, unknown>;
+  throw new Error("Read query failed: retry attempts exhausted.");
 }
 
 export async function readLeadershipMetrics(input: {

@@ -248,6 +248,95 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(
     assert "sync_retry_event" not in tables
 
 
+def test_audit_event_backfill_migration_populates_actor_and_target_snapshots(
+    monkeypatch, tmp_path
+):
+    from alembic import command
+    from alembic.config import Config
+    from sqlmodel import SQLModel
+
+    import src.models  # noqa: F401
+    import src.database as database
+    from src.database import _create_engine, get_session_context
+    from src.models import AuditEvent, Goal, Team, User, UserRole
+
+    db_path = tmp_path / "okr_audit_backfill.db"
+    db_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("DATABASE_URL", db_url)
+    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
+    engine = _create_engine(db_url)
+
+    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
+    monkeypatch.setattr(database, "_engine", engine, raising=False)
+
+    SQLModel.metadata.create_all(engine)
+
+    with get_session_context() as session:
+        team = Team(name="North Star")
+        session.add(team)
+        session.commit()
+        session.refresh(team)
+
+        user = User(
+            username="alice",
+            password_hash="hash",
+            role=UserRole.MANAGER,
+            team_id=team.id,
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        goal = Goal(
+            owner_id=user.id,
+            team_id=team.id,
+            title="Grow revenue",
+            cycle_id=None,
+            progress=0,
+        )
+        session.add(goal)
+        session.commit()
+        session.refresh(goal)
+
+        session.add(
+            AuditEvent(
+                actor="alice",
+                action="create",
+                entity="goal",
+                result="success",
+                details_json='{"success": true, "goal_id": %s}' % goal.id,
+            )
+        )
+        session.commit()
+
+    ini_path = ROOT_DIR / "alembic.ini"
+    script_location = ROOT_DIR / "alembic"
+    cfg = Config(str(ini_path))
+    cfg.set_main_option("sqlalchemy.url", db_url)
+    cfg.set_main_option("script_location", str(script_location))
+
+    command.stamp(cfg, "s9a0b1c2d3e4")
+    command.upgrade(cfg, "head")
+
+    with get_session_context() as session:
+        event = session.exec(
+            select(AuditEvent).where(
+                AuditEvent.action == "create", AuditEvent.entity == "goal"
+            )
+        ).first()
+
+    assert event is not None
+    assert int(event.actor_user_id) == int(user.id)
+    assert event.actor_role == "manager"
+    assert int(event.actor_team_id) == int(team.id)
+    assert event.target_type == "goal"
+    assert int(event.target_id) == int(goal.id)
+    assert int(event.target_owner_id) == int(user.id)
+    assert int(event.target_team_id) == int(team.id)
+
+    engine.dispose()
+
+
 def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(monkeypatch, tmp_path):
     from alembic import command
     from alembic.config import Config

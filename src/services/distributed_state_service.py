@@ -18,7 +18,12 @@ KEY_CACHE_INVALIDATION_TS = "okr:cache:invalidation_ts"
 
 
 def get_distributed_state(key: str, actor_username: str = "system") -> Optional[str]:
-    """Retrieve a shared state value from the distributed backend."""
+    """Retrieve a shared state value from the distributed backend.
+
+    This intentionally goes through the backend API client rather than the SPA BFF.
+    The BFF allowlist keeps `/v1/state/{key}` out on purpose because these routes are
+    internal coordination primitives, not user-facing application endpoints.
+    """
     try:
         response = _request_json(
             method="GET",
@@ -39,7 +44,10 @@ def get_distributed_state(key: str, actor_username: str = "system") -> Optional[
 
 
 def set_distributed_state(key: str, value: str, actor_username: str = "system") -> bool:
-    """Update a shared state value in the distributed backend."""
+    """Update a shared state value in the distributed backend.
+
+    See `get_distributed_state()` for why this bypasses the BFF proxy.
+    """
     try:
         response = _request_json(
             method="POST",

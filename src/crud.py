@@ -46,11 +46,14 @@ from src.models import (
     AuthThrottleState,
     Team,
     AlignmentEdge,
+    AlignmentType,
     VariationType,
     ExperimentDecision,
+    ExperimentStatus,
     ExpectedEffectDirection,
     Experiment,
     RetroExperimentOutcome,
+    LifecycleState,
 )
 from src.config_runtime import get_bool_config, get_config_value  # noqa: F401
 from src.database import get_session_context as _database_get_session_context  # noqa: F401
@@ -801,9 +804,10 @@ def get_krs_needing_checkin(
     if _backend_read_proxy_enabled():
         from src.services import backend_client
 
+        username = str(user_id or "").strip()
         actor = _resolve_backend_actor()
         backend_result = backend_client.read_krs_needing_checkin(
-            user_id=str(user_id or "").strip(),
+            username=username,
             cycle_id=int(cycle_id),
             days_threshold=int(days_threshold),
             actor_username=actor,
@@ -814,7 +818,7 @@ def get_krs_needing_checkin(
         )
     return crud_checkin_helpers.get_krs_needing_checkin_from_crud(
         crud_module=sys.modules[__name__],
-        user_id=user_id,
+        username=user_id,
         cycle_id=cycle_id,
         days_threshold=days_threshold,
     )

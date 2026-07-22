@@ -124,6 +124,44 @@ export interface AdminPdfHealthResponse {
   managed_cloud_runtime?: boolean;
 }
 
+export interface AuditSummaryBucket {
+  value: string | number | null;
+  count: number;
+}
+
+export interface AuditEventSummary {
+  id: number;
+  actor?: string | null;
+  actor_user_id?: number | null;
+  actor_role?: string | null;
+  actor_team_id?: number | null;
+  action?: string | null;
+  entity?: string | null;
+  result?: string | null;
+  target_type?: string | null;
+  target_id?: number | null;
+  target_owner_id?: number | null;
+  target_team_id?: number | null;
+  correlation_id?: string | null;
+  request_id?: string | null;
+  created_at?: string | null;
+}
+
+export interface AuditSummaryResponse {
+  window_days?: number;
+  recent_limit?: number;
+  total_events?: number;
+  success_events?: number;
+  failure_events?: number;
+  latest_event_at?: string | null;
+  by_actor_role?: AuditSummaryBucket[];
+  by_actor_team_id?: AuditSummaryBucket[];
+  by_target_type?: AuditSummaryBucket[];
+  by_entity?: AuditSummaryBucket[];
+  by_action?: AuditSummaryBucket[];
+  recent_events?: AuditEventSummary[];
+}
+
 export interface AdminDbRestoreResponse {
   format?: string;
   exported_at?: string;
