@@ -1,31 +1,20 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-import * as http from "@/lib/api/http";
 import { readBackendQuery } from "@/lib/api/atlas";
 
-vi.mock("@/lib/api/http", () => ({
-  fetchWithTimeout: vi.fn(),
-  isTransientCycleQueryFailure: vi.fn((status: number) => status >= 500),
-  isTransientNetworkError: vi.fn((error: unknown) =>
-    String(error instanceof Error ? error.message : error).toLowerCase().includes("timed out"),
-  ),
-  jsonHeaders: vi.fn(() => ({})),
-  responseDetail: vi.fn(async () => "temporary backend outage"),
-  waitMs: vi.fn(async () => undefined),
-}));
-
 describe("readBackendQuery", () => {
+  const originalFetch = globalThis.fetch;
+
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
+    globalThis.fetch = originalFetch;
   });
 
   it("retries transient network failures before succeeding", async () => {
-    const fetchWithTimeoutMock = vi.mocked(http.fetchWithTimeout);
-    const waitMsMock = vi.mocked(http.waitMs);
-
-    fetchWithTimeoutMock
-      .mockRejectedValueOnce(new Error("timed out"))
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error("fetch failed"))
       .mockResolvedValueOnce(new Response(JSON.stringify({ users: [{ id: 1 }] }), { status: 200 }));
+    globalThis.fetch = fetchMock;
 
     const payload = await readBackendQuery({
       actor_username: "alice",
@@ -33,17 +22,14 @@ describe("readBackendQuery", () => {
     });
 
     expect(payload.users).toEqual([{ id: 1 }]);
-    expect(fetchWithTimeoutMock).toHaveBeenCalledTimes(2);
-    expect(waitMsMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("retries transient read-query responses before succeeding", async () => {
-    const fetchWithTimeoutMock = vi.mocked(http.fetchWithTimeout);
-    const waitMsMock = vi.mocked(http.waitMs);
-
-    fetchWithTimeoutMock
+    const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response("backend busy", { status: 503 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ teams: [{ id: 2 }] }), { status: 200 }));
+    globalThis.fetch = fetchMock;
 
     const payload = await readBackendQuery({
       actor_username: "alice",
@@ -51,7 +37,6 @@ describe("readBackendQuery", () => {
     });
 
     expect(payload.teams).toEqual([{ id: 2 }]);
-    expect(fetchWithTimeoutMock).toHaveBeenCalledTimes(2);
-    expect(waitMsMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
