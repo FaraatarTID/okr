@@ -6,6 +6,8 @@ from typing import Optional
 
 from sqlalchemy.exc import IntegrityError
 
+from src import crud_core_helpers
+
 
 def create_team_from_crud(
     *,
@@ -14,20 +16,16 @@ def create_team_from_crud(
     description: Optional[str] = None,
     actor_username: Optional[str] = None,
 ):
-    if crud_module._backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import create_team as backend_create_team
-
-        backend_result = backend_create_team(
-            name=name,
-            description=description,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="create_team",
+        backend_kwargs={"name": name, "description": description},
+        actor_username=actor_username,
+        require_actor=True,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     if not str(name or "").strip():
         raise ValueError("Team name is required.")
@@ -73,21 +71,20 @@ def update_team_from_crud(
     updates=None,
 ):
     updates = dict(updates or {})
-    if crud_module._backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import update_team as backend_update_team
-
-        backend_result = backend_update_team(
-            team_id=team_id,
-            actor_username=actor_username,
-            name=updates.get("name"),
-            description=updates.get("description"),
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="update_team",
+        backend_kwargs={
+            "team_id": team_id,
+            "name": updates.get("name"),
+            "description": updates.get("description"),
+        },
+        actor_username=actor_username,
+        require_actor=True,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         if actor_username:
@@ -125,19 +122,16 @@ def delete_team_from_crud(
     team_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    if crud_module._backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import delete_team as backend_delete_team
-
-        backend_result = backend_delete_team(
-            team_id=team_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return bool(backend_result.get("deleted", True))
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="delete_team",
+        backend_kwargs={"team_id": team_id},
+        actor_username=actor_username,
+        require_actor=True,
+        extract_result="bool_deleted",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         if actor_username:

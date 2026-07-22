@@ -1,30 +1,9 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
-from sqlmodel import SQLModel, select
+from sqlmodel import select
 
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    import src.database as database
-    import src.models  # noqa: F401
-
-    db_path = tmp_path / "okr_test.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = database._create_engine(db_url)
-
-    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
-    monkeypatch.setattr(database, "_engine", engine, raising=False)
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield
-    finally:
-        engine.dispose()
+from conftest import utc_now_naive
 
 
 def test_owner_id_goals_are_visible_in_user_queries(isolated_db):
@@ -41,8 +20,8 @@ def test_owner_id_goals_are_visible_in_user_queries(isolated_db):
     user = create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
 
     with get_session_context() as session:
@@ -87,8 +66,8 @@ def test_work_logs_and_cycle_tasks_use_owner_id_ownership(isolated_db):
     user = create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q2",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
 
     with get_session_context() as session:
@@ -106,7 +85,7 @@ def test_work_logs_and_cycle_tasks_use_owner_id_ownership(isolated_db):
     key_result = create_key_result(objective.id, "KR A", actor_username="alice")
     task = create_task(key_result.id, "Task A", actor_username="alice")
 
-    log_start = _utc_now_naive() - timedelta(hours=2)
+    log_start = utc_now_naive() - timedelta(hours=2)
     add_manual_log(
         task.id,
         duration_minutes=25,
@@ -118,7 +97,7 @@ def test_work_logs_and_cycle_tasks_use_owner_id_ownership(isolated_db):
     logs = get_work_logs_by_date_range(
         user.id,
         start_date=log_start - timedelta(minutes=5),
-        end_date=_utc_now_naive(),
+        end_date=utc_now_naive(),
     )
     assert any(log.task_id == task.id for log in logs)
 
@@ -144,8 +123,8 @@ def test_cycle_task_windowing_returns_stable_slices(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q2-window",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     goal = create_goal(
         "alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice"
@@ -175,8 +154,8 @@ def test_user_data_goal_nodes_emit_owner_id_only(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q2B",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     create_goal("alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice")
 
@@ -200,8 +179,8 @@ def test_user_data_supports_goal_pagination_meta(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q2C",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     create_goal("alice", title="Goal A", cycle_id=cycle.id, actor_username="alice")
     create_goal("alice", title="Goal B", cycle_id=cycle.id, actor_username="alice")
@@ -234,8 +213,8 @@ def test_timer_start_stop_enforces_task_ownership(isolated_db):
     create_user("bob", "bob-pass")
     cycle = create_cycle(
         "Q3",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
 
     goal = create_goal(
@@ -280,8 +259,8 @@ def test_timer_policy_uses_goal_owner_scope_not_task_row_owner(isolated_db):
     )
     cycle = create_cycle(
         "Q3B",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
 
     goal = create_goal(
@@ -342,8 +321,8 @@ def test_start_timer_is_idempotent_for_same_task(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q4",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     goal = create_goal(
         "alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice"
@@ -384,8 +363,8 @@ def test_stop_timer_recovers_stale_running_task_without_open_log(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q5",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     goal = create_goal(
         "alice", title="Alice Goal", cycle_id=cycle.id, actor_username="alice"
@@ -396,7 +375,7 @@ def test_stop_timer_recovers_stale_running_task_without_open_log(isolated_db):
 
     with get_session_context() as session:
         row = session.get(Task, task.id)
-        row.timer_started_at = _utc_now_naive()
+        row.timer_started_at = utc_now_naive()
         session.add(row)
 
     assert stop_timer(task.id, user_id="alice") is None

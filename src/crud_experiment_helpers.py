@@ -6,6 +6,8 @@ from typing import Optional
 
 from sqlmodel import col
 
+from src import crud_core_helpers
+
 
 def _experiment_state_snapshot(experiment) -> dict:
     if not experiment:
@@ -68,28 +70,24 @@ def create_experiment_from_crud(
     expected_effect_direction=None,
     expected_effect_size: Optional[float] = None,
 ):
-    if crud_module._backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            create_experiment as backend_create_experiment,
-        )
-
-        backend_result = backend_create_experiment(
-            key_result_id=key_result_id,
-            cycle_id=cycle_id,
-            hypothesis=hypothesis,
-            change_description=change_description,
-            actor_username=actor_name,
-            start_at=start_at,
-            expected_effect_direction=expected_effect_direction,
-            expected_effect_size=expected_effect_size,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="create_experiment",
+        backend_kwargs={
+            "key_result_id": key_result_id,
+            "cycle_id": cycle_id,
+            "hypothesis": hypothesis,
+            "change_description": change_description,
+            "start_at": start_at,
+            "expected_effect_direction": expected_effect_direction,
+            "expected_effect_size": expected_effect_size,
+        },
+        actor_username=actor_username,
+        require_actor=True,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         goal = crud_module._authorize_node_mutation(
@@ -188,23 +186,19 @@ def update_experiment_from_crud(
     updates,
 ):
     updates = dict(updates or {})
-    if crud_module._backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            update_experiment as backend_update_experiment,
-        )
-
-        backend_result = backend_update_experiment(
-            experiment_id=experiment_id,
-            updates=updates,
-            actor_username=actor_name,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="update_experiment",
+        backend_kwargs={
+            "experiment_id": experiment_id,
+            "updates": updates,
+        },
+        actor_username=actor_username,
+        require_actor=True,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         experiment = session.get(crud_module.Experiment, experiment_id)
@@ -291,24 +285,20 @@ def close_experiment_from_crud(
     rationale: str,
     actor_username: str,
 ):
-    if crud_module._backend_mutation_proxy_enabled():
-        actor_name = str(actor_username or "").strip()
-        if not actor_name:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            close_experiment as backend_close_experiment,
-        )
-
-        backend_result = backend_close_experiment(
-            experiment_id=experiment_id,
-            decision=decision,
-            rationale=rationale,
-            actor_username=actor_name,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="close_experiment",
+        backend_kwargs={
+            "experiment_id": experiment_id,
+            "decision": decision,
+            "rationale": rationale,
+        },
+        actor_username=actor_username,
+        require_actor=True,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         experiment = session.get(crud_module.Experiment, int(experiment_id))

@@ -94,6 +94,10 @@ describe("InspectorAlignmentPanel", () => {
     const onTargetChange = vi.fn();
     const onCreate = vi.fn();
     const onDelete = vi.fn();
+    const onObjLinkDirectionChange = vi.fn();
+    const onObjLinkTargetIdChange = vi.fn();
+    const onObjLinkCreate = vi.fn();
+    const onObjLinkDelete = vi.fn();
 
     render(
       <InspectorAlignmentPanel
@@ -104,24 +108,39 @@ describe("InspectorAlignmentPanel", () => {
           children: [{ id: 2, title: "Child A" }, { id: 3, title: "Child B" }],
           all_objectives: [{ id: 5, title: "Objective 5" }],
           edges: [{ id: 77, parent_id: 1, child_id: 2, alignment_type: "SUPPORTS" }],
+          available_goals: [{ id: 10, title: "Goal 10" }],
+          available_key_results: [{ id: 20, title: "KR 20" }],
+          objective_links: [],
         }}
         alignmentDirection="parent"
         alignmentTargetObjectiveId=""
+        alignmentType="SUPPORTS"
         onAlignmentDirectionChange={onDirectionChange}
         onAlignmentTargetObjectiveIdChange={onTargetChange}
+        onAlignmentTypeChange={vi.fn()}
         onAlignmentCreate={onCreate}
         onAlignmentDelete={onDelete}
+        objLinkDirection="parent"
+        objLinkTargetId=""
+        objLinkPending={false}
+        objLinkError=""
+        onObjLinkDirectionChange={onObjLinkDirectionChange}
+        onObjLinkTargetIdChange={onObjLinkTargetIdChange}
+        onObjLinkCreate={onObjLinkCreate}
+        onObjLinkDelete={onObjLinkDelete}
       />,
     );
 
     expect(screen.getByText("Parents: 1 | Children: 2")).toBeInTheDocument();
     const selects = screen.getAllByRole("combobox");
-    await user.selectOptions(selects[0], "child");
-    await user.selectOptions(selects[1], "5");
-    await user.click(screen.getByRole("button", { name: "Add link" }));
-    await user.click(screen.getByRole("button", { name: "Remove" }));
+    // selects[0] = cross-hierarchy direction, selects[1] = cross-hierarchy target
+    // selects[2] = objective-to-objective target, selects[3] = alignment type
+    await user.selectOptions(selects[2], "5");
+    const addButtons = screen.getAllByRole("button", { name: "Add link" });
+    await user.click(addButtons[1]);
+    const removeButtons = screen.getAllByRole("button", { name: "Remove" });
+    await user.click(removeButtons[0]);
 
-    expect(onDirectionChange).toHaveBeenCalledWith("child");
     expect(onTargetChange).toHaveBeenCalledWith("5");
     expect(onCreate).toHaveBeenCalledTimes(1);
     expect(onDelete).toHaveBeenCalledWith(77);

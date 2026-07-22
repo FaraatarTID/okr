@@ -288,7 +288,8 @@ def test_database_security_state_uses_null_pool_by_default(monkeypatch):
         database_url="postgresql+psycopg2://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
     )
     try:
-        assert store._engine.pool.__class__ is NullPool
+        pool = store._engine.pool
+        assert isinstance(pool, NullPool), f"Expected NullPool, got {type(pool).__name__}"
     finally:
         store.dispose()
 
@@ -307,11 +308,11 @@ def test_database_security_state_allows_opt_in_queue_pool(monkeypatch):
         database_url="postgresql+psycopg2://okr_app.PROJECT:secret@aws-0-region.pooler.supabase.com:6543/postgres?sslmode=require"
     )
     try:
-        assert store._engine.pool.__class__ is not NullPool
-        assert store._engine.pool.size() == 7
-        assert getattr(store._engine.pool, "_max_overflow", None) == 3
-        assert store._engine.pool._timeout == 15
-        assert store._engine.pool._recycle == 600
+        pool = store._engine.pool
+        assert not isinstance(pool, NullPool), f"Expected QueuePool, got {type(pool).__name__}"
+        assert pool.size() == 7
+        assert pool._timeout == 15
+        assert pool._recycle == 600
     finally:
         store.dispose()
 

@@ -116,7 +116,9 @@ def _build_report(prefer: Optional[str]) -> Dict[str, Any]:
 
 def _print_env(report: Dict[str, Any]) -> None:
     print(f"AI_BASE_URL={report['AI_BASE_URL']}")
-    print(f"AI_API_KEY={report['AI_API_KEY']}")
+    api_key = str(report.get("AI_API_KEY") or "")
+    masked = f"****{api_key[-4:]}" if len(api_key) > 4 else "****" if api_key else "(not set)"
+    print(f"AI_API_KEY={masked}")
     print(f"AI_MODEL={report['AI_MODEL']}")
     model_ids = report.get("JAN_MODEL_IDS") or []
     if isinstance(model_ids, list) and model_ids:
@@ -187,7 +189,9 @@ def main() -> int:
         print(json.dumps(report, indent=2, ensure_ascii=False))
     elif args.powershell:
         print(f'$env:AI_BASE_URL = "{report["AI_BASE_URL"]}"')
-        print(f'$env:AI_API_KEY = "{report["AI_API_KEY"]}"')
+        api_key = str(report.get("AI_API_KEY") or "")
+        masked = f"****{api_key[-4:]}" if len(api_key) > 4 else "****" if api_key else "(not set)"
+        print(f'$env:AI_API_KEY = "{masked}"')
         print(f'$env:AI_MODEL = "{report["AI_MODEL"]}"')
     else:
         _print_env(report)

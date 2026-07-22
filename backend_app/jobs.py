@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import select
 
 from backend_app.path_setup import ensure_shared_src_on_path
+from backend_app.utils import normalize_idempotency_key
 
 ensure_shared_src_on_path()
 
@@ -70,13 +71,6 @@ def serialize_job(job: AsyncJob) -> Dict[str, Any]:
     }
 
 
-def _normalize_idempotency_key(value: Optional[str]) -> Optional[str]:
-    key = str(value or "").strip()
-    if not key:
-        return None
-    return key[:255]
-
-
 def _resolve_actor_team_id(session, actor_username: str) -> Optional[int]:
     actor = session.exec(select(User).where(User.username == actor_username)).first()
     if not actor:
@@ -94,7 +88,7 @@ def enqueue_job(
 ) -> AsyncJob:
     now = utc_now_naive()
     with get_session_context() as session:
-        normalized_key = _normalize_idempotency_key(idempotency_key)
+        normalized_key = normalize_idempotency_key(idempotency_key)
         if normalized_key:
             existing = session.exec(
                 select(AsyncJob)

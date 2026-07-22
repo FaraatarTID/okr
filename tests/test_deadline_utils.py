@@ -67,3 +67,18 @@ def test_get_expected_progress_and_format_helpers_accept_datetime():
     rendered = format_deadline_display(deadline)
     assert isinstance(rendered, str)
     assert rendered
+
+
+def test_get_expected_progress_returns_zero_when_deadline_is_none():
+    now = datetime.now()
+    assert get_expected_progress(now - timedelta(days=5), None) == 0
+
+
+def test_get_expected_progress_returns_zero_when_created_at_is_none():
+    now = datetime.now()
+    assert get_expected_progress(None, now + timedelta(days=5)) == 0
+
+
+def test_get_expected_progress_returns_100_when_created_at_equals_deadline():
+    now = datetime.now()
+    assert get_expected_progress(now, now) == 100

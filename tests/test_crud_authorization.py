@@ -1,29 +1,8 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
-from sqlmodel import SQLModel
 
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    import src.database as database
-
-    db_path = tmp_path / "okr_auth_test.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = database._create_engine(db_url)
-
-    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
-    monkeypatch.setattr(database, "_engine", engine, raising=False)
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield
-    finally:
-        engine.dispose()
+from conftest import utc_now_naive
 
 
 def _build_task_tree_for_user(username: str, cycle_id: int):
@@ -52,8 +31,8 @@ def test_member_cannot_mutate_other_users_nodes(isolated_db):
     create_user("bob", "bob-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, _, alice_task = _build_task_tree_for_user("alice", cycle.id)
     alice_log = add_manual_log(
@@ -87,8 +66,8 @@ def test_manager_can_mutate_team_member_but_not_outsider(isolated_db):
     create_user("outsider1", "outsider-pass")
     cycle = create_cycle(
         "Q2",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
 
     member_goal = create_goal(
@@ -124,8 +103,8 @@ def test_force_stop_active_timers_only_affects_requested_user(isolated_db):
     create_user("bob", "bob-pass")
     cycle = create_cycle(
         "Q3",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
 
     _, _, _, alice_task = _build_task_tree_for_user("alice", cycle.id)
@@ -157,8 +136,8 @@ def test_actor_identity_is_required_for_goal_scoped_mutations(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q4",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
 
     with pytest.raises(PermissionError):
@@ -194,8 +173,8 @@ def test_start_timer_invalid_task_does_not_stop_existing_timer(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q5",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, _, task = _build_task_tree_for_user("alice", cycle.id)
 
@@ -224,8 +203,8 @@ def test_update_operations_reject_protected_fields(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q6",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     goal, objective, key_result, task = _build_task_tree_for_user("alice", cycle.id)
 
@@ -256,8 +235,8 @@ def test_manual_log_and_estimates_validate_non_negative_values(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q7",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, key_result, task = _build_task_tree_for_user("alice", cycle.id)
 
@@ -282,12 +261,12 @@ def test_update_task_can_clear_start_date(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q8",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, _, task = _build_task_tree_for_user("alice", cycle.id)
 
-    seeded = update_task(task.id, start_date=_utc_now_naive(), actor_username="alice")
+    seeded = update_task(task.id, start_date=utc_now_naive(), actor_username="alice")
     assert seeded is not None
     assert seeded.start_date is not None
 
@@ -312,8 +291,8 @@ def test_alignment_mutations_require_authorization(isolated_db):
     create_user("outsider_align", "outsider-pass")
     cycle = create_cycle(
         "Q9",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
 
     member_goal = create_goal(
@@ -376,8 +355,8 @@ def test_get_node_enforces_read_scope_when_actor_is_provided(isolated_db):
     create_user("outsider_read", "outsider-pass")
     cycle = create_cycle(
         "Q10",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
 
     member_goal = create_goal(
@@ -492,16 +471,16 @@ def test_cycle_governance_allows_manager_and_blocks_member(isolated_db):
 
     manager_cycle = create_cycle(
         "Q-Manager",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
         actor_username="manager_cycle",
     )
     assert manager_cycle is not None
 
     admin_cycle = create_cycle(
         "Q-Admin",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
         actor_username="admin_cycle",
     )
     assert admin_cycle is not None
@@ -509,7 +488,7 @@ def test_cycle_governance_allows_manager_and_blocks_member(isolated_db):
     with pytest.raises(PermissionError, match="Admin or manager"):
         create_cycle(
             "Q-Member",
-            start_date=_utc_now_naive(),
-            end_date=_utc_now_naive() + timedelta(days=90),
+            start_date=utc_now_naive(),
+            end_date=utc_now_naive() + timedelta(days=90),
             actor_username="member_cycle",
         )

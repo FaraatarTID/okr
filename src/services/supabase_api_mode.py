@@ -20,6 +20,13 @@ from typing import Any, Optional
 import bcrypt
 
 from src.config_runtime import get_config_value
+from src.crud import (
+    _ALLOWED_GOAL_UPDATE_FIELDS,
+    _ALLOWED_OBJECTIVE_UPDATE_FIELDS,
+    _ALLOWED_KEY_RESULT_UPDATE_FIELDS,
+    _ALLOWED_TASK_UPDATE_KWARGS,
+    _ALLOWED_EXPERIMENT_UPDATE_FIELDS,
+)
 from src.domain.scoring import calculate_kr_score
 
 logger = logging.getLogger(__name__)
@@ -467,7 +474,7 @@ def authenticate_user_detailed_via_supabase_api(
         },
     )
     if status >= 400:
-        logger.warning("Supabase API login lookup failed: status=%s payload=%s", status, payload)
+        logger.warning("Supabase API login lookup failed: status=%s", status)
         return {
             "user": None,
             "success": False,
@@ -773,10 +780,10 @@ def update_node_via_supabase_api(
     if not table:
         return None
     allowed = {
-        "GOAL": {"title", "description", "progress", "cycle_id", "strategy_tags", "is_expanded", "deadline"},
-        "OBJECTIVE": {"title", "description", "progress", "score_mode", "weight", "is_expanded", "deadline", "state", "final_reflection"},
-        "KEY_RESULT": {"title", "description", "progress", "start_value", "target_value", "current_value", "metric_type", "unit", "weight", "initiative_tags", "ai_analysis", "is_expanded", "deadline", "state", "final_reflection"},
-        "TASK": {"title", "description", "progress", "deadline", "assignee_id", "is_expanded", "status", "estimated_minutes", "start_date"},
+        "GOAL": _ALLOWED_GOAL_UPDATE_FIELDS,
+        "OBJECTIVE": _ALLOWED_OBJECTIVE_UPDATE_FIELDS,
+        "KEY_RESULT": _ALLOWED_KEY_RESULT_UPDATE_FIELDS,
+        "TASK": _ALLOWED_TASK_UPDATE_KWARGS,
     }
     payload: dict[str, Any] = {}
     for key, value in dict(updates or {}).items():
@@ -2689,11 +2696,90 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             for edge in edge_rows
             if _as_int(edge.get("id"), 0) > 0
         ]
+
+        # Fetch all goals for the cross-hierarchy parent link dropdown
+        status, goal_rows = _rest_select(
+            "goal",
+            query={"select": "id,title", "order": "id.asc"},
+        )
+        available_goals = [
+            {"id": _as_int(g.get("id"), 0), "title": str(g.get("title") or "")}
+            for g in (goal_rows if status < 400 else [])
+            if _as_int(g.get("id"), 0) > 0
+        ]
+
+        # Fetch all key results for the cross-hierarchy child link dropdown
+        status, kr_rows = _rest_select(
+            "key_result",
+            query={"select": "id,title", "order": "id.asc"},
+        )
+        available_key_results = [
+            {"id": _as_int(kr.get("id"), 0), "title": str(kr.get("title") or "")}
+            for kr in (kr_rows if status < 400 else [])
+            if _as_int(kr.get("id"), 0) > 0
+        ]
+
+        # Fetch existing objective alignment links
+        status, link_rows = _rest_select(
+            "objective_alignment_link",
+            query={
+                "objective_id": f"eq.{objective_id}",
+                "select": "*",
+                "order": "id.asc",
+            },
+        )
+        objective_links = [
+            {
+                "id": _as_int(lnk.get("id"), 0),
+                "objective_id": _as_int(lnk.get("objective_id"), 0),
+                "linked_entity_type": str(lnk.get("linked_entity_type") or ""),
+                "linked_entity_id": _as_int(lnk.get("linked_entity_id"), 0),
+                "direction": str(lnk.get("direction") or ""),
+                "created_at": lnk.get("created_at"),
+                "created_by": lnk.get("created_by"),
+            }
+            for lnk in (link_rows if status < 400 else [])
+            if _as_int(lnk.get("id"), 0) > 0
+        ]
+
+        # Filter goals and KRs to only unlinked ones
+        # Also exclude the current objective's parent goal (linked via FK)
+        parent_goal_id = None
+        if current_rows:
+            parent_goal_id = _as_int(current_rows[0].get("goal_id"), 0) or None
+        linked_goal_ids = {
+            lnk["linked_entity_id"]
+            for lnk in objective_links
+            if lnk["linked_entity_type"] == "goal"
+        }
+        if parent_goal_id:
+            linked_goal_ids.add(parent_goal_id)
+        # Exclude KRs that are children of this objective (linked via FK)
+        linked_kr_ids = {
+            lnk["linked_entity_id"]
+            for lnk in objective_links
+            if lnk["linked_entity_type"] == "key_result"
+        }
+        status, child_kr_rows = _rest_select(
+            "key_result",
+            query={"objective_id": f"eq.{objective_id}", "select": "id", "limit": "500"},
+        )
+        if status < 400:
+            for kr in child_kr_rows:
+                kr_id = _as_int(kr.get("id"), 0)
+                if kr_id:
+                    linked_kr_ids.add(kr_id)
+        available_goals = [g for g in available_goals if g["id"] not in linked_goal_ids]
+        available_key_results = [kr for kr in available_key_results if kr["id"] not in linked_kr_ids]
+
         return {
             "parents": parents,
             "children": children,
             "all_objectives": all_objectives,
             "edges": edges,
+            "available_goals": available_goals,
+            "available_key_results": available_key_results,
+            "objective_links": objective_links,
         }
 
     if normalized == "mindmap.root":

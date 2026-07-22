@@ -376,6 +376,29 @@ class AlignmentDeleteResponse(BaseModel):
     deleted: bool
 
 
+class ObjectiveAlignmentLinkCreateRequest(BaseModel):
+    objective_id: int = Field(..., gt=0)
+    linked_entity_type: str = Field(..., min_length=1, max_length=32)
+    linked_entity_id: int = Field(..., gt=0)
+    direction: str = Field(..., min_length=1, max_length=32)
+    actor_username: Optional[str] = None
+
+
+class ObjectiveAlignmentLinkMutationView(BaseModel):
+    id: int
+    objective_id: int
+    linked_entity_type: str
+    linked_entity_id: int
+    direction: str
+    created_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+
+
+class ObjectiveAlignmentLinkDeleteResponse(BaseModel):
+    id: int
+    deleted: bool
+
+
 class WorkLogDeleteResponse(BaseModel):
     id: int
     deleted: bool

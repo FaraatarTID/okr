@@ -1,32 +1,10 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import event
-from sqlmodel import SQLModel
 from src.models import VariationType
 
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    import src.database as database
-    import src.models  # noqa: F401
-
-    db_path = tmp_path / "okr_perf_test.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = database._create_engine(db_url)
-
-    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
-    monkeypatch.setattr(database, "_engine", engine, raising=False)
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield engine
-    finally:
-        engine.dispose()
+from conftest import utc_now_naive
 
 
 def _build_okr_tree(
@@ -111,8 +89,8 @@ def test_get_krs_needing_checkin_returns_stale_and_missing_only(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive() - timedelta(days=30),
-        end_date=_utc_now_naive() + timedelta(days=60),
+        start_date=utc_now_naive() - timedelta(days=30),
+        end_date=utc_now_naive() + timedelta(days=60),
     )
 
     _, _, krs, _ = _build_okr_tree("alice", cycle.id, kr_count=3, tasks_per_kr=1)
@@ -137,8 +115,8 @@ def test_get_krs_needing_checkin_returns_stale_and_missing_only(isolated_db):
     with get_session_context() as session:
         fresh_row = session.get(CheckIn, fresh.id)
         stale_row = session.get(CheckIn, stale.id)
-        fresh_row.created_at = _utc_now_naive() - timedelta(days=2)
-        stale_row.created_at = _utc_now_naive() - timedelta(days=9)
+        fresh_row.created_at = utc_now_naive() - timedelta(days=2)
+        stale_row.created_at = utc_now_naive() - timedelta(days=9)
         session.add(fresh_row)
         session.add(stale_row)
 
@@ -160,8 +138,8 @@ def test_get_hours_by_goal_aggregates_window_and_keeps_zero_goals(isolated_db):
     user = create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q2",
-        start_date=_utc_now_naive() - timedelta(days=30),
-        end_date=_utc_now_naive() + timedelta(days=60),
+        start_date=utc_now_naive() - timedelta(days=30),
+        end_date=utc_now_naive() + timedelta(days=60),
     )
 
     goal_a, _, _, tasks_a = _build_okr_tree(
@@ -175,14 +153,14 @@ def test_get_hours_by_goal_aggregates_window_and_keeps_zero_goals(isolated_db):
         tasks_a[0].id,
         duration_minutes=60,
         note="in-window",
-        log_date=_utc_now_naive() - timedelta(days=1),
+        log_date=utc_now_naive() - timedelta(days=1),
         actor_username="alice",
     )
     add_manual_log(
         tasks_a[0].id,
         duration_minutes=120,
         note="out-of-window",
-        log_date=_utc_now_naive() - timedelta(days=20),
+        log_date=utc_now_naive() - timedelta(days=20),
         actor_username="alice",
     )
 
@@ -205,8 +183,8 @@ def test_get_leadership_metrics_reports_deadline_buckets_and_hygiene(isolated_db
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q3",
-        start_date=_utc_now_naive() - timedelta(days=30),
-        end_date=_utc_now_naive() + timedelta(days=60),
+        start_date=utc_now_naive() - timedelta(days=30),
+        end_date=utc_now_naive() + timedelta(days=60),
     )
 
     _, _, krs, tasks = _build_okr_tree("alice", cycle.id, kr_count=2, tasks_per_kr=2)
@@ -216,19 +194,19 @@ def test_get_leadership_metrics_reports_deadline_buckets_and_hygiene(isolated_db
     update_task(
         overdue_task.id,
         progress=20,
-        deadline=_utc_now_naive() - timedelta(days=1),
+        deadline=utc_now_naive() - timedelta(days=1),
         actor_username="alice",
     )
     update_task(
         on_track_task.id,
         progress=90,
-        deadline=_utc_now_naive() + timedelta(days=2),
+        deadline=utc_now_naive() + timedelta(days=2),
         actor_username="alice",
     )
     update_task(
         at_risk_task.id,
         progress=10,
-        deadline=_utc_now_naive() + timedelta(days=2),
+        deadline=utc_now_naive() + timedelta(days=2),
         actor_username="alice",
     )
 
@@ -236,7 +214,7 @@ def test_get_leadership_metrics_reports_deadline_buckets_and_hygiene(isolated_db
     with get_session_context() as session:
         for tid in [overdue_task.id, on_track_task.id, at_risk_task.id]:
             row = session.get(Task, tid)
-            row.created_at = _utc_now_naive() - timedelta(days=10)
+            row.created_at = utc_now_naive() - timedelta(days=10)
             session.add(row)
 
     fresh = create_check_in(
@@ -258,8 +236,8 @@ def test_get_leadership_metrics_reports_deadline_buckets_and_hygiene(isolated_db
     with get_session_context() as session:
         fresh_row = session.get(CheckIn, fresh.id)
         stale_row = session.get(CheckIn, stale.id)
-        fresh_row.created_at = _utc_now_naive() - timedelta(days=2)
-        stale_row.created_at = _utc_now_naive() - timedelta(days=12)
+        fresh_row.created_at = utc_now_naive() - timedelta(days=2)
+        stale_row.created_at = utc_now_naive() - timedelta(days=12)
         session.add(fresh_row)
         session.add(stale_row)
 
@@ -289,8 +267,8 @@ def test_hotpath_query_budgets_guard_against_n_plus_one(isolated_db):
     users = [create_user(f"user{i}", "pass") for i in range(1, 4)]
     cycle = create_cycle(
         "Q4",
-        start_date=_utc_now_naive() - timedelta(days=30),
-        end_date=_utc_now_naive() + timedelta(days=60),
+        start_date=utc_now_naive() - timedelta(days=30),
+        end_date=utc_now_naive() + timedelta(days=60),
     )
 
     all_krs = []
@@ -313,13 +291,13 @@ def test_hotpath_query_budgets_guard_against_n_plus_one(isolated_db):
         update_task(
             task.id,
             progress=(idx * 13) % 100,
-            deadline=_utc_now_naive() + timedelta(days=(idx % 7) - 3),
+            deadline=utc_now_naive() + timedelta(days=(idx % 7) - 3),
             actor_username=actor,
         )
         add_manual_log(
             task.id,
             duration_minutes=15 + (idx % 20),
-            log_date=_utc_now_naive() - timedelta(days=idx % 5),
+            log_date=utc_now_naive() - timedelta(days=idx % 5),
             actor_username=actor,
         )
 
@@ -335,7 +313,7 @@ def test_hotpath_query_budgets_guard_against_n_plus_one(isolated_db):
         )
         with get_session_context() as session:
             row = session.get(CheckIn, ci.id)
-            row.created_at = _utc_now_naive() - timedelta(days=(idx % 11))
+            row.created_at = utc_now_naive() - timedelta(days=(idx % 11))
             session.add(row)
 
     engine = database.get_engine()

@@ -51,7 +51,7 @@ type ExperimentReadLike = {
   start_at?: string | null;
   end_at?: string | null;
   created_at?: string | null;
-  decision?: "ADOPT" | "ITERATE" | "ABANDON" | null;
+  decision?: "ADOPT" | "ITERATE" | "REVERT" | "UNKNOWN" | null;
   decision_rationale?: string | null;
   expected_effect_direction?: "UP" | "DOWN" | null;
   expected_effect_size?: number | null;

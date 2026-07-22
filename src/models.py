@@ -4,6 +4,8 @@ Hierarchy: Cycle -> Goal -> Objective -> KeyResult -> Task
 Plus WorkLog for time tracking.
 """
 
+from __future__ import annotations
+
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional
@@ -657,6 +659,30 @@ class AlignmentEdge(SQLModel, table=True):
     parent_id: int = Field(foreign_key="objective.id", index=True)
     child_id: int = Field(foreign_key="objective.id", index=True)
     alignment_type: AlignmentType = Field(default=AlignmentType.SUPPORTS)
+    created_at: datetime = Field(default_factory=utc_now_naive)
+    created_by: Optional[str] = None
+
+
+class ObjectiveAlignmentLink(SQLModel, table=True):
+    """Additional alignment link between an Objective and a Goal or Key Result."""
+
+    __tablename__ = "objective_alignment_link"
+    __table_args__ = (
+        Index(
+            "ix_obj_align_obj_linked",
+            "objective_id",
+            "linked_entity_type",
+            "linked_entity_id",
+            unique=True,
+        ),
+        {"extend_existing": True},
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    objective_id: int = Field(foreign_key="objective.id", index=True)
+    linked_entity_type: str = Field(...)  # "goal" or "key_result"
+    linked_entity_id: int = Field(...)
+    direction: str = Field(...)  # "parent" (linked entity is parent) or "child" (linked entity is child)
     created_at: datetime = Field(default_factory=utc_now_naive)
     created_by: Optional[str] = None
 

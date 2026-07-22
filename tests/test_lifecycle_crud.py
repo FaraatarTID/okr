@@ -11,26 +11,6 @@ from src.crud import (
 )
 
 
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    import src.database as database
-
-    db_path = tmp_path / "okr_lifecycle_smoke.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = create_engine(db_url, connect_args={"check_same_thread": False})
-
-    # 🚨 CRITICAL: Monkeypatch get_engine to return our test engine
-    monkeypatch.setattr(database, "get_engine", lambda: engine)
-    monkeypatch.setattr(database, "_engine", engine)
-    monkeypatch.setattr(database, "DATABASE_URL", db_url)
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield engine
-    finally:
-        engine.dispose()
-
-
 def test_lifecycle_transitions(isolated_db):
     engine = isolated_db
     # Setup: Create a user and an objective in DRAFT state

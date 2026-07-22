@@ -38,8 +38,14 @@ Maintainer-focused map for the primary files and helper boundaries.
   - `crud_checkin_helpers.py`
   - `crud_experiment_helpers.py`
   - `crud_team_helpers.py`
-  - `crud_alignment_helpers.py`
+  - `crud_alignment_helpers.py` (alignment edges + cross-hierarchy links)
   - `crud_reflection_helpers.py`
+
+## Shared Utility Modules
+
+- `src/utils/crypto_utils.py` — SHA-256 body digest and canonical signing payload
+- `src/crud_utils.py` — shared CRUD helpers (e.g., `coerce_non_negative_weight`)
+- `src/serialization_helpers.py` — shared serialization (`_enum_value`, user/cycle/weekly plan snapshots)
 
 ## Change Playbooks
 
@@ -64,9 +70,19 @@ Maintainer-focused map for the primary files and helper boundaries.
 
 ## AI Service Files
 
-- `src/services/ai_service.py` — Core AI analysis logic (`analyze_node`), prompt construction with cycle context, check-in history, experiments, parent context. Has DB fallback (6543 → 443).
+- `src/services/ai_service.py` — Core AI analysis logic (`analyze_node`), prompt construction with cycle context, check-in history, experiments, parent context, and **alignment context** (edges + cross-hierarchy links). Has DB fallback (6543 → 443).
 - `src/services/ai_provider.py` — AI provider abstraction (Gemini, openai_compatible). Public aliases: `get_ai_api_key`, `get_ai_model`.
-- `src/services/supabase_api_mode.py` — Supabase REST API read/write operations. Includes timer stop with auto-computed task progress.
+- `src/services/supabase_api_mode.py` — Supabase REST API read/write operations. Includes timer stop with auto-computed task progress, alignment context queries, and cross-hierarchy link support.
+
+## Alignment & Cross-Hierarchy Links
+
+- `src/models.py` — `AlignmentEdge` (objective↔objective, SUPPORTS/CONTRIBUTES) and `ObjectiveAlignmentLink` (objective↔goal/KR).
+- `src/domain/alignment.py` — Cycle detection (DFS) and neighbor discovery for alignment edges.
+- `src/crud_alignment_helpers.py` — CRUD for both alignment edges and cross-hierarchy links.
+- `backend_app/main.py` — API endpoints: `POST /v1/alignments`, `DELETE /v1/alignments/{id}`, `POST /v1/objective-alignment-links`, `DELETE /v1/objective-alignment-links/{id}`.
+- `spa-bff/src/allowlist.ts` — BFF route allowlist for alignment endpoints.
+- `spa-web/src/components/atlas-shell/InspectorAlignmentPanel.tsx` — Alignment UI with cross-hierarchy and objective-to-objective sections.
+- `spa-web/src/components/atlas-shell/useInspectorAuxData.ts` — Alignment state management and mutation handlers.
 
 ## Suggested Ownership Convention
 

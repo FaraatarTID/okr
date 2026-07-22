@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import Optional
 
 from sqlmodel import col
+from src import crud_core_helpers
 from src.utils.time_utils import ensure_utc
 
 
@@ -335,21 +336,16 @@ def delete_work_log_from_crud(
     log_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    if crud_module._backend_mutation_proxy_enabled():
-        if not actor_username:
-            raise PermissionError("Actor username is required for this operation")
-        from src.services.backend_client import (
-            delete_work_log as backend_delete_work_log,
-        )
-
-        backend_result = backend_delete_work_log(
-            work_log_id=log_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return bool(backend_result.get("deleted", True))
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="delete_work_log",
+        backend_kwargs={"work_log_id": log_id},
+        actor_username=actor_username,
+        require_actor=True,
+        extract_result="bool_deleted",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         work_log = session.get(crud_module.WorkLog, log_id)

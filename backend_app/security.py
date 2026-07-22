@@ -15,29 +15,7 @@ from backend_app.security_state import (
     register_nonce_once,
     reset_security_state_for_tests,
 )
-
-
-def _body_digest_hex(body: bytes) -> str:
-    return hashlib.sha256(body or b"").hexdigest()
-
-
-def _canonical_signing_payload(
-    *,
-    method: str,
-    path: str,
-    timestamp: str,
-    nonce: str,
-    body_digest: str,
-) -> str:
-    return "\n".join(
-        [
-            str(method or "").strip().upper(),
-            str(path or "/").strip() or "/",
-            str(timestamp or "").strip(),
-            str(nonce or "").strip(),
-            str(body_digest or "").strip(),
-        ]
-    )
+from src.utils.crypto_utils import body_digest_hex, canonical_signing_payload
 
 
 def _expected_signature(
@@ -49,12 +27,12 @@ def _expected_signature(
     body: bytes,
     secret: str,
 ) -> str:
-    payload = _canonical_signing_payload(
+    payload = canonical_signing_payload(
         method=method,
         path=path,
         timestamp=timestamp,
         nonce=nonce,
-        body_digest=_body_digest_hex(body),
+        body_digest=body_digest_hex(body),
     )
     return hmac.new(
         str(secret).encode("utf-8"),

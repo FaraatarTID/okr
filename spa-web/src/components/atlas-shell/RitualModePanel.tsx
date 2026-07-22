@@ -29,7 +29,7 @@ type WeeklyDraftView = {
   p3: string;
 };
 
-type ExperimentDecisionTypeView = "ADOPT" | "ITERATE" | "ABANDON";
+type ExperimentDecisionTypeView = "ADOPT" | "ITERATE" | "REVERT" | "UNKNOWN";
 
 type RitualExperimentView = {
   id: number;
@@ -548,7 +548,7 @@ export default function RitualModePanel({
                                             >
                                               <option value="ADOPT">Adopt</option>
                                               <option value="ITERATE">Iterate</option>
-                                              <option value="ABANDON">Abandon</option>
+                                              <option value="REVERT">Revert</option>
                                             </select>
                                             <textarea
                                               className="input"

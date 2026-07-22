@@ -124,7 +124,6 @@ describe("spa-bff server", () => {
     expect(response.json()).toEqual({
       status: "ok",
       service: "spa-bff",
-      backendApiUrl: "http://backend-api:8100",
     });
   });
 

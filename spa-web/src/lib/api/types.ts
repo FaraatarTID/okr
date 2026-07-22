@@ -191,6 +191,21 @@ export interface AlignmentDeleteResponse {
   deleted: boolean;
 }
 
+export interface ObjectiveAlignmentLinkMutationResponse {
+  id: number;
+  objective_id: number;
+  linked_entity_type: string;
+  linked_entity_id: number;
+  direction: string;
+  created_at?: string | null;
+  created_by?: string | null;
+}
+
+export interface ObjectiveAlignmentLinkDeleteResponse {
+  id: number;
+  deleted: boolean;
+}
+
 export interface LeadershipMetricsResponse {
   hygiene_pct?: number;
   avg_confidence?: number;
@@ -256,11 +271,11 @@ export interface ExperimentMutationResponse {
   start_at?: string | null;
   end_at?: string | null;
   status: ExperimentStatusType;
-  decision?: "ADOPT" | "ITERATE" | "ABANDON" | null;
+  decision?: "ADOPT" | "ITERATE" | "REVERT" | "UNKNOWN" | null;
   decision_rationale?: string | null;
   expected_effect_direction?: ExpectedEffectDirectionType | null;
   expected_effect_size?: number | null;
   created_at?: string | null;
 }
 
-export type ExperimentDecisionType = "ADOPT" | "ITERATE" | "ABANDON";
+export type ExperimentDecisionType = "ADOPT" | "ITERATE" | "REVERT" | "UNKNOWN";

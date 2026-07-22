@@ -142,6 +142,16 @@ export const ALLOWLIST_POLICY_ROUTES: readonly AllowlistRule[] = [
     pathRegex: /^\/v1\/alignments\/\d+$/,
   },
   {
+    pathTemplate: "/v1/objective-alignment-links",
+    methods: ["POST"],
+    pathRegex: /^\/v1\/objective-alignment-links$/,
+  },
+  {
+    pathTemplate: "/v1/objective-alignment-links/{link_id:int}",
+    methods: ["DELETE"],
+    pathRegex: /^\/v1\/objective-alignment-links\/\d+$/,
+  },
+  {
     pathTemplate: "/v1/work-logs/{work_log_id:int}",
     methods: ["DELETE"],
     pathRegex: /^\/v1\/work-logs\/\d+$/,

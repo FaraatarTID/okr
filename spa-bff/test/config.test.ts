@@ -30,7 +30,7 @@ describe("spa-bff config", () => {
       OKR_BACKEND_SERVICE_TOKEN: "svc-token",
       NODE_ENV: "development",
     });
-    expect(config.sessionSecret).toBe("dev-only-change-me");
+    expect(config.sessionSecret).toMatch(/^[0-9a-f]{64}$/);
     expect(config.cookieSecure).toBe(false);
   });
 });

@@ -5,6 +5,13 @@ from typing import Any, Callable
 from src.models import UserRole
 
 
+def _enum_value(value: Any) -> Any:
+    """Extract .value from an enum if present, otherwise return as-is."""
+    if hasattr(value, "value"):
+        return getattr(value, "value")
+    return value
+
+
 def serialize_cycle_snapshot(cycle: Any) -> dict[str, Any] | None:
     if not cycle:
         return None

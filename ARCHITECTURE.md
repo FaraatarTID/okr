@@ -98,6 +98,7 @@ Primary data/control flow:
   - authorization checks (owner/manager/admin)
   - check-ins, reports, leadership metrics, timer semantics
   - deadline health/status logic
+  - alignment edges (objective↔objective) and cross-hierarchy links (objective↔goal, objective↔KR)
 - Keeps rules testable without UI runtime.
 
 3. Persistence boundary (`database.py`, `models.py`, migrations)
@@ -119,6 +120,8 @@ Primary data/control flow:
 - UI dialog submits to `create_goal` / `create_objective` / `create_key_result` / `create_task`.
 - CRUD validates actor permissions using ancestor goal ownership.
 - DB commit persists node on Supabase PostgreSQL.
+- "+" button in Focus Map creates the direct child type (Goal→Objective, Objective→KR, KR→Task).
+- "Create Goal" button in Focus Map creates a top-level Goal.
 
 1a. Lifecycle State Transitions
 
@@ -193,10 +196,18 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Mutating actions call `_authorize_goal_mutation`.
 - Owner, manager-of-owner, and admin paths are enforced before changes are committed.
 - Read-sensitive node retrieval can be actor-scoped via `get_node(..., actor_username=...)`.
-- AI node analysis (`analyze_node`) can use this actor-scoped read path before prompt context assembly.
+- AI node analysis (`analyze_node`) uses actor-scoped read path and includes alignment context (edges + cross-hierarchy links) in the prompt.
 - DB fallback: `analyze_node` tries direct PostgreSQL (port 6543) first, falls back to Supabase REST API (HTTPS 443) on failure.
 
-5. Async job flow
+5. Alignment flow
+
+- `AlignmentEdge`: directed links between objectives (SUPPORTS/CONTRIBUTES types).
+- `ObjectiveAlignmentLink`: cross-hierarchy links between an objective and a Goal (parent) or Key Result (child).
+- Alignment context (`alignments.context` read query) returns parents, children, all objectives, edges, available goals, available KRs, and existing cross-hierarchy links.
+- Dropdown filtering excludes already-linked entities (via FK hierarchy and alignment links).
+- Cycle detection prevents circular alignment dependencies.
+
+6. Async job flow
 
 - `run_job_and_wait` submits to `backend-api` when backend mode is enabled.
 - Job lifecycle: `pending -> running -> succeeded|failed|cancelled`.

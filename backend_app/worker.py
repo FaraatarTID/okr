@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import time
-import traceback
 import logging
 import json
 
@@ -85,7 +84,6 @@ def process_next_job(*, worker_id: str) -> bool:
             result = run_job(str(job.kind), payload)
         except Exception as exc:
             msg = f"{type(exc).__name__}: {exc}"
-            trace = traceback.format_exc(limit=3)
             logger.exception(
                 "Worker job execution failed (worker_id=%s, job_id=%s, kind=%s)",
                 worker_id,
@@ -94,7 +92,7 @@ def process_next_job(*, worker_id: str) -> bool:
             )
             _safe_mark_job_failed(
                 job_id=str(job.id),
-                error_text=f"{msg}\n{trace}",
+                error_text=msg,
                 terminal=_is_non_retryable_error(exc),
             )
             return True
@@ -107,7 +105,6 @@ def process_next_job(*, worker_id: str) -> bool:
                 mark_job_succeeded(job.id, result)
         except Exception as exc:
             msg = f"{type(exc).__name__}: {exc}"
-            trace = traceback.format_exc(limit=3)
             logger.exception(
                 "Worker job finalization failed (worker_id=%s, job_id=%s, kind=%s)",
                 worker_id,
@@ -116,7 +113,7 @@ def process_next_job(*, worker_id: str) -> bool:
             )
             _safe_mark_job_failed(
                 job_id=str(job.id),
-                error_text=f"{msg}\n{trace}",
+                error_text=msg,
                 terminal=False,
             )
     return True

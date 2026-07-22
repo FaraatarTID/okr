@@ -82,7 +82,6 @@ export function createServer(
     return {
       status: "ok",
       service: "spa-bff",
-      backendApiUrl: config.backendApiUrl,
     };
   });
 

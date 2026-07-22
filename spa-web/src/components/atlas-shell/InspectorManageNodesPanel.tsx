@@ -25,6 +25,7 @@ type InspectorManageNodesPanelProps = {
   onCreateDraftChange: (patch: Partial<NodeCreateDraftView>) => void;
   createContext: CreateContextView;
   canCreateForContext: boolean;
+  createTypeLocked: boolean;
   createTypeLabel: (createType: CreateTypeView) => string;
   cycleLabel: string;
   onCreateNode: () => void;
@@ -41,6 +42,7 @@ export default function InspectorManageNodesPanel({
   onCreateDraftChange,
   createContext,
   canCreateForContext,
+  createTypeLocked,
   createTypeLabel,
   cycleLabel,
   onCreateNode,
@@ -71,18 +73,33 @@ export default function InspectorManageNodesPanel({
       >
         Create Type
       </label>
-      <select
-        id="create-type"
-        className="input"
-        value={createDraft.createType}
-        onChange={(event) => onCreateDraftChange({ createType: event.target.value as CreateTypeView })}
-        style={{ marginTop: "0.2rem" }}
-      >
-        <option value="goal">Goal</option>
-        <option value="objective">Objective</option>
-        <option value="key_result">Key Result</option>
-        <option value="task">Task</option>
-      </select>
+      {createTypeLocked ? (
+        <p
+          style={{
+            marginTop: "0.2rem",
+            padding: "0.4rem 0.5rem",
+            fontSize: "0.85rem",
+            background: "var(--bg)",
+            border: "1px solid var(--line)",
+            borderRadius: 6,
+          }}
+        >
+          {createTypeLabel(createDraft.createType)}
+        </p>
+      ) : (
+        <select
+          id="create-type"
+          className="input"
+          value={createDraft.createType}
+          onChange={(event) => onCreateDraftChange({ createType: event.target.value as CreateTypeView })}
+          style={{ marginTop: "0.2rem" }}
+        >
+          <option value="goal">Goal</option>
+          <option value="objective">Objective</option>
+          <option value="key_result">Key Result</option>
+          <option value="task">Task</option>
+        </select>
+      )}
 
       <label
         htmlFor="create-title"

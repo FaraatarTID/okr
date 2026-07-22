@@ -4,26 +4,6 @@ from src.crud import create_user, create_goal, create_objective, create_alignmen
 from src.domain.alignment import get_alignment_neighbors
 
 
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    import src.database as database
-
-    db_path = tmp_path / "okr_alignment_test.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = create_engine(db_url, connect_args={"check_same_thread": False})
-
-    # 🚨 CRITICAL: Mock get_engine to return our test engine
-    monkeypatch.setattr(database, "get_engine", lambda: engine)
-    monkeypatch.setattr(database, "_engine", engine)
-    monkeypatch.setattr(database, "DATABASE_URL", db_url)
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield engine
-    finally:
-        engine.dispose()
-
-
 def test_alignment_cycle_prevention(isolated_db):
     create_user("admin", "pass")
     goal = create_goal("admin", "Goal", actor_username="admin")
