@@ -40,6 +40,7 @@ describe("InspectorManageNodesPanel", () => {
         onCreateDraftChange={onCreateDraftChange}
         createContext={{ goalId: null, objectiveId: null, keyResultId: null }}
         canCreateForContext
+        createTypeLocked={true}
         createTypeLabel={createTypeLabel}
         cycleLabel="Q3-2026"
         onCreateNode={onCreateNode}
@@ -87,6 +88,7 @@ describe("InspectorManageNodesPanel", () => {
         onCreateDraftChange={vi.fn()}
         createContext={{ goalId: 1, objectiveId: 22, keyResultId: null }}
         canCreateForContext
+        createTypeLocked={true}
         createTypeLabel={createTypeLabel}
         cycleLabel="Q3-2026"
         onCreateNode={vi.fn()}
@@ -127,6 +129,7 @@ describe("InspectorManageNodesPanel", () => {
         onCreateDraftChange={vi.fn()}
         createContext={{ goalId: 1, objectiveId: 2, keyResultId: null }}
         canCreateForContext={false}
+        createTypeLocked={true}
         createTypeLabel={createTypeLabel}
         cycleLabel="Q3-2026"
         onCreateNode={vi.fn()}
