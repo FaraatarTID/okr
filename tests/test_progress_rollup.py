@@ -17,25 +17,6 @@ def test_progress_rollup():
     pass
 
 
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    from sqlmodel import SQLModel, create_engine
-    import src.database as database
-
-    db_path = tmp_path / "okr_progress_test.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = create_engine(db_url)
-
-    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
-    monkeypatch.setattr(database, "_engine", engine, raising=False)
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield
-    finally:
-        engine.dispose()
-
-
 def test_rollup_calculation(isolated_db):
     from src.crud import (
         create_user,

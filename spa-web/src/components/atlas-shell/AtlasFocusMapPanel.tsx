@@ -13,6 +13,7 @@ type AtlasFocusMapPanelProps = {
   selectedRef: string;
   onSelectRef: (ref: string) => void;
   onAddChild: (parentRef: string) => void;
+  onCreateGoal: () => void;
   nodeQuery: string;
   onNodeQueryChange: (value: string) => void;
   hasSnapshotPayload: boolean;
@@ -25,6 +26,7 @@ export default function AtlasFocusMapPanel({
   selectedRef,
   onSelectRef,
   onAddChild,
+  onCreateGoal,
   nodeQuery,
   onNodeQueryChange,
   hasSnapshotPayload,
@@ -40,6 +42,14 @@ export default function AtlasFocusMapPanel({
         placeholder="Search title, description, owner, or ref"
         style={{ marginBottom: "0.65rem" }}
       />
+      <button
+        type="button"
+        className="primary-button"
+        onClick={onCreateGoal}
+        style={{ marginBottom: "0.65rem", width: "100%" }}
+      >
+        Create Goal
+      </button>
 
       <div className="atlas-node-list">
         {filteredRefs.length > 0 && atlasIndex ? (

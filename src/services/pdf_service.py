@@ -5,6 +5,8 @@ Supported binary renderers:
 - Chromium via Playwright (`PDF_METHOD=chromium`)
 """
 
+from __future__ import annotations
+
 import os
 import platform
 import datetime
@@ -144,7 +146,7 @@ def get_base64_font(font_path):
             with open(font_path, "rb") as font_file:
                 return base64.b64encode(font_file.read()).decode("utf-8")
     except Exception as e:
-        print(f"Font error: {e}")
+        _LOGGER.warning("Font error: %s", e)
     return ""
 
 
@@ -572,11 +574,11 @@ def generate_pdf_with_pdfshift_bytes(html, *, api_key: str = ""):
 
         if response.status_code == 200:
             return response.content
-        print(f"PDFShift API Error: {response.status_code} - {response.text}")
+        _LOGGER.warning("PDFShift API Error: %s", response.status_code)
         return None
 
     except Exception as e:
-        print(f"PDFShift Exception: {e}")
+        _LOGGER.warning("PDFShift Exception: %s", e)
         return None
 
 
@@ -621,10 +623,7 @@ def generate_pdf_with_chromium_bytes(html, *, executable_path: str = ""):
             )
             return pdf_bytes
     except Exception as exc:
-        print(
-            "Chromium PDF Exception: "
-            f"{exc} (executable_path={str(executable_path or _resolve_chromium_executable_path() or 'auto')})"
-        )
+        _LOGGER.warning("Chromium PDF Exception: %s", exc)
         return None
     finally:
         try:

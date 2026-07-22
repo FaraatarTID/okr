@@ -1,30 +1,6 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
-import pytest
-from sqlmodel import SQLModel
-
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    import src.database as database
-    import src.models  # noqa: F401
-
-    db_path = tmp_path / "okr_weekly_plan_audit.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = database._create_engine(db_url)
-
-    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
-    monkeypatch.setattr(database, "_engine", engine, raising=False)
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield
-    finally:
-        engine.dispose()
+from conftest import utc_now_naive
 
 
 def test_create_weekly_plan_emits_create_and_update_audit_events(isolated_db, monkeypatch):

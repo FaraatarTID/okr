@@ -3,23 +3,26 @@ Database connection and session management for OKR Application.
 Supabase/PostgreSQL only.
 """
 
-from sqlmodel import create_engine, Session, SQLModel
-from contextlib import contextmanager
+from __future__ import annotations
+
+import base64
+import json
+import logging
 import os
 import re
 import sys
 import traceback
-import json
-import base64
-import logging
-from threading import Lock
 from collections.abc import Mapping
-from datetime import datetime, date, time, timezone
+from contextlib import contextmanager
+from datetime import date, datetime, time, timezone
 from decimal import Decimal
+from threading import Lock
 from typing import Optional
 from urllib.parse import urlparse
+
 from sqlalchemy import text
 from sqlalchemy.pool import NullPool
+from sqlmodel import SQLModel, Session, create_engine
 from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
 from src.config_runtime import get_bool_config, get_config_value
 

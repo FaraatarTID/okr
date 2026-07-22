@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -7,34 +7,10 @@ from sqlalchemy import text as sa_text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import SQLModel, select
 
+from conftest import utc_now_naive
+
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    import src.database as database
-
-    db_path = tmp_path / "okr_integrity_test.db"
-    db_url = f"sqlite:///{db_path}"
-    monkeypatch.setenv("DATABASE_URL", db_url)
-    monkeypatch.setenv("OKR_DATABASE_URL", db_url)
-    engine = database._create_engine(db_url)
-
-    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
-    monkeypatch.setattr(database, "_engine", engine, raising=False)
-
-    import src.models as models  # noqa: F401
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield
-    finally:
-        engine.dispose()
 
 
 def _build_task_tree_for_user(username: str, cycle_id: int):
@@ -57,8 +33,8 @@ def test_db_enforces_check_constraints_and_foreign_keys(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, key_result, task = _build_task_tree_for_user("alice", cycle.id)
 
@@ -81,8 +57,8 @@ def test_db_enforces_check_constraints_and_foreign_keys(isolated_db):
             session.add(
                 WorkLog(
                     task_id=task.id,
-                    start_time=_utc_now_naive(),
-                    end_time=_utc_now_naive(),
+                    start_time=utc_now_naive(),
+                    end_time=utc_now_naive(),
                     duration_minutes=-5,
                 )
             )
@@ -96,17 +72,17 @@ def test_db_enforces_single_open_work_log_per_task(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q1B",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, _, task = _build_task_tree_for_user("alice", cycle.id)
 
     with get_session_context() as session:
-        session.add(WorkLog(task_id=task.id, start_time=_utc_now_naive()))
+        session.add(WorkLog(task_id=task.id, start_time=utc_now_naive()))
 
     with pytest.raises(IntegrityError):
         with get_session_context() as session:
-            session.add(WorkLog(task_id=task.id, start_time=_utc_now_naive()))
+            session.add(WorkLog(task_id=task.id, start_time=utc_now_naive()))
 
 
 def test_sync_data_to_db_rolls_back_on_failure(isolated_db, monkeypatch):

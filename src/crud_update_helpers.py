@@ -5,18 +5,10 @@ from __future__ import annotations
 import json
 from typing import Optional
 
+from src.crud_core_helpers import try_backend_mutation
+from src.crud_utils import coerce_non_negative_weight
 from src.domain.progress import calculate_objective_progress
 from src.domain.progress import refresh_hierarchy_progress
-
-
-def _coerce_non_negative_weight(value, *, field_name: str) -> float:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be a number >= 0.") from exc
-    if parsed < 0:
-        raise ValueError(f"{field_name} must be >= 0.")
-    return parsed
 
 
 def _normalize_metric_type_token(value) -> str:
@@ -36,19 +28,16 @@ def update_goal_from_crud(
     actor_username: Optional[str] = None,
     updates,
 ):
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import update_node as backend_update_node
-
-        backend_result = backend_update_node(
-            node_type="GOAL",
-            node_id=goal_id,
-            updates=dict(updates or {}),
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="update_node",
+        backend_kwargs={"node_type": "GOAL", "node_id": goal_id, "updates": dict(updates or {})},
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     if isinstance(updates.get("strategy_tags"), list):
         updates["strategy_tags"] = json.dumps(
@@ -92,19 +81,16 @@ def update_objective_from_crud(
     actor_username: Optional[str] = None,
     updates,
 ):
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import update_node as backend_update_node
-
-        backend_result = backend_update_node(
-            node_type="OBJECTIVE",
-            node_id=objective_id,
-            updates=dict(updates or {}),
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="update_node",
+        backend_kwargs={"node_type": "OBJECTIVE", "node_id": objective_id, "updates": dict(updates or {})},
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         item = session.get(crud_module.Objective, objective_id)
@@ -119,7 +105,7 @@ def update_objective_from_crud(
                 "objective", updates, crud_module._ALLOWED_OBJECTIVE_UPDATE_FIELDS
             )
             if "weight" in updates:
-                updates["weight"] = _coerce_non_negative_weight(
+                updates["weight"] = coerce_non_negative_weight(
                     updates["weight"],
                     field_name="Objective weight",
                 )
@@ -175,19 +161,16 @@ def update_key_result_from_crud(
     actor_username: Optional[str] = None,
     updates,
 ):
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import update_node as backend_update_node
-
-        backend_result = backend_update_node(
-            node_type="KEY_RESULT",
-            node_id=key_result_id,
-            updates=dict(updates or {}),
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="update_node",
+        backend_kwargs={"node_type": "KEY_RESULT", "node_id": key_result_id, "updates": dict(updates or {})},
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     if isinstance(updates.get("initiative_tags"), list):
         updates["initiative_tags"] = json.dumps(
@@ -213,7 +196,7 @@ def update_key_result_from_crud(
                 "key_result", updates, crud_module._ALLOWED_KEY_RESULT_UPDATE_FIELDS
             )
             if "weight" in updates:
-                updates["weight"] = _coerce_non_negative_weight(
+                updates["weight"] = coerce_non_negative_weight(
                     updates["weight"],
                     field_name="Key Result weight",
                 )
@@ -289,29 +272,26 @@ def update_task_from_crud(
     kwargs=None,
 ):
     kwargs = dict(kwargs or {})
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import update_node as backend_update_node
+    remote_updates = dict(kwargs)
+    if title is not None:
+        remote_updates["title"] = title
+    if status is not None:
+        remote_updates["status"] = status
+    if estimated_minutes is not None:
+        remote_updates["estimated_minutes"] = estimated_minutes
+    if start_date is not crud_module._UNSET:
+        remote_updates["start_date"] = start_date
 
-        remote_updates = dict(kwargs)
-        if title is not None:
-            remote_updates["title"] = title
-        if status is not None:
-            remote_updates["status"] = status
-        if estimated_minutes is not None:
-            remote_updates["estimated_minutes"] = estimated_minutes
-        if start_date is not crud_module._UNSET:
-            remote_updates["start_date"] = start_date
-
-        backend_result = backend_update_node(
-            node_type="TASK",
-            node_id=task_id,
-            updates=remote_updates,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="update_node",
+        backend_kwargs={"node_type": "TASK", "node_id": task_id, "updates": remote_updates},
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         task = session.get(crud_module.Task, task_id)

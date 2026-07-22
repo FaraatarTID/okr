@@ -2,16 +2,16 @@ import type { AtlasSnapshotResponse } from "@/lib/atlas";
 
 import {
   fetchWithTimeout,
-  isTransientCycleQueryFailure,
-  isTransientNetworkError,
   jsonHeaders,
   normalizeBackendDateTime,
   responseDetail,
-  waitMs,
+  retryWithFetch,
 } from "@/lib/api/http";
 import type {
   AlignmentDeleteResponse,
   AlignmentMutationResponse,
+  ObjectiveAlignmentLinkDeleteResponse,
+  ObjectiveAlignmentLinkMutationResponse,
   CycleDeleteResponse,
   CycleSummary,
   LeadershipMetricsResponse,
@@ -162,12 +162,9 @@ export async function readCyclesQuery(input: {
   actor_username: string;
   kind: "cycles.active" | "cycles.all";
 }): Promise<CycleSummary[]> {
-  const maxAttempts = 4;
-  const perAttemptTimeoutMs = 8_000;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    let response: Response;
-    try {
-      response = await fetchWithTimeout(
+  return retryWithFetch(
+    () =>
+      fetchWithTimeout(
         "/api/backend/v1/read/query",
         {
           method: "POST",
@@ -179,33 +176,14 @@ export async function readCyclesQuery(input: {
             actor_username: input.actor_username,
           }),
         },
-        perAttemptTimeoutMs,
-      );
-    } catch (error) {
-      const retryable = isTransientNetworkError(error);
-      if (retryable && attempt < maxAttempts) {
-        await waitMs(250 * 2 ** (attempt - 1));
-        continue;
-      }
-      throw new Error(
-        `Cycle query failed: ${String(error instanceof Error ? error.message : error)}`,
-      );
-    }
-
-    if (response.ok) {
+        8_000,
+      ),
+    async (response) => {
       const payload = (await response.json()) as { cycles?: CycleSummary[] };
       return Array.isArray(payload.cycles) ? payload.cycles : [];
-    }
-
-    const detail = await responseDetail(response);
-    const retryable = isTransientCycleQueryFailure(response.status, detail);
-    if (retryable && attempt < maxAttempts) {
-      await waitMs(250 * 2 ** (attempt - 1));
-      continue;
-    }
-    throw new Error(`Cycle query failed: ${detail}`);
-  }
-  throw new Error("Cycle query failed: retry attempts exhausted.");
+    },
+    { label: "Cycle query" },
+  );
 }
 
 export async function createCycleMutation(input: {
@@ -280,12 +258,9 @@ export async function readBackendQuery(input: {
   kind: string;
   params?: Record<string, unknown>;
 }): Promise<Record<string, unknown>> {
-  const maxAttempts = 4;
-  const perAttemptTimeoutMs = 8_000;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    let response: Response;
-    try {
-      response = await fetchWithTimeout(
+  return retryWithFetch(
+    () =>
+      fetchWithTimeout(
         "/api/backend/v1/read/query",
         {
           method: "POST",
@@ -297,30 +272,11 @@ export async function readBackendQuery(input: {
             actor_username: input.actor_username,
           }),
         },
-        perAttemptTimeoutMs,
-      );
-    } catch (error) {
-      const retryable = isTransientNetworkError(error);
-      if (retryable && attempt < maxAttempts) {
-        await waitMs(250 * 2 ** (attempt - 1));
-        continue;
-      }
-      throw new Error(`Read query failed: ${String(error instanceof Error ? error.message : error)}`);
-    }
-
-    if (response.ok) {
-      return (await response.json()) as Record<string, unknown>;
-    }
-
-    const detail = await responseDetail(response);
-    const retryable = isTransientCycleQueryFailure(response.status, detail);
-    if (retryable && attempt < maxAttempts) {
-      await waitMs(250 * 2 ** (attempt - 1));
-      continue;
-    }
-    throw new Error(`Read query failed: ${detail}`);
-  }
-  throw new Error("Read query failed: retry attempts exhausted.");
+        8_000,
+      ),
+    async (response) => (await response.json()) as Record<string, unknown>,
+    { label: "Read query" },
+  );
 }
 
 export async function readLeadershipMetrics(input: {
@@ -378,4 +334,42 @@ export async function deleteAlignmentMutation(input: {
     throw new Error(`Alignment delete failed: ${await responseDetail(response)}`);
   }
   return (await response.json()) as AlignmentDeleteResponse;
+}
+
+export async function createObjectiveAlignmentLinkMutation(input: {
+  actor_username: string;
+  objective_id: number;
+  linked_entity_type: string;
+  linked_entity_id: number;
+  direction: string;
+}): Promise<ObjectiveAlignmentLinkMutationResponse> {
+  const response = await fetch("/api/backend/v1/objective-alignment-links", {
+    method: "POST",
+    headers: jsonHeaders(input.actor_username),
+    body: JSON.stringify({
+      actor_username: input.actor_username,
+      objective_id: input.objective_id,
+      linked_entity_type: input.linked_entity_type,
+      linked_entity_id: input.linked_entity_id,
+      direction: input.direction,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Alignment link create failed: ${await responseDetail(response)}`);
+  }
+  return (await response.json()) as ObjectiveAlignmentLinkMutationResponse;
+}
+
+export async function deleteObjectiveAlignmentLinkMutation(input: {
+  actor_username: string;
+  link_id: number;
+}): Promise<ObjectiveAlignmentLinkDeleteResponse> {
+  const response = await fetch(`/api/backend/v1/objective-alignment-links/${input.link_id}`, {
+    method: "DELETE",
+    headers: jsonHeaders(input.actor_username, false),
+  });
+  if (!response.ok) {
+    throw new Error(`Alignment link delete failed: ${await responseDetail(response)}`);
+  }
+  return (await response.json()) as ObjectiveAlignmentLinkDeleteResponse;
 }

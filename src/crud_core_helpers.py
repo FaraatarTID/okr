@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from sqlalchemy import inspect as sa_inspect
 
@@ -128,6 +128,53 @@ def enforce_backend_mutation_failure_policy_from_crud(
     raise ValueError(
         f"{message} Local backend fallback is disabled; retry when backend is healthy."
     )
+
+
+def try_backend_mutation(
+    *,
+    crud_module,
+    backend_fn_name: str,
+    backend_kwargs: Dict[str, Any],
+    actor_username: Optional[str] = None,
+    require_actor: bool = True,
+    extract_result: str = "node",
+) -> Any:
+    """Attempt a backend mutation via the proxy.
+
+    Returns the extracted result on success, or ``None`` when the proxy
+    is disabled or actor validation fails without requiring (caller
+    falls through to local DB logic).
+
+    Raises ``PermissionError`` or ``ValueError`` on backend errors.
+    """
+    if not crud_module._backend_mutation_proxy_enabled():
+        return None
+
+    actor_name = str(actor_username or "").strip() if actor_username is not None else None
+    if require_actor:
+        if not actor_name:
+            raise PermissionError("Actor username is required for this operation")
+        backend_kwargs["actor_username"] = actor_name
+    elif actor_name:
+        backend_kwargs["actor_username"] = actor_name
+
+    from src.services import backend_client
+
+    backend_fn = getattr(backend_client, backend_fn_name)
+    backend_result = backend_fn(**backend_kwargs)
+
+    if "error" not in backend_result:
+        crud_module.clear_cache_safe()
+        if extract_result == "node":
+            return crud_module._node_from_backend_payload(backend_result)
+        if extract_result == "namespace":
+            return SimpleNamespace(**backend_result)
+        if extract_result == "bool_deleted":
+            return bool(backend_result.get("deleted", True))
+        if extract_result == "bool_reset":
+            return bool(backend_result.get("reset", True))
+
+    crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
 
 def node_from_backend_payload_from_crud(*, payload: Dict[str, Any]):

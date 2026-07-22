@@ -28,3 +28,39 @@ _PYTEST_TEMP_DIR.mkdir(parents=True, exist_ok=True)
 os.environ["TMP"] = str(_PYTEST_TEMP_DIR)
 os.environ["TEMP"] = str(_PYTEST_TEMP_DIR)
 tempfile.tempdir = str(_PYTEST_TEMP_DIR)
+
+import pytest
+from sqlmodel import SQLModel
+
+from datetime import datetime, timezone
+
+
+def utc_now_naive() -> datetime:
+    """Return the current UTC time with tzinfo stripped (naive datetime)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+@pytest.fixture()
+def isolated_db(monkeypatch, tmp_path):
+    """Shared fixture: isolated SQLite database for integration tests.
+
+    Yields nothing by default. Pass ``yield_engine=True`` via the fixture
+    request to receive the engine object (useful for tests that need direct
+    engine access).
+    """
+    import src.database as database
+    import src.models  # noqa: F401 — ensure all models are registered
+
+    db_path = tmp_path / "okr_test.db"
+    db_url = f"sqlite:///{db_path}"
+    engine = database._create_engine(db_url)
+
+    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
+    monkeypatch.setattr(database, "_engine", engine, raising=False)
+    monkeypatch.setattr(database, "get_engine", lambda: engine, raising=False)
+
+    SQLModel.metadata.create_all(engine)
+    try:
+        yield engine
+    finally:
+        engine.dispose()

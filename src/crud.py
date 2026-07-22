@@ -14,6 +14,8 @@ Why delegation still flows through this file:
    can resolve symbols dynamically from this module during tests/hot reload.
 """
 
+from __future__ import annotations
+
 from sqlmodel import Session, select  # noqa: F401
 from sqlalchemy.orm import selectinload  # noqa: F401
 from sqlalchemy.exc import OperationalError
@@ -1287,6 +1289,35 @@ def delete_alignment(edge_id: int, actor_username: Optional[str] = None):
     return crud_alignment_helpers.delete_alignment_from_crud(
         crud_module=sys.modules[__name__],
         edge_id=edge_id,
+        actor_username=actor_username,
+    )
+
+
+def create_objective_alignment_link(
+    objective_id: int,
+    linked_entity_type: str,
+    linked_entity_id: int,
+    direction: str,
+    actor_username: Optional[str] = None,
+):
+    """Create a cross-hierarchy alignment link (Objective↔Goal or Objective↔KR)."""
+    return crud_alignment_helpers.create_objective_alignment_link_from_crud(
+        crud_module=sys.modules[__name__],
+        objective_id=objective_id,
+        linked_entity_type=linked_entity_type,
+        linked_entity_id=linked_entity_id,
+        direction=direction,
+        actor_username=actor_username,
+    )
+
+
+def delete_objective_alignment_link(
+    link_id: int, actor_username: Optional[str] = None
+) -> bool:
+    """Remove a cross-hierarchy alignment link."""
+    return crud_alignment_helpers.delete_objective_alignment_link_from_crud(
+        crud_module=sys.modules[__name__],
+        link_id=link_id,
         actor_username=actor_username,
     )
 

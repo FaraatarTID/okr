@@ -3,6 +3,8 @@ AI Service for OKR Application.
 Context-aware AI analysis with aggregated data preprocessing.
 """
 
+from __future__ import annotations
+
 import os
 import json
 import logging
@@ -327,7 +329,83 @@ def _build_parent_context(node, node_type: str) -> str:
                 f"Goal: \"{getattr(goal, 'title', 'N/A')}\" "
                 f"(progress: {getattr(goal, 'progress', 0)}%)"
             )
+        # Include alignment data for objectives
+        alignment_text = _build_alignment_context(node)
+        if alignment_text:
+            parts.append(alignment_text)
     return "\n    ".join(parts)
+
+
+def _build_alignment_context(node) -> str:
+    """Build alignment context for OBJECTIVE nodes — links to other objectives, goals, and KRs."""
+    try:
+        from src.database import get_session_context
+        from src.models import AlignmentEdge, ObjectiveAlignmentLink
+        from sqlmodel import select
+
+        obj_id = getattr(node, "id", None)
+        if not obj_id:
+            return ""
+
+        lines = []
+        with get_session_context() as session:
+            # Objective↔Objective alignment edges
+            edges = list(
+                session.exec(
+                    select(AlignmentEdge).where(
+                        (AlignmentEdge.parent_id == int(obj_id))
+                        | (AlignmentEdge.child_id == int(obj_id))
+                    )
+                ).all()
+            )
+            if edges:
+                for edge in edges:
+                    peer_id = (
+                        edge.child_id
+                        if edge.parent_id == int(obj_id)
+                        else edge.parent_id
+                    )
+                    direction = (
+                        "supports"
+                        if edge.parent_id == int(obj_id)
+                        else "supported by"
+                    )
+                    atype = str(
+                        getattr(edge, "alignment_type", "SUPPORTS") or "SUPPORTS"
+                    ).lower()
+                    lines.append(
+                        f"  - {direction} Objective #{peer_id} "
+                        f"(alignment_type: {atype})"
+                    )
+
+            # Objective↔Goal and Objective↔KR cross-hierarchy links
+            obj_links = list(
+                session.exec(
+                    select(ObjectiveAlignmentLink).where(
+                        ObjectiveAlignmentLink.objective_id == int(obj_id)
+                    )
+                ).all()
+            )
+            if obj_links:
+                for link in obj_links:
+                    entity_type = getattr(link, "linked_entity_type", "")
+                    entity_id = getattr(link, "linked_entity_id", 0)
+                    direction = getattr(link, "direction", "parent")
+                    if direction == "parent":
+                        lines.append(
+                            f"  - parent link to {entity_type} #{entity_id}"
+                        )
+                    else:
+                        lines.append(
+                            f"  - child link to {entity_type} #{entity_id}"
+                        )
+
+        if not lines:
+            return ""
+        return "ALIGNMENT LINKS:\n" + "\n".join(lines)
+    except Exception as exc:
+        logger.debug("Failed to build alignment context: %s", exc)
+        return ""
 
 
 def _build_experiment_text(node) -> str:

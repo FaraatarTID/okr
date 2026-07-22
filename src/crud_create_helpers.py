@@ -6,15 +6,8 @@ import json
 from datetime import datetime
 from typing import Optional
 
-
-def _coerce_non_negative_weight(value, *, field_name: str) -> float:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be a number >= 0.") from exc
-    if parsed < 0:
-        raise ValueError(f"{field_name} must be >= 0.")
-    return parsed
+from src import crud_core_helpers
+from src.crud_utils import coerce_non_negative_weight
 
 
 def _rebalance_equal_sibling_weights(
@@ -76,21 +69,22 @@ def create_goal_from_crud(
     strategy_tags: Optional[str] = None,
     actor_username: Optional[str] = None,
 ):
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import create_goal as backend_create_goal
-
-        backend_result = backend_create_goal(
-            user_id=user_id,
-            title=title,
-            description=description,
-            cycle_id=cycle_id,
-            strategy_tags=strategy_tags,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="create_goal",
+        backend_kwargs={
+            "user_id": user_id,
+            "title": title,
+            "description": description,
+            "cycle_id": cycle_id,
+            "strategy_tags": strategy_tags,
+        },
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     if isinstance(strategy_tags, list):
         strategy_tags = json.dumps(
@@ -161,23 +155,22 @@ def create_objective_from_crud(
     actor_username: Optional[str] = None,
 ):
     if weight is not None:
-        weight = _coerce_non_negative_weight(weight, field_name="Objective weight")
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import (
-            create_objective as backend_create_objective,
-        )
-
-        backend_result = backend_create_objective(
-            goal_id=goal_id,
-            title=title,
-            description=description,
-            weight=weight,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+        weight = coerce_non_negative_weight(weight, field_name="Objective weight")
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="create_objective",
+        backend_kwargs={
+            "goal_id": goal_id,
+            "title": title,
+            "description": description,
+            "weight": weight,
+        },
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         goal = session.get(crud_module.Goal, goal_id)
@@ -248,26 +241,25 @@ def create_key_result_from_crud(
     actor_username: Optional[str] = None,
 ):
     if weight is not None:
-        weight = _coerce_non_negative_weight(weight, field_name="Key Result weight")
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import (
-            create_key_result as backend_create_key_result,
-        )
-
-        backend_result = backend_create_key_result(
-            objective_id=objective_id,
-            title=title,
-            description=description,
-            target_value=target_value,
-            unit=unit,
-            initiative_tags=initiative_tags,
-            weight=weight,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+        weight = coerce_non_negative_weight(weight, field_name="Key Result weight")
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="create_key_result",
+        backend_kwargs={
+            "objective_id": objective_id,
+            "title": title,
+            "description": description,
+            "target_value": target_value,
+            "unit": unit,
+            "initiative_tags": initiative_tags,
+            "weight": weight,
+        },
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     if isinstance(initiative_tags, list):
         initiative_tags = json.dumps(
@@ -346,23 +338,24 @@ def create_task_from_crud(
     assignee_id: Optional[int] = None,
     actor_username: Optional[str] = None,
 ):
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import create_task as backend_create_task
-
-        backend_result = backend_create_task(
-            key_result_id=key_result_id,
-            title=title,
-            description=description,
-            estimated_minutes=estimated_minutes,
-            start_date=start_date,
-            deadline=deadline,
-            assignee_id=assignee_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return crud_module._node_from_backend_payload(backend_result)
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="create_task",
+        backend_kwargs={
+            "key_result_id": key_result_id,
+            "title": title,
+            "description": description,
+            "estimated_minutes": estimated_minutes,
+            "start_date": start_date,
+            "deadline": deadline,
+            "assignee_id": assignee_id,
+        },
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="node",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         parent_check = session.get(crud_module.KeyResult, key_result_id)

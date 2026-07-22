@@ -1,31 +1,10 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import inspect as sa_inspect
-from sqlmodel import SQLModel, select
+from sqlmodel import select
 
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    import src.database as database
-    import src.models  # noqa: F401
-
-    db_path = tmp_path / "okr_async_jobs.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = database._create_engine(db_url)
-
-    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
-    monkeypatch.setattr(database, "_engine", engine, raising=False)
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield
-    finally:
-        engine.dispose()
+from conftest import utc_now_naive
 
 
 def test_enqueue_and_get_job(isolated_db):
@@ -204,7 +183,7 @@ def test_prune_terminal_jobs_removes_old_finished_rows(isolated_db):
     with get_session_context() as session:
         stale = session.get(AsyncJob, old_job.id)
         assert stale is not None
-        stale.finished_at = _utc_now_naive() - timedelta(days=30)
+        stale.finished_at = utc_now_naive() - timedelta(days=30)
         stale.updated_at = stale.finished_at
         session.add(stale)
 
@@ -243,7 +222,7 @@ def test_prune_audit_events_removes_old_rows(isolated_db):
         ).first()
         assert old_event is not None
         assert fresh_event is not None
-        old_event.created_at = _utc_now_naive() - timedelta(days=500)
+        old_event.created_at = utc_now_naive() - timedelta(days=500)
         session.add(old_event)
 
     deleted = prune_audit_events(retention_days=365, batch_size=100)

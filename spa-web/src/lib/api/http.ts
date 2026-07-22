@@ -132,3 +132,52 @@ export function jsonHeadersWithIdempotency(
     "x-okr-idempotency-key": idempotencyKey(scope, payload),
   };
 }
+
+export interface RetryWithFetchOptions {
+  maxAttempts?: number;
+  perAttemptTimeoutMs?: number;
+  baseDelayMs?: number;
+  label: string;
+}
+
+export async function retryWithFetch<T>(
+  fetchFn: () => Promise<Response>,
+  handleSuccess: (response: Response) => Promise<T>,
+  options: RetryWithFetchOptions,
+): Promise<T> {
+  const {
+    maxAttempts = 4,
+    perAttemptTimeoutMs = 8_000,
+    baseDelayMs = 250,
+    label,
+  } = options;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetchFn();
+    } catch (error) {
+      const retryable = isTransientNetworkError(error);
+      if (retryable && attempt < maxAttempts) {
+        await waitMs(baseDelayMs * 2 ** (attempt - 1));
+        continue;
+      }
+      throw new Error(
+        `${label} failed: ${String(error instanceof Error ? error.message : error)}`,
+      );
+    }
+
+    if (response.ok) {
+      return await handleSuccess(response);
+    }
+
+    const detail = await responseDetail(response);
+    const retryable = isTransientCycleQueryFailure(response.status, detail);
+    if (retryable && attempt < maxAttempts) {
+      await waitMs(baseDelayMs * 2 ** (attempt - 1));
+      continue;
+    }
+    throw new Error(`${label} failed: ${detail}`);
+  }
+  throw new Error(`${label} failed: retry attempts exhausted.`);
+}

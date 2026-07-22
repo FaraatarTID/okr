@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 
 from backend_app.job_limits import enforce_job_submit_limits
 from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job
+from backend_app.utils import normalize_idempotency_key
 from backend_app.path_setup import ensure_shared_src_on_path
 from backend_app.schemas import (
     AiAnalyzeNodeRequest,
@@ -24,6 +25,9 @@ from backend_app.schemas import (
     AlignmentCreateRequest,
     AlignmentDeleteResponse,
     AlignmentMutationView,
+    ObjectiveAlignmentLinkCreateRequest,
+    ObjectiveAlignmentLinkDeleteResponse,
+    ObjectiveAlignmentLinkMutationView,
     AtlasSnapshotRequest,
     CheckInCreateRequest,
     CheckInMutationView,
@@ -82,6 +86,7 @@ from src.crud import (
     create_goal,
     create_key_result,
     create_objective,
+    create_objective_alignment_link,
     create_retrospective,
     create_task,
     create_team,
@@ -92,6 +97,7 @@ from src.crud import (
     delete_goal,
     delete_key_result,
     delete_objective,
+    delete_objective_alignment_link,
     delete_task,
     delete_team,
     delete_work_log,
@@ -144,6 +150,7 @@ from src.services.ai_service import (
     generate_predictive_outlook,
 )
 from src.serialization_helpers import (
+    _enum_value,
     serialize_cycle_snapshot,
     serialize_user_snapshot,
     serialize_weekly_plan_snapshot,
@@ -190,6 +197,8 @@ from src.models import (
     ExperimentDecision,
     ExperimentStatus,
     ExpectedEffectDirection,
+    Goal,
+    KeyResult,
     LifecycleState,
     MetricType,
     Objective,
@@ -421,12 +430,6 @@ def _node_view_from_obj(node_type: str, node) -> NodeMutationView:
         owner_id=getattr(node, "owner_id", None),
         updated_at=getattr(node, "updated_at", None),
     )
-
-
-def _enum_value(value: Any) -> Any:
-    if hasattr(value, "value"):
-        return getattr(value, "value")
-    return value
 
 
 def _user_view_from_obj(user) -> UserMutationView:
@@ -865,12 +868,6 @@ def _coerce_experiment_updates(updates: dict) -> dict:
     return clean
 
 
-def _normalize_idempotency_key(value: Optional[str]) -> Optional[str]:
-    key = str(value or "").strip()
-    if not key:
-        return None
-    return key[:255]
-
 
 def _payload_to_jsonable(value: Any) -> Any:
     if value is None:
@@ -917,7 +914,7 @@ def _load_idempotent_response(
     idempotency_key: Optional[str],
     payload: Any,
 ) -> Optional[dict]:
-    key = _normalize_idempotency_key(idempotency_key)
+    key = normalize_idempotency_key(idempotency_key)
     if not key:
         return None
     state_key = _idempotency_state_key(scope=scope, actor=str(actor), key=key)
@@ -949,7 +946,7 @@ def _store_idempotent_response(
     payload: Any,
     response_payload: dict,
 ) -> None:
-    key = _normalize_idempotency_key(idempotency_key)
+    key = normalize_idempotency_key(idempotency_key)
     if not key:
         return
     state_key = _idempotency_state_key(scope=scope, actor=str(actor), key=key)
@@ -974,7 +971,7 @@ def _audit_experiment_failure(
         "success": False,
         "result": "failure",
         "error": str(error_message or "").strip() or "unknown error",
-        "idempotency_key_present": bool(_normalize_idempotency_key(idempotency_key)),
+        "idempotency_key_present": bool(normalize_idempotency_key(idempotency_key)),
         "payload": _payload_to_jsonable(payload),
     }
     if experiment_id is not None:
@@ -1206,7 +1203,7 @@ def _serialize_key_result(
     if key_result_id is None:
         return None
     payload = {
-        "__tablename__": "keyresult",
+        "__tablename__": "key_result",
         "id": int(key_result_id),
         "objective_id": getattr(key_result, "objective_id", None),
         "title": str(getattr(key_result, "title", "") or ""),
@@ -1998,9 +1995,13 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
                 "children": [],
                 "all_objectives": [],
                 "edges": [],
+                "available_goals": [],
+                "available_key_results": [],
+                "objective_links": [],
             }
         with get_session_context() as session:
             from src.domain.alignment import get_alignment_neighbors
+            from src.models import ObjectiveAlignmentLink
 
             parents, children = get_alignment_neighbors(session, int(objective_id))
             edge_rows = list(
@@ -2016,6 +2017,51 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
                     select(Objective).where(Objective.id != int(objective_id))
                 ).all()
             )
+            available_goals = list(session.exec(select(Goal)).all())
+            available_krs = list(session.exec(select(KeyResult)).all())
+            try:
+                from src.models import ObjectiveAlignmentLink
+                obj_links = list(
+                    session.exec(
+                        select(ObjectiveAlignmentLink).where(
+                            ObjectiveAlignmentLink.objective_id == int(objective_id)
+                        )
+                    ).all()
+                )
+                # Filter to only unlinked entities
+                # Also exclude the current objective's parent goal (linked via FK)
+                parent_goal_id = None
+                goal = getattr(objective_node, "goal", None)
+                if goal:
+                    parent_goal_id = getattr(goal, "id", None)
+                linked_goal_ids = {
+                    lnk.linked_entity_id
+                    for lnk in obj_links
+                    if lnk.linked_entity_type == "goal"
+                }
+                if parent_goal_id:
+                    linked_goal_ids.add(parent_goal_id)
+                # Exclude KRs that are children of this objective (linked via FK)
+                linked_kr_ids = {
+                    lnk.linked_entity_id
+                    for lnk in obj_links
+                    if lnk.linked_entity_type == "key_result"
+                }
+                child_krs = list(
+                    session.exec(
+                        select(KeyResult).where(
+                            KeyResult.objective_id == int(objective_id)
+                        )
+                    ).all()
+                )
+                for kr in child_krs:
+                    kr_id = getattr(kr, "id", None)
+                    if kr_id:
+                        linked_kr_ids.add(kr_id)
+                available_goals = [g for g in available_goals if getattr(g, "id", None) not in linked_goal_ids]
+                available_krs = [kr for kr in available_krs if getattr(kr, "id", None) not in linked_kr_ids]
+            except Exception:
+                obj_links = []
         return {
             "parents": [
                 payload
@@ -2064,6 +2110,35 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
                 }
                 for edge in edge_rows
                 if getattr(edge, "id", None) is not None
+            ],
+            "available_goals": [
+                {
+                    "id": int(getattr(g, "id")),
+                    "title": str(getattr(g, "title", "") or ""),
+                }
+                for g in available_goals
+                if getattr(g, "id", None) is not None
+            ],
+            "available_key_results": [
+                {
+                    "id": int(getattr(kr, "id")),
+                    "title": str(getattr(kr, "title", "") or ""),
+                }
+                for kr in available_krs
+                if getattr(kr, "id", None) is not None
+            ],
+            "objective_links": [
+                {
+                    "id": int(getattr(link, "id")),
+                    "objective_id": int(getattr(link, "objective_id")),
+                    "linked_entity_type": str(getattr(link, "linked_entity_type")),
+                    "linked_entity_id": int(getattr(link, "linked_entity_id")),
+                    "direction": str(getattr(link, "direction")),
+                    "created_at": getattr(link, "created_at", None),
+                    "created_by": getattr(link, "created_by", None),
+                }
+                for link in obj_links
+                if getattr(link, "id", None) is not None
             ],
         }
 
@@ -3956,6 +4031,65 @@ def api_delete_alignment(
     if not deleted:
         raise HTTPException(status_code=404, detail="Alignment not found.")
     return AlignmentDeleteResponse(id=int(edge_id), deleted=True)
+
+
+@app.post(
+    "/v1/objective-alignment-links",
+    response_model=ObjectiveAlignmentLinkMutationView,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_service_access)],
+)
+def api_create_objective_alignment_link(
+    payload: ObjectiveAlignmentLinkCreateRequest,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> ObjectiveAlignmentLinkMutationView:
+    actor = _resolve_actor(
+        header_actor=x_okr_actor, payload_actor=payload.actor_username
+    )
+    try:
+        link = create_objective_alignment_link(
+            objective_id=payload.objective_id,
+            linked_entity_type=payload.linked_entity_type,
+            linked_entity_id=payload.linked_entity_id,
+            direction=payload.direction,
+            actor_username=actor,
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return ObjectiveAlignmentLinkMutationView(
+        id=int(link.id),
+        objective_id=int(link.objective_id),
+        linked_entity_type=str(link.linked_entity_type),
+        linked_entity_id=int(link.linked_entity_id),
+        direction=str(link.direction),
+        created_at=getattr(link, "created_at", None),
+        created_by=getattr(link, "created_by", None),
+    )
+
+
+@app.delete(
+    "/v1/objective-alignment-links/{link_id}",
+    response_model=ObjectiveAlignmentLinkDeleteResponse,
+    dependencies=[Depends(require_service_access)],
+)
+def api_delete_objective_alignment_link(
+    link_id: int,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> ObjectiveAlignmentLinkDeleteResponse:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    try:
+        deleted = delete_objective_alignment_link(
+            link_id=int(link_id), actor_username=actor
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Alignment link not found.")
+    return ObjectiveAlignmentLinkDeleteResponse(id=int(link_id), deleted=True)
 
 
 @app.delete(

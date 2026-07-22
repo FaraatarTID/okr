@@ -2,11 +2,9 @@
 Tests for learning loop feature: experiments, variation classification, and retro outcomes.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
-from sqlmodel import SQLModel
-
 from src.models import (
     LifecycleState,
     VariationType,
@@ -14,27 +12,7 @@ from src.models import (
     ExperimentDecision,
 )
 
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-@pytest.fixture()
-def isolated_db(monkeypatch, tmp_path):
-    import src.database as database
-
-    db_path = tmp_path / "okr_learning_loop_test.db"
-    db_url = f"sqlite:///{db_path}"
-    engine = database._create_engine(db_url)
-
-    monkeypatch.setattr(database, "DATABASE_URL", db_url, raising=False)
-    monkeypatch.setattr(database, "_engine", engine, raising=False)
-
-    SQLModel.metadata.create_all(engine)
-    try:
-        yield
-    finally:
-        engine.dispose()
+from conftest import utc_now_naive
 
 
 def _build_kr_tree_for_user(username: str, cycle_id: int):
@@ -62,8 +40,8 @@ def test_check_in_requires_variation_type(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, kr = _build_kr_tree_for_user("alice", cycle.id)
 
@@ -84,8 +62,8 @@ def test_check_in_rejects_cross_kr_experiment_link(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, kr1 = _build_kr_tree_for_user("alice", cycle.id)
     _, _, kr2 = _build_kr_tree_for_user("alice", cycle.id)
@@ -116,8 +94,8 @@ def test_special_cause_requires_note(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, kr = _build_kr_tree_for_user("alice", cycle.id)
 
@@ -156,8 +134,8 @@ def test_experiment_list_requires_authorization(isolated_db):
     create_user("bob", "bob-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     goal, _, kr = _build_kr_tree_for_user("alice", cycle.id)
 
@@ -180,8 +158,8 @@ def test_experiment_mutation_requires_authorization(isolated_db):
     create_user("bob", "bob-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, kr = _build_kr_tree_for_user("alice", cycle.id)
 
@@ -207,13 +185,13 @@ def test_experiment_cycle_must_match_goal_cycle(isolated_db):
     create_user("alice", "alice-pass")
     cycle1 = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     cycle2 = create_cycle(
         "Q2",
-        start_date=_utc_now_naive() + timedelta(days=90),
-        end_date=_utc_now_naive() + timedelta(days=180),
+        start_date=utc_now_naive() + timedelta(days=90),
+        end_date=utc_now_naive() + timedelta(days=180),
     )
     _, _, kr = _build_kr_tree_for_user("alice", cycle1.id)
 
@@ -233,8 +211,8 @@ def test_special_cause_clears_experiment_link(isolated_db):
     create_user("alice", "alice-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, kr = _build_kr_tree_for_user("alice", cycle.id)
 
@@ -274,8 +252,8 @@ def test_retro_outcome_only_owner_can_modify(isolated_db):
     create_user("bob", "bob-pass")
     cycle = create_cycle(
         "Q1",
-        start_date=_utc_now_naive(),
-        end_date=_utc_now_naive() + timedelta(days=90),
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
     )
     _, _, kr = _build_kr_tree_for_user("alice", cycle.id)
 
@@ -290,7 +268,7 @@ def test_retro_outcome_only_owner_can_modify(isolated_db):
     retro = create_retrospective(
         user_id=alice.id,
         cycle_id=cycle.id,
-        week_start_date=_utc_now_naive(),
+        week_start_date=utc_now_naive(),
         content="Test retro",
     )
 

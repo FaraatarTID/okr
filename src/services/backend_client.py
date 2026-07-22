@@ -18,6 +18,7 @@ import requests
 
 from src.config_runtime import get_config_value
 from src.services.http_client import request_with_retry
+from src.utils.crypto_utils import body_digest_hex, canonical_signing_payload
 
 
 def is_backend_enabled() -> bool:
@@ -124,29 +125,6 @@ def _signing_secret() -> str:
     return str(get_config_value("OKR_BACKEND_SIGNING_SECRET", "")).strip()
 
 
-def _body_digest_hex(body_bytes: bytes) -> str:
-    return hashlib.sha256(body_bytes or b"").hexdigest()
-
-
-def _canonical_signing_payload(
-    *,
-    method: str,
-    path: str,
-    timestamp: str,
-    nonce: str,
-    body_digest: str,
-) -> str:
-    return "\n".join(
-        [
-            str(method or "").strip().upper(),
-            str(path or "/").strip() or "/",
-            str(timestamp or "").strip(),
-            str(nonce or "").strip(),
-            str(body_digest or "").strip(),
-        ]
-    )
-
-
 def _build_request_signature(
     *,
     method: str,
@@ -156,12 +134,12 @@ def _build_request_signature(
     body_bytes: bytes,
     secret: str,
 ) -> str:
-    payload = _canonical_signing_payload(
+    payload = canonical_signing_payload(
         method=method,
         path=path,
         timestamp=timestamp,
         nonce=nonce,
-        body_digest=_body_digest_hex(body_bytes),
+        body_digest=body_digest_hex(body_bytes),
     )
     return hmac.new(
         str(secret).encode("utf-8"),

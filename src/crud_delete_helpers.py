@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+from src import crud_core_helpers
 from src.domain.progress import refresh_hierarchy_progress
 
 
@@ -13,18 +14,16 @@ def delete_goal_from_crud(
     goal_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import delete_node as backend_delete_node
-
-        backend_result = backend_delete_node(
-            node_type="GOAL",
-            node_id=goal_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return bool(backend_result.get("deleted", True))
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="delete_node",
+        backend_kwargs={"node_type": "GOAL", "node_id": goal_id},
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="bool_deleted",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         goal = session.get(crud_module.Goal, goal_id)
@@ -49,18 +48,16 @@ def delete_task_from_crud(
     task_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import delete_node as backend_delete_node
-
-        backend_result = backend_delete_node(
-            node_type="TASK",
-            node_id=task_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return bool(backend_result.get("deleted", True))
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="delete_node",
+        backend_kwargs={"node_type": "TASK", "node_id": task_id},
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="bool_deleted",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         task = session.get(crud_module.Task, task_id)
@@ -85,18 +82,16 @@ def delete_objective_from_crud(
     objective_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import delete_node as backend_delete_node
-
-        backend_result = backend_delete_node(
-            node_type="OBJECTIVE",
-            node_id=objective_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return bool(backend_result.get("deleted", True))
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="delete_node",
+        backend_kwargs={"node_type": "OBJECTIVE", "node_id": objective_id},
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="bool_deleted",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         item = session.get(crud_module.Objective, objective_id)
@@ -123,18 +118,16 @@ def delete_key_result_from_crud(
     kr_id: int,
     actor_username: Optional[str] = None,
 ) -> bool:
-    if crud_module._backend_mutation_proxy_enabled() and actor_username:
-        from src.services.backend_client import delete_node as backend_delete_node
-
-        backend_result = backend_delete_node(
-            node_type="KEY_RESULT",
-            node_id=kr_id,
-            actor_username=actor_username,
-        )
-        if "error" not in backend_result:
-            crud_module.clear_cache_safe()
-            return bool(backend_result.get("deleted", True))
-        crud_module._enforce_backend_mutation_failure_policy(backend_result)
+    result = crud_core_helpers.try_backend_mutation(
+        crud_module=crud_module,
+        backend_fn_name="delete_node",
+        backend_kwargs={"node_type": "KEY_RESULT", "node_id": kr_id},
+        actor_username=actor_username,
+        require_actor=False,
+        extract_result="bool_deleted",
+    )
+    if result is not None:
+        return result
 
     with crud_module.get_session_context() as session:
         item = session.get(crud_module.KeyResult, kr_id)

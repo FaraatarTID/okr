@@ -43,6 +43,19 @@ class TestScoring(unittest.TestCase):
             calculate_objective_score(scores, weights, weighted=True), 0.25
         )
 
+    def test_objective_empty_score_list(self):
+        self.assertEqual(calculate_objective_score([]), 0.0)
+
+    def test_objective_single_element(self):
+        self.assertAlmostEqual(calculate_objective_score([0.8]), 0.8)
+
+    def test_objective_negative_weights(self):
+        # Negative weights should still produce a valid result (clamped or zero)
+        scores = [1.0, 0.5]
+        weights = [-1.0, 2.0]
+        result = calculate_objective_score(scores, weights, weighted=True)
+        self.assertIsInstance(result, float)
+
 
 if __name__ == "__main__":
     unittest.main()

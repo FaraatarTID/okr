@@ -49,7 +49,8 @@ function requireSessionSecret(env: NodeJS.ProcessEnv): string {
     return secret;
   }
   if (isDevelopment) {
-    return "dev-only-change-me";
+    const crypto = require("crypto");
+    return crypto.randomBytes(32).toString("hex");
   }
   throw new Error("BFF_SESSION_SECRET is required for non-development spa-bff runtime.");
 }

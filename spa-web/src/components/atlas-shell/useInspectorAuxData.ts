@@ -5,7 +5,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AtlasIndexNode } from "@/lib/atlas";
 import {
   createAlignmentMutation,
+  createObjectiveAlignmentLinkMutation,
   deleteAlignmentMutation,
+  deleteObjectiveAlignmentLinkMutation,
   deleteWorkLogMutation,
   readBackendQuery,
   type AuthUser,
@@ -25,6 +27,17 @@ type AlignmentContextPayload = {
   children?: Array<{ id: number; title?: string }>;
   all_objectives?: Array<{ id: number; title?: string }>;
   edges?: Array<{ id: number; parent_id: number; child_id: number; alignment_type?: string }>;
+  available_goals?: Array<{ id: number; title?: string }>;
+  available_key_results?: Array<{ id: number; title?: string }>;
+  objective_links?: Array<{
+    id: number;
+    objective_id: number;
+    linked_entity_type: string;
+    linked_entity_id: number;
+    direction: string;
+    created_at?: string;
+    created_by?: string;
+  }>;
 };
 
 type UseInspectorAuxDataInput = {
@@ -53,6 +66,11 @@ export default function useInspectorAuxData({
   const [alignmentError, setAlignmentError] = useState("");
   const [alignmentTargetObjectiveId, setAlignmentTargetObjectiveId] = useState("");
   const [alignmentDirection, setAlignmentDirection] = useState<"parent" | "child">("parent");
+  const [alignmentType, setAlignmentType] = useState("SUPPORTS");
+  const [objLinkDirection, setObjLinkDirection] = useState<"parent" | "child">("parent");
+  const [objLinkTargetId, setObjLinkTargetId] = useState("");
+  const [objLinkPending, setObjLinkPending] = useState(false);
+  const [objLinkError, setObjLinkError] = useState("");
   const [inspectTaskWorkLogs, setInspectTaskWorkLogs] = useState<WorkLogRead[]>([]);
   const [inspectTaskWorkLogsPending, setInspectTaskWorkLogsPending] = useState(false);
   const [inspectTaskWorkLogsError, setInspectTaskWorkLogsError] = useState("");
@@ -158,7 +176,7 @@ export default function useInspectorAuxData({
         actor_username: user.username,
         parent_id: parentId,
         child_id: childId,
-        alignment_type: "SUPPORTS",
+        alignment_type: alignmentType,
       });
       await loadAlignmentContext(user, selectedMeta.id);
       setAlignmentTargetObjectiveId("");
@@ -166,7 +184,7 @@ export default function useInspectorAuxData({
     } catch (error) {
       setAlignmentError(String(error instanceof Error ? error.message : error));
     }
-  }, [alignmentDirection, alignmentTargetObjectiveId, loadAlignmentContext, selectedMeta, user]);
+  }, [alignmentDirection, alignmentTargetObjectiveId, alignmentType, loadAlignmentContext, selectedMeta, user]);
 
   const handleAlignmentDelete = useCallback(
     async (edgeId: number): Promise<void> => {
@@ -182,6 +200,51 @@ export default function useInspectorAuxData({
         setAlignmentError("");
       } catch (error) {
         setAlignmentError(String(error instanceof Error ? error.message : error));
+      }
+    },
+    [loadAlignmentContext, selectedMeta, user],
+  );
+
+  const handleObjectiveAlignmentLinkCreate = useCallback(async (): Promise<void> => {
+    if (!user || !selectedMeta || selectedMeta.type !== "OBJECTIVE") {
+      return;
+    }
+    const targetId = Number.parseInt(objLinkTargetId, 10);
+    if (!Number.isFinite(targetId) || targetId <= 0) {
+      setObjLinkError("Choose a valid target to link.");
+      return;
+    }
+    const linkedEntityType = objLinkDirection === "parent" ? "goal" : "key_result";
+    try {
+      await createObjectiveAlignmentLinkMutation({
+        actor_username: user.username,
+        objective_id: selectedMeta.id,
+        linked_entity_type: linkedEntityType,
+        linked_entity_id: targetId,
+        direction: objLinkDirection,
+      });
+      await loadAlignmentContext(user, selectedMeta.id);
+      setObjLinkTargetId("");
+      setObjLinkError("");
+    } catch (error) {
+      setObjLinkError(String(error instanceof Error ? error.message : error));
+    }
+  }, [objLinkDirection, objLinkTargetId, loadAlignmentContext, selectedMeta, user]);
+
+  const handleObjectiveAlignmentLinkDelete = useCallback(
+    async (linkId: number): Promise<void> => {
+      if (!user || !selectedMeta || selectedMeta.type !== "OBJECTIVE") {
+        return;
+      }
+      try {
+        await deleteObjectiveAlignmentLinkMutation({
+          actor_username: user.username,
+          link_id: linkId,
+        });
+        await loadAlignmentContext(user, selectedMeta.id);
+        setObjLinkError("");
+      } catch (error) {
+        setObjLinkError(String(error instanceof Error ? error.message : error));
       }
     },
     [loadAlignmentContext, selectedMeta, user],
@@ -217,8 +280,18 @@ export default function useInspectorAuxData({
     alignmentError,
     alignmentTargetObjectiveId,
     alignmentDirection,
+    alignmentType,
     setAlignmentTargetObjectiveId,
     setAlignmentDirection,
+    setAlignmentType,
+    objLinkDirection,
+    setObjLinkDirection,
+    objLinkTargetId,
+    setObjLinkTargetId,
+    objLinkPending,
+    objLinkError,
+    handleObjectiveAlignmentLinkCreate,
+    handleObjectiveAlignmentLinkDelete,
     inspectTaskWorkLogsPending,
     inspectTaskWorkLogsError,
     inspectTaskWorkLogPendingId,

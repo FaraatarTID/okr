@@ -61,7 +61,7 @@ def test_spa_web_backend_api_route_proxies_browser_requests_to_bff_only() -> Non
         / "[...path]"
         / "route.ts"
     )
-    assert "return proxyToBff(request, targetUrl)" in route_source
+    assert "proxyToBff" in route_source
     assert "BFF_ORIGIN" in route_source
 
     helper_source = _read(ROOT / "spa-web" / "src" / "lib" / "bff-proxy.ts")

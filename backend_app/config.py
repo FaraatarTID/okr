@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import os
+
+_LOGGER = logging.getLogger(__name__)
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -232,11 +235,8 @@ def get_backend_settings() -> BackendSettings:
         ),
     )
 
-    # Minimal startup confirmation
-    print(
-        f"INFO: Backend configuration loaded (Env: {runtime_env}, Port: {settings.port})"
-    )
+    _LOGGER.info("Backend configuration loaded (Env: %s, Port: %s)", runtime_env, settings.port)
     if settings.enforce_service_token and not settings.service_token:
-        print("WARNING: Service token enforcement enabled but no token configured!")
+        _LOGGER.warning("Service token enforcement enabled but no token configured!")
 
     return settings

@@ -1082,8 +1082,10 @@ export default function AtlasShell() {
     alignmentError,
     alignmentTargetObjectiveId,
     alignmentDirection,
+    alignmentType,
     setAlignmentTargetObjectiveId,
     setAlignmentDirection,
+    setAlignmentType,
     inspectTaskWorkLogsPending,
     inspectTaskWorkLogsError,
     inspectTaskWorkLogPendingId,
@@ -1093,6 +1095,14 @@ export default function AtlasShell() {
     handleInspectorDeleteWorkLog,
     handleAlignmentCreate,
     handleAlignmentDelete,
+    objLinkDirection,
+    setObjLinkDirection,
+    objLinkTargetId,
+    setObjLinkTargetId,
+    objLinkPending,
+    objLinkError,
+    handleObjectiveAlignmentLinkCreate,
+    handleObjectiveAlignmentLinkDelete,
   } = useInspectorAuxData({
     user,
     selectedMeta,
@@ -1480,6 +1490,11 @@ export default function AtlasShell() {
               }));
             }
             setCreateModalParentRef(parentRef);
+            setCreateModalOpen(true);
+          }}
+          onCreateGoal={() => {
+            setCreateDraft((prev) => ({ ...prev, createType: "goal" }));
+            setCreateModalParentRef("");
             setCreateModalOpen(true);
           }}
           nodeQuery={nodeQuery}
@@ -2046,13 +2061,27 @@ export default function AtlasShell() {
                 alignmentContext={alignmentContext}
                 alignmentDirection={alignmentDirection}
                 alignmentTargetObjectiveId={alignmentTargetObjectiveId}
+                alignmentType={alignmentType}
                 onAlignmentDirectionChange={setAlignmentDirection}
                 onAlignmentTargetObjectiveIdChange={setAlignmentTargetObjectiveId}
+                onAlignmentTypeChange={setAlignmentType}
                 onAlignmentCreate={() => {
                   void handleAlignmentCreate();
                 }}
                 onAlignmentDelete={(edgeId) => {
                   void handleAlignmentDelete(edgeId);
+                }}
+                objLinkDirection={objLinkDirection}
+                objLinkTargetId={objLinkTargetId}
+                objLinkPending={objLinkPending}
+                objLinkError={objLinkError}
+                onObjLinkDirectionChange={setObjLinkDirection}
+                onObjLinkTargetIdChange={setObjLinkTargetId}
+                onObjLinkCreate={() => {
+                  void handleObjectiveAlignmentLinkCreate();
+                }}
+                onObjLinkDelete={(linkId) => {
+                  void handleObjectiveAlignmentLinkDelete(linkId);
                 }}
               />
             ) : null}
@@ -2091,6 +2120,7 @@ export default function AtlasShell() {
                 (createDraft.createType === "key_result" && createModalContext.objectiveId) ||
                 (createDraft.createType === "task" && createModalContext.keyResultId),
               )}
+              createTypeLocked={true}
               createTypeLabel={createTypeLabel}
               cycleLabel={cycleDisplayLabel(resolvedCycle)}
               onCreateNode={() => {
