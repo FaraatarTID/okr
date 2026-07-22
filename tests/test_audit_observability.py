@@ -62,7 +62,7 @@ def test_error_log_includes_observability_context(monkeypatch):
 def test_audit_log_persists_event_to_database(monkeypatch, tmp_path):
     import src.audit as audit
     import src.database as database
-    from src.models import AuditEvent
+    from src.models import AuditEvent, Team, User, UserRole
     from src.observability import observability_context
 
     db_path = tmp_path / "audit_events.db"
@@ -80,11 +80,30 @@ def test_audit_log_persists_event_to_database(monkeypatch, tmp_path):
     monkeypatch.setattr(audit, "_get_logger", lambda: stub_logger)
     monkeypatch.setattr(audit, "_AUDIT_DB_FAILURE_REPORTED", False, raising=False)
 
+    with database.get_session_context() as session:
+        team = Team(name="Signals")
+        session.add(team)
+        session.commit()
+        session.refresh(team)
+        user = User(
+            username="alice",
+            password_hash="hash",
+            role=UserRole.MANAGER,
+            team_id=team.id,
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
     with observability_context(correlation_id="corr-db", request_id="req-db"):
         audit.audit_log(
             action="create",
             entity="goal",
             actor="alice",
+            target_type="goal",
+            target_id=7,
+            target_owner_id=user.id,
+            target_team_id=team.id,
             details={"success": True, "goal_id": 7},
         )
 
@@ -97,7 +116,14 @@ def test_audit_log_persists_event_to_database(monkeypatch, tmp_path):
 
     assert event is not None
     assert event.actor == "alice"
+    assert int(event.actor_user_id) == int(user.id)
+    assert event.actor_role == "manager"
+    assert int(event.actor_team_id) == int(team.id)
     assert event.result == "success"
+    assert event.target_type == "goal"
+    assert int(event.target_id) == 7
+    assert int(event.target_owner_id) == int(user.id)
+    assert int(event.target_team_id) == int(team.id)
     assert event.correlation_id == "corr-db"
     assert event.request_id == "req-db"
     assert json.loads(event.details_json).get("goal_id") == 7

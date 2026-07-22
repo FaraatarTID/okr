@@ -135,12 +135,18 @@ from src.config_runtime import get_bool_config
 from src.domain.read_queries import build_atlas_scope_snapshot
 from src.domain.analysis import calculate_burnout_risk, detect_strategy_gaps
 from src.domain.password_policy import is_production_runtime
+from src.audit_queries import summarize_audit_events
 from src.observability import observability_context
 from src.services.ai_provider import run_ai_health_check
 from src.services.ai_service import (
     analyze_node,
     analyze_team_health,
     generate_predictive_outlook,
+)
+from src.serialization_helpers import (
+    serialize_cycle_snapshot,
+    serialize_user_snapshot,
+    serialize_weekly_plan_snapshot,
 )
 from src.services.supabase_api_mode import (
     authenticate_user_detailed_via_supabase_api,
@@ -1064,37 +1070,11 @@ def _coerce_int(value: Any, *, field_name: str) -> int:
 
 
 def _serialize_user(user) -> dict | None:
-    if not user:
-        return None
-    user_id = getattr(user, "id", None)
-    if user_id is None:
-        return None
-    return {
-        "id": int(user_id),
-        "username": str(getattr(user, "username", "") or ""),
-        "display_name": getattr(user, "display_name", None),
-        "role": str(_enum_value(getattr(user, "role", UserRole.MEMBER))).lower(),
-        "manager_id": getattr(user, "manager_id", None),
-        "team_id": getattr(user, "team_id", None),
-        "is_active": bool(getattr(user, "is_active", True)),
-        "must_change_password": bool(getattr(user, "must_change_password", False)),
-    }
+    return serialize_user_snapshot(user, role_value_fn=_enum_value)
 
 
 def _serialize_cycle(cycle) -> dict | None:
-    if not cycle:
-        return None
-    cycle_id = getattr(cycle, "id", None)
-    if cycle_id is None:
-        return None
-    return {
-        "id": int(cycle_id),
-        "title": str(getattr(cycle, "title", "") or ""),
-        "start_date": getattr(cycle, "start_date", None),
-        "end_date": getattr(cycle, "end_date", None),
-        "is_active": bool(getattr(cycle, "is_active", True)),
-        "owner_manager_id": getattr(cycle, "owner_manager_id", None),
-    }
+    return serialize_cycle_snapshot(cycle)
 
 
 def _serialize_team(team) -> dict | None:
@@ -1372,22 +1352,7 @@ def _serialize_experiment(experiment) -> dict | None:
 
 
 def _serialize_weekly_plan(plan) -> dict | None:
-    if not plan:
-        return None
-    plan_id = getattr(plan, "id", None)
-    if plan_id is None:
-        return None
-    return {
-        "id": int(plan_id),
-        "user_id": getattr(plan, "user_id", None),
-        "week_start_date": getattr(plan, "week_start_date", None),
-        "week_end_date": getattr(plan, "week_end_date", None),
-        "priority_1": getattr(plan, "priority_1", None),
-        "priority_2": getattr(plan, "priority_2", None),
-        "priority_3": getattr(plan, "priority_3", None),
-        "created_at": getattr(plan, "created_at", None),
-        "is_active": bool(getattr(plan, "is_active", True)),
-    }
+    return serialize_weekly_plan_snapshot(plan)
 
 
 def _serialize_retro(retro, *, include_user: bool = False) -> dict | None:
@@ -1578,6 +1543,37 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             raise HTTPException(status_code=501, detail=str(exc)) from exc
 
     scope = _resolve_scope_for_actor(actor)
+
+    if kind == "audit.summary":
+        if not bool(scope.get("is_admin", False)):
+            raise HTTPException(status_code=403, detail="Admin privileges required.")
+        days = _coerce_int(params.get("days", 30), field_name="days")
+        recent_limit = _coerce_int(params.get("recent_limit", 20), field_name="recent_limit")
+        filters: dict[str, Any] = {}
+        for key in (
+            "action",
+            "entity",
+            "actor",
+            "actor_role",
+            "target_type",
+            "correlation_id",
+            "request_id",
+        ):
+            value = params.get(key)
+            if value is not None and str(value).strip():
+                filters[key] = str(value).strip()
+        for key in ("actor_user_id", "actor_team_id", "target_id", "target_owner_id", "target_team_id"):
+            if params.get(key) is not None:
+                filters[key] = _coerce_int(params.get(key), field_name=key)
+        if params.get("result") is not None and str(params.get("result")).strip():
+            filters["result"] = str(params.get("result")).strip()
+        with get_session_context() as session:
+            return summarize_audit_events(
+                session,
+                days=days,
+                recent_limit=recent_limit,
+                **filters,
+            )
 
     if kind == "users.by_username":
         username = str(params.get("username") or "").strip()
@@ -1817,10 +1813,10 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         }
 
     if kind == "krs.needing_checkin":
-        user_id = str(params.get("user_id") or "").strip()
-        if not user_id:
+        username = str(params.get("user_id") or "").strip()
+        if not username:
             raise HTTPException(status_code=400, detail="user_id is required.")
-        _require_allowed_username(scope, user_id)
+        _require_allowed_username(scope, username)
         cycle_id = _resolve_effective_cycle_id_for_scope(
             scope,
             _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
@@ -1831,7 +1827,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         )
         krs = list(
             get_krs_needing_checkin(
-                user_id=user_id,
+                user_id=username,
                 cycle_id=cycle_id,
                 days_threshold=days_threshold,
             )
@@ -2393,21 +2389,113 @@ def api_ai_analyze_node(
         header_actor=x_okr_actor,
         payload_actor=payload.actor_username,
     )
+    node_type = str(payload.node_type or "KEY_RESULT")
+    actor_role = None
+    actor_team_id = None
+    try:
+        actor_user = get_user_by_username(actor)
+    except Exception:
+        actor_user = None
+    if actor_user:
+        raw_role = getattr(actor_user, "role", None)
+        actor_role = getattr(raw_role, "value", None) or (str(raw_role) if raw_role else None)
+        actor_team_id = getattr(actor_user, "team_id", None)
+    base_details = {
+        "node_id": int(payload.node_id),
+        "node_type": node_type,
+        "feature": "ai_analyze_node",
+    }
+    if actor_role:
+        base_details["actor_role"] = actor_role
+    if actor_team_id is not None:
+        base_details["actor_team_id"] = actor_team_id
     result = analyze_node(
         int(payload.node_id),
-        str(payload.node_type or "KEY_RESULT"),
+        node_type,
         actor_username=actor,
     )
     if not isinstance(result, dict):
+        audit_log(
+            action="analyze",
+            entity="ai_node",
+            actor=actor,
+            target_type="node",
+            target_id=int(payload.node_id),
+            details={
+                **base_details,
+                "success": False,
+                "result": "failure",
+                "error_type": "invalid_payload",
+                "error_text": "AI analysis returned invalid payload.",
+            },
+        )
         raise HTTPException(status_code=500, detail="AI analysis returned invalid payload.")
     error_text = str(result.get("error") or "").strip()
     if error_text:
         lowered = error_text.lower()
+        error_type = "validation_error"
         if "not found" in lowered:
+            error_type = "not_found"
+            audit_log(
+                action="analyze",
+                entity="ai_node",
+                actor=actor,
+                target_type="node",
+                target_id=int(payload.node_id),
+                details={
+                    **base_details,
+                    "success": False,
+                    "result": "failure",
+                    "error_type": error_type,
+                    "error_text": error_text,
+                },
+            )
             raise HTTPException(status_code=404, detail=error_text)
         if "permission" in lowered or "forbidden" in lowered or "authorized" in lowered:
+            error_type = "forbidden"
+            audit_log(
+                action="analyze",
+                entity="ai_node",
+                actor=actor,
+                target_type="node",
+                target_id=int(payload.node_id),
+                details={
+                    **base_details,
+                    "success": False,
+                    "result": "failure",
+                    "error_type": error_type,
+                    "error_text": error_text,
+                },
+            )
             raise HTTPException(status_code=403, detail=error_text)
+        audit_log(
+            action="analyze",
+            entity="ai_node",
+            actor=actor,
+            target_type="node",
+            target_id=int(payload.node_id),
+            details={
+                **base_details,
+                "success": False,
+                "result": "failure",
+                "error_type": error_type,
+                "error_text": error_text,
+            },
+        )
         raise HTTPException(status_code=400, detail=error_text)
+    audit_log(
+        action="analyze",
+        entity="ai_node",
+        actor=actor,
+        target_type="node",
+        target_id=int(payload.node_id),
+        details={
+            **base_details,
+            "success": True,
+            "result": "success",
+            "overall_score": result.get("overall_score"),
+        },
+    )
     return result
 
 

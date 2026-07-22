@@ -6,12 +6,15 @@ import type {
   AdminAiHealthResponse,
   AdminDbRestoreResponse,
   AdminPdfHealthResponse,
+  AuditEventSummary,
+  AuditSummaryBucket,
+  AuditSummaryResponse,
   CycleSummary,
   TeamMutationResponse,
   UserMutationResponse,
 } from "@/lib/api";
 
-export type AdminTab = "cycles" | "users" | "teams" | "security" | "backup" | "ai";
+export type AdminTab = "cycles" | "users" | "teams" | "security" | "backup" | "audit" | "ai";
 
 export type AdminUserDraft = {
   username: string;
@@ -70,6 +73,10 @@ type AdminModePanelProps = {
   adminHealthPending: boolean;
   onLoadAdminHealthConfig: () => void;
   onLoadAdminHealthLive: () => void;
+  adminAuditSummary: AuditSummaryResponse | null;
+  adminAuditSummaryPending: boolean;
+  adminAuditSummaryError: string;
+  onLoadAdminAuditSummary: () => void;
   adminAiHealth: AdminAiHealthResponse | null;
   adminPdfHealth: AdminPdfHealthResponse | null;
   adminCyclesPending: boolean;
@@ -119,6 +126,10 @@ export default function AdminModePanel({
   adminHealthPending,
   onLoadAdminHealthConfig,
   onLoadAdminHealthLive,
+  adminAuditSummary,
+  adminAuditSummaryPending,
+  adminAuditSummaryError,
+  onLoadAdminAuditSummary,
   adminAiHealth,
   adminPdfHealth,
   adminCyclesPending,
@@ -165,6 +176,29 @@ export default function AdminModePanel({
     }
     return map;
   }, [adminTeams]);
+  const formatBucketValue = (bucket: AuditSummaryBucket): string => {
+    if (bucket.value === null || bucket.value === undefined || bucket.value === "") {
+      return "Unassigned";
+    }
+    return String(bucket.value);
+  };
+  const renderBuckets = (label: string, buckets: AuditSummaryBucket[] | undefined) => (
+    <div style={{ marginTop: "0.55rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
+      <div style={{ fontSize: "0.84rem", color: "var(--ink-soft)" }}>{label}</div>
+      {buckets && buckets.length ? (
+        <div className="report-list" style={{ marginTop: "0.35rem" }}>
+          {buckets.map((bucket) => (
+            <article key={`${label}-${String(bucket.value)}`} className="report-list-row compact">
+              <strong>{formatBucketValue(bucket)}</strong>
+              <span>{bucket.count}</span>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p style={{ margin: "0.25rem 0 0", color: "var(--ink-soft)" }}>No data.</p>
+      )}
+    </div>
+  );
   return (
     <section className="panel" style={{ marginTop: "0.9rem", padding: "0.9rem" }}>
       <p className="kicker">Admin</p>
@@ -188,6 +222,9 @@ export default function AdminModePanel({
             </button>
             <button className="primary-button" type="button" onClick={() => setAdminTab("backup")}>
               Backup
+            </button>
+            <button className="primary-button" type="button" onClick={() => setAdminTab("audit")}>
+              Audit
             </button>
             <button className="primary-button" type="button" onClick={() => setAdminTab("ai")}>
               AI/PDF Health
@@ -490,6 +527,70 @@ export default function AdminModePanel({
               </>
             ) : null}
 
+            {adminTab === "audit" ? (
+              <>
+                <p className="kicker" style={{ margin: 0 }}>
+                  Audit summary
+                </p>
+                <div style={{ display: "flex", gap: "0.45rem", marginTop: "0.45rem", flexWrap: "wrap" }}>
+                  <button
+                    className="primary-button"
+                    type="button"
+                    disabled={adminAuditSummaryPending}
+                    onClick={onLoadAdminAuditSummary}
+                  >
+                    {adminAuditSummaryPending ? "Loading..." : "Refresh Summary"}
+                  </button>
+                </div>
+                {adminAuditSummaryError ? (
+                  <p style={{ margin: "0.4rem 0 0", color: "var(--error)" }}>{adminAuditSummaryError}</p>
+                ) : null}
+                {adminAuditSummary ? (
+                  <>
+                    <div className="report-card-grid" style={{ marginTop: "0.55rem" }}>
+                      <article className="report-card">
+                        <span className="kicker">Events</span>
+                        <strong>{adminAuditSummary.total_events ?? 0}</strong>
+                      </article>
+                      <article className="report-card">
+                        <span className="kicker">Success</span>
+                        <strong>{adminAuditSummary.success_events ?? 0}</strong>
+                      </article>
+                      <article className="report-card">
+                        <span className="kicker">Failure</span>
+                        <strong>{adminAuditSummary.failure_events ?? 0}</strong>
+                      </article>
+                      <article className="report-card">
+                        <span className="kicker">Latest</span>
+                        <strong>{formatOptionalDate(adminAuditSummary.latest_event_at)}</strong>
+                      </article>
+                    </div>
+                    {renderBuckets("By actor role", adminAuditSummary.by_actor_role)}
+                    {renderBuckets("By actor team", adminAuditSummary.by_actor_team_id)}
+                    {renderBuckets("By target type", adminAuditSummary.by_target_type)}
+                    {renderBuckets("By entity", adminAuditSummary.by_entity)}
+                    {renderBuckets("By action", adminAuditSummary.by_action)}
+                    <div style={{ marginTop: "0.55rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
+                      <div style={{ fontSize: "0.84rem", color: "var(--ink-soft)" }}>Recent events</div>
+                      {adminAuditSummary.recent_events?.length ? (
+                        <div className="report-list" style={{ marginTop: "0.35rem" }}>
+                          {adminAuditSummary.recent_events.map((event) => (
+                            <AuditEventRow key={event.id} event={event} />
+                          ))}
+                        </div>
+                      ) : (
+                        <p style={{ margin: "0.25rem 0 0", color: "var(--ink-soft)" }}>No audit events in this window.</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p style={{ margin: "0.45rem 0 0", color: "var(--ink-soft)" }}>
+                    Audit summary will load when this tab is opened.
+                  </p>
+                )}
+              </>
+            ) : null}
+
             {adminTab === "ai" ? (
               <>
                 <p className="kicker" style={{ margin: 0 }}>
@@ -701,3 +802,18 @@ export default function AdminModePanel({
   );
 }
 
+function AuditEventRow({ event }: { event: AuditEventSummary }) {
+  return (
+    <article className="report-list-row compact">
+      <strong>
+        {String(event.action || "-")} / {String(event.entity || "-")}
+      </strong>
+      <span>
+        {String(event.actor || "unknown")} • {String(event.result || "-")} • {String(event.target_type || "-")}
+      </span>
+      <span className="muted">
+        {String(event.created_at || "-")}
+      </span>
+    </article>
+  );
+}

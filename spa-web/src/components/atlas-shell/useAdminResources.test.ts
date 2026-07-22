@@ -8,6 +8,7 @@ import useAdminResources from "@/components/atlas-shell/useAdminResources";
 vi.mock("@/lib/api", () => ({
   readAdminAiHealth: vi.fn(),
   readAdminPdfHealth: vi.fn(),
+  readAuditSummary: vi.fn(),
   readBackendQuery: vi.fn(),
   readCyclesQuery: vi.fn(),
 }));
@@ -105,5 +106,28 @@ describe("useAdminResources", () => {
     expect(result.current.adminAiHealth).toEqual(expect.objectContaining({ provider: "gemini" }));
     expect(result.current.adminPdfHealth).toEqual(expect.objectContaining({ backend: "wkhtmltopdf" }));
     expect(result.current.adminHealthPending).toBe(false);
+  });
+
+  it("loads audit summary payloads and clears pending state", async () => {
+    const readAuditSummaryMock = vi.mocked(api.readAuditSummary);
+    readAuditSummaryMock.mockResolvedValue({
+      total_events: 12,
+      success_events: 10,
+      failure_events: 2,
+      recent_events: [],
+    } as never);
+
+    const { result } = renderHook(() => useAdminResources());
+
+    await act(async () => {
+      await result.current.loadAdminAuditSummary(baseUser);
+    });
+
+    expect(readAuditSummaryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ actor_username: "alice", days: 30, recent_limit: 10 }),
+    );
+    expect(result.current.adminAuditSummary).toEqual(expect.objectContaining({ total_events: 12 }));
+    expect(result.current.adminAuditSummaryPending).toBe(false);
+    expect(result.current.adminAuditSummaryError).toBe("");
   });
 });

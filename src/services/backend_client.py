@@ -788,7 +788,7 @@ def read_work_logs_by_task(task_id: int, *, actor_username: Optional[str] = None
 
 def read_krs_needing_checkin(
     *,
-    user_id: str,
+    username: str,
     cycle_id: int,
     days_threshold: int = 7,
     actor_username: Optional[str] = None,
@@ -796,7 +796,7 @@ def read_krs_needing_checkin(
     result = _read_query(
         kind="krs.needing_checkin",
         params={
-            "user_id": str(user_id or "").strip(),
+            "user_id": str(username or "").strip(),
             "cycle_id": int(cycle_id),
             "days_threshold": int(days_threshold),
         },

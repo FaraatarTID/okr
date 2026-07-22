@@ -19,6 +19,7 @@ def create_weekly_plan_from_crud(
     p3: str = None,
     actor_username: Optional[str] = None,
 ):
+    actor_user = None
     if crud_module._backend_mutation_proxy_enabled():
         actor_name = str(actor_username or "").strip()
         if not actor_name:
@@ -48,7 +49,7 @@ def create_weekly_plan_from_crud(
 
     with crud_module.get_session_context() as session:
         if actor_username:
-            crud_module._authorize_self_or_admin(
+            actor_user = crud_module._authorize_self_or_admin(
                 session,
                 actor_username=actor_username,
                 target_user_id=int(user_id),
@@ -71,6 +72,25 @@ def create_weekly_plan_from_crud(
             session.add(existing)
             session.commit()
             session.refresh(existing)
+            crud_module.audit_log(
+                "update",
+                "weekly_plan",
+                actor=actor_username,
+                target_type="weekly_plan",
+                target_id=existing.id,
+                target_owner_id=user_id,
+                details={
+                    "success": True,
+                    "result": "success",
+                    "operation": "updated",
+                    "weekly_plan_id": existing.id,
+                    "user_id": user_id,
+                    "week_start_date": start_date,
+                    "week_end_date": end_date,
+                    "actor_role": getattr(getattr(actor_user, "role", None), "value", None),
+                    "actor_team_id": getattr(actor_user, "team_id", None),
+                },
+            )
             crud_module.clear_cache_safe()
             return existing
 
@@ -85,6 +105,25 @@ def create_weekly_plan_from_crud(
         session.add(plan)
         session.commit()
         session.refresh(plan)
+        crud_module.audit_log(
+            "create",
+            "weekly_plan",
+            actor=actor_username,
+            target_type="weekly_plan",
+            target_id=plan.id,
+            target_owner_id=user_id,
+            details={
+                "success": True,
+                "result": "success",
+                "operation": "created",
+                "weekly_plan_id": plan.id,
+                "user_id": user_id,
+                "week_start_date": start_date,
+                "week_end_date": end_date,
+                "actor_role": getattr(getattr(actor_user, "role", None), "value", None),
+                "actor_team_id": getattr(actor_user, "team_id", None),
+            },
+        )
         crud_module.clear_cache_safe()
         return plan
 

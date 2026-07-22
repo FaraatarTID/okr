@@ -228,7 +228,7 @@ def _get_latest_checkins_by_kr(session: Session, kr_ids: List[int]) -> dict:
 
 
 def get_krs_needing_checkin(
-    user_id: str, cycle_id: int, days_threshold: int = 7
+    username: str, cycle_id: int, days_threshold: int = 7
 ) -> List[KeyResult]:
     """Get KRs that haven't had a check-in within the threshold days."""
     with get_session_context() as session:
@@ -250,7 +250,7 @@ def get_krs_needing_checkin(
                 .join(Goal)
                 .outerjoin(latest_subq, latest_subq.c.kr_id == KeyResult.id)
                 .where(Goal.cycle_id == cycle_id)
-                .where(_goal_owner_predicate_by_username(user_id))
+                .where(_goal_owner_predicate_by_username(username))
                 .where(KeyResult.state == LifecycleState.ACTIVE)
                 .where(
                     or_(

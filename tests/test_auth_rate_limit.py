@@ -305,5 +305,5 @@ def test_successful_login_query_budget_after_throttle_reset(isolated_db):
         event.remove(engine, "before_cursor_execute", _before_cursor_execute)
 
     assert auth["success"] is True
-    # Steady-state success reads throttle states + user row and writes one audit row.
-    assert counter["count"] <= 3
+    # Steady-state success: throttle states + user row + actor snapshot + audit row.
+    assert counter["count"] <= 4

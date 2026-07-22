@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import useShellAccessControl from "@/components/atlas-shell/useShellAccessControl";
-import { logoutSession, type AuthUser } from "@/lib/api";
+import { logoutSession, type AuditSummaryResponse, type AuthUser } from "@/lib/api";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
@@ -20,6 +20,7 @@ type HarnessProps = {
   adminTab: string;
   adminAiHealth: Record<string, unknown> | null;
   adminPdfHealth: Record<string, unknown> | null;
+  adminAuditSummary: AuditSummaryResponse | null;
 };
 
 const ACTIVE_USER: AuthUser = {
@@ -36,6 +37,7 @@ function renderAccessHook(initialProps: HarnessProps) {
   const handleSidebarModeSelect = vi.fn();
   const loadAdminResources = vi.fn(async () => undefined);
   const loadAdminHealth = vi.fn(async () => undefined);
+  const loadAdminAuditSummary = vi.fn(async () => undefined);
   const setUser = vi.fn();
   const clearSnapshot = vi.fn();
 
@@ -49,10 +51,12 @@ function renderAccessHook(initialProps: HarnessProps) {
         adminTab: props.adminTab,
         adminAiHealth: props.adminAiHealth,
         adminPdfHealth: props.adminPdfHealth,
+        adminAuditSummary: props.adminAuditSummary,
         routerReplace,
         handleSidebarModeSelect,
         loadAdminResources,
         loadAdminHealth,
+        loadAdminAuditSummary,
         setUser,
         clearSnapshot,
       }),
@@ -65,6 +69,7 @@ function renderAccessHook(initialProps: HarnessProps) {
     handleSidebarModeSelect,
     loadAdminResources,
     loadAdminHealth,
+    loadAdminAuditSummary,
     setUser,
     clearSnapshot,
   };
@@ -80,6 +85,7 @@ describe("useShellAccessControl", () => {
       adminTab: "cycles",
       adminAiHealth: null,
       adminPdfHealth: null,
+      adminAuditSummary: null,
     });
 
     await waitFor(() => {
@@ -98,6 +104,7 @@ describe("useShellAccessControl", () => {
       adminTab: "cycles",
       adminAiHealth: null,
       adminPdfHealth: null,
+      adminAuditSummary: null,
     });
 
     await waitFor(() => {
@@ -114,6 +121,7 @@ describe("useShellAccessControl", () => {
       adminTab: "cycles",
       adminAiHealth: null,
       adminPdfHealth: null,
+      adminAuditSummary: null,
     });
 
     await waitFor(() => {
@@ -130,6 +138,7 @@ describe("useShellAccessControl", () => {
       adminTab: "ai",
       adminAiHealth: null,
       adminPdfHealth: { status: "ok" },
+      adminAuditSummary: null,
     });
 
     await waitFor(() => {
@@ -146,6 +155,7 @@ describe("useShellAccessControl", () => {
       adminTab: "ai",
       adminAiHealth: { status: "ok" },
       adminPdfHealth: { status: "ok" },
+      adminAuditSummary: null,
     });
 
     await waitFor(() => {
@@ -163,6 +173,7 @@ describe("useShellAccessControl", () => {
       adminTab: "cycles",
       adminAiHealth: null,
       adminPdfHealth: null,
+      adminAuditSummary: null,
     });
 
     act(() => {
@@ -173,6 +184,23 @@ describe("useShellAccessControl", () => {
       expect(setUser).toHaveBeenCalledWith(null);
       expect(clearSnapshot).toHaveBeenCalled();
       expect(routerReplace).toHaveBeenCalledWith("/login?return_to=%2F");
+    });
+  });
+
+  it("loads audit summary when audit tab is active", async () => {
+    const { loadAdminAuditSummary } = renderAccessHook({
+      authHydrated: true,
+      user: ACTIVE_USER,
+      isAdmin: true,
+      mode: "admin",
+      adminTab: "audit",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+    });
+
+    await waitFor(() => {
+      expect(loadAdminAuditSummary).toHaveBeenCalledWith(ACTIVE_USER);
     });
   });
 });

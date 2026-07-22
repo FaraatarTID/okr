@@ -1024,6 +1024,102 @@ def test_read_leadership_metrics_endpoint_scopes_usernames_for_non_admin(monkeyp
     assert response.json().get("hygiene_pct") == 100.0
 
 
+def test_read_query_audit_summary_requires_admin_and_forwards_filters(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = {}
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _fake_session_context():
+        yield object()
+
+    monkeypatch.setattr(backend_main, "get_session_context", _fake_session_context)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_actor_scope",
+        lambda _session, _actor: {
+            "is_admin": True,
+            "owner_ids": set(),
+            "usernames": {"alice"},
+        },
+    )
+
+    def _fake_summary(session, **kwargs):
+        captured["kwargs"] = kwargs
+        return {
+            "window_days": kwargs.get("days", 30),
+            "recent_limit": kwargs.get("recent_limit", 20),
+            "total_events": 1,
+            "success_events": 1,
+            "failure_events": 0,
+            "by_actor_role": [],
+            "by_actor_team_id": [],
+            "by_target_type": [],
+            "by_entity": [],
+            "by_action": [],
+            "recent_events": [],
+        }
+
+    monkeypatch.setattr(backend_main, "summarize_audit_events", _fake_summary)
+
+    response = client.post(
+        "/v1/read/query",
+        headers={"X-OKR-Actor": "alice"},
+        json={
+            "kind": "audit.summary",
+            "params": {
+                "days": 14,
+                "recent_limit": 5,
+                "actor_role": "manager",
+                "target_type": "weekly_plan",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["kwargs"]["days"] == 14
+    assert captured["kwargs"]["recent_limit"] == 5
+    assert captured["kwargs"]["actor_role"] == "manager"
+    assert captured["kwargs"]["target_type"] == "weekly_plan"
+    assert response.json()["total_events"] == 1
+
+
+def test_read_query_audit_summary_blocks_non_admin(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    called = {"count": 0}
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _fake_session_context():
+        yield object()
+
+    monkeypatch.setattr(backend_main, "get_session_context", _fake_session_context)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_actor_scope",
+        lambda _session, _actor: {
+            "is_admin": False,
+            "owner_ids": set(),
+            "usernames": {"alice"},
+        },
+    )
+
+    def _unexpected(*_args, **_kwargs):
+        called["count"] += 1
+        return {}
+
+    monkeypatch.setattr(backend_main, "summarize_audit_events", _unexpected)
+
+    response = client.post(
+        "/v1/read/query",
+        headers={"X-OKR-Actor": "alice"},
+        json={"kind": "audit.summary", "params": {"days": 7}},
+    )
+
+    assert response.status_code == 403
+    assert called["count"] == 0
+
+
 def test_read_query_mindmap_task_uses_detached_safe_serializer(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
     captured = {}
@@ -1138,6 +1234,86 @@ def test_ai_analyze_node_endpoint_prefers_header_actor_over_payload_actor(monkey
     assert str(captured["node_type"]) == "OBJECTIVE"
     assert captured["actor_username"] == "alice"
     assert int(response.json().get("overall_score", 0)) == 84
+
+
+def test_ai_analyze_node_endpoint_writes_audit_event_on_success(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    audit_calls = []
+
+    monkeypatch.setattr(
+        backend_main,
+        "audit_log",
+        lambda *args, **kwargs: audit_calls.append({"args": args, "kwargs": kwargs}),
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "get_user_by_username",
+        lambda username: SimpleNamespace(
+            role=SimpleNamespace(value="manager"),
+            team_id=9,
+        ),
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "analyze_node",
+        lambda *args, **kwargs: {"overall_score": 84, "summary": "healthy"},
+    )
+
+    response = client.post(
+        "/v1/ai/analyze-node",
+        headers={"X-OKR-Actor": "alice"},
+        json={"node_id": 42, "node_type": "OBJECTIVE"},
+    )
+
+    assert response.status_code == 200
+    assert len(audit_calls) == 1
+    assert audit_calls[0]["kwargs"]["action"] == "analyze"
+    assert audit_calls[0]["kwargs"]["entity"] == "ai_node"
+    assert audit_calls[0]["kwargs"]["actor"] == "alice"
+    assert audit_calls[0]["kwargs"]["target_type"] == "node"
+    assert int(audit_calls[0]["kwargs"]["target_id"]) == 42
+    assert audit_calls[0]["kwargs"]["details"]["success"] is True
+    assert audit_calls[0]["kwargs"]["details"]["actor_role"] == "manager"
+    assert int(audit_calls[0]["kwargs"]["details"]["actor_team_id"]) == 9
+
+
+def test_ai_analyze_node_endpoint_writes_audit_event_on_failure(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    audit_calls = []
+
+    monkeypatch.setattr(
+        backend_main,
+        "audit_log",
+        lambda *args, **kwargs: audit_calls.append({"args": args, "kwargs": kwargs}),
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "get_user_by_username",
+        lambda username: SimpleNamespace(
+            role=SimpleNamespace(value="manager"),
+            team_id=9,
+        ),
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "analyze_node",
+        lambda *args, **kwargs: {"error": "Node 42 (OBJECTIVE) not found"},
+    )
+
+    response = client.post(
+        "/v1/ai/analyze-node",
+        headers={"X-OKR-Actor": "alice"},
+        json={"node_id": 42, "node_type": "OBJECTIVE"},
+    )
+
+    assert response.status_code == 404
+    assert len(audit_calls) == 1
+    assert audit_calls[0]["kwargs"]["action"] == "analyze"
+    assert audit_calls[0]["kwargs"]["entity"] == "ai_node"
+    assert audit_calls[0]["kwargs"]["target_type"] == "node"
+    assert int(audit_calls[0]["kwargs"]["target_id"]) == 42
+    assert audit_calls[0]["kwargs"]["details"]["success"] is False
+    assert audit_calls[0]["kwargs"]["details"]["error_type"] == "not_found"
 
 
 @pytest.mark.parametrize(

@@ -139,12 +139,12 @@ def get_latest_checkins_by_kr_from_crud(*, crud_module, session, kr_ids):
 def get_krs_needing_checkin_from_crud(
     *,
     crud_module,
-    user_id: str,
+    username: str,
     cycle_id: int,
     days_threshold: int = 7,
 ):
     return domain_analytics.get_krs_needing_checkin(
-        user_id,
+        username,
         cycle_id,
         days_threshold,
     )

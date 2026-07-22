@@ -338,10 +338,14 @@ export default function AtlasShell() {
     adminAiHealth,
     adminPdfHealth,
     adminHealthPending,
+    adminAuditSummary,
+    adminAuditSummaryPending,
+    adminAuditSummaryError,
     loadAdminCycles,
     loadAdminUsersAndTeams,
     loadAdminResources,
     loadAdminHealth,
+    loadAdminAuditSummary,
   } = useAdminResources();
   const ownerFilterOptions = useMemo(() => {
     const deduped = new Map<number, string>();
@@ -1216,10 +1220,12 @@ export default function AtlasShell() {
     adminTab,
     adminAiHealth,
     adminPdfHealth,
+    adminAuditSummary,
     routerReplace: (href) => router.replace(href),
     handleSidebarModeSelect,
     loadAdminResources,
     loadAdminHealth,
+    loadAdminAuditSummary,
     setUser,
     clearSnapshot,
   });
@@ -1534,6 +1540,15 @@ export default function AtlasShell() {
             return;
           }
           void loadAdminHealth(user, true);
+        }}
+        adminAuditSummary={adminAuditSummary}
+        adminAuditSummaryPending={adminAuditSummaryPending}
+        adminAuditSummaryError={adminAuditSummaryError}
+        onLoadAdminAuditSummary={() => {
+          if (!user) {
+            return;
+          }
+          void loadAdminAuditSummary(user);
         }}
         adminAiHealth={adminAiHealth}
         adminPdfHealth={adminPdfHealth}

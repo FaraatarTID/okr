@@ -3,11 +3,13 @@ import type {
   AdminAiHealthResponse,
   AdminDbRestoreResponse,
   AdminPdfHealthResponse,
+  AuditSummaryResponse,
   TeamDeleteResponse,
   TeamMutationResponse,
   UserMutationResponse,
   UserPasswordResetResponse,
 } from "@/lib/api/types";
+import { readBackendQuery } from "@/lib/api/atlas";
 
 export async function createUserMutation(input: {
   actor_username: string;
@@ -170,6 +172,22 @@ export async function readAdminPdfHealth(input: {
     throw new Error(`PDF health read failed: ${await responseDetail(response)}`);
   }
   return (await response.json()) as AdminPdfHealthResponse;
+}
+
+export async function readAuditSummary(input: {
+  actor_username: string;
+  days?: number;
+  recent_limit?: number;
+}): Promise<AuditSummaryResponse> {
+  const payload = await readBackendQuery({
+    actor_username: input.actor_username,
+    kind: "audit.summary",
+    params: {
+      days: input.days,
+      recent_limit: input.recent_limit,
+    },
+  });
+  return payload as AuditSummaryResponse;
 }
 
 export async function readAdminDbBackup(input: {

@@ -16,7 +16,11 @@ from src.crud import (
     get_user_by_id,
 )
 from src.database import get_session_context
-from src.models import Cycle, User, UserRole
+from src.serialization_helpers import (
+    serialize_cycle_snapshot,
+    serialize_user_snapshot,
+    serialize_weekly_plan_snapshot,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,51 +47,21 @@ class _CachedCallable:
         self._cache.clear()
 
 
-def _serialize_cycle(cycle: Any) -> dict[str, Any]:
-    return {
-        "id": int(getattr(cycle, "id")),
-        "title": str(getattr(cycle, "title", "") or ""),
-        "start_date": getattr(cycle, "start_date", None),
-        "end_date": getattr(cycle, "end_date", None),
-        "is_active": bool(getattr(cycle, "is_active", True)),
-        "owner_manager_id": getattr(cycle, "owner_manager_id", None),
-    }
+def _serialize_cycle(cycle: Any) -> dict[str, Any] | None:
+    return serialize_cycle_snapshot(cycle)
 
 
-def _serialize_user(user: Any) -> dict[str, Any]:
-    return {
-        "id": int(getattr(user, "id")),
-        "username": str(getattr(user, "username", "") or ""),
-        "display_name": getattr(user, "display_name", None),
-        "role": str(
-            getattr(user, "role", UserRole.MEMBER).value
-            if hasattr(getattr(user, "role", UserRole.MEMBER), "value")
-            else getattr(user, "role", "member")
-        ).lower(),
-        "manager_id": getattr(user, "manager_id", None),
-        "team_id": getattr(user, "team_id", None),
-        "is_active": bool(getattr(user, "is_active", True)),
-        "must_change_password": bool(getattr(user, "must_change_password", False)),
-    }
+def _serialize_user(user: Any) -> dict[str, Any] | None:
+    return serialize_user_snapshot(user)
 
 
-def _serialize_weekly_plan(plan: Any) -> dict[str, Any]:
-    return {
-        "id": int(getattr(plan, "id")),
-        "user_id": getattr(plan, "user_id", None),
-        "week_start_date": getattr(plan, "week_start_date", None),
-        "week_end_date": getattr(plan, "week_end_date", None),
-        "priority_1": getattr(plan, "priority_1", None),
-        "priority_2": getattr(plan, "priority_2", None),
-        "priority_3": getattr(plan, "priority_3", None),
-        "created_at": getattr(plan, "created_at", None),
-        "is_active": bool(getattr(plan, "is_active", True)),
-    }
+def _serialize_weekly_plan(plan: Any) -> dict[str, Any] | None:
+    return serialize_weekly_plan_snapshot(plan)
 
 
 def _fetch_all_cycles_raw() -> list[dict[str, Any]]:
     cycles = get_all_cycles()
-    return [_serialize_cycle(c) for c in (cycles or [])]
+    return [cycle for cycle in (_serialize_cycle(c) for c in (cycles or [])) if cycle is not None]
 
 
 _cached_get_all_cycles = _CachedCallable(_fetch_all_cycles_raw)

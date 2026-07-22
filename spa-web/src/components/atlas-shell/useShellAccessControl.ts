@@ -5,6 +5,7 @@ import { useCallback, useEffect, type Dispatch, type SetStateAction } from "reac
 import {
   logoutSession,
   type AdminAiHealthResponse,
+  type AuditSummaryResponse,
   type AdminPdfHealthResponse,
   type AuthUser,
 } from "@/lib/api";
@@ -17,10 +18,12 @@ type UseShellAccessControlInput = {
   adminTab: string;
   adminAiHealth: AdminAiHealthResponse | null;
   adminPdfHealth: AdminPdfHealthResponse | null;
+  adminAuditSummary: AuditSummaryResponse | null;
   routerReplace: (href: string) => void;
   handleSidebarModeSelect: (nextMode: string) => void;
   loadAdminResources: (activeUser: AuthUser) => Promise<void>;
   loadAdminHealth: (activeUser: AuthUser, liveProbe: boolean) => Promise<void>;
+  loadAdminAuditSummary: (activeUser: AuthUser) => Promise<void>;
   setUser: Dispatch<SetStateAction<AuthUser | null>>;
   clearSnapshot: () => void;
 };
@@ -33,10 +36,12 @@ export default function useShellAccessControl({
   adminTab,
   adminAiHealth,
   adminPdfHealth,
+  adminAuditSummary,
   routerReplace,
   handleSidebarModeSelect,
   loadAdminResources,
   loadAdminHealth,
+  loadAdminAuditSummary,
   setUser,
   clearSnapshot,
 }: UseShellAccessControlInput) {
@@ -74,6 +79,16 @@ export default function useShellAccessControl({
     }
     void loadAdminHealth(user, false);
   }, [adminAiHealth, adminPdfHealth, adminTab, isAdmin, loadAdminHealth, mode, user]);
+
+  useEffect(() => {
+    if (!user || !isAdmin || mode !== "admin" || adminTab !== "audit") {
+      return;
+    }
+    if (adminAuditSummary) {
+      return;
+    }
+    void loadAdminAuditSummary(user);
+  }, [adminAuditSummary, adminTab, isAdmin, loadAdminAuditSummary, mode, user]);
 
   const handleSignOut = useCallback((): void => {
     void (async () => {

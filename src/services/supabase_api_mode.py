@@ -6,6 +6,7 @@ connectivity is blocked and only HTTPS (443) is available.
 
 from __future__ import annotations
 
+from collections import Counter
 import json
 import logging
 import time
@@ -2078,6 +2079,83 @@ def get_leadership_metrics_via_supabase_api(*, usernames: list[str], cycle_id: i
 def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str) -> dict[str, Any]:
     _ = actor
     normalized = str(kind or "").strip()
+
+    if normalized == "audit.summary":
+        safe_days = max(1, int(params.get("days") or 30))
+        safe_recent_limit = max(1, min(100, int(params.get("recent_limit") or 20)))
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=safe_days)).isoformat()
+        query: dict[str, str] = {
+            "select": "id,actor,actor_user_id,actor_role,actor_team_id,action,entity,result,target_type,target_id,target_owner_id,target_team_id,correlation_id,request_id,created_at",
+            "created_at": f"gte.{cutoff}",
+            "order": "created_at.desc,id.desc",
+            "limit": "500",
+        }
+        for key in ("action", "entity", "actor", "actor_role", "target_type", "correlation_id", "request_id", "result"):
+            value = params.get(key)
+            if value is not None and str(value).strip():
+                query[key] = f"eq.{str(value).strip()}"
+        for key in ("actor_user_id", "actor_team_id", "target_id", "target_owner_id", "target_team_id"):
+            value = params.get(key)
+            if value is not None and str(value).strip():
+                query[key] = f"eq.{_as_int(value, 0)}"
+
+        rows: list[dict[str, Any]] = []
+        offset = 0
+        while True:
+            page_query = dict(query)
+            page_query["offset"] = str(offset)
+            status, page_rows = _rest_select("audit_event", query=page_query)
+            if status >= 400:
+                raise ValueError(f"Supabase API error (audit.summary): {status}")
+            rows.extend(page_rows)
+            if len(page_rows) < 500:
+                break
+            offset += 500
+
+        if not rows:
+            return {
+                "window_days": safe_days,
+                "recent_limit": safe_recent_limit,
+                "total_events": 0,
+                "success_events": 0,
+                "failure_events": 0,
+                "latest_event_at": None,
+                "by_actor_role": [],
+                "by_actor_team_id": [],
+                "by_target_type": [],
+                "by_entity": [],
+                "by_action": [],
+                "recent_events": [],
+            }
+
+        def _count_by(field: str) -> list[dict[str, Any]]:
+            counter: Counter[Any] = Counter()
+            for row in rows:
+                value = row.get(field)
+                if value is None:
+                    continue
+                counter[value] += 1
+            items = [{"value": value, "count": int(count)} for value, count in counter.items()]
+            items.sort(key=lambda item: (-int(item["count"]), str(item["value"])))
+            return items
+
+        success_events = sum(1 for row in rows if str(row.get("result") or "").lower() == "success")
+        failure_events = sum(1 for row in rows if str(row.get("result") or "").lower() == "failure")
+
+        return {
+            "window_days": safe_days,
+            "recent_limit": safe_recent_limit,
+            "total_events": len(rows),
+            "success_events": success_events,
+            "failure_events": failure_events,
+            "latest_event_at": rows[0].get("created_at"),
+            "by_actor_role": _count_by("actor_role"),
+            "by_actor_team_id": _count_by("actor_team_id"),
+            "by_target_type": _count_by("target_type"),
+            "by_entity": _count_by("entity"),
+            "by_action": _count_by("action"),
+            "recent_events": rows[:safe_recent_limit],
+        }
 
     if normalized == "users.by_username":
         username = str(params.get("username") or "").strip()
