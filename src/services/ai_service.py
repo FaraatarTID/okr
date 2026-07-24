@@ -34,6 +34,15 @@ _parent_dir = os.path.dirname(
 load_dotenv(os.path.join(_parent_dir, ".env"))
 
 
+def _sanitize_for_prompt(text: str) -> str:
+    """Strip characters that could break out of quoted prompt context."""
+    if not text:
+        return ""
+    sanitized = text.replace("```", "").replace('"""', "").replace("'''", "")
+    sanitized = " ".join(sanitized.split())
+    return sanitized[:2000]
+
+
 def is_external_ai_allowed() -> bool:
     """Backward-compatible export used by runtime preflight."""
     return provider_external_ai_allowed()
@@ -313,13 +322,13 @@ def _build_parent_context(node, node_type: str) -> str:
         obj = getattr(node, "objective", None)
         if obj:
             parts.append(
-                f"Objective: \"{getattr(obj, 'title', 'N/A')}\" "
+                f"Objective: \"{_sanitize_for_prompt(getattr(obj, 'title', 'N/A'))}\" "
                 f"(progress: {getattr(obj, 'progress', 0)}%)"
             )
             goal = getattr(obj, "goal", None)
             if goal:
                 parts.append(
-                    f"Goal: \"{getattr(goal, 'title', 'N/A')}\" "
+                    f"Goal: \"{_sanitize_for_prompt(getattr(goal, 'title', 'N/A'))}\" "
                     f"(progress: {getattr(goal, 'progress', 0)}%)"
                 )
     elif node_type == "OBJECTIVE":
@@ -432,11 +441,11 @@ def _build_experiment_text(node) -> str:
         lines = []
         for exp in experiments[:5]:
             status = getattr(exp, "status", "unknown")
-            hypothesis = (getattr(exp, "hypothesis", "") or "").strip()
-            change = (getattr(exp, "change_description", "") or "").strip()
+            hypothesis = _sanitize_for_prompt((getattr(exp, "hypothesis", "") or "").strip())
+            change = _sanitize_for_prompt((getattr(exp, "change_description", "") or "").strip())
             decision = getattr(exp, "decision", None)
             decision_val = decision.value if decision else "pending"
-            rationale = (getattr(exp, "decision_rationale", "") or "").strip()
+            rationale = _sanitize_for_prompt((getattr(exp, "decision_rationale", "") or "").strip())
             direction = getattr(exp, "expected_effect_direction", None)
             direction_val = direction.value if direction else "N/A"
 
@@ -507,8 +516,8 @@ def _analyze_node_inner(
     children_text = ""
     for child in children:
         c_type = child.__tablename__.upper()
-        c_title = child.title
-        c_desc = child.description or ""
+        c_title = _sanitize_for_prompt(child.title)
+        c_desc = _sanitize_for_prompt(child.description or "")
         # Only include progress for KRs and Tasks (meaningful measured values)
         c_progress = child.progress or 0
         c_status = "DONE" if c_progress == 100 else "IN PROGRESS"
@@ -617,7 +626,7 @@ def _analyze_node_inner(
             for ci in cycle_check_ins[-10:]:
                 val = getattr(ci, "value", None)
                 conf = getattr(ci, "confidence_score", None)
-                comment = (getattr(ci, "comment", None) or "").strip()
+                comment = _sanitize_for_prompt((getattr(ci, "comment", None) or "").strip())
                 created = getattr(ci, "created_at", None)
                 date_str = created.strftime("%Y-%m-%d") if created else "?"
                 variation = getattr(ci, "variation_type", None)
@@ -661,8 +670,8 @@ def _analyze_node_inner(
     - Progress on Goals/Objectives is a computed rollup from child KRs — do NOT treat it as user-set.
     - The user writes insights about progress projections in retro sessions (experiments).
 
-    Target Node ({node_type_upper}): "{node.title}"
-    Description: "{node.description or "N/A"}"
+    Target Node ({node_type_upper}): "{_sanitize_for_prompt(node.title)}"
+    Description: "{_sanitize_for_prompt(str(node.description or "N/A"))}"
 
     CURRENT STATE:
     {json.dumps(current_snapshot["metrics"], indent=2, ensure_ascii=False)}

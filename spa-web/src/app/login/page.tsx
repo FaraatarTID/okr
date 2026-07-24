@@ -5,12 +5,29 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { bffLogin, readSessionUser } from "@/lib/api";
 
+const SAFE_RETURN_PATHS = new Set([
+  "/",
+  "/dashboard",
+  "/admin",
+  "/check-in",
+  "/daily",
+  "/weekly",
+  "/timeline",
+  "/ritual",
+  "/retrobox",
+]);
+
 function safeReturnPath(raw: string | null): string {
   const value = String(raw || "").trim();
   if (!value.startsWith("/") || value.startsWith("//")) {
     return "/";
   }
-  return value;
+  // Only allow paths that match our known routes
+  const path = value.split("?")[0].split("#")[0];
+  if (SAFE_RETURN_PATHS.has(path)) {
+    return value;
+  }
+  return "/";
 }
 
 function LoginPageContent() {

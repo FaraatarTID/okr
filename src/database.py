@@ -6,11 +6,13 @@ Supabase/PostgreSQL only.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
 import re
 import sys
+import time
 import traceback
 from collections.abc import Mapping
 from contextlib import contextmanager
@@ -186,6 +188,8 @@ _backup_lock = Lock()
 _emitted_db_advisories: set[str] = set()
 _direct_db_available: Optional[bool] = None
 _direct_db_check_lock = Lock()
+_last_db_probe_at: float = 0.0
+_DB_REPROBE_INTERVAL_SECONDS = 300  # Re-probe every 5 minutes
 
 BACKUP_FORMAT_VERSION = "okr-db-backup/v1"
 _MODEL_BINDING_NAMES = (
@@ -336,18 +340,21 @@ class DirectDBUnavailable(Exception):
 
 def _check_direct_db_connection() -> bool:
     """Test direct PostgreSQL connectivity. Returns True if reachable."""
-    global _direct_db_available
+    global _direct_db_available, _last_db_probe_at
     with _direct_db_check_lock:
-        if _direct_db_available is not None:
+        now = time.time()
+        if _direct_db_available is not None and (now - _last_db_probe_at) < _DB_REPROBE_INTERVAL_SECONDS:
             return _direct_db_available
         try:
             engine = get_engine()
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             _direct_db_available = True
+            _last_db_probe_at = now
             logger.info("Direct PostgreSQL connection OK (port 6543)")
         except Exception as exc:
             _direct_db_available = False
+            _last_db_probe_at = now
             logger.warning(
                 "Direct PostgreSQL unavailable: %s — will fall back to HTTPS 443",
                 exc,
@@ -356,9 +363,7 @@ def _check_direct_db_connection() -> bool:
 
 
 def is_direct_db_available() -> bool:
-    """Check if direct PostgreSQL is currently reachable (cached after first probe)."""
-    if _direct_db_available is not None:
-        return _direct_db_available
+    """Check if direct PostgreSQL is currently reachable (re-probes periodically)."""
     return _check_direct_db_connection()
 
 
@@ -560,14 +565,21 @@ def export_database_backup() -> bytes:
                     payload["tables"][table_name] = []
                     continue
                 rows = conn.execute(table.select()).mappings().all()
-                payload["tables"][table_name] = [
-                    {
+                table_rows = []
+                for row in rows:
+                    row_dict = {
                         key: _json_backup_encode_value(value)
                         for key, value in row.items()
                     }
-                    for row in rows
-                ]
+                    # Strip password hashes from user table to prevent credential leakage
+                    if table_name == "user" and "password_hash" in row_dict:
+                        row_dict["password_hash"] = "REDACTED"
+                    table_rows.append(row_dict)
+                payload["tables"][table_name] = table_rows
 
+    json_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    checksum = hashlib.sha256(json_bytes).hexdigest()
+    payload["checksum_sha256"] = checksum
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
@@ -616,6 +628,19 @@ def import_database_backup(backup_content: bytes | str | Mapping) -> dict:
 
     if payload.get("format") != BACKUP_FORMAT_VERSION:
         raise ValueError("Unsupported backup format version.")
+
+    # Verify checksum if present
+    stored_checksum = payload.get("checksum_sha256")
+    if stored_checksum:
+        verify_payload = {k: v for k, v in payload.items() if k != "checksum_sha256"}
+        verify_bytes = json.dumps(verify_payload, ensure_ascii=False, indent=2).encode("utf-8")
+        computed_checksum = hashlib.sha256(verify_bytes).hexdigest()
+        if computed_checksum != stored_checksum:
+            logger.warning(
+                "Backup checksum mismatch: expected %s, got %s. Proceeding with import.",
+                stored_checksum,
+                computed_checksum,
+            )
 
     tables_payload = payload.get("tables")
     if not isinstance(tables_payload, Mapping):
