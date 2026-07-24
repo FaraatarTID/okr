@@ -55,6 +55,7 @@ def test_shared_snapshot_serializers_normalize_shapes():
         "team_id": 5,
         "is_active": False,
         "must_change_password": True,
+        "token_version": 1,
     }
     assert serialize_weekly_plan_snapshot(weekly_plan) == {
         "id": 9,

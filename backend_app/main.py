@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 import uuid
 import math
 from contextlib import asynccontextmanager
@@ -75,6 +76,8 @@ from backend_app.security import require_service_access, resolve_actor_username
 from backend_app.security_state import get_app_state, set_app_state
 
 ensure_shared_src_on_path()
+
+_LOGGER = logging.getLogger(__name__)
 
 from src.crud import (
     authenticate_user_detailed,
@@ -558,12 +561,18 @@ def _resolve_actor(
     )
 
 
-def _resolve_actor_scope(session: Session, actor_username: str) -> dict[str, Any]:
+def _resolve_actor_scope(session: Session, actor_username: str, token_version: Optional[int] = None) -> dict[str, Any]:
     actor = session.exec(
         select(User).where(User.username == str(actor_username).strip())
     ).first()
     if not actor or not bool(getattr(actor, "is_active", False)):
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
+
+    # Verify token_version matches (session revocation on password change)
+    if token_version is not None:
+        current_version = getattr(actor, "token_version", 1)
+        if token_version != current_version:
+            raise HTTPException(status_code=401, detail="Session invalidated. Please log in again.")
 
     actor_id = getattr(actor, "id", None)
     if actor_id is None:
@@ -945,6 +954,7 @@ def _load_idempotent_response(
     try:
         parsed = json.loads(raw_state)
     except Exception:
+        _LOGGER.warning("Corrupted idempotency cache for key=%s; re-executing", key, exc_info=True)
         return None
     payload_hash = _payload_fingerprint(payload)
     saved_hash = str(parsed.get("payload_hash") or "")
@@ -1444,11 +1454,11 @@ def _serialize_node_for_type(node_type: str, node):
     return None
 
 
-def _resolve_scope_for_actor(actor: str) -> dict[str, Any]:
+def _resolve_scope_for_actor(actor: str, token_version: Optional[int] = None) -> dict[str, Any]:
     if is_supabase_api_mode_enabled():
         return _resolve_actor_scope_via_supabase_api(actor)
     with get_session_context() as session:
-        return _resolve_actor_scope(session, actor)
+        return _resolve_actor_scope(session, actor, token_version=token_version)
 
 
 def _require_allowed_user_id(scope: dict[str, Any], user_id: int) -> None:
@@ -1545,6 +1555,7 @@ def _filter_tasks_for_scope(tasks: list[Any], scope: dict[str, Any]) -> list[Any
             if assignee_id is not None and int(assignee_id) in owner_ids:
                 visible_tasks.append(task)
         except Exception:
+            _LOGGER.warning("Failed to evaluate task visibility (task_id=%s); skipping", getattr(task, "id", "?"), exc_info=True)
             continue
     return visible_tasks
 
@@ -2035,11 +2046,11 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             )
             all_objectives = list(
                 session.exec(
-                    select(Objective).where(Objective.id != int(objective_id))
+                    select(Objective).where(Objective.id != int(objective_id)).limit(500)
                 ).all()
             )
-            available_goals = list(session.exec(select(Goal)).all())
-            available_krs = list(session.exec(select(KeyResult)).all())
+            available_goals = list(session.exec(select(Goal).limit(500)).all())
+            available_krs = list(session.exec(select(KeyResult).limit(500)).all())
             try:
                 from src.models import ObjectiveAlignmentLink
                 obj_links = list(
@@ -2082,6 +2093,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
                 available_goals = [g for g in available_goals if getattr(g, "id", None) not in linked_goal_ids]
                 available_krs = [kr for kr in available_krs if getattr(kr, "id", None) not in linked_kr_ids]
             except Exception:
+                _LOGGER.warning("Failed to load alignment links for objective_id=%s; falling back to empty", objective_id, exc_info=True)
                 obj_links = []
         return {
             "parents": [
@@ -2500,6 +2512,7 @@ def api_ai_analyze_node(
     try:
         actor_user = get_user_by_username(actor)
     except Exception:
+        _LOGGER.warning("Failed to look up actor user '%s' for AI analysis; proceeding without role context", actor, exc_info=True)
         actor_user = None
     if actor_user:
         raw_role = getattr(actor_user, "role", None)
@@ -2611,13 +2624,15 @@ def api_ai_analyze_node(
 def api_ai_team_coach(
     payload: AiTeamCoachRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_token_version: Optional[str] = Header(default=None),
 ) -> dict:
     actor = _resolve_actor(
         header_actor=x_okr_actor,
         payload_actor=payload.actor_username,
     )
+    token_version = int(x_okr_token_version) if x_okr_token_version else None
     with get_session_context() as session:
-        _resolve_actor_scope(session, actor)
+        _resolve_actor_scope(session, actor, token_version=token_version)
     result = analyze_team_health(dict(payload.team_data or {}))
     if not isinstance(result, dict):
         raise HTTPException(status_code=500, detail="AI team coach returned invalid payload.")
@@ -2634,13 +2649,15 @@ def api_ai_team_coach(
 def api_ai_strategy_pulse(
     payload: AiStrategyPulseRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_token_version: Optional[str] = Header(default=None),
 ) -> dict:
     actor = _resolve_actor(
         header_actor=x_okr_actor,
         payload_actor=payload.actor_username,
     )
+    token_version = int(x_okr_token_version) if x_okr_token_version else None
     with get_session_context() as session:
-        scope = _resolve_actor_scope(session, actor)
+        scope = _resolve_actor_scope(session, actor, token_version=token_version)
     allowed_usernames = {str(value).strip() for value in (scope.get("usernames") or set())}
     subject_username = str(payload.subject_username or actor).strip()
     if not subject_username:

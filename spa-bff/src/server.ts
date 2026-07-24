@@ -220,8 +220,9 @@ export function createServer(
 
       const actorRequired = requiresActorHeader(request.method, backendPath);
       let actor: string | null = null;
+      let sessionUser: SessionUser | null = null;
       if (actorRequired) {
-        const sessionUser = readSessionUserFromRequest(config, request.headers);
+        sessionUser = readSessionUserFromRequest(config, request.headers);
         if (!sessionUser) {
           return reply.code(401).send({
             error: "Missing or invalid session for actor-scoped route.",
@@ -263,6 +264,12 @@ export function createServer(
       const queryString = queryIndex >= 0 ? request.url.slice(queryIndex) : "";
 
       try {
+        // Forward token_version header for session revocation validation
+        const tokenVersionHeader: Record<string, string> = {};
+        if (sessionUser?.token_version != null) {
+          tokenVersionHeader["x-okr-token-version"] = String(sessionUser.token_version);
+        }
+
         const result = await proxyToBackend(
           config,
           {
@@ -271,7 +278,7 @@ export function createServer(
             queryString,
             body: request.body,
             actor,
-            incomingHeaders: request.headers,
+            incomingHeaders: { ...request.headers, ...tokenVersionHeader },
           },
           deps,
         );

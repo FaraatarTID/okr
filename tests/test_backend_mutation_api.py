@@ -874,7 +874,7 @@ def test_read_atlas_snapshot_endpoint_scopes_owner_ids_for_non_admin(monkeypatch
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {
+        lambda _session, _actor, token_version=None: {
             "is_admin": False,
             "owner_ids": {2, 3},
             "usernames": {"alice"},
@@ -918,7 +918,7 @@ def test_read_atlas_snapshot_prefers_header_actor_over_payload_actor(monkeypatch
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, actor: (
+        lambda _session, actor, token_version=None: (
             captured.__setitem__("resolved_actor", actor)
             or {
                 "is_admin": True,
@@ -963,7 +963,7 @@ def test_read_atlas_snapshot_rejects_unauthorized_actor(monkeypatch):
 
     monkeypatch.setattr(backend_main, "get_session_context", _fake_session_context)
 
-    def _deny_scope(_session, _actor):
+    def _deny_scope(_session, _actor, token_version=None):
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
 
     monkeypatch.setattr(backend_main, "_resolve_actor_scope", _deny_scope)
@@ -996,7 +996,7 @@ def test_read_leadership_metrics_endpoint_scopes_usernames_for_non_admin(monkeyp
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {
+        lambda _session, _actor, token_version=None: {
             "is_admin": False,
             "owner_ids": {1},
             "usernames": {"alice", "bob"},
@@ -1037,7 +1037,7 @@ def test_read_query_audit_summary_requires_admin_and_forwards_filters(monkeypatc
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {
+        lambda _session, _actor, token_version=None: {
             "is_admin": True,
             "owner_ids": set(),
             "usernames": {"alice"},
@@ -1097,7 +1097,7 @@ def test_read_query_audit_summary_blocks_non_admin(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {
+        lambda _session, _actor, token_version=None: {
             "is_admin": False,
             "owner_ids": set(),
             "usernames": {"alice"},
@@ -1126,7 +1126,7 @@ def test_read_query_mindmap_task_uses_detached_safe_serializer(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_scope_for_actor",
-        lambda _actor: {"is_admin": True, "owner_ids": set(), "usernames": {"alice"}},
+        lambda _actor, token_version=None: {"is_admin": True, "owner_ids": set(), "usernames": {"alice"}},
     )
 
     monkeypatch.setattr(
@@ -1166,7 +1166,7 @@ def test_read_query_mindmap_key_result_uses_detached_safe_serializer(monkeypatch
     monkeypatch.setattr(
         backend_main,
         "_resolve_scope_for_actor",
-        lambda _actor: {"is_admin": True, "owner_ids": set(), "usernames": {"alice"}},
+        lambda _actor, token_version=None: {"is_admin": True, "owner_ids": set(), "usernames": {"alice"}},
     )
 
     monkeypatch.setattr(
@@ -1368,7 +1368,7 @@ def test_ai_team_coach_endpoint_prefers_header_actor_over_payload_actor(monkeypa
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, actor: (
+        lambda _session, actor, token_version=None: (
             captured.__setitem__("resolved_actor", actor)
             or {
                 "is_admin": True,
@@ -1444,7 +1444,7 @@ def test_ai_team_coach_endpoint_maps_error_to_bad_request(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {"is_admin": False, "owner_ids": {1}, "usernames": {"alice"}},
+        lambda _session, _actor, token_version=None: {"is_admin": False, "owner_ids": {1}, "usernames": {"alice"}},
     )
     monkeypatch.setattr(
         backend_main,
@@ -1474,7 +1474,7 @@ def test_ai_team_coach_endpoint_rejects_invalid_payload(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {"is_admin": False, "owner_ids": {1}, "usernames": {"alice"}},
+        lambda _session, _actor, token_version=None: {"is_admin": False, "owner_ids": {1}, "usernames": {"alice"}},
     )
     monkeypatch.setattr(backend_main, "analyze_team_health", lambda *_args, **_kwargs: ["bad"])
 
@@ -1501,7 +1501,7 @@ def test_ai_strategy_pulse_endpoint_prefers_header_actor_and_returns_payload(mon
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, actor: (
+        lambda _session, actor, token_version=None: (
             captured.__setitem__("resolved_actor", actor)
             or {
                 "is_admin": False,
@@ -1598,7 +1598,7 @@ def test_ai_strategy_pulse_endpoint_rejects_subject_outside_scope(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {
+        lambda _session, _actor, token_version=None: {
             "is_admin": False,
             "owner_ids": {1},
             "usernames": {"alice"},
@@ -1627,7 +1627,7 @@ def test_ai_strategy_pulse_endpoint_returns_404_when_user_missing(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {
+        lambda _session, _actor, token_version=None: {
             "is_admin": False,
             "owner_ids": {1},
             "usernames": {"alice"},
@@ -1657,7 +1657,7 @@ def test_ai_strategy_pulse_endpoint_maps_outlook_error_to_bad_request(monkeypatc
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {
+        lambda _session, _actor, token_version=None: {
             "is_admin": False,
             "owner_ids": {1},
             "usernames": {"alice"},
@@ -1702,7 +1702,7 @@ def test_ai_strategy_pulse_endpoint_rejects_invalid_outlook_payload(monkeypatch)
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {
+        lambda _session, _actor, token_version=None: {
             "is_admin": False,
             "owner_ids": {1},
             "usernames": {"alice"},
@@ -1736,7 +1736,7 @@ def test_read_query_cycles_all_returns_primary_active_cycle_for_member(monkeypat
     monkeypatch.setattr(
         backend_main,
         "_resolve_scope_for_actor",
-        lambda _actor: {
+        lambda _actor, token_version=None: {
             "is_admin": False,
             "role": "member",
             "owner_ids": {7},
@@ -1778,7 +1778,7 @@ def test_member_snapshot_rejects_non_active_cycle_override(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor: {
+        lambda _session, _actor, token_version=None: {
             "is_admin": False,
             "role": "member",
             "owner_ids": {7},

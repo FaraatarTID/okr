@@ -141,6 +141,7 @@ class User(SQLModel, table=True):
     team_id: Optional[int] = Field(default=None, foreign_key="team.id", index=True)
     created_at: datetime = Field(default_factory=utc_now_naive)
     is_active: bool = Field(default=True)
+    token_version: int = Field(default=1, index=True)
 
     # Relationships
     team: Optional[Team] = Relationship(

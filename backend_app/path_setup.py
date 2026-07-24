@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _load_env_file() -> None:
@@ -27,7 +30,7 @@ def _load_env_file() -> None:
                 if key and key not in os.environ:
                     os.environ[key] = value
     except Exception:
-        pass
+        _LOGGER.warning("Failed to load env file %s; environment variables may be missing", env_file, exc_info=True)
 
 
 def ensure_shared_src_on_path() -> None:
