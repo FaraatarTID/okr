@@ -164,8 +164,8 @@ def generate_pdf_html(
     """
     Generate HTML content for PDF (common for both methods)
     """
-    align = "right" if direction == "RTL" else "left"
-    dir_attr = direction.lower()
+    align = "right" if direction.upper() == "RTL" else "left"
+    dir_attr = _escape(direction.lower())
 
     # Find font path
     font_path = None
@@ -578,7 +578,7 @@ def generate_pdf_with_pdfshift_bytes(html, *, api_key: str = ""):
         return None
 
     except Exception as e:
-        _LOGGER.warning("PDFShift Exception: %s", e)
+        _LOGGER.warning("PDFShift Exception: %s: %s", type(e).__name__, str(e)[:200])
         return None
 
 
@@ -758,8 +758,11 @@ def generate_achievement_portfolio_pdf(portfolio: dict, direction: str = "RTL"):
 
     Returns: BytesIO object containing the PDF, or None on failure.
     """
-    align = "right" if direction == "RTL" else "left"
-    dir_attr = direction.lower()
+    _ALLOWED_DIR = {"ltr", "rtl", "LTR", "RTL"}
+    if direction not in _ALLOWED_DIR:
+        direction = "RTL"
+    align = "right" if direction.upper() == "RTL" else "left"
+    dir_attr = _escape(direction.lower())
 
     user_name = _escape(portfolio.get("user", "Team Member"))
     generated_at = _escape(portfolio.get("generated_at", ""))

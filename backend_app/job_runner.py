@@ -13,13 +13,17 @@ ensure_shared_src_on_path()
 from src.services.ai_provider import generate_json
 from src.services.pdf_service import generate_pdf_bytes, generate_pdf_html
 
+_ALLOWED_DIRECTIONS = frozenset({"ltr", "rtl", "LTR", "RTL"})
+
 
 def _run_pdf_weekly_job(payload: Dict[str, Any]) -> Dict[str, Any]:
     report_items = list(payload.get("report_items") or [])
     objective_stats = dict(payload.get("objective_stats") or {})
     total_time_str = str(payload.get("total_time_str") or "00:00")
     key_results = list(payload.get("key_results") or [])
-    direction = str(payload.get("direction") or "LTR")
+    direction = str(payload.get("direction") or "LTR").strip()
+    if direction not in _ALLOWED_DIRECTIONS:
+        direction = "LTR"
     title = str(payload.get("title") or "Work Report")
     time_label = str(payload.get("time_label") or "Last 7 Days")
     report_summary = payload.get("report_summary")

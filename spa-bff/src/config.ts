@@ -42,17 +42,41 @@ function requireNonEmpty(value: string | undefined, key: string): string {
   return normalized;
 }
 
+const INSECURE_SECRETS = new Set([
+  "change-me",
+  "CHANGE_ME",
+  "CHANGE_ME_BFF_SESSION_SECRET",
+  "changeme",
+  "secret",
+  "your-secret-here",
+]);
+
 function requireSessionSecret(env: NodeJS.ProcessEnv): string {
   const secret = String(env.BFF_SESSION_SECRET ?? "").trim();
   const isDevelopment = String(env.NODE_ENV ?? "").trim().toLowerCase() === "development";
-  if (secret) {
-    return secret;
+  if (!secret) {
+    if (isDevelopment) {
+      const crypto = require("crypto");
+      return crypto.randomBytes(32).toString("hex");
+    }
+    throw new Error("BFF_SESSION_SECRET is required for non-development spa-bff runtime.");
   }
-  if (isDevelopment) {
-    const crypto = require("crypto");
-    return crypto.randomBytes(32).toString("hex");
+
+  if (INSECURE_SECRETS.has(secret)) {
+    throw new Error(
+      `BFF_SESSION_SECRET is set to an insecure default value ("${secret}"). ` +
+      `Generate a strong random secret: openssl rand -hex 32`,
+    );
   }
-  throw new Error("BFF_SESSION_SECRET is required for non-development spa-bff runtime.");
+
+  if (secret.length < 32) {
+    throw new Error(
+      "BFF_SESSION_SECRET must be at least 32 characters. " +
+      "Generate one: openssl rand -hex 32",
+    );
+  }
+
+  return secret;
 }
 
 function normalizeBackendUrl(raw: string): string {

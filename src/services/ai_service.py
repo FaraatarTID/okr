@@ -83,7 +83,7 @@ def analyze_node(
         logger.exception(
             "Unhandled error in analyze_node(%s, %s)", node_id, node_type
         )
-        return {"error": f"Node analysis failed: {exc}"}
+        return {"error": "Node analysis failed due to an internal error."}
 
 
 def _fetch_node_for_analysis(

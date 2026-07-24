@@ -3,7 +3,7 @@ Domain logic for OKR lifecycle states (Draft, Active, Grading, Archived).
 """
 
 from typing import List, Set, Dict
-from src.models import LifecycleState
+from src.models import LifecycleState, TaskStatus
 
 # Allowed transitions for a state machine approach
 ALLOWED_TRANSITIONS: Dict[LifecycleState, Set[LifecycleState]] = {
@@ -11,6 +11,14 @@ ALLOWED_TRANSITIONS: Dict[LifecycleState, Set[LifecycleState]] = {
     LifecycleState.ACTIVE: {LifecycleState.GRADING, LifecycleState.DRAFT},
     LifecycleState.GRADING: {LifecycleState.ARCHIVED, LifecycleState.ACTIVE},
     LifecycleState.ARCHIVED: {LifecycleState.ACTIVE},  # Allow recovery if needed
+}
+
+# Allowed transitions for TaskStatus
+ALLOWED_TASK_TRANSITIONS: Dict[TaskStatus, Set[TaskStatus]] = {
+    TaskStatus.TODO: {TaskStatus.IN_PROGRESS, TaskStatus.BLOCKED},
+    TaskStatus.IN_PROGRESS: {TaskStatus.DONE, TaskStatus.BLOCKED, TaskStatus.TODO},
+    TaskStatus.DONE: {TaskStatus.TODO},  # Allow reopening
+    TaskStatus.BLOCKED: {TaskStatus.TODO, TaskStatus.IN_PROGRESS},
 }
 
 
@@ -21,6 +29,15 @@ def validate_transition(
     if current_state == next_state:
         return True
     return next_state in ALLOWED_TRANSITIONS.get(current_state, set())
+
+
+def validate_task_transition(
+    current_status: TaskStatus, next_status: TaskStatus
+) -> bool:
+    """Check if a transition between task statuses is allowed."""
+    if current_status == next_status:
+        return True
+    return next_status in ALLOWED_TASK_TRANSITIONS.get(current_status, set())
 
 
 def get_allowed_transitions(current_state: LifecycleState) -> List[LifecycleState]:

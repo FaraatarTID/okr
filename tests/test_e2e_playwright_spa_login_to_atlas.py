@@ -255,7 +255,7 @@ def e2e_stack(tmp_path_factory: pytest.TempPathFactory) -> E2EStack:
                 {
                     "BFF_HOST": "127.0.0.1",
                     "BFF_PORT": str(bff_port),
-                    "BFF_SESSION_SECRET": "e2e-session-secret",
+                    "BFF_SESSION_SECRET": "e2e-session-secret-at-least-32-chars",
                     "BFF_SESSION_TTL_SECONDS": "28800",
                     "BFF_COOKIE_SECURE": "false",
                     "OKR_BACKEND_API_URL": f"http://127.0.0.1:{backend_port}",

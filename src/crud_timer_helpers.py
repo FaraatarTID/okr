@@ -122,9 +122,21 @@ def stop_all_active_timers_from_crud(
 
 def start_timer_from_crud(*, crud_module, task_id: int, user_id: str):
     with crud_module.get_session_context() as session:
-        task = crud_module._query_owned_task_for_timer(session, task_id, user_id)
+        # Lock the task row to prevent concurrent timer operations.
+        # with_for_update() is a no-op on SQLite (tests) but provides
+        # a proper row lock on PostgreSQL.
+        task = session.exec(
+            crud_module.select(crud_module.Task)
+            .where(crud_module.Task.id == task_id)
+            .with_for_update()
+        ).first()
 
         if not task:
+            raise ValueError(f"Task {task_id} not found for user '{user_id}'")
+
+        # Verify ownership after acquiring the lock
+        auth_task = crud_module._query_owned_task_for_timer(session, task_id, user_id)
+        if not auth_task:
             raise ValueError(f"Task {task_id} not found for user '{user_id}'")
 
         active_work_log = crud_module._get_active_work_log_for_task(session, task_id)
@@ -132,7 +144,7 @@ def start_timer_from_crud(*, crud_module, task_id: int, user_id: str):
             return active_work_log
 
         crud_module._stop_all_active_timers(session, user_id, exclude_task_id=task_id)
-        start_time = task.timer_started_at or crud_module.utc_now_naive()
+        start_time = crud_module.utc_now_naive()
 
         task.timer_started_at = start_time
         session.add(task)
@@ -173,13 +185,21 @@ def stop_timer_from_crud(
     user_id: Optional[str] = None,
 ):
     with crud_module.get_session_context() as session:
-        if user_id:
-            task = crud_module._query_owned_task_for_timer(session, task_id, user_id)
-        else:
-            task = session.get(crud_module.Task, task_id)
+        # Lock the task row to prevent concurrent timer stop races
+        task = session.exec(
+            crud_module.select(crud_module.Task)
+            .where(crud_module.Task.id == task_id)
+            .with_for_update()
+        ).first()
 
         if not task:
             return None
+
+        # Verify ownership if user_id provided
+        if user_id:
+            auth_task = crud_module._query_owned_task_for_timer(session, task_id, user_id)
+            if not auth_task:
+                return None
 
         work_log = crud_module._get_active_work_log_for_task(session, task_id)
         if not work_log:

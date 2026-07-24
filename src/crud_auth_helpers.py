@@ -33,7 +33,7 @@ def auth_throttle_fail_open_allowed_from_crud(*, crud_module) -> bool:
         return False
     return crud_module.get_bool_config(
         "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN",
-        default=True,
+        default=False,
     )
 
 

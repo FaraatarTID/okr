@@ -7,11 +7,31 @@ describe("spa-bff config", () => {
     const config = readConfig({
       OKR_BACKEND_API_URL: "http://backend-api:8100",
       OKR_BACKEND_SERVICE_TOKEN: "svc-token",
-      BFF_SESSION_SECRET: "session-secret",
+      BFF_SESSION_SECRET: "a-very-secure-session-secret-that-is-at-least-32-chars",
     });
     expect(config.requestTimeoutMs).toBe(20_000);
     expect(config.sessionTtlSeconds).toBe(28_800);
     expect(config.cookieSecure).toBe(true);
+  });
+
+  it("rejects insecure default session secrets", () => {
+    expect(() =>
+      readConfig({
+        OKR_BACKEND_API_URL: "http://backend-api:8100",
+        OKR_BACKEND_SERVICE_TOKEN: "svc-token",
+        BFF_SESSION_SECRET: "change-me",
+      }),
+    ).toThrow(/insecure default/);
+  });
+
+  it("rejects short session secrets", () => {
+    expect(() =>
+      readConfig({
+        OKR_BACKEND_API_URL: "http://backend-api:8100",
+        OKR_BACKEND_SERVICE_TOKEN: "svc-token",
+        BFF_SESSION_SECRET: "short",
+      }),
+    ).toThrow(/at least 32 characters/);
   });
 
   it("requires session secret in non-development runtime", () => {

@@ -186,13 +186,15 @@ def test_authentication_falls_back_when_throttle_table_missing(isolated_db):
 
     failed = authenticate_user_detailed("alice", "wrong-pass", client_ip="203.0.113.10")
     assert failed["success"] is False
-    assert failed["error_code"] == "AUTH_INVALID_CREDENTIALS"
+    # With fail-open default changed to False, throttle table errors now deny auth
+    assert failed["error_code"] == "AUTH_TEMP_UNAVAILABLE"
 
-    success = authenticate_user_detailed(
+    # Even correct credentials are denied when throttle table is missing
+    denied = authenticate_user_detailed(
         "alice", "alice-pass", client_ip="203.0.113.10"
     )
-    assert success["success"] is True
-    assert success["user"] is not None
+    assert denied["success"] is False
+    assert denied["error_code"] == "AUTH_TEMP_UNAVAILABLE"
 
 
 def test_authentication_falls_back_on_generic_throttle_operational_error(
@@ -216,13 +218,15 @@ def test_authentication_falls_back_on_generic_throttle_operational_error(
 
     failed = authenticate_user_detailed("alice", "wrong-pass", client_ip="203.0.113.10")
     assert failed["success"] is False
-    assert failed["error_code"] == "AUTH_INVALID_CREDENTIALS"
+    # With fail-open default changed to False, throttle errors now deny auth
+    assert failed["error_code"] == "AUTH_TEMP_UNAVAILABLE"
 
-    success = authenticate_user_detailed(
+    # Even correct credentials are denied when throttle is unavailable
+    denied = authenticate_user_detailed(
         "alice", "alice-pass", client_ip="203.0.113.10"
     )
-    assert success["success"] is True
-    assert success["user"] is not None
+    assert denied["success"] is False
+    assert denied["error_code"] == "AUTH_TEMP_UNAVAILABLE"
 
 
 def test_authentication_fails_closed_on_throttle_operational_error_in_production(

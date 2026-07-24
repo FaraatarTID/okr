@@ -9,6 +9,8 @@ from __future__ import annotations
 from collections import Counter
 import json
 import logging
+import os
+import ssl
 import time
 from datetime import datetime, timedelta, timezone
 import types
@@ -54,6 +56,20 @@ def _api_key() -> str:
     return key
 
 
+def _get_ssl_context() -> ssl.SSLContext:
+    """Build an SSL context that verifies certificates.
+
+    Supports an optional custom CA bundle via OKR_SSL_CA_BUNDLE for
+    environments using self-signed or corporate certificates.
+    """
+    ca_bundle = str(get_config_value("OKR_SSL_CA_BUNDLE", "")).strip()
+    if ca_bundle:
+        ctx = ssl.create_default_context(cafile=ca_bundle)
+    else:
+        ctx = ssl.create_default_context()
+    return ctx
+
+
 def _request_json(path: str, *, query: Optional[dict[str, str]] = None) -> tuple[int, Any]:
     return _request_json_with_method("GET", path, query=query, body=None)
 
@@ -83,10 +99,7 @@ def _request_json_with_method(
     if prefer_representation:
         headers["Prefer"] = "return=representation"
     req = urllib.request.Request(url, method=str(method or "GET").upper(), headers=headers, data=payload)
-    import ssl
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
+    ssl_ctx = _get_ssl_context()
     try:
         with urllib.request.urlopen(req, timeout=10, context=ssl_ctx) as resp:
             body = resp.read().decode("utf-8", errors="replace")
@@ -1100,7 +1113,10 @@ def create_experiment_via_supabase_api(
 
 def update_experiment_via_supabase_api(*, experiment_id: int, updates: dict[str, Any], actor_username: str):
     _ = actor_username
-    payload = {k: _coerce_payload_value(v) for k, v in dict(updates or {}).items()}
+    # Filter to allowed fields to prevent mass-assignment
+    allowed = _ALLOWED_EXPERIMENT_UPDATE_FIELDS
+    filtered = {k: v for k, v in dict(updates or {}).items() if k in allowed}
+    payload = {k: _coerce_payload_value(v) for k, v in filtered.items()}
     status, rows = _rest_update(
         "experiment",
         match_query={"id": f"eq.{int(experiment_id)}"},

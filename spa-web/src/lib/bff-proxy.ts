@@ -32,6 +32,7 @@ export async function proxyToBff(
     "accept",
     "content-type",
     "x-okr-idempotency-key",
+    "x-xsrf-token",
     "x-request-id",
     "x-correlation-id",
     "cookie",
@@ -70,15 +71,9 @@ export async function proxyToBff(
       headers: responseHeaders,
     });
   } catch (error) {
-    const detail =
-      error instanceof Error && error.message
-        ? error.message
-        : String(error ?? "unknown proxy failure");
     return NextResponse.json(
       {
         error: "BFF request failed.",
-        detail,
-        bff_origin: BFF_ORIGIN,
       },
       { status: 502 },
     );
