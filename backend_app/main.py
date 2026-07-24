@@ -2041,11 +2041,11 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             )
             all_objectives = list(
                 session.exec(
-                    select(Objective).where(Objective.id != int(objective_id))
+                    select(Objective).where(Objective.id != int(objective_id)).limit(500)
                 ).all()
             )
-            available_goals = list(session.exec(select(Goal)).all())
-            available_krs = list(session.exec(select(KeyResult)).all())
+            available_goals = list(session.exec(select(Goal).limit(500)).all())
+            available_krs = list(session.exec(select(KeyResult).limit(500)).all())
             try:
                 from src.models import ObjectiveAlignmentLink
                 obj_links = list(
