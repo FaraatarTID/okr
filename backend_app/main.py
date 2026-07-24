@@ -558,12 +558,18 @@ def _resolve_actor(
     )
 
 
-def _resolve_actor_scope(session: Session, actor_username: str) -> dict[str, Any]:
+def _resolve_actor_scope(session: Session, actor_username: str, token_version: Optional[int] = None) -> dict[str, Any]:
     actor = session.exec(
         select(User).where(User.username == str(actor_username).strip())
     ).first()
     if not actor or not bool(getattr(actor, "is_active", False)):
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
+
+    # Verify token_version matches (session revocation on password change)
+    if token_version is not None:
+        current_version = getattr(actor, "token_version", 1)
+        if token_version != current_version:
+            raise HTTPException(status_code=401, detail="Session invalidated. Please log in again.")
 
     actor_id = getattr(actor, "id", None)
     if actor_id is None:
@@ -1444,11 +1450,11 @@ def _serialize_node_for_type(node_type: str, node):
     return None
 
 
-def _resolve_scope_for_actor(actor: str) -> dict[str, Any]:
+def _resolve_scope_for_actor(actor: str, token_version: Optional[int] = None) -> dict[str, Any]:
     if is_supabase_api_mode_enabled():
         return _resolve_actor_scope_via_supabase_api(actor)
     with get_session_context() as session:
-        return _resolve_actor_scope(session, actor)
+        return _resolve_actor_scope(session, actor, token_version=token_version)
 
 
 def _require_allowed_user_id(scope: dict[str, Any], user_id: int) -> None:
@@ -2611,13 +2617,15 @@ def api_ai_analyze_node(
 def api_ai_team_coach(
     payload: AiTeamCoachRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_token_version: Optional[str] = Header(default=None),
 ) -> dict:
     actor = _resolve_actor(
         header_actor=x_okr_actor,
         payload_actor=payload.actor_username,
     )
+    token_version = int(x_okr_token_version) if x_okr_token_version else None
     with get_session_context() as session:
-        _resolve_actor_scope(session, actor)
+        _resolve_actor_scope(session, actor, token_version=token_version)
     result = analyze_team_health(dict(payload.team_data or {}))
     if not isinstance(result, dict):
         raise HTTPException(status_code=500, detail="AI team coach returned invalid payload.")
@@ -2634,13 +2642,15 @@ def api_ai_team_coach(
 def api_ai_strategy_pulse(
     payload: AiStrategyPulseRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_token_version: Optional[str] = Header(default=None),
 ) -> dict:
     actor = _resolve_actor(
         header_actor=x_okr_actor,
         payload_actor=payload.actor_username,
     )
+    token_version = int(x_okr_token_version) if x_okr_token_version else None
     with get_session_context() as session:
-        scope = _resolve_actor_scope(session, actor)
+        scope = _resolve_actor_scope(session, actor, token_version=token_version)
     allowed_usernames = {str(value).strip() for value in (scope.get("usernames") or set())}
     subject_username = str(payload.subject_username or actor).strip()
     if not subject_username:

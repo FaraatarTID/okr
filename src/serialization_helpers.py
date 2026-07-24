@@ -56,6 +56,7 @@ def serialize_user_snapshot(
         "team_id": getattr(user, "team_id", None),
         "is_active": bool(getattr(user, "is_active", True)),
         "must_change_password": bool(getattr(user, "must_change_password", False)),
+        "token_version": int(getattr(user, "token_version", 1)),
     }
 
 

@@ -12,6 +12,7 @@ export interface SessionUser {
   team_id?: number | null;
   manager_id?: number | null;
   must_change_password?: boolean;
+  token_version?: number;
 }
 
 interface SessionPayload {
@@ -82,6 +83,7 @@ function normalizeSessionUser(value: unknown): SessionUser | null {
     team_id: user.team_id == null ? null : Number(user.team_id),
     manager_id: user.manager_id == null ? null : Number(user.manager_id),
     must_change_password: Boolean(user.must_change_password),
+    token_version: user.token_version == null ? undefined : Number(user.token_version),
   };
 }
 

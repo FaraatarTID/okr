@@ -972,6 +972,8 @@ def reset_user_password_from_crud(
             user.password_changed_at = (
                 None if require_change else crud_module.utc_now_naive()
             )
+            # Invalidate existing sessions by incrementing token_version
+            user.token_version = (getattr(user, "token_version", 0) or 0) + 1
             session.add(user)
             session.flush()
             session.refresh(user)
