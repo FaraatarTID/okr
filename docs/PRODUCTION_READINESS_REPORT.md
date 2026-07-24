@@ -1,3 +1,5 @@
+Documentation HQ: [README](../README.md)
+
 # Production Readiness Report — OKR Tracker
 
 **Date:** 2026-07-24
