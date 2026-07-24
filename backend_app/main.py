@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 import uuid
 import math
 from contextlib import asynccontextmanager
@@ -75,6 +76,8 @@ from backend_app.security import require_service_access, resolve_actor_username
 from backend_app.security_state import get_app_state, set_app_state
 
 ensure_shared_src_on_path()
+
+_LOGGER = logging.getLogger(__name__)
 
 from src.crud import (
     authenticate_user_detailed,
@@ -951,6 +954,7 @@ def _load_idempotent_response(
     try:
         parsed = json.loads(raw_state)
     except Exception:
+        _LOGGER.warning("Corrupted idempotency cache for key=%s; re-executing", key, exc_info=True)
         return None
     payload_hash = _payload_fingerprint(payload)
     saved_hash = str(parsed.get("payload_hash") or "")
@@ -1551,6 +1555,7 @@ def _filter_tasks_for_scope(tasks: list[Any], scope: dict[str, Any]) -> list[Any
             if assignee_id is not None and int(assignee_id) in owner_ids:
                 visible_tasks.append(task)
         except Exception:
+            _LOGGER.warning("Failed to evaluate task visibility (task_id=%s); skipping", getattr(task, "id", "?"), exc_info=True)
             continue
     return visible_tasks
 
@@ -2088,6 +2093,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
                 available_goals = [g for g in available_goals if getattr(g, "id", None) not in linked_goal_ids]
                 available_krs = [kr for kr in available_krs if getattr(kr, "id", None) not in linked_kr_ids]
             except Exception:
+                _LOGGER.warning("Failed to load alignment links for objective_id=%s; falling back to empty", objective_id, exc_info=True)
                 obj_links = []
         return {
             "parents": [
@@ -2506,6 +2512,7 @@ def api_ai_analyze_node(
     try:
         actor_user = get_user_by_username(actor)
     except Exception:
+        _LOGGER.warning("Failed to look up actor user '%s' for AI analysis; proceeding without role context", actor, exc_info=True)
         actor_user = None
     if actor_user:
         raw_role = getattr(actor_user, "role", None)

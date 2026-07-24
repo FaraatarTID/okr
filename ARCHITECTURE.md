@@ -83,6 +83,11 @@ Primary data/control flow:
 - Data egress boundary:
   - AI calls are policy-gated by `ALLOW_EXTERNAL_AI`.
   - `AI_PROVIDER=openai_compatible` supports internal/self-hosted gateways.
+- Observability boundary:
+  - All backend services use structured Python logging (`logging.getLogger(__name__)`).
+  - Error handlers use `logger.exception()` to include tracebacks in logs.
+  - Fail-open fallback paths log at `warning` level with `exc_info=True` for debugging.
+  - Audit events are persisted to `AuditEvent` table with correlation/request IDs.
 
 ## Module Boundaries
 

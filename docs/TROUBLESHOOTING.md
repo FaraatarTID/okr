@@ -99,6 +99,17 @@ Login not working
 - Default admin only exists on an empty DB
 - Check password hash path; try reset via Admin Panel after login
 
+Checking logs for errors
+
+- Backend API logs: `docker compose -f deploy/docker/docker-compose.yml logs -f backend-api`
+- Backend worker logs: `docker compose -f deploy/docker/docker-compose.yml logs -f backend-worker`
+- Local launcher logs: check `tmp/local-hybrid-logs/`
+- Key log patterns to watch for:
+  - `WARNING` with `exc_info=True` — fallback paths that silently recovered (e.g., corrupted idempotency cache, task visibility filter failures, alignment link load failures)
+  - `ERROR` with traceback — unrecoverable failures (migration errors, DB connection failures)
+  - `exception` calls — caught exceptions with full tracebacks for debugging
+- If tasks or alignment data appear missing in the UI, check backend-api logs for `Failed to evaluate task visibility` or `Failed to load alignment links` warnings
+
 Supabase connection errors
 
 - Verify OKR_DATABASE_URL uses `postgresql+psycopg2://`
