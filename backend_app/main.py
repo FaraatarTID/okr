@@ -2340,7 +2340,11 @@ async def api_admin_db_restore(
     "/v1/state/{key}",
     dependencies=[Depends(require_service_access)],
 )
-def api_get_app_state(key: str) -> dict:
+def api_get_app_state(
+    key: str,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    _require_admin_actor_scope(str(x_okr_actor or ""))
     value = get_app_state(key)
     return {"key": key, "value": value}
 
@@ -2349,7 +2353,12 @@ def api_get_app_state(key: str) -> dict:
     "/v1/state/{key}",
     dependencies=[Depends(require_service_access)],
 )
-async def api_set_app_state(key: str, request: Request) -> dict:
+async def api_set_app_state(
+    key: str,
+    request: Request,
+    x_okr_actor: Optional[str] = Header(default=None),
+) -> dict:
+    _require_admin_actor_scope(str(x_okr_actor or ""))
     # Accept raw text/plain or json-wrapped value
     try:
         body = await request.body()
@@ -2875,11 +2884,22 @@ def api_delete_job(
 def api_create_goal(
     payload: GoalCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor,
         payload_actor=payload.actor_username or payload.user_id,
     )
+    idempotency_scope = "goals.create"
+    idempotency_payload = _payload_to_jsonable(payload)
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _node_view_from_obj("GOAL", replay)
     try:
         if is_supabase_api_mode_enabled():
             goal = create_goal_via_supabase_api(
@@ -2903,7 +2923,15 @@ def api_create_goal(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _node_view_from_obj("GOAL", goal)
+    result = _node_view_from_obj("GOAL", goal)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(result.model_dump()),
+    )
+    return result
 
 
 @app.post(
@@ -2915,10 +2943,21 @@ def api_create_goal(
 def api_create_objective(
     payload: ObjectiveCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    idempotency_scope = "objectives.create"
+    idempotency_payload = _payload_to_jsonable(payload)
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _node_view_from_obj("OBJECTIVE", replay)
     try:
         if is_supabase_api_mode_enabled():
             objective = create_objective_via_supabase_api(
@@ -2940,7 +2979,15 @@ def api_create_objective(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return _node_view_from_obj("OBJECTIVE", objective)
+    result = _node_view_from_obj("OBJECTIVE", objective)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(result.model_dump()),
+    )
+    return result
 
 
 @app.post(
@@ -2952,10 +2999,21 @@ def api_create_objective(
 def api_create_key_result(
     payload: KeyResultCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    idempotency_scope = "key_results.create"
+    idempotency_payload = _payload_to_jsonable(payload)
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _node_view_from_obj("KEY_RESULT", replay)
     try:
         if is_supabase_api_mode_enabled():
             key_result = create_key_result_via_supabase_api(
@@ -2983,7 +3041,15 @@ def api_create_key_result(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return _node_view_from_obj("KEY_RESULT", key_result)
+    result = _node_view_from_obj("KEY_RESULT", key_result)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(result.model_dump()),
+    )
+    return result
 
 
 @app.post(
@@ -2995,10 +3061,21 @@ def api_create_key_result(
 def api_create_task(
     payload: TaskCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_idempotency_key: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    idempotency_scope = "tasks.create"
+    idempotency_payload = _payload_to_jsonable(payload)
+    replay = _load_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+    )
+    if replay:
+        return _node_view_from_obj("TASK", replay)
     try:
         if is_supabase_api_mode_enabled():
             task = create_task_via_supabase_api(
@@ -3026,7 +3103,15 @@ def api_create_task(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    return _node_view_from_obj("TASK", task)
+    result = _node_view_from_obj("TASK", task)
+    _store_idempotent_response(
+        scope=idempotency_scope,
+        actor=actor,
+        idempotency_key=x_okr_idempotency_key,
+        payload=idempotency_payload,
+        response_payload=_payload_to_jsonable(result.model_dump()),
+    )
+    return result
 
 
 @app.patch(

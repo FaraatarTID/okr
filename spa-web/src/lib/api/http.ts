@@ -32,7 +32,20 @@ export function jsonHeaders(actor?: string, includeJsonContentType = true): Reco
   if (actor) {
     headers["x-okr-actor"] = actor;
   }
+  // Include CSRF token from cookie for state-changing requests
+  const csrfToken = readCsrfTokenFromDocumentCookie();
+  if (csrfToken) {
+    headers["x-xsrf-token"] = csrfToken;
+  }
   return headers;
+}
+
+function readCsrfTokenFromDocumentCookie(): string {
+  if (typeof document === "undefined") {
+    return "";
+  }
+  const match = document.cookie.match(/(?:^|;\s*)okr_csrf_token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : "";
 }
 
 export function waitMs(durationMs: number): Promise<void> {

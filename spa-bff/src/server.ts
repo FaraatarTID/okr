@@ -7,9 +7,13 @@ import { readConfig } from "./config.js";
 import { proxyToBackend } from "./proxy.js";
 import {
   clearSessionCookie,
+  clearCsrfCookie,
+  generateCsrfToken,
+  issueCsrfCookie,
   issueSessionCookie,
   issueSessionToken,
   readSessionUserFromCookie,
+  validateCsrfToken,
   type SessionUser,
 } from "./session.js";
 
@@ -146,14 +150,19 @@ export function createServer(
         secret: config.sessionSecret,
         ttlSeconds: config.sessionTtlSeconds,
       });
-      reply.header(
-        "set-cookie",
+      const csrfToken = generateCsrfToken();
+      reply.header("set-cookie", [
         issueSessionCookie({
           token: sessionToken,
           ttlSeconds: config.sessionTtlSeconds,
           secure: config.cookieSecure,
         }),
-      );
+        issueCsrfCookie({
+          token: csrfToken,
+          ttlSeconds: config.sessionTtlSeconds,
+          secure: config.cookieSecure,
+        }),
+      ]);
 
       reply.code(200);
       return reply.send({
@@ -162,13 +171,8 @@ export function createServer(
       });
     } catch (error) {
       request.log.error({ err: error }, "BFF session login failure");
-      const detail =
-        error instanceof Error && error.message
-          ? error.message
-          : String(error ?? "unknown login failure");
       return reply.code(502).send({
         error: "Session login request failed.",
-        detail,
       });
     }
   });
@@ -184,7 +188,10 @@ export function createServer(
   });
 
   app.post("/session/logout", async (_request, reply) => {
-    reply.header("set-cookie", clearSessionCookie({ secure: config.cookieSecure }));
+    reply.header("set-cookie", [
+      clearSessionCookie({ secure: config.cookieSecure }),
+      clearCsrfCookie({ secure: config.cookieSecure }),
+    ]);
     return reply.send({ success: true });
   });
 
@@ -212,6 +219,20 @@ export function createServer(
           });
         }
         actor = sessionUser.username;
+
+        // CSRF protection: validate double-submit cookie on state-changing requests
+        const isStateChanging = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method);
+        if (isStateChanging) {
+          const csrfValid = validateCsrfToken({
+            cookieHeader: firstHeaderValue(request.headers.cookie),
+            headerValue: request.headers["x-xsrf-token"],
+          });
+          if (!csrfValid) {
+            return reply.code(403).send({
+              error: "CSRF token validation failed. Include X-XSRF-TOKEN header matching the okr_csrf_token cookie.",
+            });
+          }
+        }
       }
 
       if (actorRequired) {
@@ -260,14 +281,8 @@ export function createServer(
         return reply.send(result.body);
       } catch (error) {
         request.log.error({ err: error }, "BFF backend proxy failure");
-        const detail =
-          error instanceof Error && error.message
-            ? error.message
-            : String(error ?? "unknown proxy failure");
         return reply.code(502).send({
           error: "Backend proxy request failed.",
-          detail,
-          backend_timeout_ms: config.requestTimeoutMs,
         });
       }
     },

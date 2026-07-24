@@ -61,8 +61,8 @@ NodeType = Literal["GOAL", "OBJECTIVE", "KEY_RESULT", "TASK"]
 
 class GoalCreateRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=128)
-    title: str = ""
-    description: str = ""
+    title: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=5000)
     cycle_id: Optional[int] = Field(default=None, gt=0)
     strategy_tags: Optional[Union[str, List[str]]] = None
     actor_username: Optional[str] = None
@@ -70,18 +70,18 @@ class GoalCreateRequest(BaseModel):
 
 class ObjectiveCreateRequest(BaseModel):
     goal_id: int = Field(..., gt=0)
-    title: str = ""
-    description: str = ""
+    title: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=5000)
     weight: Optional[float] = Field(default=None, ge=0)
     actor_username: Optional[str] = None
 
 
 class KeyResultCreateRequest(BaseModel):
     objective_id: int = Field(..., gt=0)
-    title: str = ""
-    description: str = ""
+    title: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=5000)
     target_value: float = 100.0
-    unit: str = "%"
+    unit: str = Field(default="%", max_length=32)
     initiative_tags: Optional[Union[str, List[str]]] = None
     weight: Optional[float] = Field(default=None, ge=0)
     actor_username: Optional[str] = None
@@ -89,9 +89,9 @@ class KeyResultCreateRequest(BaseModel):
 
 class TaskCreateRequest(BaseModel):
     key_result_id: int = Field(..., gt=0)
-    title: str = ""
-    description: str = ""
-    estimated_minutes: int = Field(default=0, ge=0)
+    title: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=5000)
+    estimated_minutes: int = Field(default=0, ge=0, le=100000)
     start_date: Optional[datetime] = None
     deadline: Optional[datetime] = None
     assignee_id: Optional[int] = Field(default=None, gt=0)
@@ -238,9 +238,9 @@ class TeamDeleteResponse(BaseModel):
 
 class CheckInCreateRequest(BaseModel):
     kr_id: int = Field(..., gt=0)
-    value: float
+    value: float = Field(..., ge=-1000000, le=1000000)
     confidence: int = Field(..., ge=0, le=10)
-    comment: str = ""
+    comment: str = Field(default="", max_length=2000)
     variation_type: VariationType
     special_cause_note: Optional[str] = Field(default=None, max_length=1000)
     experiment_id: Optional[int] = Field(default=None, gt=0)
@@ -262,8 +262,8 @@ class CheckInMutationView(BaseModel):
 class ExperimentCreateRequest(BaseModel):
     key_result_id: int = Field(..., gt=0)
     cycle_id: int = Field(..., gt=0)
-    hypothesis: str = Field(..., min_length=1)
-    change_description: str = Field(..., min_length=1)
+    hypothesis: str = Field(..., min_length=1, max_length=5000)
+    change_description: str = Field(..., min_length=1, max_length=5000)
     start_at: Optional[datetime] = None
     expected_effect_direction: Optional[ExpectedEffectDirectionType] = None
     expected_effect_size: Optional[float] = None
@@ -277,7 +277,7 @@ class ExperimentUpdateRequest(BaseModel):
 
 class ExperimentCloseRequest(BaseModel):
     decision: ExperimentDecisionType
-    rationale: str = ""
+    rationale: str = Field(default="", max_length=4000)
     actor_username: Optional[str] = None
 
 
@@ -302,7 +302,7 @@ class RetrospectiveCreateRequest(BaseModel):
     user_id: int = Field(..., gt=0)
     cycle_id: Optional[int] = Field(default=None, gt=0)
     week_start_date: datetime
-    content: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=10000)
     sentiment: Optional[str] = Field(default=None, max_length=128)
     actor_username: Optional[str] = None
 
@@ -337,9 +337,9 @@ class WeeklyPlanCreateRequest(BaseModel):
     user_id: int = Field(..., gt=0)
     start_date: datetime
     end_date: datetime
-    p1: str = Field(..., min_length=1)
-    p2: Optional[str] = None
-    p3: Optional[str] = None
+    p1: str = Field(..., min_length=1, max_length=1000)
+    p2: Optional[str] = Field(default=None, max_length=1000)
+    p3: Optional[str] = Field(default=None, max_length=1000)
     actor_username: Optional[str] = None
 
 
@@ -378,9 +378,9 @@ class AlignmentDeleteResponse(BaseModel):
 
 class ObjectiveAlignmentLinkCreateRequest(BaseModel):
     objective_id: int = Field(..., gt=0)
-    linked_entity_type: str = Field(..., min_length=1, max_length=32)
+    linked_entity_type: Literal["goal", "key_result"]
     linked_entity_id: int = Field(..., gt=0)
-    direction: str = Field(..., min_length=1, max_length=32)
+    direction: Literal["parent", "child"]
     actor_username: Optional[str] = None
 
 

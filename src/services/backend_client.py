@@ -7,6 +7,7 @@ from enum import Enum
 import hashlib
 import hmac
 import json
+import logging
 import os
 import secrets
 import time
@@ -205,8 +206,10 @@ def _response_json_or_error(response: requests.Response) -> Dict[str, Any]:
 
 
 def _transport_error(exc: Exception) -> Dict[str, Any]:
+    logger = logging.getLogger(__name__)
+    logger.warning("Backend transport error: %s: %s", type(exc).__name__, exc)
     return {
-        "error": f"Backend request failed: {exc}",
+        "error": "Backend request failed.",
         "status_code": 0,
     }
 

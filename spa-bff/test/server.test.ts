@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { BffConfig } from "../src/config.js";
 import { createServer } from "../src/server.js";
-import { issueSessionToken, type SessionUser } from "../src/session.js";
+import { generateCsrfToken, issueSessionToken, type SessionUser } from "../src/session.js";
 
 const baseConfig: BffConfig = {
   host: "127.0.0.1",
@@ -25,6 +25,8 @@ const DEFAULT_USER: SessionUser = {
   manager_id: null,
   must_change_password: false,
 };
+
+const TEST_CSRF_TOKEN = generateCsrfToken();
 
 const NODE_CREATE_CASES = [
   {
@@ -105,7 +107,11 @@ function sessionCookie(user: SessionUser = DEFAULT_USER): string {
     secret: baseConfig.sessionSecret,
     ttlSeconds: baseConfig.sessionTtlSeconds,
   });
-  return `okr_spa_session=${encodeURIComponent(token)}`;
+  return `okr_spa_session=${encodeURIComponent(token)}; okr_csrf_token=${TEST_CSRF_TOKEN}`;
+}
+
+function csrfHeaders(): Record<string, string> {
+  return { "x-xsrf-token": TEST_CSRF_TOKEN };
 }
 
 describe("spa-bff server", () => {
@@ -165,6 +171,8 @@ describe("spa-bff server", () => {
     expect(String(setCookie)).toContain("okr_spa_session=");
     expect(String(setCookie)).toContain("HttpOnly");
     expect(String(setCookie)).toContain("SameSite=Lax");
+    expect(String(setCookie)).toContain("okr_csrf_token=");
+    expect(String(setCookie)).toContain("SameSite=Strict");
   });
 
   it("returns invalid-credentials response when backend login is unsuccessful", async () => {
@@ -233,6 +241,7 @@ describe("spa-bff server", () => {
     expect(response.statusCode).toBe(200);
     const setCookie = String(response.headers["set-cookie"] ?? "");
     expect(setCookie).toContain("okr_spa_session=");
+    expect(setCookie).toContain("okr_csrf_token=");
     expect(setCookie).toContain("Max-Age=0");
   });
 
@@ -265,6 +274,7 @@ describe("spa-bff server", () => {
       method: "POST",
       url: "/api/backend/v1/read/query",
       headers: {
+        ...csrfHeaders(),
         cookie: sessionCookie({
           ...DEFAULT_USER,
           username: "admin",
@@ -350,7 +360,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/read/query",
-      headers: { cookie: sessionCookie() },
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
       payload: { kind: "atlas_scope", params: {}, actor_username: "member-1" },
     });
     await app.close();
@@ -376,7 +386,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/timer/start",
-      headers: { cookie: sessionCookie() },
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
       payload: { task_id: 42, user_id: "member-1" },
     });
     await app.close();
@@ -411,7 +421,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/timer/stop",
-      headers: { cookie: sessionCookie() },
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
       payload: { task_id: 42, user_id: "member-1", summary: "Completed focus run" },
     });
     await app.close();
@@ -448,7 +458,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "PATCH",
       url: "/api/backend/v1/nodes/task/77",
-      headers: { cookie: sessionCookie() },
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
       payload: {
         actor_username: "member-1",
         updates: { title: "Task A", description: "Refined by SPA probe", progress: 60 },
@@ -488,7 +498,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/ai/analyze-node",
-      headers: { cookie: sessionCookie() },
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
       payload: {
         node_id: 77,
         node_type: "KEY_RESULT",
@@ -517,7 +527,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/backend/v1/ai/team-coach",
-      headers: { cookie: sessionCookie() },
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
       payload: {
         actor_username: "payload-user",
         team_data: { total_krs: 9, avg_confidence: 7.2 },
@@ -550,6 +560,7 @@ describe("spa-bff server", () => {
       method: "POST",
       url: "/api/backend/v1/ai/strategy-pulse",
       headers: {
+        ...csrfHeaders(),
         cookie: sessionCookie({ ...DEFAULT_USER, username: "manager-1", role: "manager" }),
       },
       payload: {
@@ -590,7 +601,7 @@ describe("spa-bff server", () => {
       const response = await app.inject({
         method: "POST",
         url: path,
-        headers: { cookie: sessionCookie() },
+        headers: { ...csrfHeaders(), cookie: sessionCookie() },
         payload,
       });
       await app.close();
@@ -626,7 +637,7 @@ describe("spa-bff server", () => {
       const response = await app.inject({
         method: "DELETE",
         url: path,
-        headers: { cookie: sessionCookie() },
+        headers: { ...csrfHeaders(), cookie: sessionCookie() },
       });
       await app.close();
 
@@ -651,7 +662,7 @@ describe("spa-bff server", () => {
     const response = await app.inject({
       method: "DELETE",
       url: "/api/backend/v1/nodes/task/999",
-      headers: { cookie: sessionCookie() },
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
     });
     await app.close();
 

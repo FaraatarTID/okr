@@ -7,6 +7,7 @@ from typing import Optional
 
 from src.crud_core_helpers import try_backend_mutation
 from src.crud_utils import coerce_non_negative_weight
+from src.domain.lifecycle import validate_task_transition
 from src.domain.progress import calculate_objective_progress
 from src.domain.progress import refresh_hierarchy_progress
 
@@ -310,6 +311,10 @@ def update_task_from_crud(
         if title is not None:
             task.title = title
         if status is not None:
+            if not validate_task_transition(task.status, status):
+                raise ValueError(
+                    f"Invalid task status transition: {task.status.value} -> {status.value}"
+                )
             task.status = status
         if estimated_minutes is not None:
             if estimated_minutes < 0:

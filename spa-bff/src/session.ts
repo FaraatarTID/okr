@@ -1,6 +1,7 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 const SESSION_COOKIE_NAME = "okr_spa_session";
+const CSRF_COOKIE_NAME = "okr_csrf_token";
 const SESSION_VERSION = "v1";
 
 export interface SessionUser {
@@ -207,4 +208,70 @@ export function clearSessionCookie(input: { secure: boolean }): string {
     parts.push("Secure");
   }
   return parts.join("; ");
+}
+
+// --- CSRF Double-Submit Cookie Protection ---
+
+export function generateCsrfToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+export function issueCsrfCookie(input: {
+  token: string;
+  ttlSeconds: number;
+  secure: boolean;
+}): string {
+  const parts = [
+    `${CSRF_COOKIE_NAME}=${encodeURIComponent(input.token)}`,
+    "Path=/",
+    // Intentionally NOT HttpOnly — JavaScript must read this to send as header
+    "SameSite=Strict",
+    `Max-Age=${Math.max(60, Math.floor(input.ttlSeconds))}`,
+  ];
+  if (input.secure) {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}
+
+export function clearCsrfCookie(input: { secure: boolean }): string {
+  const parts = [
+    `${CSRF_COOKIE_NAME}=`,
+    "Path=/",
+    "SameSite=Strict",
+    "Max-Age=0",
+    "Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+  ];
+  if (input.secure) {
+    parts.push("Secure");
+  }
+  return parts.join("; ");
+}
+
+export function readCsrfTokenFromCookie(cookieHeader: string | undefined): string {
+  const cookies = parseCookieHeader(cookieHeader);
+  return String(cookies[CSRF_COOKIE_NAME] || "").trim();
+}
+
+export function validateCsrfToken(input: {
+  cookieHeader: string | undefined;
+  headerValue: string | string[] | undefined;
+}): boolean {
+  const cookieToken = readCsrfTokenFromCookie(input.cookieHeader);
+  if (!cookieToken) {
+    return false;
+  }
+  const headerToken = String(
+    Array.isArray(input.headerValue) ? input.headerValue[0] : input.headerValue || "",
+  ).trim();
+  if (!headerToken) {
+    return false;
+  }
+  // Timing-safe comparison to prevent timing attacks
+  const a = Buffer.from(cookieToken, "utf-8");
+  const b = Buffer.from(headerToken, "utf-8");
+  if (a.length !== b.length) {
+    return false;
+  }
+  return timingSafeEqual(a, b);
 }
