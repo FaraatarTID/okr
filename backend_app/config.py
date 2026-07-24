@@ -64,6 +64,7 @@ class BackendSettings:
     audit_retention_days: int
     job_prune_interval_seconds: int
     job_prune_batch_size: int
+    job_timeout_seconds: int
     worker_poll_seconds: int
     security_state_db_use_null_pool: bool
     security_state_db_pool_size: int
@@ -227,6 +228,11 @@ def get_backend_settings() -> BackendSettings:
             get_config_value("OKR_BACKEND_JOB_PRUNE_BATCH_SIZE", ""),
             default=200,
             minimum=10,
+        ),
+        job_timeout_seconds=_as_int(
+            get_config_value("OKR_BACKEND_JOB_TIMEOUT_SECONDS", ""),
+            default=600,
+            minimum=30,
         ),
         worker_poll_seconds=_as_int(
             get_config_value("OKR_BACKEND_WORKER_POLL_SECONDS", ""),

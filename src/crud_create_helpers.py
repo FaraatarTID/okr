@@ -363,6 +363,10 @@ def create_task_from_crud(
             raise ValueError(f"KeyResult {key_result_id} not found")
         if estimated_minutes < 0:
             raise ValueError("estimated_minutes must be >= 0")
+        if assignee_id is not None:
+            assignee = session.get(crud_module.User, assignee_id)
+            if not assignee:
+                raise ValueError(f"Assignee user {assignee_id} not found")
         crud_module._authorize_node_mutation(
             session,
             node_type="KEY_RESULT",

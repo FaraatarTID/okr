@@ -868,6 +868,27 @@ def _coerce_experiment_updates(updates: dict) -> dict:
     return clean
 
 
+_EXPERIMENT_ALLOWED_TRANSITIONS = {
+    ExperimentStatus.PLANNED: {ExperimentStatus.RUNNING, ExperimentStatus.DECIDED},
+    ExperimentStatus.RUNNING: {ExperimentStatus.DECIDED},
+    ExperimentStatus.DECIDED: set(),
+}
+
+
+def _validate_experiment_transition(
+    current_status: ExperimentStatus, next_status: ExperimentStatus
+) -> None:
+    """Raise if the experiment status transition is not allowed."""
+    if current_status == next_status:
+        return
+    allowed = _EXPERIMENT_ALLOWED_TRANSITIONS.get(current_status, set())
+    if next_status not in allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid experiment status transition: {current_status.value} -> {next_status.value}",
+        )
+
+
 
 def _payload_to_jsonable(value: Any) -> Any:
     if value is None:
@@ -3762,12 +3783,34 @@ def api_update_experiment(
 
     try:
         if is_supabase_api_mode_enabled():
+            # Validate transition before update if status is changing
+            if "status" in updates:
+                from src.services.supabase_api_mode import get_experiment_via_supabase_api
+                current = get_experiment_via_supabase_api(experiment_id=int(experiment_id))
+                if current:
+                    current_status = _coerce_enum(
+                        getattr(current, "status", None),
+                        ExperimentStatus,
+                        field_name="current_status",
+                    )
+                    _validate_experiment_transition(current_status, updates["status"])
             experiment = update_experiment_via_supabase_api(
                 experiment_id=int(experiment_id),
                 actor_username=actor,
                 updates=updates,
             )
         else:
+            # Validate transition before update if status is changing
+            if "status" in updates:
+                from src.crud import get_experiment as _get_experiment
+                current = _get_experiment(int(experiment_id))
+                if current:
+                    current_status = _coerce_enum(
+                        getattr(current, "status", None),
+                        ExperimentStatus,
+                        field_name="current_status",
+                    )
+                    _validate_experiment_transition(current_status, updates["status"])
             experiment = update_experiment(
                 int(experiment_id),
                 actor_username=actor,

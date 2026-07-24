@@ -308,6 +308,12 @@ def update_task_from_crud(
             "task", kwargs, crud_module._ALLOWED_TASK_UPDATE_KWARGS
         )
 
+        # Validate assignee_id FK if present in kwargs
+        if "assignee_id" in kwargs and kwargs["assignee_id"] is not None:
+            assignee = session.get(crud_module.User, kwargs["assignee_id"])
+            if not assignee:
+                raise ValueError(f"Assignee user {kwargs['assignee_id']} not found")
+
         if title is not None:
             task.title = title
         if status is not None:

@@ -82,6 +82,15 @@ export function createServer(
     trustProxy: true,
   });
 
+  // Security headers on every response
+  app.addHook("onSend", async (_request, reply) => {
+    reply.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  });
+
   app.get("/healthz", async () => {
     return {
       status: "ok",

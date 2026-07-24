@@ -6,6 +6,7 @@ from __future__ import annotations
 import time
 import logging
 import json
+from datetime import datetime, timedelta, timezone
 
 from backend_app.config import get_backend_settings
 from backend_app.job_runner import run_job
@@ -23,8 +24,10 @@ from backend_app.path_setup import ensure_shared_src_on_path
 
 ensure_shared_src_on_path()
 
-from src.database import init_database
+from src.database import get_engine, init_database
+from src.models import AsyncJob, AsyncJobStatus
 from src.observability import observability_context
+from sqlmodel import select
 
 logger = logging.getLogger(__name__)
 _LOOP_ERROR_SLEEP_SECONDS = 2.0
@@ -32,6 +35,29 @@ _LOOP_ERROR_SLEEP_SECONDS = 2.0
 
 class NonRetryableJobError(RuntimeError):
     """Raised when a job is malformed and should not be retried."""
+
+
+def reap_stale_running_jobs(timeout_seconds: int) -> int:
+    """Reset RUNNING jobs that exceeded the timeout back to FAILED."""
+    engine = get_engine()
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=timeout_seconds)
+    reaped = 0
+    with engine.connect() as conn:
+        stmt = (
+            select(AsyncJob)
+            .where(AsyncJob.status == AsyncJobStatus.RUNNING)
+            .where(AsyncJob.started_at < cutoff)
+        )
+        stale_jobs = conn.exec(stmt).all()
+        for job in stale_jobs:
+            job.status = AsyncJobStatus.FAILED
+            job.error_text = f"Job exceeded timeout ({timeout_seconds}s) and was reaped."
+            job.finished_at = datetime.now(timezone.utc)
+            conn.add(job)
+            reaped += 1
+            logger.warning("Reaped zombie job %s (started_at=%s)", job.id, job.started_at)
+        conn.commit()
+    return reaped
 
 
 def _parse_job_payload(job) -> dict:
@@ -157,6 +183,13 @@ def run_worker_loop() -> None:
                 )
             finally:
                 last_prune_at = now_ts
+                # Reap stale RUNNING jobs (zombie detection)
+                try:
+                    reaped = reap_stale_running_jobs(settings.job_timeout_seconds)
+                    if reaped:
+                        logger.info("Reaped %s stale RUNNING jobs", reaped)
+                except Exception as exc:
+                    logger.exception("Zombie job reaping failed: %s", exc)
         try:
             handled = process_next_job(worker_id=worker_id)
         except Exception:
