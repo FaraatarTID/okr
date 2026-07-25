@@ -25,6 +25,8 @@ if str(ROOT_DIR) not in sys.path:
 
 
 ROUTER_LINE_RE = re.compile(r'--port", "(\d+)".*?--api-key", "([^"]+)"', re.DOTALL)
+PORT_ONLY_RE = re.compile(r'--port", "(\d+)"', re.DOTALL)
+ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
 
 
 def _jan_log_path() -> Path:
@@ -34,37 +36,44 @@ def _jan_log_path() -> Path:
     return Path.home() / ".local" / "share" / "Jan" / "data" / "logs" / "app.log"
 
 
-def _read_router_state() -> Tuple[str, str]:
+def _read_router_state() -> Optional[Tuple[str, str]]:
     log_path = _jan_log_path()
     if not log_path.exists():
-        raise FileNotFoundError(f"Jan log not found: {log_path}")
+        return None
 
     lines = log_path.read_text(encoding="utf-8", errors="ignore").splitlines()
     router_lines = [line for line in lines if "Router argv:" in line]
     if not router_lines:
-        raise RuntimeError("No Jan router startup line found in app log.")
+        return None
 
-    match = ROUTER_LINE_RE.search(router_lines[-1])
-    if not match:
-        raise RuntimeError("Could not parse Jan router port/API key from log.")
+    # Try each router line from most recent to oldest, looking for one with api-key
+    for line in reversed(router_lines):
+        # Strip ANSI escape codes that Jan's terminal logging adds
+        clean_line = ANSI_ESCAPE_RE.sub("", line)
+        match = ROUTER_LINE_RE.search(clean_line)
+        if match:
+            port = match.group(1).strip()
+            api_key = match.group(2).strip()
+            if port and api_key:
+                return port, api_key
 
-    port = match.group(1).strip()
-    api_key = match.group(2).strip()
-    if not port or not api_key:
-        raise RuntimeError("Jan router port/API key was empty.")
-    return port, api_key
+    # Fallback: use most recent line with just port (no api-key)
+    clean_line = ANSI_ESCAPE_RE.sub("", router_lines[-1])
+    match = PORT_ONLY_RE.search(clean_line)
+    if match:
+        port = match.group(1).strip()
+        if port:
+            return port, ""
+
+    return None
 
 
 def _fetch_models(base_url: str, api_key: str) -> List[Dict[str, Any]]:
     url = f"{base_url.rstrip('/')}/models"
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        method="GET",
-    )
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(url, headers=headers, method="GET")
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             payload = json.loads(response.read().decode("utf-8"))
@@ -100,7 +109,16 @@ def _choose_model(models: List[Dict[str, Any]], prefer: Optional[str]) -> str:
 
 
 def _build_report(prefer: Optional[str]) -> Dict[str, Any]:
-    port, api_key = _read_router_state()
+    state = _read_router_state()
+    if state is None:
+        return {
+            "AI_BASE_URL": "",
+            "AI_API_KEY": "",
+            "AI_MODEL": "",
+            "JAN_MODEL_IDS": [],
+            "JAN_LOG_PATH": str(_jan_log_path()),
+        }
+    port, api_key = state
     base_url = f"http://127.0.0.1:{port}/v1"
     models = _fetch_models(base_url, api_key)
     model_ids = [str(model.get("id") or "").strip() for model in models if str(model.get("id") or "").strip()]
@@ -185,6 +203,11 @@ def main() -> int:
     args = parser.parse_args()
 
     report = _build_report(args.prefer)
+
+    if not report.get("AI_BASE_URL"):
+        print("[WARN] Jan AI router not found or not running; skipping context refresh.", file=sys.stderr)
+        return 0
+
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))
     elif args.powershell:
