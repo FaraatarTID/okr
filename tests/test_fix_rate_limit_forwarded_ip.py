@@ -1,8 +1,14 @@
 """Tests for Fix 2: Rate limiting with x-forwarded-for header."""
 
 import inspect
+from pathlib import Path
 
 from backend_app.rate_limiter import check_rate_limit
+
+# Resolve spa-bff source paths relative to this test file's parent directory
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_PROXY_TS = _PROJECT_ROOT / "spa-bff" / "src" / "proxy.ts"
+_SERVER_TS = _PROJECT_ROOT / "spa-bff" / "src" / "server.ts"
 
 
 def test_rate_limit_uses_forwarded_ip_for_isolation():
@@ -34,9 +40,7 @@ def test_security_module_uses_forwarded_ip_for_rate_limit():
 
 def test_bff_proxy_forwards_x_forwarded_for():
     """BFF proxy should forward x-forwarded-for to backend."""
-    proxy_path = "C:/Faraatar-TID_Apps/okr/spa-bff/src/proxy.ts"
-    with open(proxy_path, "r") as f:
-        source = f.read()
+    source = _PROXY_TS.read_text(encoding="utf-8")
     assert "x-forwarded-for" in source.lower(), (
         "proxyToBackend should forward x-forwarded-for header to backend"
     )
@@ -44,9 +48,7 @@ def test_bff_proxy_forwards_x_forwarded_for():
 
 def test_bff_server_forwards_token_version():
     """BFF server should forward token_version in normalizeSessionUser."""
-    server_path = "C:/Faraatar-TID_Apps/okr/spa-bff/src/server.ts"
-    with open(server_path, "r") as f:
-        source = f.read()
+    source = _SERVER_TS.read_text(encoding="utf-8")
     assert "token_version" in source, (
         "normalizeSessionUser should include token_version"
     )
