@@ -367,12 +367,28 @@ def create_task_from_crud(
             assignee = session.get(crud_module.User, assignee_id)
             if not assignee:
                 raise ValueError(f"Assignee user {assignee_id} not found")
-        crud_module._authorize_node_mutation(
-            session,
-            node_type="KEY_RESULT",
-            node_id=key_result_id,
-            actor_username=actor_username,
-        )
+            # Verify assignee belongs to the same team as the parent Goal
+            # to prevent cross-team task assignment privilege escalation
+            goal = crud_module._authorize_node_mutation(
+                session,
+                node_type="KEY_RESULT",
+                node_id=key_result_id,
+                actor_username=actor_username,
+            )
+            if goal and assignee.team_id is not None and goal.team_id is not None:
+                if assignee.team_id != goal.team_id:
+                    raise ValueError(
+                        f"Assignee user {assignee_id} does not belong to the same team "
+                        f"as the parent Goal (assignee team={assignee.team_id}, "
+                        f"goal team={goal.team_id})"
+                    )
+        else:
+            crud_module._authorize_node_mutation(
+                session,
+                node_type="KEY_RESULT",
+                node_id=key_result_id,
+                actor_username=actor_username,
+            )
         actor = crud_module._require_actor_user(session, actor_username)
 
         existing = session.exec(

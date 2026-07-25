@@ -39,6 +39,8 @@ def _sanitize_for_prompt(text: str) -> str:
     if not text:
         return ""
     sanitized = text.replace("```", "").replace('"""', "").replace("'''", "")
+    # Remove double-quotes to prevent prompt injection via string boundary breakout
+    sanitized = sanitized.replace('"', "'")
     sanitized = " ".join(sanitized.split())
     return sanitized[:2000]
 

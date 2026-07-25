@@ -24,7 +24,7 @@ from backend_app.path_setup import ensure_shared_src_on_path
 
 ensure_shared_src_on_path()
 
-from src.database import get_engine, init_database
+from src.database import get_engine, get_session_context, init_database
 from src.models import AsyncJob, AsyncJobStatus
 from src.observability import observability_context
 from sqlmodel import select
@@ -39,24 +39,23 @@ class NonRetryableJobError(RuntimeError):
 
 def reap_stale_running_jobs(timeout_seconds: int) -> int:
     """Reset RUNNING jobs that exceeded the timeout back to FAILED."""
-    engine = get_engine()
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=timeout_seconds)
     reaped = 0
-    with engine.connect() as conn:
+    with get_session_context() as session:
         stmt = (
             select(AsyncJob)
             .where(AsyncJob.status == AsyncJobStatus.RUNNING)
             .where(AsyncJob.started_at < cutoff)
         )
-        stale_jobs = conn.exec(stmt).all()
+        stale_jobs = session.exec(stmt).all()
         for job in stale_jobs:
             job.status = AsyncJobStatus.FAILED
             job.error_text = f"Job exceeded timeout ({timeout_seconds}s) and was reaped."
             job.finished_at = datetime.now(timezone.utc)
-            conn.add(job)
+            session.add(job)
             reaped += 1
             logger.warning("Reaped zombie job %s (started_at=%s)", job.id, job.started_at)
-        conn.commit()
+        session.commit()
     return reaped
 
 

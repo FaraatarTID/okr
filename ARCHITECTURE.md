@@ -76,7 +76,7 @@ Primary data/control flow:
 - Service boundary:
   - `backend-api` authenticates service calls using `OKR_BACKEND_SERVICE_TOKEN`.
   - Optional cryptographic request signing (`OKR_BACKEND_SIGNING_SECRET`) enforces signed/replay-protected internal calls.
-  - Basic in-memory IP rate limiting protects API endpoints.
+  - IP-based rate limiting protects API endpoints. When `spa-bff` proxies requests with a valid service token, the backend uses `x-forwarded-for` for per-user rate limiting instead of the proxy IP.
 - Network boundary:
   - Public ingress should expose only reverse proxy/app paths.
   - `backend-api` should remain private (loopback/internal bind in compose by default).
