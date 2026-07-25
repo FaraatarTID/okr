@@ -86,6 +86,7 @@ def stop_all_active_timers_from_crud(
         .join(crud_module.Goal)
         .where(crud_module._timer_owner_predicate_by_username(user_id))
         .where(crud_module.Task.timer_started_at.isnot(None))
+        .with_for_update()
     )
     if exclude_task_id is not None:
         statement = statement.where(crud_module.Task.id != exclude_task_id)

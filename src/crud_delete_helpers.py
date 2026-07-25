@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Optional
 
 from src import crud_core_helpers
-from src.domain.progress import refresh_hierarchy_progress
+from src.domain.progress import (
+    calculate_goal_progress,
+    calculate_objective_progress,
+    refresh_hierarchy_progress,
+)
 
 
 def delete_goal_from_crud(
@@ -102,7 +106,12 @@ def delete_objective_from_crud(
                 node_id=objective_id,
                 actor_username=actor_username,
             )
+            goal_id = item.goal_id
             session.delete(item)
+
+            # Recalculate parent Goal progress before commit so updates are persisted atomically
+            calculate_goal_progress(session, goal_id)
+
             session.commit()
             crud_module.audit_log(
                 "delete", "objective", details={"objective_id": objective_id}
@@ -140,13 +149,15 @@ def delete_key_result_from_crud(
             )
             objective_id = item.objective_id
             session.delete(item)
+
+            # Recalculate progress before commit so updates are persisted atomically
+            calculate_objective_progress(session, objective_id)
+            refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
+
             session.commit()
             crud_module.audit_log(
                 "delete", "key_result", details={"key_result_id": kr_id}
             )
-
-            crud_module.calculate_objective_progress(session, objective_id)
-            refresh_hierarchy_progress(session, objective_id, "OBJECTIVE")
 
             crud_module.clear_cache_safe()
             return True

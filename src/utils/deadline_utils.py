@@ -153,7 +153,18 @@ def format_deadline_display(deadline: Any) -> str:
     if not deadline_ms:
         return "-"
 
-    dt = from_epoch_millis(deadline_ms)
+    # Extract date directly from the original value to avoid timezone shifts
+    # when converting through epoch milliseconds
+    if isinstance(deadline, datetime):
+        dt = deadline
+    elif isinstance(deadline, str):
+        try:
+            dt = datetime.fromisoformat(deadline.strip())
+        except (ValueError, AttributeError):
+            dt = from_epoch_millis(deadline_ms)
+    else:
+        dt = from_epoch_millis(deadline_ms)
+
     date_str = dt.strftime("%b %d")
     days = get_days_remaining(deadline_ms)
 

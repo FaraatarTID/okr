@@ -147,6 +147,7 @@ Role boundaries for dummy managers:
 
 1. Allowed scope: direct-report hierarchy and assigned team context.
 2. Not allowed: cross-team/global edits reserved for `admin`.
+3. Task assignment is validated: assigning a task to a user on a different team is rejected with an error.
 
 Definition of done (for manager monitoring quality):
 

@@ -80,12 +80,26 @@ export async function proxyToBackend(
   const idempotencyKey = firstHeaderValue(
     request.incomingHeaders["x-okr-idempotency-key"],
   );
+  const tokenVersion = firstHeaderValue(
+    request.incomingHeaders["x-okr-token-version"],
+  );
+
+  // Forward the real client IP for backend rate limiting.
+  // The backend trusts this header only when the service token is valid,
+  // preventing direct spoofing by untrusted clients.
+  const clientIp = firstHeaderValue(request.incomingHeaders["x-forwarded-for"])
+    || firstHeaderValue(request.incomingHeaders["x-real-ip"])
+    || "";
 
   const outboundHeaders: Record<string, string> = {
     accept: "application/json",
     "x-correlation-id": readCorrelationId(request.incomingHeaders),
     "x-request-id": readRequestId(request.incomingHeaders),
   };
+
+  if (clientIp) {
+    outboundHeaders["x-forwarded-for"] = clientIp;
+  }
 
   if (bodyBytes) {
     outboundHeaders["content-type"] = "application/json";
@@ -95,6 +109,9 @@ export async function proxyToBackend(
   }
   if (idempotencyKey) {
     outboundHeaders["x-okr-idempotency-key"] = idempotencyKey;
+  }
+  if (tokenVersion) {
+    outboundHeaders["x-okr-token-version"] = tokenVersion;
   }
 
   const securityHeaders = buildBackendSecurityHeaders({

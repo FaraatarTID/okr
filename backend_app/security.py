@@ -117,8 +117,11 @@ async def require_service_access(
     x_okr_signature: str | None = Header(default=None),
     x_okr_timestamp: str | None = Header(default=None),
     x_okr_nonce: str | None = Header(default=None),
+    x_forwarded_for: str | None = Header(default=None),
 ) -> None:
     settings = get_backend_settings()
+    service_token_valid = False
+
     if settings.enforce_service_token:
         expected = settings.service_token
         if not expected:
@@ -132,6 +135,7 @@ async def require_service_access(
         supplied = str(x_okr_service_token or "").strip()
         if not supplied or not secrets.compare_digest(supplied, expected):
             raise HTTPException(status_code=401, detail="Unauthorized service token.")
+        service_token_valid = True
 
     if settings.enforce_request_signing:
         await _verify_request_signature(
@@ -140,9 +144,18 @@ async def require_service_access(
             supplied_timestamp=x_okr_timestamp,
             supplied_nonce=x_okr_nonce,
         )
+        service_token_valid = True
 
-    # Rate limit by client IP regardless of token mode.
+    # Rate limit by client IP. Use x-forwarded-for when the request originates
+    # from a trusted BFF proxy (verified by service token or request signing).
+    # This prevents a single proxy IP from triggering a platform-wide DoS.
     client_ip = request.client.host if request.client else "unknown"
+    if service_token_valid and x_forwarded_for:
+        # Use the first IP in the chain (original client)
+        forwarded_ips = [ip.strip() for ip in str(x_forwarded_for).split(",") if ip.strip()]
+        if forwarded_ips:
+            client_ip = forwarded_ips[0]
+
     try:
         rl_ok = check_rate_limit(
             key=f"ip:{client_ip}",

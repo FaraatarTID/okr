@@ -118,6 +118,7 @@ Runtime preflight policy
   - Production requires `OKR_BOOTSTRAP_ADMIN_PASSWORD` and it must be strong (minimum 12 chars including upper/lowercase, number, symbol).
   - Production backend mode requires `OKR_BACKEND_SECURITY_STATE_BACKEND=database` or `redis` for distributed nonce/rate-limit state.
   - If `OKR_BACKEND_SECURITY_STATE_BACKEND=redis`, set `OKR_BACKEND_SECURITY_STATE_REDIS_URL`.
+  - When `spa-bff` proxies requests, the backend rate limiter uses `x-forwarded-for` for per-user rate limiting (requires valid service token). This prevents a single proxy IP from triggering platform-wide rate limits.
   - In strict mode, critical preflight errors stop app startup.
   - Provider configuration issues are surfaced as warnings/errors depending on severity.
 
