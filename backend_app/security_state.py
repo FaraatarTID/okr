@@ -1002,7 +1002,7 @@ def set_app_state(key: str, value: str) -> None:
     """Update shared application state across all cluster nodes."""
     try:
         _get_store().set_app_state(key, value)
-    except SecurityStateUnavailableError as exc:
+    except SecurityStateUnavailableError:
         settings = get_backend_settings()
         if _is_production(settings):
             raise
@@ -1060,7 +1060,7 @@ def store_idempotent_response(
         _get_store().store_idempotent_response(
             scope=scope, actor=actor, key=key, response_json=response_json,
         )
-    except SecurityStateUnavailableError as exc:
+    except SecurityStateUnavailableError:
         settings = get_backend_settings()
         if _is_production(settings):
             raise

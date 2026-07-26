@@ -1917,7 +1917,6 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             field_name="end_date",
         )
         if start_date and end_date:
-            from datetime import timedelta
             range_days = (end_date - start_date).days
             if range_days > 90:
                 raise HTTPException(

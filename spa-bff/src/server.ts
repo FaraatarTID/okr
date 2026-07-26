@@ -231,9 +231,9 @@ export function createServer(
       );
       return reply.send({ user: freshUser });
     } catch {
-      return reply.code(401).send({
-        error: "Session invalidated. Please log in again.",
-      });
+      // Backend unavailable or validation failed — serve cookie data as fallback
+      // so the SPA can still render; freshness will be re-checked on next request.
+      return reply.send({ user: sessionUser });
     }
   });
 
