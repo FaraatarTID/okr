@@ -2383,7 +2383,7 @@ def api_get_current_user(
             if not user:
                 raise HTTPException(status_code=401, detail="User not found.")
             user_data = {
-                "id": user.id,
+                "actor_id": user.id,
                 "username": user.username,
                 "display_name": getattr(user, "display_name", "") or "",
                 "role": getattr(user, "role", "member"),

@@ -79,7 +79,7 @@ async function fetchFreshSessionUser(
 ): Promise<SessionUser> {
   const headers: Record<string, string> = {
     "x-okr-actor": sessionUser.username,
-    "x-service-token": config.backendServiceToken,
+    "x-okr-service-token": config.backendServiceToken,
   };
   if (sessionUser.token_version != null) {
     headers["x-okr-token-version"] = String(sessionUser.token_version);
@@ -232,7 +232,7 @@ export function createServer(
       return reply.send({ user: freshUser });
     } catch {
       // Backend unavailable or validation failed — serve cookie data as fallback
-      // so the SPA can still render; freshness will be re-checked on next request.
+      // so the SPA can still render; freshness is enforced on every actor-scoped request.
       return reply.send({ user: sessionUser });
     }
   });
