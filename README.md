@@ -244,6 +244,7 @@ If you are a first-time reader, skip this section until after `Start Here`.
 - Architecture (system): [ARCHITECTURE.md](ARCHITECTURE.md)
 - Maintainer map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
 - Production readiness report: [docs/PRODUCTION_READINESS_REPORT.md](docs/PRODUCTION_READINESS_REPORT.md)
+- Productionization audit and modernization roadmap: [docs/PRODUCTIONIZATION_AUDIT.md](docs/PRODUCTIONIZATION_AUDIT.md)
 - User Guide (EN): [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
 - User Guide (FA): [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
 - Manager Playbook (EN): [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md)
