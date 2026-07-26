@@ -1,5 +1,7 @@
 # Productionization Audit
 
+Documentation HQ: [README](../README.md)
+
 This audit treats the application as a fast prototype that must survive production load, security review, and ownership transfer. It is intentionally risk-focused and favors incremental hardening over a rewrite.
 
 ## Executive summary
