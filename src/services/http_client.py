@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Tuple
 
-import requests
-from requests.adapters import HTTPAdapter
+import requests  # type: ignore[import]
+from requests.adapters import HTTPAdapter  # type: ignore[import]
 from urllib3.util.retry import Retry
 
 

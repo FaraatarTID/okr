@@ -9,7 +9,7 @@ Provides:
 
 import logging
 from datetime import timedelta
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from sqlmodel import Session, select
 from sqlalchemy import func
@@ -70,7 +70,7 @@ def _completed_tasks_in_window(
         select(func.count(Task.id))
         .where(Task.assignee_id == user_id)
         .where(Task.status == TaskStatus.DONE)
-        .where(Task.updated_at >= cutoff)
+        .where(cast(Any, Task.updated_at) >= cutoff)
     ).one()
     return int(count or 0)
 

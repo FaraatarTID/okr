@@ -14,6 +14,18 @@ const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_PORT = 3001;
 const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_SESSION_TTL_SECONDS = 28_800;
+const PRODUCTION_ENVS = new Set(["prod", "production"]);
+
+const INSECURE_BACKEND_VALUES = new Set([
+  "CHANGE_ME",
+  "CHANGE_ME_SIGNING_SECRET",
+  "CHANGE_ME_SHARED_TOKEN",
+  "your-secret-here",
+  "change-me",
+  "changeme",
+  "replace-me",
+  "replace_me",
+]);
 
 function parseBool(value: string | undefined, fallback: boolean): boolean {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -51,6 +63,34 @@ const INSECURE_SECRETS = new Set([
   "your-secret-here",
 ]);
 
+function _isProductionRuntime(env: NodeJS.ProcessEnv): boolean {
+  const runtime = String(
+    env.OKR_RUNTIME_ENV ?? env.OKR_ENV ?? env.NODE_ENV ?? "development",
+  ).trim().toLowerCase();
+  return PRODUCTION_ENVS.has(runtime);
+}
+
+function _looksLikePlaceholder(value: string): boolean {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return true;
+  }
+  if (raw.startsWith("<") && raw.endsWith(">")) {
+    return true;
+  }
+  const lowered = raw.toLowerCase();
+  for (const token of INSECURE_BACKEND_VALUES) {
+    const normalizedToken = String(token).trim().toLowerCase();
+    if (!normalizedToken) {
+      continue;
+    }
+    if (lowered === normalizedToken || lowered.startsWith(`${normalizedToken}_`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function requireSessionSecret(env: NodeJS.ProcessEnv): string {
   const secret = String(env.BFF_SESSION_SECRET ?? "").trim();
   const isDevelopment = String(env.NODE_ENV ?? "").trim().toLowerCase() === "development";
@@ -77,6 +117,40 @@ function requireSessionSecret(env: NodeJS.ProcessEnv): string {
   }
 
   return secret;
+}
+
+function validateProductionConfig(config: BffConfig, env: NodeJS.ProcessEnv): void {
+  if (!_isProductionRuntime(env)) {
+    return;
+  }
+
+  if (_looksLikePlaceholder(config.backendServiceToken)) {
+    throw new Error(
+      "OKR_BACKEND_SERVICE_TOKEN must be set to a strong non-placeholder value in production.",
+    );
+  }
+  if (config.backendServiceToken.length < 24) {
+    throw new Error(
+      "OKR_BACKEND_SERVICE_TOKEN must be at least 24 characters in production.",
+    );
+  }
+
+  if (_looksLikePlaceholder(config.backendSigningSecret)) {
+    throw new Error(
+      "OKR_BACKEND_SIGNING_SECRET must be set to a strong non-placeholder value in production.",
+    );
+  }
+  if (config.backendSigningSecret.length < 32) {
+    throw new Error(
+      "OKR_BACKEND_SIGNING_SECRET must be at least 32 characters in production.",
+    );
+  }
+
+  if (!config.cookieSecure) {
+    throw new Error(
+      "BFF_COOKIE_SECURE must be true in production to protect session cookies.",
+    );
+  }
 }
 
 function normalizeBackendUrl(raw: string): string {
@@ -122,7 +196,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): BffConfig {
     String(env.NODE_ENV ?? "").trim().toLowerCase() !== "development",
   );
 
-  return {
+  const config: BffConfig = {
     host: String(env.BFF_HOST ?? DEFAULT_HOST).trim() || DEFAULT_HOST,
     port: parsePositiveInt(env.BFF_PORT, DEFAULT_PORT, "BFF_PORT"),
     backendApiUrl,
@@ -133,4 +207,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): BffConfig {
     sessionTtlSeconds,
     cookieSecure,
   };
+
+  validateProductionConfig(config, env);
+  return config;
 }

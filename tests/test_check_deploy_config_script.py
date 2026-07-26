@@ -8,9 +8,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "check_deploy_config.py"
 
 
-def _run_checker(
-    env_file: Path, mode: str
-) -> subprocess.CompletedProcess[str]:
+def _run_checker(env_file: Path, mode: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             sys.executable,
@@ -44,7 +42,9 @@ def _write_env(
         "CHANGE_ME_BOOTSTRAP_PASSWORD" if placeholder_values else "Admin!Passw0rd"
     )
     bff_session_secret = (
-        "CHANGE_ME_BFF_SESSION_SECRET" if placeholder_values else "bff_session_secret_123"
+        "CHANGE_ME_BFF_SESSION_SECRET"
+        if placeholder_values
+        else "bff_session_secret_1234567890123456"
     )
     db_url = (
         "postgresql+psycopg2://okr_app.PROJECT_REF:DB_PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"
@@ -75,6 +75,7 @@ def _write_env(
         f"PDF_METHOD={pdf_method}",
         f"PDFSHIFT_API_KEY={pdf_key}",
         "OKR_STRICT_RUNTIME_PREFLIGHT=true",
+        "BFF_COOKIE_SECURE=true",
     ]
     if include_throttle_key:
         rows.insert(10, "OKR_AUTH_ALLOW_THROTTLE_FAIL_OPEN=false")
@@ -192,6 +193,23 @@ def test_template_mode_rejects_disabled_request_signing(tmp_path: Path):
     assert "OKR_BACKEND_ENFORCE_REQUEST_SIGNING" in result.stdout
 
 
+def test_template_mode_rejects_unsecure_bff_cookie(tmp_path: Path):
+    env_file = tmp_path / ".env.example"
+    _write_env(env_file, placeholder_values=True)
+
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    lines = [
+        "BFF_COOKIE_SECURE=false" if line.startswith("BFF_COOKIE_SECURE=") else line
+        for line in lines
+    ]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = _run_checker(env_file, mode="template")
+
+    assert result.returncode == 1
+    assert "BFF_COOKIE_SECURE" in result.stdout
+
+
 def test_template_mode_rejects_disabled_backend_read_proxy(tmp_path: Path):
     env_file = tmp_path / ".env.example"
     _write_env(env_file, placeholder_values=True)
@@ -223,3 +241,78 @@ def test_runtime_mode_rejects_non_loopback_backend_bind_address(tmp_path: Path):
 
     assert result.returncode == 1
     assert "OKR_BACKEND_BIND_ADDRESS" in result.stdout
+
+
+def test_runtime_mode_rejects_public_backend_api_url(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    _write_env(env_file, placeholder_values=False)
+
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    lines = [
+        "OKR_BACKEND_API_URL=https://backend.example.com:8100"
+        if line.startswith("OKR_BACKEND_API_URL=")
+        else line
+        for line in lines
+    ]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = _run_checker(env_file, mode="runtime")
+
+    assert result.returncode == 1
+    assert "OKR_BACKEND_API_URL" in result.stdout
+    assert "non-private" in result.stdout or "public" in result.stdout
+
+
+def test_runtime_mode_rejects_public_backend_api_ip(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    _write_env(env_file, placeholder_values=False)
+
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    lines = [
+        "OKR_BACKEND_API_URL=http://203.0.113.10:8100"
+        if line.startswith("OKR_BACKEND_API_URL=")
+        else line
+        for line in lines
+    ]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = _run_checker(env_file, mode="runtime")
+
+    assert result.returncode == 1
+    assert "OKR_BACKEND_API_URL" in result.stdout
+    assert "public" in result.stdout or "non-private" in result.stdout
+
+
+def test_runtime_mode_rejects_unsecure_bff_cookie(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    _write_env(env_file, placeholder_values=False)
+
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    lines = [
+        "BFF_COOKIE_SECURE=false" if line.startswith("BFF_COOKIE_SECURE=") else line
+        for line in lines
+    ]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = _run_checker(env_file, mode="runtime")
+
+    assert result.returncode == 1
+    assert "BFF_COOKIE_SECURE" in result.stdout
+
+
+def test_runtime_mode_rejects_short_bff_session_secret(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    _write_env(env_file, placeholder_values=False)
+
+    lines = env_file.read_text(encoding="utf-8").splitlines()
+    lines = [
+        "BFF_SESSION_SECRET=short" if line.startswith("BFF_SESSION_SECRET=") else line
+        for line in lines
+    ]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    result = _run_checker(env_file, mode="runtime")
+
+    assert result.returncode == 1
+    assert "BFF_SESSION_SECRET" in result.stdout
+    assert "at least 32 characters" in result.stdout

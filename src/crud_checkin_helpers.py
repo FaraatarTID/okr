@@ -73,7 +73,7 @@ def create_check_in_from_crud(
                         f"Experiment {experiment_id} does not belong to KR {kr_id}"
                     )
                 experiment_status = getattr(experiment, "status", None)
-                if hasattr(experiment_status, "value"):
+                if experiment_status is not None and hasattr(experiment_status, "value"):
                     experiment_status = experiment_status.value
                 experiment_status_text = str(experiment_status or "").strip().upper()
                 if experiment_status_text != "RUNNING":

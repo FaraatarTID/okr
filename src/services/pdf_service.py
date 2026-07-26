@@ -12,7 +12,6 @@ import platform
 import datetime
 import base64
 import logging
-from functools import lru_cache
 from html import escape as html_escape
 from io import BytesIO
 from src.services.http_client import post_json_with_retry
@@ -21,7 +20,7 @@ from src.services.http_client import post_json_with_retry
 PDFSHIFT_AVAILABLE = False
 
 try:
-    import requests
+    import requests  # type: ignore[import]
 
     PDFSHIFT_AVAILABLE = True
 except ImportError:
@@ -606,7 +605,7 @@ def generate_pdf_with_chromium_bytes(html, *, executable_path: str = ""):
             str(executable_path or "").strip()
             or str(_resolve_chromium_executable_path() or "").strip()
         )
-        launch_kwargs = {"headless": True}
+        launch_kwargs: dict[str, object] = {"headless": True}
         if resolved_executable:
             launch_kwargs["executable_path"] = resolved_executable
 

@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
-import requests
+import requests  # type: ignore[import]
 
 from src.config_runtime import get_config_value
 from src.services.http_client import request_with_retry

@@ -10,7 +10,6 @@ from __future__ import annotations
 from datetime import timedelta
 import os
 import time
-from types import SimpleNamespace
 from typing import Any, Dict, Optional
 import bcrypt
 
@@ -166,7 +165,11 @@ def new_auth_throttle_state_from_crud(
 def remaining_lockout_seconds_from_crud(*, crud_module, state, now) -> int:
     if not state or not state.locked_until:
         return 0
-    delta = ensure_utc(state.locked_until) - ensure_utc(now)
+    locked_until = ensure_utc(state.locked_until)
+    now_utc = ensure_utc(now)
+    if locked_until is None or now_utc is None:
+        return 0
+    delta = locked_until - now_utc
     remaining = int(delta.total_seconds())
     return remaining if remaining > 0 else 0
 
@@ -190,7 +193,11 @@ def prepare_throttle_state_for_check_from_crud(
         return 0
 
     window_started = state.window_started_at or now
-    if (ensure_utc(now) - ensure_utc(window_started)).total_seconds() >= window_seconds:
+    now_utc = ensure_utc(now)
+    window_started_utc = ensure_utc(window_started)
+    if now_utc is None or window_started_utc is None:
+        return 0
+    if (now_utc - window_started_utc).total_seconds() >= window_seconds:
         state.failed_attempts = 0
         state.window_started_at = now
         state.updated_at = now
@@ -997,7 +1004,7 @@ def reset_user_password_from_crud(
         return True
     except PermissionError:
         raise
-    except Exception as exc:
+    except Exception:
         crud_module.audit_log(
             "reset_password_failed",
             "user",

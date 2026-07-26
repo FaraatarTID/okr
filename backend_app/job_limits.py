@@ -6,6 +6,7 @@ from __future__ import annotations
 import math
 from datetime import datetime
 from datetime import timedelta
+from typing import Any, cast
 
 from fastapi import HTTPException
 from sqlalchemy import func
@@ -98,7 +99,9 @@ def _count_active_jobs(
             select(func.count())
             .select_from(AsyncJob)
             .where(
-                AsyncJob.status.in_([AsyncJobStatus.PENDING, AsyncJobStatus.RUNNING])
+                cast(Any, AsyncJob.status).in_(
+                    [AsyncJobStatus.PENDING, AsyncJobStatus.RUNNING]
+                )
             )
         )
         if actor_username:
@@ -144,7 +147,7 @@ def _has_existing_idempotent_job(
             .where(AsyncJob.kind == str(kind).strip())
             .where(AsyncJob.actor_username == str(actor_username).strip())
             .where(AsyncJob.idempotency_key == key[:255])
-            .order_by(AsyncJob.created_at.desc())
+            .order_by(cast(Any, AsyncJob.created_at).desc())
         ).first()
         return existing is not None
 
@@ -345,4 +348,3 @@ def enforce_job_submit_limits(
             team_id=team_id,
             window_seconds=86400,
         )
-

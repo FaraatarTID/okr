@@ -7,6 +7,7 @@ import time
 import logging
 import json
 from datetime import datetime, timedelta, timezone
+from typing import Any, cast
 
 from backend_app.config import get_backend_settings
 from backend_app.job_runner import run_job
@@ -45,7 +46,8 @@ def reap_stale_running_jobs(timeout_seconds: int) -> int:
         stmt = (
             select(AsyncJob)
             .where(AsyncJob.status == AsyncJobStatus.RUNNING)
-            .where(AsyncJob.started_at < cutoff)
+            .where(AsyncJob.started_at != None)  # noqa: E711
+            .where(cast(Any, AsyncJob.started_at) < cutoff)
         )
         stale_jobs = session.exec(stmt).all()
         for job in stale_jobs:
@@ -204,4 +206,3 @@ def run_worker_loop() -> None:
 
 if __name__ == "__main__":
     run_worker_loop()
-

@@ -92,6 +92,7 @@ class InMemorySecurityStateStore:
         self._nonce_seen: dict[str, int] = {}
         self._rate_events: dict[str, deque[float]] = defaultdict(deque)
         self._idem_records: dict[str, dict] = {}
+        self._app_state: dict[str, str] = {}
         self._lock = Lock()
 
     def clear(self) -> None:
@@ -151,16 +152,10 @@ class InMemorySecurityStateStore:
 
     def get_app_state(self, key: str) -> Optional[str]:
         with self._lock:
-            # We don't have a dedicated dict for generic state yet,
-            # so we'll just use a hidden one for in-memory mocks.
-            if not hasattr(self, "_app_state"):
-                self._app_state: dict[str, str] = {}
             return self._app_state.get(key)
 
     def set_app_state(self, key: str, value: str) -> None:
         with self._lock:
-            if not hasattr(self, "_app_state"):
-                self._app_state: dict[str, str] = {}
             self._app_state[key] = str(value)
 
     def _idem_full_key(self, scope: str, actor: str, key: str) -> str:

@@ -8,8 +8,10 @@ from typing import Dict, Optional
 import uuid
 
 
-_CORRELATION_ID = ContextVar("okr_correlation_id", default=None)
-_REQUEST_ID = ContextVar("okr_request_id", default=None)
+_CORRELATION_ID: ContextVar[Optional[str]] = ContextVar(
+    "okr_correlation_id", default=None
+)
+_REQUEST_ID: ContextVar[Optional[str]] = ContextVar("okr_request_id", default=None)
 _MAX_ID_LENGTH = 128
 
 

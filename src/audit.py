@@ -54,7 +54,7 @@ def _normalize_optional_int(value: object) -> Optional[int]:
     if value is None:
         return None
     try:
-        return int(value)
+        return int(str(value))
     except (TypeError, ValueError):
         return None
 
@@ -209,7 +209,7 @@ def audit_log(
 ):
     logger = _get_logger()
     observability = current_observability_fields()
-    payload = {
+    payload: dict[str, object] = {
         "ts": utc_now().isoformat(),
         "action": action,
         "entity": entity,

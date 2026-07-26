@@ -16,7 +16,7 @@ import time
 import traceback
 from collections.abc import Mapping
 from contextlib import contextmanager
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from threading import Lock
 from typing import Optional
@@ -139,7 +139,7 @@ DATABASE_URL: Optional[str] = os.getenv("OKR_DATABASE_URL") or os.getenv("DATABA
 def _create_engine(url: str):
     """Create SQLModel engine with dialect-aware options."""
     normalized = _normalize_database_url(url)
-    kwargs = {}
+    kwargs: dict[str, object] = {}
     if normalized.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
     elif normalized.startswith("postgresql+psycopg2://"):
@@ -550,11 +550,12 @@ def export_database_backup() -> bytes:
     """
     engine = get_engine()
     table_names = _backup_table_names()
-    payload = {
+    backup_tables: dict[str, list[dict[str, object]]] = {}
+    payload: dict[str, object] = {
         "format": BACKUP_FORMAT_VERSION,
         "exported_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "database_url": _sanitize_url_for_backup(_resolved_database_url()),
-        "tables": {},
+        "tables": backup_tables,
     }
 
     with _backup_lock:
@@ -562,10 +563,10 @@ def export_database_backup() -> bytes:
             for table_name in table_names:
                 table = SQLModel.metadata.tables.get(table_name)
                 if table is None:
-                    payload["tables"][table_name] = []
+                    backup_tables[table_name] = []
                     continue
                 rows = conn.execute(table.select()).mappings().all()
-                table_rows = []
+                table_rows: list[dict[str, object]] = []
                 for row in rows:
                     row_dict = {
                         key: _json_backup_encode_value(value)
@@ -575,7 +576,7 @@ def export_database_backup() -> bytes:
                     if table_name == "user" and "password_hash" in row_dict:
                         row_dict["password_hash"] = "REDACTED"
                     table_rows.append(row_dict)
-                payload["tables"][table_name] = table_rows
+                backup_tables[table_name] = table_rows
 
     json_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
     checksum = hashlib.sha256(json_bytes).hexdigest()

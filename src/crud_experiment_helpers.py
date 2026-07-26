@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from sqlmodel import col
 
@@ -14,13 +14,13 @@ def _experiment_state_snapshot(experiment) -> dict:
     if not experiment:
         return {}
     status = getattr(experiment, "status", None)
-    if hasattr(status, "value"):
+    if status is not None and hasattr(status, "value"):
         status = status.value
     decision = getattr(experiment, "decision", None)
-    if hasattr(decision, "value"):
+    if decision is not None and hasattr(decision, "value"):
         decision = decision.value
     direction = getattr(experiment, "expected_effect_direction", None)
-    if hasattr(direction, "value"):
+    if direction is not None and hasattr(direction, "value"):
         direction = direction.value
     return {
         "id": getattr(experiment, "id", None),
@@ -40,7 +40,7 @@ def _experiment_state_snapshot(experiment) -> dict:
 
 
 def _normalize_experiment_status(status) -> str:
-    if hasattr(status, "value"):
+    if status is not None and hasattr(status, "value"):
         return str(status.value or "").strip().upper()
     return str(status or "").strip().upper()
 

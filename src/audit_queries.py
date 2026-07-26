@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import timedelta
-from typing import Optional
+from typing import Any, Optional, cast
 
 from sqlalchemy import func
 from sqlmodel import Session, select
+
+from typing import cast
 
 from src.models import AuditEvent
 from src.utils.time_utils import utc_now_naive
@@ -22,7 +24,7 @@ def _normalize_optional_int(value: object) -> Optional[int]:
     if value is None:
         return None
     try:
-        return int(value)
+        return int(str(value))
     except (TypeError, ValueError):
         return None
 
@@ -84,8 +86,10 @@ def build_audit_event_query(
     if created_before is not None:
         statement = statement.where(AuditEvent.created_at <= created_before)
 
-    order_column = AuditEvent.created_at.desc() if newest_first else AuditEvent.created_at.asc()
-    return statement.order_by(order_column, AuditEvent.id.desc() if newest_first else AuditEvent.id.asc())
+    created_at = cast(Any, AuditEvent.created_at)
+    event_id = cast(Any, AuditEvent.id)
+    order_column = created_at.desc() if newest_first else created_at.asc()
+    return statement.order_by(order_column, event_id.desc() if newest_first else event_id.asc())
 
 
 def list_audit_events(session: Session, **filters) -> list[AuditEvent]:
@@ -109,7 +113,7 @@ def _aggregate_counts(rows: list[AuditEvent], attr: str) -> list[dict[str, objec
     items = []
     for value, count in counter.items():
         items.append({"value": value, "count": int(count)})
-    items.sort(key=lambda item: (-int(item["count"]), str(item["value"])))
+    items.sort(key=lambda item: (-int(cast(int, item["count"])), str(item["value"])))
     return items
 
 

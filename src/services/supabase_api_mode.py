@@ -92,26 +92,32 @@ def _request_json_with_method(
         "apikey": key,
         "Authorization": f"Bearer {key}",
     }
-    payload: Optional[bytes] = None
+    request_payload: Optional[bytes] = None
     if body is not None:
         headers["Content-Type"] = "application/json"
-        payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        request_payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
     if prefer_representation:
         headers["Prefer"] = "return=representation"
-    req = urllib.request.Request(url, method=str(method or "GET").upper(), headers=headers, data=payload)
+    req = urllib.request.Request(
+        url,
+        method=str(method or "GET").upper(),
+        headers=headers,
+        data=request_payload,
+    )
     ssl_ctx = _get_ssl_context()
+    response_payload: Any
     try:
         with urllib.request.urlopen(req, timeout=10, context=ssl_ctx) as resp:
-            body = resp.read().decode("utf-8", errors="replace")
-            payload = json.loads(body) if body.strip() else None
-            return int(resp.status), payload
+            raw_body = resp.read().decode("utf-8", errors="replace")
+            response_payload = json.loads(raw_body) if raw_body.strip() else None
+            return int(resp.status), response_payload
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
         try:
-            payload = json.loads(raw) if raw.strip() else {}
+            response_payload = json.loads(raw) if raw.strip() else {}
         except Exception:
-            payload = {"raw": raw}
-        return int(exc.code), payload
+            response_payload = {"raw": raw}
+        return int(exc.code), response_payload
 
 
 def _rest_select(
@@ -1066,7 +1072,7 @@ def create_check_in_via_supabase_api(
     if kr_obj_status < 400 and kr_obj_rows:
         objective_id = _as_int(kr_obj_rows[0].get("objective_id"), 0)
 
-    if objective_id > 0:
+    if objective_id is not None and objective_id > 0:
         _recalculate_objective_progress_via_supabase(objective_id)
 
     row = rows[0]
@@ -1108,6 +1114,18 @@ def create_experiment_via_supabase_api(
     status, rows = _rest_insert("experiment", payload=payload)
     if status >= 400 or not rows:
         raise ValueError(f"Supabase API error (experiment/create): {status}")
+    return types.SimpleNamespace(**rows[0])
+
+
+def get_experiment_via_supabase_api(*, experiment_id: int) -> types.SimpleNamespace | None:
+    status, rows = _rest_select(
+        "experiment",
+        query={"id": f"eq.{int(experiment_id)}", "select": "*", "limit": "1"},
+    )
+    if status >= 400 or not rows:
+        if status >= 400:
+            raise ValueError(f"Supabase API error (experiment/get): {status}")
+        return None
     return types.SimpleNamespace(**rows[0])
 
 
@@ -1673,7 +1691,7 @@ def build_atlas_scope_snapshot_via_supabase_api(
                 continue
             key_result_ids.append(str(kr_id_int))
             ai_score, ai_deadline_state = _atlas_extract_ai_snapshot_fields(row.get("ai_analysis"))
-            payload = {
+            payload: dict[str, Any] = {
                 "id": kr_id_int,
                 "title": row.get("title"),
                 "description": row.get("description") or "",
@@ -2307,22 +2325,24 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
 
     if normalized == "node.get":
         node_id = _as_int(params.get("node_id"), 0)
-        node_type = str(params.get("node_type") or "").strip().upper()
+        requested_node_type = str(params.get("node_type") or "").strip().upper()
         table_by_type = {
             "GOAL": "goal",
             "OBJECTIVE": "objective",
             "KEY_RESULT": "key_result",
             "TASK": "task",
         }
-        table = table_by_type.get(node_type)
-        if not table:
+        requested_table = table_by_type.get(requested_node_type)
+        if requested_table is None:
             return {"node": None}
-        status, rows = _rest_select(table, query={"id": f"eq.{node_id}", "select": "*", "limit": "1"})
+        status, rows = _rest_select(
+            requested_table, query={"id": f"eq.{node_id}", "select": "*", "limit": "1"}
+        )
         if status >= 400:
-            raise ValueError(f"Supabase API error (node.get/{table}): {status}")
+            raise ValueError(f"Supabase API error (node.get/{requested_table}): {status}")
         if not rows:
             return {"node": None}
-        return {"node": _decorate_node_row(rows[0], table=table)}
+        return {"node": _decorate_node_row(rows[0], table=requested_table)}
 
     if normalized == "krs.by_cycle":
         cycle_id = _as_int(params.get("cycle_id"), 0)
@@ -2612,14 +2632,14 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
 
     if normalized == "retros.user":
         user_id = _as_int(params.get("user_id"), 0)
-        cycle_id = params.get("cycle_id")
+        cycle_id = _as_int(params.get("cycle_id"), 0)
         q = {
             "user_id": f"eq.{user_id}",
             "select": "*",
             "order": "week_start_date.desc",
         }
-        if cycle_id is not None:
-            q["cycle_id"] = f"eq.{_as_int(cycle_id, 0)}"
+        if cycle_id:
+            q["cycle_id"] = f"eq.{cycle_id}"
         status, rows = _rest_select("retrospective", query=q)
         if status >= 400:
             raise ValueError(f"Supabase API error (retros.user): {status}")
@@ -2627,7 +2647,7 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
 
     if normalized == "retros.team":
         manager_id = _as_int(params.get("manager_id"), 0)
-        cycle_id = params.get("cycle_id")
+        cycle_id = _as_int(params.get("cycle_id"), 0)
         status, members = _rest_select(
             "user",
             query={"manager_id": f"eq.{manager_id}", "select": "id", "order": "id.asc"},
@@ -2642,8 +2662,8 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             "select": "*",
             "order": "week_start_date.desc",
         }
-        if cycle_id is not None:
-            q["cycle_id"] = f"eq.{_as_int(cycle_id, 0)}"
+        if cycle_id:
+            q["cycle_id"] = f"eq.{cycle_id}"
         status, retros = _rest_select("retrospective", query=q)
         if status >= 400:
             raise ValueError(f"Supabase API error (retros.team/retrospective): {status}")
@@ -2800,9 +2820,11 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
 
     if normalized == "mindmap.root":
         node_id = _as_int(params.get("node_id"), 0)
-        node_type = str(params.get("node_type") or "").strip().upper() or None
+        resolved_node_type = (
+            str(params.get("node_type") or "").strip().upper() or None
+        )
 
-        if not node_type:
+        if not resolved_node_type:
             for table, label in (
                 ("goal", "GOAL"),
                 ("objective", "OBJECTIVE"),
@@ -2816,12 +2838,12 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
                 if status >= 400:
                     raise ValueError(f"Supabase API error (mindmap.root/detect/{table}): {status}")
                 if rows:
-                    node_type = label
+                    resolved_node_type = label
                     break
-        if not node_type:
+        if not resolved_node_type:
             return {"node": None, "node_type": None}
 
-        if node_type == "GOAL":
+        if resolved_node_type == "GOAL":
             status, goal_rows = _rest_select(
                 "goal",
                 query={"id": f"eq.{node_id}", "select": "*", "limit": "1"},
@@ -2829,7 +2851,7 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             if status >= 400:
                 raise ValueError(f"Supabase API error (mindmap.root/goal): {status}")
             if not goal_rows:
-                return {"node": None, "node_type": node_type}
+                return {"node": None, "node_type": resolved_node_type}
             goal = _decorate_node_row(goal_rows[0], table="goal")
             status, objectives = _rest_select(
                 "objective",
@@ -2838,9 +2860,9 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             if status >= 400:
                 raise ValueError(f"Supabase API error (mindmap.root/goal.objectives): {status}")
             goal["objectives"] = [_decorate_node_row(r, table="objective") for r in objectives]
-            return {"node": goal, "node_type": node_type}
+            return {"node": goal, "node_type": resolved_node_type}
 
-        if node_type == "OBJECTIVE":
+        if resolved_node_type == "OBJECTIVE":
             status, objective_rows = _rest_select(
                 "objective",
                 query={"id": f"eq.{node_id}", "select": "*", "limit": "1"},
@@ -2848,7 +2870,7 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             if status >= 400:
                 raise ValueError(f"Supabase API error (mindmap.root/objective): {status}")
             if not objective_rows:
-                return {"node": None, "node_type": node_type}
+                return {"node": None, "node_type": resolved_node_type}
             objective = _decorate_node_row(objective_rows[0], table="objective")
             status, krs = _rest_select(
                 "key_result",
@@ -2857,9 +2879,9 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             if status >= 400:
                 raise ValueError(f"Supabase API error (mindmap.root/objective.krs): {status}")
             objective["key_results"] = [_decorate_node_row(r, table="key_result") for r in krs]
-            return {"node": objective, "node_type": node_type}
+            return {"node": objective, "node_type": resolved_node_type}
 
-        if node_type == "KEY_RESULT":
+        if resolved_node_type == "KEY_RESULT":
             status, kr_rows = _rest_select(
                 "key_result",
                 query={"id": f"eq.{node_id}", "select": "*", "limit": "1"},
@@ -2867,7 +2889,7 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             if status >= 400:
                 raise ValueError(f"Supabase API error (mindmap.root/kr): {status}")
             if not kr_rows:
-                return {"node": None, "node_type": node_type}
+                return {"node": None, "node_type": resolved_node_type}
             kr = _decorate_node_row(kr_rows[0], table="key_result")
             status, tasks = _rest_select(
                 "task",
@@ -2876,9 +2898,9 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             if status >= 400:
                 raise ValueError(f"Supabase API error (mindmap.root/kr.tasks): {status}")
             kr["tasks"] = [_decorate_node_row(r, table="task") for r in tasks]
-            return {"node": kr, "node_type": node_type}
+            return {"node": kr, "node_type": resolved_node_type}
 
-        if node_type == "TASK":
+        if resolved_node_type == "TASK":
             status, task_rows = _rest_select(
                 "task",
                 query={"id": f"eq.{node_id}", "select": "*", "limit": "1"},
@@ -2886,7 +2908,7 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             if status >= 400:
                 raise ValueError(f"Supabase API error (mindmap.root/task): {status}")
             if not task_rows:
-                return {"node": None, "node_type": node_type}
+                return {"node": None, "node_type": resolved_node_type}
             task = _decorate_node_row(task_rows[0], table="task")
             status, logs = _rest_select(
                 "work_log",
@@ -2899,6 +2921,6 @@ def read_query_via_supabase_api(*, kind: str, params: dict[str, Any], actor: str
             if status >= 400:
                 raise ValueError(f"Supabase API error (mindmap.root/task.work_logs): {status}")
             task["work_logs"] = logs
-            return {"node": task, "node_type": node_type}
+            return {"node": task, "node_type": resolved_node_type}
 
     raise NotImplementedError(f"Read query kind '{normalized}' is not implemented in supabase_api mode yet.")

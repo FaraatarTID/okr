@@ -210,14 +210,14 @@ def _fetch_recent_worklog_summaries(task_id: int) -> list:
     """Try direct DB first for WorkLog summaries; fall back to REST API."""
     try:
         from src.database import get_session_context
-        from sqlmodel import select
+        from sqlmodel import col, select
         from src.models import WorkLog
 
         with get_session_context() as s:
             recent_logs = s.exec(
                 select(WorkLog)
                 .where(WorkLog.task_id == task_id)
-                .order_by(WorkLog.start_time.desc())
+                .order_by(col(WorkLog.start_time).desc())
             ).all()[:5]
         return [
             log_row.summary
@@ -424,7 +424,7 @@ def _build_experiment_text(node) -> str:
     try:
         from src.database import get_session_context
         from src.models import Experiment
-        from sqlmodel import select
+        from sqlmodel import col, select
 
         cycle = _get_cycle(node, "KEY_RESULT")
         cycle_id = getattr(cycle, "id", None) if cycle else None
@@ -435,7 +435,7 @@ def _build_experiment_text(node) -> str:
             )
             if cycle_id:
                 stmt = stmt.where(Experiment.cycle_id == cycle_id)
-            experiments = s.exec(stmt.order_by(Experiment.created_at.desc())).all()
+            experiments = s.exec(stmt.order_by(col(Experiment.created_at).desc())).all()
 
         if not experiments:
             return ""
@@ -606,7 +606,7 @@ def _analyze_node_inner(
 
     # Build check-in history text (for KRs, scoped to current cycle)
     checkin_text = ""
-    cycle_check_ins = []
+    cycle_check_ins: list[Any] = []
     if node_type_upper in ("KEY_RESULT", "KEYRESULT") and hasattr(node, "check_ins"):
         cycle_start, cycle_end = _get_cycle_date_range(node, node_type_upper)
         all_check_ins = sorted(

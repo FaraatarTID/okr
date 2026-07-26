@@ -8,29 +8,34 @@ import hashlib
 import logging
 import uuid
 import math
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Type, cast
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
-from pydantic import ValidationError as PydanticValidationError
+from fastapi import (
+    APIRouter,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    Response,  # noqa: F401
+    status,  # noqa: F401
+)
+from pydantic import BaseModel, ValidationError as PydanticValidationError
 from sqlmodel import Session, select
 
-from backend_app.job_limits import enforce_job_submit_limits
-from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job
+from backend_app.job_limits import enforce_job_submit_limits  # noqa: F401
+from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job  # noqa: F401
 from backend_app.utils import normalize_idempotency_key
 from backend_app.path_setup import ensure_shared_src_on_path
 from backend_app.schemas import (
-    AiAnalyzeNodeRequest,
-    AiStrategyPulseRequest,
-    AiTeamCoachRequest,
     AlignmentCreateRequest,
     AlignmentDeleteResponse,
     AlignmentMutationView,
     ObjectiveAlignmentLinkCreateRequest,
     ObjectiveAlignmentLinkDeleteResponse,
     ObjectiveAlignmentLinkMutationView,
-    AtlasSnapshotRequest,
     CheckInCreateRequest,
     CheckInMutationView,
     CycleCreateRequest,
@@ -42,18 +47,12 @@ from backend_app.schemas import (
     ExperimentMutationView,
     ExperimentUpdateRequest,
     ExperimentUpdateFields,
-    JobCancelResponse,
     GoalCreateRequest,
-    JobSubmitRequest,
-    JobView,
     KeyResultCreateRequest,
-    LeadershipMetricsRequest,
-    LoginRequest,
     NodeDeleteResponse,
     NodeMutationView,
     NodeUpdateRequest,
     ObjectiveCreateRequest,
-    ReadQueryRequest,
     RetroExperimentOutcomeUpsertRequest,
     RetroExperimentOutcomeView,
     RetrospectiveCreateRequest,
@@ -63,8 +62,6 @@ from backend_app.schemas import (
     TeamDeleteResponse,
     TeamMutationView,
     TeamUpdateRequest,
-    TimerStartRequest,
-    TimerStopRequest,
     UserCreateRequest,
     UserMutationView,
     UserPasswordResetRequest,
@@ -77,8 +74,15 @@ from backend_app.schemas import (
     ObjectiveUpdateRequest,
     KeyResultUpdateRequest,
     TaskUpdateRequest,
+    AtlasSnapshotRequest,
+    LeadershipMetricsRequest,
+    LoginRequest,
+    ReadQueryRequest,
 )
-from backend_app.security import require_service_access, resolve_actor_username
+from backend_app.security import (
+    require_service_access,  # noqa: F401
+    resolve_actor_username,
+)
 from backend_app.security_state import (
     get_app_state,
     set_app_state,
@@ -90,6 +94,25 @@ from backend_app.security_state import (
 ensure_shared_src_on_path()
 
 _LOGGER = logging.getLogger(__name__)
+__all__ = [
+    "BACKUP_FORMAT_VERSION",
+    "authenticate_user_detailed",
+    "get_leadership_metrics",
+    "export_database_backup",
+    "import_database_backup",
+    "get_bool_config",
+    "run_ai_health_check",
+    "authenticate_user_detailed_via_supabase_api",
+    "build_atlas_scope_snapshot_via_supabase_api",
+    "get_leadership_metrics_via_supabase_api",
+    "get_pdf_runtime_diagnostics",
+    "build_atlas_scope_snapshot",
+    "is_production_runtime",
+    "AtlasSnapshotRequest",
+    "LeadershipMetricsRequest",
+    "LoginRequest",
+    "ReadQueryRequest",
+]
 
 from src.crud import (
     authenticate_user_detailed,
@@ -138,8 +161,8 @@ from src.crud import (
     get_work_logs_by_date_range,
     list_experiments_for_retro_window,
     list_experiments_for_kr,
-    start_timer,
-    stop_timer,
+    start_timer,  # noqa: F401
+    stop_timer,  # noqa: F401
     update_cycle,
     update_goal,
     update_key_result,
@@ -151,19 +174,21 @@ from src.crud import (
     upsert_retro_experiment_outcome,
     get_leadership_metrics,
 )
-from src.database import get_session_context, init_database
+from src.database import (
+    BACKUP_FORMAT_VERSION,
+    export_database_backup,
+    get_session_context,
+    import_database_backup,
+    init_database,
+)
 from src.config_runtime import get_bool_config
-from src.domain.read_queries import build_atlas_scope_snapshot
-from src.domain.analysis import calculate_burnout_risk, detect_strategy_gaps
 from src.domain.password_policy import is_production_runtime
+from src.domain.read_queries import build_atlas_scope_snapshot
 from src.audit_queries import summarize_audit_events
 from src.observability import observability_context
+from src.domain import analysis as analysis_domain
 from src.services.ai_provider import run_ai_health_check
-from src.services.ai_service import (
-    analyze_node,
-    analyze_team_health,
-    generate_predictive_outlook,
-)
+from src.services import ai_service
 from src.serialization_helpers import (
     _enum_value,
     serialize_cycle_snapshot,
@@ -191,11 +216,11 @@ from src.services.supabase_api_mode import (
     delete_team_via_supabase_api,
     delete_node_via_supabase_api,
     ensure_supabase_api_ready,
-    get_leadership_metrics_via_supabase_api,
     is_supabase_api_mode_enabled,
     read_query_via_supabase_api,
-    start_timer_via_supabase_api,
-    stop_timer_via_supabase_api,
+    get_leadership_metrics_via_supabase_api,
+    start_timer_via_supabase_api,  # noqa: F401
+    stop_timer_via_supabase_api,  # noqa: F401
     reset_user_password_via_supabase_api,
     update_cycle_via_supabase_api,
     update_team_via_supabase_api,
@@ -205,10 +230,10 @@ from src.services.supabase_api_mode import (
     upsert_retro_experiment_outcome_via_supabase_api,
 )
 from src.services.pdf_service import get_pdf_runtime_diagnostics
-from src.database import BACKUP_FORMAT_VERSION, export_database_backup, import_database_backup
 from src.models import (
     AlignmentEdge,
     AlignmentType,
+    Experiment,
     ExperimentDecision,
     ExperimentStatus,
     ExpectedEffectDirection,
@@ -224,6 +249,28 @@ from src.models import (
     VariationType,
 )
 from src.audit import audit_log, error_log
+from backend_app.routers.ai_routes import register_ai_routes
+from backend_app.routers.platform_routes import register_platform_routes
+from backend_app.routers.operations_routes import register_operations_routes
+from backend_app.routers.node_mutation_routes import register_node_mutation_routes
+from backend_app.routers.cycle_mutation_routes import register_cycle_mutation_routes
+from backend_app.routers.checkin_mutation_routes import (
+    register_checkin_mutation_routes,
+)
+from backend_app.routers.team_mutation_routes import register_team_mutation_routes
+from backend_app.routers.experiment_mutation_routes import (
+    register_experiment_mutation_routes,
+)
+from backend_app.routers.analytics_mutation_routes import (
+    register_analytics_mutation_routes,
+)
+from backend_app.routers.user_mutation_routes import register_user_mutation_routes
+
+analyze_node = ai_service.analyze_node
+analyze_team_health = ai_service.analyze_team_health
+calculate_burnout_risk = analysis_domain.calculate_burnout_risk
+generate_predictive_outlook = ai_service.generate_predictive_outlook
+detect_strategy_gaps = analysis_domain.detect_strategy_gaps
 
 
 @asynccontextmanager
@@ -243,6 +290,46 @@ app = FastAPI(
     version="0.1.0",
     lifespan=_lifespan,
 )
+
+_platform_router = APIRouter()
+register_platform_routes(_platform_router, sys.modules[__name__])
+app.include_router(_platform_router)
+
+_operations_router = APIRouter()
+register_operations_routes(_operations_router, sys.modules[__name__])
+app.include_router(_operations_router)
+
+_ai_router = APIRouter()
+register_ai_routes(_ai_router, sys.modules[__name__])
+app.include_router(_ai_router)
+
+_node_mutation_router = APIRouter()
+register_node_mutation_routes(_node_mutation_router, sys.modules[__name__])
+app.include_router(_node_mutation_router)
+
+_user_mutation_router = APIRouter()
+register_user_mutation_routes(_user_mutation_router, sys.modules[__name__])
+app.include_router(_user_mutation_router)
+
+_checkin_mutation_router = APIRouter()
+register_checkin_mutation_routes(_checkin_mutation_router, sys.modules[__name__])
+app.include_router(_checkin_mutation_router)
+
+_cycle_mutation_router = APIRouter()
+register_cycle_mutation_routes(_cycle_mutation_router, sys.modules[__name__])
+app.include_router(_cycle_mutation_router)
+
+_team_mutation_router = APIRouter()
+register_team_mutation_routes(_team_mutation_router, sys.modules[__name__])
+app.include_router(_team_mutation_router)
+
+_experiment_mutation_router = APIRouter()
+register_experiment_mutation_routes(_experiment_mutation_router, sys.modules[__name__])
+app.include_router(_experiment_mutation_router)
+
+_analytics_mutation_router = APIRouter()
+register_analytics_mutation_routes(_analytics_mutation_router, sys.modules[__name__])
+app.include_router(_analytics_mutation_router)
 
 
 def _normalize_observability_id(value: Optional[str]) -> Optional[str]:
@@ -580,7 +667,9 @@ def _resolve_actor(
     )
 
 
-def _resolve_actor_scope(session: Session, actor_username: str, token_version: Optional[int] = None) -> dict[str, Any]:
+def _resolve_actor_scope(
+    session: Session, actor_username: str, token_version: Optional[int] = None
+) -> dict[str, Any]:
     actor = session.exec(
         select(User).where(User.username == str(actor_username).strip())
     ).first()
@@ -591,7 +680,9 @@ def _resolve_actor_scope(session: Session, actor_username: str, token_version: O
     if token_version is not None:
         current_version = getattr(actor, "token_version", 1)
         if token_version != current_version:
-            raise HTTPException(status_code=401, detail="Session invalidated. Please log in again.")
+            raise HTTPException(
+                status_code=401, detail="Session invalidated. Please log in again."
+            )
 
     actor_id = getattr(actor, "id", None)
     if actor_id is None:
@@ -670,18 +761,32 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
     role = str(actor.get("role") or "member").strip().lower()
     rows: list[dict[str, Any]] = []
     if role == "admin":
-        rows = list((read_query_via_supabase_api(
-            kind="users.all",
-            params={},
-            actor=str(actor_username or "").strip(),
-        ) or {}).get("users") or [])
+        rows = list(
+            (
+                read_query_via_supabase_api(
+                    kind="users.all",
+                    params={},
+                    actor=str(actor_username or "").strip(),
+                )
+                or {}
+            ).get("users")
+            or []
+        )
     elif role == "manager":
-        manager_rows = list((read_query_via_supabase_api(
-            kind="users.team_members",
-            params={"manager_id": actor_id_int},
-            actor=str(actor_username or "").strip(),
-        ) or {}).get("users") or [])
-        rows = [dict(actor)] + [dict(row) for row in manager_rows if isinstance(row, dict)]
+        manager_rows = list(
+            (
+                read_query_via_supabase_api(
+                    kind="users.team_members",
+                    params={"manager_id": actor_id_int},
+                    actor=str(actor_username or "").strip(),
+                )
+                or {}
+            ).get("users")
+            or []
+        )
+        rows = [dict(actor)] + [
+            dict(row) for row in manager_rows if isinstance(row, dict)
+        ]
     else:
         rows = [dict(actor)]
 
@@ -726,7 +831,11 @@ def _scope_cycle_id(cycle: Any) -> int:
 
 
 def _scope_cycle_owner_id(cycle: Any) -> int | None:
-    raw = cycle.get("owner_manager_id") if isinstance(cycle, dict) else getattr(cycle, "owner_manager_id", None)
+    raw = (
+        cycle.get("owner_manager_id")
+        if isinstance(cycle, dict)
+        else getattr(cycle, "owner_manager_id", None)
+    )
     if raw is None:
         return None
     try:
@@ -736,11 +845,17 @@ def _scope_cycle_owner_id(cycle: Any) -> int | None:
 
 
 def _scope_cycle_is_active(cycle: Any) -> bool:
-    value = cycle.get("is_active") if isinstance(cycle, dict) else getattr(cycle, "is_active", False)
+    value = (
+        cycle.get("is_active")
+        if isinstance(cycle, dict)
+        else getattr(cycle, "is_active", False)
+    )
     return bool(value)
 
 
-def _list_cycles_for_scope(*, scope: dict[str, Any], active_only: bool = False) -> list[Any]:
+def _list_cycles_for_scope(
+    *, scope: dict[str, Any], active_only: bool = False
+) -> list[Any]:
     if is_supabase_api_mode_enabled():
         kind = "cycles.active" if active_only else "cycles.all"
         payload = read_query_via_supabase_api(
@@ -749,7 +864,9 @@ def _list_cycles_for_scope(*, scope: dict[str, Any], active_only: bool = False) 
             actor=str(scope.get("actor_username") or ""),
         )
         return list((payload or {}).get("cycles") or [])
-    return list(get_active_cycles() or []) if active_only else list(get_all_cycles() or [])
+    return (
+        list(get_active_cycles() or []) if active_only else list(get_all_cycles() or [])
+    )
 
 
 def _scope_role(scope: dict[str, Any]) -> str:
@@ -760,6 +877,20 @@ def _is_scope_admin_or_manager(scope: dict[str, Any]) -> bool:
     if bool(scope.get("is_admin", False)):
         return True
     return _scope_role(scope) == "manager"
+
+
+def _require_admin_actor_scope(actor: str) -> None:
+    scope = _resolve_scope_for_actor(actor)
+    if not bool(scope.get("is_admin", False)):
+        raise HTTPException(status_code=403, detail="Admin privileges required.")
+
+
+def _require_admin_or_manager_actor_scope(actor: str) -> None:
+    scope = _resolve_scope_for_actor(actor)
+    if not _is_scope_admin_or_manager(scope):
+        raise HTTPException(
+            status_code=403, detail="Manager or admin privileges required."
+        )
 
 
 def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
@@ -783,10 +914,22 @@ def _cycle_owner_match(scope: dict[str, Any], cycle: Any) -> bool:
     actor_id = scope.get("actor_id")
     manager_id = scope.get("manager_id")
     if role == "manager":
-        return actor_id is not None and cycle_owner is not None and int(cycle_owner) == int(actor_id)
+        return (
+            actor_id is not None
+            and cycle_owner is not None
+            and int(cycle_owner) == int(actor_id)
+        )
     if role == "member":
-        return manager_id is not None and cycle_owner is not None and int(cycle_owner) == int(manager_id)
-    return actor_id is not None and cycle_owner is not None and int(cycle_owner) == int(actor_id)
+        return (
+            manager_id is not None
+            and cycle_owner is not None
+            and int(cycle_owner) == int(manager_id)
+        )
+    return (
+        actor_id is not None
+        and cycle_owner is not None
+        and int(cycle_owner) == int(actor_id)
+    )
 
 
 def _visible_cycles_for_scope(scope: dict[str, Any], cycles: list[Any]) -> list[Any]:
@@ -823,12 +966,18 @@ def _resolve_effective_cycle_id_for_scope(
                 raise HTTPException(status_code=400, detail="cycle_id is required.")
             return None
         candidate = int(requested_cycle_id)
-        owned_cycles = _visible_cycles_for_scope(scope, _list_cycles_for_scope(scope=scope, active_only=False))
+        owned_cycles = _visible_cycles_for_scope(
+            scope, _list_cycles_for_scope(scope=scope, active_only=False)
+        )
         if any(_scope_cycle_id(cycle) == candidate for cycle in owned_cycles):
             return candidate
-        raise HTTPException(status_code=403, detail="Managers can only use their owned cycles.")
+        raise HTTPException(
+            status_code=403, detail="Managers can only use their owned cycles."
+        )
 
-    active_cycles = _visible_cycles_for_scope(scope, _list_cycles_for_scope(scope=scope, active_only=True))
+    active_cycles = _visible_cycles_for_scope(
+        scope, _list_cycles_for_scope(scope=scope, active_only=True)
+    )
     selected = _pick_primary_active_cycle(active_cycles)
     if not selected or _scope_cycle_id(selected) <= 0:
         raise HTTPException(
@@ -917,7 +1066,6 @@ def _validate_experiment_transition(
         )
 
 
-
 def _payload_to_jsonable(value: Any) -> Any:
     if value is None:
         return None
@@ -973,7 +1121,9 @@ def _load_idempotent_response(
     try:
         parsed = json.loads(raw_state)
     except Exception:
-        _LOGGER.warning("Corrupted idempotency cache for key=%s; re-executing", key, exc_info=True)
+        _LOGGER.warning(
+            "Corrupted idempotency cache for key=%s; re-executing", key, exc_info=True
+        )
         return None
     payload_hash = _payload_fingerprint(payload)
     saved_hash = str(parsed.get("payload_hash") or "")
@@ -1021,7 +1171,10 @@ def _atomic_idempotent_check(
         return None
     payload_hash = _payload_fingerprint(payload)
     reserved = reserve_idempotency_key(
-        scope=scope, actor=str(actor), key=key, payload_hash=payload_hash,
+        scope=scope,
+        actor=str(actor),
+        key=key,
+        payload_hash=payload_hash,
     )
     if reserved:
         return None
@@ -1534,7 +1687,9 @@ def _serialize_node_for_type(node_type: str, node):
     return None
 
 
-def _resolve_scope_for_actor(actor: str, token_version: Optional[int] = None) -> dict[str, Any]:
+def _resolve_scope_for_actor(
+    actor: str, token_version: Optional[int] = None
+) -> dict[str, Any]:
     if is_supabase_api_mode_enabled():
         return _resolve_actor_scope_via_supabase_api(actor)
     with get_session_context() as session:
@@ -1549,19 +1704,28 @@ def _require_allowed_user_id(scope: dict[str, Any], user_id: int) -> None:
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
 
 
-def _read_node_row_via_supabase(*, node_type: str, node_id: int, actor: str) -> dict[str, Any] | None:
+def _read_node_row_via_supabase(
+    *, node_type: str, node_id: int, actor: str
+) -> dict[str, Any] | None:
     payload = read_query_via_supabase_api(
         kind="node.get",
-        params={"node_type": str(node_type or "").strip().upper(), "node_id": int(node_id)},
+        params={
+            "node_type": str(node_type or "").strip().upper(),
+            "node_id": int(node_id),
+        },
         actor=actor,
     )
     row = (payload or {}).get("node")
     return dict(row) if isinstance(row, dict) else None
 
 
-def _resolve_goal_owner_id_for_node_via_supabase(*, node_type: str, node_id: int, actor: str) -> int | None:
+def _resolve_goal_owner_id_for_node_via_supabase(
+    *, node_type: str, node_id: int, actor: str
+) -> int | None:
     normalized = str(node_type or "").strip().upper()
-    node = _read_node_row_via_supabase(node_type=normalized, node_id=int(node_id), actor=actor)
+    node = _read_node_row_via_supabase(
+        node_type=normalized, node_id=int(node_id), actor=actor
+    )
     if not node:
         return None
 
@@ -1573,7 +1737,9 @@ def _resolve_goal_owner_id_for_node_via_supabase(*, node_type: str, node_id: int
         goal_id = node.get("goal_id")
         if goal_id is None:
             return None
-        goal = _read_node_row_via_supabase(node_type="GOAL", node_id=int(goal_id), actor=actor)
+        goal = _read_node_row_via_supabase(
+            node_type="GOAL", node_id=int(goal_id), actor=actor
+        )
         if not goal:
             return None
         owner_id = goal.get("owner_id")
@@ -1583,13 +1749,17 @@ def _resolve_goal_owner_id_for_node_via_supabase(*, node_type: str, node_id: int
         objective_id = node.get("objective_id")
         if objective_id is None:
             return None
-        objective = _read_node_row_via_supabase(node_type="OBJECTIVE", node_id=int(objective_id), actor=actor)
+        objective = _read_node_row_via_supabase(
+            node_type="OBJECTIVE", node_id=int(objective_id), actor=actor
+        )
         if not objective:
             return None
         goal_id = objective.get("goal_id")
         if goal_id is None:
             return None
-        goal = _read_node_row_via_supabase(node_type="GOAL", node_id=int(goal_id), actor=actor)
+        goal = _read_node_row_via_supabase(
+            node_type="GOAL", node_id=int(goal_id), actor=actor
+        )
         if not goal:
             return None
         owner_id = goal.get("owner_id")
@@ -1635,22 +1805,35 @@ def _filter_tasks_for_scope(tasks: list[Any], scope: dict[str, Any]) -> list[Any
             if assignee_id is not None and int(assignee_id) in owner_ids:
                 visible_tasks.append(task)
         except Exception:
-            _LOGGER.warning("Failed to evaluate task visibility (task_id=%s); skipping", getattr(task, "id", "?"), exc_info=True)
+            _LOGGER.warning(
+                "Failed to evaluate task visibility (task_id=%s); skipping",
+                getattr(task, "id", "?"),
+                exc_info=True,
+            )
             continue
     return visible_tasks
 
 
 _ALLOWED_READ_QUERY_KINDS = {
     "audit.summary",
-    "users.by_username", "users.by_id", "users.all", "users.team_members",
-    "teams.all", "teams.by_id",
-    "cycles.all", "cycles.active",
+    "users.by_username",
+    "users.by_id",
+    "users.all",
+    "users.team_members",
+    "teams.all",
+    "teams.by_id",
+    "cycles.all",
+    "cycles.active",
     "weekly_plan.active",
-    "node.get", "node.detect_type",
-    "krs.by_cycle", "krs.needing_checkin",
+    "node.get",
+    "node.detect_type",
+    "krs.by_cycle",
+    "krs.needing_checkin",
     "tasks.by_cycle",
-    "work_logs.by_range", "work_logs.by_task",
-    "mindmap.root", "mindmap.children",
+    "work_logs.by_range",
+    "work_logs.by_task",
+    "mindmap.root",
+    "mindmap.children",
     "alignments.context",
 }
 
@@ -1678,10 +1861,16 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             raise HTTPException(status_code=403, detail="Admin privileges required.")
         days = _coerce_int(params.get("days", 30), field_name="days")
         if days < 1 or days > 365:
-            raise HTTPException(status_code=400, detail="days must be between 1 and 365.")
-        recent_limit = _coerce_int(params.get("recent_limit", 20), field_name="recent_limit")
+            raise HTTPException(
+                status_code=400, detail="days must be between 1 and 365."
+            )
+        recent_limit = _coerce_int(
+            params.get("recent_limit", 20), field_name="recent_limit"
+        )
         if recent_limit < 1 or recent_limit > 100:
-            raise HTTPException(status_code=400, detail="recent_limit must be between 1 and 100.")
+            raise HTTPException(
+                status_code=400, detail="recent_limit must be between 1 and 100."
+            )
         filters: dict[str, Any] = {}
         for key in (
             "action",
@@ -1695,7 +1884,13 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             value = params.get(key)
             if value is not None and str(value).strip():
                 filters[key] = str(value).strip()
-        for key in ("actor_user_id", "actor_team_id", "target_id", "target_owner_id", "target_team_id"):
+        for key in (
+            "actor_user_id",
+            "actor_team_id",
+            "target_id",
+            "target_owner_id",
+            "target_team_id",
+        ):
             if params.get(key) is not None:
                 filters[key] = _coerce_int(params.get(key), field_name=key)
         if params.get("result") is not None and str(params.get("result")).strip():
@@ -1774,8 +1969,12 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         cycles = _visible_cycles_for_scope(scope, list(get_all_cycles() or []))
         if _scope_role(scope) == "member":
             if not cycles:
-                cycles = _visible_cycles_for_scope(scope, list(get_active_cycles() or []))
-            primary = _pick_primary_active_cycle([c for c in cycles if bool(getattr(c, "is_active", False))])
+                cycles = _visible_cycles_for_scope(
+                    scope, list(get_active_cycles() or [])
+                )
+            primary = _pick_primary_active_cycle(
+                [c for c in cycles if bool(getattr(c, "is_active", False))]
+            )
             cycles = [primary] if primary is not None else []
         return {
             "cycles": [
@@ -1811,12 +2010,12 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
 
     if kind == "node.get":
         node_id = _coerce_int(params.get("node_id"), field_name="node_id")
-        node_type = _normalize_node_type(str(params.get("node_type") or ""))
-        node = get_node(node_id, node_type, actor_username=actor)
-        payload = _serialize_node_for_type(node_type, node)
+        requested_node_type = _normalize_node_type(str(params.get("node_type") or ""))
+        node = get_node(node_id, requested_node_type, actor_username=actor)
+        payload = _serialize_node_for_type(requested_node_type, node)
         if payload is None:
             return {"node": None}
-        owner_id = _node_owner_id(node_type, payload)
+        owner_id = _node_owner_id(requested_node_type, payload)
         if owner_id is not None:
             _require_allowed_user_id(scope, owner_id)
         return {"node": payload}
@@ -1834,6 +2033,8 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             scope,
             _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
         )
+        if cycle_id is None:
+            raise HTTPException(status_code=400, detail="cycle_id is required.")
         limit_raw = params.get("limit")
         offset_raw = params.get("offset", 0)
         limit = (
@@ -1842,7 +2043,9 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             else None
         )
         if limit is not None and (limit < 1 or limit > 500):
-            raise HTTPException(status_code=400, detail="limit must be between 1 and 500.")
+            raise HTTPException(
+                status_code=400, detail="limit must be between 1 and 500."
+            )
         offset = _coerce_int(offset_raw, field_name="offset")
         krs = list(get_all_krs_by_cycle(cycle_id, limit=limit, offset=offset) or [])
         if not bool(scope.get("is_admin", False)):
@@ -1878,6 +2081,8 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             scope,
             _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
         )
+        if cycle_id is None:
+            raise HTTPException(status_code=400, detail="cycle_id is required.")
         limit_raw = params.get("limit")
         offset_raw = params.get("offset", 0)
         limit = (
@@ -1886,7 +2091,9 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             else None
         )
         if limit is not None and (limit < 1 or limit > 500):
-            raise HTTPException(status_code=400, detail="limit must be between 1 and 500.")
+            raise HTTPException(
+                status_code=400, detail="limit must be between 1 and 500."
+            )
         offset = _coerce_int(offset_raw, field_name="offset")
         tasks = list(get_all_tasks_by_cycle(cycle_id, limit=limit, offset=offset) or [])
         tasks = _filter_tasks_for_scope(tasks, scope)
@@ -1965,6 +2172,8 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             scope,
             _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
         )
+        if cycle_id is None:
+            raise HTTPException(status_code=400, detail="cycle_id is required.")
         days_threshold = _coerce_int(
             params.get("days_threshold", 7),
             field_name="days_threshold",
@@ -2042,6 +2251,10 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             scope,
             _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
         )
+        if cycle_id is None:
+            raise HTTPException(
+                status_code=400, detail="cycle_id is required."
+            )
         window_start = _coerce_datetime(
             params.get("window_start"),
             field_name="window_start",
@@ -2112,7 +2325,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             get_team_retrospectives(manager_id=manager_id, cycle_id=cycle_id) or []
         )
         with get_session_context() as session:
-            users = {
+            users_by_id: dict[int, Any] = {
                 int(getattr(user, "id")): user
                 for user in (
                     session.exec(
@@ -2126,7 +2339,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             payload = _serialize_retro(retro, include_user=False)
             if payload is None:
                 continue
-            user_payload = _serialize_user(users.get(int(payload.get("user_id") or 0)))
+            user_payload = _serialize_user(users_by_id.get(int(payload.get("user_id") or 0)))
             payload["user"] = user_payload
             serialized_retros.append(payload)
         return {"retros": serialized_retros}
@@ -2161,13 +2374,16 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             )
             all_objectives = list(
                 session.exec(
-                    select(Objective).where(Objective.id != int(objective_id)).limit(500)
+                    select(Objective)
+                    .where(Objective.id != int(objective_id))
+                    .limit(500)
                 ).all()
             )
             available_goals = list(session.exec(select(Goal).limit(500)).all())
             available_krs = list(session.exec(select(KeyResult).limit(500)).all())
             try:
                 from src.models import ObjectiveAlignmentLink
+
                 obj_links = list(
                     session.exec(
                         select(ObjectiveAlignmentLink).where(
@@ -2205,10 +2421,22 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
                     kr_id = getattr(kr, "id", None)
                     if kr_id:
                         linked_kr_ids.add(kr_id)
-                available_goals = [g for g in available_goals if getattr(g, "id", None) not in linked_goal_ids]
-                available_krs = [kr for kr in available_krs if getattr(kr, "id", None) not in linked_kr_ids]
+                available_goals = [
+                    g
+                    for g in available_goals
+                    if getattr(g, "id", None) not in linked_goal_ids
+                ]
+                available_krs = [
+                    kr
+                    for kr in available_krs
+                    if getattr(kr, "id", None) not in linked_kr_ids
+                ]
             except Exception:
-                _LOGGER.warning("Failed to load alignment links for objective_id=%s; falling back to empty", objective_id, exc_info=True)
+                _LOGGER.warning(
+                    "Failed to load alignment links for objective_id=%s; falling back to empty",
+                    objective_id,
+                    exc_info=True,
+                )
                 obj_links = []
         return {
             "parents": [
@@ -2293,825 +2521,50 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
     if kind == "mindmap.root":
         node_id = _coerce_int(params.get("node_id"), field_name="node_id")
         node_type_raw = str(params.get("node_type") or "").strip()
-        node_type = node_type_raw.upper() if node_type_raw else None
-        if node_type is None:
+        resolved_node_type = node_type_raw.upper() if node_type_raw else None
+        if resolved_node_type is None:
             for label in ("GOAL", "OBJECTIVE", "KEY_RESULT", "TASK"):
                 candidate = get_node(node_id, label, actor_username=actor)
                 if candidate:
-                    node_type = label
+                    resolved_node_type = label
                     break
-        if not node_type:
+        if not resolved_node_type:
             return {"node": None, "node_type": None}
 
-        node_type = _normalize_node_type(node_type)
-        scoped_node = get_node(node_id, node_type, actor_username=actor)
+        resolved_node_type = _normalize_node_type(resolved_node_type)
+        scoped_node = get_node(node_id, resolved_node_type, actor_username=actor)
         if not scoped_node:
-            return {"node": None, "node_type": node_type}
+            return {"node": None, "node_type": resolved_node_type}
 
-        if node_type == "GOAL":
+        if resolved_node_type == "GOAL":
             full_goal = get_goal_tree(node_id)
             node_payload = _serialize_goal(full_goal, include_objectives=True)
-        elif node_type == "OBJECTIVE":
+        elif resolved_node_type == "OBJECTIVE":
             node_payload = _serialize_objective(
                 scoped_node,
                 include_key_results=True,
                 include_goal=False,
             )
-        elif node_type == "KEY_RESULT":
+        elif resolved_node_type == "KEY_RESULT":
             node_payload = _serialize_key_result(
                 scoped_node,
                 include_tasks=True,
                 include_check_ins=False,
                 include_objective=False,
             )
-        elif node_type == "TASK":
+        elif resolved_node_type == "TASK":
             node_payload = _serialize_task(
                 scoped_node,
                 include_key_result=False,
                 include_work_logs=True,
             )
         else:
-            node_payload = _serialize_node_for_type(node_type, scoped_node)
-        return {"node": node_payload, "node_type": node_type}
+            node_payload = _serialize_node_for_type(resolved_node_type, scoped_node)
+        return {"node": node_payload, "node_type": resolved_node_type}
 
     raise HTTPException(status_code=404, detail="Unsupported read query kind.")
 
 
-@app.post(
-    "/v1/auth/login",
-    dependencies=[Depends(require_service_access)],
-)
-def api_auth_login(payload: LoginRequest) -> dict:
-    if is_supabase_api_mode_enabled():
-        auth = authenticate_user_detailed_via_supabase_api(
-            username=str(payload.username or "").strip(),
-            password=payload.password,
-            client_ip=(str(payload.client_ip).strip() if payload.client_ip else None),
-        )
-    else:
-        auth = authenticate_user_detailed(
-            username=str(payload.username or "").strip(),
-            password=payload.password,
-            client_ip=(str(payload.client_ip).strip() if payload.client_ip else None),
-        )
-    output = dict(auth or {})
-    output["user"] = _serialize_user((auth or {}).get("user"))
-    return output
-
-
-@app.get(
-    "/v1/auth/me",
-    dependencies=[Depends(require_service_access)],
-)
-def api_get_current_user(
-    x_okr_actor: Optional[str] = Header(default=None),
-    x_okr_token_version: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
-    if not actor:
-        raise HTTPException(status_code=401, detail="No active session.")
-    token_version = int(x_okr_token_version) if x_okr_token_version else None
-    if is_supabase_api_mode_enabled():
-        scope = _resolve_scope_for_actor(actor, token_version=token_version)
-        user_data = scope
-    else:
-        with get_session_context() as session:
-            _resolve_actor_scope(session, actor, token_version=token_version)
-            user = session.exec(
-                select(User).where(User.username == actor)
-            ).first()
-            if not user:
-                raise HTTPException(status_code=401, detail="User not found.")
-            user_data = {
-                "actor_id": user.id,
-                "username": user.username,
-                "display_name": getattr(user, "display_name", "") or "",
-                "role": getattr(user, "role", "member"),
-                "team_id": getattr(user, "team_id", None),
-                "manager_id": getattr(user, "manager_id", None),
-                "must_change_password": bool(getattr(user, "must_change_password", False)),
-                "token_version": getattr(user, "token_version", 1),
-            }
-    return {
-        "id": user_data.get("actor_id"),
-        "username": actor,
-        "display_name": user_data.get("display_name", ""),
-        "role": user_data.get("role", "member"),
-        "team_id": user_data.get("team_id"),
-        "manager_id": user_data.get("manager_id"),
-        "must_change_password": user_data.get("must_change_password", False),
-        "token_version": user_data.get("token_version"),
-    }
-
-
-@app.post(
-    "/v1/read/query",
-    dependencies=[Depends(require_service_access)],
-)
-def api_read_query(
-    payload: ReadQueryRequest,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(
-        header_actor=x_okr_actor,
-        payload_actor=payload.actor_username,
-    )
-    try:
-        return _read_query_payload(
-            kind=str(payload.kind or "").strip(),
-            params=dict(payload.params or {}),
-            actor=actor,
-        )
-    except HTTPException:
-        raise
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=_status_for_value_error(str(exc)),
-            detail=str(exc),
-        ) from exc
-    except Exception as exc:
-        error_log("backend_read_query_unhandled_error", exc)
-        raise HTTPException(
-            status_code=500,
-            detail="Unexpected server error while processing read query.",
-        ) from exc
-
-
-@app.get("/healthz")
-def healthz() -> dict:
-    mode = "supabase_api" if is_supabase_api_mode_enabled() else "database"
-    return {"status": "ok", "data_access_mode": mode}
-
-
-def _require_admin_actor_scope(actor: str) -> None:
-    scope = _resolve_scope_for_actor(actor)
-    if not bool(scope.get("is_admin", False)):
-        raise HTTPException(status_code=403, detail="Admin privileges required.")
-
-
-def _require_admin_or_manager_actor_scope(actor: str) -> None:
-    scope = _resolve_scope_for_actor(actor)
-    if not _is_scope_admin_or_manager(scope):
-        raise HTTPException(status_code=403, detail="Manager or admin privileges required.")
-
-
-@app.get(
-    "/v1/admin/ai-health",
-    dependencies=[Depends(require_service_access)],
-)
-def api_admin_ai_health(
-    live_probe: bool = False,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
-    _require_admin_actor_scope(actor)
-    return run_ai_health_check(live_probe=bool(live_probe))
-
-
-@app.get(
-    "/v1/admin/pdf-health",
-    dependencies=[Depends(require_service_access)],
-)
-def api_admin_pdf_health(
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
-    _require_admin_actor_scope(actor)
-    return dict(get_pdf_runtime_diagnostics())
-
-
-@app.get(
-    "/v1/admin/db-backup",
-    dependencies=[Depends(require_service_access)],
-)
-def api_admin_db_backup(
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> Response:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
-    _require_admin_actor_scope(actor)
-    backup_bytes = export_database_backup()
-    return Response(content=backup_bytes, media_type="application/json")
-
-
-@app.post(
-    "/v1/admin/db-restore",
-    dependencies=[Depends(require_service_access)],
-)
-async def api_admin_db_restore(
-    request: Request,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
-    _require_admin_actor_scope(actor)
-    if not get_bool_config("OKR_ENABLE_DIRECT_DB_RESTORE", False):
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Direct DB restore is disabled. "
-                "Set OKR_ENABLE_DIRECT_DB_RESTORE=true for controlled admin restore."
-            ),
-        )
-    if is_production_runtime():
-        raise HTTPException(
-            status_code=403,
-            detail="Direct DB restore is blocked in production runtime.",
-        )
-
-    # Enforce body size limit (50 MB)
-    content_length = request.headers.get("content-length")
-    if content_length:
-        try:
-            size_bytes = int(content_length)
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="Invalid Content-Length header.")
-        if size_bytes > 50 * 1024 * 1024:
-            raise HTTPException(
-                status_code=413,
-                detail="Request body too large. Maximum 50 MB.",
-            )
-
-    payload = await request.json()
-    if not isinstance(payload, dict):
-        raise HTTPException(status_code=400, detail="Backup restore payload must be a JSON object.")
-    if str(payload.get("format") or "").strip() != BACKUP_FORMAT_VERSION:
-        raise HTTPException(status_code=400, detail="Unsupported backup format version.")
-
-    # Audit the restore attempt
-    audit_log(
-        "restore_attempt",
-        "database",
-        actor=actor,
-        details={
-            "format": payload.get("format"),
-            "tables": list(payload.keys())[:10],
-        },
-    )
-
-    try:
-        return dict(import_database_backup(payload))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.get(
-    "/v1/state/{key}",
-    dependencies=[Depends(require_service_access)],
-)
-def api_get_app_state(
-    key: str,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    _require_admin_actor_scope(str(x_okr_actor or ""))
-    value = get_app_state(key)
-    return {"key": key, "value": value}
-
-
-@app.post(
-    "/v1/state/{key}",
-    dependencies=[Depends(require_service_access)],
-)
-async def api_set_app_state(
-    key: str,
-    request: Request,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    _require_admin_actor_scope(str(x_okr_actor or ""))
-    # Accept raw text/plain or json-wrapped value
-    try:
-        body = await request.body()
-        raw_value = body.decode("utf-8")
-        # Try if it's JSON {"value": "..."}
-        try:
-            data = json.loads(raw_value)
-            if isinstance(data, dict) and "value" in data:
-                value = str(data["value"])
-            else:
-                value = raw_value
-        except json.JSONDecodeError:
-            value = raw_value
-
-        set_app_state(key, value)
-        return {"key": key, "value": value, "status": "updated"}
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@app.post(
-    "/v1/read/atlas/snapshot",
-    dependencies=[Depends(require_service_access)],
-)
-def api_read_atlas_snapshot(
-    payload: AtlasSnapshotRequest,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(
-        header_actor=x_okr_actor,
-        payload_actor=payload.actor_username,
-    )
-    requested_owner_ids = _coerce_owner_ids(payload.owner_ids)
-    scope = _resolve_scope_for_actor(actor)
-    allowed_owner_ids = set(scope.get("owner_ids") or set())
-    cycle_id = _resolve_effective_cycle_id_for_scope(scope, int(payload.cycle_id))
-    if bool(scope.get("is_admin", False)):
-        owner_ids = requested_owner_ids or None
-    else:
-        if requested_owner_ids:
-            owner_ids = sorted(
-                allowed_owner_ids.intersection(set(requested_owner_ids))
-            )
-        else:
-            owner_ids = sorted(allowed_owner_ids)
-    if is_supabase_api_mode_enabled():
-        return build_atlas_scope_snapshot_via_supabase_api(
-            cycle_id=int(cycle_id),
-            owner_ids=owner_ids,
-            include_analysis=bool(payload.include_analysis),
-            actor=actor,
-        )
-    with get_session_context() as session:
-        return build_atlas_scope_snapshot(
-            session,
-            cycle_id=int(cycle_id),
-            owner_ids=owner_ids,
-            include_analysis=bool(payload.include_analysis),
-        )
-
-
-@app.post(
-    "/v1/read/leadership/metrics",
-    dependencies=[Depends(require_service_access)],
-)
-def api_read_leadership_metrics(
-    payload: LeadershipMetricsRequest,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(
-        header_actor=x_okr_actor,
-        payload_actor=payload.actor_username,
-    )
-    requested_usernames = {
-        str(value).strip() for value in (payload.usernames or []) if str(value).strip()
-    }
-    scope = _resolve_scope_for_actor(actor)
-    allowed_usernames = {str(value) for value in (scope.get("usernames") or set())}
-    cycle_id = _resolve_effective_cycle_id_for_scope(scope, int(payload.cycle_id))
-    if bool(scope.get("is_admin", False)):
-        usernames = (
-            sorted(requested_usernames)
-            if requested_usernames
-            else sorted(allowed_usernames)
-        )
-    else:
-        usernames = (
-            sorted(allowed_usernames.intersection(requested_usernames))
-            if requested_usernames
-            else sorted(allowed_usernames)
-        )
-    if not usernames:
-        return {}
-    if is_supabase_api_mode_enabled():
-        return get_leadership_metrics_via_supabase_api(
-            usernames=list(usernames),
-            cycle_id=int(cycle_id),
-            actor=actor,
-        )
-    return get_leadership_metrics(usernames, int(cycle_id))
-
-
-@app.post(
-    "/v1/ai/analyze-node",
-    dependencies=[Depends(require_service_access)],
-)
-def api_ai_analyze_node(
-    payload: AiAnalyzeNodeRequest,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(
-        header_actor=x_okr_actor,
-        payload_actor=payload.actor_username,
-    )
-    node_type = str(payload.node_type or "KEY_RESULT")
-    actor_role = None
-    actor_team_id = None
-    try:
-        actor_user = get_user_by_username(actor)
-    except Exception:
-        _LOGGER.warning("Failed to look up actor user '%s' for AI analysis; proceeding without role context", actor, exc_info=True)
-        actor_user = None
-    if actor_user:
-        raw_role = getattr(actor_user, "role", None)
-        actor_role = getattr(raw_role, "value", None) or (str(raw_role) if raw_role else None)
-        actor_team_id = getattr(actor_user, "team_id", None)
-    base_details = {
-        "node_id": int(payload.node_id),
-        "node_type": node_type,
-        "feature": "ai_analyze_node",
-    }
-    if actor_role:
-        base_details["actor_role"] = actor_role
-    if actor_team_id is not None:
-        base_details["actor_team_id"] = actor_team_id
-    result = analyze_node(
-        int(payload.node_id),
-        node_type,
-        actor_username=actor,
-    )
-    if not isinstance(result, dict):
-        audit_log(
-            action="analyze",
-            entity="ai_node",
-            actor=actor,
-            target_type="node",
-            target_id=int(payload.node_id),
-            details={
-                **base_details,
-                "success": False,
-                "result": "failure",
-                "error_type": "invalid_payload",
-                "error_text": "AI analysis returned invalid payload.",
-            },
-        )
-        raise HTTPException(status_code=500, detail="AI analysis returned invalid payload.")
-    error_text = str(result.get("error") or "").strip()
-    if error_text:
-        lowered = error_text.lower()
-        error_type = "validation_error"
-        if "not found" in lowered:
-            error_type = "not_found"
-            audit_log(
-                action="analyze",
-                entity="ai_node",
-                actor=actor,
-                target_type="node",
-                target_id=int(payload.node_id),
-                details={
-                    **base_details,
-                    "success": False,
-                    "result": "failure",
-                    "error_type": error_type,
-                    "error_text": error_text,
-                },
-            )
-            raise HTTPException(status_code=404, detail=error_text)
-        if "permission" in lowered or "forbidden" in lowered or "authorized" in lowered:
-            error_type = "forbidden"
-            audit_log(
-                action="analyze",
-                entity="ai_node",
-                actor=actor,
-                target_type="node",
-                target_id=int(payload.node_id),
-                details={
-                    **base_details,
-                    "success": False,
-                    "result": "failure",
-                    "error_type": error_type,
-                    "error_text": error_text,
-                },
-            )
-            raise HTTPException(status_code=403, detail=error_text)
-        audit_log(
-            action="analyze",
-            entity="ai_node",
-            actor=actor,
-            target_type="node",
-            target_id=int(payload.node_id),
-            details={
-                **base_details,
-                "success": False,
-                "result": "failure",
-                "error_type": error_type,
-                "error_text": error_text,
-            },
-        )
-        raise HTTPException(status_code=400, detail=error_text)
-    audit_log(
-        action="analyze",
-        entity="ai_node",
-        actor=actor,
-        target_type="node",
-        target_id=int(payload.node_id),
-        details={
-            **base_details,
-            "success": True,
-            "result": "success",
-            "overall_score": result.get("overall_score"),
-        },
-    )
-    return result
-
-
-@app.post(
-    "/v1/ai/team-coach",
-    dependencies=[Depends(require_service_access)],
-)
-def api_ai_team_coach(
-    payload: AiTeamCoachRequest,
-    x_okr_actor: Optional[str] = Header(default=None),
-    x_okr_token_version: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(
-        header_actor=x_okr_actor,
-        payload_actor=payload.actor_username,
-    )
-    token_version = int(x_okr_token_version) if x_okr_token_version else None
-    with get_session_context() as session:
-        _resolve_actor_scope(session, actor, token_version=token_version)
-    result = analyze_team_health(dict(payload.team_data or {}))
-    if not isinstance(result, dict):
-        raise HTTPException(status_code=500, detail="AI team coach returned invalid payload.")
-    error_text = str(result.get("error") or "").strip()
-    if error_text:
-        raise HTTPException(status_code=400, detail=error_text)
-    return result
-
-
-@app.post(
-    "/v1/ai/strategy-pulse",
-    dependencies=[Depends(require_service_access)],
-)
-def api_ai_strategy_pulse(
-    payload: AiStrategyPulseRequest,
-    x_okr_actor: Optional[str] = Header(default=None),
-    x_okr_token_version: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(
-        header_actor=x_okr_actor,
-        payload_actor=payload.actor_username,
-    )
-    token_version = int(x_okr_token_version) if x_okr_token_version else None
-    with get_session_context() as session:
-        scope = _resolve_actor_scope(session, actor, token_version=token_version)
-    allowed_usernames = {str(value).strip() for value in (scope.get("usernames") or set())}
-    subject_username = str(payload.subject_username or actor).strip()
-    if not subject_username:
-        raise HTTPException(status_code=400, detail="Subject username is required.")
-    if subject_username not in allowed_usernames:
-        raise HTTPException(status_code=403, detail="Actor is not authorized.")
-
-    subject_user = get_user_by_username(subject_username)
-    if not subject_user:
-        raise HTTPException(status_code=404, detail="User not found.")
-
-    cycle_id = int(payload.cycle_id)
-    subject_user_id = int(getattr(subject_user, "id", 0) or 0)
-    if subject_user_id <= 0:
-        raise HTTPException(status_code=404, detail="User not found.")
-
-    burnout = calculate_burnout_risk(subject_user_id, days=int(payload.days))
-    gaps = detect_strategy_gaps(cycle_id, user_ids=[subject_user_id])
-    cycle_title = str(payload.cycle_title or f"Cycle {cycle_id}").strip() or f"Cycle {cycle_id}"
-    outlook = generate_predictive_outlook(
-        burnout_data=burnout,
-        strategy_gaps=gaps,
-        cycle_title=cycle_title,
-    )
-    if not isinstance(outlook, dict):
-        raise HTTPException(status_code=500, detail="AI strategy pulse returned invalid payload.")
-    error_text = str(outlook.get("error") or "").strip()
-    if error_text:
-        raise HTTPException(status_code=400, detail=error_text)
-
-    gap_signals = [
-        (
-            f"{str(gap.get('title') or 'Untitled').strip()}: "
-            f"{str(gap.get('gap_type') or 'N/A').strip()} "
-            f"(severity {int(gap.get('severity') or 0)})"
-        )
-        for gap in (gaps or [])[:5]
-    ]
-    portfolio_actions = _coerce_string_list(outlook.get("risk_mitigation")) + _coerce_string_list(
-        outlook.get("strategic_pivots")
-    )
-
-    return {
-        "subject_username": subject_username,
-        "cycle_id": cycle_id,
-        "burnout_snapshot": burnout,
-        "strategy_gaps": gaps,
-        "predictive_outlook": outlook,
-        "burnout_risk": str(burnout.get("risk_label") or "").strip(),
-        "gap_signals": gap_signals,
-        "portfolio_actions": portfolio_actions,
-    }
-
-
-@app.post(
-    "/v1/timer/start",
-    dependencies=[Depends(require_service_access)],
-)
-def api_start_timer(
-    payload: TimerStartRequest,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(
-        header_actor=x_okr_actor,
-        payload_actor=payload.user_id,
-    )
-    if is_supabase_api_mode_enabled():
-        scope = _resolve_scope_for_actor(actor)
-        owner_id = _resolve_goal_owner_id_for_node_via_supabase(
-            node_type="TASK",
-            node_id=int(payload.task_id),
-            actor=actor,
-        )
-        if owner_id is not None:
-            _require_allowed_user_id(scope, int(owner_id))
-    try:
-        if is_supabase_api_mode_enabled():
-            work_log = start_timer_via_supabase_api(task_id=payload.task_id, actor_username=actor)
-        else:
-            work_log = start_timer(payload.task_id, actor)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=_status_for_value_error(str(exc)),
-            detail=str(exc),
-        ) from exc
-
-    return {
-        "work_log_id": work_log.id,
-        "task_id": work_log.task_id,
-        "start_time": work_log.start_time,
-    }
-
-
-@app.post(
-    "/v1/timer/stop",
-    dependencies=[Depends(require_service_access)],
-)
-def api_stop_timer(
-    payload: TimerStopRequest,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> dict:
-    actor = _resolve_actor(
-        header_actor=x_okr_actor,
-        payload_actor=payload.user_id,
-    )
-    if is_supabase_api_mode_enabled():
-        scope = _resolve_scope_for_actor(actor)
-        owner_id = _resolve_goal_owner_id_for_node_via_supabase(
-            node_type="TASK",
-            node_id=int(payload.task_id),
-            actor=actor,
-        )
-        if owner_id is not None:
-            _require_allowed_user_id(scope, int(owner_id))
-    try:
-        if is_supabase_api_mode_enabled():
-            work_log = stop_timer_via_supabase_api(
-                task_id=payload.task_id,
-                summary=payload.summary,
-                user_id=actor,
-            )
-        else:
-            work_log = stop_timer(payload.task_id, summary=payload.summary, user_id=actor)
-    except PermissionError as exc:
-        raise HTTPException(status_code=403, detail=str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=_status_for_value_error(str(exc)),
-            detail=str(exc),
-        ) from exc
-    if not work_log:
-        return {
-            "work_log_id": None,
-            "task_id": int(payload.task_id),
-            "duration_minutes": 0,
-            "start_time": None,
-            "end_time": None,
-            "summary": payload.summary,
-        }
-    return {
-        "work_log_id": work_log.id,
-        "task_id": work_log.task_id,
-        "duration_minutes": work_log.duration_minutes,
-        "start_time": work_log.start_time,
-        "end_time": work_log.end_time,
-        "summary": work_log.summary,
-    }
-
-
-@app.post(
-    "/v1/jobs",
-    response_model=JobView,
-    status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(require_service_access)],
-)
-def api_submit_job(
-    payload: JobSubmitRequest,
-    x_okr_actor: Optional[str] = Header(default=None),
-    x_okr_idempotency_key: Optional[str] = Header(default=None),
-) -> JobView:
-    actor = _resolve_actor(
-        header_actor=x_okr_actor,
-        payload_actor=payload.actor_username,
-    )
-    normalized_idempotency_key = str(x_okr_idempotency_key or "").strip() or None
-    try:
-        enforce_job_submit_limits(
-            kind=payload.kind,
-            actor_username=actor,
-            idempotency_key=normalized_idempotency_key,
-        )
-    except HTTPException as exc:
-        if int(exc.status_code) == 429:
-            _safe_audit_job_submit(
-                action="job_submit_rejected",
-                actor=actor,
-                kind=payload.kind,
-                idempotency_key=normalized_idempotency_key,
-                status_code=429,
-                error_code=_quota_error_code(exc.detail),
-                rejection_detail=exc.detail,
-            )
-        raise
-    job = enqueue_job(
-        kind=payload.kind,
-        payload=payload.payload,
-        actor_username=actor,
-        max_attempts=payload.max_attempts,
-        idempotency_key=normalized_idempotency_key,
-    )
-    _safe_audit_job_submit(
-        action="job_submit_accepted",
-        actor=actor,
-        kind=payload.kind,
-        idempotency_key=normalized_idempotency_key,
-        status_code=status.HTTP_202_ACCEPTED,
-        job_id=str(getattr(job, "id", "") or ""),
-        team_id=getattr(job, "team_id", None),
-        job_status=str(
-            getattr(getattr(job, "status", None), "value", getattr(job, "status", ""))
-        ),
-    )
-    return JobView(**serialize_job(job))
-
-
-@app.get(
-    "/v1/jobs/{job_id}",
-    response_model=JobView,
-    dependencies=[Depends(require_service_access)],
-)
-def api_get_job(
-    job_id: str,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> JobView:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
-    job = get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
-    if job.actor_username and job.actor_username != actor:
-        raise HTTPException(status_code=404, detail="Job not found.")
-    return JobView(**serialize_job(job))
-
-
-@app.post(
-    "/v1/jobs/{job_id}/cancel",
-    response_model=JobCancelResponse,
-    dependencies=[Depends(require_service_access)],
-)
-def api_cancel_job(
-    job_id: str,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> JobCancelResponse:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
-    job = request_job_cancel(job_id, actor)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found.")
-    return JobCancelResponse(
-        id=job.id,
-        status=str(getattr(job.status, "value", job.status)),
-        cancel_requested=bool(job.cancel_requested),
-    )
-
-
-@app.delete(
-    "/v1/jobs/{job_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    dependencies=[Depends(require_service_access)],
-)
-def api_delete_job(
-    job_id: str,
-    x_okr_actor: Optional[str] = Header(default=None),
-) -> Response:
-    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
-    job = get_job(job_id)
-    if not job or (job.actor_username and job.actor_username != actor):
-        raise HTTPException(status_code=404, detail="Job not found.")
-    # Soft-delete not implemented yet; keep endpoint for compatibility.
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-@app.post(
-    "/v1/nodes/goal",
-    response_model=NodeMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_goal(
     payload: GoalCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3164,12 +2617,6 @@ def api_create_goal(
     return result
 
 
-@app.post(
-    "/v1/nodes/objective",
-    response_model=NodeMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_objective(
     payload: ObjectiveCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3219,12 +2666,6 @@ def api_create_objective(
     return result
 
 
-@app.post(
-    "/v1/nodes/key_result",
-    response_model=NodeMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_key_result(
     payload: KeyResultCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3280,12 +2721,6 @@ def api_create_key_result(
     return result
 
 
-@app.post(
-    "/v1/nodes/task",
-    response_model=NodeMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_task(
     payload: TaskCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3349,11 +2784,6 @@ _NODE_UPDATE_SCHEMAS = {
 }
 
 
-@app.patch(
-    "/v1/nodes/{node_type}/{node_id}",
-    response_model=NodeMutationView,
-    dependencies=[Depends(require_service_access)],
-)
 def api_update_node(
     node_type: str,
     node_id: int,
@@ -3361,7 +2791,9 @@ def api_update_node(
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
     normalized_type = _normalize_node_type(node_type)
-    schema_cls = _NODE_UPDATE_SCHEMAS.get(normalized_type)
+    schema_cls: Type[BaseModel] | None = cast(
+        Type[BaseModel] | None, _NODE_UPDATE_SCHEMAS.get(normalized_type)
+    )
     if schema_cls and payload.updates:
         try:
             validated = schema_cls.model_validate(payload.updates)
@@ -3410,11 +2842,6 @@ def api_update_node(
     return _node_view_from_obj(normalized_type, node)
 
 
-@app.delete(
-    "/v1/nodes/{node_type}/{node_id}",
-    response_model=NodeDeleteResponse,
-    dependencies=[Depends(require_service_access)],
-)
 def api_delete_node(
     node_type: str,
     node_id: int,
@@ -3459,12 +2886,6 @@ def api_delete_node(
     )
 
 
-@app.post(
-    "/v1/users",
-    response_model=UserMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_user(
     payload: UserCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3506,11 +2927,6 @@ def api_create_user(
     return _user_view_from_obj(user)
 
 
-@app.patch(
-    "/v1/users/{user_id}",
-    response_model=UserMutationView,
-    dependencies=[Depends(require_service_access)],
-)
 def api_update_user(
     user_id: int,
     payload: UserUpdateRequest,
@@ -3556,11 +2972,6 @@ def api_update_user(
     return _user_view_from_obj(user)
 
 
-@app.post(
-    "/v1/users/{user_id}/reset-password",
-    response_model=UserPasswordResetResponse,
-    dependencies=[Depends(require_service_access)],
-)
 def api_reset_user_password(
     user_id: int,
     payload: UserPasswordResetRequest,
@@ -3597,12 +3008,6 @@ def api_reset_user_password(
     return UserPasswordResetResponse(user_id=int(user_id), reset=True)
 
 
-@app.post(
-    "/v1/cycles",
-    response_model=CycleMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_cycle(
     payload: CycleCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3637,11 +3042,6 @@ def api_create_cycle(
     return _cycle_view_from_obj(cycle)
 
 
-@app.patch(
-    "/v1/cycles/{cycle_id}",
-    response_model=CycleMutationView,
-    dependencies=[Depends(require_service_access)],
-)
 def api_update_cycle(
     cycle_id: int,
     payload: CycleUpdateRequest,
@@ -3681,11 +3081,6 @@ def api_update_cycle(
     return _cycle_view_from_obj(cycle)
 
 
-@app.delete(
-    "/v1/cycles/{cycle_id}",
-    response_model=CycleDeleteResponse,
-    dependencies=[Depends(require_service_access)],
-)
 def api_delete_cycle(
     cycle_id: int,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3694,7 +3089,7 @@ def api_delete_cycle(
     _require_admin_or_manager_actor_scope(actor)
     try:
         if is_supabase_api_mode_enabled():
-            deleted = delete_cycle_via_supabase_api(int(cycle_id), actor_username=actor)
+            deleted = delete_cycle_via_supabase_api(cycle_id=int(cycle_id))
         else:
             deleted = delete_cycle(int(cycle_id), actor_username=actor)
     except PermissionError as exc:
@@ -3706,12 +3101,6 @@ def api_delete_cycle(
     return CycleDeleteResponse(id=int(cycle_id), deleted=True)
 
 
-@app.post(
-    "/v1/teams",
-    response_model=TeamMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_team(
     payload: TeamCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3740,11 +3129,6 @@ def api_create_team(
     return _team_view_from_obj(team)
 
 
-@app.patch(
-    "/v1/teams/{team_id}",
-    response_model=TeamMutationView,
-    dependencies=[Depends(require_service_access)],
-)
 def api_update_team(
     team_id: int,
     payload: TeamUpdateRequest,
@@ -3781,11 +3165,6 @@ def api_update_team(
     return _team_view_from_obj(team)
 
 
-@app.delete(
-    "/v1/teams/{team_id}",
-    response_model=TeamDeleteResponse,
-    dependencies=[Depends(require_service_access)],
-)
 def api_delete_team(
     team_id: int,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3809,12 +3188,6 @@ def api_delete_team(
     return TeamDeleteResponse(id=int(team_id), deleted=True)
 
 
-@app.post(
-    "/v1/check-ins",
-    response_model=CheckInMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_check_in(
     payload: CheckInCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3875,12 +3248,6 @@ def api_create_check_in(
     return _check_in_view_from_obj(check_in)
 
 
-@app.post(
-    "/v1/experiments",
-    response_model=ExperimentMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_experiment(
     payload: ExperimentCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -3961,11 +3328,6 @@ def api_create_experiment(
     return view
 
 
-@app.patch(
-    "/v1/experiments/{experiment_id}",
-    response_model=ExperimentMutationView,
-    dependencies=[Depends(require_service_access)],
-)
 def api_update_experiment(
     experiment_id: int,
     payload: ExperimentUpdateRequest,
@@ -3981,9 +3343,7 @@ def api_update_experiment(
             validated = ExperimentUpdateFields.model_validate(payload.updates)
         except PydanticValidationError as exc:
             raise HTTPException(status_code=422, detail=exc.errors()) from exc
-        validated_updates = validated.model_dump(
-            exclude_unset=True
-        )
+        validated_updates = validated.model_dump(exclude_unset=True)
     else:
         validated_updates = {}
     try:
@@ -4017,8 +3377,13 @@ def api_update_experiment(
         if is_supabase_api_mode_enabled():
             # Validate transition before update if status is changing
             if "status" in updates:
-                from src.services.supabase_api_mode import get_experiment_via_supabase_api
-                current = get_experiment_via_supabase_api(experiment_id=int(experiment_id))
+                from src.services.supabase_api_mode import (
+                    get_experiment_via_supabase_api,
+                )
+
+                current = get_experiment_via_supabase_api(
+                    experiment_id=int(experiment_id)
+                )
                 if current:
                     current_status = _coerce_enum(
                         getattr(current, "status", None),
@@ -4034,8 +3399,10 @@ def api_update_experiment(
         else:
             # Validate transition before update if status is changing
             if "status" in updates:
-                from src.crud import get_experiment as _get_experiment
-                current = _get_experiment(int(experiment_id))
+                with get_session_context() as session:
+                    current = session.exec(
+                        select(Experiment).where(Experiment.id == int(experiment_id))
+                    ).first()
                 if current:
                     current_status = _coerce_enum(
                         getattr(current, "status", None),
@@ -4091,11 +3458,6 @@ def api_update_experiment(
     return view
 
 
-@app.post(
-    "/v1/experiments/{experiment_id}/close",
-    response_model=ExperimentMutationView,
-    dependencies=[Depends(require_service_access)],
-)
 def api_close_experiment(
     experiment_id: int,
     payload: ExperimentCloseRequest,
@@ -4187,12 +3549,6 @@ def api_close_experiment(
     return view
 
 
-@app.post(
-    "/v1/retrospectives",
-    response_model=RetrospectiveMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_retrospective(
     payload: RetrospectiveCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -4200,11 +3556,16 @@ def api_create_retrospective(
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    cycle_id = payload.cycle_id
+    if cycle_id is None:
+        raise HTTPException(
+            status_code=400, detail="cycle_id is required for retrospective."
+        )
     try:
         if is_supabase_api_mode_enabled():
             retro = create_retrospective_via_supabase_api(
                 user_id=payload.user_id,
-                cycle_id=payload.cycle_id,
+                cycle_id=int(cycle_id),
                 week_start_date=payload.week_start_date,
                 content=payload.content,
                 sentiment=payload.sentiment,
@@ -4213,7 +3574,7 @@ def api_create_retrospective(
         else:
             retro = create_retrospective(
                 user_id=payload.user_id,
-                cycle_id=payload.cycle_id,
+                cycle_id=int(cycle_id),
                 week_start_date=payload.week_start_date,
                 content=payload.content,
                 sentiment=payload.sentiment,
@@ -4229,11 +3590,6 @@ def api_create_retrospective(
     return _retrospective_view_from_obj(retro)
 
 
-@app.put(
-    "/v1/retrospectives/{retrospective_id}/experiment-outcomes",
-    response_model=RetroExperimentOutcomeView,
-    dependencies=[Depends(require_service_access)],
-)
 def api_upsert_retro_experiment_outcome(
     retrospective_id: int,
     payload: RetroExperimentOutcomeUpsertRequest,
@@ -4277,12 +3633,6 @@ def api_upsert_retro_experiment_outcome(
     return _retro_outcome_view_from_obj(outcome)
 
 
-@app.post(
-    "/v1/weekly-plans",
-    response_model=WeeklyPlanMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_weekly_plan(
     payload: WeeklyPlanCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -4321,12 +3671,6 @@ def api_create_weekly_plan(
     return _weekly_plan_view_from_obj(plan)
 
 
-@app.post(
-    "/v1/alignments",
-    response_model=AlignmentMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_alignment(
     payload: AlignmentCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -4364,11 +3708,6 @@ def api_create_alignment(
     return _alignment_view_from_obj(edge)
 
 
-@app.delete(
-    "/v1/alignments/{edge_id}",
-    response_model=AlignmentDeleteResponse,
-    dependencies=[Depends(require_service_access)],
-)
 def api_delete_alignment(
     edge_id: int,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -4391,12 +3730,6 @@ def api_delete_alignment(
     return AlignmentDeleteResponse(id=int(edge_id), deleted=True)
 
 
-@app.post(
-    "/v1/objective-alignment-links",
-    response_model=ObjectiveAlignmentLinkMutationView,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_service_access)],
-)
 def api_create_objective_alignment_link(
     payload: ObjectiveAlignmentLinkCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -4427,11 +3760,6 @@ def api_create_objective_alignment_link(
     )
 
 
-@app.delete(
-    "/v1/objective-alignment-links/{link_id}",
-    response_model=ObjectiveAlignmentLinkDeleteResponse,
-    dependencies=[Depends(require_service_access)],
-)
 def api_delete_objective_alignment_link(
     link_id: int,
     x_okr_actor: Optional[str] = Header(default=None),
@@ -4450,11 +3778,6 @@ def api_delete_objective_alignment_link(
     return ObjectiveAlignmentLinkDeleteResponse(id=int(link_id), deleted=True)
 
 
-@app.delete(
-    "/v1/work-logs/{work_log_id}",
-    response_model=WorkLogDeleteResponse,
-    dependencies=[Depends(require_service_access)],
-)
 def api_delete_work_log(
     work_log_id: int,
     x_okr_actor: Optional[str] = Header(default=None),

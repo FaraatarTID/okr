@@ -6,7 +6,7 @@ import os
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 from sqlalchemy import and_, event, func, or_
 from sqlalchemy.orm import selectinload
@@ -161,10 +161,10 @@ def _get_latest_checkin_snapshot_by_kr(
 
     latest_subq = (
         select(
-            CheckIn.key_result_id.label("kr_id"),
-            func.max(CheckIn.created_at).label("max_created_at"),
+            col(CheckIn.key_result_id).label("kr_id"),
+            func.max(col(CheckIn.created_at)).label("max_created_at"),
         )
-        .where(CheckIn.key_result_id.in_(kr_ids))
+        .where(cast(Any, CheckIn.key_result_id).in_(kr_ids))
         .group_by(CheckIn.key_result_id)
         .subquery()
     )
@@ -202,10 +202,10 @@ def _get_latest_checkins_by_kr(session: Session, kr_ids: List[int]) -> dict:
         return {}
     latest_subq = (
         select(
-            CheckIn.key_result_id.label("kr_id"),
-            func.max(CheckIn.created_at).label("max_created_at"),
+            col(CheckIn.key_result_id).label("kr_id"),
+            func.max(col(CheckIn.created_at)).label("max_created_at"),
         )
-        .where(CheckIn.key_result_id.in_(kr_ids))
+        .where(cast(Any, CheckIn.key_result_id).in_(kr_ids))
         .group_by(CheckIn.key_result_id)
         .subquery()
     )
@@ -218,7 +218,7 @@ def _get_latest_checkins_by_kr(session: Session, kr_ids: List[int]) -> dict:
             ),
         )
     ).all()
-    latest_map = {}
+    latest_map: dict[int, Any] = {}
     for row in latest_rows:
         # If timestamps tie, keep the highest PK to produce deterministic output.
         existing = latest_map.get(row.key_result_id)
@@ -237,8 +237,8 @@ def get_krs_needing_checkin(
 
             latest_subq = (
                 select(
-                    CheckIn.key_result_id.label("kr_id"),
-                    func.max(CheckIn.created_at).label("latest_created_at"),
+                    col(CheckIn.key_result_id).label("kr_id"),
+                    func.max(col(CheckIn.created_at)).label("latest_created_at"),
                 )
                 .group_by(CheckIn.key_result_id)
                 .subquery()
@@ -308,7 +308,7 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
         with _hotpath_trace(session, "get_leadership_metrics") as trace:
             user_rows = session.exec(
                 select(User.id, User.username, User.display_name).where(
-                    User.username.in_(usernames)
+                    cast(Any, User.username).in_(usernames)
                 )
             ).all()
             trace.mark("user_lookup_ms")
@@ -359,9 +359,11 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 .join(Objective, KeyResult.objective_id == Objective.id)
                 .join(Goal, Objective.goal_id == Goal.id)
                 .where(Goal.cycle_id == cycle_id)
-                .where(Goal.owner_id.in_(selected_user_ids))
+                .where(cast(Any, Goal.owner_id).in_(selected_user_ids))
                 .where(
-                    Objective.state.in_([LifecycleState.ACTIVE, LifecycleState.GRADING])
+                    cast(Any, Objective.state).in_(
+                        [LifecycleState.ACTIVE, LifecycleState.GRADING]
+                    )
                 )
             ).all()
             trace.mark("task_query_ms")
@@ -428,148 +430,153 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
             trace.mark("member_shape_ms")
 
             latest_checkin_ranked = select(
-                CheckIn.key_result_id.label("kr_id"),
-                CheckIn.created_at.label("latest_created_at"),
-                CheckIn.confidence_score.label("latest_confidence"),
+                col(CheckIn.key_result_id).label("kr_id"),
+                col(CheckIn.created_at).label("latest_created_at"),
+                col(CheckIn.confidence_score).label("latest_confidence"),
                 func.row_number()
                 .over(
                     partition_by=CheckIn.key_result_id,
-                    order_by=(CheckIn.created_at.desc(), CheckIn.id.desc()),
+                    order_by=(
+                    col(CheckIn.created_at).desc(),
+                    col(CheckIn.id).desc(),
+                ),
+            )
+            .label("rn"),
+        ).subquery()
+
+        kr_rows = session.exec(
+            select(
+                KeyResult.id,
+                KeyResult.title,
+                KeyResult.ai_analysis,
+                User.username,
+                latest_checkin_ranked.c.latest_created_at,
+                latest_checkin_ranked.c.latest_confidence,
+            )
+            .select_from(KeyResult)
+            .join(Objective, KeyResult.objective_id == Objective.id)
+            .join(Goal, Objective.goal_id == Goal.id)
+            .join(User, Goal.owner_id == User.id)
+            .outerjoin(
+                latest_checkin_ranked,
+                and_(
+                    latest_checkin_ranked.c.kr_id == KeyResult.id,
+                    latest_checkin_ranked.c.rn == 1,
+                ),
+            )
+            .where(Goal.cycle_id == cycle_id)
+            .where(cast(Any, Goal.owner_id).in_(selected_user_ids))
+            .where(
+                cast(Any, Objective.state).in_(
+                    [LifecycleState.ACTIVE, LifecycleState.GRADING]
                 )
-                .label("rn"),
-            ).subquery()
+            )
+        ).all()
+        trace.mark("kr_query_ms")
 
-            kr_rows = session.exec(
-                select(
-                    KeyResult.id,
-                    KeyResult.title,
-                    KeyResult.ai_analysis,
-                    User.username,
-                    latest_checkin_ranked.c.latest_created_at,
-                    latest_checkin_ranked.c.latest_confidence,
-                )
-                .select_from(KeyResult)
-                .join(Objective, KeyResult.objective_id == Objective.id)
-                .join(Goal, Objective.goal_id == Goal.id)
-                .join(User, Goal.owner_id == User.id)
-                .outerjoin(
-                    latest_checkin_ranked,
-                    and_(
-                        latest_checkin_ranked.c.kr_id == KeyResult.id,
-                        latest_checkin_ranked.c.rn == 1,
-                    ),
-                )
-                .where(Goal.cycle_id == cycle_id)
-                .where(Goal.owner_id.in_(selected_user_ids))
-                .where(
-                    Objective.state.in_([LifecycleState.ACTIVE, LifecycleState.GRADING])
-                )
-            ).all()
-            trace.mark("kr_query_ms")
-
-            if not kr_rows:
-                payload = _empty_leadership_payload()
-                payload["member_progress"] = member_progress
-                payload["member_deadlines"] = member_deadlines
-                return payload
-
-            updated_count = 0
-            total_confidence = 0
-            conf_count = 0
-            at_risk_list = []
-            heatmap_data = []
-            parse_cache = {}
-            now_utc = utc_now_naive()
-            seven_days_ago = now_utc - timedelta(days=7)
-            ten_days_ago = now_utc - timedelta(days=10)
-
-            for (
-                _kr_id,
-                kr_title,
-                ai_analysis_data,
-                owner,
-                latest_created_at,
-                latest_confidence_raw,
-            ) in kr_rows:
-                latest_exists = latest_created_at is not None
-                latest_confidence = int(latest_confidence_raw or 0)
-
-                analysis = None
-                if ai_analysis_data:
-                    cached = parse_cache.get(ai_analysis_data, _PARSE_MISS)
-                    if cached is _PARSE_MISS:
-                        try:
-                            cached = json.loads(ai_analysis_data)
-                        except ValueError:
-                            cached = None
-                        parse_cache[ai_analysis_data] = cached
-                    analysis = cached
-
-                risk_reasons = []
-                if latest_exists:
-                    if latest_created_at and latest_created_at >= seven_days_ago:
-                        updated_count += 1
-                    total_confidence += latest_confidence
-                    conf_count += 1
-                    if latest_confidence < 4:
-                        risk_reasons.append("Low Confidence")
-                    if not latest_created_at or latest_created_at < ten_days_ago:
-                        risk_reasons.append("Stale Data")
-                else:
-                    risk_reasons.append("Missing Check-in")
-
-                if analysis:
-                    effectiveness_score = _to_int_score(
-                        analysis.get("effectiveness_score")
-                        or analysis.get("strategy_fit")
-                        or analysis.get("effectiveness_pct")
-                    )
-                    if effectiveness_score is not None and effectiveness_score < 50:
-                        risk_reasons.append("Low Strategy Fit")
-
-                    efficiency_score = _to_int_score(
-                        analysis.get("efficiency_score")
-                        or analysis.get("efficiency")
-                        or analysis.get("efficiency_pct")
-                    )
-                    heatmap_data.append(
-                        {
-                            "title": kr_title,
-                            "efficiency": efficiency_score
-                            if efficiency_score is not None
-                            else 0,
-                            "effectiveness": effectiveness_score
-                            if effectiveness_score is not None
-                            else 0,
-                            "confidence": latest_confidence if latest_exists else 0,
-                        }
-                    )
-
-                if risk_reasons:
-                    at_risk_list.append(
-                        {
-                            "title": kr_title,
-                            "owner": member_display_map.get(owner, owner),
-                            "reason": ", ".join(risk_reasons),
-                            "confidence": latest_confidence if latest_exists else "N/A",
-                        }
-                    )
-            trace.mark("kr_aggregate_ms")
-
-            payload = {
-                "hygiene_pct": (updated_count / len(kr_rows) * 100) if kr_rows else 0,
-                "avg_confidence": (total_confidence / conf_count)
-                if conf_count > 0
-                else 0,
-                "at_risk_count": len(at_risk_list),
-                "total_krs": len(kr_rows),
-                "at_risk": at_risk_list,
-                "member_progress": member_progress,
-                "member_deadlines": member_deadlines,
-                "heatmap_data": heatmap_data,
-            }
-            trace.mark("payload_build_ms")
+        if not kr_rows:
+            payload = _empty_leadership_payload()
+            payload["member_progress"] = member_progress
+            payload["member_deadlines"] = member_deadlines
             return payload
+
+        updated_count = 0
+        total_confidence = 0
+        conf_count = 0
+        at_risk_list = []
+        heatmap_data = []
+        parse_cache: dict[Any, Any] = {}
+        now_utc = utc_now_naive()
+        seven_days_ago = now_utc - timedelta(days=7)
+        ten_days_ago = now_utc - timedelta(days=10)
+
+        for (
+            _kr_id,
+            kr_title,
+            ai_analysis_data,
+            owner,
+            latest_created_at,
+            latest_confidence_raw,
+        ) in kr_rows:
+            latest_exists = latest_created_at is not None
+            latest_confidence = int(latest_confidence_raw or 0)
+
+            analysis = None
+            if ai_analysis_data:
+                cached = parse_cache.get(ai_analysis_data, _PARSE_MISS)
+                if cached is _PARSE_MISS:
+                    try:
+                        cached = json.loads(ai_analysis_data)
+                    except ValueError:
+                        cached = None
+                    parse_cache[ai_analysis_data] = cached
+                analysis = cached
+
+            risk_reasons = []
+            if latest_exists:
+                if latest_created_at is not None and latest_created_at >= seven_days_ago:
+                    updated_count += 1
+                total_confidence += latest_confidence
+                conf_count += 1
+                if latest_confidence < 4:
+                    risk_reasons.append("Low Confidence")
+                if latest_created_at is None or latest_created_at < ten_days_ago:
+                    risk_reasons.append("Stale Data")
+            else:
+                risk_reasons.append("Missing Check-in")
+
+            if analysis:
+                effectiveness_score = _to_int_score(
+                    analysis.get("effectiveness_score")
+                    or analysis.get("strategy_fit")
+                    or analysis.get("effectiveness_pct")
+                )
+                if effectiveness_score is not None and effectiveness_score < 50:
+                    risk_reasons.append("Low Strategy Fit")
+
+                efficiency_score = _to_int_score(
+                    analysis.get("efficiency_score")
+                    or analysis.get("efficiency")
+                    or analysis.get("efficiency_pct")
+                )
+                heatmap_data.append(
+                    {
+                        "title": kr_title,
+                        "efficiency": efficiency_score
+                        if efficiency_score is not None
+                        else 0,
+                        "effectiveness": effectiveness_score
+                        if effectiveness_score is not None
+                        else 0,
+                        "confidence": latest_confidence if latest_exists else 0,
+                    }
+                )
+
+            if risk_reasons:
+                at_risk_list.append(
+                    {
+                        "title": kr_title,
+                        "owner": member_display_map.get(owner, owner),
+                        "reason": ", ".join(risk_reasons),
+                        "confidence": latest_confidence if latest_exists else "N/A",
+                    }
+                )
+        trace.mark("kr_aggregate_ms")
+
+        payload = {
+            "hygiene_pct": (updated_count / len(kr_rows) * 100) if kr_rows else 0,
+            "avg_confidence": (total_confidence / conf_count)
+            if conf_count > 0
+            else 0,
+            "at_risk_count": len(at_risk_list),
+            "total_krs": len(kr_rows),
+            "at_risk": at_risk_list,
+            "member_progress": member_progress,
+            "member_deadlines": member_deadlines,
+            "heatmap_data": heatmap_data,
+        }
+        trace.mark("payload_build_ms")
+        return payload
 
 
 def get_work_logs_by_date_range(
@@ -707,7 +714,13 @@ def get_daily_work_trend(user_id: int, days: int = 7) -> dict:
 
     # Sum logs by day
     for log in logs:
-        day = ensure_utc(log.start_time).strftime("%Y-%m-%d")
+        start_at = log.start_time
+        if start_at is None:
+            continue
+        normalized_start = ensure_utc(start_at)
+        if normalized_start is None:
+            continue
+        day = normalized_start.strftime("%Y-%m-%d")
         if day in daily_hours:
             daily_hours[day] += log.duration_minutes / 60
 
