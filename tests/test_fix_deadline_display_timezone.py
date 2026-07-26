@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 
 from src.utils.deadline_utils import format_deadline_display
+from src.utils.time_utils import utc_now_naive
 
 
 def test_format_deadline_display_preserves_date_from_datetime():
@@ -25,28 +26,25 @@ def test_format_deadline_display_returns_dash_for_empty_string():
 
 
 def test_format_deadline_display_shows_overdue_for_past_date():
-    past = datetime.now() - timedelta(days=3)
+    past = utc_now_naive() - timedelta(days=3)
     result = format_deadline_display(past)
     assert "overdue" in result
 
 
 def test_format_deadline_display_shows_today_for_today():
-    now = datetime.now()
+    now = utc_now_naive()
     result = format_deadline_display(now)
     assert "Today" in result
 
 
 def test_format_deadline_display_shows_tomorrow_for_tomorrow():
-    tomorrow = datetime.now() + timedelta(days=1)
-    # Normalize to same time tomorrow
-    tomorrow = tomorrow.replace(hour=12, minute=0, second=0, microsecond=0)
+    tomorrow = utc_now_naive() + timedelta(days=1)
     result = format_deadline_display(tomorrow)
     assert "Tomorrow" in result
 
 
 def test_format_deadline_display_shows_days_left():
-    future = datetime.now() + timedelta(days=5)
-    future = future.replace(hour=12, minute=0, second=0, microsecond=0)
+    future = utc_now_naive() + timedelta(days=5)
     result = format_deadline_display(future)
     assert "left" in result
 

@@ -109,24 +109,8 @@ def test_update_task_endpoint_coerces_enum_and_datetime(monkeypatch):
     assert isinstance(captured["updates"]["deadline"], datetime)
 
 
-def test_update_node_endpoint_prefers_header_actor_over_payload_actor(monkeypatch):
+def test_update_node_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
-    captured = {}
-
-    def _fake_update_task(task_id, actor_username=None, **updates):
-        captured["task_id"] = task_id
-        captured["actor_username"] = actor_username
-        captured["updates"] = updates
-        return SimpleNamespace(
-            id=task_id,
-            title="Task Updated",
-            description="",
-            progress=40,
-            owner_id=7,
-            updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        )
-
-    monkeypatch.setattr(backend_main, "update_task", _fake_update_task)
 
     response = client.patch(
         "/v1/nodes/task/88",
@@ -137,10 +121,8 @@ def test_update_node_endpoint_prefers_header_actor_over_payload_actor(monkeypatc
         },
     )
 
-    assert response.status_code == 200
-    assert int(captured["task_id"]) == 88
-    assert captured["actor_username"] == "alice"
-    assert captured["updates"]["title"] == "Task Updated"
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 def test_update_node_endpoint_returns_403_for_permission_error(monkeypatch):
@@ -161,22 +143,8 @@ def test_update_node_endpoint_returns_403_for_permission_error(monkeypatch):
     assert "permission" in str(response.json().get("detail", "")).lower()
 
 
-def test_create_task_endpoint_prefers_header_actor_over_payload_actor(monkeypatch):
+def test_create_task_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
-    captured = {}
-
-    def _fake_create_task(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(
-            id=91,
-            title=str(kwargs.get("title") or ""),
-            description=str(kwargs.get("description") or ""),
-            progress=0,
-            owner_id=kwargs.get("assignee_id"),
-            updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        )
-
-    monkeypatch.setattr(backend_main, "create_task", _fake_create_task)
 
     response = client.post(
         "/v1/nodes/task",
@@ -190,9 +158,8 @@ def test_create_task_endpoint_prefers_header_actor_over_payload_actor(monkeypatc
         },
     )
 
-    assert response.status_code == 201
-    assert captured["actor_username"] == "alice"
-    assert int(captured["key_result_id"]) == 3201
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 @pytest.mark.parametrize(
@@ -241,39 +208,25 @@ def test_create_task_endpoint_prefers_header_actor_over_payload_actor(monkeypatc
                 "title": "Task from test",
                 "description": "created via api",
                 "estimated_minutes": 45,
-                "actor_username": "mallory",
+                "actor_username": "alice",
             },
             "TASK",
         ),
     ],
 )
-def test_create_node_endpoints_prefer_header_actor_over_payload_actor(
+def test_create_node_endpoints_reject_mismatched_header_and_payload_actor(
     monkeypatch, route_path, create_fn, payload, node_type
 ):
     client, backend_main = _make_client(monkeypatch)
-    captured = {}
 
-    def _fake_create(**kwargs):
-        captured.update(kwargs)
-        return SimpleNamespace(
-            id=401,
-            title=str(kwargs.get("title") or ""),
-            description=str(kwargs.get("description") or ""),
-            progress=0,
-            owner_id=7,
-            updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        )
-
-    monkeypatch.setattr(backend_main, create_fn, _fake_create)
     response = client.post(
         route_path,
         headers={"X-OKR-Actor": "alice"},
-        json=payload,
+        json={**payload, "actor_username": "mallory"},
     )
 
-    assert response.status_code == 201
-    assert captured["actor_username"] == "alice"
-    assert response.json()["node_type"] == node_type
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 @pytest.mark.parametrize(
@@ -285,26 +238,11 @@ def test_create_node_endpoints_prefer_header_actor_over_payload_actor(
         ("/v1/nodes/task/88", "update_task", "TASK"),
     ],
 )
-def test_update_node_endpoints_prefer_header_actor_over_payload_actor_for_all_types(
+def test_update_node_endpoints_reject_mismatched_header_and_payload_actor_for_all_types(
     monkeypatch, route_path, update_fn, expected_type
 ):
     client, backend_main = _make_client(monkeypatch)
-    captured = {}
 
-    def _fake_update(node_id, actor_username=None, **updates):
-        captured["node_id"] = node_id
-        captured["actor_username"] = actor_username
-        captured["updates"] = updates
-        return SimpleNamespace(
-            id=node_id,
-            title="Node Updated",
-            description="",
-            progress=40,
-            owner_id=7,
-            updated_at=datetime.now(timezone.utc).replace(tzinfo=None),
-        )
-
-    monkeypatch.setattr(backend_main, update_fn, _fake_update)
     response = client.patch(
         route_path,
         headers={"X-OKR-Actor": "alice"},
@@ -314,10 +252,8 @@ def test_update_node_endpoints_prefer_header_actor_over_payload_actor_for_all_ty
         },
     )
 
-    assert response.status_code == 200
-    assert int(captured["node_id"]) == 88
-    assert captured["actor_username"] == "alice"
-    assert response.json()["node_type"] == expected_type
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 @pytest.mark.parametrize(
@@ -403,20 +339,8 @@ def test_delete_node_endpoint_returns_404_when_missing(monkeypatch, route_path, 
     assert "not found" in str(response.json().get("detail", "")).lower()
 
 
-def test_start_timer_endpoint_prefers_header_actor_over_payload_actor(monkeypatch):
+def test_start_timer_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
-    captured = {}
-
-    def _fake_start_timer(task_id, actor):
-        captured["task_id"] = task_id
-        captured["actor"] = actor
-        return SimpleNamespace(
-            id=11,
-            task_id=task_id,
-            start_time=datetime.now(timezone.utc).replace(tzinfo=None),
-        )
-
-    monkeypatch.setattr(backend_main, "start_timer", _fake_start_timer)
 
     response = client.post(
         "/v1/timer/start",
@@ -424,9 +348,8 @@ def test_start_timer_endpoint_prefers_header_actor_over_payload_actor(monkeypatc
         json={"task_id": 7, "user_id": "mallory"},
     )
 
-    assert response.status_code == 200
-    assert int(captured["task_id"]) == 7
-    assert captured["actor"] == "alice"
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 def test_start_timer_endpoint_returns_403_for_permission_error(monkeypatch):
@@ -447,24 +370,8 @@ def test_start_timer_endpoint_returns_403_for_permission_error(monkeypatch):
     assert "permission" in str(response.json().get("detail", "")).lower()
 
 
-def test_stop_timer_endpoint_prefers_header_actor_over_payload_actor(monkeypatch):
+def test_stop_timer_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
-    captured = {}
-
-    def _fake_stop_timer(task_id, summary=None, user_id=None):
-        captured["task_id"] = task_id
-        captured["summary"] = summary
-        captured["user_id"] = user_id
-        return SimpleNamespace(
-            id=12,
-            task_id=task_id,
-            duration_minutes=15,
-            start_time=datetime.now(timezone.utc).replace(tzinfo=None),
-            end_time=datetime.now(timezone.utc).replace(tzinfo=None),
-            summary=summary,
-        )
-
-    monkeypatch.setattr(backend_main, "stop_timer", _fake_stop_timer)
 
     response = client.post(
         "/v1/timer/stop",
@@ -472,10 +379,8 @@ def test_stop_timer_endpoint_prefers_header_actor_over_payload_actor(monkeypatch
         json={"task_id": 9, "summary": "focus", "user_id": "mallory"},
     )
 
-    assert response.status_code == 200
-    assert int(captured["task_id"]) == 9
-    assert captured["summary"] == "focus"
-    assert captured["user_id"] == "alice"
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 def test_stop_timer_endpoint_returns_403_for_permission_error(monkeypatch):
@@ -506,8 +411,9 @@ def test_stop_timer_endpoint_returns_404_when_no_active_timer(monkeypatch):
         json={"task_id": 9, "summary": "focus", "user_id": "alice"},
     )
 
-    assert response.status_code == 404
-    assert "no active timer" in str(response.json().get("detail", "")).lower()
+    assert response.status_code == 200
+    assert response.json()["task_id"] == 9
+    assert response.json()["duration_minutes"] == 0
 
 
 def test_submit_job_endpoint_returns_429_when_quota_exceeded(monkeypatch):
@@ -904,7 +810,7 @@ def test_read_atlas_snapshot_endpoint_scopes_owner_ids_for_non_admin(monkeypatch
     assert captured["include_analysis"] is False
 
 
-def test_read_atlas_snapshot_prefers_header_actor_over_payload_actor(monkeypatch):
+def test_read_atlas_snapshot_uses_session_actor_for_scope(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
     captured = {}
     from contextlib import contextmanager
@@ -943,7 +849,7 @@ def test_read_atlas_snapshot_prefers_header_actor_over_payload_actor(monkeypatch
             "cycle_id": 7,
             "owner_ids": [1],
             "include_analysis": False,
-            "actor_username": "mallory",
+            "actor_username": "alice",
         },
     )
 
@@ -951,6 +857,24 @@ def test_read_atlas_snapshot_prefers_header_actor_over_payload_actor(monkeypatch
     assert captured["resolved_actor"] == "alice"
     assert captured["cycle_id"] == 7
     assert captured["owner_ids"] == [1]
+
+
+def test_read_atlas_snapshot_rejects_mismatched_header_and_payload_actor(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    response = client.post(
+        "/v1/read/atlas/snapshot",
+        headers={"X-OKR-Actor": "alice"},
+        json={
+            "cycle_id": 7,
+            "owner_ids": [1],
+            "include_analysis": False,
+            "actor_username": "mallory",
+        },
+    )
+
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 def test_read_atlas_snapshot_rejects_unauthorized_actor(monkeypatch):
@@ -1207,17 +1131,8 @@ def test_read_query_mindmap_key_result_uses_detached_safe_serializer(monkeypatch
     assert captured["include_objective"] is False
 
 
-def test_ai_analyze_node_endpoint_prefers_header_actor_over_payload_actor(monkeypatch):
+def test_ai_analyze_node_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
-    captured = {}
-
-    def _fake_analyze_node(node_id, node_type="KEY_RESULT", actor_username=None):
-        captured["node_id"] = node_id
-        captured["node_type"] = node_type
-        captured["actor_username"] = actor_username
-        return {"overall_score": 84, "summary": "healthy"}
-
-    monkeypatch.setattr(backend_main, "analyze_node", _fake_analyze_node)
 
     response = client.post(
         "/v1/ai/analyze-node",
@@ -1229,11 +1144,8 @@ def test_ai_analyze_node_endpoint_prefers_header_actor_over_payload_actor(monkey
         },
     )
 
-    assert response.status_code == 200
-    assert int(captured["node_id"]) == 42
-    assert str(captured["node_type"]) == "OBJECTIVE"
-    assert captured["actor_username"] == "alice"
-    assert int(response.json().get("overall_score", 0)) == 84
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 def test_ai_analyze_node_endpoint_writes_audit_event_on_success(monkeypatch):
@@ -1355,38 +1267,8 @@ def test_ai_analyze_node_endpoint_rejects_invalid_payload(monkeypatch):
     assert "invalid payload" in str(response.json().get("detail", "")).lower()
 
 
-def test_ai_team_coach_endpoint_prefers_header_actor_over_payload_actor(monkeypatch):
+def test_ai_team_coach_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
-    captured = {}
-    from contextlib import contextmanager
-
-    @contextmanager
-    def _fake_session_context():
-        yield object()
-
-    monkeypatch.setattr(backend_main, "get_session_context", _fake_session_context)
-    monkeypatch.setattr(
-        backend_main,
-        "_resolve_actor_scope",
-        lambda _session, actor, token_version=None: (
-            captured.__setitem__("resolved_actor", actor)
-            or {
-                "is_admin": True,
-                "owner_ids": {1},
-                "usernames": {actor},
-            }
-        ),
-    )
-
-    def _fake_analyze_team_health(team_data):
-        captured["team_data"] = team_data
-        return {
-            "coaching": {
-                "top_priorities": ["Close check-in cadence gaps"],
-            }
-        }
-
-    monkeypatch.setattr(backend_main, "analyze_team_health", _fake_analyze_team_health)
 
     response = client.post(
         "/v1/ai/team-coach",
@@ -1397,12 +1279,8 @@ def test_ai_team_coach_endpoint_prefers_header_actor_over_payload_actor(monkeypa
         },
     )
 
-    assert response.status_code == 200
-    assert captured["resolved_actor"] == "alice"
-    assert captured["team_data"] == {"total_krs": 9, "avg_confidence": 7.2}
-    assert response.json().get("coaching", {}).get("top_priorities") == [
-        "Close check-in cadence gaps"
-    ]
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 def test_ai_team_coach_endpoint_rejects_unauthorized_actor(monkeypatch):
@@ -1488,78 +1366,8 @@ def test_ai_team_coach_endpoint_rejects_invalid_payload(monkeypatch):
     assert "invalid payload" in str(response.json().get("detail", "")).lower()
 
 
-def test_ai_strategy_pulse_endpoint_prefers_header_actor_and_returns_payload(monkeypatch):
+def test_ai_strategy_pulse_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
-    captured = {}
-    from contextlib import contextmanager
-
-    @contextmanager
-    def _fake_session_context():
-        yield object()
-
-    monkeypatch.setattr(backend_main, "get_session_context", _fake_session_context)
-    monkeypatch.setattr(
-        backend_main,
-        "_resolve_actor_scope",
-        lambda _session, actor, token_version=None: (
-            captured.__setitem__("resolved_actor", actor)
-            or {
-                "is_admin": False,
-                "owner_ids": {1},
-                "usernames": {"alice", "bob"},
-            }
-        ),
-    )
-    monkeypatch.setattr(
-        backend_main,
-        "get_user_by_username",
-        lambda username: (
-            captured.__setitem__("subject_username", username)
-            or SimpleNamespace(id=7, username=username)
-        ),
-    )
-    monkeypatch.setattr(
-        backend_main,
-        "calculate_burnout_risk",
-        lambda user_id, days=14: (
-            captured.__setitem__("burnout_args", {"user_id": user_id, "days": days})
-            or {
-                "risk_score": 62.0,
-                "risk_label": "High",
-                "avg_daily_minutes": 270.0,
-                "completed_tasks": 11,
-                "work_days": 8,
-            }
-        ),
-    )
-    monkeypatch.setattr(
-        backend_main,
-        "detect_strategy_gaps",
-        lambda cycle_id, user_ids=None: (
-            captured.__setitem__("gaps_args", {"cycle_id": cycle_id, "user_ids": user_ids})
-            or [{"title": "Objective A", "gap_type": "STALLED", "severity": 74, "progress": 22}]
-        ),
-    )
-    monkeypatch.setattr(
-        backend_main,
-        "generate_predictive_outlook",
-        lambda burnout_data, strategy_gaps, cycle_title="Current Cycle": (
-            captured.__setitem__(
-                "outlook_args",
-                {
-                    "burnout_data": burnout_data,
-                    "strategy_gaps": strategy_gaps,
-                    "cycle_title": cycle_title,
-                },
-            )
-            or {
-                "outlook_summary": "Execution risk is rising and requires focused triage.",
-                "risk_mitigation": ["Trim low-impact scope this sprint."],
-                "strategic_pivots": ["Shift effort to customer-critical KRs."],
-                "confidence_level": 78,
-            }
-        ),
-    )
 
     response = client.post(
         "/v1/ai/strategy-pulse",
@@ -1573,17 +1381,8 @@ def test_ai_strategy_pulse_endpoint_prefers_header_actor_and_returns_payload(mon
         },
     )
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert captured["resolved_actor"] == "alice"
-    assert captured["subject_username"] == "bob"
-    assert captured["burnout_args"] == {"user_id": 7, "days": 21}
-    assert captured["gaps_args"] == {"cycle_id": 9, "user_ids": [7]}
-    assert captured["outlook_args"]["cycle_title"] == "Q1-2026"
-    assert payload.get("burnout_risk") == "High"
-    assert payload.get("subject_username") == "bob"
-    assert isinstance(payload.get("gap_signals"), list)
-    assert isinstance(payload.get("portfolio_actions"), list)
+    assert response.status_code == 403
+    assert "mismatch" in str(response.json().get("detail", "")).lower()
 
 
 def test_ai_strategy_pulse_endpoint_rejects_subject_outside_scope(monkeypatch):
@@ -1806,3 +1605,849 @@ def test_member_snapshot_rejects_non_active_cycle_override(monkeypatch):
 
     assert response.status_code == 403
     assert "active cycle" in str(response.json().get("detail", "")).lower()
+
+
+# ============================================================================
+# Typed update schema validation tests
+# ============================================================================
+
+
+@pytest.mark.parametrize(
+    ("route_path", "update_fn"),
+    [
+        ("/v1/nodes/goal/1", "update_goal"),
+        ("/v1/nodes/objective/1", "update_objective"),
+        ("/v1/nodes/key_result/1", "update_key_result"),
+        ("/v1/nodes/task/1", "update_task"),
+    ],
+)
+def test_update_node_rejects_unknown_fields(monkeypatch, route_path, update_fn):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(node_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=node_id, title="T", description="", progress=0,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, update_fn, _fake_update)
+
+    response = client.patch(
+        route_path,
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"unknown_field": "value", "title": "ok"}},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("route_path", "update_fn"),
+    [
+        ("/v1/nodes/goal/1", "update_goal"),
+        ("/v1/nodes/objective/1", "update_objective"),
+        ("/v1/nodes/key_result/1", "update_key_result"),
+    ],
+)
+def test_update_node_rejects_oversized_title(monkeypatch, route_path, update_fn):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(node_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=node_id, title="T", description="", progress=0,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, update_fn, _fake_update)
+
+    response = client.patch(
+        route_path,
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"title": "x" * 9999}},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("route_path", "update_fn"),
+    [
+        ("/v1/nodes/goal/1", "update_goal"),
+        ("/v1/nodes/objective/1", "update_objective"),
+        ("/v1/nodes/key_result/1", "update_key_result"),
+    ],
+)
+def test_update_node_rejects_negative_progress(monkeypatch, route_path, update_fn):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(node_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=node_id, title="T", description="", progress=0,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, update_fn, _fake_update)
+
+    response = client.patch(
+        route_path,
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"progress": -5}},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("route_path", "update_fn"),
+    [
+        ("/v1/nodes/goal/1", "update_goal"),
+        ("/v1/nodes/objective/1", "update_objective"),
+        ("/v1/nodes/key_result/1", "update_key_result"),
+    ],
+)
+def test_update_node_rejects_progress_over_100(monkeypatch, route_path, update_fn):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(node_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=node_id, title="T", description="", progress=0,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, update_fn, _fake_update)
+
+    response = client.patch(
+        route_path,
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"progress": 101}},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_task_allows_progress_over_100(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(task_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=task_id, title="T", description="", progress=110,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_task", _fake_update)
+
+    response = client.patch(
+        "/v1/nodes/task/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"progress": 110}},
+    )
+
+    assert response.status_code == 200
+
+
+def test_update_node_accepts_valid_partial_update(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = {}
+
+    def _fake_update(node_id, actor_username=None, **updates):
+        captured.update(updates)
+        return SimpleNamespace(
+            id=node_id, title="T", description="", progress=0,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_goal", _fake_update)
+
+    response = client.patch(
+        "/v1/nodes/goal/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"title": "New Title"}},
+    )
+
+    assert response.status_code == 200
+    assert captured["title"] == "New Title"
+
+
+def test_update_node_rejects_nested_objects_for_string_fields(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(node_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=node_id, title="T", description="", progress=0,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_goal", _fake_update)
+
+    response = client.patch(
+        "/v1/nodes/goal/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"description": {"nested": "object"}}},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_node_rejects_oversized_description(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(node_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=node_id, title="T", description="", progress=0,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_goal", _fake_update)
+
+    response = client.patch(
+        "/v1/nodes/goal/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"description": "x" * 99999}},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_key_result_rejects_negative_weight(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(node_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=node_id, title="T", description="", progress=0,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_key_result", _fake_update)
+
+    response = client.patch(
+        "/v1/nodes/key_result/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"weight": -1.5}},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_node_rejects_invalid_cycle_id(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(node_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=node_id, title="T", description="", progress=0,
+            owner_id=1, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_goal", _fake_update)
+
+    response = client.patch(
+        "/v1/nodes/goal/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"cycle_id": -5}},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_experiment_rejects_unknown_fields(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(experiment_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=experiment_id, key_result_id=1, cycle_id=1,
+            created_by="alice", hypothesis="H", change_description="D",
+            start_at=None, end_at=None, status="PLANNED",
+            decision=None, decision_rationale=None,
+            expected_effect_direction=None, expected_effect_size=None,
+            created_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_experiment", _fake_update)
+
+    response = client.patch(
+        "/v1/experiments/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"unknown_field": "value", "hypothesis": "test"}},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_experiment_rejects_oversized_hypothesis(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(experiment_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=experiment_id, key_result_id=1, cycle_id=1,
+            created_by="alice", hypothesis="H", change_description="D",
+            start_at=None, end_at=None, status="PLANNED",
+            decision=None, decision_rationale=None,
+            expected_effect_direction=None, expected_effect_size=None,
+            created_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_experiment", _fake_update)
+
+    response = client.patch(
+        "/v1/experiments/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"hypothesis": "x" * 99999}},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_experiment_accepts_valid_partial_update(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = {}
+
+    def _fake_update(experiment_id, actor_username=None, **updates):
+        captured.update(updates)
+        return SimpleNamespace(
+            id=experiment_id, key_result_id=1, cycle_id=1,
+            created_by="alice", hypothesis="H", change_description="D",
+            start_at=None, end_at=None, status="PLANNED",
+            decision=None, decision_rationale=None,
+            expected_effect_direction=None, expected_effect_size=None,
+            created_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_experiment", _fake_update)
+
+    response = client.patch(
+        "/v1/experiments/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"hypothesis": "Updated hypothesis"}},
+    )
+
+    assert response.status_code == 200
+    assert captured.get("hypothesis") == "Updated hypothesis"
+
+
+def test_update_experiment_rejects_empty_hypothesis(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_update(experiment_id, actor_username=None, **updates):
+        return SimpleNamespace(
+            id=experiment_id, key_result_id=1, cycle_id=1,
+            created_by="alice", hypothesis="H", change_description="D",
+            start_at=None, end_at=None, status="PLANNED",
+            decision=None, decision_rationale=None,
+            expected_effect_direction=None, expected_effect_size=None,
+            created_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "update_experiment", _fake_update)
+
+    response = client.patch(
+        "/v1/experiments/1",
+        headers={"X-OKR-Actor": "alice"},
+        json={"updates": {"hypothesis": ""}},
+    )
+
+    assert response.status_code == 422
+
+
+# ============================================================================
+# Atomic idempotency tests
+# ============================================================================
+
+
+def test_create_goal_idempotency_replays_cached_response(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    call_count = {"n": 0}
+
+    def _fake_create_goal(**kwargs):
+        call_count["n"] += 1
+        return SimpleNamespace(
+            id=100 + call_count["n"],
+            title=str(kwargs.get("title") or ""),
+            description=str(kwargs.get("description") or ""),
+            progress=0,
+            owner_id=11,
+            updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "create_goal", _fake_create_goal)
+
+    headers = {"X-OKR-Actor": "alice", "X-OKR-Idempotency-Key": "idem-goal-1"}
+    payload = {"user_id": "alice", "title": "Goal A", "description": "test"}
+
+    resp1 = client.post("/v1/nodes/goal", headers=headers, json=payload)
+    assert resp1.status_code == 201
+    first_id = resp1.json()["id"]
+
+    resp2 = client.post("/v1/nodes/goal", headers=headers, json=payload)
+    assert resp2.status_code == 201
+    assert resp2.json()["id"] == first_id
+    assert call_count["n"] == 1
+
+
+def test_create_goal_idempotency_rejects_different_payload(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    def _fake_create_goal(**kwargs):
+        return SimpleNamespace(
+            id=101, title=str(kwargs.get("title") or ""),
+            description="", progress=0, owner_id=11, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "create_goal", _fake_create_goal)
+
+    headers = {"X-OKR-Actor": "alice", "X-OKR-Idempotency-Key": "idem-goal-2"}
+    payload1 = {"user_id": "alice", "title": "Goal A", "description": "v1"}
+    payload2 = {"user_id": "alice", "title": "Goal A", "description": "v2"}
+
+    resp1 = client.post("/v1/nodes/goal", headers=headers, json=payload1)
+    assert resp1.status_code == 201
+
+    resp2 = client.post("/v1/nodes/goal", headers=headers, json=payload2)
+    assert resp2.status_code == 409
+
+
+def test_create_goal_no_idempotency_key_proceeds_normally(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    call_count = {"n": 0}
+
+    def _fake_create_goal(**kwargs):
+        call_count["n"] += 1
+        return SimpleNamespace(
+            id=200 + call_count["n"],
+            title=str(kwargs.get("title") or ""),
+            description="", progress=0, owner_id=11, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "create_goal", _fake_create_goal)
+
+    payload = {"user_id": "alice", "title": "Goal B"}
+    resp1 = client.post(
+        "/v1/nodes/goal",
+        headers={"X-OKR-Actor": "alice"},
+        json=payload,
+    )
+    resp2 = client.post(
+        "/v1/nodes/goal",
+        headers={"X-OKR-Actor": "alice"},
+        json=payload,
+    )
+    assert resp1.status_code == 201
+    assert resp2.status_code == 201
+    assert call_count["n"] == 2
+    assert resp1.json()["id"] != resp2.json()["id"]
+
+
+def test_create_objective_idempotency_replays(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    call_count = {"n": 0}
+
+    def _fake_create(**kwargs):
+        call_count["n"] += 1
+        return SimpleNamespace(
+            id=300 + call_count["n"],
+            title=str(kwargs.get("title") or ""),
+            description="", progress=0, owner_id=11, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "create_objective", _fake_create)
+
+    headers = {"X-OKR-Actor": "alice", "X-OKR-Idempotency-Key": "idem-obj-1"}
+    payload = {"goal_id": 1, "title": "Objective A"}
+
+    resp1 = client.post("/v1/nodes/objective", headers=headers, json=payload)
+    assert resp1.status_code == 201
+    first_id = resp1.json()["id"]
+
+    resp2 = client.post("/v1/nodes/objective", headers=headers, json=payload)
+    assert resp2.status_code == 201
+    assert resp2.json()["id"] == first_id
+    assert call_count["n"] == 1
+
+
+def test_create_key_result_idempotency_replays(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    call_count = {"n": 0}
+
+    def _fake_create(**kwargs):
+        call_count["n"] += 1
+        return SimpleNamespace(
+            id=400 + call_count["n"],
+            title=str(kwargs.get("title") or ""),
+            description="", progress=0, owner_id=11, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "create_key_result", _fake_create)
+
+    headers = {"X-OKR-Actor": "alice", "X-OKR-Idempotency-Key": "idem-kr-1"}
+    payload = {"objective_id": 1, "title": "KR A", "target_value": 100, "unit": "%"}
+
+    resp1 = client.post("/v1/nodes/key_result", headers=headers, json=payload)
+    assert resp1.status_code == 201
+    first_id = resp1.json()["id"]
+
+    resp2 = client.post("/v1/nodes/key_result", headers=headers, json=payload)
+    assert resp2.status_code == 201
+    assert resp2.json()["id"] == first_id
+    assert call_count["n"] == 1
+
+
+def test_create_task_idempotency_replays(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    call_count = {"n": 0}
+
+    def _fake_create(**kwargs):
+        call_count["n"] += 1
+        return SimpleNamespace(
+            id=500 + call_count["n"],
+            title=str(kwargs.get("title") or ""),
+            description="", progress=0, owner_id=11, updated_at=None,
+        )
+
+    monkeypatch.setattr(backend_main, "create_task", _fake_create)
+
+    headers = {"X-OKR-Actor": "alice", "X-OKR-Idempotency-Key": "idem-task-1"}
+    payload = {"key_result_id": 1, "title": "Task A", "estimated_minutes": 30}
+
+    resp1 = client.post("/v1/nodes/task", headers=headers, json=payload)
+    assert resp1.status_code == 201
+    first_id = resp1.json()["id"]
+
+    resp2 = client.post("/v1/nodes/task", headers=headers, json=payload)
+    assert resp2.status_code == 201
+    assert resp2.json()["id"] == first_id
+    assert call_count["n"] == 1
+
+
+def test_atomic_reserve_load_store_roundtrip():
+    from backend_app.security_state import (
+        InMemorySecurityStateStore,
+    )
+
+    store = InMemorySecurityStateStore()
+    scope = "test.scope"
+    actor = "user1"
+    key = "key-abc"
+    payload_hash = "hash123"
+
+    assert store.reserve_idempotency_key(
+        scope=scope, actor=actor, key=key,
+        payload_hash=payload_hash, ttl_seconds=3600,
+    ) is True
+
+    assert store.reserve_idempotency_key(
+        scope=scope, actor=actor, key=key,
+        payload_hash=payload_hash, ttl_seconds=3600,
+    ) is False
+
+    record = store.load_idempotent_response(scope=scope, actor=actor, key=key)
+    assert record is not None
+    assert record["payload_hash"] == payload_hash
+    assert record["response"] is None
+
+    store.store_idempotent_response(
+        scope=scope, actor=actor, key=key,
+        response_json='{"id": 1}',
+    )
+
+    record = store.load_idempotent_response(scope=scope, actor=actor, key=key)
+    assert record is not None
+    assert record["response"] == {"id": 1}
+
+
+# ============================================================================
+# Timer double-submission tests
+# ============================================================================
+
+
+def test_stop_timer_idempotent_when_already_stopped(monkeypatch):
+    """Double-stop returns success both times, not 404 on second call."""
+    client, backend_main = _make_client(monkeypatch)
+    call_count = {"n": 0}
+
+    def _fake_stop_timer(task_id, summary=None, user_id=None):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return SimpleNamespace(
+                id=1, task_id=task_id, duration_minutes=5,
+                start_time=None, end_time=None, summary=summary,
+            )
+        return None
+
+    monkeypatch.setattr(backend_main, "stop_timer", _fake_stop_timer)
+
+    payload = {"task_id": 9, "summary": "focus", "user_id": "alice"}
+    headers = {"X-OKR-Actor": "alice"}
+
+    resp1 = client.post("/v1/timer/stop", headers=headers, json=payload)
+    assert resp1.status_code == 200
+    assert resp1.json()["duration_minutes"] == 5
+
+    resp2 = client.post("/v1/timer/stop", headers=headers, json=payload)
+    assert resp2.status_code == 200
+    assert resp2.json()["task_id"] == 9
+    assert resp2.json()["duration_minutes"] == 0
+
+
+def test_start_timer_idempotent_when_already_running(monkeypatch):
+    """Double-start returns the same work_log, not a duplicate."""
+    client, backend_main = _make_client(monkeypatch)
+    call_count = {"n": 0}
+
+    def _fake_start_timer(task_id, user_id=None):
+        call_count["n"] += 1
+        return SimpleNamespace(
+            id=100, task_id=task_id,
+            start_time=datetime.now(timezone.utc).replace(tzinfo=None),
+        )
+
+    monkeypatch.setattr(backend_main, "start_timer", _fake_start_timer)
+
+    payload = {"task_id": 7}
+    headers = {"X-OKR-Actor": "alice"}
+
+    resp1 = client.post("/v1/timer/start", headers=headers, json=payload)
+    assert resp1.status_code == 200
+    first_id = resp1.json()["work_log_id"]
+
+    resp2 = client.post("/v1/timer/start", headers=headers, json=payload)
+    assert resp2.status_code == 200
+    assert resp2.json()["work_log_id"] == first_id
+    assert call_count["n"] == 2
+
+
+# ============================================================================
+# Session freshness validation tests
+# ============================================================================
+
+
+def test_get_current_user_returns_user_data(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    from types import SimpleNamespace
+    from contextlib import contextmanager
+
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_actor_scope",
+        lambda _session, _actor, token_version=None: {
+            "actor_id": 1,
+            "username": "alice",
+            "display_name": "Alice",
+            "role": "admin",
+            "team_id": 1,
+            "manager_id": None,
+            "must_change_password": False,
+            "token_version": 1,
+        },
+    )
+
+    class _FakeQuery:
+        def first(self):
+            return SimpleNamespace(
+                id=1, username="alice", display_name="Alice",
+                role="admin", team_id=1, manager_id=None,
+                must_change_password=False, token_version=1,
+            )
+
+    class _FakeSession:
+        def exec(self, _query):
+            return _FakeQuery()
+
+    @contextmanager
+    def _fake_session_context():
+        yield _FakeSession()
+
+    monkeypatch.setattr(
+        backend_main,
+        "get_session_context",
+        _fake_session_context,
+    )
+
+    response = client.get(
+        "/v1/auth/me",
+        headers={"X-OKR-Actor": "alice"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["username"] == "alice"
+    assert body["role"] == "admin"
+
+
+def test_get_current_user_returns_401_without_actor(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    response = client.get("/v1/auth/me")
+
+    assert response.status_code in (400, 401)
+
+
+def test_get_current_user_returns_401_when_token_version_stale(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    from fastapi import HTTPException
+    from contextlib import contextmanager
+
+    def _reject_stale(_session, _actor, token_version=None):
+        raise HTTPException(status_code=401, detail="Session invalidated.")
+
+    monkeypatch.setattr(backend_main, "_resolve_actor_scope", _reject_stale)
+
+    class _FakeSession:
+        def exec(self, _query):
+            class _Q:
+                def first(self):
+                    return None
+            return _Q()
+
+    @contextmanager
+    def _fake_session_context():
+        yield _FakeSession()
+
+    monkeypatch.setattr(
+        backend_main,
+        "get_session_context",
+        _fake_session_context,
+    )
+
+    response = client.get(
+        "/v1/auth/me",
+        headers={"X-OKR-Actor": "alice", "X-OKR-Token-Version": "999"},
+    )
+
+    assert response.status_code == 401
+
+
+# ============================================================================
+# Read-query payload size and parameter validation tests
+# ============================================================================
+
+
+def test_read_query_rejects_unknown_kind(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    response = client.post(
+        "/v1/read/query",
+        headers={"X-OKR-Actor": "alice"},
+        json={"kind": "totally.unknown.kind", "params": {}},
+    )
+
+    assert response.status_code == 400
+    assert "unsupported" in str(response.json().get("detail", "")).lower()
+
+
+def test_read_query_accepts_known_kind(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    monkeypatch.setattr(backend_main, "get_all_users", lambda: [])
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_scope_for_actor",
+        lambda _actor, token_version=None: {
+            "is_admin": True, "owner_ids": set(), "usernames": set(),
+        },
+    )
+
+    response = client.post(
+        "/v1/read/query",
+        headers={"X-OKR-Actor": "alice"},
+        json={"kind": "users.all", "params": {}},
+    )
+
+    assert response.status_code == 200
+
+
+def test_atlas_snapshot_rejects_oversized_owner_ids(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    response = client.post(
+        "/v1/read/atlas/snapshot",
+        headers={"X-OKR-Actor": "alice"},
+        json={"cycle_id": 1, "owner_ids": list(range(300))},
+    )
+
+    assert response.status_code == 422
+
+
+def test_leadership_metrics_rejects_oversized_usernames(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+
+    response = client.post(
+        "/v1/read/leadership/metrics",
+        headers={"X-OKR-Actor": "alice"},
+        json={"cycle_id": 1, "usernames": [f"user_{i}" for i in range(300)]},
+    )
+
+    assert response.status_code == 422
+
+
+# ============================================================================
+# Admin restore size limit tests
+# ============================================================================
+
+
+def test_db_restore_rejects_disabled_config(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    monkeypatch.setattr(backend_main, "get_bool_config", lambda _key, _default=False: False)
+    monkeypatch.setattr(backend_main, "_require_admin_actor_scope", lambda _actor: None)
+
+    response = client.post(
+        "/v1/admin/db-restore",
+        headers={"X-OKR-Actor": "alice"},
+        json={"format": "okr-backup-v1", "data": {}},
+    )
+
+    assert response.status_code == 403
+    assert "disabled" in str(response.json().get("detail", "")).lower()
+
+
+def test_db_restore_rejects_oversized_content_length(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    monkeypatch.setattr(backend_main, "get_bool_config", lambda _key, _default=False: True)
+    monkeypatch.setattr(backend_main, "is_production_runtime", lambda: False)
+    monkeypatch.setattr(backend_main, "_require_admin_actor_scope", lambda _actor: None)
+
+    response = client.post(
+        "/v1/admin/db-restore",
+        headers={
+            "X-OKR-Actor": "alice",
+            "Content-Length": str(100 * 1024 * 1024),
+        },
+        json={"format": "okr-backup-v1", "data": {}},
+    )
+
+    assert response.status_code == 413
+    assert "too large" in str(response.json().get("detail", "")).lower()
+
+
+# ============================================================================
+# Actor mismatch rejection tests
+# ============================================================================
+
+
+def test_resolve_actor_rejects_header_payload_mismatch():
+    from backend_app.security import resolve_actor_username
+    from fastapi import HTTPException
+
+    with pytest.raises(HTTPException) as exc_info:
+        resolve_actor_username(header_actor="alice", payload_actor="bob")
+    assert exc_info.value.status_code == 403
+    assert "mismatch" in str(exc_info.value.detail).lower()
+
+
+def test_resolve_actor_accepts_matching_header_payload():
+    from backend_app.security import resolve_actor_username
+
+    actor = resolve_actor_username(header_actor="alice", payload_actor="alice")
+    assert actor == "alice"
+
+
+def test_resolve_actor_accepts_header_only():
+    from backend_app.security import resolve_actor_username
+
+    actor = resolve_actor_username(header_actor="alice", payload_actor=None)
+    assert actor == "alice"
+
+
+def test_resolve_actor_accepts_payload_only():
+    from backend_app.security import resolve_actor_username
+
+    actor = resolve_actor_username(header_actor=None, payload_actor="alice")
+    assert actor == "alice"

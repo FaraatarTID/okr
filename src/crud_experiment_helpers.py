@@ -7,6 +7,7 @@ from typing import Optional
 from sqlmodel import col
 
 from src import crud_core_helpers
+from src.utils.date_validation import validate_start_before_end
 
 
 def _experiment_state_snapshot(experiment) -> dict:
@@ -216,6 +217,12 @@ def update_experiment_from_crud(
         crud_module._validate_update_fields(
             "experiment", updates, crud_module._ALLOWED_EXPERIMENT_UPDATE_FIELDS
         )
+
+        # Validate start_at < end_at when both are being set
+        new_start = updates.get("start_at")
+        new_end = updates.get("end_at")
+        if new_start is not None and new_end is not None:
+            validate_start_before_end(new_start, new_end, "Experiment")
 
         target_status = (
             _normalize_experiment_status(updates.get("status"))

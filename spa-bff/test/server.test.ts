@@ -208,7 +208,20 @@ describe("spa-bff server", () => {
   });
 
   it("returns session user for /session/me", async () => {
-    const app = createServer(baseConfig, { fetchFn: vi.fn() });
+    const fakeFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 1,
+        username: "member-1",
+        display_name: "Member One",
+        role: "member",
+        team_id: 11,
+        manager_id: null,
+        must_change_password: false,
+        token_version: 1,
+      }),
+    });
+    const app = createServer(baseConfig, { fetchFn: fakeFetch });
     const response = await app.inject({
       method: "GET",
       url: "/session/me",

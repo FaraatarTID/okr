@@ -72,6 +72,34 @@ function readSessionUserFromRequest(
   });
 }
 
+async function fetchFreshSessionUser(
+  config: BffConfig,
+  sessionUser: SessionUser,
+  fetchFn: typeof fetch = globalThis.fetch,
+): Promise<SessionUser> {
+  const headers: Record<string, string> = {
+    "x-okr-actor": sessionUser.username,
+    "x-service-token": config.backendServiceToken,
+  };
+  if (sessionUser.token_version != null) {
+    headers["x-okr-token-version"] = String(sessionUser.token_version);
+  }
+  const response = await fetchFn(`${config.backendApiUrl}/v1/auth/me`, {
+    method: "GET",
+    headers,
+    signal: AbortSignal.timeout(Math.min(config.requestTimeoutMs, 5_000)),
+  });
+  if (!response.ok) {
+    throw new Error(`Backend session validation failed: ${response.status}`);
+  }
+  const data = (await response.json()) as Record<string, unknown>;
+  const user = normalizeSessionUser(data);
+  if (!user) {
+    throw new Error("Backend returned invalid user data.");
+  }
+  return user;
+}
+
 export function createServer(
   config: BffConfig,
   deps?: { fetchFn?: typeof fetch },
@@ -81,6 +109,7 @@ export function createServer(
       level: process.env.BFF_LOG_LEVEL || "info",
     },
     trustProxy: true,
+    bodyLimit: 50 * 1024 * 1024, // 50 MB — generous for backup uploads, prevents multi-GB abuse
   });
 
   // Security headers on every response
@@ -194,7 +223,18 @@ export function createServer(
         error: "Missing or invalid session.",
       });
     }
-    return reply.send({ user: sessionUser });
+    try {
+      const freshUser = await fetchFreshSessionUser(
+        config,
+        sessionUser,
+        deps?.fetchFn,
+      );
+      return reply.send({ user: freshUser });
+    } catch {
+      // Backend unavailable or validation failed — serve cookie data as fallback
+      // so the SPA can still render; freshness will be re-checked on next request.
+      return reply.send({ user: sessionUser });
+    }
   });
 
   app.post("/session/logout", async (_request, reply) => {

@@ -87,4 +87,17 @@ describe("session token helpers", () => {
     expect(parsed.a).toBe("1");
     expect(parsed.b).toBe("two");
   });
+
+  it("skips cookies with malformed percent-encoding", () => {
+    const parsed = parseCookieHeader("good=ok; bad=%ZZ; also=%; clean=yes");
+    expect(parsed.good).toBe("ok");
+    expect(parsed.bad).toBeUndefined();
+    expect(parsed.also).toBeUndefined();
+    expect(parsed.clean).toBe("yes");
+  });
+
+  it("returns empty object for header with only malformed cookies", () => {
+    const parsed = parseCookieHeader("bad=%ZZ; worse=%");
+    expect(Object.keys(parsed)).toHaveLength(0);
+  });
 });

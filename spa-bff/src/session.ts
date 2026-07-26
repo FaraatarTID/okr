@@ -155,11 +155,15 @@ export function parseCookieHeader(rawHeader: string | undefined): Record<string,
       continue;
     }
     const key = segment.slice(0, index).trim();
-    const value = segment.slice(index + 1).trim();
+    const rawValue = segment.slice(index + 1).trim();
     if (!key) {
       continue;
     }
-    parsed[key] = decodeURIComponent(value);
+    try {
+      parsed[key] = decodeURIComponent(rawValue);
+    } catch {
+      // Skip malformed percent-encoding — treat cookie as absent
+    }
   }
   return parsed;
 }
