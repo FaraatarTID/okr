@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from pydantic import ValidationError as PydanticValidationError
 from sqlmodel import Session, select
 
 from backend_app.job_limits import enforce_job_submit_limits
@@ -40,6 +41,7 @@ from backend_app.schemas import (
     ExperimentCreateRequest,
     ExperimentMutationView,
     ExperimentUpdateRequest,
+    ExperimentUpdateFields,
     JobCancelResponse,
     GoalCreateRequest,
     JobSubmitRequest,
@@ -71,9 +73,19 @@ from backend_app.schemas import (
     WeeklyPlanCreateRequest,
     WeeklyPlanMutationView,
     WorkLogDeleteResponse,
+    GoalUpdateRequest,
+    ObjectiveUpdateRequest,
+    KeyResultUpdateRequest,
+    TaskUpdateRequest,
 )
 from backend_app.security import require_service_access, resolve_actor_username
-from backend_app.security_state import get_app_state, set_app_state
+from backend_app.security_state import (
+    get_app_state,
+    set_app_state,
+    reserve_idempotency_key,
+    load_idempotent_response,
+    store_idempotent_response,
+)
 
 ensure_shared_src_on_path()
 
@@ -423,15 +435,22 @@ def _normalize_updates(node_type: str, updates: dict) -> dict:
     return clean
 
 
+def _getattr_or_get(node, field, default=None):
+    """Get a field from either an object (getattr) or a dict (.get)."""
+    if isinstance(node, dict):
+        return node.get(field, default)
+    return getattr(node, field, default)
+
+
 def _node_view_from_obj(node_type: str, node) -> NodeMutationView:
     return NodeMutationView(
-        id=int(getattr(node, "id")),
+        id=int(_getattr_or_get(node, "id")),
         node_type=_normalize_node_type(node_type),  # type: ignore[arg-type]
-        title=str(getattr(node, "title", "") or ""),
-        description=getattr(node, "description", None),
-        progress=getattr(node, "progress", None),
-        owner_id=getattr(node, "owner_id", None),
-        updated_at=getattr(node, "updated_at", None),
+        title=str(_getattr_or_get(node, "title", "") or ""),
+        description=_getattr_or_get(node, "description", None),
+        progress=_getattr_or_get(node, "progress", None),
+        owner_id=_getattr_or_get(node, "owner_id", None),
+        updated_at=_getattr_or_get(node, "updated_at", None),
     )
 
 
@@ -987,6 +1006,67 @@ def _store_idempotent_response(
         "stored_at": datetime.now(timezone.utc).isoformat(),
     }
     set_app_state(state_key, json.dumps(record, ensure_ascii=False, default=str))
+
+
+def _atomic_idempotent_check(
+    *,
+    scope: str,
+    actor: str,
+    idempotency_key: Optional[str],
+    payload: Any,
+) -> Optional[dict]:
+    """Atomically reserve idempotency key. Returns cached response if replay, None if we own the key."""
+    key = normalize_idempotency_key(idempotency_key)
+    if not key:
+        return None
+    payload_hash = _payload_fingerprint(payload)
+    reserved = reserve_idempotency_key(
+        scope=scope, actor=str(actor), key=key, payload_hash=payload_hash,
+    )
+    if reserved:
+        return None
+    record = load_idempotent_response(scope=scope, actor=str(actor), key=key)
+    if record is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Idempotency key is being processed by another request.",
+        )
+    saved_hash = str(record.get("payload_hash") or "")
+    if saved_hash and saved_hash != payload_hash:
+        raise HTTPException(
+            status_code=409,
+            detail="Idempotency key reuse with different payload is not allowed.",
+        )
+    response = record.get("response")
+    if isinstance(response, dict):
+        return response
+    raise HTTPException(
+        status_code=409,
+        detail="Idempotency key is being processed by another request.",
+    )
+
+
+def _complete_idempotent_response(
+    *,
+    scope: str,
+    actor: str,
+    idempotency_key: Optional[str],
+    response_payload: dict,
+) -> None:
+    """Store the response after successful mutation."""
+    key = normalize_idempotency_key(idempotency_key)
+    if not key:
+        return
+    store_idempotent_response(
+        scope=scope,
+        actor=str(actor),
+        key=key,
+        response_json=json.dumps(
+            _payload_to_jsonable(response_payload),
+            ensure_ascii=False,
+            default=str,
+        ),
+    )
 
 
 def _audit_experiment_failure(
@@ -1560,7 +1640,27 @@ def _filter_tasks_for_scope(tasks: list[Any], scope: dict[str, Any]) -> list[Any
     return visible_tasks
 
 
+_ALLOWED_READ_QUERY_KINDS = {
+    "audit.summary",
+    "users.by_username", "users.by_id", "users.all", "users.team_members",
+    "teams.all", "teams.by_id",
+    "cycles.all", "cycles.active",
+    "weekly_plan.active",
+    "node.get", "node.detect_type",
+    "krs.by_cycle", "krs.needing_checkin",
+    "tasks.by_cycle",
+    "work_logs.by_range", "work_logs.by_task",
+    "mindmap.root", "mindmap.children",
+    "alignments.context",
+}
+
+
 def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
+    if kind not in _ALLOWED_READ_QUERY_KINDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported read query kind: {kind}",
+        )
     if is_supabase_api_mode_enabled():
         try:
             return read_query_via_supabase_api(
@@ -1577,7 +1677,11 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
         if not bool(scope.get("is_admin", False)):
             raise HTTPException(status_code=403, detail="Admin privileges required.")
         days = _coerce_int(params.get("days", 30), field_name="days")
+        if days < 1 or days > 365:
+            raise HTTPException(status_code=400, detail="days must be between 1 and 365.")
         recent_limit = _coerce_int(params.get("recent_limit", 20), field_name="recent_limit")
+        if recent_limit < 1 or recent_limit > 100:
+            raise HTTPException(status_code=400, detail="recent_limit must be between 1 and 100.")
         filters: dict[str, Any] = {}
         for key in (
             "action",
@@ -1737,6 +1841,8 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             if limit_raw is not None
             else None
         )
+        if limit is not None and (limit < 1 or limit > 500):
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 500.")
         offset = _coerce_int(offset_raw, field_name="offset")
         krs = list(get_all_krs_by_cycle(cycle_id, limit=limit, offset=offset) or [])
         if not bool(scope.get("is_admin", False)):
@@ -1779,6 +1885,8 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             if limit_raw is not None
             else None
         )
+        if limit is not None and (limit < 1 or limit > 500):
+            raise HTTPException(status_code=400, detail="limit must be between 1 and 500.")
         offset = _coerce_int(offset_raw, field_name="offset")
         tasks = list(get_all_tasks_by_cycle(cycle_id, limit=limit, offset=offset) or [])
         tasks = _filter_tasks_for_scope(tasks, scope)
@@ -1808,6 +1916,14 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             params.get("end_date"),
             field_name="end_date",
         )
+        if start_date and end_date:
+            from datetime import timedelta
+            range_days = (end_date - start_date).days
+            if range_days > 90:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Date range must not exceed 90 days.",
+                )
         logs = list(get_work_logs_by_date_range(user_id, start_date, end_date) or [])
         return {
             "work_logs": [
@@ -2244,6 +2360,51 @@ def api_auth_login(payload: LoginRequest) -> dict:
     return output
 
 
+@app.get(
+    "/v1/auth/me",
+    dependencies=[Depends(require_service_access)],
+)
+def api_get_current_user(
+    x_okr_actor: Optional[str] = Header(default=None),
+    x_okr_token_version: Optional[str] = Header(default=None),
+) -> dict:
+    actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+    if not actor:
+        raise HTTPException(status_code=401, detail="No active session.")
+    token_version = int(x_okr_token_version) if x_okr_token_version else None
+    if is_supabase_api_mode_enabled():
+        scope = _resolve_scope_for_actor(actor, token_version=token_version)
+        user_data = scope
+    else:
+        with get_session_context() as session:
+            _resolve_actor_scope(session, actor, token_version=token_version)
+            user = session.exec(
+                select(User).where(User.username == actor)
+            ).first()
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found.")
+            user_data = {
+                "id": user.id,
+                "username": user.username,
+                "display_name": getattr(user, "display_name", "") or "",
+                "role": getattr(user, "role", "member"),
+                "team_id": getattr(user, "team_id", None),
+                "manager_id": getattr(user, "manager_id", None),
+                "must_change_password": bool(getattr(user, "must_change_password", False)),
+                "token_version": getattr(user, "token_version", 1),
+            }
+    return {
+        "id": user_data.get("actor_id"),
+        "username": actor,
+        "display_name": user_data.get("display_name", ""),
+        "role": user_data.get("role", "member"),
+        "team_id": user_data.get("team_id"),
+        "manager_id": user_data.get("manager_id"),
+        "must_change_password": user_data.get("must_change_password", False),
+        "token_version": user_data.get("token_version"),
+    }
+
+
 @app.post(
     "/v1/read/query",
     dependencies=[Depends(require_service_access)],
@@ -2358,11 +2519,37 @@ async def api_admin_db_restore(
             status_code=403,
             detail="Direct DB restore is blocked in production runtime.",
         )
+
+    # Enforce body size limit (50 MB)
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            size_bytes = int(content_length)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid Content-Length header.")
+        if size_bytes > 50 * 1024 * 1024:
+            raise HTTPException(
+                status_code=413,
+                detail="Request body too large. Maximum 50 MB.",
+            )
+
     payload = await request.json()
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Backup restore payload must be a JSON object.")
     if str(payload.get("format") or "").strip() != BACKUP_FORMAT_VERSION:
         raise HTTPException(status_code=400, detail="Unsupported backup format version.")
+
+    # Audit the restore attempt
+    audit_log(
+        "restore_attempt",
+        "database",
+        actor=actor,
+        details={
+            "format": payload.get("format"),
+            "tables": list(payload.keys())[:10],
+        },
+    )
+
     try:
         return dict(import_database_backup(payload))
     except ValueError as exc:
@@ -2791,7 +2978,14 @@ def api_stop_timer(
             detail=str(exc),
         ) from exc
     if not work_log:
-        raise HTTPException(status_code=404, detail="No active timer found.")
+        return {
+            "work_log_id": None,
+            "task_id": int(payload.task_id),
+            "duration_minutes": 0,
+            "start_time": None,
+            "end_time": None,
+            "summary": payload.summary,
+        }
     return {
         "work_log_id": work_log.id,
         "task_id": work_log.task_id,
@@ -2930,7 +3124,7 @@ def api_create_goal(
     )
     idempotency_scope = "goals.create"
     idempotency_payload = _payload_to_jsonable(payload)
-    replay = _load_idempotent_response(
+    replay = _atomic_idempotent_check(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
@@ -2962,11 +3156,10 @@ def api_create_goal(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     result = _node_view_from_obj("GOAL", goal)
-    _store_idempotent_response(
+    _complete_idempotent_response(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
-        payload=idempotency_payload,
         response_payload=_payload_to_jsonable(result.model_dump()),
     )
     return result
@@ -2988,7 +3181,7 @@ def api_create_objective(
     )
     idempotency_scope = "objectives.create"
     idempotency_payload = _payload_to_jsonable(payload)
-    replay = _load_idempotent_response(
+    replay = _atomic_idempotent_check(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
@@ -3018,11 +3211,10 @@ def api_create_objective(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     result = _node_view_from_obj("OBJECTIVE", objective)
-    _store_idempotent_response(
+    _complete_idempotent_response(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
-        payload=idempotency_payload,
         response_payload=_payload_to_jsonable(result.model_dump()),
     )
     return result
@@ -3044,7 +3236,7 @@ def api_create_key_result(
     )
     idempotency_scope = "key_results.create"
     idempotency_payload = _payload_to_jsonable(payload)
-    replay = _load_idempotent_response(
+    replay = _atomic_idempotent_check(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
@@ -3080,11 +3272,10 @@ def api_create_key_result(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     result = _node_view_from_obj("KEY_RESULT", key_result)
-    _store_idempotent_response(
+    _complete_idempotent_response(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
-        payload=idempotency_payload,
         response_payload=_payload_to_jsonable(result.model_dump()),
     )
     return result
@@ -3106,7 +3297,7 @@ def api_create_task(
     )
     idempotency_scope = "tasks.create"
     idempotency_payload = _payload_to_jsonable(payload)
-    replay = _load_idempotent_response(
+    replay = _atomic_idempotent_check(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
@@ -3142,14 +3333,21 @@ def api_create_task(
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     result = _node_view_from_obj("TASK", task)
-    _store_idempotent_response(
+    _complete_idempotent_response(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
-        payload=idempotency_payload,
         response_payload=_payload_to_jsonable(result.model_dump()),
     )
     return result
+
+
+_NODE_UPDATE_SCHEMAS = {
+    "GOAL": GoalUpdateRequest,
+    "OBJECTIVE": ObjectiveUpdateRequest,
+    "KEY_RESULT": KeyResultUpdateRequest,
+    "TASK": TaskUpdateRequest,
+}
 
 
 @app.patch(
@@ -3164,10 +3362,19 @@ def api_update_node(
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> NodeMutationView:
     normalized_type = _normalize_node_type(node_type)
+    schema_cls = _NODE_UPDATE_SCHEMAS.get(normalized_type)
+    if schema_cls and payload.updates:
+        try:
+            validated = schema_cls.model_validate(payload.updates)
+        except PydanticValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        validated_updates = validated.model_dump(exclude_unset=True)
+    else:
+        validated_updates = dict(payload.updates)
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
-    updates = _normalize_updates(normalized_type, payload.updates)
+    updates = _normalize_updates(normalized_type, validated_updates)
     if is_supabase_api_mode_enabled():
         scope = _resolve_scope_for_actor(actor)
         owner_id = _resolve_goal_owner_id_for_node_via_supabase(
@@ -3685,7 +3892,7 @@ def api_create_experiment(
     )
     idempotency_scope = "experiments.create"
     idempotency_payload = _payload_to_jsonable(payload)
-    replay = _load_idempotent_response(
+    replay = _atomic_idempotent_check(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
@@ -3746,11 +3953,10 @@ def api_create_experiment(
             detail=str(exc),
         ) from exc
     view = _experiment_view_from_obj(experiment)
-    _store_idempotent_response(
+    _complete_idempotent_response(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
-        payload=idempotency_payload,
         response_payload=_payload_to_jsonable(view),
     )
     return view
@@ -3771,8 +3977,18 @@ def api_update_experiment(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     idempotency_scope = f"experiments.update:{int(experiment_id)}"
+    if payload.updates:
+        try:
+            validated = ExperimentUpdateFields.model_validate(payload.updates)
+        except PydanticValidationError as exc:
+            raise HTTPException(status_code=422, detail=exc.errors()) from exc
+        validated_updates = validated.model_dump(
+            exclude_unset=True
+        )
+    else:
+        validated_updates = {}
     try:
-        updates = _coerce_experiment_updates(payload.updates)
+        updates = _coerce_experiment_updates(validated_updates)
     except HTTPException as exc:
         _audit_experiment_failure(
             action="update_failed",
@@ -3789,7 +4005,7 @@ def api_update_experiment(
         "updates": _payload_to_jsonable(updates),
         "actor_username": actor,
     }
-    replay = _load_idempotent_response(
+    replay = _atomic_idempotent_check(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
@@ -3867,11 +4083,10 @@ def api_update_experiment(
         )
         raise HTTPException(status_code=404, detail="Experiment not found.")
     view = _experiment_view_from_obj(experiment)
-    _store_idempotent_response(
+    _complete_idempotent_response(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
-        payload=idempotency_payload,
         response_payload=_payload_to_jsonable(view),
     )
     return view
@@ -3898,7 +4113,7 @@ def api_close_experiment(
         "rationale": str(payload.rationale or ""),
         "actor_username": actor,
     }
-    replay = _load_idempotent_response(
+    replay = _atomic_idempotent_check(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
@@ -3964,11 +4179,10 @@ def api_close_experiment(
         )
         raise HTTPException(status_code=404, detail="Experiment not found.")
     view = _experiment_view_from_obj(experiment)
-    _store_idempotent_response(
+    _complete_idempotent_response(
         scope=idempotency_scope,
         actor=actor,
         idempotency_key=x_okr_idempotency_key,
-        payload=idempotency_payload,
         response_payload=_payload_to_jsonable(view),
     )
     return view

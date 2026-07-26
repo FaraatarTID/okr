@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { startTaskTimer, stopTaskTimer, type AuthUser } from "@/lib/api";
 import {
@@ -29,6 +29,7 @@ export default function useTimerSession({
   refreshDashboardModeData,
 }: UseTimerSessionInput) {
   const [timerPending, setTimerPending] = useState(false);
+  const timerBusyRef = useRef(false);
   const [timerSummary, setTimerSummary] = useState("");
   const [timerError, setTimerError] = useState("");
   const [timerMessage, setTimerMessage] = useState("");
@@ -92,9 +93,10 @@ export default function useTimerSession({
   }, [focusTaskRunning]);
 
   const handleTimerStart = useCallback(async (): Promise<void> => {
-    if (!user || !focusTaskId) {
+    if (!user || !focusTaskId || timerBusyRef.current) {
       return;
     }
+    timerBusyRef.current = true;
     setTimerPending(true);
     setTimerError("");
     setTimerMessage("");
@@ -129,6 +131,7 @@ export default function useTimerSession({
     } catch (error) {
       setTimerError(String(error instanceof Error ? error.message : error));
     } finally {
+      timerBusyRef.current = false;
       setTimerPending(false);
     }
   }, [
@@ -141,11 +144,13 @@ export default function useTimerSession({
   ]);
 
   const handleTimerStop = useCallback(async (): Promise<void> => {
-    if (!user) {
+    if (!user || timerBusyRef.current) {
       return;
     }
+    timerBusyRef.current = true;
     const resolvedTaskId = timerSessionTaskId || focusTaskId || null;
     if (!resolvedTaskId) {
+      timerBusyRef.current = false;
       setTimerError("No running task timer was found.");
       return;
     }
@@ -174,6 +179,7 @@ export default function useTimerSession({
     } catch (error) {
       setTimerError(String(error instanceof Error ? error.message : error));
     } finally {
+      timerBusyRef.current = false;
       setTimerPending(false);
     }
   }, [

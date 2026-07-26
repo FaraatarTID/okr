@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend_app.path_setup import ensure_shared_src_on_path
 
@@ -270,7 +270,93 @@ class ExperimentCreateRequest(BaseModel):
     actor_username: Optional[str] = None
 
 
+class GoalUpdateRequest(BaseModel):
+    """Typed validation schema for Goal update payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    progress: Optional[int] = Field(default=None, ge=0, le=100)
+    cycle_id: Optional[int] = Field(default=None, gt=0)
+    strategy_tags: Optional[Union[str, List[str]]] = None
+    is_expanded: Optional[bool] = None
+    deadline: Optional[Union[datetime, int, str]] = None
+
+
+class ObjectiveUpdateRequest(BaseModel):
+    """Typed validation schema for Objective update payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    progress: Optional[int] = Field(default=None, ge=0, le=100)
+    score_mode: Optional[str] = Field(default=None, max_length=32)
+    weight: Optional[float] = Field(default=None, ge=0)
+    is_expanded: Optional[bool] = None
+    deadline: Optional[Union[datetime, int, str]] = None
+    state: Optional[str] = Field(default=None, max_length=32)
+    final_reflection: Optional[str] = Field(default=None, max_length=5000)
+
+
+class KeyResultUpdateRequest(BaseModel):
+    """Typed validation schema for Key Result update payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    progress: Optional[int] = Field(default=None, ge=0, le=100)
+    start_value: Optional[float] = None
+    target_value: Optional[float] = None
+    current_value: Optional[float] = None
+    metric_type: Optional[str] = Field(default=None, max_length=32)
+    unit: Optional[str] = Field(default=None, max_length=32)
+    weight: Optional[float] = Field(default=None, ge=0)
+    initiative_tags: Optional[Union[str, List[str]]] = None
+    ai_analysis: Optional[Union[str, Dict[str, Any]]] = None
+    is_expanded: Optional[bool] = None
+    deadline: Optional[Union[datetime, int, str]] = None
+    state: Optional[str] = Field(default=None, max_length=32)
+    final_reflection: Optional[str] = Field(default=None, max_length=5000)
+
+
+class TaskUpdateRequest(BaseModel):
+    """Typed validation schema for Task update payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=500)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    progress: Optional[int] = Field(default=None, ge=0)
+    status: Optional[str] = Field(default=None, max_length=32)
+    estimated_minutes: Optional[int] = Field(default=None, ge=0, le=100000)
+    start_date: Optional[Union[datetime, int, str]] = None
+    deadline: Optional[Union[datetime, int, str]] = None
+    assignee_id: Optional[int] = Field(default=None, gt=0)
+    is_expanded: Optional[bool] = None
+
+
+class ExperimentUpdateFields(BaseModel):
+    """Typed validation schema for Experiment update payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hypothesis: Optional[str] = Field(default=None, min_length=1, max_length=5000)
+    change_description: Optional[str] = Field(default=None, min_length=1, max_length=5000)
+    start_at: Optional[Union[datetime, int, str]] = None
+    end_at: Optional[Union[datetime, int, str]] = None
+    status: Optional[str] = Field(default=None, max_length=32)
+    decision: Optional[str] = Field(default=None, max_length=32)
+    decision_rationale: Optional[str] = Field(default=None, max_length=4000)
+    expected_effect_direction: Optional[str] = Field(default=None, max_length=32)
+    expected_effect_size: Optional[float] = None
+
+
 class ExperimentUpdateRequest(BaseModel):
+    """Request wrapper for experiment updates (validates inner dict with ExperimentUpdateFields)."""
+
     updates: Dict[str, Any] = Field(default_factory=dict)
     actor_username: Optional[str] = None
 
@@ -406,14 +492,14 @@ class WorkLogDeleteResponse(BaseModel):
 
 class AtlasSnapshotRequest(BaseModel):
     cycle_id: int = Field(..., gt=0)
-    owner_ids: Optional[List[int]] = None
+    owner_ids: Optional[List[int]] = Field(default=None, max_length=200)
     include_analysis: bool = False
     actor_username: Optional[str] = None
 
 
 class LeadershipMetricsRequest(BaseModel):
     cycle_id: int = Field(..., gt=0)
-    usernames: Optional[List[str]] = None
+    usernames: Optional[List[str]] = Field(default=None, max_length=200)
     actor_username: Optional[str] = None
 
 

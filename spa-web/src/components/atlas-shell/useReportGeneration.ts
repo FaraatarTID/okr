@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   readBackendQuery,
@@ -68,6 +68,13 @@ export default function useReportGeneration({
   const [reportAiPending, setReportAiPending] = useState(false);
   const [reportAiError, setReportAiError] = useState("");
   const [reportAiSummary, setReportAiSummary] = useState<ReportAiSummaryView | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     setReportAiSummary(null);
@@ -88,6 +95,9 @@ export default function useReportGeneration({
       }
       setReportExportPending(true);
       setReportExportError("");
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
         const now = new Date();
         const start = new Date(now);
@@ -143,7 +153,7 @@ export default function useReportGeneration({
             achievements: [],
           },
         });
-        const done = await waitForBackendJobResult(user, submitted.id);
+        const done = await waitForBackendJobResult(user, submitted.id, { signal: controller.signal });
         const resultPayload = done.result || {};
         const encoded = String((resultPayload as Record<string, unknown>).content_b64 || "");
         if (!encoded) {
@@ -159,8 +169,12 @@ export default function useReportGeneration({
         }
         triggerDownloadFromBlob(new Blob([bytes], { type: "application/pdf" }), `${mode}_report_${fileStamp}.pdf`);
       } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
         setReportExportError(String(error instanceof Error ? error.message : error));
       } finally {
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
         setReportExportPending(false);
       }
     },
@@ -174,6 +188,9 @@ export default function useReportGeneration({
     setReportAiPending(true);
     setReportAiError("");
     setReportAiSummary(null);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const now = new Date();
       const start = new Date(now);
@@ -220,7 +237,7 @@ export default function useReportGeneration({
         kind: "ai.generate_json",
         payload: { prompt },
       });
-      const done = await waitForBackendJobResult(user, submitted.id);
+      const done = await waitForBackendJobResult(user, submitted.id, { signal: controller.signal });
       if (String(done.status || "").toLowerCase() !== "succeeded") {
         throw new Error(String(done.error_text || "AI report summary generation failed."));
       }
@@ -230,8 +247,12 @@ export default function useReportGeneration({
       }
       setReportAiSummary(summary);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       setReportAiError(String(error instanceof Error ? error.message : error));
     } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
       setReportAiPending(false);
     }
   }, [mode, user]);

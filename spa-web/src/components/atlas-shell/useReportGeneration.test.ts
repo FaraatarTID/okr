@@ -142,7 +142,11 @@ describe("useReportGeneration", () => {
       await result.current.handleReportExport("pdf");
     });
 
-    expect(waitForBackendJobResultMock).toHaveBeenCalledWith(baseUser, "job-pdf");
+    expect(waitForBackendJobResultMock).toHaveBeenCalledWith(
+      baseUser,
+      "job-pdf",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
     expect(result.current.reportExportError).toContain("PDF backend unavailable");
   });
 });

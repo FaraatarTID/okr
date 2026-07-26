@@ -62,6 +62,17 @@ def update_goal_from_crud(
             crud_module._validate_update_fields(
                 "goal", updates, crud_module._ALLOWED_GOAL_UPDATE_FIELDS
             )
+            # Validate deadline falls within cycle if goal has a cycle
+            if "deadline" in updates and updates["deadline"] is not None:
+                cycle_id = getattr(goal, "cycle_id", None)
+                if cycle_id:
+                    cycle = session.get(crud_module.Cycle, cycle_id)
+                    if cycle:
+                        from src.utils.date_validation import validate_cycle_contains_date
+                        validate_cycle_contains_date(
+                            cycle.start_date, cycle.end_date,
+                            updates["deadline"], "Goal deadline",
+                        )
             for key, value in updates.items():
                 if hasattr(goal, key):
                     setattr(goal, key, value)

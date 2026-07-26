@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   analyzeNodeAi,
@@ -58,6 +58,13 @@ export default function useAiProgressAssist({
   const [aiSyncReport, setAiSyncReport] = useState<AiAnalysisReport | null>(null);
   const [aiSuggestPending, setAiSuggestPending] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<AiTaskSuggestion | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     setAiSyncReport(null);
@@ -205,6 +212,9 @@ export default function useAiProgressAssist({
     setAiSyncError("");
     setAiSyncMessage("");
     setAiSuggestion(null);
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
       const prompt = [
         "You are a task prioritization assistant.",
@@ -221,7 +231,7 @@ export default function useAiProgressAssist({
         kind: "ai.generate_json",
         payload: { prompt },
       });
-      const done = await waitForBackendJobResult(user, submitted.id);
+      const done = await waitForBackendJobResult(user, submitted.id, { signal: controller.signal });
       if (String(done.status || "").toLowerCase() !== "succeeded") {
         throw new Error(String(done.error_text || "AI suggestion failed."));
       }
@@ -267,8 +277,12 @@ export default function useAiProgressAssist({
       });
       setAiSyncMessage(`Suggested next task: ${snapshotIndex[pickedRef]?.title || pickedRef}`);
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       setAiSyncError(String(error instanceof Error ? error.message : error));
     } finally {
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+      }
       setAiSuggestPending(false);
     }
   }, [atlasRuntime, onTaskSuggested, taskRefs, user]);

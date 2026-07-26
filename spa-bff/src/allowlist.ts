@@ -8,6 +8,7 @@ export interface AllowlistRule {
 
 export const ALLOWLIST_POLICY_ROUTES: readonly AllowlistRule[] = [
   { pathTemplate: "/v1/auth/login", methods: ["POST"], pathRegex: /^\/v1\/auth\/login$/ },
+  { pathTemplate: "/v1/auth/me", methods: ["GET"], pathRegex: /^\/v1\/auth\/me$/ },
   { pathTemplate: "/v1/read/query", methods: ["POST"], pathRegex: /^\/v1\/read\/query$/ },
   {
     pathTemplate: "/v1/read/atlas/snapshot",

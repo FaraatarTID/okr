@@ -54,6 +54,36 @@ class SecurityStateStore(Protocol):
     def set_app_state(self, key: str, value: str) -> None:
         """Set a distributed state value by key."""
 
+    def reserve_idempotency_key(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+        payload_hash: str,
+        ttl_seconds: int,
+    ) -> bool:
+        """Atomically reserve an idempotency key. Returns True if newly reserved."""
+
+    def load_idempotent_response(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+    ) -> Optional[dict]:
+        """Load an existing idempotency record (payload_hash + response)."""
+
+    def store_idempotent_response(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+        response_json: str,
+    ) -> None:
+        """Store the response payload for a reserved idempotency key."""
+
 
 class InMemorySecurityStateStore:
     """Process-local fallback for non-production environments."""
@@ -61,12 +91,14 @@ class InMemorySecurityStateStore:
     def __init__(self) -> None:
         self._nonce_seen: dict[str, int] = {}
         self._rate_events: dict[str, deque[float]] = defaultdict(deque)
+        self._idem_records: dict[str, dict] = {}
         self._lock = Lock()
 
     def clear(self) -> None:
         with self._lock:
             self._nonce_seen.clear()
             self._rate_events.clear()
+            self._idem_records.clear()
 
     def register_nonce_once(
         self,
@@ -130,6 +162,69 @@ class InMemorySecurityStateStore:
             if not hasattr(self, "_app_state"):
                 self._app_state: dict[str, str] = {}
             self._app_state[key] = str(value)
+
+    def _idem_full_key(self, scope: str, actor: str, key: str) -> str:
+        return f"{scope}:{actor}:{key}"
+
+    def reserve_idempotency_key(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+        payload_hash: str,
+        ttl_seconds: int,
+    ) -> bool:
+        full_key = self._idem_full_key(scope, actor, key)
+        now = time.time()
+        with self._lock:
+            existing = self._idem_records.get(full_key)
+            if existing is not None:
+                if float(existing.get("expires_at", 0)) > now:
+                    return False
+            self._idem_records[full_key] = {
+                "payload_hash": payload_hash,
+                "response": None,
+                "created_at": now,
+                "expires_at": now + max(1, int(ttl_seconds)),
+            }
+            return True
+
+    def load_idempotent_response(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+    ) -> Optional[dict]:
+        full_key = self._idem_full_key(scope, actor, key)
+        with self._lock:
+            record = self._idem_records.get(full_key)
+            if record is None:
+                return None
+            result = dict(record)
+            resp = result.get("response")
+            if isinstance(resp, str):
+                try:
+                    import json as _json
+                    result["response"] = _json.loads(resp)
+                except Exception:
+                    pass
+            return result
+
+    def store_idempotent_response(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+        response_json: str,
+    ) -> None:
+        full_key = self._idem_full_key(scope, actor, key)
+        with self._lock:
+            record = self._idem_records.get(full_key)
+            if record is not None:
+                record["response"] = response_json
 
 
 class DatabaseSecurityStateStore:
@@ -234,6 +329,30 @@ class DatabaseSecurityStateStore:
                             """
                         )
                     )
+                    conn.execute(
+                        text(
+                            """
+                            CREATE TABLE IF NOT EXISTS backend_idempotency_record (
+                                scope VARCHAR(128) NOT NULL,
+                                actor VARCHAR(128) NOT NULL,
+                                idempotency_key VARCHAR(255) NOT NULL,
+                                payload_hash VARCHAR(128) NOT NULL,
+                                response_json TEXT,
+                                created_at TIMESTAMP NOT NULL,
+                                expires_at TIMESTAMP NOT NULL,
+                                PRIMARY KEY (scope, actor, idempotency_key)
+                            )
+                            """
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            """
+                            CREATE INDEX IF NOT EXISTS ix_backend_idempotency_expires_at
+                            ON backend_idempotency_record (expires_at)
+                            """
+                        )
+                    )
             except SQLAlchemyError as exc:
                 raise SecurityStateUnavailableError(
                     "Distributed security state storage is unavailable."
@@ -261,6 +380,12 @@ class DatabaseSecurityStateStore:
                     conn.execute(
                         text(
                             "DELETE FROM backend_rate_limit_counter WHERE expires_at < :now_dt"
+                        ),
+                        {"now_dt": now_dt},
+                    )
+                    conn.execute(
+                        text(
+                            "DELETE FROM backend_idempotency_record WHERE expires_at < :now_dt"
                         ),
                         {"now_dt": now_dt},
                     )
@@ -403,6 +528,104 @@ class DatabaseSecurityStateStore:
                 f"Failed to set distributed app state '{key}'."
             ) from exc
 
+    def reserve_idempotency_key(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+        payload_hash: str,
+        ttl_seconds: int,
+    ) -> bool:
+        self._ensure_schema()
+        now_dt = _utc_naive_from_epoch(time.time())
+        expires_at = now_dt + timedelta(seconds=max(1, int(ttl_seconds)))
+        try:
+            with self._engine.begin() as conn:
+                result = conn.execute(
+                    text(
+                        """
+                        INSERT INTO backend_idempotency_record
+                            (scope, actor, idempotency_key, payload_hash, response_json, created_at, expires_at)
+                        VALUES
+                            (:scope, :actor, :key, :payload_hash, NULL, :now_dt, :expires_at)
+                        ON CONFLICT (scope, actor, idempotency_key) DO NOTHING
+                        """
+                    ),
+                    {
+                        "scope": scope,
+                        "actor": actor,
+                        "key": key,
+                        "payload_hash": payload_hash,
+                        "now_dt": now_dt,
+                        "expires_at": expires_at,
+                    },
+                )
+                return bool(result.rowcount and int(result.rowcount) > 0)
+        except SQLAlchemyError as exc:
+            raise SecurityStateUnavailableError(
+                "Distributed idempotency reservation is unavailable."
+            ) from exc
+
+    def load_idempotent_response(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+    ) -> Optional[dict]:
+        self._ensure_schema()
+        try:
+            with self._engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT payload_hash, response_json FROM backend_idempotency_record "
+                        "WHERE scope = :scope AND actor = :actor AND idempotency_key = :key"
+                    ),
+                    {"scope": scope, "actor": actor, "key": key},
+                ).first()
+                if row is None:
+                    return None
+                result: dict = {"payload_hash": str(row[0])}
+                if row[1] is not None:
+                    import json as _json
+                    try:
+                        result["response"] = _json.loads(row[1])
+                    except Exception:
+                        result["response"] = None
+                else:
+                    result["response"] = None
+                return result
+        except SQLAlchemyError as exc:
+            _LOGGER.debug("Failed to load idempotent response: %s", exc)
+            return None
+
+    def store_idempotent_response(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+        response_json: str,
+    ) -> None:
+        self._ensure_schema()
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        "UPDATE backend_idempotency_record SET response_json = :response "
+                        "WHERE scope = :scope AND actor = :actor AND idempotency_key = :key"
+                    ),
+                    {
+                        "scope": scope,
+                        "actor": actor,
+                        "key": key,
+                        "response": response_json,
+                    },
+                )
+        except SQLAlchemyError as exc:
+            _LOGGER.debug("Failed to store idempotent response: %s", exc)
+
 
 class RedisSecurityStateStore:
     """Distributed security state backed by Redis."""
@@ -539,6 +762,82 @@ class RedisSecurityStateStore:
             raise SecurityStateUnavailableError(
                 f"Failed to set Redis app state '{key}'."
             ) from exc
+
+    def _idem_key(self, scope: str, actor: str, key: str) -> str:
+        composite = f"{scope}:{actor}:{key}"
+        h = hashlib.sha256(composite.encode("utf-8")).hexdigest()
+        return f"{self._key_prefix}:idem:{h}"
+
+    def reserve_idempotency_key(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+        payload_hash: str,
+        ttl_seconds: int,
+    ) -> bool:
+        redis_key = self._idem_key(scope, actor, key)
+        ttl = max(1, int(ttl_seconds))
+        try:
+            import json as _json
+            record = _json.dumps({"ph": payload_hash})
+            accepted = self._client.set(redis_key, record, nx=True, ex=ttl)
+            return bool(accepted)
+        except Exception as exc:
+            raise SecurityStateUnavailableError(
+                "Distributed idempotency reservation is unavailable."
+            ) from exc
+
+    def load_idempotent_response(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+    ) -> Optional[dict]:
+        redis_key = self._idem_key(scope, actor, key)
+        try:
+            import json as _json
+            raw = self._client.get(redis_key)
+            if raw is None:
+                return None
+            data = _json.loads(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
+            result: dict = {"payload_hash": data.get("ph", "")}
+            resp = data.get("resp")
+            if resp is not None:
+                result["response"] = resp
+            else:
+                result["response"] = None
+            return result
+        except Exception as exc:
+            _LOGGER.debug("Failed to load Redis idempotent response: %s", exc)
+            return None
+
+    def store_idempotent_response(
+        self,
+        *,
+        scope: str,
+        actor: str,
+        key: str,
+        response_json: str,
+    ) -> None:
+        redis_key = self._idem_key(scope, actor, key)
+        try:
+            import json as _json
+            existing = self._client.get(redis_key)
+            if existing is None:
+                return
+            data = _json.loads(existing.decode("utf-8") if isinstance(existing, bytes) else existing)
+            data["resp"] = _json.loads(response_json) if isinstance(response_json, str) else response_json
+            ttl = self._client.ttl(redis_key)
+            new_value = _json.dumps(data)
+            if ttl and ttl > 0:
+                self._client.set(redis_key, new_value, ex=ttl)
+            else:
+                self._client.set(redis_key, new_value)
+        except Exception as exc:
+            _LOGGER.debug("Failed to store Redis idempotent response: %s", exc)
 
 
 _PRODUCTION_ENV_NAMES = {"prod", "production"}
@@ -708,6 +1007,66 @@ def set_app_state(key: str, value: str) -> None:
         if _is_production(settings):
             raise
         _fallback_to_memory_store().set_app_state(key, value)
+
+
+def reserve_idempotency_key(
+    *,
+    scope: str,
+    actor: str,
+    key: str,
+    payload_hash: str,
+    ttl_seconds: int = 86400,
+) -> bool:
+    """Atomically reserve an idempotency key. Returns True if newly reserved."""
+    settings = get_backend_settings()
+    try:
+        return _get_store().reserve_idempotency_key(
+            scope=scope, actor=actor, key=key,
+            payload_hash=payload_hash, ttl_seconds=ttl_seconds,
+        )
+    except SecurityStateUnavailableError:
+        if _is_production(settings):
+            raise
+        return _fallback_to_memory_store().reserve_idempotency_key(
+            scope=scope, actor=actor, key=key,
+            payload_hash=payload_hash, ttl_seconds=ttl_seconds,
+        )
+
+
+def load_idempotent_response(
+    *,
+    scope: str,
+    actor: str,
+    key: str,
+) -> Optional[dict]:
+    """Load an existing idempotency record."""
+    try:
+        return _get_store().load_idempotent_response(scope=scope, actor=actor, key=key)
+    except SecurityStateUnavailableError:
+        return _fallback_to_memory_store().load_idempotent_response(
+            scope=scope, actor=actor, key=key,
+        )
+
+
+def store_idempotent_response(
+    *,
+    scope: str,
+    actor: str,
+    key: str,
+    response_json: str,
+) -> None:
+    """Store the response payload for a reserved idempotency key."""
+    try:
+        _get_store().store_idempotent_response(
+            scope=scope, actor=actor, key=key, response_json=response_json,
+        )
+    except SecurityStateUnavailableError as exc:
+        settings = get_backend_settings()
+        if _is_production(settings):
+            raise
+        _fallback_to_memory_store().store_idempotent_response(
+            scope=scope, actor=actor, key=key, response_json=response_json,
+        )
 
 
 def reset_security_state_for_tests() -> None:
