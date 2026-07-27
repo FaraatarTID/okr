@@ -68,11 +68,15 @@ class TestValidateCycleContainsDate:
         cycle_end = datetime(2026, 3, 31)
         child_date = datetime(2025, 12, 15)
         with pytest.raises(ValueError, match="must fall within"):
-            validate_cycle_contains_date(cycle_start, cycle_end, child_date, "Goal deadline")
+            validate_cycle_contains_date(
+                cycle_start, cycle_end, child_date, "Goal deadline"
+            )
 
     def test_rejects_date_after_cycle(self):
         cycle_start = datetime(2026, 1, 1)
         cycle_end = datetime(2026, 3, 31)
         child_date = datetime(2026, 4, 15)
         with pytest.raises(ValueError, match="must fall within"):
-            validate_cycle_contains_date(cycle_start, cycle_end, child_date, "Goal deadline")
+            validate_cycle_contains_date(
+                cycle_start, cycle_end, child_date, "Goal deadline"
+            )

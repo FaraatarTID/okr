@@ -78,9 +78,15 @@ AI integration
   - AI_BASE_URL: required when `AI_PROVIDER=openai_compatible`
   - AI_MODEL: required when `AI_PROVIDER=openai_compatible`
   - AI_API_KEY: optional token for OpenAI-compatible gateways
-  - AI_REQUEST_TIMEOUT_SECONDS: optional provider read timeout for OpenAI-compatible calls (default: `120`)
-  - Environment fallback:
-  - AI_PROVIDER
+- AI_REQUEST_TIMEOUT_SECONDS: optional provider read timeout for OpenAI-compatible calls (default: `120`)
+- AI_PROVIDER_ALLOWLIST: optional comma-separated allowlist for provider selection (default: `gemini,openai_compatible`)
+- AI_GOVERNANCE_STRICT: when `true`, apply prompt minimization/redaction prior to provider call.
+- AI_INCLUDE_GOVERNANCE_METADATA: when `true`, include `ai_governance` and `ai_provider` fields in AI JSON responses.
+- AI_DATA_CLASSIFICATION: one of `public|internal|confidential` for governance metadata (`internal` by default).
+- AI_MAX_PROMPT_CHARS: maximum prompt length after governance processing (default: `20000`).
+- AI_MAX_PROVIDER_OUTPUT_BYTES: maximum serialized AI JSON payload size in bytes (default: `131072`).
+- Environment fallback:
+- AI_PROVIDER
   - OKR_AI_PROVIDER
   - GEMINI_API_KEY
   - VITE_GEMINI_API_KEY

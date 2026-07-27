@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional, cast
 
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -78,7 +78,7 @@ def build_atlas_scope_snapshot(
     if canonical_owner_ids is not None:
         if not canonical_owner_ids:
             return {"goals": [], "users_map": {}}
-        goal_stmt = goal_stmt.where(Goal.owner_id.in_(canonical_owner_ids))
+        goal_stmt = goal_stmt.where(cast(Any, Goal.owner_id).in_(canonical_owner_ids))
 
     goal_rows = list(session.exec(goal_stmt).all())
     if not goal_rows:
@@ -128,7 +128,7 @@ def build_atlas_scope_snapshot(
                 Objective.score_mode,
                 Objective.weight,
             )
-            .where(Objective.goal_id.in_(goal_ids))
+            .where(cast(Any, Objective.goal_id).in_(goal_ids))
             .order_by(Objective.goal_id, func.lower(Objective.title), Objective.id)
         ).all()
     )
@@ -183,7 +183,7 @@ def build_atlas_scope_snapshot(
                     KeyResult.weight,
                     KeyResult.unit,
                 )
-                .where(KeyResult.objective_id.in_(objective_ids))
+                .where(cast(Any, KeyResult.objective_id).in_(objective_ids))
                 .order_by(
                     KeyResult.objective_id, func.lower(KeyResult.title), KeyResult.id
                 )
@@ -251,7 +251,7 @@ def build_atlas_scope_snapshot(
                     Task.estimated_minutes,
                     Task.assignee_id,
                 )
-                .where(Task.key_result_id.in_(key_result_ids))
+                .where(cast(Any, Task.key_result_id).in_(key_result_ids))
                 .order_by(Task.key_result_id, func.lower(Task.title), Task.id)
             ).all()
         )

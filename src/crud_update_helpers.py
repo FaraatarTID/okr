@@ -32,7 +32,11 @@ def update_goal_from_crud(
     result = try_backend_mutation(
         crud_module=crud_module,
         backend_fn_name="update_node",
-        backend_kwargs={"node_type": "GOAL", "node_id": goal_id, "updates": dict(updates or {})},
+        backend_kwargs={
+            "node_type": "GOAL",
+            "node_id": goal_id,
+            "updates": dict(updates or {}),
+        },
         actor_username=actor_username,
         require_actor=False,
         extract_result="node",
@@ -68,10 +72,15 @@ def update_goal_from_crud(
                 if cycle_id:
                     cycle = session.get(crud_module.Cycle, cycle_id)
                     if cycle:
-                        from src.utils.date_validation import validate_cycle_contains_date
+                        from src.utils.date_validation import (
+                            validate_cycle_contains_date,
+                        )
+
                         validate_cycle_contains_date(
-                            cycle.start_date, cycle.end_date,
-                            updates["deadline"], "Goal deadline",
+                            cycle.start_date,
+                            cycle.end_date,
+                            updates["deadline"],
+                            "Goal deadline",
                         )
             for key, value in updates.items():
                 if hasattr(goal, key):
@@ -96,7 +105,11 @@ def update_objective_from_crud(
     result = try_backend_mutation(
         crud_module=crud_module,
         backend_fn_name="update_node",
-        backend_kwargs={"node_type": "OBJECTIVE", "node_id": objective_id, "updates": dict(updates or {})},
+        backend_kwargs={
+            "node_type": "OBJECTIVE",
+            "node_id": objective_id,
+            "updates": dict(updates or {}),
+        },
         actor_username=actor_username,
         require_actor=False,
         extract_result="node",
@@ -176,7 +189,11 @@ def update_key_result_from_crud(
     result = try_backend_mutation(
         crud_module=crud_module,
         backend_fn_name="update_node",
-        backend_kwargs={"node_type": "KEY_RESULT", "node_id": key_result_id, "updates": dict(updates or {})},
+        backend_kwargs={
+            "node_type": "KEY_RESULT",
+            "node_id": key_result_id,
+            "updates": dict(updates or {}),
+        },
         actor_username=actor_username,
         require_actor=False,
         extract_result="node",
@@ -297,7 +314,11 @@ def update_task_from_crud(
     result = try_backend_mutation(
         crud_module=crud_module,
         backend_fn_name="update_node",
-        backend_kwargs={"node_type": "TASK", "node_id": task_id, "updates": remote_updates},
+        backend_kwargs={
+            "node_type": "TASK",
+            "node_id": task_id,
+            "updates": remote_updates,
+        },
         actor_username=actor_username,
         require_actor=False,
         extract_result="node",

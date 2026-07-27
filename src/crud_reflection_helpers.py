@@ -17,8 +17,8 @@ def create_weekly_plan_from_crud(
     start_date,
     end_date,
     p1: str,
-    p2: str = None,
-    p3: str = None,
+    p2: Optional[str] = None,
+    p3: Optional[str] = None,
     actor_username: Optional[str] = None,
 ):
     actor_user = None
@@ -85,7 +85,9 @@ def create_weekly_plan_from_crud(
                     "user_id": user_id,
                     "week_start_date": start_date,
                     "week_end_date": end_date,
-                    "actor_role": getattr(getattr(actor_user, "role", None), "value", None),
+                    "actor_role": getattr(
+                        getattr(actor_user, "role", None), "value", None
+                    ),
                     "actor_team_id": getattr(actor_user, "team_id", None),
                 },
             )
@@ -148,7 +150,7 @@ def create_retrospective_from_crud(
     cycle_id: int,
     week_start_date,
     content: str,
-    sentiment: str = None,
+    sentiment: Optional[str] = None,
     actor_username: Optional[str] = None,
 ):
     result = crud_core_helpers.try_backend_mutation(
@@ -213,7 +215,7 @@ def create_retrospective_from_crud(
 
 
 def get_user_retrospectives_from_crud(
-    *, crud_module, user_id: int, cycle_id: int = None
+    *, crud_module, user_id: int, cycle_id: Optional[int] = None
 ):
     with crud_module.get_session_context() as session:
         stmt = crud_module.select(crud_module.Retrospective).where(
@@ -229,7 +231,7 @@ def get_team_retrospectives_from_crud(
     *,
     crud_module,
     manager_id: int,
-    cycle_id: int = None,
+    cycle_id: Optional[int] = None,
 ):
     with crud_module.get_session_context() as session:
         stmt = (

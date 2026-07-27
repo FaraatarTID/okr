@@ -1,6 +1,5 @@
 from datetime import timedelta
 
-import pytest
 from sqlalchemy import inspect as sa_inspect
 from sqlmodel import select
 

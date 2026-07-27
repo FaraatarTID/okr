@@ -24,7 +24,9 @@ def test_rate_limit_uses_forwarded_ip_for_isolation():
 
 def test_security_module_accepts_x_forwarded_for_header():
     """require_service_access should accept x_forwarded_for as a header parameter."""
-    source = inspect.getsource(__import__("backend_app.security", fromlist=["require_service_access"]))
+    source = inspect.getsource(
+        __import__("backend_app.security", fromlist=["require_service_access"])
+    )
     assert "x_forwarded_for" in source, (
         "require_service_access should accept x_forwarded_for header parameter"
     )
@@ -32,7 +34,9 @@ def test_security_module_accepts_x_forwarded_for_header():
 
 def test_security_module_uses_forwarded_ip_for_rate_limit():
     """When service token is valid, rate limiting should use x-forwarded-for."""
-    source = inspect.getsource(__import__("backend_app.security", fromlist=["require_service_access"]))
+    source = inspect.getsource(
+        __import__("backend_app.security", fromlist=["require_service_access"])
+    )
     assert "forwarded" in source.lower() and "client_ip" in source, (
         "require_service_access should override client_ip with forwarded IP"
     )

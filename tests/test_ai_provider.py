@@ -26,6 +26,18 @@ def _clear_ai_env(monkeypatch):
         "OPENAI_API_KEY",
         "AI_REQUEST_TIMEOUT_SECONDS",
         "OPENAI_REQUEST_TIMEOUT_SECONDS",
+        "AI_GOVERNANCE_STRICT",
+        "OKR_AI_GOVERNANCE_STRICT",
+        "AI_INCLUDE_GOVERNANCE_METADATA",
+        "OKR_AI_INCLUDE_GOVERNANCE_METADATA",
+        "AI_MAX_PROMPT_CHARS",
+        "OKR_AI_MAX_PROMPT_CHARS",
+        "AI_MAX_PROVIDER_OUTPUT_BYTES",
+        "OKR_AI_MAX_PROVIDER_OUTPUT_BYTES",
+        "AI_DATA_CLASSIFICATION",
+        "OKR_AI_DATA_CLASSIFICATION",
+        "AI_PROVIDER_ALLOWLIST",
+        "OKR_AI_PROVIDER_ALLOWLIST",
         "GEMINI_API_KEY",
         "VITE_GEMINI_API_KEY",
     ]:
@@ -57,6 +69,30 @@ def test_ai_provider_falls_back_to_secrets_when_env_missing(monkeypatch):
         lambda key, default="": "openai_compatible",
     )
     assert get_ai_provider() == "openai_compatible"
+
+
+def test_generate_json_blocks_disallowed_provider(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("AI_PROVIDER_ALLOWLIST", "gemini")
+    monkeypatch.setenv("AI_BASE_URL", "http://localhost:11434")
+    monkeypatch.setenv("AI_MODEL", "llama3.1")
+
+    called = {"count": 0}
+
+    def fake_post_json_with_retry(*args, **kwargs):
+        called["count"] += 1
+        return SimpleNamespace(status_code=200, text="{}", json=lambda: {"choices": []})
+
+    monkeypatch.setattr(
+        "src.services.ai_provider.post_json_with_retry", fake_post_json_with_retry
+    )
+    result = generate_json("hello")
+
+    assert "error" in result
+    assert "not allowed by governance policy" in str(result.get("error")).lower()
+    assert called["count"] == 0
 
 
 def test_runtime_status_openai_provider_missing_required_fields(monkeypatch):
@@ -93,6 +129,74 @@ def test_generate_json_defaults_to_external_ai_disabled(monkeypatch):
     assert "error" in result
     assert "disabled by policy" in str(result.get("error")).lower()
 
+
+def test_generate_json_applies_prompt_governance_and_attaches_metadata(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("AI_BASE_URL", "http://localhost:11434")
+    monkeypatch.setenv("AI_MODEL", "llama3.1")
+    monkeypatch.setenv("AI_GOVERNANCE_STRICT", "true")
+    monkeypatch.setenv("AI_INCLUDE_GOVERNANCE_METADATA", "true")
+
+    captured = {}
+    response_payload = {
+        "choices": [{"message": {"content": '{"ok": true, "score": 87}'}}]
+    }
+    fake_response = SimpleNamespace(
+        status_code=200,
+        text='{"choices":[{"message":{"content":"{\\"ok\\": true, \\"score\\": 87}"}}]}',
+        json=lambda: response_payload,
+    )
+
+    def fake_post_json_with_retry(*args, **kwargs):
+        payload = kwargs.get("json_payload") or {}
+        messages = payload.get("messages") or []
+        user_content = ""
+        if len(messages) >= 2:
+            user_content = str(messages[1].get("content") or "")
+        captured["user_content"] = user_content
+        return fake_response
+
+    monkeypatch.setattr(
+        "src.services.ai_provider.post_json_with_retry",
+        fake_post_json_with_retry,
+    )
+    result = generate_json('analysis for "alice@example.com" and +1 555 123 4567')
+    assert result.get("ok") is True
+    assert result.get("score") == 87
+    assert result.get("ai_governance", {}).get("strict_governance") is True
+    assert result.get("ai_governance", {}).get("classification") == "internal"
+    assert "[redacted-email]" in captured["user_content"]
+    assert "[redacted-phone]" in captured["user_content"]
+
+
+def test_generate_json_governance_output_cap_enforced(monkeypatch):
+    _clear_ai_env(monkeypatch)
+    monkeypatch.setenv("ALLOW_EXTERNAL_AI", "true")
+    monkeypatch.setenv("AI_PROVIDER", "openai_compatible")
+    monkeypatch.setenv("AI_BASE_URL", "http://localhost:11434")
+    monkeypatch.setenv("AI_MODEL", "llama3.1")
+    monkeypatch.setenv("AI_MAX_PROVIDER_OUTPUT_BYTES", "40")
+
+    response_payload = {
+        "choices": [{"message": {"content": '{"x": "' + ("x" * 500) + '"'}}]
+    }
+    fake_response = SimpleNamespace(
+        status_code=200,
+        text='{"choices":[{"message":{"content":"' + "x" * 500 + '"}}]',
+        json=lambda: response_payload,
+    )
+    monkeypatch.setattr(
+        "src.services.ai_provider.post_json_with_retry",
+        lambda *args, **kwargs: fake_response,
+    )
+    result = generate_json("hello")
+    assert "error" in result
+    assert (
+        "output exceeded governance output-size policy"
+        in str(result.get("error")).lower()
+    )
 
 
 def test_generate_json_openai_compatible_success_path(monkeypatch):

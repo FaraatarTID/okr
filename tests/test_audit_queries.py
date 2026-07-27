@@ -1,6 +1,3 @@
-from conftest import utc_now_naive
-
-
 def test_audit_query_helpers_filter_by_actor_role_team_and_target_type(isolated_db):
     from src.audit import audit_log
     from src.audit_queries import count_audit_events, list_audit_events

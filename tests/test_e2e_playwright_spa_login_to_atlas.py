@@ -7,7 +7,9 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -34,6 +36,7 @@ def _npm_command() -> list[str]:
     npm_path = shutil.which(npm_name)
     if not npm_path:
         pytest.skip(f"{npm_name} is required for SPA e2e but was not found on PATH.")
+    assert npm_path is not None
     return [npm_path]
 
 
@@ -51,7 +54,7 @@ def _wait_for_http(url: str, *, timeout_seconds: float) -> bool:
     return False
 
 
-def _terminate_process(process: subprocess.Popen[object] | None) -> None:
+def _terminate_process(process: subprocess.Popen[Any] | None) -> None:
     if process is None or process.poll() is not None:
         return
     process.terminate()
@@ -171,7 +174,9 @@ class E2EStack:
 
 
 @pytest.fixture(scope="module")
-def e2e_stack(tmp_path_factory: pytest.TempPathFactory) -> E2EStack:
+def e2e_stack(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[E2EStack]:
     if not _truthy(os.getenv(_RUN_E2E_ENV)):
         pytest.skip(
             f"Playwright SPA e2e is disabled. Set {_RUN_E2E_ENV}=1 to run this test."
@@ -222,9 +227,9 @@ def e2e_stack(tmp_path_factory: pytest.TempPathFactory) -> E2EStack:
     backend_log_path = tmp_dir / "backend.log"
     bff_log_path = tmp_dir / "bff.log"
     spa_log_path = tmp_dir / "spa.log"
-    backend_process: subprocess.Popen[object] | None = None
-    bff_process: subprocess.Popen[object] | None = None
-    spa_process: subprocess.Popen[object] | None = None
+    backend_process: subprocess.Popen[Any] | None = None
+    bff_process: subprocess.Popen[Any] | None = None
+    spa_process: subprocess.Popen[Any] | None = None
 
     with (
         backend_log_path.open("w", encoding="utf-8") as backend_log,
@@ -341,7 +346,9 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
 
         context = browser.new_context(viewport={"width": 1600, "height": 1000})
         page = context.new_page()
-        page.goto(f"{e2e_stack.app_url}/login", wait_until="domcontentloaded", timeout=90_000)
+        page.goto(
+            f"{e2e_stack.app_url}/login", wait_until="domcontentloaded", timeout=90_000
+        )
 
         username_input = page.get_by_label("Username", exact=True)
         password_input = page.get_by_label("Password", exact=True)
@@ -383,9 +390,7 @@ def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
         start_button.click()
         expect(
             page.get_by_role("button", name="Stop timer + save log", exact=True)
-        ).to_be_visible(
-            timeout=90_000
-        )
+        ).to_be_visible(timeout=90_000)
 
         timer_dialog = page.get_by_role("dialog", name="Focus timer session")
         expect(timer_dialog).to_be_visible(timeout=90_000)

@@ -2,6 +2,11 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from datetime import datetime, timezone
+
+from sqlmodel import SQLModel
+
+import pytest
 
 os.environ["OKR_BACKEND_API_URL"] = ""
 os.environ["OKR_BACKEND_ENFORCE_REQUEST_SIGNING"] = "false"
@@ -28,11 +33,6 @@ _PYTEST_TEMP_DIR.mkdir(parents=True, exist_ok=True)
 os.environ["TMP"] = str(_PYTEST_TEMP_DIR)
 os.environ["TEMP"] = str(_PYTEST_TEMP_DIR)
 tempfile.tempdir = str(_PYTEST_TEMP_DIR)
-
-import pytest
-from sqlmodel import SQLModel
-
-from datetime import datetime, timezone
 
 
 def utc_now_naive() -> datetime:

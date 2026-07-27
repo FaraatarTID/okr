@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import sys
-from types import SimpleNamespace
-
 
 def test_clear_cache_safe_broadcasts(monkeypatch):
     import src.services.distributed_state_service as distributed_state_service

@@ -5,18 +5,18 @@ Revises: r8f9a0b1c2d3
 Create Date: 2026-07-01 15:25:30.222575
 
 """
+
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
 
 
 from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
-revision: str = '7f1e28f4cc6f'
-down_revision: Union[str, Sequence[str], None] = 'r8f9a0b1c2d3'
+revision: str = "7f1e28f4cc6f"
+down_revision: Union[str, Sequence[str], None] = "r8f9a0b1c2d3"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -91,4 +91,3 @@ def downgrade() -> None:
         for table in tables:
             if table in existing_tables:
                 op.execute(f'ALTER TABLE "{table}" DISABLE ROW LEVEL SECURITY')
-

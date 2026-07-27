@@ -16,11 +16,24 @@ def _reset_security_state():
     security_state.reset_security_state_for_tests()
 
 
+def _configure_production_security_env(monkeypatch) -> None:
+    monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "true")
+    monkeypatch.setenv(
+        "OKR_BACKEND_SERVICE_TOKEN", "unit-prod-token-01234567890123456789"
+    )
+    monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "true")
+    monkeypatch.setenv(
+        "OKR_BACKEND_SIGNING_SECRET",
+        "unit-prod-signing-secret-with-minimum-required-length-32",
+    )
+
+
 def test_database_nonce_replay_guard_rejects_replay(monkeypatch, tmp_path):
     from backend_app.security_state import register_nonce_once
 
     db_path = tmp_path / "security_state_nonce.db"
-    monkeypatch.setenv("OKR_ENV", "production")
+    _configure_production_security_env(monkeypatch)
+    monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.setenv("OKR_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
 
@@ -38,7 +51,8 @@ def test_database_rate_limit_enforces_fixed_window(monkeypatch, tmp_path):
     import backend_app.security_state as security_state
 
     db_path = tmp_path / "security_state_rl.db"
-    monkeypatch.setenv("OKR_ENV", "production")
+    _configure_production_security_env(monkeypatch)
+    monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.setenv("OKR_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
 
@@ -68,7 +82,8 @@ def test_database_backend_avoids_sqlite_datetime_adapter_deprecation_warning(
     import backend_app.security_state as security_state
 
     db_path = tmp_path / "security_state_no_datetime_deprecation.db"
-    monkeypatch.setenv("OKR_ENV", "production")
+    _configure_production_security_env(monkeypatch)
+    monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.setenv("OKR_DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
 
@@ -127,10 +142,21 @@ def test_production_fails_closed_when_database_backend_unavailable(monkeypatch):
         register_nonce_once,
     )
 
+    class UnavailableDatabaseSecurityStateStore:
+        def __init__(self, *_, **__):
+            raise SecurityStateUnavailableError("simulated unavailable")
+
+    _configure_production_security_env(monkeypatch)
     monkeypatch.setenv("OKR_ENV", "production")
-    monkeypatch.delenv("OKR_DATABASE_URL", raising=False)
-    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv(
+        "OKR_DATABASE_URL",
+        "postgresql+psycopg2://okr_app:secret@db.example.com:5432/postgres?sslmode=require",
+    )
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
+    monkeypatch.setattr(
+        "backend_app.security_state.DatabaseSecurityStateStore",
+        UnavailableDatabaseSecurityStateStore,
+    )
 
     with pytest.raises(SecurityStateUnavailableError):
         register_nonce_once(
@@ -176,7 +202,12 @@ def test_redis_nonce_and_rate_limit(monkeypatch):
             return FakeRedisClient()
 
     monkeypatch.setitem(sys.modules, "redis", types.SimpleNamespace(Redis=FakeRedis))
+    _configure_production_security_env(monkeypatch)
     monkeypatch.setenv("OKR_ENV", "production")
+    monkeypatch.setenv(
+        "OKR_DATABASE_URL",
+        "postgresql+psycopg2://okr_app:secret@db.example.com:5432/postgres?sslmode=require",
+    )
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "redis")
     monkeypatch.setenv(
         "OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://fake-redis:6379/0"
@@ -266,7 +297,12 @@ def test_production_fails_closed_when_redis_backend_unavailable(monkeypatch):
             raise RuntimeError("redis unavailable")
 
     monkeypatch.setitem(sys.modules, "redis", types.SimpleNamespace(Redis=BrokenRedis))
+    _configure_production_security_env(monkeypatch)
     monkeypatch.setenv("OKR_ENV", "production")
+    monkeypatch.setenv(
+        "OKR_DATABASE_URL",
+        "postgresql+psycopg2://okr_app:secret@db.example.com:5432/postgres?sslmode=require",
+    )
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "redis")
     monkeypatch.setenv(
         "OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://fake-redis:6379/0"
@@ -289,7 +325,9 @@ def test_database_security_state_uses_null_pool_by_default(monkeypatch):
     )
     try:
         pool = store._engine.pool
-        assert isinstance(pool, NullPool), f"Expected NullPool, got {type(pool).__name__}"
+        assert isinstance(pool, NullPool), (
+            f"Expected NullPool, got {type(pool).__name__}"
+        )
     finally:
         store.dispose()
 
@@ -309,7 +347,9 @@ def test_database_security_state_allows_opt_in_queue_pool(monkeypatch):
     )
     try:
         pool = store._engine.pool
-        assert not isinstance(pool, NullPool), f"Expected QueuePool, got {type(pool).__name__}"
+        assert not isinstance(pool, NullPool), (
+            f"Expected QueuePool, got {type(pool).__name__}"
+        )
         assert pool.size() == 7
         assert pool._timeout == 15
         assert pool._recycle == 600

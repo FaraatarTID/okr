@@ -19,9 +19,19 @@ def _build_task_tree_for_user(username: str, cycle_id: int):
     goal = create_goal(
         username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username
     )
-    objective = create_objective(goal.id, "Objective", actor_username=username)
-    key_result = create_key_result(objective.id, "KR", actor_username=username)
-    task = create_task(key_result.id, "Task", actor_username=username)
+    assert goal is not None
+    goal_id = goal.id
+    assert goal_id is not None
+    objective = create_objective(goal_id, "Objective", actor_username=username)
+    assert objective is not None
+    objective_id = objective.id
+    assert objective_id is not None
+    key_result = create_key_result(objective_id, "KR", actor_username=username)
+    assert key_result is not None
+    key_result_id = key_result.id
+    assert key_result_id is not None
+    task = create_task(key_result_id, "Task", actor_username=username)
+    assert task is not None
     return goal, objective, key_result, task
 
 
@@ -197,7 +207,6 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(
     monkeypatch, tmp_path
 ):
     import src.database as database
-    from sqlmodel import SQLModel
     import src.models  # noqa: F401
 
     db_path = tmp_path / "okr_legacy_no_alembic.db"
@@ -229,7 +238,6 @@ def test_audit_event_backfill_migration_populates_actor_and_target_snapshots(
 ):
     from alembic import command
     from alembic.config import Config
-    from sqlmodel import SQLModel
 
     import src.models  # noqa: F401
     import src.database as database
@@ -313,7 +321,9 @@ def test_audit_event_backfill_migration_populates_actor_and_target_snapshots(
     engine.dispose()
 
 
-def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(monkeypatch, tmp_path):
+def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(
+    monkeypatch, tmp_path
+):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine
@@ -395,7 +405,9 @@ def test_goal_hard_cutover_migration_backfills_owner_and_drops_user_id(monkeypat
     engine.dispose()
 
 
-def test_goal_hard_cutover_migration_blocks_unresolved_ownerless_goals(monkeypatch, tmp_path):
+def test_goal_hard_cutover_migration_blocks_unresolved_ownerless_goals(
+    monkeypatch, tmp_path
+):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine
@@ -462,7 +474,9 @@ def test_goal_hard_cutover_migration_blocks_unresolved_ownerless_goals(monkeypat
     engine.dispose()
 
 
-def test_integrity_migration_tolerates_legacy_orphaned_fk_metadata(monkeypatch, tmp_path):
+def test_integrity_migration_tolerates_legacy_orphaned_fk_metadata(
+    monkeypatch, tmp_path
+):
     from alembic import command
     from alembic.config import Config
     from src.database import _create_engine

@@ -74,8 +74,6 @@ def test_audit_log_persists_event_to_database(monkeypatch, tmp_path):
     monkeypatch.setattr(database, "_engine", None, raising=False)
     database.run_migrations()
 
-
-
     stub_logger = _StubAuditLogger()
     monkeypatch.setattr(audit, "_get_logger", lambda: stub_logger)
     monkeypatch.setattr(audit, "_AUDIT_DB_FAILURE_REPORTED", False, raising=False)

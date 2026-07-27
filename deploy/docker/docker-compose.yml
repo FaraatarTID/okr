@@ -1,6 +1,23 @@
 version: "3.9"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: okr-postgres
+    environment:
+      - POSTGRES_USER=${OKR_POSTGRES_USER:-okr}
+      - POSTGRES_PASSWORD=${OKR_POSTGRES_PASSWORD:-okr_dev_password}
+      - POSTGRES_DB=${OKR_POSTGRES_DB:-okr}
+    ports:
+      - "${OKR_POSTGRES_HOST_PORT:-15432}:5432"
+    volumes:
+      - okr-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${OKR_POSTGRES_USER:-okr}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   backend-api:
     build:
       context: ../..
@@ -8,7 +25,7 @@ services:
     container_name: okr-backend-api
     image: ${IMAGE:-okr-backend:local}
     environment:
-      - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL is required}
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
       - OKR_BACKEND_HOST=0.0.0.0
       - OKR_BACKEND_PORT=${OKR_BACKEND_PORT:-8100}
       - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:-}
@@ -37,6 +54,9 @@ services:
     ports:
       - "${OKR_BACKEND_BIND_ADDRESS:-127.0.0.1}:${OKR_BACKEND_HOST_PORT:-8100}:${OKR_BACKEND_PORT:-8100}"
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   backend-worker:
     build:
@@ -45,7 +65,7 @@ services:
     container_name: okr-backend-worker
     image: ${IMAGE:-okr-backend:local}
     environment:
-      - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL is required}
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
       - OKR_BACKEND_WORKER_POLL_SECONDS=${OKR_BACKEND_WORKER_POLL_SECONDS:-2}
       - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:-}
       - OKR_BACKEND_ENFORCE_TOKEN=${OKR_BACKEND_ENFORCE_TOKEN:-true}
@@ -60,6 +80,9 @@ services:
       - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
     command: ["python", "-m", "backend_app.worker"]
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   spa-bff:
     build:
@@ -100,3 +123,6 @@ services:
     depends_on:
       - spa-bff
     restart: unless-stopped
+
+volumes:
+  okr-postgres-data:

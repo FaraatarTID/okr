@@ -10,6 +10,12 @@ def _make_client(monkeypatch):
     import backend_app.main as backend_main
 
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
+    monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "false")
+    monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.setenv("NODE_ENV", "development")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "memory")
+    monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS", "10000")
+    monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     return TestClient(backend_main.app), backend_main
 
@@ -326,7 +332,9 @@ def test_delete_node_endpoint_returns_403_for_permission_error(
         ("/v1/nodes/task/999", "delete_task"),
     ],
 )
-def test_delete_node_endpoint_returns_404_when_missing(monkeypatch, route_path, delete_fn):
+def test_delete_node_endpoint_returns_404_when_missing(
+    monkeypatch, route_path, delete_fn
+):
     client, backend_main = _make_client(monkeypatch)
     monkeypatch.setattr(backend_main, delete_fn, lambda *_args, **_kwargs: False)
 
@@ -634,7 +642,6 @@ def test_create_user_endpoint_parses_role_and_team(monkeypatch):
         },
     )
     monkeypatch.setattr(backend_main, "create_user", _fake_create_user)
-
 
     response = client.post(
         "/v1/users",
@@ -1050,7 +1057,11 @@ def test_read_query_mindmap_task_uses_detached_safe_serializer(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_scope_for_actor",
-        lambda _actor, token_version=None: {"is_admin": True, "owner_ids": set(), "usernames": {"alice"}},
+        lambda _actor, token_version=None: {
+            "is_admin": True,
+            "owner_ids": set(),
+            "usernames": {"alice"},
+        },
     )
 
     monkeypatch.setattr(
@@ -1090,7 +1101,11 @@ def test_read_query_mindmap_key_result_uses_detached_safe_serializer(monkeypatch
     monkeypatch.setattr(
         backend_main,
         "_resolve_scope_for_actor",
-        lambda _actor, token_version=None: {"is_admin": True, "owner_ids": set(), "usernames": {"alice"}},
+        lambda _actor, token_version=None: {
+            "is_admin": True,
+            "owner_ids": set(),
+            "usernames": {"alice"},
+        },
     )
 
     monkeypatch.setattr(
@@ -1113,7 +1128,9 @@ def test_read_query_mindmap_key_result_uses_detached_safe_serializer(monkeypatch
         captured["include_objective"] = include_objective
         return {"__tablename__": "key_result", "id": int(getattr(node, "id", 0))}
 
-    monkeypatch.setattr(backend_main, "_serialize_key_result", _fake_serialize_key_result)
+    monkeypatch.setattr(
+        backend_main, "_serialize_key_result", _fake_serialize_key_result
+    )
 
     response = client.post(
         "/v1/read/query",
@@ -1131,7 +1148,9 @@ def test_read_query_mindmap_key_result_uses_detached_safe_serializer(monkeypatch
     assert captured["include_objective"] is False
 
 
-def test_ai_analyze_node_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
+def test_ai_analyze_node_endpoint_rejects_mismatched_header_and_payload_actor(
+    monkeypatch,
+):
     client, backend_main = _make_client(monkeypatch)
 
     response = client.post(
@@ -1241,7 +1260,9 @@ def test_ai_analyze_node_endpoint_maps_error_responses_to_http_status(
     monkeypatch, error_text, expected_status
 ):
     client, backend_main = _make_client(monkeypatch)
-    monkeypatch.setattr(backend_main, "analyze_node", lambda *args, **kwargs: {"error": error_text})
+    monkeypatch.setattr(
+        backend_main, "analyze_node", lambda *args, **kwargs: {"error": error_text}
+    )
 
     response = client.post(
         "/v1/ai/analyze-node",
@@ -1267,7 +1288,9 @@ def test_ai_analyze_node_endpoint_rejects_invalid_payload(monkeypatch):
     assert "invalid payload" in str(response.json().get("detail", "")).lower()
 
 
-def test_ai_team_coach_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
+def test_ai_team_coach_endpoint_rejects_mismatched_header_and_payload_actor(
+    monkeypatch,
+):
     client, backend_main = _make_client(monkeypatch)
 
     response = client.post(
@@ -1322,7 +1345,11 @@ def test_ai_team_coach_endpoint_maps_error_to_bad_request(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor, token_version=None: {"is_admin": False, "owner_ids": {1}, "usernames": {"alice"}},
+        lambda _session, _actor, token_version=None: {
+            "is_admin": False,
+            "owner_ids": {1},
+            "usernames": {"alice"},
+        },
     )
     monkeypatch.setattr(
         backend_main,
@@ -1352,9 +1379,15 @@ def test_ai_team_coach_endpoint_rejects_invalid_payload(monkeypatch):
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor_scope",
-        lambda _session, _actor, token_version=None: {"is_admin": False, "owner_ids": {1}, "usernames": {"alice"}},
+        lambda _session, _actor, token_version=None: {
+            "is_admin": False,
+            "owner_ids": {1},
+            "usernames": {"alice"},
+        },
     )
-    monkeypatch.setattr(backend_main, "analyze_team_health", lambda *_args, **_kwargs: ["bad"])
+    monkeypatch.setattr(
+        backend_main, "analyze_team_health", lambda *_args, **_kwargs: ["bad"]
+    )
 
     response = client.post(
         "/v1/ai/team-coach",
@@ -1366,7 +1399,9 @@ def test_ai_team_coach_endpoint_rejects_invalid_payload(monkeypatch):
     assert "invalid payload" in str(response.json().get("detail", "")).lower()
 
 
-def test_ai_strategy_pulse_endpoint_rejects_mismatched_header_and_payload_actor(monkeypatch):
+def test_ai_strategy_pulse_endpoint_rejects_mismatched_header_and_payload_actor(
+    monkeypatch,
+):
     client, backend_main = _make_client(monkeypatch)
 
     response = client.post(
@@ -1472,7 +1507,9 @@ def test_ai_strategy_pulse_endpoint_maps_outlook_error_to_bad_request(monkeypatc
         "calculate_burnout_risk",
         lambda *_args, **_kwargs: {"risk_label": "Elevated"},
     )
-    monkeypatch.setattr(backend_main, "detect_strategy_gaps", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        backend_main, "detect_strategy_gaps", lambda *_args, **_kwargs: []
+    )
     monkeypatch.setattr(
         backend_main,
         "generate_predictive_outlook",
@@ -1517,8 +1554,12 @@ def test_ai_strategy_pulse_endpoint_rejects_invalid_outlook_payload(monkeypatch)
         "calculate_burnout_risk",
         lambda *_args, **_kwargs: {"risk_label": "Elevated"},
     )
-    monkeypatch.setattr(backend_main, "detect_strategy_gaps", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(backend_main, "generate_predictive_outlook", lambda *_args, **_kwargs: "invalid")
+    monkeypatch.setattr(
+        backend_main, "detect_strategy_gaps", lambda *_args, **_kwargs: []
+    )
+    monkeypatch.setattr(
+        backend_main, "generate_predictive_outlook", lambda *_args, **_kwargs: "invalid"
+    )
 
     response = client.post(
         "/v1/ai/strategy-pulse",
@@ -1546,8 +1587,12 @@ def test_read_query_cycles_all_returns_primary_active_cycle_for_member(monkeypat
         backend_main,
         "get_active_cycles",
         lambda: [
-            SimpleNamespace(id=3, title="Q1", start_date=None, end_date=None, is_active=True),
-            SimpleNamespace(id=8, title="Q2", start_date=None, end_date=None, is_active=True),
+            SimpleNamespace(
+                id=3, title="Q1", start_date=None, end_date=None, is_active=True
+            ),
+            SimpleNamespace(
+                id=8, title="Q2", start_date=None, end_date=None, is_active=True
+            ),
         ],
     )
     monkeypatch.setattr(backend_main, "get_all_cycles", lambda: [])
@@ -1588,7 +1633,9 @@ def test_member_snapshot_rejects_non_active_cycle_override(monkeypatch):
         backend_main,
         "get_active_cycles",
         lambda: [
-            SimpleNamespace(id=5, title="Q-active", start_date=None, end_date=None, is_active=True),
+            SimpleNamespace(
+                id=5, title="Q-active", start_date=None, end_date=None, is_active=True
+            ),
         ],
     )
     monkeypatch.setattr(
@@ -1626,8 +1673,12 @@ def test_update_node_rejects_unknown_fields(monkeypatch, route_path, update_fn):
 
     def _fake_update(node_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=node_id, title="T", description="", progress=0,
-            owner_id=1, updated_at=None,
+            id=node_id,
+            title="T",
+            description="",
+            progress=0,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, update_fn, _fake_update)
@@ -1654,8 +1705,12 @@ def test_update_node_rejects_oversized_title(monkeypatch, route_path, update_fn)
 
     def _fake_update(node_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=node_id, title="T", description="", progress=0,
-            owner_id=1, updated_at=None,
+            id=node_id,
+            title="T",
+            description="",
+            progress=0,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, update_fn, _fake_update)
@@ -1682,8 +1737,12 @@ def test_update_node_rejects_negative_progress(monkeypatch, route_path, update_f
 
     def _fake_update(node_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=node_id, title="T", description="", progress=0,
-            owner_id=1, updated_at=None,
+            id=node_id,
+            title="T",
+            description="",
+            progress=0,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, update_fn, _fake_update)
@@ -1710,8 +1769,12 @@ def test_update_node_rejects_progress_over_100(monkeypatch, route_path, update_f
 
     def _fake_update(node_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=node_id, title="T", description="", progress=0,
-            owner_id=1, updated_at=None,
+            id=node_id,
+            title="T",
+            description="",
+            progress=0,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, update_fn, _fake_update)
@@ -1730,8 +1793,12 @@ def test_update_task_allows_progress_over_100(monkeypatch):
 
     def _fake_update(task_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=task_id, title="T", description="", progress=110,
-            owner_id=1, updated_at=None,
+            id=task_id,
+            title="T",
+            description="",
+            progress=110,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "update_task", _fake_update)
@@ -1752,8 +1819,12 @@ def test_update_node_accepts_valid_partial_update(monkeypatch):
     def _fake_update(node_id, actor_username=None, **updates):
         captured.update(updates)
         return SimpleNamespace(
-            id=node_id, title="T", description="", progress=0,
-            owner_id=1, updated_at=None,
+            id=node_id,
+            title="T",
+            description="",
+            progress=0,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "update_goal", _fake_update)
@@ -1773,8 +1844,12 @@ def test_update_node_rejects_nested_objects_for_string_fields(monkeypatch):
 
     def _fake_update(node_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=node_id, title="T", description="", progress=0,
-            owner_id=1, updated_at=None,
+            id=node_id,
+            title="T",
+            description="",
+            progress=0,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "update_goal", _fake_update)
@@ -1793,8 +1868,12 @@ def test_update_node_rejects_oversized_description(monkeypatch):
 
     def _fake_update(node_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=node_id, title="T", description="", progress=0,
-            owner_id=1, updated_at=None,
+            id=node_id,
+            title="T",
+            description="",
+            progress=0,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "update_goal", _fake_update)
@@ -1813,8 +1892,12 @@ def test_update_key_result_rejects_negative_weight(monkeypatch):
 
     def _fake_update(node_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=node_id, title="T", description="", progress=0,
-            owner_id=1, updated_at=None,
+            id=node_id,
+            title="T",
+            description="",
+            progress=0,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "update_key_result", _fake_update)
@@ -1833,8 +1916,12 @@ def test_update_node_rejects_invalid_cycle_id(monkeypatch):
 
     def _fake_update(node_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=node_id, title="T", description="", progress=0,
-            owner_id=1, updated_at=None,
+            id=node_id,
+            title="T",
+            description="",
+            progress=0,
+            owner_id=1,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "update_goal", _fake_update)
@@ -1853,11 +1940,19 @@ def test_update_experiment_rejects_unknown_fields(monkeypatch):
 
     def _fake_update(experiment_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=experiment_id, key_result_id=1, cycle_id=1,
-            created_by="alice", hypothesis="H", change_description="D",
-            start_at=None, end_at=None, status="PLANNED",
-            decision=None, decision_rationale=None,
-            expected_effect_direction=None, expected_effect_size=None,
+            id=experiment_id,
+            key_result_id=1,
+            cycle_id=1,
+            created_by="alice",
+            hypothesis="H",
+            change_description="D",
+            start_at=None,
+            end_at=None,
+            status="PLANNED",
+            decision=None,
+            decision_rationale=None,
+            expected_effect_direction=None,
+            expected_effect_size=None,
             created_at=None,
         )
 
@@ -1877,11 +1972,19 @@ def test_update_experiment_rejects_oversized_hypothesis(monkeypatch):
 
     def _fake_update(experiment_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=experiment_id, key_result_id=1, cycle_id=1,
-            created_by="alice", hypothesis="H", change_description="D",
-            start_at=None, end_at=None, status="PLANNED",
-            decision=None, decision_rationale=None,
-            expected_effect_direction=None, expected_effect_size=None,
+            id=experiment_id,
+            key_result_id=1,
+            cycle_id=1,
+            created_by="alice",
+            hypothesis="H",
+            change_description="D",
+            start_at=None,
+            end_at=None,
+            status="PLANNED",
+            decision=None,
+            decision_rationale=None,
+            expected_effect_direction=None,
+            expected_effect_size=None,
             created_at=None,
         )
 
@@ -1903,11 +2006,19 @@ def test_update_experiment_accepts_valid_partial_update(monkeypatch):
     def _fake_update(experiment_id, actor_username=None, **updates):
         captured.update(updates)
         return SimpleNamespace(
-            id=experiment_id, key_result_id=1, cycle_id=1,
-            created_by="alice", hypothesis="H", change_description="D",
-            start_at=None, end_at=None, status="PLANNED",
-            decision=None, decision_rationale=None,
-            expected_effect_direction=None, expected_effect_size=None,
+            id=experiment_id,
+            key_result_id=1,
+            cycle_id=1,
+            created_by="alice",
+            hypothesis="H",
+            change_description="D",
+            start_at=None,
+            end_at=None,
+            status="PLANNED",
+            decision=None,
+            decision_rationale=None,
+            expected_effect_direction=None,
+            expected_effect_size=None,
             created_at=None,
         )
 
@@ -1928,11 +2039,19 @@ def test_update_experiment_rejects_empty_hypothesis(monkeypatch):
 
     def _fake_update(experiment_id, actor_username=None, **updates):
         return SimpleNamespace(
-            id=experiment_id, key_result_id=1, cycle_id=1,
-            created_by="alice", hypothesis="H", change_description="D",
-            start_at=None, end_at=None, status="PLANNED",
-            decision=None, decision_rationale=None,
-            expected_effect_direction=None, expected_effect_size=None,
+            id=experiment_id,
+            key_result_id=1,
+            cycle_id=1,
+            created_by="alice",
+            hypothesis="H",
+            change_description="D",
+            start_at=None,
+            end_at=None,
+            status="PLANNED",
+            decision=None,
+            decision_rationale=None,
+            expected_effect_direction=None,
+            expected_effect_size=None,
             created_at=None,
         )
 
@@ -1987,8 +2106,12 @@ def test_create_goal_idempotency_rejects_different_payload(monkeypatch):
 
     def _fake_create_goal(**kwargs):
         return SimpleNamespace(
-            id=101, title=str(kwargs.get("title") or ""),
-            description="", progress=0, owner_id=11, updated_at=None,
+            id=101,
+            title=str(kwargs.get("title") or ""),
+            description="",
+            progress=0,
+            owner_id=11,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "create_goal", _fake_create_goal)
@@ -2013,7 +2136,10 @@ def test_create_goal_no_idempotency_key_proceeds_normally(monkeypatch):
         return SimpleNamespace(
             id=200 + call_count["n"],
             title=str(kwargs.get("title") or ""),
-            description="", progress=0, owner_id=11, updated_at=None,
+            description="",
+            progress=0,
+            owner_id=11,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "create_goal", _fake_create_goal)
@@ -2044,7 +2170,10 @@ def test_create_objective_idempotency_replays(monkeypatch):
         return SimpleNamespace(
             id=300 + call_count["n"],
             title=str(kwargs.get("title") or ""),
-            description="", progress=0, owner_id=11, updated_at=None,
+            description="",
+            progress=0,
+            owner_id=11,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "create_objective", _fake_create)
@@ -2071,7 +2200,10 @@ def test_create_key_result_idempotency_replays(monkeypatch):
         return SimpleNamespace(
             id=400 + call_count["n"],
             title=str(kwargs.get("title") or ""),
-            description="", progress=0, owner_id=11, updated_at=None,
+            description="",
+            progress=0,
+            owner_id=11,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "create_key_result", _fake_create)
@@ -2098,7 +2230,10 @@ def test_create_task_idempotency_replays(monkeypatch):
         return SimpleNamespace(
             id=500 + call_count["n"],
             title=str(kwargs.get("title") or ""),
-            description="", progress=0, owner_id=11, updated_at=None,
+            description="",
+            progress=0,
+            owner_id=11,
+            updated_at=None,
         )
 
     monkeypatch.setattr(backend_main, "create_task", _fake_create)
@@ -2127,15 +2262,27 @@ def test_atomic_reserve_load_store_roundtrip():
     key = "key-abc"
     payload_hash = "hash123"
 
-    assert store.reserve_idempotency_key(
-        scope=scope, actor=actor, key=key,
-        payload_hash=payload_hash, ttl_seconds=3600,
-    ) is True
+    assert (
+        store.reserve_idempotency_key(
+            scope=scope,
+            actor=actor,
+            key=key,
+            payload_hash=payload_hash,
+            ttl_seconds=3600,
+        )
+        is True
+    )
 
-    assert store.reserve_idempotency_key(
-        scope=scope, actor=actor, key=key,
-        payload_hash=payload_hash, ttl_seconds=3600,
-    ) is False
+    assert (
+        store.reserve_idempotency_key(
+            scope=scope,
+            actor=actor,
+            key=key,
+            payload_hash=payload_hash,
+            ttl_seconds=3600,
+        )
+        is False
+    )
 
     record = store.load_idempotent_response(scope=scope, actor=actor, key=key)
     assert record is not None
@@ -2143,7 +2290,9 @@ def test_atomic_reserve_load_store_roundtrip():
     assert record["response"] is None
 
     store.store_idempotent_response(
-        scope=scope, actor=actor, key=key,
+        scope=scope,
+        actor=actor,
+        key=key,
         response_json='{"id": 1}',
     )
 
@@ -2166,8 +2315,12 @@ def test_stop_timer_idempotent_when_already_stopped(monkeypatch):
         call_count["n"] += 1
         if call_count["n"] == 1:
             return SimpleNamespace(
-                id=1, task_id=task_id, duration_minutes=5,
-                start_time=None, end_time=None, summary=summary,
+                id=1,
+                task_id=task_id,
+                duration_minutes=5,
+                start_time=None,
+                end_time=None,
+                summary=summary,
             )
         return None
 
@@ -2194,7 +2347,8 @@ def test_start_timer_idempotent_when_already_running(monkeypatch):
     def _fake_start_timer(task_id, user_id=None):
         call_count["n"] += 1
         return SimpleNamespace(
-            id=100, task_id=task_id,
+            id=100,
+            task_id=task_id,
             start_time=datetime.now(timezone.utc).replace(tzinfo=None),
         )
 
@@ -2242,9 +2396,14 @@ def test_get_current_user_returns_user_data(monkeypatch):
     class _FakeQuery:
         def first(self):
             return SimpleNamespace(
-                id=1, username="alice", display_name="Alice",
-                role="admin", team_id=1, manager_id=None,
-                must_change_password=False, token_version=1,
+                id=1,
+                username="alice",
+                display_name="Alice",
+                role="admin",
+                team_id=1,
+                manager_id=None,
+                must_change_password=False,
+                token_version=1,
             )
 
     class _FakeSession:
@@ -2296,6 +2455,7 @@ def test_get_current_user_returns_401_when_token_version_stale(monkeypatch):
             class _Q:
                 def first(self):
                     return None
+
             return _Q()
 
     @contextmanager
@@ -2341,7 +2501,9 @@ def test_read_query_accepts_known_kind(monkeypatch):
         backend_main,
         "_resolve_scope_for_actor",
         lambda _actor, token_version=None: {
-            "is_admin": True, "owner_ids": set(), "usernames": set(),
+            "is_admin": True,
+            "owner_ids": set(),
+            "usernames": set(),
         },
     )
 
@@ -2385,7 +2547,9 @@ def test_leadership_metrics_rejects_oversized_usernames(monkeypatch):
 
 def test_db_restore_rejects_disabled_config(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
-    monkeypatch.setattr(backend_main, "get_bool_config", lambda _key, _default=False: False)
+    monkeypatch.setattr(
+        backend_main, "get_bool_config", lambda _key, _default=False: False
+    )
     monkeypatch.setattr(backend_main, "_require_admin_actor_scope", lambda _actor: None)
 
     response = client.post(
@@ -2400,7 +2564,9 @@ def test_db_restore_rejects_disabled_config(monkeypatch):
 
 def test_db_restore_rejects_oversized_content_length(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
-    monkeypatch.setattr(backend_main, "get_bool_config", lambda _key, _default=False: True)
+    monkeypatch.setattr(
+        backend_main, "get_bool_config", lambda _key, _default=False: True
+    )
     monkeypatch.setattr(backend_main, "is_production_runtime", lambda: False)
     monkeypatch.setattr(backend_main, "_require_admin_actor_scope", lambda _actor: None)
 

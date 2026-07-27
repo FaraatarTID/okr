@@ -9,7 +9,7 @@ import os
 import json
 import logging
 import types
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
 from src.utils.time_utils import from_epoch_millis, from_epoch_seconds, utc_now
@@ -23,7 +23,6 @@ from src.config_runtime import get_config_value
 from src.services.backend_client import is_backend_enabled
 from src.services.job_service import run_job_and_wait
 
-from src.models import Objective, KeyResult, Task, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +75,6 @@ def _run_ai_json_prompt(prompt: str) -> Dict[str, Any]:
     return {"error": "AI provider returned non-dict response."}
 
 
-
 def analyze_node(
     node_id: int,
     node_type: Optional[str] = "KEY_RESULT",
@@ -90,10 +88,8 @@ def analyze_node(
         return _analyze_node_inner(node_id, node_type, actor_username)
     except PermissionError as exc:
         return {"error": str(exc)}
-    except Exception as exc:
-        logger.exception(
-            "Unhandled error in analyze_node(%s, %s)", node_id, node_type
-        )
+    except Exception:
+        logger.exception("Unhandled error in analyze_node(%s, %s)", node_id, node_type)
         return {"error": "Node analysis failed due to an internal error."}
 
 
@@ -113,13 +109,16 @@ def _fetch_node_for_analysis(
     except Exception as direct_err:
         logger.warning(
             "Direct DB fetch failed for %s %s: %s — trying REST API fallback",
-            node_type, node_id, direct_err,
+            node_type,
+            node_id,
+            direct_err,
         )
 
     try:
         from src.services.supabase_api_mode import (
             is_supabase_api_mode_enabled,
         )
+
         if not is_supabase_api_mode_enabled():
             raise RuntimeError("Supabase REST API not configured; cannot fall back.")
 
@@ -130,7 +129,9 @@ def _fetch_node_for_analysis(
     except Exception as rest_err:
         logger.error(
             "REST API fallback also failed for %s %s: %s",
-            node_type, node_id, rest_err,
+            node_type,
+            node_id,
+            rest_err,
         )
         return {"error": f"Node fetch failed (direct + REST): {rest_err}"}
 
@@ -197,9 +198,13 @@ def _simple_namespace_from_row(row: dict):
     """Convert a REST API row dict to a SimpleNamespace with __tablename__."""
     ns = types.SimpleNamespace(**row)
     if "title" in row:
-        table = "task" if "deadline" in row and "key_result_id" in row else (
-            "key_result" if "target_value" in row else (
-                "objective" if "goal_id" in row else "goal"
+        table = (
+            "task"
+            if "deadline" in row and "key_result_id" in row
+            else (
+                "key_result"
+                if "target_value" in row
+                else ("objective" if "goal_id" in row else "goal")
             )
         )
         ns.__tablename__ = table
@@ -210,14 +215,14 @@ def _fetch_recent_worklog_summaries(task_id: int) -> list:
     """Try direct DB first for WorkLog summaries; fall back to REST API."""
     try:
         from src.database import get_session_context
-        from sqlmodel import select
+        from sqlmodel import col, select
         from src.models import WorkLog
 
         with get_session_context() as s:
             recent_logs = s.exec(
                 select(WorkLog)
                 .where(WorkLog.task_id == task_id)
-                .order_by(WorkLog.start_time.desc())
+                .order_by(col(WorkLog.start_time).desc())
             ).all()[:5]
         return [
             log_row.summary
@@ -227,12 +232,14 @@ def _fetch_recent_worklog_summaries(task_id: int) -> list:
     except Exception as direct_err:
         logger.debug(
             "Direct DB worklog fetch failed for task %s: %s — trying REST API",
-            task_id, direct_err,
+            task_id,
+            direct_err,
         )
 
     try:
         from src.services.supabase_api_mode import (
-            is_supabase_api_mode_enabled, _rest_select,
+            is_supabase_api_mode_enabled,
+            _rest_select,
         )
 
         if not is_supabase_api_mode_enabled():
@@ -250,7 +257,8 @@ def _fetch_recent_worklog_summaries(task_id: int) -> list:
     except Exception as rest_err:
         logger.debug(
             "REST API worklog fallback also failed for task %s: %s",
-            task_id, rest_err,
+            task_id,
+            rest_err,
         )
         return []
 
@@ -288,7 +296,6 @@ def _resolve_cycle_context(node, node_type: str) -> str:
 
 def _get_cycle_date_range(node, node_type: str):
     """Return (cycle_start_date, cycle_end_date) or (None, None)."""
-    from datetime import date as _date
 
     cycle = _get_cycle(node, node_type)
     if not cycle:
@@ -324,20 +331,20 @@ def _build_parent_context(node, node_type: str) -> str:
         obj = getattr(node, "objective", None)
         if obj:
             parts.append(
-                f"Objective: \"{_sanitize_for_prompt(getattr(obj, 'title', 'N/A'))}\" "
+                f'Objective: "{_sanitize_for_prompt(getattr(obj, "title", "N/A"))}" '
                 f"(progress: {getattr(obj, 'progress', 0)}%)"
             )
             goal = getattr(obj, "goal", None)
             if goal:
                 parts.append(
-                    f"Goal: \"{_sanitize_for_prompt(getattr(goal, 'title', 'N/A'))}\" "
+                    f'Goal: "{_sanitize_for_prompt(getattr(goal, "title", "N/A"))}" '
                     f"(progress: {getattr(goal, 'progress', 0)}%)"
                 )
     elif node_type == "OBJECTIVE":
         goal = getattr(node, "goal", None)
         if goal:
             parts.append(
-                f"Goal: \"{getattr(goal, 'title', 'N/A')}\" "
+                f'Goal: "{getattr(goal, "title", "N/A")}" '
                 f"(progress: {getattr(goal, 'progress', 0)}%)"
             )
         # Include alignment data for objectives
@@ -377,9 +384,7 @@ def _build_alignment_context(node) -> str:
                         else edge.parent_id
                     )
                     direction = (
-                        "supports"
-                        if edge.parent_id == int(obj_id)
-                        else "supported by"
+                        "supports" if edge.parent_id == int(obj_id) else "supported by"
                     )
                     atype = str(
                         getattr(edge, "alignment_type", "SUPPORTS") or "SUPPORTS"
@@ -403,13 +408,9 @@ def _build_alignment_context(node) -> str:
                     entity_id = getattr(link, "linked_entity_id", 0)
                     direction = getattr(link, "direction", "parent")
                     if direction == "parent":
-                        lines.append(
-                            f"  - parent link to {entity_type} #{entity_id}"
-                        )
+                        lines.append(f"  - parent link to {entity_type} #{entity_id}")
                     else:
-                        lines.append(
-                            f"  - child link to {entity_type} #{entity_id}"
-                        )
+                        lines.append(f"  - child link to {entity_type} #{entity_id}")
 
         if not lines:
             return ""
@@ -424,18 +425,16 @@ def _build_experiment_text(node) -> str:
     try:
         from src.database import get_session_context
         from src.models import Experiment
-        from sqlmodel import select
+        from sqlmodel import col, select
 
         cycle = _get_cycle(node, "KEY_RESULT")
         cycle_id = getattr(cycle, "id", None) if cycle else None
 
         with get_session_context() as s:
-            stmt = select(Experiment).where(
-                Experiment.key_result_id == node.id
-            )
+            stmt = select(Experiment).where(Experiment.key_result_id == node.id)
             if cycle_id:
                 stmt = stmt.where(Experiment.cycle_id == cycle_id)
-            experiments = s.exec(stmt.order_by(Experiment.created_at.desc())).all()
+            experiments = s.exec(stmt.order_by(col(Experiment.created_at).desc())).all()
 
         if not experiments:
             return ""
@@ -443,11 +442,17 @@ def _build_experiment_text(node) -> str:
         lines = []
         for exp in experiments[:5]:
             status = getattr(exp, "status", "unknown")
-            hypothesis = _sanitize_for_prompt((getattr(exp, "hypothesis", "") or "").strip())
-            change = _sanitize_for_prompt((getattr(exp, "change_description", "") or "").strip())
+            hypothesis = _sanitize_for_prompt(
+                (getattr(exp, "hypothesis", "") or "").strip()
+            )
+            change = _sanitize_for_prompt(
+                (getattr(exp, "change_description", "") or "").strip()
+            )
             decision = getattr(exp, "decision", None)
             decision_val = decision.value if decision else "pending"
-            rationale = _sanitize_for_prompt((getattr(exp, "decision_rationale", "") or "").strip())
+            rationale = _sanitize_for_prompt(
+                (getattr(exp, "decision_rationale", "") or "").strip()
+            )
             direction = getattr(exp, "expected_effect_direction", None)
             direction_val = direction.value if direction else "N/A"
 
@@ -464,7 +469,9 @@ def _build_experiment_text(node) -> str:
 
         return "\n".join(lines)
     except Exception as exc:
-        logger.debug("Failed to fetch experiments for KR %s: %s", getattr(node, "id", "?"), exc)
+        logger.debug(
+            "Failed to fetch experiments for KR %s: %s", getattr(node, "id", "?"), exc
+        )
         return ""
 
 
@@ -606,7 +613,7 @@ def _analyze_node_inner(
 
     # Build check-in history text (for KRs, scoped to current cycle)
     checkin_text = ""
-    cycle_check_ins = []
+    cycle_check_ins: list[Any] = []
     if node_type_upper in ("KEY_RESULT", "KEYRESULT") and hasattr(node, "check_ins"):
         cycle_start, cycle_end = _get_cycle_date_range(node, node_type_upper)
         all_check_ins = sorted(
@@ -628,7 +635,9 @@ def _analyze_node_inner(
             for ci in cycle_check_ins[-10:]:
                 val = getattr(ci, "value", None)
                 conf = getattr(ci, "confidence_score", None)
-                comment = _sanitize_for_prompt((getattr(ci, "comment", None) or "").strip())
+                comment = _sanitize_for_prompt(
+                    (getattr(ci, "comment", None) or "").strip()
+                )
                 created = getattr(ci, "created_at", None)
                 date_str = created.strftime("%Y-%m-%d") if created else "?"
                 variation = getattr(ci, "variation_type", None)
@@ -680,7 +689,7 @@ def _analyze_node_inner(
     Defined Scope (Children):
     {children_text}
     {f"CHECK-IN HISTORY (last {min(len(cycle_check_ins), 10)} of {len(cycle_check_ins)} this cycle):" + chr(10) + checkin_text if checkin_text else ""}
-    {f"EXPERIMENTS (this cycle):" + chr(10) + experiment_text if experiment_text else ""}
+    {"EXPERIMENTS (this cycle):" + chr(10) + experiment_text if experiment_text else ""}
 
     ---
     PREVIOUS ANALYSIS RESULTS:

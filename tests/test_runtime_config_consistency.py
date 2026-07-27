@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import sys
-from types import SimpleNamespace
-
 
 def test_runtime_config_source_reports_env(monkeypatch):
     from src.config_runtime import get_config_value_with_source

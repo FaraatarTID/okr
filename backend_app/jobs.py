@@ -6,11 +6,11 @@ from __future__ import annotations
 import json
 import logging
 from datetime import timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
-from sqlalchemy import delete, update
+from sqlalchemy import delete, func, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlmodel import select
+from sqlmodel import col, select
 
 from backend_app.path_setup import ensure_shared_src_on_path
 from backend_app.utils import normalize_idempotency_key
@@ -20,6 +20,7 @@ ensure_shared_src_on_path()
 from src.database import get_session_context
 from src.models import AsyncJob, AsyncJobStatus, AuditEvent, User
 from src.utils.time_utils import utc_now_naive
+from src.observability_metrics import record_job_submission
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,6 +51,25 @@ def _loads_json(raw: Optional[str]) -> Optional[Dict[str, Any]]:
     except (TypeError, ValueError):
         return None
     return None
+
+
+def get_job_queue_depth() -> tuple[int, int]:
+    """Return the number of jobs currently in queued vs running states."""
+    with get_session_context() as session:
+        pending = session.exec(
+            select(func.count())
+            .select_from(AsyncJob)
+            .where(AsyncJob.status == AsyncJobStatus.PENDING)
+        ).first()
+        running = session.exec(
+            select(func.count())
+            .select_from(AsyncJob)
+            .where(AsyncJob.status == AsyncJobStatus.RUNNING)
+        ).first()
+    return (
+        int(pending or 0),
+        int(running or 0),
+    )
 
 
 def serialize_job(job: AsyncJob) -> Dict[str, Any]:
@@ -95,7 +115,7 @@ def enqueue_job(
                 .where(AsyncJob.actor_username == actor_username)
                 .where(AsyncJob.kind == str(kind).strip())
                 .where(AsyncJob.idempotency_key == normalized_key)
-                .order_by(AsyncJob.created_at.desc())
+                .order_by(col(AsyncJob.created_at).desc())
             ).first()
             if existing:
                 return existing
@@ -125,12 +145,13 @@ def enqueue_job(
                 .where(AsyncJob.actor_username == actor_username)
                 .where(AsyncJob.kind == str(kind).strip())
                 .where(AsyncJob.idempotency_key == normalized_key)
-                .order_by(AsyncJob.created_at.desc())
+                .order_by(col(AsyncJob.created_at).desc())
             ).first()
             if existing:
                 return existing
             raise
         session.refresh(job)
+        record_job_submission(kind=str(kind).strip())
         return job
 
 
@@ -177,7 +198,7 @@ def claim_next_pending_job(worker_id: str) -> Optional[AsyncJob]:
             select(AsyncJob)
             .where(AsyncJob.status == AsyncJobStatus.PENDING)
             .where(AsyncJob.cancel_requested == False)  # noqa: E712
-            .order_by(AsyncJob.created_at.asc())
+            .order_by(col(AsyncJob.created_at).asc())
             .limit(1)
         )
         # Postgres workers should claim with SKIP LOCKED to avoid queue head contention.
@@ -320,10 +341,10 @@ def prune_terminal_jobs(*, retention_days: int, batch_size: int = 200) -> int:
         raw_ids = list(
             session.exec(
                 select(AsyncJob.id)
-                .where(AsyncJob.status.in_(terminal_states))
-                .where(AsyncJob.finished_at.isnot(None))
-                .where(AsyncJob.finished_at < cutoff)
-                .order_by(AsyncJob.finished_at.asc())
+                .where(cast(Any, AsyncJob.status).in_(terminal_states))
+                .where(cast(Any, AsyncJob.finished_at).isnot(None))
+                .where(cast(Any, AsyncJob.finished_at) < cutoff)
+                .order_by(cast(Any, AsyncJob.finished_at).asc())
                 .limit(safe_batch)
             ).all()
         )
@@ -331,7 +352,9 @@ def prune_terminal_jobs(*, retention_days: int, batch_size: int = 200) -> int:
         if not candidate_ids:
             return 0
 
-        result = session.exec(delete(AsyncJob).where(AsyncJob.id.in_(candidate_ids)))
+        result = session.exec(
+            delete(AsyncJob).where(cast(Any, AsyncJob.id).in_(candidate_ids))
+        )
         deleted = int(getattr(result, "rowcount", 0) or 0)
         session.commit()
         return deleted
@@ -347,7 +370,7 @@ def prune_audit_events(*, retention_days: int, batch_size: int = 200) -> int:
             session.exec(
                 select(AuditEvent.id)
                 .where(AuditEvent.created_at < cutoff)
-                .order_by(AuditEvent.created_at.asc())
+                .order_by(cast(Any, AuditEvent.created_at).asc())
                 .limit(safe_batch)
             ).all()
         )
@@ -356,9 +379,8 @@ def prune_audit_events(*, retention_days: int, batch_size: int = 200) -> int:
             return 0
 
         result = session.exec(
-            delete(AuditEvent).where(AuditEvent.id.in_(candidate_ids))
+            delete(AuditEvent).where(cast(Any, AuditEvent.id).in_(candidate_ids))
         )
         deleted = int(getattr(result, "rowcount", 0) or 0)
         session.commit()
         return deleted
-

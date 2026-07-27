@@ -99,7 +99,13 @@ def stop_all_active_timers_from_crud(
         if work_log:
             now = crud_module.utc_now_naive()
             work_log.end_time = now
-            elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
+            now_utc = ensure_utc(now)
+            if now_utc is None or work_log.start_time is None:
+                continue
+            started_at_utc = ensure_utc(work_log.start_time)
+            if started_at_utc is None:
+                continue
+            elapsed = now_utc - started_at_utc
             duration_minutes = max(0, int(elapsed.total_seconds() / 60))
             work_log.duration_minutes = duration_minutes
 
@@ -198,7 +204,9 @@ def stop_timer_from_crud(
 
         # Verify ownership if user_id provided
         if user_id:
-            auth_task = crud_module._query_owned_task_for_timer(session, task_id, user_id)
+            auth_task = crud_module._query_owned_task_for_timer(
+                session, task_id, user_id
+            )
             if not auth_task:
                 return None
 
@@ -220,7 +228,13 @@ def stop_timer_from_crud(
         now = crud_module.utc_now_naive()
         work_log.end_time = now
 
-        elapsed = ensure_utc(now) - ensure_utc(work_log.start_time)
+        now_utc = ensure_utc(now)
+        if now_utc is None or work_log.start_time is None:
+            return None
+        started_at_utc = ensure_utc(work_log.start_time)
+        if started_at_utc is None:
+            return None
+        elapsed = now_utc - started_at_utc
         duration_minutes = max(0.0, elapsed.total_seconds() / 60)
         credited_minutes = max(1, int(duration_minutes)) if duration_minutes > 0 else 0
         work_log.duration_minutes = credited_minutes
@@ -284,7 +298,13 @@ def force_stop_active_timers_from_crud(*, crud_module, user_id: str) -> int:
             for log in active_logs:
                 now = crud_module.utc_now_naive()
                 log.end_time = now
-                delta = ensure_utc(now) - ensure_utc(log.start_time)
+                now_utc = ensure_utc(now)
+                if now_utc is None or log.start_time is None:
+                    continue
+                started_at_utc = ensure_utc(log.start_time)
+                if started_at_utc is None:
+                    continue
+                delta = now_utc - started_at_utc
                 log.duration_minutes = int(delta.total_seconds() / 60)
                 session.add(log)
             count += 1
@@ -315,7 +335,10 @@ def add_manual_log_from_crud(
             actor_username=actor_username,
         )
 
-        start_time = ensure_utc(log_date) if log_date else crud_module.utc_now_naive()
+        if log_date is None:
+            start_time = crud_module.utc_now_naive()
+        else:
+            start_time = ensure_utc(log_date) or crud_module.utc_now_naive()
         end_time = start_time + timedelta(minutes=duration_minutes)
 
         work_log = crud_module.WorkLog(

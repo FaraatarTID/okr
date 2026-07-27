@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import timedelta
-from typing import Optional
+from typing import Any, Optional, cast
 
 from sqlalchemy import func
 from sqlmodel import Session, select
+
 
 from src.models import AuditEvent
 from src.utils.time_utils import utc_now_naive
@@ -22,7 +23,7 @@ def _normalize_optional_int(value: object) -> Optional[int]:
     if value is None:
         return None
     try:
-        return int(value)
+        return int(str(value))
     except (TypeError, ValueError):
         return None
 
@@ -48,21 +49,35 @@ def build_audit_event_query(
 ):
     statement = select(AuditEvent)
     if action is not None:
-        statement = statement.where(AuditEvent.action == _normalize_optional_text(action))
+        statement = statement.where(
+            AuditEvent.action == _normalize_optional_text(action)
+        )
     if entity is not None:
-        statement = statement.where(AuditEvent.entity == _normalize_optional_text(entity))
+        statement = statement.where(
+            AuditEvent.entity == _normalize_optional_text(entity)
+        )
     if actor is not None:
         statement = statement.where(AuditEvent.actor == _normalize_optional_text(actor))
     if actor_user_id is not None:
-        statement = statement.where(AuditEvent.actor_user_id == _normalize_optional_int(actor_user_id))
+        statement = statement.where(
+            AuditEvent.actor_user_id == _normalize_optional_int(actor_user_id)
+        )
     if actor_role is not None:
-        statement = statement.where(AuditEvent.actor_role == _normalize_optional_text(actor_role))
+        statement = statement.where(
+            AuditEvent.actor_role == _normalize_optional_text(actor_role)
+        )
     if actor_team_id is not None:
-        statement = statement.where(AuditEvent.actor_team_id == _normalize_optional_int(actor_team_id))
+        statement = statement.where(
+            AuditEvent.actor_team_id == _normalize_optional_int(actor_team_id)
+        )
     if target_type is not None:
-        statement = statement.where(AuditEvent.target_type == _normalize_optional_text(target_type))
+        statement = statement.where(
+            AuditEvent.target_type == _normalize_optional_text(target_type)
+        )
     if target_id is not None:
-        statement = statement.where(AuditEvent.target_id == _normalize_optional_int(target_id))
+        statement = statement.where(
+            AuditEvent.target_id == _normalize_optional_int(target_id)
+        )
     if target_owner_id is not None:
         statement = statement.where(
             AuditEvent.target_owner_id == _normalize_optional_int(target_owner_id)
@@ -72,20 +87,28 @@ def build_audit_event_query(
             AuditEvent.target_team_id == _normalize_optional_int(target_team_id)
         )
     if result is not None:
-        statement = statement.where(AuditEvent.result == _normalize_optional_text(result))
+        statement = statement.where(
+            AuditEvent.result == _normalize_optional_text(result)
+        )
     if correlation_id is not None:
         statement = statement.where(
             AuditEvent.correlation_id == _normalize_optional_text(correlation_id)
         )
     if request_id is not None:
-        statement = statement.where(AuditEvent.request_id == _normalize_optional_text(request_id))
+        statement = statement.where(
+            AuditEvent.request_id == _normalize_optional_text(request_id)
+        )
     if created_after is not None:
         statement = statement.where(AuditEvent.created_at >= created_after)
     if created_before is not None:
         statement = statement.where(AuditEvent.created_at <= created_before)
 
-    order_column = AuditEvent.created_at.desc() if newest_first else AuditEvent.created_at.asc()
-    return statement.order_by(order_column, AuditEvent.id.desc() if newest_first else AuditEvent.id.asc())
+    created_at = cast(Any, AuditEvent.created_at)
+    event_id = cast(Any, AuditEvent.id)
+    order_column = created_at.desc() if newest_first else created_at.asc()
+    return statement.order_by(
+        order_column, event_id.desc() if newest_first else event_id.asc()
+    )
 
 
 def list_audit_events(session: Session, **filters) -> list[AuditEvent]:
@@ -109,7 +132,7 @@ def _aggregate_counts(rows: list[AuditEvent], attr: str) -> list[dict[str, objec
     items = []
     for value, count in counter.items():
         items.append({"value": value, "count": int(count)})
-    items.sort(key=lambda item: (-int(item["count"]), str(item["value"])))
+    items.sort(key=lambda item: (-int(cast(int, item["count"])), str(item["value"])))
     return items
 
 
@@ -149,8 +172,12 @@ def summarize_audit_events(
     rows = list(session.exec(build_audit_event_query(**query_filters)).all())
     recent_rows = rows[:safe_recent_limit]
 
-    success_count = sum(1 for row in rows if str(getattr(row, "result", "")).lower() == "success")
-    failure_count = sum(1 for row in rows if str(getattr(row, "result", "")).lower() == "failure")
+    success_count = sum(
+        1 for row in rows if str(getattr(row, "result", "")).lower() == "success"
+    )
+    failure_count = sum(
+        1 for row in rows if str(getattr(row, "result", "")).lower() == "failure"
+    )
     latest_event_at = rows[0].created_at if rows else None
 
     return {

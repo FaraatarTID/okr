@@ -1,9 +1,9 @@
 from datetime import datetime
 
-from conftest import utc_now_naive
 
-
-def test_create_weekly_plan_emits_create_and_update_audit_events(isolated_db, monkeypatch):
+def test_create_weekly_plan_emits_create_and_update_audit_events(
+    isolated_db, monkeypatch
+):
     import src.crud as crud
     from src.database import get_session_context
     from src.models import User, UserRole

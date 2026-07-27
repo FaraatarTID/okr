@@ -38,10 +38,14 @@ def test_spa_web_source_does_not_reference_backend_service_secret_keys() -> None
     for path in paths:
         payload = _read(path)
         for forbidden_key in FORBIDDEN_FRONTEND_SECRET_KEYS:
-            assert forbidden_key not in payload, f"Forbidden key in {path}: {forbidden_key}"
+            assert forbidden_key not in payload, (
+                f"Forbidden key in {path}: {forbidden_key}"
+            )
 
 
-def test_spa_web_compose_env_does_not_include_backend_service_secrets_or_direct_backend_url() -> None:
+def test_spa_web_compose_env_does_not_include_backend_service_secrets_or_direct_backend_url() -> (
+    None
+):
     compose = _read(ROOT / "deploy" / "docker" / "docker-compose.yml")
     spa_web_block = _spa_web_compose_block(compose)
 
@@ -52,14 +56,7 @@ def test_spa_web_compose_env_does_not_include_backend_service_secrets_or_direct_
 
 def test_spa_web_backend_api_route_proxies_browser_requests_to_bff_only() -> None:
     route_source = _read(
-        ROOT
-        / "spa-web"
-        / "src"
-        / "app"
-        / "api"
-        / "backend"
-        / "[...path]"
-        / "route.ts"
+        ROOT / "spa-web" / "src" / "app" / "api" / "backend" / "[...path]" / "route.ts"
     )
     assert "proxyToBff" in route_source
     assert "BFF_ORIGIN" in route_source

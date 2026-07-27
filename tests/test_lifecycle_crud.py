@@ -1,5 +1,5 @@
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session
 from src.models import LifecycleState, Goal, KeyResult
 from src.crud import (
     update_objective,

@@ -30,9 +30,7 @@ def validate_deadline_sane(
         raise ValueError("Deadline must not be in the past.")
     max_date = now + timedelta(days=max_future_days)
     if deadline > max_date:
-        raise ValueError(
-            f"Deadline is more than {max_future_days} days in the future."
-        )
+        raise ValueError(f"Deadline is more than {max_future_days} days in the future.")
 
 
 def validate_cycle_contains_date(

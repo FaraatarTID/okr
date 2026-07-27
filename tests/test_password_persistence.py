@@ -37,7 +37,9 @@ def test_admin_password_change_persists_for_next_login(isolated_db, monkeypatch)
     assert refreshed.must_change_password is False
 
 
-def test_ensure_admin_exists_does_not_restore_default_password(isolated_db, monkeypatch):
+def test_ensure_admin_exists_does_not_restore_default_password(
+    isolated_db, monkeypatch
+):
     from src.crud import (
         authenticate_user_detailed,
         ensure_admin_exists,
