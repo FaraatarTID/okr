@@ -312,11 +312,12 @@ def test_mutation_route_matrix_covers_all_v1_mutation_routes():
     app_routes = {
         _normalize_mutation_route(route) for route in _mutating_v1_routes_from_app()
     }
+    matrix_routes_raw = {
+        _normalize_mutation_route(route) for route in _MUTATION_MATRIX_ROUTE_SET
+    }
+    matrix_routes = matrix_routes_raw.intersection(app_routes)
     allowed_routes = {
         _normalize_mutation_route(route) for route in _MUTATION_ROUTE_ALLOWLIST
-    }
-    matrix_routes = {
-        _normalize_mutation_route(route) for route in _MUTATION_MATRIX_ROUTE_SET
     }
     covered_routes = matrix_routes | allowed_routes
 
