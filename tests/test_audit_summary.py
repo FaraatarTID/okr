@@ -1,6 +1,3 @@
-from conftest import utc_now_naive
-
-
 def test_summarize_audit_events_groups_by_actor_role_team_and_target(isolated_db):
     from src.audit import audit_log
     from src.audit_queries import summarize_audit_events
@@ -67,5 +64,8 @@ def test_summarize_audit_events_groups_by_actor_role_team_and_target(isolated_db
     assert summary["success_events"] == 1
     assert summary["failure_events"] == 1
     assert {item["value"] for item in summary["by_actor_role"]} == {"admin", "member"}
-    assert {item["value"] for item in summary["by_target_type"]} == {"weekly_plan", "node"}
+    assert {item["value"] for item in summary["by_target_type"]} == {
+        "weekly_plan",
+        "node",
+    }
     assert len(summary["recent_events"]) == 2

@@ -1,6 +1,5 @@
 from sqlalchemy.pool import NullPool
 from types import SimpleNamespace
-import sys
 import pytest
 
 import src.database as database
@@ -60,7 +59,9 @@ def test_postgres_engine_reads_null_pool_flag_from_config(monkeypatch):
     monkeypatch.setattr(
         database,
         "get_bool_config",
-        lambda name, default=False: False if name == "OKR_DB_USE_NULL_POOL" else default,
+        lambda name, default=False: (
+            False if name == "OKR_DB_USE_NULL_POOL" else default
+        ),
     )
     engine = database._create_engine(
         "postgresql+psycopg2://okr_app.PROJECT:secret@"
@@ -105,11 +106,12 @@ def test_database_validation_flags_can_come_from_config(monkeypatch):
     monkeypatch.setattr(
         database,
         "get_bool_config",
-        lambda name, default=False: False if name == "OKR_ALLOW_NON_SUPABASE_DB" else default,
+        lambda name, default=False: (
+            False if name == "OKR_ALLOW_NON_SUPABASE_DB" else default
+        ),
     )
 
     with pytest.raises(RuntimeError, match="Supabase pooler URL is required"):
         database._validate_database_url(
             "postgresql+psycopg2://app:secret@db.internal.example:5432/postgres"
         )
-

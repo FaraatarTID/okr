@@ -3,7 +3,7 @@
 import pytest
 
 from src.database import get_session_context
-from src.models import Goal, Team, User
+from src.models import Team
 
 
 def _create_team(team_id: int, name: str):
@@ -27,7 +27,7 @@ def test_assign_task_to_same_team_user_succeeds(isolated_db):
 
     _create_team(1, "Team Alpha")
 
-    user1 = create_user("alice", "pass", team_id=1)
+    _ = create_user("alice", "pass", team_id=1)
     user2 = create_user("bob", "pass", team_id=1)
 
     goal = create_goal("alice", "Team Goal", actor_username="alice")
@@ -52,7 +52,7 @@ def test_assign_task_to_different_team_user_raises(isolated_db):
     _create_team(1, "Team Alpha")
     _create_team(2, "Team Beta")
 
-    user_team1 = create_user("alice", "pass", team_id=1)
+    _ = create_user("alice", "pass", team_id=1)
     user_team2 = create_user("bob", "pass", team_id=2)
 
     goal = create_goal("alice", "Cross Goal", actor_username="alice")
@@ -61,7 +61,9 @@ def test_assign_task_to_different_team_user_raises(isolated_db):
 
     # Assign task to different-team user — should raise ValueError
     with pytest.raises(ValueError, match="does not belong to the same team"):
-        create_task(kr.id, "Cross Task", assignee_id=user_team2.id, actor_username="alice")
+        create_task(
+            kr.id, "Cross Task", assignee_id=user_team2.id, actor_username="alice"
+        )
 
 
 def test_assign_task_without_assignee_succeeds(isolated_db):
@@ -96,7 +98,7 @@ def test_assign_task_when_team_ids_are_none_succeeds(isolated_db):
         create_task,
     )
 
-    user1 = create_user("dave", "pass", team_id=None)
+    _ = create_user("dave", "pass", team_id=None)
     user2 = create_user("eve", "pass", team_id=None)
 
     goal = create_goal("dave", "Null Team Goal", actor_username="dave")
@@ -104,7 +106,9 @@ def test_assign_task_when_team_ids_are_none_succeeds(isolated_db):
     kr = create_key_result(obj.id, "Null Team KR", actor_username="dave")
 
     # Both team_ids are None — check should be skipped
-    task = create_task(kr.id, "Null Team Task", assignee_id=user2.id, actor_username="dave")
+    task = create_task(
+        kr.id, "Null Team Task", assignee_id=user2.id, actor_username="dave"
+    )
     assert task is not None
 
 
@@ -120,7 +124,7 @@ def test_assign_task_when_goal_team_id_is_none_succeeds(isolated_db):
 
     _create_team(2, "Team Beta")
 
-    user1 = create_user("frank", "pass", team_id=None)
+    _ = create_user("frank", "pass", team_id=None)
     user2 = create_user("grace", "pass", team_id=2)
 
     goal = create_goal("frank", "No Goal Team", actor_username="frank")
@@ -129,5 +133,7 @@ def test_assign_task_when_goal_team_id_is_none_succeeds(isolated_db):
 
     # Goal has team_id=None (from actor with team_id=None), assignee has team_id=2
     # Check should be skipped because goal.team_id is None
-    task = create_task(kr.id, "Cross Task", assignee_id=user2.id, actor_username="frank")
+    task = create_task(
+        kr.id, "Cross Task", assignee_id=user2.id, actor_username="frank"
+    )
     assert task is not None

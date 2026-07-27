@@ -92,6 +92,7 @@ class InMemorySecurityStateStore:
         self._nonce_seen: dict[str, int] = {}
         self._rate_events: dict[str, deque[float]] = defaultdict(deque)
         self._idem_records: dict[str, dict] = {}
+        self._app_state: dict[str, str] = {}
         self._lock = Lock()
 
     def clear(self) -> None:
@@ -151,16 +152,10 @@ class InMemorySecurityStateStore:
 
     def get_app_state(self, key: str) -> Optional[str]:
         with self._lock:
-            # We don't have a dedicated dict for generic state yet,
-            # so we'll just use a hidden one for in-memory mocks.
-            if not hasattr(self, "_app_state"):
-                self._app_state: dict[str, str] = {}
             return self._app_state.get(key)
 
     def set_app_state(self, key: str, value: str) -> None:
         with self._lock:
-            if not hasattr(self, "_app_state"):
-                self._app_state: dict[str, str] = {}
             self._app_state[key] = str(value)
 
     def _idem_full_key(self, scope: str, actor: str, key: str) -> str:
@@ -207,6 +202,7 @@ class InMemorySecurityStateStore:
             if isinstance(resp, str):
                 try:
                     import json as _json
+
                     result["response"] = _json.loads(resp)
                 except Exception:
                     pass
@@ -589,6 +585,7 @@ class DatabaseSecurityStateStore:
                 result: dict = {"payload_hash": str(row[0])}
                 if row[1] is not None:
                     import json as _json
+
                     try:
                         result["response"] = _json.loads(row[1])
                     except Exception:
@@ -781,6 +778,7 @@ class RedisSecurityStateStore:
         ttl = max(1, int(ttl_seconds))
         try:
             import json as _json
+
             record = _json.dumps({"ph": payload_hash})
             accepted = self._client.set(redis_key, record, nx=True, ex=ttl)
             return bool(accepted)
@@ -799,6 +797,7 @@ class RedisSecurityStateStore:
         redis_key = self._idem_key(scope, actor, key)
         try:
             import json as _json
+
             raw = self._client.get(redis_key)
             if raw is None:
                 return None
@@ -825,11 +824,18 @@ class RedisSecurityStateStore:
         redis_key = self._idem_key(scope, actor, key)
         try:
             import json as _json
+
             existing = self._client.get(redis_key)
             if existing is None:
                 return
-            data = _json.loads(existing.decode("utf-8") if isinstance(existing, bytes) else existing)
-            data["resp"] = _json.loads(response_json) if isinstance(response_json, str) else response_json
+            data = _json.loads(
+                existing.decode("utf-8") if isinstance(existing, bytes) else existing
+            )
+            data["resp"] = (
+                _json.loads(response_json)
+                if isinstance(response_json, str)
+                else response_json
+            )
             ttl = self._client.ttl(redis_key)
             new_value = _json.dumps(data)
             if ttl and ttl > 0:
@@ -1021,15 +1027,21 @@ def reserve_idempotency_key(
     settings = get_backend_settings()
     try:
         return _get_store().reserve_idempotency_key(
-            scope=scope, actor=actor, key=key,
-            payload_hash=payload_hash, ttl_seconds=ttl_seconds,
+            scope=scope,
+            actor=actor,
+            key=key,
+            payload_hash=payload_hash,
+            ttl_seconds=ttl_seconds,
         )
     except SecurityStateUnavailableError:
         if _is_production(settings):
             raise
         return _fallback_to_memory_store().reserve_idempotency_key(
-            scope=scope, actor=actor, key=key,
-            payload_hash=payload_hash, ttl_seconds=ttl_seconds,
+            scope=scope,
+            actor=actor,
+            key=key,
+            payload_hash=payload_hash,
+            ttl_seconds=ttl_seconds,
         )
 
 
@@ -1044,7 +1056,9 @@ def load_idempotent_response(
         return _get_store().load_idempotent_response(scope=scope, actor=actor, key=key)
     except SecurityStateUnavailableError:
         return _fallback_to_memory_store().load_idempotent_response(
-            scope=scope, actor=actor, key=key,
+            scope=scope,
+            actor=actor,
+            key=key,
         )
 
 
@@ -1058,14 +1072,20 @@ def store_idempotent_response(
     """Store the response payload for a reserved idempotency key."""
     try:
         _get_store().store_idempotent_response(
-            scope=scope, actor=actor, key=key, response_json=response_json,
+            scope=scope,
+            actor=actor,
+            key=key,
+            response_json=response_json,
         )
     except SecurityStateUnavailableError:
         settings = get_backend_settings()
         if _is_production(settings):
             raise
         _fallback_to_memory_store().store_idempotent_response(
-            scope=scope, actor=actor, key=key, response_json=response_json,
+            scope=scope,
+            actor=actor,
+            key=key,
+            response_json=response_json,
         )
 
 

@@ -16,7 +16,7 @@ Troubleshooting
 - `run_hybrid_app_local.bat` now probes DB connectivity before startup.
 - If remote DB DNS/TCP checks fail, launcher can auto-fallback to local SQLite:
   - Path: `tmp/okr-local-dev.sqlite3`
-  - Toggle fallback: `OKR_LOCAL_DB_FALLBACK=true|false` (default `true`)
+  - Toggle fallback: `OKR_LOCAL_DB_FALLBACK=true|false` (default `false`)
   - Reset local DB on launch: `OKR_LOCAL_DB_RESET=true|false` (default `false`)
 - If fallback is disabled and remote DB is unreachable, startup stops early with a clear error.
 - If your firewall blocks Postgres ports (`5432`/`6543`), test Supabase HTTPS access on `443`:

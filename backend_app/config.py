@@ -10,6 +10,34 @@ _LOGGER = logging.getLogger(__name__)
 
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
+_PLACEHOLDER_TOKENS = (
+    "change me",
+    "change-me",
+    "changeme",
+    "your-secret",
+    "your-secret-here",
+    "replace me",
+    "replace-me",
+    "example",
+    "changeme_shared_token",
+    "change_me",
+    "change_me_shared_token",
+)
+
+_PRODUCTION_ENVS = {"prod", "production"}
+
+
+def _looks_like_placeholder(value: str) -> bool:
+    raw = str(value or "").strip()
+    if not raw:
+        return True
+    lowered = raw.lower()
+    if raw.startswith("<") and raw.endswith(">"):
+        return True
+    return any(
+        lowered == token or lowered.startswith(f"{token}_")
+        for token in _PLACEHOLDER_TOKENS
+    )
 
 
 def _as_bool(raw: str | None, *, default: bool) -> bool:
@@ -73,14 +101,16 @@ class BackendSettings:
     security_state_db_pool_recycle: int
 
 
-
 def get_backend_settings() -> BackendSettings:
     from src.config_runtime import get_config_value
 
     runtime_env = (
         str(
             get_config_value(
-                "OKR_ENV", get_config_value("OKR_RUNTIME_ENV", "development")
+                "OKR_ENV",
+                get_config_value(
+                    "OKR_RUNTIME_ENV", get_config_value("NODE_ENV", "development")
+                ),
             )
         )
         .strip()
@@ -241,8 +271,78 @@ def get_backend_settings() -> BackendSettings:
         ),
     )
 
-    _LOGGER.info("Backend configuration loaded (Env: %s, Port: %s)", runtime_env, settings.port)
-    if settings.enforce_service_token and not settings.service_token:
-        _LOGGER.warning("Service token enforcement enabled but no token configured!")
+    if _is_production_runtime(runtime_env):
+        validate_production_settings(settings)
+
+    _LOGGER.info(
+        "Backend configuration loaded (Env: %s, Port: %s)", runtime_env, settings.port
+    )
 
     return settings
+
+
+def _is_production_runtime(runtime_env: str) -> bool:
+    return str(runtime_env or "").strip().lower() in _PRODUCTION_ENVS
+
+
+def validate_production_settings(settings: BackendSettings) -> None:
+    errors: list[str] = []
+
+    if not _is_production_runtime(settings.runtime_env):
+        return
+
+    if not settings.enforce_service_token:
+        errors.append("Production requires OKR_BACKEND_ENFORCE_TOKEN=true.")
+    if not settings.enforce_request_signing:
+        errors.append("Production requires OKR_BACKEND_ENFORCE_REQUEST_SIGNING=true.")
+
+    if not settings.service_token:
+        errors.append("Production requires OKR_BACKEND_SERVICE_TOKEN to be set.")
+    elif _looks_like_placeholder(settings.service_token):
+        errors.append(
+            "Production requires OKR_BACKEND_SERVICE_TOKEN to avoid placeholder values."
+        )
+    elif len(settings.service_token) < 24:
+        errors.append(
+            "Production requires OKR_BACKEND_SERVICE_TOKEN to be at least 24 characters."
+        )
+
+    if not settings.signing_secret:
+        errors.append("Production requires OKR_BACKEND_SIGNING_SECRET to be set.")
+    elif _looks_like_placeholder(settings.signing_secret):
+        errors.append(
+            "Production requires OKR_BACKEND_SIGNING_SECRET to avoid placeholder values."
+        )
+    elif len(settings.signing_secret) < 32:
+        errors.append(
+            "Production requires OKR_BACKEND_SIGNING_SECRET to be at least 32 characters."
+        )
+
+    security_state_backend = str(settings.security_state_backend or "").strip().lower()
+    if security_state_backend == "memory":
+        errors.append(
+            "Production requires OKR_BACKEND_SECURITY_STATE_BACKEND to be database or redis."
+        )
+    elif security_state_backend not in {"database", "redis"}:
+        errors.append(
+            "Production requires OKR_BACKEND_SECURITY_STATE_BACKEND to be database or redis."
+        )
+    elif security_state_backend == "redis" and not settings.security_state_redis_url:
+        errors.append(
+            "Production with OKR_BACKEND_SECURITY_STATE_BACKEND=redis requires "
+            "OKR_BACKEND_SECURITY_STATE_REDIS_URL."
+        )
+
+    database_url = str(os.getenv("OKR_DATABASE_URL", "")).strip()
+    if not database_url:
+        errors.append("Production requires OKR_DATABASE_URL to be set.")
+    elif not database_url.startswith("postgresql+psycopg2://"):
+        errors.append(
+            "Production requires OKR_DATABASE_URL to use the postgresql+psycopg2 driver."
+        )
+
+    if errors:
+        raise RuntimeError(
+            "Backend production startup validation failed:\n"
+            + "\n".join(f"- {message}" for message in errors)
+        )

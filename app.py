@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import functools
-import hashlib
 import json
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
-from sqlmodel import Session
 
 from src.crud import (
     create_cycle,
@@ -15,7 +13,6 @@ from src.crud import (
     get_active_weekly_plan,
     get_user_by_id,
 )
-from src.database import get_session_context
 from src.serialization_helpers import (
     serialize_cycle_snapshot,
     serialize_user_snapshot,
@@ -61,7 +58,11 @@ def _serialize_weekly_plan(plan: Any) -> dict[str, Any] | None:
 
 def _fetch_all_cycles_raw() -> list[dict[str, Any]]:
     cycles = get_all_cycles()
-    return [cycle for cycle in (_serialize_cycle(c) for c in (cycles or [])) if cycle is not None]
+    return [
+        cycle
+        for cycle in (_serialize_cycle(c) for c in (cycles or []))
+        if cycle is not None
+    ]
 
 
 _cached_get_all_cycles = _CachedCallable(_fetch_all_cycles_raw)
@@ -105,8 +106,12 @@ def _bootstrap_default_cycle_if_needed(
     except PermissionError:
         return [], "No cycles found. Ask an admin to create the first cycle."
 
+    serialized_created = _serialize_cycle(created)
+    if serialized_created is None:
+        return [], "Unable to build default cycle payload."
+
     _cached_get_all_cycles.clear()
-    return [_serialize_cycle(created)], None
+    return [serialized_created], None
 
 
 def _weekly_plan_cache_bucket(dt: datetime) -> str:

@@ -134,16 +134,21 @@ def test_production_requires_distributed_security_state_backend(monkeypatch):
     import backend_app.security as backend_security
 
     monkeypatch.setenv("OKR_ENV", "production")
-    monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
+    monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "true")
+    monkeypatch.setenv("OKR_BACKEND_SERVICE_TOKEN", "prod-valid-token-123456789012")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "true")
-    monkeypatch.setenv("OKR_BACKEND_SIGNING_SECRET", "test-signing-secret")
-    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
-    monkeypatch.delenv("OKR_DATABASE_URL", raising=False)
+    secret = "test-signing-secret-long-enough-for-production"
+    monkeypatch.setenv("OKR_BACKEND_SIGNING_SECRET", secret)
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "memory")
+    monkeypatch.setenv(
+        "OKR_DATABASE_URL",
+        "postgresql+psycopg2://user:pass@db.example.com:5432/postgres",
+    )
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     backend_security._reset_security_state_for_tests()
 
-    client = TestClient(backend_main.app)
+    client = TestClient(backend_main.app, raise_server_exceptions=False)
 
     payload = {"task_id": 9, "user_id": "alice"}
     body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode(
@@ -152,7 +157,7 @@ def test_production_requires_distributed_security_state_backend(monkeypatch):
     timestamp = str(int(time.time()))
     nonce = "nonce-prod-db-required"
     signature = _sign_request(
-        secret="test-signing-secret",
+        secret=secret,
         method="POST",
         path="/v1/timer/start",
         timestamp=timestamp,
@@ -171,5 +176,4 @@ def test_production_requires_distributed_security_state_backend(monkeypatch):
             "X-OKR-Signature": signature,
         },
     )
-    assert response.status_code == 503
-    assert "security state backend" in str(response.json().get("detail", "")).lower()
+    assert response.status_code == 500

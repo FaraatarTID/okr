@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import uuid4
 
 from sqlalchemy import CheckConstraint, Index, event, text
@@ -101,7 +101,14 @@ class ExpectedEffectDirection(str, Enum):
     DOWN = "DOWN"
 
 
-class Team(SQLModel, table=True):
+class SQLModelTable(SQLModel):
+    """Type-compatibility base for SQLModel classes declared with table=True."""
+
+    def __init_subclass__(cls, *args: Any, table: bool = False, **kwargs: Any) -> None:
+        super().__init_subclass__(*args, **kwargs)
+
+
+class Team(SQLModelTable, table=True):
     """Team definition for grouping users and ownership."""
 
     __tablename__ = "team"
@@ -121,7 +128,7 @@ class Team(SQLModel, table=True):
     )
 
 
-class User(SQLModel, table=True):
+class User(SQLModelTable, table=True):
     """User account for authentication and authorization."""
 
     __tablename__ = "user"
@@ -152,7 +159,7 @@ class User(SQLModel, table=True):
     )
 
 
-class AuthThrottleState(SQLModel, table=True):
+class AuthThrottleState(SQLModelTable, table=True):
     """Tracks failed authentication attempts for rate limiting and lockouts."""
 
     __tablename__ = "auth_throttle_state"
@@ -185,7 +192,7 @@ class AsyncJobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class AsyncJob(SQLModel, table=True):
+class AsyncJob(SQLModelTable, table=True):
     """Durable async job record for backend worker execution."""
 
     __tablename__ = "async_job"
@@ -225,7 +232,7 @@ class AsyncJob(SQLModel, table=True):
     updated_at: Optional[datetime] = None
 
 
-class AuditEvent(SQLModel, table=True):
+class AuditEvent(SQLModelTable, table=True):
     """Structured audit trail event persisted in the database."""
 
     __tablename__ = "audit_event"
@@ -291,7 +298,7 @@ class NodeBase(SQLModel):
 # ============================================================================
 
 
-class Cycle(SQLModel, table=True):
+class Cycle(SQLModelTable, table=True):
     """Time-bound period for OKRs (e.g., Q1 2026)."""
 
     __tablename__ = "cycle"
@@ -306,7 +313,9 @@ class Cycle(SQLModel, table=True):
     start_date: datetime
     end_date: datetime
     is_active: bool = Field(default=True)
-    owner_manager_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    owner_manager_id: Optional[int] = Field(
+        default=None, foreign_key="user.id", index=True
+    )
 
     # Relationships
     goals: List["Goal"] = Relationship(
@@ -318,7 +327,7 @@ class Cycle(SQLModel, table=True):
     )
 
 
-class Goal(NodeBase, table=True):
+class Goal(NodeBase, SQLModelTable, table=True):
     """Top-level strategic goal."""
 
     __tablename__ = "goal"
@@ -349,7 +358,7 @@ class Goal(NodeBase, table=True):
     )
 
 
-class Retrospective(SQLModel, table=True):
+class Retrospective(SQLModelTable, table=True):
     """Weekly retrospective entry."""
 
     __tablename__ = "retrospective"
@@ -370,7 +379,7 @@ class Retrospective(SQLModel, table=True):
     )  # No back_populates needed for now
 
 
-class Objective(NodeBase, table=True):
+class Objective(NodeBase, SQLModelTable, table=True):
     """Measurable objective within a goal."""
 
     __tablename__ = "objective"
@@ -403,7 +412,7 @@ class Objective(NodeBase, table=True):
     )
 
 
-class KeyResult(NodeBase, table=True):
+class KeyResult(NodeBase, SQLModelTable, table=True):
     """Key result metrics for an objective."""
 
     __tablename__ = "key_result"
@@ -454,14 +463,12 @@ class KeyResult(NodeBase, table=True):
     )
 
 
-class Task(NodeBase, table=True):
+class Task(NodeBase, SQLModelTable, table=True):
     """Actionable task within a key result."""
 
     __tablename__ = "task"
     __table_args__ = (
-        CheckConstraint(
-            "progress >= 0", name="ck_task_progress_non_negative"
-        ),
+        CheckConstraint("progress >= 0", name="ck_task_progress_non_negative"),
         CheckConstraint(
             "estimated_minutes >= 0", name="ck_task_estimated_minutes_non_negative"
         ),
@@ -510,7 +517,7 @@ class Task(NodeBase, table=True):
     )
 
 
-class WorkLog(SQLModel, table=True):
+class WorkLog(SQLModelTable, table=True):
     """Time log entry for a specific task."""
 
     __tablename__ = "work_log"
@@ -544,7 +551,7 @@ class WorkLog(SQLModel, table=True):
     )
 
 
-class WeeklyPlan(SQLModel, table=True):
+class WeeklyPlan(SQLModelTable, table=True):
     """Stores the user's top 3 priorities for a specific week."""
 
     __tablename__ = "weekly_plan"
@@ -566,7 +573,7 @@ class WeeklyPlan(SQLModel, table=True):
     is_active: bool = Field(default=True)
 
 
-class CheckIn(SQLModel, table=True):
+class CheckIn(SQLModelTable, table=True):
     """Weekly check-in for a Key Result."""
 
     __tablename__ = "check_in"
@@ -604,7 +611,7 @@ class CheckIn(SQLModel, table=True):
     )
 
 
-class Experiment(SQLModel, table=True):
+class Experiment(SQLModelTable, table=True):
     """System change experiment linked to a Key Result for learning loop."""
 
     __tablename__ = "experiment"
@@ -630,7 +637,7 @@ class Experiment(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now_naive)
 
 
-class RetroExperimentOutcome(SQLModel, table=True):
+class RetroExperimentOutcome(SQLModelTable, table=True):
     """Links retrospective to experiment decision for institutional learning."""
 
     __tablename__ = "retro_experiment_outcome"
@@ -647,7 +654,7 @@ class RetroExperimentOutcome(SQLModel, table=True):
     created_at: datetime = Field(default_factory=utc_now_naive)
 
 
-class AlignmentEdge(SQLModel, table=True):
+class AlignmentEdge(SQLModelTable, table=True):
     """Directed link representing organizational alignment between Objectives."""
 
     __tablename__ = "alignment_edge"
@@ -664,7 +671,7 @@ class AlignmentEdge(SQLModel, table=True):
     created_by: Optional[str] = None
 
 
-class ObjectiveAlignmentLink(SQLModel, table=True):
+class ObjectiveAlignmentLink(SQLModelTable, table=True):
     """Additional alignment link between an Objective and a Goal or Key Result."""
 
     __tablename__ = "objective_alignment_link"
@@ -683,7 +690,9 @@ class ObjectiveAlignmentLink(SQLModel, table=True):
     objective_id: int = Field(foreign_key="objective.id", index=True)
     linked_entity_type: str = Field(...)  # "goal" or "key_result"
     linked_entity_id: int = Field(...)
-    direction: str = Field(...)  # "parent" (linked entity is parent) or "child" (linked entity is child)
+    direction: str = Field(
+        ...
+    )  # "parent" (linked entity is parent) or "child" (linked entity is child)
     created_at: datetime = Field(default_factory=utc_now_naive)
     created_by: Optional[str] = None
 

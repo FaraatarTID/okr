@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,6 +18,7 @@ REQUIRED_ENV_KEYS = (
     "OKR_BACKEND_API_URL",
     "OKR_BACKEND_SERVICE_TOKEN",
     "OKR_BACKEND_SIGNING_SECRET",
+    "BFF_COOKIE_SECURE",
     "OKR_BOOTSTRAP_ADMIN_PASSWORD",
     "OKR_BACKEND_ENFORCE_REQUEST_SIGNING",
     "OKR_BACKEND_PROXY_MUTATIONS",
@@ -32,6 +34,7 @@ REQUIRED_ENV_KEYS = (
 )
 
 SECURE_EXPECTED = {
+    "BFF_COOKIE_SECURE": "true",
     "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "true",
     "OKR_BACKEND_PROXY_MUTATIONS": "true",
     "OKR_BACKEND_PROXY_READS": "true",
@@ -54,6 +57,31 @@ PLACEHOLDER_TOKENS = (
     "EXAMPLE",
     "REPLACE_ME",
 )
+
+_PRIVATE_DNS_SUFFIXES = (
+    ".svc",
+    ".svc.cluster.local",
+    ".cluster.local",
+    ".local",
+    ".internal",
+    ".intranet",
+    ".lan",
+    ".home",
+)
+
+_PRIVATE_V4_NETWORKS = tuple(
+    map(
+        ipaddress.ip_network,
+        (
+            "10.0.0.0/8",
+            "172.16.0.0/12",
+            "192.168.0.0/16",
+            "169.254.0.0/16",
+        ),
+    )
+)
+
+_PRIVATE_V6_NETWORKS = tuple(map(ipaddress.ip_network, ("fd00::/8", "fe80::/10")))
 
 
 @dataclass
@@ -172,6 +200,66 @@ def _validate_backend_bind_address(value: str, report: ValidationReport) -> None
         )
 
 
+def _validate_backend_api_url(
+    raw_url: str, report: ValidationReport, *, strict: bool
+) -> None:
+    value = str(raw_url or "").strip()
+    if not value:
+        report.errors.append("OKR_BACKEND_API_URL cannot be empty.")
+        return
+
+    parsed = urlparse(value)
+    if not parsed.scheme or parsed.scheme not in {"http", "https"}:
+        report.errors.append("OKR_BACKEND_API_URL must use http:// or https:// scheme.")
+        return
+    if not parsed.hostname:
+        report.errors.append("OKR_BACKEND_API_URL must include a hostname.")
+        return
+
+    host = str(parsed.hostname).strip().lower()
+    if host in {"0.0.0.0", "localhost", "127.0.0.1", "::1"}:
+        if strict:
+            report.errors.append(
+                "OKR_BACKEND_API_URL must not use loopback for production runtime."
+            )
+        return
+
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        if (
+            ip.version == 4 and any(ip in network for network in _PRIVATE_V4_NETWORKS)
+        ) or (
+            ip.version == 6
+            and (
+                ip.is_loopback or any(ip in network for network in _PRIVATE_V6_NETWORKS)
+            )
+        ):
+            return
+        report.errors.append(
+            "OKR_BACKEND_API_URL must not point to a public IP in runtime mode."
+        )
+        return
+
+    if host.count(".") == 0:
+        return
+    if host in {"backend-api", "backend", "backend-service", "okr-backend-api"}:
+        return
+    if any(host.endswith(suffix) for suffix in _PRIVATE_DNS_SUFFIXES):
+        return
+    if "backend-api" in host and ".svc" in host:
+        return
+
+    if strict:
+        report.errors.append(
+            f"OKR_BACKEND_API_URL hostname '{host}' appears non-private. "
+            "Use an internal service hostname (for example backend-api or a service "
+            "DNS name such as backend-api.ns.svc.cluster.local)."
+        )
+
+
 def validate(
     *,
     env_file: Path,
@@ -246,6 +334,11 @@ def validate(
         )
 
     _validate_backend_bind_address(env.get("OKR_BACKEND_BIND_ADDRESS", ""), report)
+    _validate_backend_api_url(
+        env.get("OKR_BACKEND_API_URL", ""),
+        report,
+        strict=(mode == "runtime"),
+    )
 
     if mode == "runtime":
         required_runtime_keys = (
@@ -263,6 +356,10 @@ def validate(
             if _looks_placeholder(value):
                 report.errors.append(
                     f"'{key}' appears to be a placeholder in runtime mode."
+                )
+            elif key == "BFF_SESSION_SECRET" and len(str(value).strip()) < 32:
+                report.errors.append(
+                    "'BFF_SESSION_SECRET' must be at least 32 characters in runtime mode."
                 )
 
         if pdf_method == "pdfshift":

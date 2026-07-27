@@ -10,7 +10,6 @@ from __future__ import annotations
 from datetime import timedelta
 import os
 import time
-from types import SimpleNamespace
 from typing import Any, Dict, Optional
 import bcrypt
 
@@ -166,7 +165,11 @@ def new_auth_throttle_state_from_crud(
 def remaining_lockout_seconds_from_crud(*, crud_module, state, now) -> int:
     if not state or not state.locked_until:
         return 0
-    delta = ensure_utc(state.locked_until) - ensure_utc(now)
+    locked_until = ensure_utc(state.locked_until)
+    now_utc = ensure_utc(now)
+    if locked_until is None or now_utc is None:
+        return 0
+    delta = locked_until - now_utc
     remaining = int(delta.total_seconds())
     return remaining if remaining > 0 else 0
 
@@ -190,7 +193,11 @@ def prepare_throttle_state_for_check_from_crud(
         return 0
 
     window_started = state.window_started_at or now
-    if (ensure_utc(now) - ensure_utc(window_started)).total_seconds() >= window_seconds:
+    now_utc = ensure_utc(now)
+    window_started_utc = ensure_utc(window_started)
+    if now_utc is None or window_started_utc is None:
+        return 0
+    if (now_utc - window_started_utc).total_seconds() >= window_seconds:
         state.failed_attempts = 0
         state.window_started_at = now
         state.updated_at = now
@@ -392,7 +399,11 @@ def create_user_from_crud(
                 crud_module.UserRole.ADMIN,
             ):
                 raise ValueError("manager_id must reference a manager or admin.")
-        if enforce_manager_chain and role == crud_module.UserRole.MEMBER and manager_id is None:
+        if (
+            enforce_manager_chain
+            and role == crud_module.UserRole.MEMBER
+            and manager_id is None
+        ):
             raise ValueError("Member users must have a manager_id.")
 
         user = crud_module.User(
@@ -900,7 +911,11 @@ def update_user_from_crud(
                 crud_module.UserRole.ADMIN,
             ):
                 raise ValueError("manager_id must reference a manager or admin.")
-        if actor_username and next_role == crud_module.UserRole.MEMBER and next_manager_id is None:
+        if (
+            actor_username
+            and next_role == crud_module.UserRole.MEMBER
+            and next_manager_id is None
+        ):
             raise ValueError("Member users must have a manager_id.")
 
         if display_name is not None:
@@ -997,7 +1012,7 @@ def reset_user_password_from_crud(
         return True
     except PermissionError:
         raise
-    except Exception as exc:
+    except Exception:
         crud_module.audit_log(
             "reset_password_failed",
             "user",
@@ -1047,7 +1062,9 @@ def ensure_admin_exists_once_from_crud(*, crud_module) -> bool:
                 bootstrap_admin_password,
                 admin.password_hash,
             ):
-                admin.password_hash = crud_module.hash_password(bootstrap_admin_password)
+                admin.password_hash = crud_module.hash_password(
+                    bootstrap_admin_password
+                )
                 admin.password_changed_at = None
                 session.add(admin)
                 session.commit()

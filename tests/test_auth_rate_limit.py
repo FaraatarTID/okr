@@ -190,9 +190,7 @@ def test_authentication_falls_back_when_throttle_table_missing(isolated_db):
     assert failed["error_code"] == "AUTH_TEMP_UNAVAILABLE"
 
     # Even correct credentials are denied when throttle table is missing
-    denied = authenticate_user_detailed(
-        "alice", "alice-pass", client_ip="203.0.113.10"
-    )
+    denied = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
     assert denied["success"] is False
     assert denied["error_code"] == "AUTH_TEMP_UNAVAILABLE"
 
@@ -222,9 +220,7 @@ def test_authentication_falls_back_on_generic_throttle_operational_error(
     assert failed["error_code"] == "AUTH_TEMP_UNAVAILABLE"
 
     # Even correct credentials are denied when throttle is unavailable
-    denied = authenticate_user_detailed(
-        "alice", "alice-pass", client_ip="203.0.113.10"
-    )
+    denied = authenticate_user_detailed("alice", "alice-pass", client_ip="203.0.113.10")
     assert denied["success"] is False
     assert denied["error_code"] == "AUTH_TEMP_UNAVAILABLE"
 

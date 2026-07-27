@@ -39,6 +39,7 @@ def _request(url: str, *, api_key: str | None, timeout: float) -> tuple[bool, in
         headers["Authorization"] = f"Bearer {api_key}"
     req = urllib.request.Request(url, method="GET", headers=headers)
     import ssl
+
     ssl_ctx = ssl.create_default_context()
     ssl_ctx.check_hostname = False
     ssl_ctx.verify_mode = ssl.CERT_NONE
@@ -64,7 +65,9 @@ def main() -> int:
     )
     parser.add_argument(
         "--api-key",
-        default=os.getenv("SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_ANON_KEY", "")),
+        default=os.getenv(
+            "SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_ANON_KEY", "")
+        ),
         help="Supabase API key (default: SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY env)",
     )
     parser.add_argument(
@@ -87,12 +90,20 @@ def main() -> int:
     rest_url = f"{base_url}/rest/v1/"
     health_url = f"{base_url}/auth/v1/health"
 
-    rest_ok, rest_code, rest_body = _request(rest_url, api_key=api_key, timeout=args.timeout)
-    auth_ok, auth_code, auth_body = _request(health_url, api_key=None, timeout=args.timeout)
+    rest_ok, rest_code, rest_body = _request(
+        rest_url, api_key=api_key, timeout=args.timeout
+    )
+    auth_ok, auth_code, auth_body = _request(
+        health_url, api_key=None, timeout=args.timeout
+    )
 
     result = {
         "supabase_url": base_url,
-        "rest": {"reachable": rest_ok, "status_code": rest_code, "body_preview": rest_body[:200]},
+        "rest": {
+            "reachable": rest_ok,
+            "status_code": rest_code,
+            "body_preview": rest_body[:200],
+        },
         "auth_health": {
             "reachable": auth_ok,
             "status_code": auth_code,
@@ -109,7 +120,9 @@ def main() -> int:
         print(f"       REST: reachable={rest_ok} status={rest_code}")
         print(f"       AUTH health: reachable={auth_ok} status={auth_code}")
         if not api_key:
-            print("[WARN] No API key supplied. Set SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY.")
+            print(
+                "[WARN] No API key supplied. Set SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY."
+            )
 
     # success if at least one HTTPS endpoint is reachable
     if rest_ok or auth_ok:
@@ -119,4 +132,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-

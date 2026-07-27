@@ -152,7 +152,9 @@ async def require_service_access(
     client_ip = request.client.host if request.client else "unknown"
     if service_token_valid and x_forwarded_for:
         # Use the first IP in the chain (original client)
-        forwarded_ips = [ip.strip() for ip in str(x_forwarded_for).split(",") if ip.strip()]
+        forwarded_ips = [
+            ip.strip() for ip in str(x_forwarded_for).split(",") if ip.strip()
+        ]
         if forwarded_ips:
             client_ip = forwarded_ips[0]
 

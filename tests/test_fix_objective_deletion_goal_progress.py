@@ -1,6 +1,6 @@
 """Tests for Fix 4: Stale Goal progress on Objective deletion."""
 
-from src.models import Goal, Objective, KeyResult, LifecycleState, VariationType
+from src.models import Goal, LifecycleState, VariationType
 from src.database import get_session_context
 
 
@@ -29,8 +29,22 @@ def test_delete_objective_updates_goal_progress(isolated_db):
     update_objective(obj2.id, state=LifecycleState.ACTIVE, actor_username="carol")
 
     # Set progress on both objectives
-    create_check_in(kr1.id, value=80, confidence=7, comment="Obj1", actor_username="carol", variation_type=VariationType.COMMON_CAUSE)
-    create_check_in(kr2.id, value=40, confidence=5, comment="Obj2", actor_username="carol", variation_type=VariationType.COMMON_CAUSE)
+    create_check_in(
+        kr1.id,
+        value=80,
+        confidence=7,
+        comment="Obj1",
+        actor_username="carol",
+        variation_type=VariationType.COMMON_CAUSE,
+    )
+    create_check_in(
+        kr2.id,
+        value=40,
+        confidence=5,
+        comment="Obj2",
+        actor_username="carol",
+        variation_type=VariationType.COMMON_CAUSE,
+    )
 
     # Record goal progress before deletion
     with get_session_context() as session:

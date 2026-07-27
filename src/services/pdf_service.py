@@ -12,16 +12,17 @@ import platform
 import datetime
 import base64
 import logging
-from functools import lru_cache
+import time
 from html import escape as html_escape
 from io import BytesIO
 from src.services.http_client import post_json_with_retry
+from src.observability_metrics import record_provider_call
 
 # Try importing optional PDFShift dependency.
 PDFSHIFT_AVAILABLE = False
 
 try:
-    import requests
+    import requests  # type: ignore[import]
 
     PDFSHIFT_AVAILABLE = True
 except ImportError:
@@ -553,9 +554,16 @@ def generate_pdf_with_pdfshift_bytes(html, *, api_key: str = ""):
     """
     Backend-safe PDFShift execution that returns raw PDF bytes.
     """
+    started_ms = time.perf_counter()
     try:
         pdfshift_api_key = str(api_key or "").strip() or _resolve_pdfshift_api_key()
         if not pdfshift_api_key:
+            record_provider_call(
+                provider="pdfshift",
+                success=False,
+                latency_ms=(time.perf_counter() - started_ms) * 1000,
+                error_code="missing_api_key",
+            )
             return None
 
         response = post_json_with_retry(
@@ -573,12 +581,29 @@ def generate_pdf_with_pdfshift_bytes(html, *, api_key: str = ""):
         )
 
         if response.status_code == 200:
+            record_provider_call(
+                provider="pdfshift",
+                success=True,
+                latency_ms=(time.perf_counter() - started_ms) * 1000,
+            )
             return response.content
         _LOGGER.warning("PDFShift API Error: %s", response.status_code)
+        record_provider_call(
+            provider="pdfshift",
+            success=False,
+            latency_ms=(time.perf_counter() - started_ms) * 1000,
+            error_code=f"status_{int(response.status_code)}",
+        )
         return None
 
     except Exception as e:
         _LOGGER.warning("PDFShift Exception: %s: %s", type(e).__name__, str(e)[:200])
+        record_provider_call(
+            provider="pdfshift",
+            success=False,
+            latency_ms=(time.perf_counter() - started_ms) * 1000,
+            error_code=type(e).__name__,
+        )
         return None
 
 
@@ -597,7 +622,14 @@ def generate_pdf_with_chromium_bytes(html, *, executable_path: str = ""):
     """
     Backend-safe Chromium execution that returns raw PDF bytes.
     """
+    started_ms = time.perf_counter()
     if not PLAYWRIGHT_AVAILABLE:
+        record_provider_call(
+            provider="chromium",
+            success=False,
+            latency_ms=(time.perf_counter() - started_ms) * 1000,
+            error_code="playwright_unavailable",
+        )
         return None
     browser = None
     context = None
@@ -606,7 +638,7 @@ def generate_pdf_with_chromium_bytes(html, *, executable_path: str = ""):
             str(executable_path or "").strip()
             or str(_resolve_chromium_executable_path() or "").strip()
         )
-        launch_kwargs = {"headless": True}
+        launch_kwargs: dict[str, object] = {"headless": True}
         if resolved_executable:
             launch_kwargs["executable_path"] = resolved_executable
 
@@ -621,9 +653,20 @@ def generate_pdf_with_chromium_bytes(html, *, executable_path: str = ""):
                 print_background=True,
                 prefer_css_page_size=True,
             )
+            record_provider_call(
+                provider="chromium",
+                success=True,
+                latency_ms=(time.perf_counter() - started_ms) * 1000,
+            )
             return pdf_bytes
     except Exception as exc:
         _LOGGER.warning("Chromium PDF Exception: %s", exc)
+        record_provider_call(
+            provider="chromium",
+            success=False,
+            latency_ms=(time.perf_counter() - started_ms) * 1000,
+            error_code=type(exc).__name__,
+        )
         return None
     finally:
         try:

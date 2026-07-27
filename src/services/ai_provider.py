@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import re
+import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence, Set
 
 from src.config_runtime import get_config_value
+from src.observability_metrics import record_provider_call
 from src.services.http_client import post_json_with_retry
 
 try:
@@ -21,6 +25,9 @@ except ImportError:
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
 _DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS = 120.0
+_DEFAULT_AI_PROVIDER_PROMPT_MAX_CHARS = 20_000
+_DEFAULT_AI_PROVIDER_OUTPUT_MAX_BYTES = 131_072
+_DEFAULT_AI_ALLOWED_PROVIDERS = frozenset({"gemini", "openai_compatible"})
 _LOGGER = logging.getLogger(__name__)
 
 _PROVIDER_ALIASES = {
@@ -36,6 +43,11 @@ _PROVIDER_ALIASES = {
     "lm-studio": "openai_compatible",
     "vllm": "openai_compatible",
 }
+
+_PII_PATTERNS = (
+    (re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b"), "[redacted-email]"),
+    (re.compile(r"\+?\d(?:[\d\s().-]{7,})\d"), "[redacted-phone]"),
+)
 
 
 @dataclass(frozen=True)
@@ -58,12 +70,64 @@ def _get_config_value(keys: Sequence[str]) -> Optional[str]:
     return None
 
 
+def _get_bool_config(keys: Sequence[str], default_value: bool = False) -> bool:
+    raw = _get_config_value(keys)
+    if raw is None:
+        return default_value
+    return str(raw).strip().lower() in _TRUE_VALUES
+
+
 def is_external_ai_allowed() -> bool:
     raw = _get_config_value(["ALLOW_EXTERNAL_AI", "OKR_ALLOW_EXTERNAL_AI"])
     if raw is None:
         # Secure-by-default: outbound AI calls remain disabled unless explicitly enabled.
         return False
     return str(raw).strip().lower() in _TRUE_VALUES
+
+
+def is_ai_governance_strict() -> bool:
+    """Return whether strict prompt/output governance is enabled."""
+    return _get_bool_config(["AI_GOVERNANCE_STRICT", "OKR_AI_GOVERNANCE_STRICT"], False)
+
+
+def get_ai_data_classification() -> str:
+    """Return normalized AI data-classification value."""
+    value = (
+        str(
+            _get_config_value(["AI_DATA_CLASSIFICATION", "OKR_AI_DATA_CLASSIFICATION"])
+            or "internal"
+        )
+        .strip()
+        .lower()
+    )
+    return value if value in {"public", "internal", "confidential"} else "internal"
+
+
+def get_ai_max_prompt_chars() -> int:
+    raw = _get_config_value(["AI_MAX_PROMPT_CHARS", "OKR_AI_MAX_PROMPT_CHARS"])
+    try:
+        parsed = int(raw or _DEFAULT_AI_PROVIDER_PROMPT_MAX_CHARS)
+    except (TypeError, ValueError):
+        parsed = _DEFAULT_AI_PROVIDER_PROMPT_MAX_CHARS
+    return parsed if parsed > 0 else _DEFAULT_AI_PROVIDER_PROMPT_MAX_CHARS
+
+
+def get_ai_max_output_bytes() -> int:
+    raw = _get_config_value(
+        ["AI_MAX_PROVIDER_OUTPUT_BYTES", "OKR_AI_MAX_PROVIDER_OUTPUT_BYTES"]
+    )
+    try:
+        parsed = int(raw or _DEFAULT_AI_PROVIDER_OUTPUT_MAX_BYTES)
+    except (TypeError, ValueError):
+        parsed = _DEFAULT_AI_PROVIDER_OUTPUT_MAX_BYTES
+    return parsed if parsed > 0 else _DEFAULT_AI_PROVIDER_OUTPUT_MAX_BYTES
+
+
+def _get_governance_metadata_key() -> bool:
+    return _get_bool_config(
+        ["AI_INCLUDE_GOVERNANCE_METADATA", "OKR_AI_INCLUDE_GOVERNANCE_METADATA"],
+        False,
+    )
 
 
 def get_gemini_api_key() -> Optional[str]:
@@ -107,6 +171,32 @@ def get_openai_api_key() -> Optional[str]:
     return value or None
 
 
+def get_ai_provider_allowlist() -> Set[str]:
+    raw = _get_config_value(["AI_PROVIDER_ALLOWLIST", "OKR_AI_PROVIDER_ALLOWLIST"])
+    if not raw:
+        return set(_DEFAULT_AI_ALLOWED_PROVIDERS)
+
+    providers = set()
+    for item in str(raw).split(","):
+        normalized = _PROVIDER_ALIASES.get(
+            str(item).strip().lower(), str(item).strip().lower()
+        )
+        if normalized:
+            providers.add(normalized)
+
+    return providers or set(_DEFAULT_AI_ALLOWED_PROVIDERS)
+
+
+def is_ai_provider_allowed(provider: str) -> bool:
+    normalized = _PROVIDER_ALIASES.get(
+        str(provider).strip().lower(), str(provider).strip().lower()
+    )
+    return (
+        normalized in get_ai_provider_allowlist()
+        and normalized in _DEFAULT_AI_ALLOWED_PROVIDERS
+    )
+
+
 def get_openai_request_timeout_seconds() -> float:
     value = _get_config_value(
         ["AI_REQUEST_TIMEOUT_SECONDS", "OPENAI_REQUEST_TIMEOUT_SECONDS"]
@@ -121,6 +211,46 @@ def get_openai_request_timeout_seconds() -> float:
     return parsed if parsed > 0 else _DEFAULT_OPENAI_REQUEST_TIMEOUT_SECONDS
 
 
+def _hash_prompt(prompt: str) -> str:
+    return hashlib.sha256(str(prompt or "").encode("utf-8")).hexdigest()[:16]
+
+
+def enforce_ai_prompt_governance(prompt: str) -> tuple[str, Dict[str, Any]]:
+    """Redact sensitive data from prompts and enforce governance limits."""
+    strict = is_ai_governance_strict()
+    raw_prompt = str(prompt or "")
+    result = raw_prompt
+    redactions: Dict[str, int] = {}
+
+    if strict and raw_prompt:
+        sanitized = raw_prompt
+        for pattern, replacement in _PII_PATTERNS:
+            new_value, count = pattern.subn(replacement, sanitized)
+            if count:
+                redactions[replacement] = redactions.get(replacement, 0) + count
+            sanitized = new_value
+        result = sanitized
+
+    max_chars = get_ai_max_prompt_chars()
+    truncated = False
+    if len(result) > max_chars:
+        result = result[:max_chars]
+        truncated = True
+
+    if not result.strip():
+        result = ""
+
+    return result, {
+        "classification": get_ai_data_classification(),
+        "strict_governance": strict,
+        "prompt_hash": _hash_prompt(raw_prompt),
+        "prompt_length": len(raw_prompt),
+        "effective_length": len(result),
+        "truncated": truncated,
+        "redactions": redactions,
+    }
+
+
 def get_ai_provider_runtime_status() -> AIProviderStatus:
     provider = get_ai_provider()
     if not is_external_ai_allowed():
@@ -128,6 +258,13 @@ def get_ai_provider_runtime_status() -> AIProviderStatus:
             provider=provider,
             ready=True,
             message="External AI calls are disabled by policy.",
+        )
+
+    if not is_ai_provider_allowed(provider):
+        return AIProviderStatus(
+            provider=provider,
+            ready=False,
+            message=(f"AI provider '{provider}' is not allowed by governance policy."),
         )
 
     if provider == "gemini":
@@ -337,16 +474,63 @@ def generate_json(prompt: str) -> Dict[str, Any]:
         }
 
     provider = get_ai_provider()
-    if provider == "gemini":
-        return _call_gemini_json(prompt)
-    if provider == "openai_compatible":
-        return _call_openai_compatible_json(prompt)
+    if not is_ai_provider_allowed(provider):
+        return {
+            "error": (f"AI provider '{provider}' is not allowed by governance policy.")
+        }
 
-    return {
-        "error": (
-            f"Unsupported AI_PROVIDER '{provider}'. Use: gemini, openai_compatible."
+    governed_prompt, policy = enforce_ai_prompt_governance(prompt)
+    if not governed_prompt:
+        return {
+            "error": (
+                "AI prompt was rejected by governance policy."
+                if is_ai_governance_strict()
+                else "Missing prompt."
+            )
+        }
+
+    started_ms = time.perf_counter()
+    payload: Dict[str, Any] = {"error": "Provider call failed before dispatch."}
+    try:
+        if provider == "gemini":
+            payload = _call_gemini_json(governed_prompt)
+        elif provider == "openai_compatible":
+            payload = _call_openai_compatible_json(governed_prompt)
+        else:
+            payload = {
+                "error": (
+                    f"Unsupported AI_PROVIDER '{provider}'. "
+                    "Use: gemini, openai_compatible."
+                )
+            }
+    finally:
+        if isinstance(payload, dict):
+            try:
+                output_size = len(json.dumps(payload, ensure_ascii=False))
+            except TypeError:
+                output_size = get_ai_max_output_bytes() + 1
+            if output_size > get_ai_max_output_bytes():
+                payload = {
+                    "error": "AI provider output exceeded governance output-size policy."
+                }
+
+        duration_ms = (time.perf_counter() - started_ms) * 1000
+        error_text = (
+            payload.get("error")
+            if isinstance(payload, dict)
+            else "provider call failed"
         )
-    }
+        if _get_governance_metadata_key() and isinstance(payload, dict):
+            payload = dict(payload)
+            payload["ai_governance"] = policy
+            payload["ai_provider"] = provider
+        record_provider_call(
+            provider=provider,
+            success=not (isinstance(payload, dict) and "error" in payload),
+            latency_ms=duration_ms,
+            error_code=str(error_text) if error_text else None,
+        )
+    return payload
 
 
 def run_ai_health_check(*, live_probe: bool = True) -> Dict[str, Any]:
@@ -374,6 +558,8 @@ def run_ai_health_check(*, live_probe: bool = True) -> Dict[str, Any]:
         "live_probe_enabled": bool(live_probe),
         "probe_ok": None,
         "probe_message": None,
+        "data_classification": get_ai_data_classification(),
+        "strict_governance": is_ai_governance_strict(),
     }
 
     if not report["external_ai_allowed"]:

@@ -30,7 +30,11 @@ def _load_env_file() -> None:
                 if key and key not in os.environ:
                     os.environ[key] = value
     except Exception:
-        _LOGGER.warning("Failed to load env file %s; environment variables may be missing", env_file, exc_info=True)
+        _LOGGER.warning(
+            "Failed to load env file %s; environment variables may be missing",
+            env_file,
+            exc_info=True,
+        )
 
 
 def ensure_shared_src_on_path() -> None:

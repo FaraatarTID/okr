@@ -1,3 +1,4 @@
+from fastapi.testclient import TestClient
 from datetime import timedelta
 
 import pytest
@@ -29,30 +30,39 @@ def _build_okr_tree(
         cycle_id=cycle_id,
         actor_username=username,
     )
+    assert goal is not None
+    goal_id = goal.id
+    assert goal_id is not None
     objective = create_objective(
-        goal.id, f"{username} objective", actor_username=username
+        goal_id, f"{username} objective", actor_username=username
     )
+    assert objective is not None
+    objective_id = objective.id
+    assert objective_id is not None
 
     key_results = []
     tasks = []
     for idx in range(kr_count):
         kr = create_key_result(
-            objective.id,
+            objective_id,
             f"{username} kr {idx}",
             target_value=100.0,
             actor_username=username,
         )
+        assert kr is not None
+        kr_id = kr.id
+        assert kr_id is not None
         key_results.append(kr)
         for task_idx in range(tasks_per_kr):
-            tasks.append(
-                create_task(
-                    kr.id, f"{username} task {idx}-{task_idx}", actor_username=username
-                )
+            task = create_task(
+                kr_id, f"{username} task {idx}-{task_idx}", actor_username=username
             )
+            assert task is not None
+            tasks.append(task)
 
     # Hotpath analytics query active/graded nodes only; activate the objective tree.
     update_objective(
-        objective.id,
+        objective_id,
         state=LifecycleState.ACTIVE,
         actor_username=username,
     )
@@ -335,3 +345,208 @@ def test_hotpath_query_budgets_guard_against_n_plus_one(isolated_db):
     assert q_leadership <= 4
     assert q_checkin <= 2
     assert q_hours <= 1
+
+
+def test_atlas_snapshot_query_budget_guard(isolated_db):
+    from src.crud import create_cycle, create_user
+    from src.database import get_engine, get_session_context
+    from src.domain.read_queries import build_atlas_scope_snapshot
+
+    users = [create_user(f"atlas_user{i}", "pass") for i in range(1, 4)]
+    cycle = create_cycle(
+        "Q5",
+        start_date=utc_now_naive() - timedelta(days=30),
+        end_date=utc_now_naive() + timedelta(days=60),
+    )
+
+    owner_ids = [user.id for user in users if user.id is not None]
+    for user in users:
+        for idx in range(2):
+            _build_okr_tree(
+                user.username,
+                cycle.id,
+                kr_count=4,
+                tasks_per_kr=3,
+                goal_title=f"{user.username} goal {idx}",
+            )
+
+    engine = get_engine()
+
+    def _run_snapshot() -> None:
+        with get_session_context() as session:
+            build_atlas_scope_snapshot(
+                session,
+                cycle_id=cycle.id,
+                owner_ids=owner_ids,
+                include_analysis=False,
+            )
+
+    q_snapshot = _count_queries(engine, _run_snapshot)
+    assert q_snapshot <= 6
+
+
+def test_audit_summary_query_budget_guard(isolated_db):
+    from src.database import get_engine, get_session_context
+    from src.audit import audit_log
+
+    for idx in range(120):
+        audit_log(
+            action="job_poll",
+            entity="async_job",
+            actor="atlas_auditor",
+            details={"result": "success" if idx % 2 == 0 else "failure", "idx": idx},
+        )
+
+    from src.audit_queries import summarize_audit_events
+
+    engine = get_engine()
+
+    def _run_summary() -> None:
+        with get_session_context() as session:
+            summarize_audit_events(
+                session,
+                days=30,
+                recent_limit=20,
+                action="job_poll",
+            )
+
+    q_summary = _count_queries(engine, _run_summary)
+    assert q_summary <= 1
+
+
+def test_job_polling_query_budget_guard(isolated_db, monkeypatch):
+    from src.database import get_engine
+    from backend_app.jobs import enqueue_job, get_job
+    import backend_app.main as backend_main
+    from fastapi import status
+
+    client = TestClient(backend_main.app)
+    job = enqueue_job(
+        kind="ai.generate_json",
+        payload={"prompt": "Return JSON"},
+        actor_username="poller",
+        max_attempts=1,
+    )
+
+    engine = get_engine()
+    q_poll = _count_queries(engine, lambda: get_job(job.id))
+    assert q_poll <= 1
+
+    monkeypatch.setattr(backend_main, "require_service_access", lambda: None)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_actor",
+        lambda header_actor, payload_actor=None: "poller",
+    )
+    response_holder: dict[str, object] = {}
+
+    def _poll_request() -> None:
+        response = client.get(f"/v1/jobs/{job.id}", headers={"X-OKR-Actor": "poller"})
+        response_holder["status_code"] = response.status_code
+
+    q_endpoint = _count_queries(engine, _poll_request)
+    assert q_endpoint <= 1
+    assert response_holder.get("status_code") == status.HTTP_200_OK
+
+
+def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
+    import backend_app.main as backend_main
+    from src.crud import create_cycle, create_user
+    from src.database import get_engine
+
+    users = [create_user(f"metric_user{i}", "pass") for i in range(1, 3)]
+    cycle = create_cycle(
+        "Q6",
+        start_date=utc_now_naive() - timedelta(days=30),
+        end_date=utc_now_naive() + timedelta(days=60),
+    )
+
+    for user in users:
+        for idx in range(2):
+            _build_okr_tree(
+                user.username,
+                cycle.id,
+                kr_count=2,
+                tasks_per_kr=2,
+                goal_title=f"{user.username} goal {idx}",
+            )
+
+    usernames = [user.username for user in users if user.username]
+    owner_ids = {user.id for user in users if user.id is not None}
+
+    def _admin_scope(_actor):
+        return {
+            "owner_ids": owner_ids,
+            "usernames": set(usernames),
+            "is_admin": True,
+        }
+
+    def _dummy_actor(*args, **kwargs):
+        return "admin"
+
+    client = TestClient(backend_main.app)
+    monkeypatch.setattr(backend_main, "require_service_access", lambda: None)
+    monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: False)
+    monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _admin_scope)
+    monkeypatch.setattr(backend_main, "_resolve_actor", _dummy_actor)
+
+    engine = get_engine()
+    response_atlas: dict[str, object] = {}
+    response_leadership: dict[str, object] = {}
+    response_audit: dict[str, object] = {}
+
+    def _atlas_request() -> None:
+        response = client.post(
+            "/v1/read/atlas/snapshot",
+            headers={"X-OKR-Actor": "admin"},
+            json={
+                "cycle_id": cycle.id,
+                "owner_ids": list(owner_ids),
+                "include_analysis": False,
+            },
+        )
+        response_atlas["status_code"] = response.status_code
+
+    q_atlas = _count_queries(engine, _atlas_request)
+    assert q_atlas <= 6
+    assert response_atlas.get("status_code") == 200
+
+    def _leadership_request() -> None:
+        response = client.post(
+            "/v1/read/leadership/metrics",
+            headers={"X-OKR-Actor": "admin"},
+            json={
+                "cycle_id": cycle.id,
+                "usernames": usernames,
+            },
+        )
+        response_leadership["status_code"] = response.status_code
+
+    q_leadership = _count_queries(engine, _leadership_request)
+    assert q_leadership <= 4
+    assert response_leadership.get("status_code") == 200
+
+    from src.audit import audit_log
+
+    for idx in range(40):
+        audit_log(
+            action="api_read",
+            entity="leadership",
+            actor="admin",
+            details={"result": "success", "i": idx},
+        )
+
+    def _audit_request() -> None:
+        response = client.post(
+            "/v1/read/query",
+            headers={"X-OKR-Actor": "admin"},
+            json={
+                "kind": "audit.summary",
+                "params": {"days": 30, "recent_limit": 20},
+            },
+        )
+        response_audit["status_code"] = response.status_code
+
+    q_audit = _count_queries(engine, _audit_request)
+    assert q_audit <= 2
+    assert response_audit.get("status_code") == 200

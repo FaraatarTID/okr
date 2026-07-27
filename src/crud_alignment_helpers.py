@@ -22,7 +22,11 @@ def create_alignment_from_crud(
     result = crud_core_helpers.try_backend_mutation(
         crud_module=crud_module,
         backend_fn_name="create_alignment",
-        backend_kwargs={"parent_id": parent_id, "child_id": child_id, "alignment_type": alignment_type},
+        backend_kwargs={
+            "parent_id": parent_id,
+            "child_id": child_id,
+            "alignment_type": alignment_type,
+        },
         actor_username=actor_username,
         require_actor=True,
         extract_result="node",
@@ -146,7 +150,9 @@ def create_objective_alignment_link_from_crud(
     actor_username: Optional[str] = None,
 ):
     if linked_entity_type not in _VALID_LINKED_ENTITY_TYPES:
-        raise ValueError(f"linked_entity_type must be one of {_VALID_LINKED_ENTITY_TYPES}")
+        raise ValueError(
+            f"linked_entity_type must be one of {_VALID_LINKED_ENTITY_TYPES}"
+        )
     if direction not in _VALID_DIRECTIONS:
         raise ValueError(f"direction must be one of {_VALID_DIRECTIONS}")
 
@@ -174,8 +180,13 @@ def create_objective_alignment_link_from_crud(
         existing = session.exec(
             crud_module.select(crud_module.ObjectiveAlignmentLink)
             .where(crud_module.ObjectiveAlignmentLink.objective_id == objective_id)
-            .where(crud_module.ObjectiveAlignmentLink.linked_entity_type == linked_entity_type)
-            .where(crud_module.ObjectiveAlignmentLink.linked_entity_id == linked_entity_id)
+            .where(
+                crud_module.ObjectiveAlignmentLink.linked_entity_type
+                == linked_entity_type
+            )
+            .where(
+                crud_module.ObjectiveAlignmentLink.linked_entity_id == linked_entity_id
+            )
         ).first()
         if existing:
             return existing
