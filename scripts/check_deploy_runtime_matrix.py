@@ -105,7 +105,7 @@ def _load_env_file_values(env_file: Path) -> dict[str, str]:
 def _run_compose_config(env_file: Path, compose_file: Path) -> str:
     env_file_values = _load_env_file_values(env_file)
 
-    attempts = (
+    attempts: tuple[tuple[list[str], dict[str, str] | None], ...] = (
         (["--env-file", str(env_file), "--format", "json"], None),
         (["--env-file", str(env_file)], None),
         (["--format", "json"], env_file_values),
@@ -223,17 +223,21 @@ def _parse_compose_env_text(rendered: str) -> dict[str, dict[str, str]]:
             if not raw_line.startswith("      "):
                 if raw_line.startswith("    "):
                     in_environment = False
-                    current_service = None if not raw_line.startswith("  ") else current_service
+                    current_service = None
+                continue
+            if current_service is None:
                 continue
 
             if raw_line.startswith("      - "):
                 entry_match = list_env_re.match(raw_line)
                 if entry_match:
-                    services[current_service][entry_match.group(1)] = entry_match.group(2).strip()
+                    service_env = services.setdefault(current_service, {})
+                    service_env[entry_match.group(1)] = entry_match.group(2).strip()
                 continue
             entry_match = map_env_re.match(raw_line)
             if entry_match:
-                services[current_service][entry_match.group(1)] = entry_match.group(2).strip()
+                service_env = services.setdefault(current_service, {})
+                service_env[entry_match.group(1)] = entry_match.group(2).strip()
     return services
 
 
