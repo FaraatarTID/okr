@@ -1,24 +1,26 @@
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@500;600;700;800&display=swap");
 
 :root {
-  --bg-0: #f8f2e7;
-  --bg-1: #e8dfcc;
-  --bg-2: #d5c7ad;
-  --surface: rgba(255, 255, 255, 0.84);
-  --surface-strong: #fffefb;
-  --surface-alt: #f2eadc;
-  --ink: #1a2a33;
-  --ink-soft: #5f6a72;
-  --line: rgba(40, 59, 72, 0.18);
-  --line-strong: rgba(40, 59, 72, 0.26);
-  --accent: #0d5b67;
-  --accent-strong: #093f47;
-  --accent-ink: #ecf9fb;
-  --gold: #c39b52;
-  --warn: #8e5a00;
-  --error: #9f2f2a;
-  --shadow-soft: 0 18px 34px -26px rgba(26, 42, 51, 0.55);
-  --shadow-float: 0 28px 56px -34px rgba(14, 24, 32, 0.62);
+  --bg-0: #fbf6fb;
+  --bg-1: #f4edf6;
+  --bg-2: #ede4f0;
+  --surface: #ffffff;
+  --surface-strong: #ffffff;
+  --surface-alt: #f8f3fb;
+  --ink: #141c2a;
+  --ink-soft: #4e5a71;
+  --line: rgba(22, 36, 64, 0.14);
+  --line-strong: rgba(22, 36, 64, 0.22);
+  --accent: #702963;
+  --accent-strong: #5c224f;
+  --accent-ink: #fff7fb;
+  --accent-deep: #3f173b;
+  --gold: #8b5cf6;
+  --warn: #dc7d00;
+  --error: #e11d48;
+  --success: #16a34a;
+  --shadow-soft: 0 20px 40px -30px rgba(31, 41, 55, 0.45);
+  --shadow-float: 0 32px 60px -40px rgba(31, 41, 55, 0.55);
 }
 
 *,
@@ -37,12 +39,12 @@ body {
   position: relative;
   min-height: 100vh;
   color: var(--ink);
-  font-family: "Plus Jakarta Sans", "Avenir Next", "Segoe UI", sans-serif;
-  background:
-    radial-gradient(circle at 12% 10%, rgba(23, 88, 94, 0.2), transparent 45%),
-    radial-gradient(circle at 88% 12%, rgba(178, 141, 79, 0.28), transparent 48%),
-    linear-gradient(155deg, var(--bg-0), var(--bg-1) 56%, var(--bg-2));
-  background-attachment: fixed;
+  font-family: "Inter", "Segoe UI", "Roboto", sans-serif;
+  background: linear-gradient(150deg, var(--bg-0), var(--bg-1), var(--bg-2));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.45;
+  text-rendering: optimizeLegibility;
 }
 
 body::before {
@@ -51,9 +53,8 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(115deg, rgba(255, 255, 255, 0.52), transparent 38%),
-    repeating-linear-gradient(90deg, rgba(20, 38, 47, 0.03) 0 1px, transparent 1px 74px);
-  opacity: 0.7;
+    repeating-linear-gradient(120deg, rgba(112, 41, 99, 0.05) 0 1px, transparent 1px 84px);
+  opacity: 0.45;
   z-index: -2;
 }
 
@@ -63,8 +64,8 @@ body::after {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 84% 82%, rgba(25, 84, 99, 0.12), transparent 36%),
-    radial-gradient(circle at 16% 74%, rgba(195, 155, 82, 0.16), transparent 36%);
+    radial-gradient(circle at 84% 82%, rgba(112, 41, 99, 0.08), transparent 40%),
+    radial-gradient(circle at 16% 74%, rgba(112, 41, 99, 0.12), transparent 38%);
   z-index: -1;
 }
 
@@ -77,27 +78,97 @@ h1,
 h2,
 h3,
 h4 {
-  font-family: "Cormorant Garamond", "Times New Roman", serif;
-  letter-spacing: 0.01em;
+  font-family: "Manrope", "Inter", "Segoe UI", sans-serif;
+  letter-spacing: -0.01em;
   color: color-mix(in srgb, var(--ink) 86%, #0a1f28 14%);
 }
 
 .page-shell {
-  width: min(1240px, calc(100% - 2.4rem));
+  width: min(1320px, calc(100% - 2.2rem));
   margin: 1.1rem auto 2.2rem;
+}
+
+.login-shell-hero {
+  max-width: 540px;
+  margin: 0 auto 0.9rem;
+  padding: 1.1rem 1.05rem;
+  background: linear-gradient(118deg, color-mix(in srgb, var(--surface) 94%, var(--accent) 6%), var(--surface));
+}
+
+.login-shell-card {
+  max-width: 540px;
+  margin: 0 auto;
+  padding: 0.95rem 1rem;
+}
+
+.login-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.login-logo {
+  display: block;
+  width: 42px;
+  height: 74px;
+  object-fit: contain;
+}
+
+.login-logo--mini {
+  width: 34px;
+  height: 60px;
+}
+
+.login-brand-title {
+  margin: 0;
+}
+
+.login-label {
+  margin: 0;
+  font-size: 0.83rem;
+  color: var(--ink-soft);
+}
+
+.login-field {
+  margin-top: 0.22rem;
+}
+
+.login-field:first-of-type {
+  margin-bottom: 0.55rem;
+}
+
+.login-field + .login-label {
+  margin-top: 0.9rem;
+}
+
+.login-field:last-of-type {
+  margin-bottom: 0.7rem;
+}
+
+.login-feedback {
+  margin: 0.65rem 0 0;
+  color: var(--error);
+}
+
+.spa-route-shell {
+  position: relative;
+}
+
+.spa-route-shell > * {
+  margin-top: 0;
 }
 
 .spa-shell-layout {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
-  gap: 1rem;
+  gap: 1.25rem;
   align-items: start;
 }
 
 .spa-shell-sidebar {
   position: sticky;
-  top: 0.2rem;
-  padding: 0.9rem 0.8rem;
+  top: 0.4rem;
+  padding: 0.95rem 0.9rem;
 }
 
 .spa-sidebar-links {
@@ -107,9 +178,9 @@ h4 {
 
 .spa-sidebar-link {
   position: relative;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(244, 235, 222, 0.88));
+  border: 1px solid color-mix(in srgb, var(--line) 72%, #ffffff 28%);
+  border-radius: 13px;
+  background: linear-gradient(180deg, #ffffff, var(--surface-alt));
   color: var(--ink);
   padding: 0.56rem 0.65rem;
   text-align: left;
@@ -134,9 +205,9 @@ h4 {
 }
 
 .spa-sidebar-link:hover {
-  border-color: var(--line-strong);
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line) 62%);
   transform: translateX(1px);
-  box-shadow: 0 12px 22px -20px rgba(18, 37, 48, 0.72);
+  box-shadow: 0 14px 24px -24px rgba(15, 23, 42, 0.75);
 }
 
 .spa-sidebar-link:hover::after,
@@ -147,18 +218,19 @@ h4 {
 .spa-sidebar-link[aria-current="page"] {
   border-color: color-mix(in srgb, var(--accent) 48%, var(--gold) 30%);
   background:
-    linear-gradient(145deg, rgba(236, 249, 251, 0.95), rgba(244, 236, 222, 0.95)),
-    linear-gradient(90deg, transparent, rgba(13, 91, 103, 0.06));
-  box-shadow: 0 14px 26px -22px rgba(9, 63, 71, 0.92);
+    linear-gradient(145deg, rgba(252, 242, 251, 0.95), rgba(243, 233, 220, 0.95)),
+    linear-gradient(90deg, transparent, rgba(112, 41, 99, 0.08));
+  box-shadow: 0 14px 26px -22px rgba(68, 30, 57, 0.72);
 }
 
 .panel {
   position: relative;
   border: 1px solid color-mix(in srgb, var(--line) 86%, #ffffff 14%);
-  background: linear-gradient(175deg, var(--surface-strong), var(--surface));
+  background: linear-gradient(180deg, var(--surface), var(--surface-alt));
   border-radius: 16px;
   box-shadow: var(--shadow-soft);
   overflow: hidden;
+  backdrop-filter: blur(2px);
   animation: rise-in 420ms ease-out both;
 }
 
@@ -181,7 +253,7 @@ h4 {
 
 .primary-button {
   border: 1px solid color-mix(in srgb, var(--accent) 78%, var(--accent-strong) 22%);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 85%, #0f4c57 15%), var(--accent-strong));
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
   color: var(--accent-ink);
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -190,6 +262,8 @@ h4 {
   cursor: pointer;
   transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
   box-shadow: 0 12px 26px -20px rgba(9, 63, 71, 0.9);
+  font-family: "Inter", "Segoe UI", sans-serif;
+  font-size: 0.9rem;
 }
 
 .primary-button:hover:not(:disabled) {
@@ -212,18 +286,26 @@ h4 {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 11px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 235, 222, 0.82));
+  background: #ffffff;
   color: var(--ink);
-  padding: 0.6rem 0.72rem;
+  padding: 0.64rem 0.72rem;
   font-size: 0.93rem;
-  font-family: inherit;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  line-height: 1.4;
   transition: border-color 160ms ease, box-shadow 160ms ease;
+  min-height: 2.4rem;
 }
 
 .input:focus {
   outline: none;
   border-color: color-mix(in srgb, var(--accent) 56%, var(--gold) 20%);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+select.input,
+textarea.input,
+input.input {
+  min-height: 2.4rem;
 }
 
 .grid-2 {
@@ -258,7 +340,7 @@ h4 {
   border: 1px solid var(--line);
   border-radius: 14px;
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 92%, #ebdfc8 8%), var(--surface-strong)),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 92%, var(--accent-deep) 8%), var(--surface-strong)),
     repeating-linear-gradient(90deg, rgba(25, 53, 64, 0.03) 0 1px, transparent 1px 78px);
   padding: 0.78rem;
   min-height: 20rem;
@@ -415,7 +497,7 @@ h4 {
   height: 100%;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--accent) 84%, #0e3b44 16%),
+    color-mix(in srgb, var(--accent) 84%, var(--accent-strong) 16%),
     color-mix(in srgb, var(--accent) 58%, var(--gold) 42%)
   );
 }
@@ -457,7 +539,7 @@ h4 {
 }
 
 .checkin-stepper .primary-button[aria-current="step"] {
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 72%, #0e3942 28%), #07343b);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 72%, var(--accent-strong) 28%), var(--accent-deep));
   border-color: color-mix(in srgb, var(--gold) 30%, var(--accent) 70%);
 }
 
@@ -495,7 +577,7 @@ h4 {
   inset: 0 0 auto;
   height: 2px;
   border-radius: 13px 13px 0 0;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 80%, #113b45 20%), var(--gold));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 80%, var(--accent-strong) 20%), var(--gold));
 }
 
 .report-metric-card:hover {
@@ -525,7 +607,7 @@ h4 {
 .report-progress-fill {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 82%, #0f3c44 18%), var(--gold));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 82%, var(--accent-deep) 18%), var(--gold));
 }
 
 .report-progress-fill.risk {
@@ -554,8 +636,8 @@ h4 {
 
 .report-panel.accent {
   background:
-    linear-gradient(155deg, rgba(236, 249, 251, 0.82), rgba(255, 249, 238, 0.9)),
-    linear-gradient(120deg, transparent, rgba(13, 91, 103, 0.06));
+    linear-gradient(155deg, rgba(245, 237, 250, 0.82), rgba(251, 247, 255, 0.9)),
+    linear-gradient(120deg, transparent, rgba(112, 41, 99, 0.06));
 }
 
 .report-panel-head {
@@ -722,7 +804,7 @@ h4 {
   font-size: 2rem;
   font-weight: 700;
   letter-spacing: 0.03em;
-  color: color-mix(in srgb, var(--accent) 82%, #0b3640 18%);
+  color: color-mix(in srgb, var(--accent) 82%, var(--accent-deep) 18%);
 }
 
 .timer-modal-actions {
@@ -883,7 +965,7 @@ h4 {
 }
 
 .timeline-status-in-progress {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 78%, #154650 22%), #4d817a);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 78%, var(--accent-deep) 22%), color-mix(in srgb, var(--surface-alt) 78%, var(--accent) 22%));
 }
 
 .timeline-status-done {

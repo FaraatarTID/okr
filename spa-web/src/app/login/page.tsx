@@ -80,51 +80,35 @@ function LoginPageContent() {
 
   return (
     <main className="page-shell">
-      <section
-        className="panel"
-        style={{
-          marginBottom: "0.9rem",
-          padding: "1.1rem 1.05rem",
-          background:
-            "linear-gradient(118deg, color-mix(in srgb, var(--surface) 94%, var(--accent) 6%), var(--surface))",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.7rem" }}>
-          <img
-            src="/okr-logo.webp"
-            alt="OKR logo"
-            width={42}
-            height={74}
-            style={{ display: "block", width: "42px", height: "74px", objectFit: "contain" }}
-          />
-          <h1 style={{ margin: 0 }}>OKR</h1>
+      <section className="panel login-shell-hero">
+        <div className="login-brand-row">
+          <img src="/okr-logo.webp" alt="OKR logo" width={42} height={74} className="login-logo" />
+          <h1 className="login-brand-title">OKR</h1>
         </div>
       </section>
 
-      <section className="panel" style={{ padding: "0.95rem", maxWidth: 540 }}>
-        <label htmlFor="username" style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+      <section className="panel login-shell-card">
+        <label htmlFor="username" className="login-label">
           Username
         </label>
         <input
           id="username"
-          className="input"
+          className="input login-field"
           value={username}
           onChange={(event) => setUsername(event.target.value)}
           autoComplete="username"
-          style={{ marginBottom: "0.55rem", marginTop: "0.22rem" }}
         />
 
-        <label htmlFor="password" style={{ fontSize: "0.85rem", color: "var(--ink-soft)" }}>
+        <label htmlFor="password" className="login-label">
           Password
         </label>
         <input
           id="password"
-          className="input"
+          className="input login-field"
           type="password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           autoComplete="current-password"
-          style={{ marginBottom: "0.7rem", marginTop: "0.22rem" }}
         />
 
         <button
@@ -136,7 +120,7 @@ function LoginPageContent() {
           {pending ? "Signing in..." : "Sign in"}
         </button>
 
-        {error ? <p style={{ margin: "0.65rem 0 0", color: "var(--error)" }}>{error}</p> : null}
+        {error ? <p className="login-feedback">{error}</p> : null}
       </section>
     </main>
   );
@@ -147,16 +131,10 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <main className="page-shell">
-          <section className="panel" style={{ padding: "1rem", maxWidth: 540 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.7rem" }}>
-              <img
-                src="/okr-logo.webp"
-                alt="OKR logo"
-                width={34}
-                height={60}
-                style={{ display: "block", width: "34px", height: "60px", objectFit: "contain" }}
-              />
-              <h1 style={{ margin: 0 }}>OKR</h1>
+          <section className="panel login-shell-hero">
+            <div className="login-brand-row">
+              <img src="/okr-logo.webp" alt="OKR logo" width={34} height={60} className="login-logo login-logo--mini" />
+              <h1 className="login-brand-title">OKR</h1>
             </div>
           </section>
         </main>

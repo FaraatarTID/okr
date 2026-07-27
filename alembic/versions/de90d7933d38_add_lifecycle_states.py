@@ -47,11 +47,20 @@ def upgrade() -> None:
 
         # 4. Alter types with robust casting
         op.execute(
-            "ALTER TABLE key_result ALTER COLUMN metric_type TYPE metrictype USING CASE WHEN upper(metric_type) IN ('BOOLEAN', 'NUMERIC', 'PERCENT') THEN upper(metric_type)::metrictype ELSE 'NUMERIC'::metrictype END"
+            "ALTER TABLE key_result ALTER COLUMN metric_type TYPE metrictype USING CASE WHEN upper(metric_type::text) IN ('BOOLEAN', 'NUMERIC', 'PERCENT') THEN upper(metric_type::text)::metrictype ELSE 'NUMERIC'::metrictype END"
         )
         op.execute(
-            "ALTER TABLE objective ALTER COLUMN score_mode TYPE scoremode USING CASE WHEN upper(score_mode) IN ('UNWEIGHTED', 'WEIGHTED') THEN upper(score_mode)::scoremode ELSE 'UNWEIGHTED'::scoremode END"
+            "ALTER TABLE objective ALTER COLUMN score_mode TYPE scoremode USING CASE WHEN upper(score_mode::text) IN ('UNWEIGHTED', 'WEIGHTED') THEN upper(score_mode::text)::scoremode ELSE 'UNWEIGHTED'::scoremode END"
         )
+
+        existing_tables = set(sa.inspect(bind).get_table_names())
+        key_result_cols = set()
+        objective_cols = set()
+
+        if "key_result" in existing_tables:
+            key_result_cols = {c["name"] for c in sa.inspect(bind).get_columns("key_result")}
+        if "objective" in existing_tables:
+            objective_cols = {c["name"] for c in sa.inspect(bind).get_columns("objective")}
 
         # 5. Set new defaults and not null constraints
         op.execute(
@@ -65,44 +74,48 @@ def upgrade() -> None:
 
         # 6. Remaining columns for Postgres
         with op.batch_alter_table("key_result", schema=None) as batch_op:
-            batch_op.add_column(
-                sa.Column(
-                    "state",
-                    sa.Enum(
-                        "DRAFT", "ACTIVE", "GRADING", "ARCHIVED", name="lifecyclestate"
-                    ),
-                    nullable=False,
-                    server_default="DRAFT",
+            if "state" not in key_result_cols:
+                batch_op.add_column(
+                    sa.Column(
+                        "state",
+                        sa.Enum(
+                            "DRAFT", "ACTIVE", "GRADING", "ARCHIVED", name="lifecyclestate"
+                        ),
+                        nullable=False,
+                        server_default="DRAFT",
+                    )
                 )
-            )
-            batch_op.add_column(
-                sa.Column(
-                    "final_reflection",
-                    sqlmodel.sql.sqltypes.AutoString(),
-                    nullable=True,
+            if "final_reflection" not in key_result_cols:
+                batch_op.add_column(
+                    sa.Column(
+                        "final_reflection",
+                        sqlmodel.sql.sqltypes.AutoString(),
+                        nullable=True,
+                    )
                 )
-            )
             batch_op.alter_column("start_value", nullable=False)
             batch_op.alter_column("weight", nullable=False, server_default="1.0")
 
         with op.batch_alter_table("objective", schema=None) as batch_op:
-            batch_op.add_column(
-                sa.Column(
-                    "state",
-                    sa.Enum(
-                        "DRAFT", "ACTIVE", "GRADING", "ARCHIVED", name="lifecyclestate"
-                    ),
-                    nullable=False,
-                    server_default="DRAFT",
+            if "state" not in objective_cols:
+                batch_op.add_column(
+                    sa.Column(
+                        "state",
+                        sa.Enum(
+                            "DRAFT", "ACTIVE", "GRADING", "ARCHIVED", name="lifecyclestate"
+                        ),
+                        nullable=False,
+                        server_default="DRAFT",
+                    )
                 )
-            )
-            batch_op.add_column(
-                sa.Column(
-                    "final_reflection",
-                    sqlmodel.sql.sqltypes.AutoString(),
-                    nullable=True,
+            if "final_reflection" not in objective_cols:
+                batch_op.add_column(
+                    sa.Column(
+                        "final_reflection",
+                        sqlmodel.sql.sqltypes.AutoString(),
+                        nullable=True,
+                    )
                 )
-            )
             batch_op.alter_column("weight", nullable=False, server_default="1.0")
     else:
         # Standard Alembic behavior for SQLite/others

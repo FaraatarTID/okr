@@ -1,0 +1,27 @@
+# Ignore dependencies/build artifacts
+node_modules/
+.next/
+dist/
+coverage/
+.vscode/
+.idea/
+.DS_Store
+.git/
+.gitignore
+npm-debug.log*
+*.log
+.tmp/
+__pycache__/
+.venv/
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# Ignore large/unneeded docs/files
+README.md
+CHANGELOG.md
+docs/
+
+# Keep only build inputs required by Dockerfiles
