@@ -1,5 +1,7 @@
 # Productionization Work Log
 
+Documentation HQ: [README](README.md)
+
 ## 2026-07-26
 
 ### Issue: ARCH-04 — Extract domain services from oversized CRUD facade

@@ -80,13 +80,17 @@ _MUTATION_AUTH_MATRIX_ROUTES = [
     (
         "POST",
         "/v1/users",
-        {"username": "newmember", "password": "NewStrongPassw0rd!", "role": "member"},
+        {
+            "username": "newmember",
+            "password": "a1f2c3d4e5g6h7i8j9k0lmno",
+            "role": "member",
+        },
         ("create_user",),
     ),
     (
         "POST",
         "/v1/users/11/reset-password",
-        {"new_password": "P@ssword123"},
+        {"new_password": "x9y8z7w6v5u4t3s2r1q0p"},
         ("reset_user_password",),
     ),
     (

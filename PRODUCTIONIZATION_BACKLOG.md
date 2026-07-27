@@ -1,5 +1,7 @@
 # Productionization Backlog (Structured)
 
+Documentation HQ: [README](README.md)
+
 This backlog is the structured set of productionization work and its completion status for the repository.
 
 ## 2026-07-26
