@@ -244,7 +244,7 @@ If you are a first-time reader, skip this section until after `Start Here`.
 - Architecture (system): [ARCHITECTURE.md](ARCHITECTURE.md)
 - Maintainer map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
 - Production readiness report: [docs/PRODUCTION_READINESS_REPORT.md](docs/PRODUCTION_READINESS_REPORT.md)
-- Productionization audit and modernization roadmap: [docs/PRODUCTIONIZATION_AUDIT.md](docs/PRODUCTIONIZATION_AUDIT.md)
+- Productionization backlog: [PRODUCTIONIZATION_BACKLOG.md](PRODUCTIONIZATION_BACKLOG.md)
 - User Guide (EN): [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
 - User Guide (FA): [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
 - Manager Playbook (EN): [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md)
@@ -347,6 +347,9 @@ Docker Compose:
 docker compose -f deploy/docker/docker-compose.yml up -d --build backend-api backend-worker spa-bff spa-web
 ```
 
+Compose uses the local `postgres` service from `deploy/docker/docker-compose.yml` by default when `OKR_DATABASE_URL` is not provided.
+This keeps local integration aligned with production PostgreSQL behavior.
+
 Windows quick launcher (repo root):
 
 ```bat
@@ -375,9 +378,9 @@ Prerequisites:
 - Database URL set as `OKR_DATABASE_URL` (recommended) or `DATABASE_URL` (alias)
 
 Local launcher fallback behavior:
-- If the configured remote database host is unreachable, `run_hybrid_app_local.bat` can auto-fallback to local SQLite at `tmp/okr-local-dev.sqlite3`.
+- `run_hybrid_app_local.bat` can fall back to local SQLite at `tmp/okr-local-dev.sqlite3` only when explicitly enabled.
 - Control fallback with:
-  - `OKR_LOCAL_DB_FALLBACK=true|false` (default: `true`)
+  - `OKR_LOCAL_DB_FALLBACK=true|false` (default: `false`)
   - `OKR_LOCAL_DB_RESET=true|false` (default: `false`, set `true` to rebuild local SQLite on launch)
 - If your network blocks Postgres ports (`5432`/`6543`), verify Supabase HTTPS access over port `443`:
   - `python scripts/supabase_https_probe.py --url https://<project-ref>.supabase.co`

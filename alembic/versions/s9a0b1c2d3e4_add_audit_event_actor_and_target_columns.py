@@ -50,9 +50,7 @@ def upgrade() -> None:
     existing_columns = _column_names("audit_event")
     with op.batch_alter_table("audit_event") as batch_op:
         if "actor_user_id" not in existing_columns:
-            batch_op.add_column(
-                sa.Column("actor_user_id", sa.Integer(), nullable=True)
-            )
+            batch_op.add_column(sa.Column("actor_user_id", sa.Integer(), nullable=True))
         if "actor_role" not in existing_columns:
             batch_op.add_column(sa.Column("actor_role", sa.String(), nullable=True))
         if "actor_team_id" not in existing_columns:
@@ -66,7 +64,9 @@ def upgrade() -> None:
                 sa.Column("target_owner_id", sa.Integer(), nullable=True)
             )
         if "target_team_id" not in existing_columns:
-            batch_op.add_column(sa.Column("target_team_id", sa.Integer(), nullable=True))
+            batch_op.add_column(
+                sa.Column("target_team_id", sa.Integer(), nullable=True)
+            )
 
     existing_indexes = _index_names("audit_event")
     if "ix_audit_event_actor_user_id" not in existing_indexes:

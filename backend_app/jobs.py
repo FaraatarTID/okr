@@ -8,7 +8,7 @@ import logging
 from datetime import timedelta
 from typing import Any, Dict, Optional, cast
 
-from sqlalchemy import delete, update
+from sqlalchemy import delete, func, update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlmodel import col, select
 
@@ -20,6 +20,7 @@ ensure_shared_src_on_path()
 from src.database import get_session_context
 from src.models import AsyncJob, AsyncJobStatus, AuditEvent, User
 from src.utils.time_utils import utc_now_naive
+from src.observability_metrics import record_job_submission
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -50,6 +51,25 @@ def _loads_json(raw: Optional[str]) -> Optional[Dict[str, Any]]:
     except (TypeError, ValueError):
         return None
     return None
+
+
+def get_job_queue_depth() -> tuple[int, int]:
+    """Return the number of jobs currently in queued vs running states."""
+    with get_session_context() as session:
+        pending = session.exec(
+            select(func.count())
+            .select_from(AsyncJob)
+            .where(AsyncJob.status == AsyncJobStatus.PENDING)
+        ).first()
+        running = session.exec(
+            select(func.count())
+            .select_from(AsyncJob)
+            .where(AsyncJob.status == AsyncJobStatus.RUNNING)
+        ).first()
+    return (
+        int(pending or 0),
+        int(running or 0),
+    )
 
 
 def serialize_job(job: AsyncJob) -> Dict[str, Any]:
@@ -131,6 +151,7 @@ def enqueue_job(
                 return existing
             raise
         session.refresh(job)
+        record_job_submission(kind=str(kind).strip())
         return job
 
 
@@ -331,7 +352,9 @@ def prune_terminal_jobs(*, retention_days: int, batch_size: int = 200) -> int:
         if not candidate_ids:
             return 0
 
-        result = session.exec(delete(AsyncJob).where(cast(Any, AsyncJob.id).in_(candidate_ids)))
+        result = session.exec(
+            delete(AsyncJob).where(cast(Any, AsyncJob.id).in_(candidate_ids))
+        )
         deleted = int(getattr(result, "rowcount", 0) or 0)
         session.commit()
         return deleted
@@ -355,7 +378,9 @@ def prune_audit_events(*, retention_days: int, batch_size: int = 200) -> int:
         if not candidate_ids:
             return 0
 
-        result = session.exec(delete(AuditEvent).where(cast(Any, AuditEvent.id).in_(candidate_ids)))
+        result = session.exec(
+            delete(AuditEvent).where(cast(Any, AuditEvent.id).in_(candidate_ids))
+        )
         deleted = int(getattr(result, "rowcount", 0) or 0)
         session.commit()
         return deleted

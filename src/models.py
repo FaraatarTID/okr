@@ -104,9 +104,7 @@ class ExpectedEffectDirection(str, Enum):
 class SQLModelTable(SQLModel):
     """Type-compatibility base for SQLModel classes declared with table=True."""
 
-    def __init_subclass__(
-        cls, *args: Any, table: bool = False, **kwargs: Any
-    ) -> None:
+    def __init_subclass__(cls, *args: Any, table: bool = False, **kwargs: Any) -> None:
         super().__init_subclass__(*args, **kwargs)
 
 
@@ -315,7 +313,9 @@ class Cycle(SQLModelTable, table=True):
     start_date: datetime
     end_date: datetime
     is_active: bool = Field(default=True)
-    owner_manager_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    owner_manager_id: Optional[int] = Field(
+        default=None, foreign_key="user.id", index=True
+    )
 
     # Relationships
     goals: List["Goal"] = Relationship(
@@ -468,9 +468,7 @@ class Task(NodeBase, SQLModelTable, table=True):
 
     __tablename__ = "task"
     __table_args__ = (
-        CheckConstraint(
-            "progress >= 0", name="ck_task_progress_non_negative"
-        ),
+        CheckConstraint("progress >= 0", name="ck_task_progress_non_negative"),
         CheckConstraint(
             "estimated_minutes >= 0", name="ck_task_estimated_minutes_non_negative"
         ),
@@ -692,7 +690,9 @@ class ObjectiveAlignmentLink(SQLModelTable, table=True):
     objective_id: int = Field(foreign_key="objective.id", index=True)
     linked_entity_type: str = Field(...)  # "goal" or "key_result"
     linked_entity_id: int = Field(...)
-    direction: str = Field(...)  # "parent" (linked entity is parent) or "child" (linked entity is child)
+    direction: str = Field(
+        ...
+    )  # "parent" (linked entity is parent) or "child" (linked entity is child)
     created_at: datetime = Field(default_factory=utc_now_naive)
     created_by: Optional[str] = None
 

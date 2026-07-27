@@ -85,7 +85,9 @@ def create_weekly_plan_from_crud(
                     "user_id": user_id,
                     "week_start_date": start_date,
                     "week_end_date": end_date,
-                    "actor_role": getattr(getattr(actor_user, "role", None), "value", None),
+                    "actor_role": getattr(
+                        getattr(actor_user, "role", None), "value", None
+                    ),
                     "actor_team_id": getattr(actor_user, "team_id", None),
                 },
             )

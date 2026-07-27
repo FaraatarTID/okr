@@ -84,10 +84,15 @@ def _derive_target_fields(payload: dict) -> dict:
     target_team_id = _normalize_optional_int(payload.get("target_team_id"))
 
     if target_type is None:
-        if payload.get("entity") == "weekly_plan" and details.get("weekly_plan_id") is not None:
+        if (
+            payload.get("entity") == "weekly_plan"
+            and details.get("weekly_plan_id") is not None
+        ):
             target_type = "weekly_plan"
             target_id = _normalize_optional_int(details.get("weekly_plan_id"))
-            target_owner_id = target_owner_id or _normalize_optional_int(details.get("user_id"))
+            target_owner_id = target_owner_id or _normalize_optional_int(
+                details.get("user_id")
+            )
         elif payload.get("entity") == "ai_node" and details.get("node_id") is not None:
             target_type = "node"
             target_id = _normalize_optional_int(details.get("node_id"))
@@ -100,7 +105,11 @@ def _derive_target_fields(payload: dict) -> dict:
 
     if target_owner_id is None:
         target_owner_id = _normalize_optional_int(details.get("target_owner_id"))
-        if target_owner_id is None and "user_id" in details and payload.get("entity") == "weekly_plan":
+        if (
+            target_owner_id is None
+            and "user_id" in details
+            and payload.get("entity") == "weekly_plan"
+        ):
             target_owner_id = _normalize_optional_int(details.get("user_id"))
 
     if target_team_id is None:
@@ -133,9 +142,7 @@ def _resolve_actor_snapshot(actor: Optional[str]) -> dict:
         from src.models import User
 
         with get_session_context() as session:
-            user = session.exec(
-                select(User).where(User.username == actor_name)
-            ).first()
+            user = session.exec(select(User).where(User.username == actor_name)).first()
             if user is not None:
                 actor_user_id = getattr(user, "id", None)
                 raw_role = getattr(user, "role", None)

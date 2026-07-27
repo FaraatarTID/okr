@@ -149,6 +149,17 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         return dict(main.get_pdf_runtime_diagnostics())
 
     @router.get(
+        "/v1/admin/observability/metrics",
+        dependencies=[Depends(main.require_service_access)],
+    )
+    def api_admin_observability_metrics(
+        x_okr_actor: Optional[str] = Header(default=None),
+    ) -> dict:
+        actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+        main._require_admin_actor_scope(actor)
+        return main.get_observability_metrics_snapshot()
+
+    @router.get(
         "/v1/admin/db-backup",
         dependencies=[Depends(main.require_service_access)],
     )

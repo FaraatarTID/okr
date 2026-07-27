@@ -11,6 +11,12 @@ from backend_app.main import BACKUP_FORMAT_VERSION
 
 def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
+    monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "false")
+    monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.setenv("NODE_ENV", "development")
+    monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "memory")
+    monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS", "10000")
+    monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     return TestClient(backend_main.app), backend_main
 
@@ -122,6 +128,7 @@ _MUTATION_AUTH_MATRIX_ROUTES = [
         "/v1/retrospectives",
         {
             "user_id": 1,
+            "cycle_id": 11,
             "week_start_date": "2026-01-01",
             "content": "Member scope regression",
         },

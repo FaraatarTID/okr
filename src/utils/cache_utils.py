@@ -14,7 +14,9 @@ def clear_cache_safe():
         if not broadcast_cache_invalidation():
             _LOGGER.warning("Failed to broadcast distributed cache invalidation.")
     except (ImportError, AttributeError, RuntimeError) as exc:
-        _LOGGER.debug("Skipping cache invalidation broadcast in current runtime: %s", exc)
+        _LOGGER.debug(
+            "Skipping cache invalidation broadcast in current runtime: %s", exc
+        )
 
 
 def check_distributed_cache_staleness():
@@ -29,7 +31,9 @@ def check_distributed_cache_staleness():
 
         global_ts = get_last_invalidation_timestamp()
         if global_ts and global_ts != _LAST_SEEN_INVALIDATION_TS:
-            _LOGGER.info("Distributed cache invalidation detected (global_ts=%s).", global_ts)
+            _LOGGER.info(
+                "Distributed cache invalidation detected (global_ts=%s).", global_ts
+            )
             _LAST_SEEN_INVALIDATION_TS = global_ts
     except Exception as exc:
         _LOGGER.debug("Failed to check distributed cache staleness: %s", exc)

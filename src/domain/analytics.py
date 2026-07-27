@@ -437,12 +437,12 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
                 .over(
                     partition_by=CheckIn.key_result_id,
                     order_by=(
-                    col(CheckIn.created_at).desc(),
-                    col(CheckIn.id).desc(),
-                ),
-            )
-            .label("rn"),
-        ).subquery()
+                        col(CheckIn.created_at).desc(),
+                        col(CheckIn.id).desc(),
+                    ),
+                )
+                .label("rn"),
+            ).subquery()
 
         kr_rows = session.exec(
             select(
@@ -514,7 +514,10 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
 
             risk_reasons = []
             if latest_exists:
-                if latest_created_at is not None and latest_created_at >= seven_days_ago:
+                if (
+                    latest_created_at is not None
+                    and latest_created_at >= seven_days_ago
+                ):
                     updated_count += 1
                 total_confidence += latest_confidence
                 conf_count += 1
@@ -565,9 +568,7 @@ def get_leadership_metrics(usernames: List[str], cycle_id: int):
 
         payload = {
             "hygiene_pct": (updated_count / len(kr_rows) * 100) if kr_rows else 0,
-            "avg_confidence": (total_confidence / conf_count)
-            if conf_count > 0
-            else 0,
+            "avg_confidence": (total_confidence / conf_count) if conf_count > 0 else 0,
             "at_risk_count": len(at_risk_list),
             "total_krs": len(kr_rows),
             "at_risk": at_risk_list,

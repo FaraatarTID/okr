@@ -1155,7 +1155,9 @@ def create_cycle(
             "start_date": _json_safe(start_date),
             "end_date": _json_safe(end_date),
             "is_active": bool(is_active),
-            "owner_manager_id": int(owner_manager_id) if owner_manager_id is not None else None,
+            "owner_manager_id": int(owner_manager_id)
+            if owner_manager_id is not None
+            else None,
             "actor_username": str(actor_username),
         },
         timeout=(3.0, 25.0),
@@ -1182,7 +1184,9 @@ def update_cycle(
             "start_date": _json_safe(start_date),
             "end_date": _json_safe(end_date),
             "is_active": bool(is_active),
-            "owner_manager_id": int(owner_manager_id) if owner_manager_id is not None else None,
+            "owner_manager_id": int(owner_manager_id)
+            if owner_manager_id is not None
+            else None,
             "actor_username": str(actor_username),
         },
         timeout=(3.0, 25.0),

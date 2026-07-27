@@ -26,11 +26,20 @@ def _build_kr_tree_for_user(username: str, cycle_id: int):
     goal = create_goal(
         username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username
     )
-    objective = create_objective(goal.id, "Objective", actor_username=username)
+    assert goal is not None
+    goal_id = goal.id
+    assert goal_id is not None
+    objective = create_objective(goal_id, "Objective", actor_username=username)
+    assert objective is not None
+    objective_id = objective.id
+    assert objective_id is not None
     kr = create_key_result(
-        objective.id, "KR", target_value=100.0, actor_username=username
+        objective_id, "KR", target_value=100.0, actor_username=username
     )
-    update_objective(objective.id, state=LifecycleState.ACTIVE, actor_username=username)
+    assert kr is not None
+    kr_id = kr.id
+    assert kr_id is not None
+    update_objective(objective_id, state=LifecycleState.ACTIVE, actor_username=username)
     return goal, objective, kr
 
 

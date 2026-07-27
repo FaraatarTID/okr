@@ -9,6 +9,7 @@ import logging
 import uuid
 import math
 import sys
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional, Type, cast
@@ -90,6 +91,11 @@ from backend_app.security_state import (
     load_idempotent_response,
     store_idempotent_response,
 )
+from src.observability_metrics import (
+    log_payload as build_observability_log_payload,
+    record_api_request,
+    snapshot as observability_snapshot,
+)
 
 ensure_shared_src_on_path()
 
@@ -112,6 +118,7 @@ __all__ = [
     "LeadershipMetricsRequest",
     "LoginRequest",
     "ReadQueryRequest",
+    "get_observability_metrics_snapshot",
 ]
 
 from src.crud import (
@@ -359,14 +366,71 @@ def _resolve_request_observability_ids(request: Request) -> tuple[str, str]:
 @app.middleware("http")
 async def _inject_observability_context(request: Request, call_next):
     correlation_id, request_id = _resolve_request_observability_ids(request)
+    route = request.url.path
+    route_obj = request.scope.get("route")
+    if route_obj is not None:
+        route = str(getattr(route_obj, "path", route))
+
+    actor = request.headers.get("x-okr-actor")
+    start_time = time.perf_counter()
+    status_code = 500
     with observability_context(
         correlation_id=correlation_id,
         request_id=request_id,
     ):
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+            status_code = int(getattr(response, "status_code", 500) or 500)
+        except Exception:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            record_api_request(
+                method=request.method,
+                route=route,
+                status_code=500,
+                duration_ms=duration_ms,
+                actor=actor,
+            )
+            _LOGGER.exception(
+                build_observability_log_payload(
+                    event="http_request_unhandled_error",
+                    method=request.method,
+                    route=route,
+                    status=500,
+                    actor=actor,
+                    correlation_id=correlation_id,
+                    request_id=request_id,
+                    duration_ms=round(duration_ms, 3),
+                )
+            )
+            raise
+
     response.headers["X-Correlation-ID"] = correlation_id
     response.headers["X-Request-ID"] = request_id
+    duration_ms = (time.perf_counter() - start_time) * 1000
+    record_api_request(
+        method=request.method,
+        route=route,
+        status_code=status_code,
+        duration_ms=duration_ms,
+        actor=actor,
+    )
+    _LOGGER.info(
+        build_observability_log_payload(
+            event="http_request",
+            method=request.method,
+            route=route,
+            status=status_code,
+            actor=actor,
+            duration_ms=round(duration_ms, 3),
+            correlation_id=correlation_id,
+            request_id=request_id,
+        )
+    )
     return response
+
+
+def get_observability_metrics_snapshot() -> dict[str, Any]:
+    return observability_snapshot()
 
 
 _NODE_TYPES = {"GOAL", "OBJECTIVE", "KEY_RESULT", "TASK"}
@@ -2252,9 +2316,7 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             _coerce_int(params.get("cycle_id"), field_name="cycle_id"),
         )
         if cycle_id is None:
-            raise HTTPException(
-                status_code=400, detail="cycle_id is required."
-            )
+            raise HTTPException(status_code=400, detail="cycle_id is required.")
         window_start = _coerce_datetime(
             params.get("window_start"),
             field_name="window_start",
@@ -2339,7 +2401,9 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
             payload = _serialize_retro(retro, include_user=False)
             if payload is None:
                 continue
-            user_payload = _serialize_user(users_by_id.get(int(payload.get("user_id") or 0)))
+            user_payload = _serialize_user(
+                users_by_id.get(int(payload.get("user_id") or 0))
+            )
             payload["user"] = user_payload
             serialized_retros.append(payload)
         return {"retros": serialized_retros}

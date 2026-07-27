@@ -150,7 +150,9 @@ def try_backend_mutation(
     if not crud_module._backend_mutation_proxy_enabled():
         return None
 
-    actor_name = str(actor_username or "").strip() if actor_username is not None else None
+    actor_name = (
+        str(actor_username or "").strip() if actor_username is not None else None
+    )
     if require_actor:
         if not actor_name:
             raise PermissionError("Actor username is required for this operation")

@@ -41,7 +41,9 @@ def _timer_start_payload() -> dict[str, object]:
     return {"task_id": 42, "user_id": "alice"}
 
 
-def test_direct_backend_timer_start_without_service_token_is_rejected(monkeypatch) -> None:
+def test_direct_backend_timer_start_without_service_token_is_rejected(
+    monkeypatch,
+) -> None:
     client = _make_client(monkeypatch, enforce_signing=False)
 
     response = client.post(
@@ -72,7 +74,9 @@ def test_direct_backend_timer_start_with_invalid_service_token_is_rejected(
     assert "service token" in str(response.json().get("detail", "")).lower()
 
 
-def test_internal_backend_timer_start_with_service_token_is_accepted(monkeypatch) -> None:
+def test_internal_backend_timer_start_with_service_token_is_accepted(
+    monkeypatch,
+) -> None:
     client = _make_client(monkeypatch, enforce_signing=False)
 
     response = client.post(

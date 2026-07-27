@@ -344,7 +344,9 @@ class ExperimentUpdateFields(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     hypothesis: Optional[str] = Field(default=None, min_length=1, max_length=5000)
-    change_description: Optional[str] = Field(default=None, min_length=1, max_length=5000)
+    change_description: Optional[str] = Field(
+        default=None, min_length=1, max_length=5000
+    )
     start_at: Optional[Union[datetime, int, str]] = None
     end_at: Optional[Union[datetime, int, str]] = None
     status: Optional[str] = Field(default=None, max_length=32)

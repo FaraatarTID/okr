@@ -81,5 +81,7 @@ def downgrade() -> None:
 
     cycle_columns = _column_names("cycle")
     if "owner_manager_id" in cycle_columns:
-        op.drop_constraint("fk_cycle_owner_manager_id_user", "cycle", type_="foreignkey")
+        op.drop_constraint(
+            "fk_cycle_owner_manager_id_user", "cycle", type_="foreignkey"
+        )
         op.drop_column("cycle", "owner_manager_id")

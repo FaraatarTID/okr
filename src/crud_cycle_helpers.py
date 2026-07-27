@@ -7,17 +7,23 @@ from typing import Optional
 from src import crud_core_helpers
 
 
-def _require_cycle_governance_actor(*, crud_module, session, actor_username: Optional[str]):
+def _require_cycle_governance_actor(
+    *, crud_module, session, actor_username: Optional[str]
+):
     actor = crud_module._require_actor_user(session, actor_username)
     if getattr(actor, "role", None) not in (
         crud_module.UserRole.ADMIN,
         crud_module.UserRole.MANAGER,
     ):
-        raise PermissionError("Admin or manager privileges are required for cycle operations.")
+        raise PermissionError(
+            "Admin or manager privileges are required for cycle operations."
+        )
     return actor
 
 
-def _validate_cycle_owner(*, crud_module, session, owner_manager_id: Optional[int]) -> Optional[int]:
+def _validate_cycle_owner(
+    *, crud_module, session, owner_manager_id: Optional[int]
+) -> Optional[int]:
     if owner_manager_id is None:
         return None
     manager_user = session.get(crud_module.User, int(owner_manager_id))
@@ -129,7 +135,13 @@ def update_cycle_from_crud(
     result = crud_core_helpers.try_backend_mutation(
         crud_module=crud_module,
         backend_fn_name="update_cycle",
-        backend_kwargs={"cycle_id": cycle_id, "title": title, "start_date": start_date, "end_date": end_date, "is_active": is_active},
+        backend_kwargs={
+            "cycle_id": cycle_id,
+            "title": title,
+            "start_date": start_date,
+            "end_date": end_date,
+            "is_active": is_active,
+        },
         actor_username=actor_username,
         require_actor=True,
         extract_result="node",
@@ -154,7 +166,10 @@ def update_cycle_from_crud(
         cycle = session.get(crud_module.Cycle, cycle_id)
         if not cycle:
             return None
-        if actor is not None and getattr(actor, "role", None) == crud_module.UserRole.MANAGER:
+        if (
+            actor is not None
+            and getattr(actor, "role", None) == crud_module.UserRole.MANAGER
+        ):
             actor_id = int(getattr(actor, "id", 0) or 0)
             if int(getattr(cycle, "owner_manager_id", 0) or 0) != actor_id:
                 raise PermissionError("Managers can only update their owned cycles.")
@@ -163,7 +178,10 @@ def update_cycle_from_crud(
         cycle.start_date = start_date
         cycle.end_date = end_date
         cycle.is_active = is_active
-        if actor is not None and getattr(actor, "role", None) == crud_module.UserRole.MANAGER:
+        if (
+            actor is not None
+            and getattr(actor, "role", None) == crud_module.UserRole.MANAGER
+        ):
             cycle.owner_manager_id = int(getattr(actor, "id"))
         elif owner_manager_id is not None:
             cycle.owner_manager_id = _validate_cycle_owner(
@@ -216,7 +234,10 @@ def delete_cycle_from_crud(
         cycle = session.get(crud_module.Cycle, cycle_id)
         if not cycle:
             return False
-        if actor is not None and getattr(actor, "role", None) == crud_module.UserRole.MANAGER:
+        if (
+            actor is not None
+            and getattr(actor, "role", None) == crud_module.UserRole.MANAGER
+        ):
             actor_id = int(getattr(actor, "id", 0) or 0)
             if int(getattr(cycle, "owner_manager_id", 0) or 0) != actor_id:
                 raise PermissionError("Managers can only delete their owned cycles.")

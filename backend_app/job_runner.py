@@ -69,4 +69,3 @@ def run_job(kind: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     if job_kind == "ai.generate_json":
         return _run_ai_generate_json_job(payload)
     raise ValueError(f"Unsupported job kind '{kind}'.")
-

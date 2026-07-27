@@ -1,5 +1,5 @@
 import pytest
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session
 from src.crud import create_user, create_goal, create_objective, create_alignment
 from src.domain.alignment import get_alignment_neighbors
 

@@ -11,9 +11,19 @@ def _build_task_tree_for_user(username: str, cycle_id: int):
     goal = create_goal(
         username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username
     )
-    objective = create_objective(goal.id, "Objective", actor_username=username)
-    key_result = create_key_result(objective.id, "KR", actor_username=username)
-    task = create_task(key_result.id, "Task", actor_username=username)
+    assert goal is not None
+    goal_id = goal.id
+    assert goal_id is not None
+    objective = create_objective(goal_id, "Objective", actor_username=username)
+    assert objective is not None
+    objective_id = objective.id
+    assert objective_id is not None
+    key_result = create_key_result(objective_id, "KR", actor_username=username)
+    assert key_result is not None
+    key_result_id = key_result.id
+    assert key_result_id is not None
+    task = create_task(key_result_id, "Task", actor_username=username)
+    assert task is not None
     return goal, objective, key_result, task
 
 

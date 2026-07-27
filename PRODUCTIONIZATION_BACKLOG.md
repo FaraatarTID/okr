@@ -1,6 +1,6 @@
 # Productionization Backlog (Structured)
 
-This backlog is derived from `docs/PRODUCTIONIZATION_AUDIT.md` and current repository state.
+This backlog is the structured set of productionization work and its completion status for the repository.
 
 ## 2026-07-26
 
@@ -35,7 +35,7 @@ This backlog is derived from `docs/PRODUCTIONIZATION_AUDIT.md` and current repos
 - Affected Files:
   - `src/*`
   - `backend_app/*`
-- Status: In Progress
+- Status: Completed
 
 ### ID: AUTH-01
 - Title: Ensure mutation-route matrix remains complete as API evolves
@@ -239,7 +239,7 @@ This backlog is derived from `docs/PRODUCTIONIZATION_AUDIT.md` and current repos
 - Estimated Scope: Medium
 - Affected Files:
   - API/BFF/worker configuration and instrumentation
-- Status: TODO
+- Status: Completed
 
 ### ID: PERF-01
 - Title: Add performance/query budgets for expensive endpoints
@@ -254,7 +254,7 @@ This backlog is derived from `docs/PRODUCTIONIZATION_AUDIT.md` and current repos
 - Affected Files:
   - Domain/service query modules
   - Performance test suite
-- Status: TODO
+- Status: Completed
 
 ### ID: JOB-01
 - Title: Harden async worker queue behavior
@@ -266,9 +266,10 @@ This backlog is derived from `docs/PRODUCTIONIZATION_AUDIT.md` and current repos
 - Dependencies: `ARCH-04`
 - Estimated Scope: Medium
 - Affected Files:
-  - `backend_worker`
+  - `backend_app/worker.py`
   - `backend_app/jobs.py`
-- Status: TODO
+  - `tests/test_fix_zombie_job_reaping.py`
+ - Status: Completed
 
 ### ID: AI-01
 - Title: Define and enforce AI/PII governance and prompt policy
@@ -282,7 +283,7 @@ This backlog is derived from `docs/PRODUCTIONIZATION_AUDIT.md` and current repos
 - Affected Files:
   - `src/services/ai_service.py`
   - `src/services/ai_provider.py`
-- Status: TODO
+- Status: Completed
 
 ### ID: ENV-01
 - Title: Align local and production DB parity
@@ -297,4 +298,4 @@ This backlog is derived from `docs/PRODUCTIONIZATION_AUDIT.md` and current repos
   - `docker-compose*.yml`
   - Local setup docs
   - Test harness scripts
-- Status: TODO
+- Status: Completed

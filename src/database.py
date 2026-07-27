@@ -335,6 +335,7 @@ def get_engine():
 
 class DirectDBUnavailable(Exception):
     """Raised when direct PostgreSQL connection is unavailable (for fallback to HTTPS)."""
+
     pass
 
 
@@ -343,7 +344,10 @@ def _check_direct_db_connection() -> bool:
     global _direct_db_available, _last_db_probe_at
     with _direct_db_check_lock:
         now = time.time()
-        if _direct_db_available is not None and (now - _last_db_probe_at) < _DB_REPROBE_INTERVAL_SECONDS:
+        if (
+            _direct_db_available is not None
+            and (now - _last_db_probe_at) < _DB_REPROBE_INTERVAL_SECONDS
+        ):
             return _direct_db_available
         try:
             engine = get_engine()
@@ -634,7 +638,9 @@ def import_database_backup(backup_content: bytes | str | Mapping) -> dict:
     stored_checksum = payload.get("checksum_sha256")
     if stored_checksum:
         verify_payload = {k: v for k, v in payload.items() if k != "checksum_sha256"}
-        verify_bytes = json.dumps(verify_payload, ensure_ascii=False, indent=2).encode("utf-8")
+        verify_bytes = json.dumps(verify_payload, ensure_ascii=False, indent=2).encode(
+            "utf-8"
+        )
         computed_checksum = hashlib.sha256(verify_bytes).hexdigest()
         if computed_checksum != stored_checksum:
             logger.warning(

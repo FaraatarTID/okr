@@ -26,7 +26,7 @@ if str(ROOT_DIR) not in sys.path:
 
 ROUTER_LINE_RE = re.compile(r'--port", "(\d+)".*?--api-key", "([^"]+)"', re.DOTALL)
 PORT_ONLY_RE = re.compile(r'--port", "(\d+)"', re.DOTALL)
-ANSI_ESCAPE_RE = re.compile(r'\x1b\[[0-9;]*m')
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def _jan_log_path() -> Path:
@@ -79,7 +79,9 @@ def _fetch_models(base_url: str, api_key: str) -> List[Dict[str, Any]]:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"Failed to query Jan models: HTTP {exc.code}: {detail}") from exc
+        raise RuntimeError(
+            f"Failed to query Jan models: HTTP {exc.code}: {detail}"
+        ) from exc
     except Exception as exc:
         raise RuntimeError(f"Failed to query Jan models: {exc}") from exc
 
@@ -121,7 +123,11 @@ def _build_report(prefer: Optional[str]) -> Dict[str, Any]:
     port, api_key = state
     base_url = f"http://127.0.0.1:{port}/v1"
     models = _fetch_models(base_url, api_key)
-    model_ids = [str(model.get("id") or "").strip() for model in models if str(model.get("id") or "").strip()]
+    model_ids = [
+        str(model.get("id") or "").strip()
+        for model in models
+        if str(model.get("id") or "").strip()
+    ]
     selected_model = _choose_model(models, prefer)
     return {
         "AI_BASE_URL": base_url,
@@ -135,7 +141,13 @@ def _build_report(prefer: Optional[str]) -> Dict[str, Any]:
 def _print_env(report: Dict[str, Any]) -> None:
     print(f"AI_BASE_URL={report['AI_BASE_URL']}")
     api_key = str(report.get("AI_API_KEY") or "")
-    masked = f"****{api_key[-4:]}" if len(api_key) > 4 else "****" if api_key else "(not set)"
+    masked = (
+        f"****{api_key[-4:]}"
+        if len(api_key) > 4
+        else "****"
+        if api_key
+        else "(not set)"
+    )
     print(f"AI_API_KEY={masked}")
     print(f"AI_MODEL={report['AI_MODEL']}")
     model_ids = report.get("JAN_MODEL_IDS") or []
@@ -148,7 +160,9 @@ def _update_env_file(path: Path, report: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     existing_lines: List[str] = []
     if path.exists():
-        existing_lines = path.read_text(encoding="utf-8-sig", errors="ignore").splitlines()
+        existing_lines = path.read_text(
+            encoding="utf-8-sig", errors="ignore"
+        ).splitlines()
 
     replacements = {
         "AI_BASE_URL": str(report["AI_BASE_URL"]),
@@ -180,7 +194,9 @@ def _update_env_file(path: Path, report: Dict[str, Any]) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Discover the active Jan router context.")
+    parser = argparse.ArgumentParser(
+        description="Discover the active Jan router context."
+    )
     parser.add_argument(
         "--prefer",
         help="Prefer a model ID containing this text (exact match first, then substring).",
@@ -205,7 +221,10 @@ def main() -> int:
     report = _build_report(args.prefer)
 
     if not report.get("AI_BASE_URL"):
-        print("[WARN] Jan AI router not found or not running; skipping context refresh.", file=sys.stderr)
+        print(
+            "[WARN] Jan AI router not found or not running; skipping context refresh.",
+            file=sys.stderr,
+        )
         return 0
 
     if args.json:
@@ -213,7 +232,13 @@ def main() -> int:
     elif args.powershell:
         print(f'$env:AI_BASE_URL = "{report["AI_BASE_URL"]}"')
         api_key = str(report.get("AI_API_KEY") or "")
-        masked = f"****{api_key[-4:]}" if len(api_key) > 4 else "****" if api_key else "(not set)"
+        masked = (
+            f"****{api_key[-4:]}"
+            if len(api_key) > 4
+            else "****"
+            if api_key
+            else "(not set)"
+        )
         print(f'$env:AI_API_KEY = "{masked}"')
         print(f'$env:AI_MODEL = "{report["AI_MODEL"]}"')
     else:

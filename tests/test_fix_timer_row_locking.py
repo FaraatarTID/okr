@@ -1,8 +1,5 @@
 """Tests for Fix 5: Race condition in concurrent timer stop and start."""
 
-from datetime import timedelta
-
-from src.models import LifecycleState, VariationType
 from src.database import get_session_context
 
 

@@ -39,7 +39,7 @@ def _normalize_int(value: object) -> Optional[int]:
     if value is None:
         return None
     try:
-        return int(value)
+        return int(str(value))
     except (TypeError, ValueError):
         return None
 
@@ -59,9 +59,11 @@ def _safe_json_loads(value: object) -> dict:
 def _load_actor_map(connection) -> dict[str, dict]:
     if "user" not in _table_names():
         return {}
-    rows = connection.execute(
-        sa.text("SELECT id, username, role, team_id FROM user")
-    ).mappings().all()
+    rows = (
+        connection.execute(sa.text("SELECT id, username, role, team_id FROM user"))
+        .mappings()
+        .all()
+    )
     actor_map: dict[str, dict] = {}
     for row in rows:
         username = _normalize_text(row.get("username"))
@@ -76,7 +78,9 @@ def _load_actor_map(connection) -> dict[str, dict]:
     return actor_map
 
 
-def _resolve_target_context(connection, target_type: Optional[str], target_id: Optional[int], details: dict) -> dict:
+def _resolve_target_context(
+    connection, target_type: Optional[str], target_id: Optional[int], details: dict
+) -> dict:
     lookup_type = _normalize_text(target_type)
     lookup_id = _normalize_int(target_id)
     node_type = _normalize_text(details.get("node_type"))
@@ -86,13 +90,20 @@ def _resolve_target_context(connection, target_type: Optional[str], target_id: O
         if node_type_normalized in {"goal", "objective", "key_result", "task"}:
             lookup_type = node_type_normalized
 
-    if lookup_type in {"goal", "objective", "key_result", "task"} and lookup_id is not None:
-        row = connection.execute(
-            sa.text(
-                f"SELECT owner_id, team_id FROM {lookup_type} WHERE id = :id LIMIT 1"
-            ),
-            {"id": lookup_id},
-        ).mappings().first()
+    if (
+        lookup_type in {"goal", "objective", "key_result", "task"}
+        and lookup_id is not None
+    ):
+        row = (
+            connection.execute(
+                sa.text(
+                    f"SELECT owner_id, team_id FROM {lookup_type} WHERE id = :id LIMIT 1"
+                ),
+                {"id": lookup_id},
+            )
+            .mappings()
+            .first()
+        )
         if row:
             return {
                 "target_owner_id": _normalize_int(row.get("owner_id")),
@@ -101,28 +112,39 @@ def _resolve_target_context(connection, target_type: Optional[str], target_id: O
         return {}
 
     if lookup_type == "weekly_plan" and lookup_id is not None:
-        row = connection.execute(
-            sa.text("SELECT user_id FROM weekly_plan WHERE id = :id LIMIT 1"),
-            {"id": lookup_id},
-        ).mappings().first()
+        row = (
+            connection.execute(
+                sa.text("SELECT user_id FROM weekly_plan WHERE id = :id LIMIT 1"),
+                {"id": lookup_id},
+            )
+            .mappings()
+            .first()
+        )
         if not row:
             return {}
         user_id = _normalize_int(row.get("user_id"))
         if user_id is None or "user" not in _table_names():
             return {"target_owner_id": user_id}
-        user_row = connection.execute(
-            sa.text("SELECT team_id FROM user WHERE id = :id LIMIT 1"),
-            {"id": user_id},
-        ).mappings().first()
+        user_row = (
+            connection.execute(
+                sa.text("SELECT team_id FROM user WHERE id = :id LIMIT 1"),
+                {"id": user_id},
+            )
+            .mappings()
+            .first()
+        )
         return {
             "target_owner_id": user_id,
-            "target_team_id": _normalize_int(user_row.get("team_id")) if user_row else None,
+            "target_team_id": _normalize_int(user_row.get("team_id"))
+            if user_row
+            else None,
         }
 
     if lookup_type == "check_in" and lookup_id is not None:
-        row = connection.execute(
-            sa.text(
-                """
+        row = (
+            connection.execute(
+                sa.text(
+                    """
                 SELECT g.owner_id AS owner_id, g.team_id AS team_id
                 FROM check_in ci
                 JOIN key_result kr ON kr.id = ci.key_result_id
@@ -131,9 +153,12 @@ def _resolve_target_context(connection, target_type: Optional[str], target_id: O
                 WHERE ci.id = :id
                 LIMIT 1
                 """
-            ),
-            {"id": lookup_id},
-        ).mappings().first()
+                ),
+                {"id": lookup_id},
+            )
+            .mappings()
+            .first()
+        )
         if row:
             return {
                 "target_owner_id": _normalize_int(row.get("owner_id")),
@@ -142,7 +167,9 @@ def _resolve_target_context(connection, target_type: Optional[str], target_id: O
         return {}
 
     if lookup_type == "ai_node" and lookup_id is not None and node_type:
-        return _resolve_target_context(connection, node_type.lower(), lookup_id, details)
+        return _resolve_target_context(
+            connection, node_type.lower(), lookup_id, details
+        )
 
     return {}
 
@@ -151,9 +178,10 @@ def _backfill_audit_event_snapshot_columns(connection) -> int:
     if "audit_event" not in _table_names():
         return 0
 
-    rows = connection.execute(
-        sa.text(
-            """
+    rows = (
+        connection.execute(
+            sa.text(
+                """
             SELECT
                 id,
                 actor,
@@ -168,8 +196,11 @@ def _backfill_audit_event_snapshot_columns(connection) -> int:
                 target_team_id
             FROM audit_event
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     if not rows:
         return 0
 
@@ -208,26 +239,23 @@ def _backfill_audit_event_snapshot_columns(connection) -> int:
                 target_type = "check_in"
                 target_id = _normalize_int(details.get("check_in_id"))
 
-        actor_snapshot = actor_map.get(actor) or actor_map.get(actor.lower() if actor else "")
-        if actor_snapshot:
-            if row.get("actor_user_id") is None:
-                row_actor_user_id = actor_snapshot.get("actor_user_id")
-            else:
-                row_actor_user_id = _normalize_int(row.get("actor_user_id"))
-            if row.get("actor_role") is None:
-                row_actor_role = actor_snapshot.get("actor_role")
-            else:
-                row_actor_role = _normalize_text(row.get("actor_role"))
-            if row.get("actor_team_id") is None:
-                row_actor_team_id = actor_snapshot.get("actor_team_id")
-            else:
-                row_actor_team_id = _normalize_int(row.get("actor_team_id"))
-        else:
-            row_actor_user_id = _normalize_int(row.get("actor_user_id"))
-            row_actor_role = _normalize_text(row.get("actor_role"))
-            row_actor_team_id = _normalize_int(row.get("actor_team_id"))
+    actor_snapshot: dict[str, object] | None = None
+    if actor:
+        actor_snapshot = actor_map.get(actor) or actor_map.get(actor.lower())
+    row_actor_user_id = _normalize_int(row.get("actor_user_id"))
+    row_actor_role = _normalize_text(row.get("actor_role"))
+    row_actor_team_id = _normalize_int(row.get("actor_team_id"))
+    if actor_snapshot:
+        if row.get("actor_user_id") is None:
+            row_actor_user_id = _normalize_int(actor_snapshot.get("actor_user_id"))
+        if row.get("actor_role") is None:
+            row_actor_role = _normalize_text(actor_snapshot.get("actor_role"))
+        if row.get("actor_team_id") is None:
+            row_actor_team_id = _normalize_int(actor_snapshot.get("actor_team_id"))
 
-        target_context = _resolve_target_context(connection, target_type, target_id, details)
+        target_context = _resolve_target_context(
+            connection, target_type, target_id, details
+        )
         if target_owner_id is None:
             target_owner_id = _normalize_int(target_context.get("target_owner_id"))
         if target_team_id is None:

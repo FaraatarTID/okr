@@ -204,7 +204,9 @@ def stop_timer_from_crud(
 
         # Verify ownership if user_id provided
         if user_id:
-            auth_task = crud_module._query_owned_task_for_timer(session, task_id, user_id)
+            auth_task = crud_module._query_owned_task_for_timer(
+                session, task_id, user_id
+            )
             if not auth_task:
                 return None
 

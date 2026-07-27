@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 from sqlmodel import col
 
@@ -244,13 +244,17 @@ def update_experiment_from_crud(
             field in updates for field in ("decision", "decision_rationale", "end_at")
         )
         if has_decision_fields and target_status != "DECIDED":
-            raise ValueError(
-                "Decision fields are only allowed when status is DECIDED."
-            )
+            raise ValueError("Decision fields are only allowed when status is DECIDED.")
         if target_status == "DECIDED":
-            if updates.get("decision") is None and getattr(experiment, "decision", None) is None:
+            if (
+                updates.get("decision") is None
+                and getattr(experiment, "decision", None) is None
+            ):
                 raise ValueError("Closing an experiment requires a decision.")
-            if updates.get("end_at") is None and getattr(experiment, "end_at", None) is None:
+            if (
+                updates.get("end_at") is None
+                and getattr(experiment, "end_at", None) is None
+            ):
                 updates["end_at"] = crud_module.utc_now_naive()
 
         for key, value in updates.items():
@@ -317,7 +321,9 @@ def close_experiment_from_crud(
             node_id=experiment.key_result_id,
             actor_username=actor_username,
         )
-        current_status = _normalize_experiment_status(getattr(experiment, "status", None))
+        current_status = _normalize_experiment_status(
+            getattr(experiment, "status", None)
+        )
         if current_status == "DECIDED":
             return experiment
         if current_status != "RUNNING":

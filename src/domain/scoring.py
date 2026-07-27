@@ -110,7 +110,9 @@ def calculate_objective_score(
     if not normalized_weights:
         return sum(kr_scores) / len(kr_scores)
 
-    weighted_sum = sum(score * weight for score, weight in zip(kr_scores, normalized_weights))
+    weighted_sum = sum(
+        score * weight for score, weight in zip(kr_scores, normalized_weights)
+    )
     return weighted_sum
 
 
@@ -128,7 +130,9 @@ def calculate_goal_score(
     if not normalized_weights:
         return sum(objective_scores) / len(objective_scores)
 
-    weighted_sum = sum(score * weight for score, weight in zip(objective_scores, normalized_weights))
+    weighted_sum = sum(
+        score * weight for score, weight in zip(objective_scores, normalized_weights)
+    )
     return weighted_sum
 
 
