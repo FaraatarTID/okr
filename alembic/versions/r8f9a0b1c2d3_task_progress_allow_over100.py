@@ -41,11 +41,12 @@ def upgrade() -> None:
     if "ck_task_progress_range" in existing:
         with op.batch_alter_table("task") as batch_op:
             batch_op.drop_constraint("ck_task_progress_range", type_="check")
-    with op.batch_alter_table("task") as batch_op:
-        batch_op.create_check_constraint(
-            "ck_task_progress_non_negative",
-            "progress >= 0",
-        )
+    if "ck_task_progress_non_negative" not in existing:
+        with op.batch_alter_table("task") as batch_op:
+            batch_op.create_check_constraint(
+                "ck_task_progress_non_negative",
+                "progress >= 0",
+            )
 
 
 def downgrade() -> None:
@@ -55,8 +56,10 @@ def downgrade() -> None:
     if "ck_task_progress_non_negative" in existing:
         with op.batch_alter_table("task") as batch_op:
             batch_op.drop_constraint("ck_task_progress_non_negative", type_="check")
-    with op.batch_alter_table("task") as batch_op:
-        batch_op.create_check_constraint(
-            "ck_task_progress_range",
-            "progress >= 0 AND progress <= 100",
-        )
+    existing = _check_constraint_names("task")
+    if "ck_task_progress_range" not in existing:
+        with op.batch_alter_table("task") as batch_op:
+            batch_op.create_check_constraint(
+                "ck_task_progress_range",
+                "progress >= 0 AND progress <= 100",
+            )

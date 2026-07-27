@@ -756,3 +756,22 @@ Status: **Completed**
   - `rg -n "LEARNING_LOOP_IMPLEMENTATION\\.md"` returned no remaining references.
 - Result:
   - Obsolete archived doc removed from active repository documentation set.
+
+### Issue: DOC-03 — Expand runtime deployment matrix in CI
+Status: **Completed**
+
+- Rationale:
+  - Single-profile runtime config checks were insufficient for detecting regressions across alternative secure deployment modes.
+- Root cause:
+  - CI validated a single runtime env profile, leaving Redis-backed security mode and PDFSHIFT mode untested in CI.
+- Files changed:
+  - `.github/workflows/ci.yml`
+  - `scripts/check_deploy_runtime_matrix.py`
+- Implementation:
+  - Added `scripts/check_deploy_runtime_matrix.py` to generate and validate multiple secure runtime profiles.
+  - Rewired the CI `Deploy Runtime Integration Matrix Gate` to call this reusable script.
+  - Kept validation checks for strict deploy config mode and compose interpolation consistency.
+- Verification:
+  - Manual CI-equivalent script inspection and workflow step wiring review.
+- Result:
+  - Runtime matrix logic is now centralized and reusable for broader integration checks.

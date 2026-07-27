@@ -39,6 +39,9 @@ jobs:
       - name: Deploy Config Template Gate
         run: python scripts/check_deploy_config.py --mode template
 
+      - name: Deploy Runtime Integration Matrix Gate
+        run: python scripts/check_deploy_runtime_matrix.py --require-docker
+
       - name: Quality Baseline Expiry Gate
         run: python scripts/check_quality_gate_baseline.py
 
