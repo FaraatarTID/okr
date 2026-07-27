@@ -4,6 +4,7 @@ import re
 
 from fastapi.testclient import TestClient
 import pytest
+from pathlib import Path
 
 import backend_app.main as backend_main
 from backend_app.main import BACKUP_FORMAT_VERSION
@@ -257,6 +258,8 @@ _MUTATION_MATRIX_ROUTE_SET = {
 
 _ROUTE_PARAM_NORMALIZER = re.compile(r"{[^}]+}")
 _NUMERIC_SEGMENT = re.compile(r"/\d+")
+_ALLOWLIST_PATH_WITH_TYPE_RE = re.compile(r"{[^{}:]+:int}")
+_ALLOWLIST_PATH_PARAM_RE = re.compile(r"{[^{}]+}")
 
 
 def _normalize_mutation_route(
@@ -287,6 +290,31 @@ def _normalize_mutation_route(
     normalized_path = _ROUTE_PARAM_NORMALIZER.sub("{param}", path)
     normalized_path = _NUMERIC_SEGMENT.sub("/{param}", normalized_path)
     return method, normalized_path
+
+
+def _normalize_allowlist_path(path_template: str) -> str:
+    normalized = _ALLOWLIST_PATH_WITH_TYPE_RE.sub("{param}", path_template)
+    normalized = _ALLOWLIST_PATH_PARAM_RE.sub("{param}", normalized)
+    return normalized
+
+
+def _allowlist_mutation_routes() -> set[tuple[str, str]]:
+    project_root = Path(__file__).resolve().parents[1]
+    allowlist_file = project_root / "spa-bff" / "src" / "allowlist.ts"
+    allowlist_text = allowlist_file.read_text(encoding="utf-8")
+
+    entry_re = re.compile(
+        r"\{\s*pathTemplate:\s*\"([^\"]+)\"\s*,\s*methods:\s*\[([^\]]+)\]",
+        re.MULTILINE,
+    )
+    routes: set[tuple[str, str]] = set()
+    for path_template, method_blob in entry_re.findall(allowlist_text):
+        methods = re.findall(r"\"(GET|POST|PUT|PATCH|DELETE)\"", method_blob)
+        for method in methods:
+            if method not in {"POST", "PUT", "PATCH", "DELETE"}:
+                continue
+            routes.add((method, _normalize_allowlist_path(path_template)))
+    return routes
 
 
 def _render_route(method: str, path: str) -> str:
@@ -329,6 +357,25 @@ def test_mutation_route_matrix_covers_all_v1_mutation_routes():
     matrix_only_routes = sorted(matrix_routes - app_routes)
     assert not matrix_only_routes, "Matrix contains stale route(s): " + ", ".join(
         _render_route(*route) for route in matrix_only_routes
+    )
+
+
+def test_mutation_routes_are_in_bff_allowlist():
+    app_routes = {
+        _normalize_mutation_route(route) for route in _mutating_v1_routes_from_app()
+    }
+    allowlist_routes = _allowlist_mutation_routes()
+
+    missing_from_allowlist = sorted(app_routes - allowlist_routes)
+    assert not missing_from_allowlist, (
+        "Mutation routes missing from BFF allowlist: "
+        + ", ".join(_render_route(*route) for route in missing_from_allowlist)
+    )
+
+    stale_allowlist_entries = sorted(allowlist_routes - app_routes)
+    assert not stale_allowlist_entries, (
+        "BFF allowlist has stale mutation routes: "
+        + ", ".join(_render_route(*route) for route in stale_allowlist_entries)
     )
 
 

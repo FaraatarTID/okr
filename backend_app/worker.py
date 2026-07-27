@@ -29,8 +29,13 @@ ensure_shared_src_on_path()
 
 from src.database import get_session_context, init_database
 from src.models import AsyncJob, AsyncJobStatus
-from src.observability import observability_context
+from src.observability import (
+    get_correlation_id,
+    get_request_id,
+    observability_context,
+)
 from src.observability_metrics import (
+    log_payload as build_observability_log_payload,
     record_worker_heartbeat,
     record_worker_job_result,
     record_worker_job_started,
@@ -45,6 +50,23 @@ _MAX_JOB_ATTEMPTS_HARD_CAP = 10
 
 class NonRetryableJobError(RuntimeError):
     """Raised when a job is malformed and should not be retried."""
+
+
+def _log_worker_event(event: str, level: str = "info", **fields: object) -> None:
+    payload = build_observability_log_payload(
+        event=event,
+        correlation_id=get_correlation_id(),
+        request_id=get_request_id(),
+        **fields,
+    )
+    if level == "exception":
+        logger.exception(payload)
+    elif level == "warning":
+        logger.warning(payload)
+    elif level == "debug":
+        logger.debug(payload)
+    else:
+        logger.info(payload)
 
 
 def reap_stale_running_jobs(timeout_seconds: int) -> int:
@@ -112,13 +134,14 @@ def reap_stale_running_jobs(timeout_seconds: int) -> int:
                 continue
 
             reaped += 1
-            logger.warning(
-                "Reaped stale job %s (started_at=%s, timeout_seconds=%s, retries=%s/%s)",
-                job.id,
-                job.started_at,
-                timeout_seconds,
-                attempt,
-                max_attempts,
+            _log_worker_event(
+                "worker_job_reaped",
+                level="info",
+                job_id=str(job.id),
+                started_at=str(job.started_at),
+                timeout_seconds=timeout_seconds,
+                attempt=attempt,
+                max_attempts=max_attempts,
             )
         session.commit()
     return reaped
@@ -148,10 +171,11 @@ def _safe_mark_job_failed(*, job_id: str, error_text: str, terminal: bool) -> No
         else:
             mark_job_failed(job_id, error_text)
     except Exception:
-        logger.exception(
-            "Failed to persist worker job failure state (job_id=%s, terminal=%s)",
-            job_id,
-            terminal,
+        _log_worker_event(
+            "worker_job_failure_state_error",
+            level="exception",
+            job_id=job_id,
+            terminal=terminal,
         )
 
 
@@ -161,14 +185,25 @@ def process_next_job(*, worker_id: str) -> bool:
     try:
         job = claim_next_pending_job(worker_id)
     except Exception:
-        logger.exception("Worker failed claiming pending job (worker_id=%s)", worker_id)
+        _log_worker_event(
+            "worker_claim_failed",
+            level="exception",
+            worker_id=worker_id,
+        )
         return False
     if not job:
+        _log_worker_event("worker_queue_empty", worker_id=worker_id)
         return False
     worker_job_kind = str(getattr(job, "kind", "unknown"))
     record_worker_job_started(worker_id=worker_id, kind=worker_job_kind)
 
     correlation_id = f"job-{getattr(job, 'id', 'unknown')}"
+    _log_worker_event(
+        "worker_job_started",
+        worker_id=worker_id,
+        job_id=correlation_id,
+        kind=worker_job_kind,
+    )
     with observability_context(
         correlation_id=correlation_id,
         request_id=correlation_id,
@@ -180,11 +215,15 @@ def process_next_job(*, worker_id: str) -> bool:
         except Exception as exc:
             msg = f"{type(exc).__name__}: {exc}"
             duration_ms = (time.perf_counter() - started_at) * 1000
-            logger.exception(
-                "Worker job execution failed (worker_id=%s, job_id=%s, kind=%s)",
-                worker_id,
-                getattr(job, "id", None),
-                getattr(job, "kind", None),
+            _log_worker_event(
+                "worker_job_execution_failed",
+                level="exception",
+                worker_id=worker_id,
+                job_id=str(getattr(job, "id", "unknown")),
+                kind=worker_job_kind,
+                error_code=type(exc).__name__,
+                status="failed",
+                duration_ms=round(duration_ms, 3),
             )
             _safe_mark_job_failed(
                 job_id=str(job.id),
@@ -212,6 +251,14 @@ def process_next_job(*, worker_id: str) -> bool:
                     duration_ms=duration_ms,
                     outcome="cancelled",
                 )
+                _log_worker_event(
+                    "worker_job_finalized",
+                    worker_id=worker_id,
+                    job_id=str(job.id),
+                    kind=worker_job_kind,
+                    status="cancelled",
+                    duration_ms=round(duration_ms, 3),
+                )
             else:
                 mark_job_succeeded(job.id, result)
                 record_worker_job_result(
@@ -221,14 +268,27 @@ def process_next_job(*, worker_id: str) -> bool:
                     duration_ms=duration_ms,
                     outcome="success",
                 )
+                _log_worker_event(
+                    "worker_job_finalized",
+                    worker_id=worker_id,
+                    job_id=str(job.id),
+                    kind=worker_job_kind,
+                    status="success",
+                    duration_ms=round(duration_ms, 3),
+                    result_type=type(result).__name__ if result is not None else "none",
+                )
         except Exception as exc:
             msg = f"{type(exc).__name__}: {exc}"
             duration_ms = (time.perf_counter() - started_at) * 1000
-            logger.exception(
-                "Worker job finalization failed (worker_id=%s, job_id=%s, kind=%s)",
-                worker_id,
-                getattr(job, "id", None),
-                getattr(job, "kind", None),
+            _log_worker_event(
+                "worker_job_finalization_failed",
+                level="exception",
+                worker_id=worker_id,
+                job_id=str(getattr(job, "id", "unknown")),
+                kind=worker_job_kind,
+                error_code=type(exc).__name__,
+                status="failed",
+                duration_ms=round(duration_ms, 3),
             )
             _safe_mark_job_failed(
                 job_id=str(job.id),
@@ -242,6 +302,14 @@ def process_next_job(*, worker_id: str) -> bool:
                 duration_ms=duration_ms,
                 outcome="failure",
             )
+            _log_worker_event(
+                "worker_job_finalized",
+                worker_id=worker_id,
+                job_id=str(job.id),
+                kind=worker_job_kind,
+                status="failed",
+                duration_ms=round(duration_ms, 3),
+            )
     return True
 
 
@@ -250,7 +318,7 @@ def run_worker_loop() -> None:
     worker_id = f"backend-worker-{int(time.time())}"
     last_prune_at = 0.0
     init_database()
-    logger.info("Worker started (%s)", worker_id)
+    _log_worker_event("worker_started", worker_id=worker_id)
     while True:
         record_worker_heartbeat(worker_id=worker_id)
         now_ts = float(time.time())
@@ -265,22 +333,27 @@ def run_worker_loop() -> None:
                     batch_size=settings.job_prune_batch_size,
                 )
                 if deleted_jobs:
-                    logger.info(
-                        "Pruned async jobs (deleted=%s, retention_days=%s)",
-                        deleted_jobs,
-                        settings.job_retention_days,
+                    _log_worker_event(
+                        "worker_prune_async_jobs",
+                        worker_id=worker_id,
+                        status="success",
+                        deleted_jobs=deleted_jobs,
+                        retention_days=settings.job_retention_days,
                     )
                 if deleted_audit:
-                    logger.info(
-                        "Pruned audit events (deleted=%s, retention_days=%s)",
-                        deleted_audit,
-                        settings.audit_retention_days,
+                    _log_worker_event(
+                        "worker_prune_audit_events",
+                        worker_id=worker_id,
+                        status="success",
+                        deleted_audit=deleted_audit,
+                        retention_days=settings.audit_retention_days,
                     )
             except Exception as exc:
-                logger.exception(
-                    "Background pruning failed (worker_id=%s): %s",
-                    worker_id,
-                    exc,
+                _log_worker_event(
+                    "worker_prune_failed",
+                    level="exception",
+                    worker_id=worker_id,
+                    error_code=type(exc).__name__,
                 )
             finally:
                 last_prune_at = now_ts
@@ -288,20 +361,37 @@ def run_worker_loop() -> None:
                 try:
                     reaped = reap_stale_running_jobs(settings.job_timeout_seconds)
                     if reaped:
-                        logger.info("Reaped %s stale RUNNING jobs", reaped)
+                        _log_worker_event(
+                            "worker_reaped_stale_jobs",
+                            worker_id=worker_id,
+                            status="success",
+                            reaped=reaped,
+                        )
                 except Exception as exc:
-                    logger.exception("Zombie job reaping failed: %s", exc)
+                    _log_worker_event(
+                        "worker_zombie_reap_failed",
+                        level="exception",
+                        worker_id=worker_id,
+                        error_code=type(exc).__name__,
+                    )
         try:
             try:
                 pending_jobs, running_jobs = get_job_queue_depth()
                 record_worker_queue_depth(pending=pending_jobs, running=running_jobs)
             except Exception as exc:
-                logger.debug("Failed to record worker queue depth: %s", exc)
+                _log_worker_event(
+                    "worker_queue_depth_failed",
+                    level="warning",
+                    worker_id=worker_id,
+                    error_code=type(exc).__name__,
+                )
             handled = process_next_job(worker_id=worker_id)
         except Exception:
-            logger.exception(
-                "Worker loop iteration crashed (worker_id=%s); continuing.",
-                worker_id,
+            _log_worker_event(
+                "worker_loop_iteration_failed",
+                level="exception",
+                worker_id=worker_id,
+                status="failed",
             )
             time.sleep(_LOOP_ERROR_SLEEP_SECONDS)
             continue

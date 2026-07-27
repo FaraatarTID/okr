@@ -118,6 +118,30 @@ describe("spa-bff config", () => {
     expect(config.cookieSecure).toBe(true);
   });
 
+  it("rejects public backend API URL in production", () => {
+    expect(() =>
+      readConfig({
+        OKR_BACKEND_API_URL: "https://backend.example.com:8100",
+        OKR_BACKEND_SERVICE_TOKEN: "svc-token-with-more-than-24-chars",
+        OKR_BACKEND_SIGNING_SECRET: "signing-secret-that-is-longer-than-thirty-two",
+        BFF_SESSION_SECRET: "a-very-secure-session-secret-that-is-at-least-32-chars",
+        NODE_ENV: "production",
+      }),
+    ).toThrow(/private backend host/i);
+  });
+
+  it("accepts internal backend API hostnames in production", () => {
+    expect(() =>
+      readConfig({
+        OKR_BACKEND_API_URL: "http://backend-api.ns.svc.cluster.local:8100",
+        OKR_BACKEND_SERVICE_TOKEN: "svc-token-with-more-than-24-chars",
+        OKR_BACKEND_SIGNING_SECRET: "signing-secret-that-is-longer-than-thirty-two",
+        BFF_SESSION_SECRET: "a-very-secure-session-secret-that-is-at-least-32-chars",
+        NODE_ENV: "production",
+      }),
+    ).not.toThrow();
+  });
+
   it("permits missing session secret in development runtime", () => {
     const config = readConfig({
       OKR_BACKEND_API_URL: "http://backend-api:8100",

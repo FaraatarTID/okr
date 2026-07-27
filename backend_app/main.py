@@ -6,10 +6,7 @@ from __future__ import annotations
 import json
 import hashlib
 import logging
-import uuid
-import math
 import sys
-import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Optional, Type, cast
@@ -19,12 +16,12 @@ from fastapi import (
     FastAPI,
     Header,
     HTTPException,
-    Request,
     Response,  # noqa: F401
     status,  # noqa: F401
 )
 from pydantic import BaseModel, ValidationError as PydanticValidationError
-from sqlmodel import Session, select
+from sqlmodel import select
+from sqlmodel import Session
 
 from backend_app.job_limits import enforce_job_submit_limits  # noqa: F401
 from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job  # noqa: F401
@@ -82,7 +79,6 @@ from backend_app.schemas import (
 )
 from backend_app.security import (
     require_service_access,  # noqa: F401
-    resolve_actor_username,
 )
 from backend_app.security_state import (
     get_app_state,
@@ -91,15 +87,95 @@ from backend_app.security_state import (
     load_idempotent_response,
     store_idempotent_response,
 )
+from backend_app.input_normalization import (
+    _alignment_view_from_obj,
+    _coerce_datetime,
+    _coerce_enum,
+    _coerce_experiment_updates,
+    _check_in_view_from_obj,
+    _cycle_view_from_obj,
+    _experiment_view_from_obj,
+    _node_view_from_obj,
+    _normalize_node_type,
+    _normalize_tags,
+    _normalize_updates,
+    _retrospective_view_from_obj,
+    _retro_outcome_view_from_obj,
+    _team_view_from_obj,
+    _user_view_from_obj,
+    _weekly_plan_view_from_obj,
+)
+from backend_app.scope_resolution import (
+    _coerce_owner_ids as _coerce_owner_ids_impl,
+    _coerce_string_list as _coerce_string_list_impl,
+    _resolve_effective_cycle_id_for_scope as _resolve_effective_cycle_id_for_scope_impl,
+    _require_admin_actor_scope as _require_admin_actor_scope_impl,
+    _require_admin_or_manager_actor_scope as _require_admin_or_manager_actor_scope_impl,
+    _resolve_scope_for_actor as _resolve_scope_for_actor_impl,
+    _pick_primary_active_cycle,
+    _scope_cycle_id,
+    _resolve_actor as _resolve_actor_impl,
+    _resolve_actor_scope as _resolve_actor_scope_impl,
+    _scope_role,
+    _visible_cycles_for_scope,
+)
 from src.observability_metrics import (
-    log_payload as build_observability_log_payload,
-    record_api_request,
     snapshot as observability_snapshot,
 )
 
 ensure_shared_src_on_path()
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _resolve_actor(
+    *, header_actor: Optional[str], payload_actor: Optional[str]
+) -> str:
+    return _resolve_actor_impl(
+        header_actor=header_actor,
+        payload_actor=payload_actor,
+    )
+
+
+def _resolve_actor_scope(
+    session: Session, actor_username: str, token_version: Optional[int] = None
+) -> dict[str, Any]:
+    return _resolve_actor_scope_impl(
+        session=session,
+        actor_username=actor_username,
+        token_version=token_version,
+    )
+
+
+def _resolve_scope_for_actor(actor: str, token_version: Optional[int] = None) -> dict[str, Any]:
+    return _resolve_scope_for_actor_impl(actor=actor, token_version=token_version)
+
+
+def _resolve_effective_cycle_id_for_scope(
+    scope: dict[str, Any], requested_cycle_id: Optional[int], *, required: bool = True
+) -> Optional[int]:
+    return _resolve_effective_cycle_id_for_scope_impl(
+        scope=scope,
+        requested_cycle_id=requested_cycle_id,
+        required=required,
+    )
+
+
+def _require_admin_actor_scope(actor: str) -> None:
+    return _require_admin_actor_scope_impl(actor=actor)
+
+
+def _require_admin_or_manager_actor_scope(actor: str) -> None:
+    return _require_admin_or_manager_actor_scope_impl(actor=actor)
+
+
+def _coerce_owner_ids(values: Optional[list[int]]) -> list[int]:
+    return _coerce_owner_ids_impl(values=values)
+
+
+def _coerce_string_list(values: Any) -> list[str]:
+    return _coerce_string_list_impl(values=values)
+
 __all__ = [
     "BACKUP_FORMAT_VERSION",
     "authenticate_user_detailed",
@@ -192,15 +268,31 @@ from src.config_runtime import get_bool_config
 from src.domain.password_policy import is_production_runtime
 from src.domain.read_queries import build_atlas_scope_snapshot
 from src.audit_queries import summarize_audit_events
-from src.observability import observability_context
 from src.domain import analysis as analysis_domain
 from src.services.ai_provider import run_ai_health_check
 from src.services import ai_service
+from backend_app.observability_http import install_observability_handlers
 from src.serialization_helpers import (
     _enum_value,
-    serialize_cycle_snapshot,
-    serialize_user_snapshot,
-    serialize_weekly_plan_snapshot,
+)
+from backend_app.response_scope_helpers import (
+    _filter_tasks_for_scope,
+    _node_owner_id,
+    _require_allowed_user_id,
+    _require_allowed_username,
+    _resolve_goal_owner_id_for_node_via_supabase,
+    _serialize_cycle,
+    _serialize_experiment,
+    _serialize_goal,
+    _serialize_key_result,
+    _serialize_node_for_type,
+    _serialize_retro,
+    _serialize_task,
+    _serialize_team,
+    _serialize_user,
+    _serialize_weekly_plan,
+    _serialize_work_log,
+    _serialize_objective,
 )
 from src.services.supabase_api_mode import (
     authenticate_user_detailed_via_supabase_api,
@@ -246,11 +338,7 @@ from src.models import (
     ExpectedEffectDirection,
     Goal,
     KeyResult,
-    LifecycleState,
-    MetricType,
     Objective,
-    ScoreMode,
-    TaskStatus,
     User,
     UserRole,
     VariationType,
@@ -297,6 +385,7 @@ app = FastAPI(
     version="0.1.0",
     lifespan=_lifespan,
 )
+install_observability_handlers(app, _LOGGER)
 
 _platform_router = APIRouter()
 register_platform_routes(_platform_router, sys.modules[__name__])
@@ -339,774 +428,8 @@ register_analytics_mutation_routes(_analytics_mutation_router, sys.modules[__nam
 app.include_router(_analytics_mutation_router)
 
 
-def _normalize_observability_id(value: Optional[str]) -> Optional[str]:
-    text = str(value or "").strip()
-    if not text:
-        return None
-    return text[:128]
-
-
-def _resolve_request_observability_ids(request: Request) -> tuple[str, str]:
-    headers = request.headers
-    request_id = _normalize_observability_id(
-        headers.get("x-request-id") or headers.get("x-okr-request-id")
-    )
-    correlation_id = _normalize_observability_id(
-        headers.get("x-correlation-id")
-        or headers.get("x-okr-correlation-id")
-        or request_id
-    )
-    if not correlation_id:
-        correlation_id = f"req-{uuid.uuid4().hex}"
-    if not request_id:
-        request_id = correlation_id
-    return correlation_id, request_id
-
-
-@app.middleware("http")
-async def _inject_observability_context(request: Request, call_next):
-    correlation_id, request_id = _resolve_request_observability_ids(request)
-    route = request.url.path
-    route_obj = request.scope.get("route")
-    if route_obj is not None:
-        route = str(getattr(route_obj, "path", route))
-
-    actor = request.headers.get("x-okr-actor")
-    start_time = time.perf_counter()
-    status_code = 500
-    with observability_context(
-        correlation_id=correlation_id,
-        request_id=request_id,
-    ):
-        try:
-            response = await call_next(request)
-            status_code = int(getattr(response, "status_code", 500) or 500)
-        except Exception:
-            duration_ms = (time.perf_counter() - start_time) * 1000
-            record_api_request(
-                method=request.method,
-                route=route,
-                status_code=500,
-                duration_ms=duration_ms,
-                actor=actor,
-            )
-            _LOGGER.exception(
-                build_observability_log_payload(
-                    event="http_request_unhandled_error",
-                    method=request.method,
-                    route=route,
-                    status=500,
-                    actor=actor,
-                    correlation_id=correlation_id,
-                    request_id=request_id,
-                    duration_ms=round(duration_ms, 3),
-                )
-            )
-            raise
-
-    response.headers["X-Correlation-ID"] = correlation_id
-    response.headers["X-Request-ID"] = request_id
-    duration_ms = (time.perf_counter() - start_time) * 1000
-    record_api_request(
-        method=request.method,
-        route=route,
-        status_code=status_code,
-        duration_ms=duration_ms,
-        actor=actor,
-    )
-    _LOGGER.info(
-        build_observability_log_payload(
-            event="http_request",
-            method=request.method,
-            route=route,
-            status=status_code,
-            actor=actor,
-            duration_ms=round(duration_ms, 3),
-            correlation_id=correlation_id,
-            request_id=request_id,
-        )
-    )
-    return response
-
-
 def get_observability_metrics_snapshot() -> dict[str, Any]:
     return observability_snapshot()
-
-
-_NODE_TYPES = {"GOAL", "OBJECTIVE", "KEY_RESULT", "TASK"}
-
-
-def _normalize_node_type(raw: str) -> str:
-    node_type = str(raw or "").strip().upper().replace("-", "_")
-    if node_type == "KEYRESULT":
-        node_type = "KEY_RESULT"
-    if node_type not in _NODE_TYPES:
-        raise HTTPException(status_code=400, detail="Unsupported node type.")
-    return node_type
-
-
-def _coerce_datetime(value, *, field_name: str):
-    if value is None or value == "":
-        return None
-    if isinstance(value, datetime):
-        return value
-    if isinstance(value, (int, float)):
-        # Accept Unix seconds and milliseconds for compatibility.
-        epoch_value = float(value)
-        if epoch_value > 10_000_000_000:
-            epoch_value = epoch_value / 1000.0
-        return datetime.fromtimestamp(epoch_value, tz=timezone.utc).replace(tzinfo=None)
-    if isinstance(value, str):
-        raw = value.strip()
-        if not raw:
-            return None
-        normalized = raw.replace("Z", "+00:00")
-        try:
-            parsed = datetime.fromisoformat(normalized)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid datetime for '{field_name}'.",
-            ) from exc
-        if parsed.tzinfo is not None:
-            parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
-        return parsed
-    raise HTTPException(status_code=400, detail=f"Invalid datetime for '{field_name}'.")
-
-
-def _coerce_float(value, *, field_name: str):
-    if value is None:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid numeric value for '{field_name}'.",
-        )
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid numeric value for '{field_name}'.",
-        ) from exc
-    if not math.isfinite(parsed):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid numeric value for '{field_name}'.",
-        )
-    return parsed
-
-
-def _coerce_enum(value, enum_cls, *, field_name: str):
-    if value is None:
-        return None
-    if isinstance(value, enum_cls):
-        return value
-    if isinstance(value, str):
-        raw = value.strip()
-        if not raw:
-            return None
-        for member in enum_cls:
-            if raw == member.value or raw.upper() == str(member.value).upper():
-                return member
-    raise HTTPException(
-        status_code=400,
-        detail=f"Invalid value for '{field_name}'.",
-    )
-
-
-def _normalize_tags(value) -> Optional[str]:
-    if value is None:
-        return None
-    if isinstance(value, list):
-        clean = [str(item).strip() for item in value if str(item).strip()]
-        return json.dumps(clean, ensure_ascii=False)
-    return str(value)
-
-
-def _normalize_updates(node_type: str, updates: dict) -> dict:
-    clean = dict(updates or {})
-    for date_field in ("start_date", "deadline"):
-        if date_field in clean:
-            clean[date_field] = _coerce_datetime(
-                clean.get(date_field), field_name=date_field
-            )
-
-    if node_type == "GOAL" and "strategy_tags" in clean:
-        clean["strategy_tags"] = _normalize_tags(clean.get("strategy_tags"))
-
-    if node_type == "KEY_RESULT":
-        if "initiative_tags" in clean:
-            clean["initiative_tags"] = _normalize_tags(clean.get("initiative_tags"))
-        if "metric_type" in clean:
-            clean["metric_type"] = _coerce_enum(
-                clean.get("metric_type"),
-                MetricType,
-                field_name="metric_type",
-            )
-        for numeric_field in ("start_value", "target_value", "current_value", "weight"):
-            if numeric_field in clean:
-                clean[numeric_field] = _coerce_float(
-                    clean.get(numeric_field),
-                    field_name=numeric_field,
-                )
-        if "weight" in clean and float(clean["weight"]) < 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid value for 'weight'.",
-            )
-
-    if node_type == "OBJECTIVE":
-        if "score_mode" in clean:
-            clean["score_mode"] = _coerce_enum(
-                clean.get("score_mode"),
-                ScoreMode,
-                field_name="score_mode",
-            )
-        if "weight" in clean:
-            clean["weight"] = _coerce_float(clean.get("weight"), field_name="weight")
-            if float(clean["weight"]) < 0:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid value for 'weight'.",
-                )
-
-    if node_type in {"OBJECTIVE", "KEY_RESULT"} and "state" in clean:
-        clean["state"] = _coerce_enum(
-            clean.get("state"),
-            LifecycleState,
-            field_name="state",
-        )
-
-    if node_type == "TASK" and "status" in clean:
-        clean["status"] = _coerce_enum(
-            clean.get("status"),
-            TaskStatus,
-            field_name="status",
-        )
-
-    return clean
-
-
-def _getattr_or_get(node, field, default=None):
-    """Get a field from either an object (getattr) or a dict (.get)."""
-    if isinstance(node, dict):
-        return node.get(field, default)
-    return getattr(node, field, default)
-
-
-def _node_view_from_obj(node_type: str, node) -> NodeMutationView:
-    return NodeMutationView(
-        id=int(_getattr_or_get(node, "id")),
-        node_type=_normalize_node_type(node_type),  # type: ignore[arg-type]
-        title=str(_getattr_or_get(node, "title", "") or ""),
-        description=_getattr_or_get(node, "description", None),
-        progress=_getattr_or_get(node, "progress", None),
-        owner_id=_getattr_or_get(node, "owner_id", None),
-        updated_at=_getattr_or_get(node, "updated_at", None),
-    )
-
-
-def _user_view_from_obj(user) -> UserMutationView:
-    return UserMutationView(
-        id=int(getattr(user, "id")),
-        username=str(getattr(user, "username", "") or ""),
-        display_name=getattr(user, "display_name", None),
-        role=str(_enum_value(getattr(user, "role", UserRole.MEMBER))).lower(),  # type: ignore[arg-type]
-        manager_id=getattr(user, "manager_id", None),
-        team_id=getattr(user, "team_id", None),
-        is_active=bool(getattr(user, "is_active", True)),
-        must_change_password=bool(getattr(user, "must_change_password", False)),
-    )
-
-
-def _cycle_view_from_obj(cycle) -> CycleMutationView:
-    return CycleMutationView(
-        id=int(getattr(cycle, "id")),
-        title=str(getattr(cycle, "title", "") or ""),
-        start_date=getattr(cycle, "start_date"),
-        end_date=getattr(cycle, "end_date"),
-        is_active=bool(getattr(cycle, "is_active", True)),
-    )
-
-
-def _team_view_from_obj(team) -> TeamMutationView:
-    return TeamMutationView(
-        id=int(getattr(team, "id")),
-        name=str(getattr(team, "name", "") or ""),
-        description=getattr(team, "description", None),
-        created_at=getattr(team, "created_at", None),
-    )
-
-
-def _check_in_view_from_obj(check_in) -> CheckInMutationView:
-    return CheckInMutationView(
-        id=int(getattr(check_in, "id")),
-        key_result_id=int(getattr(check_in, "key_result_id")),
-        value=float(getattr(check_in, "value")),
-        confidence_score=int(getattr(check_in, "confidence_score")),
-        comment=getattr(check_in, "comment", None),
-        variation_type=_enum_value(getattr(check_in, "variation_type", None)),
-        special_cause_note=getattr(check_in, "special_cause_note", None),
-        experiment_id=getattr(check_in, "experiment_id", None),
-        created_at=getattr(check_in, "created_at", None),
-    )
-
-
-def _experiment_view_from_obj(experiment) -> ExperimentMutationView:
-    return ExperimentMutationView(
-        id=int(getattr(experiment, "id")),
-        key_result_id=int(getattr(experiment, "key_result_id")),
-        cycle_id=int(getattr(experiment, "cycle_id")),
-        created_by=str(getattr(experiment, "created_by", "") or ""),
-        hypothesis=str(getattr(experiment, "hypothesis", "") or ""),
-        change_description=str(getattr(experiment, "change_description", "") or ""),
-        start_at=getattr(experiment, "start_at", None),
-        end_at=getattr(experiment, "end_at", None),
-        status=_enum_value(getattr(experiment, "status", ExperimentStatus.PLANNED)),
-        decision=_enum_value(getattr(experiment, "decision", None)),
-        decision_rationale=getattr(experiment, "decision_rationale", None),
-        expected_effect_direction=_enum_value(
-            getattr(experiment, "expected_effect_direction", None)
-        ),
-        expected_effect_size=getattr(experiment, "expected_effect_size", None),
-        created_at=getattr(experiment, "created_at", None),
-    )
-
-
-def _retrospective_view_from_obj(retro) -> RetrospectiveMutationView:
-    return RetrospectiveMutationView(
-        id=int(getattr(retro, "id")),
-        user_id=int(getattr(retro, "user_id")),
-        cycle_id=getattr(retro, "cycle_id", None),
-        week_start_date=getattr(retro, "week_start_date"),
-        content=str(getattr(retro, "content", "") or ""),
-        sentiment=getattr(retro, "sentiment", None),
-        created_at=getattr(retro, "created_at", None),
-    )
-
-
-def _retro_outcome_view_from_obj(outcome) -> RetroExperimentOutcomeView:
-    return RetroExperimentOutcomeView(
-        id=int(getattr(outcome, "id")),
-        retrospective_id=int(getattr(outcome, "retrospective_id")),
-        experiment_id=int(getattr(outcome, "experiment_id")),
-        decision=_enum_value(getattr(outcome, "decision", ExperimentDecision.UNKNOWN)),
-        rationale=getattr(outcome, "rationale", None),
-        created_at=getattr(outcome, "created_at", None),
-    )
-
-
-def _weekly_plan_view_from_obj(plan) -> WeeklyPlanMutationView:
-    return WeeklyPlanMutationView(
-        id=int(getattr(plan, "id")),
-        user_id=int(getattr(plan, "user_id")),
-        week_start_date=getattr(plan, "week_start_date"),
-        week_end_date=getattr(plan, "week_end_date"),
-        priority_1=str(getattr(plan, "priority_1", "") or ""),
-        priority_2=getattr(plan, "priority_2", None),
-        priority_3=getattr(plan, "priority_3", None),
-        created_at=getattr(plan, "created_at", None),
-        is_active=bool(getattr(plan, "is_active", True)),
-    )
-
-
-def _alignment_view_from_obj(edge) -> AlignmentMutationView:
-    return AlignmentMutationView(
-        id=int(getattr(edge, "id")),
-        parent_id=int(getattr(edge, "parent_id")),
-        child_id=int(getattr(edge, "child_id")),
-        alignment_type=str(_enum_value(getattr(edge, "alignment_type", "SUPPORTS"))),
-        created_at=getattr(edge, "created_at", None),
-        created_by=getattr(edge, "created_by", None),
-    )
-
-
-def _resolve_actor(
-    *,
-    header_actor: Optional[str],
-    payload_actor: Optional[str],
-) -> str:
-    return resolve_actor_username(
-        header_actor=header_actor,
-        payload_actor=payload_actor,
-    )
-
-
-def _resolve_actor_scope(
-    session: Session, actor_username: str, token_version: Optional[int] = None
-) -> dict[str, Any]:
-    actor = session.exec(
-        select(User).where(User.username == str(actor_username).strip())
-    ).first()
-    if not actor or not bool(getattr(actor, "is_active", False)):
-        raise HTTPException(status_code=403, detail="Actor is not authorized.")
-
-    # Verify token_version matches (session revocation on password change)
-    if token_version is not None:
-        current_version = getattr(actor, "token_version", 1)
-        if token_version != current_version:
-            raise HTTPException(
-                status_code=401, detail="Session invalidated. Please log in again."
-            )
-
-    actor_id = getattr(actor, "id", None)
-    if actor_id is None:
-        raise HTTPException(status_code=403, detail="Actor is not authorized.")
-
-    actor_id_int = int(actor_id)
-    role = getattr(actor, "role", UserRole.MEMBER)
-    if role == UserRole.ADMIN:
-        rows = list(
-            session.exec(
-                select(User.id, User.username).where(User.is_active == True)  # noqa: E712
-            ).all()
-        )
-    elif role == UserRole.MANAGER:
-        rows = list(
-            session.exec(
-                select(User.id, User.username)
-                .where(User.is_active == True)  # noqa: E712
-                .where((User.id == actor_id_int) | (User.manager_id == actor_id_int))
-            ).all()
-        )
-    else:
-        rows = list(
-            session.exec(
-                select(User.id, User.username)
-                .where(User.is_active == True)  # noqa: E712
-                .where(User.id == actor_id_int)
-            ).all()
-        )
-
-    owner_ids: set[int] = set()
-    usernames: set[str] = set()
-    for row in rows:
-        try:
-            user_id_raw, username_raw = row
-        except (TypeError, ValueError):
-            continue
-        if user_id_raw is None or not username_raw:
-            continue
-        owner_ids.add(int(user_id_raw))
-        usernames.add(str(username_raw))
-
-    if not owner_ids:
-        owner_ids.add(actor_id_int)
-        usernames.add(str(actor.username))
-
-    return {
-        "is_admin": role == UserRole.ADMIN,
-        "role": str(role.value if hasattr(role, "value") else role),
-        "actor_id": actor_id_int,
-        "actor_username": str(actor.username),
-        "manager_id": (
-            int(getattr(actor, "manager_id"))
-            if getattr(actor, "manager_id", None) is not None
-            else None
-        ),
-        "owner_ids": owner_ids,
-        "usernames": usernames,
-    }
-
-
-def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]:
-    actor_resp = read_query_via_supabase_api(
-        kind="users.by_username",
-        params={"username": str(actor_username or "").strip()},
-        actor=str(actor_username or "").strip(),
-    )
-    actor = dict((actor_resp or {}).get("user") or {})
-    if not actor or not bool(actor.get("is_active", True)):
-        raise HTTPException(status_code=403, detail="Actor is not authorized.")
-
-    actor_id_int = int(actor.get("id") or 0)
-    if actor_id_int <= 0:
-        raise HTTPException(status_code=403, detail="Actor is not authorized.")
-
-    role = str(actor.get("role") or "member").strip().lower()
-    rows: list[dict[str, Any]] = []
-    if role == "admin":
-        rows = list(
-            (
-                read_query_via_supabase_api(
-                    kind="users.all",
-                    params={},
-                    actor=str(actor_username or "").strip(),
-                )
-                or {}
-            ).get("users")
-            or []
-        )
-    elif role == "manager":
-        manager_rows = list(
-            (
-                read_query_via_supabase_api(
-                    kind="users.team_members",
-                    params={"manager_id": actor_id_int},
-                    actor=str(actor_username or "").strip(),
-                )
-                or {}
-            ).get("users")
-            or []
-        )
-        rows = [dict(actor)] + [
-            dict(row) for row in manager_rows if isinstance(row, dict)
-        ]
-    else:
-        rows = [dict(actor)]
-
-    owner_ids: set[int] = set()
-    usernames: set[str] = set()
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        if not bool(row.get("is_active", True)):
-            continue
-        try:
-            user_id_int = int(row.get("id") or 0)
-        except (TypeError, ValueError):
-            continue
-        username_text = str(row.get("username") or "").strip()
-        if user_id_int <= 0 or not username_text:
-            continue
-        owner_ids.add(user_id_int)
-        usernames.add(username_text)
-
-    if not owner_ids:
-        owner_ids.add(actor_id_int)
-        usernames.add(str(actor.get("username") or actor_username))
-
-    manager_id_raw = actor.get("manager_id")
-    manager_id = int(manager_id_raw) if manager_id_raw is not None else None
-    return {
-        "is_admin": role == "admin",
-        "role": role,
-        "actor_id": actor_id_int,
-        "actor_username": str(actor.get("username") or actor_username),
-        "manager_id": manager_id,
-        "owner_ids": owner_ids,
-        "usernames": usernames,
-    }
-
-
-def _scope_cycle_id(cycle: Any) -> int:
-    if isinstance(cycle, dict):
-        return int(cycle.get("id") or 0)
-    return int(getattr(cycle, "id", 0) or 0)
-
-
-def _scope_cycle_owner_id(cycle: Any) -> int | None:
-    raw = (
-        cycle.get("owner_manager_id")
-        if isinstance(cycle, dict)
-        else getattr(cycle, "owner_manager_id", None)
-    )
-    if raw is None:
-        return None
-    try:
-        return int(raw)
-    except (TypeError, ValueError):
-        return None
-
-
-def _scope_cycle_is_active(cycle: Any) -> bool:
-    value = (
-        cycle.get("is_active")
-        if isinstance(cycle, dict)
-        else getattr(cycle, "is_active", False)
-    )
-    return bool(value)
-
-
-def _list_cycles_for_scope(
-    *, scope: dict[str, Any], active_only: bool = False
-) -> list[Any]:
-    if is_supabase_api_mode_enabled():
-        kind = "cycles.active" if active_only else "cycles.all"
-        payload = read_query_via_supabase_api(
-            kind=kind,
-            params={},
-            actor=str(scope.get("actor_username") or ""),
-        )
-        return list((payload or {}).get("cycles") or [])
-    return (
-        list(get_active_cycles() or []) if active_only else list(get_all_cycles() or [])
-    )
-
-
-def _scope_role(scope: dict[str, Any]) -> str:
-    return str(scope.get("role") or "").strip().lower()
-
-
-def _is_scope_admin_or_manager(scope: dict[str, Any]) -> bool:
-    if bool(scope.get("is_admin", False)):
-        return True
-    return _scope_role(scope) == "manager"
-
-
-def _require_admin_actor_scope(actor: str) -> None:
-    scope = _resolve_scope_for_actor(actor)
-    if not bool(scope.get("is_admin", False)):
-        raise HTTPException(status_code=403, detail="Admin privileges required.")
-
-
-def _require_admin_or_manager_actor_scope(actor: str) -> None:
-    scope = _resolve_scope_for_actor(actor)
-    if not _is_scope_admin_or_manager(scope):
-        raise HTTPException(
-            status_code=403, detail="Manager or admin privileges required."
-        )
-
-
-def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
-    if not cycles:
-        return None
-    return sorted(
-        cycles,
-        key=lambda cycle: _scope_cycle_id(cycle),
-        reverse=True,
-    )[0]
-
-
-def _cycle_owner_match(scope: dict[str, Any], cycle: Any) -> bool:
-    if bool(scope.get("is_admin", False)):
-        return True
-    cycle_owner = _scope_cycle_owner_id(cycle)
-    if cycle_owner is None:
-        # Backward-compatibility for legacy cycles/tests where ownership is unset.
-        return True
-    role = _scope_role(scope)
-    actor_id = scope.get("actor_id")
-    manager_id = scope.get("manager_id")
-    if role == "manager":
-        return (
-            actor_id is not None
-            and cycle_owner is not None
-            and int(cycle_owner) == int(actor_id)
-        )
-    if role == "member":
-        return (
-            manager_id is not None
-            and cycle_owner is not None
-            and int(cycle_owner) == int(manager_id)
-        )
-    return (
-        actor_id is not None
-        and cycle_owner is not None
-        and int(cycle_owner) == int(actor_id)
-    )
-
-
-def _visible_cycles_for_scope(scope: dict[str, Any], cycles: list[Any]) -> list[Any]:
-    if bool(scope.get("is_admin", False)):
-        return list(cycles)
-    return [cycle for cycle in cycles if _cycle_owner_match(scope, cycle)]
-
-
-def _resolve_effective_cycle_id_for_scope(
-    scope: dict[str, Any],
-    requested_cycle_id: Optional[int],
-    *,
-    required: bool = True,
-) -> Optional[int]:
-    if bool(scope.get("is_admin", False)):
-        if requested_cycle_id is None:
-            if required:
-                raise HTTPException(status_code=400, detail="cycle_id is required.")
-            return None
-        return int(requested_cycle_id)
-
-    role = _scope_role(scope)
-    if role not in {"manager", "member"}:
-        # Backward-compatibility for legacy scope payloads that omit explicit role.
-        if requested_cycle_id is None:
-            if required:
-                raise HTTPException(status_code=400, detail="cycle_id is required.")
-            return None
-        return int(requested_cycle_id)
-
-    if role == "manager":
-        if requested_cycle_id is None:
-            if required:
-                raise HTTPException(status_code=400, detail="cycle_id is required.")
-            return None
-        candidate = int(requested_cycle_id)
-        owned_cycles = _visible_cycles_for_scope(
-            scope, _list_cycles_for_scope(scope=scope, active_only=False)
-        )
-        if any(_scope_cycle_id(cycle) == candidate for cycle in owned_cycles):
-            return candidate
-        raise HTTPException(
-            status_code=403, detail="Managers can only use their owned cycles."
-        )
-
-    active_cycles = _visible_cycles_for_scope(
-        scope, _list_cycles_for_scope(scope=scope, active_only=True)
-    )
-    selected = _pick_primary_active_cycle(active_cycles)
-    if not selected or _scope_cycle_id(selected) <= 0:
-        raise HTTPException(
-            status_code=404,
-            detail="No active cycle available for this user scope.",
-        )
-    selected_id = _scope_cycle_id(selected)
-    if requested_cycle_id is not None and int(requested_cycle_id) != selected_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Members must use the manager/admin active cycle.",
-        )
-    return selected_id
-
-
-def _coerce_owner_ids(values: Optional[list[int]]) -> list[int]:
-    if not values:
-        return []
-    output: list[int] = []
-    for value in values:
-        try:
-            output.append(int(value))
-        except (TypeError, ValueError):
-            continue
-    return sorted(set(output))
-
-
-def _coerce_string_list(values: Any) -> list[str]:
-    if not isinstance(values, list):
-        return []
-    output: list[str] = []
-    for value in values:
-        text = str(value or "").strip()
-        if text:
-            output.append(text)
-    return output
-
-
-def _coerce_experiment_updates(updates: dict) -> dict:
-    clean = dict(updates or {})
-    for date_field in ("start_at", "end_at"):
-        if date_field in clean:
-            clean[date_field] = _coerce_datetime(
-                clean.get(date_field), field_name=date_field
-            )
-
-    if "status" in clean:
-        clean["status"] = _coerce_enum(
-            clean.get("status"),
-            ExperimentStatus,
-            field_name="status",
-        )
-    if "decision" in clean:
-        clean["decision"] = _coerce_enum(
-            clean.get("decision"),
-            ExperimentDecision,
-            field_name="decision",
-        )
-    if "expected_effect_direction" in clean:
-        clean["expected_effect_direction"] = _coerce_enum(
-            clean.get("expected_effect_direction"),
-            ExpectedEffectDirection,
-            field_name="expected_effect_direction",
-        )
-    return clean
 
 
 _EXPERIMENT_ALLOWED_TRANSITIONS = {
@@ -1392,491 +715,6 @@ def _coerce_int(value: Any, *, field_name: str) -> int:
             status_code=400,
             detail=f"Invalid integer for '{field_name}'.",
         ) from exc
-
-
-def _serialize_user(user) -> dict | None:
-    return serialize_user_snapshot(user, role_value_fn=_enum_value)
-
-
-def _serialize_cycle(cycle) -> dict | None:
-    return serialize_cycle_snapshot(cycle)
-
-
-def _serialize_team(team) -> dict | None:
-    if not team:
-        return None
-    team_id = getattr(team, "id", None)
-    if team_id is None:
-        return None
-    return {
-        "id": int(team_id),
-        "name": str(getattr(team, "name", "") or ""),
-        "description": getattr(team, "description", None),
-        "created_at": getattr(team, "created_at", None),
-    }
-
-
-def _serialize_check_in(check_in) -> dict | None:
-    if not check_in:
-        return None
-    check_in_id = getattr(check_in, "id", None)
-    if check_in_id is None:
-        return None
-    return {
-        "id": int(check_in_id),
-        "key_result_id": int(getattr(check_in, "key_result_id")),
-        "value": float(getattr(check_in, "value", 0.0) or 0.0),
-        "confidence_score": int(getattr(check_in, "confidence_score", 0) or 0),
-        "comment": getattr(check_in, "comment", None),
-        "variation_type": _enum_value(getattr(check_in, "variation_type", None)),
-        "special_cause_note": getattr(check_in, "special_cause_note", None),
-        "experiment_id": getattr(check_in, "experiment_id", None),
-        "created_at": getattr(check_in, "created_at", None),
-    }
-
-
-def _serialize_goal(
-    goal,
-    *,
-    include_objectives: bool = False,
-):
-    if not goal:
-        return None
-    goal_id = getattr(goal, "id", None)
-    if goal_id is None:
-        return None
-    payload = {
-        "__tablename__": "goal",
-        "id": int(goal_id),
-        "title": str(getattr(goal, "title", "") or ""),
-        "description": getattr(goal, "description", None),
-        "progress": int(getattr(goal, "progress", 0) or 0),
-        "owner_id": getattr(goal, "owner_id", None),
-        "created_by": getattr(goal, "created_by", None),
-        "cycle_id": getattr(goal, "cycle_id", None),
-        "strategy_tags": getattr(goal, "strategy_tags", None),
-        "created_at": getattr(goal, "created_at", None),
-        "updated_at": getattr(goal, "updated_at", None),
-        "state": _enum_value(getattr(goal, "state", None)),
-    }
-    if include_objectives:
-        serialized_objectives = []
-        for objective in list(getattr(goal, "objectives", []) or []):
-            objective_payload = _serialize_objective(
-                objective,
-                include_key_results=True,
-            )
-            if objective_payload is not None:
-                serialized_objectives.append(objective_payload)
-        payload["objectives"] = serialized_objectives
-    return payload
-
-
-def _serialize_objective(
-    objective,
-    *,
-    include_key_results: bool = False,
-    include_goal: bool = False,
-):
-    if not objective:
-        return None
-    objective_id = getattr(objective, "id", None)
-    if objective_id is None:
-        return None
-    payload = {
-        "__tablename__": "objective",
-        "id": int(objective_id),
-        "goal_id": getattr(objective, "goal_id", None),
-        "title": str(getattr(objective, "title", "") or ""),
-        "description": getattr(objective, "description", None),
-        "progress": int(getattr(objective, "progress", 0) or 0),
-        "score_mode": _enum_value(getattr(objective, "score_mode", None)),
-        "weight": float(getattr(objective, "weight", 1.0) or 1.0),
-        "state": _enum_value(getattr(objective, "state", None)),
-        "final_reflection": getattr(objective, "final_reflection", None),
-        "created_by": getattr(objective, "created_by", None),
-        "created_at": getattr(objective, "created_at", None),
-        "updated_at": getattr(objective, "updated_at", None),
-    }
-    if include_goal:
-        payload["goal"] = _serialize_goal(
-            getattr(objective, "goal", None),
-            include_objectives=False,
-        )
-    if include_key_results:
-        serialized_key_results = []
-        for key_result in list(getattr(objective, "key_results", []) or []):
-            key_result_payload = _serialize_key_result(
-                key_result,
-                include_tasks=True,
-                include_check_ins=False,
-                include_objective=False,
-            )
-            if key_result_payload is not None:
-                serialized_key_results.append(key_result_payload)
-        payload["key_results"] = serialized_key_results
-    return payload
-
-
-def _serialize_key_result(
-    key_result,
-    *,
-    include_tasks: bool = False,
-    include_check_ins: bool = False,
-    include_objective: bool = False,
-):
-    if not key_result:
-        return None
-    key_result_id = getattr(key_result, "id", None)
-    if key_result_id is None:
-        return None
-    payload = {
-        "__tablename__": "key_result",
-        "id": int(key_result_id),
-        "objective_id": getattr(key_result, "objective_id", None),
-        "title": str(getattr(key_result, "title", "") or ""),
-        "description": getattr(key_result, "description", None),
-        "progress": int(getattr(key_result, "progress", 0) or 0),
-        "start_value": getattr(key_result, "start_value", None),
-        "target_value": getattr(key_result, "target_value", None),
-        "current_value": getattr(key_result, "current_value", None),
-        "unit": getattr(key_result, "unit", None),
-        "metric_type": _enum_value(getattr(key_result, "metric_type", None)),
-        "weight": float(getattr(key_result, "weight", 1.0) or 1.0),
-        "initiative_tags": getattr(key_result, "initiative_tags", None),
-        "state": _enum_value(getattr(key_result, "state", None)),
-        "final_reflection": getattr(key_result, "final_reflection", None),
-        "ai_analysis": getattr(key_result, "ai_analysis", None),
-        "created_at": getattr(key_result, "created_at", None),
-        "updated_at": getattr(key_result, "updated_at", None),
-    }
-    if include_objective:
-        payload["objective"] = _serialize_objective(
-            getattr(key_result, "objective", None),
-            include_key_results=False,
-            include_goal=True,
-        )
-    if include_tasks:
-        serialized_tasks = []
-        for task in list(getattr(key_result, "tasks", []) or []):
-            task_payload = _serialize_task(
-                task,
-                include_key_result=False,
-                include_work_logs=False,
-            )
-            if task_payload is not None:
-                serialized_tasks.append(task_payload)
-        payload["tasks"] = serialized_tasks
-    if include_check_ins:
-        serialized_check_ins = []
-        for check_in in list(getattr(key_result, "check_ins", []) or []):
-            check_in_payload = _serialize_check_in(check_in)
-            if check_in_payload is not None:
-                serialized_check_ins.append(check_in_payload)
-        payload["check_ins"] = serialized_check_ins
-    return payload
-
-
-def _serialize_task(
-    task,
-    *,
-    include_key_result: bool = False,
-    include_work_logs: bool = False,
-):
-    if not task:
-        return None
-    task_id = getattr(task, "id", None)
-    if task_id is None:
-        return None
-    payload = {
-        "__tablename__": "task",
-        "id": int(task_id),
-        "key_result_id": getattr(task, "key_result_id", None),
-        "title": str(getattr(task, "title", "") or ""),
-        "description": getattr(task, "description", None),
-        "progress": int(getattr(task, "progress", 0) or 0),
-        "status": _enum_value(getattr(task, "status", None)),
-        "start_date": getattr(task, "start_date", None),
-        "deadline": getattr(task, "deadline", None),
-        "estimated_minutes": int(getattr(task, "estimated_minutes", 0) or 0),
-        "total_time_spent": int(getattr(task, "total_time_spent", 0) or 0),
-        "timer_started_at": getattr(task, "timer_started_at", None),
-        "assignee_id": getattr(task, "assignee_id", None),
-        "created_at": getattr(task, "created_at", None),
-        "updated_at": getattr(task, "updated_at", None),
-    }
-    if include_key_result:
-        payload["key_result"] = _serialize_key_result(
-            getattr(task, "key_result", None),
-            include_tasks=False,
-            include_check_ins=False,
-            include_objective=True,
-        )
-    if include_work_logs:
-        serialized_logs = []
-        for work_log in list(getattr(task, "work_logs", []) or []):
-            work_log_payload = _serialize_work_log(work_log, include_task=False)
-            if work_log_payload is not None:
-                serialized_logs.append(work_log_payload)
-        payload["work_logs"] = serialized_logs
-    return payload
-
-
-def _serialize_work_log(
-    work_log,
-    *,
-    include_task: bool = False,
-):
-    if not work_log:
-        return None
-    work_log_id = getattr(work_log, "id", None)
-    if work_log_id is None:
-        return None
-    payload = {
-        "id": int(work_log_id),
-        "task_id": getattr(work_log, "task_id", None),
-        "start_time": getattr(work_log, "start_time", None),
-        "end_time": getattr(work_log, "end_time", None),
-        "duration_minutes": float(getattr(work_log, "duration_minutes", 0.0) or 0.0),
-        "summary": getattr(work_log, "summary", None),
-        "note": getattr(work_log, "note", None),
-    }
-    if include_task:
-        payload["task"] = _serialize_task(
-            getattr(work_log, "task", None),
-            include_key_result=True,
-            include_work_logs=False,
-        )
-    return payload
-
-
-def _serialize_experiment(experiment) -> dict | None:
-    if not experiment:
-        return None
-    experiment_id = getattr(experiment, "id", None)
-    if experiment_id is None:
-        return None
-    return {
-        "id": int(experiment_id),
-        "key_result_id": getattr(experiment, "key_result_id", None),
-        "cycle_id": getattr(experiment, "cycle_id", None),
-        "created_by": getattr(experiment, "created_by", None),
-        "hypothesis": str(getattr(experiment, "hypothesis", "") or ""),
-        "change_description": str(getattr(experiment, "change_description", "") or ""),
-        "start_at": getattr(experiment, "start_at", None),
-        "end_at": getattr(experiment, "end_at", None),
-        "status": _enum_value(getattr(experiment, "status", None)),
-        "decision": _enum_value(getattr(experiment, "decision", None)),
-        "decision_rationale": getattr(experiment, "decision_rationale", None),
-        "expected_effect_direction": _enum_value(
-            getattr(experiment, "expected_effect_direction", None)
-        ),
-        "expected_effect_size": getattr(experiment, "expected_effect_size", None),
-        "created_at": getattr(experiment, "created_at", None),
-    }
-
-
-def _serialize_weekly_plan(plan) -> dict | None:
-    return serialize_weekly_plan_snapshot(plan)
-
-
-def _serialize_retro(retro, *, include_user: bool = False) -> dict | None:
-    if not retro:
-        return None
-    retro_id = getattr(retro, "id", None)
-    if retro_id is None:
-        return None
-    payload = {
-        "id": int(retro_id),
-        "user_id": getattr(retro, "user_id", None),
-        "cycle_id": getattr(retro, "cycle_id", None),
-        "week_start_date": getattr(retro, "week_start_date", None),
-        "content": str(getattr(retro, "content", "") or ""),
-        "sentiment": getattr(retro, "sentiment", None),
-        "created_at": getattr(retro, "created_at", None),
-    }
-    if include_user:
-        payload["user"] = _serialize_user(getattr(retro, "user", None))
-    return payload
-
-
-def _node_owner_id(node_type: str, node_payload: dict) -> int | None:
-    nt = str(node_type or "").upper()
-    if nt == "GOAL":
-        value = node_payload.get("owner_id")
-        return int(value) if value is not None else None
-    if nt == "OBJECTIVE":
-        goal_payload = node_payload.get("goal") or {}
-        owner_id = goal_payload.get("owner_id")
-        return int(owner_id) if owner_id is not None else None
-    if nt == "KEY_RESULT":
-        objective_payload = node_payload.get("objective") or {}
-        goal_payload = objective_payload.get("goal") or {}
-        owner_id = goal_payload.get("owner_id")
-        return int(owner_id) if owner_id is not None else None
-    if nt == "TASK":
-        key_result_payload = node_payload.get("key_result") or {}
-        objective_payload = key_result_payload.get("objective") or {}
-        goal_payload = objective_payload.get("goal") or {}
-        owner_id = goal_payload.get("owner_id")
-        return int(owner_id) if owner_id is not None else None
-    return None
-
-
-def _serialize_node_for_type(node_type: str, node):
-    nt = _normalize_node_type(node_type)
-    if not node:
-        return None
-    if nt == "GOAL":
-        return _serialize_goal(node, include_objectives=True)
-    if nt == "OBJECTIVE":
-        return _serialize_objective(
-            node,
-            include_key_results=True,
-            include_goal=True,
-        )
-    if nt == "KEY_RESULT":
-        return _serialize_key_result(
-            node,
-            include_tasks=True,
-            include_check_ins=True,
-            include_objective=True,
-        )
-    if nt == "TASK":
-        return _serialize_task(
-            node,
-            include_key_result=True,
-            include_work_logs=True,
-        )
-    return None
-
-
-def _resolve_scope_for_actor(
-    actor: str, token_version: Optional[int] = None
-) -> dict[str, Any]:
-    if is_supabase_api_mode_enabled():
-        return _resolve_actor_scope_via_supabase_api(actor)
-    with get_session_context() as session:
-        return _resolve_actor_scope(session, actor, token_version=token_version)
-
-
-def _require_allowed_user_id(scope: dict[str, Any], user_id: int) -> None:
-    owner_ids = {int(value) for value in (scope.get("owner_ids") or set())}
-    if bool(scope.get("is_admin", False)):
-        return
-    if int(user_id) not in owner_ids:
-        raise HTTPException(status_code=403, detail="Actor is not authorized.")
-
-
-def _read_node_row_via_supabase(
-    *, node_type: str, node_id: int, actor: str
-) -> dict[str, Any] | None:
-    payload = read_query_via_supabase_api(
-        kind="node.get",
-        params={
-            "node_type": str(node_type or "").strip().upper(),
-            "node_id": int(node_id),
-        },
-        actor=actor,
-    )
-    row = (payload or {}).get("node")
-    return dict(row) if isinstance(row, dict) else None
-
-
-def _resolve_goal_owner_id_for_node_via_supabase(
-    *, node_type: str, node_id: int, actor: str
-) -> int | None:
-    normalized = str(node_type or "").strip().upper()
-    node = _read_node_row_via_supabase(
-        node_type=normalized, node_id=int(node_id), actor=actor
-    )
-    if not node:
-        return None
-
-    if normalized == "GOAL":
-        owner_id = node.get("owner_id")
-        return int(owner_id) if owner_id is not None else None
-
-    if normalized == "OBJECTIVE":
-        goal_id = node.get("goal_id")
-        if goal_id is None:
-            return None
-        goal = _read_node_row_via_supabase(
-            node_type="GOAL", node_id=int(goal_id), actor=actor
-        )
-        if not goal:
-            return None
-        owner_id = goal.get("owner_id")
-        return int(owner_id) if owner_id is not None else None
-
-    if normalized == "KEY_RESULT":
-        objective_id = node.get("objective_id")
-        if objective_id is None:
-            return None
-        objective = _read_node_row_via_supabase(
-            node_type="OBJECTIVE", node_id=int(objective_id), actor=actor
-        )
-        if not objective:
-            return None
-        goal_id = objective.get("goal_id")
-        if goal_id is None:
-            return None
-        goal = _read_node_row_via_supabase(
-            node_type="GOAL", node_id=int(goal_id), actor=actor
-        )
-        if not goal:
-            return None
-        owner_id = goal.get("owner_id")
-        return int(owner_id) if owner_id is not None else None
-
-    if normalized == "TASK":
-        key_result_id = node.get("key_result_id")
-        if key_result_id is None:
-            return None
-        return _resolve_goal_owner_id_for_node_via_supabase(
-            node_type="KEY_RESULT",
-            node_id=int(key_result_id),
-            actor=actor,
-        )
-    return None
-
-
-def _require_allowed_username(scope: dict[str, Any], username: str) -> None:
-    allowed = {str(value) for value in (scope.get("usernames") or set())}
-    if bool(scope.get("is_admin", False)):
-        return
-    if str(username) not in allowed:
-        raise HTTPException(status_code=403, detail="Actor is not authorized.")
-
-
-def _filter_tasks_for_scope(tasks: list[Any], scope: dict[str, Any]) -> list[Any]:
-    if bool(scope.get("is_admin", False)):
-        return list(tasks)
-    owner_ids = {int(value) for value in (scope.get("owner_ids") or set())}
-    visible_tasks: list[Any] = []
-    for task in tasks:
-        try:
-            goal_obj = getattr(
-                getattr(getattr(task, "key_result", None), "objective", None),
-                "goal",
-                None,
-            )
-            owner_id = getattr(goal_obj, "owner_id", None)
-            if owner_id is not None and int(owner_id) in owner_ids:
-                visible_tasks.append(task)
-                continue
-            assignee_id = getattr(task, "assignee_id", None)
-            if assignee_id is not None and int(assignee_id) in owner_ids:
-                visible_tasks.append(task)
-        except Exception:
-            _LOGGER.warning(
-                "Failed to evaluate task visibility (task_id=%s); skipping",
-                getattr(task, "id", "?"),
-                exc_info=True,
-            )
-            continue
-    return visible_tasks
-
 
 _ALLOWED_READ_QUERY_KINDS = {
     "audit.summary",
@@ -3857,3 +2695,4 @@ def api_delete_work_log(
     if not deleted:
         raise HTTPException(status_code=404, detail="Work log not found.")
     return WorkLogDeleteResponse(id=int(work_log_id), deleted=True)
+

@@ -28,6 +28,12 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r backend_app/requirements.txt
 
+      - name: Install Python security tooling
+        run: python -m pip install pip-audit
+
+      - name: Install Python license tooling
+        run: python -m pip install pip-licenses
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
@@ -44,6 +50,12 @@ jobs:
 
       - name: Quality Baseline Expiry Gate
         run: python scripts/check_quality_gate_baseline.py
+
+      - name: Dependency Vulnerability Scan
+        run: python scripts/verify_dependency_scans.py
+
+      - name: Dependency License Compliance
+        run: python scripts/verify_dependency_licenses.py
 
       - name: Lint (Ruff)
         run: |
@@ -87,6 +99,14 @@ jobs:
             python -m pytest -vv -ra --tb=long --full-trace --durations=50 --maxfail=1
             exit 1
           }
+
+      - name: Full-stack Compose Smoke
+        run: |
+          python scripts/verify_resilience.py --compose-smoke
+
+      - name: PostgreSQL Integration Profile
+        run: |
+          python scripts/verify_postgresql_integration.py --ensure-docker-service
 
       - name: Upload Pytest Report
         if: always()

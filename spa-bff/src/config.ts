@@ -1,3 +1,5 @@
+import net from "node:net";
+
 export interface BffConfig {
   host: string;
   port: number;
@@ -63,6 +65,17 @@ const INSECURE_SECRETS = new Set([
   "your-secret-here",
 ]);
 
+const PRIVATE_DNS_SUFFIXES = [
+  ".svc",
+  ".svc.cluster.local",
+  ".cluster.local",
+  ".local",
+  ".internal",
+  ".intranet",
+  ".lan",
+  ".home",
+];
+
 function _isProductionRuntime(env: NodeJS.ProcessEnv): boolean {
   const runtime = String(
     env.OKR_RUNTIME_ENV ?? env.OKR_ENV ?? env.NODE_ENV ?? "development",
@@ -89,6 +102,65 @@ function _looksLikePlaceholder(value: string): boolean {
     }
   }
   return false;
+}
+
+function _isPrivateBackendHost(hostname: string): boolean {
+  const lowered = String(hostname).trim().toLowerCase();
+  if (!lowered) {
+    return false;
+  }
+
+  const ipType = net.isIP(lowered);
+  if (ipType === 4) {
+    const octets = lowered.split(".").map(Number);
+    const [first, second] = octets;
+    if (
+      first === 10 ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      (first === 169 && second === 254)
+    ) {
+      return true;
+    }
+    return false;
+  }
+  if (ipType === 6) {
+    return lowered.startsWith("fd") || lowered.startsWith("fe80");
+  }
+
+  if (["127.0.0.1", "::1", "localhost"].includes(lowered)) {
+    return false;
+  }
+
+  if (
+    lowered === "backend-api" ||
+    lowered === "backend" ||
+    lowered === "backend-service" ||
+    lowered === "okr-backend-api"
+  ) {
+    return true;
+  }
+
+  if (lowered.includes("backend-api") && lowered.endsWith(".svc")) {
+    return true;
+  }
+  if (lowered.endsWith(".svc") || PRIVATE_DNS_SUFFIXES.some((suffix) => lowered.endsWith(suffix))) {
+    return true;
+  }
+
+  return false;
+}
+
+function _validatePrivateBackendApiUrl(raw: string): string {
+  const candidate = String(raw).trim();
+  const parsed = new URL(candidate);
+  const hostname = String(parsed.hostname || "").trim().toLowerCase();
+  if (!_isPrivateBackendHost(hostname)) {
+    throw new Error(
+      "OKR_BACKEND_API_URL must target a private backend host in production.",
+    );
+  }
+  return candidate;
 }
 
 function requireSessionSecret(env: NodeJS.ProcessEnv): string {
@@ -123,6 +195,8 @@ function validateProductionConfig(config: BffConfig, env: NodeJS.ProcessEnv): vo
   if (!_isProductionRuntime(env)) {
     return;
   }
+
+  _validatePrivateBackendApiUrl(config.backendApiUrl);
 
   if (_looksLikePlaceholder(config.backendServiceToken)) {
     throw new Error(

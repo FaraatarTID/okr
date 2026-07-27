@@ -19,7 +19,6 @@ from __future__ import annotations
 from sqlmodel import Session, select  # noqa: F401
 from sqlalchemy.orm import selectinload  # noqa: F401
 from sqlalchemy.exc import OperationalError
-import os
 import logging
 import sys
 from typing import Any, Dict, Optional, List
@@ -76,112 +75,44 @@ from src import crud_timer_helpers
 from src import crud_update_helpers
 from src import crud_experiment_helpers
 from src import crud_checkin_helpers
+from src.domain.crud_contracts import (
+    ALLOWED_EXPERIMENT_UPDATE_FIELDS,
+    ALLOWED_GOAL_UPDATE_FIELDS,
+    ALLOWED_KEY_RESULT_UPDATE_FIELDS,
+    ALLOWED_OBJECTIVE_UPDATE_FIELDS,
+    ALLOWED_TASK_UPDATE_KWARGS,
+    ADMIN_BOOTSTRAP_MAX_RETRIES as _ADMIN_BOOTSTRAP_MAX_RETRIES,
+    ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS as _ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS,
+    AUTH_IP_MAX_ATTEMPTS as _AUTH_IP_MAX_ATTEMPTS,
+    AUTH_IP_WINDOW_SECONDS as _AUTH_IP_WINDOW_SECONDS,
+    AUTH_LOCKOUT_SECONDS as _AUTH_LOCKOUT_SECONDS,
+    AUTH_USER_MAX_ATTEMPTS as _AUTH_USER_MAX_ATTEMPTS,
+    AUTH_USER_WINDOW_SECONDS as _AUTH_USER_WINDOW_SECONDS,
+    BOOTSTRAP_ADMIN_PASSWORD_ENV,
+    MODEL_BINDING_NAMES,
+    UNSET,
+)
 
 logger = logging.getLogger(__name__)
 
 
 # Field allow-lists are explicit mutation contracts. Update helpers validate
 # incoming kwargs against these sets to prevent silent schema drift.
-_ALLOWED_GOAL_UPDATE_FIELDS = {
-    "title",
-    "description",
-    "progress",
-    "cycle_id",
-    "strategy_tags",
-    "is_expanded",
-    "deadline",
-}
-_ALLOWED_OBJECTIVE_UPDATE_FIELDS = {
-    "title",
-    "description",
-    "progress",
-    "score_mode",
-    "weight",
-    "is_expanded",
-    "deadline",
-    "state",
-    "final_reflection",
-}
-_ALLOWED_KEY_RESULT_UPDATE_FIELDS = {
-    "title",
-    "description",
-    "progress",
-    "start_value",
-    "target_value",
-    "current_value",
-    "metric_type",
-    "unit",
-    "weight",
-    "initiative_tags",
-    "ai_analysis",
-    "is_expanded",
-    "deadline",
-    "state",
-    "final_reflection",
-}
-_ALLOWED_TASK_UPDATE_KWARGS = {
-    "description",
-    "progress",
-    "deadline",
-    "assignee_id",
-    "is_expanded",
-}
-_ALLOWED_EXPERIMENT_UPDATE_FIELDS = {
-    "hypothesis",
-    "change_description",
-    "start_at",
-    "end_at",
-    "status",
-    "decision",
-    "decision_rationale",
-    "expected_effect_direction",
-    "expected_effect_size",
-}
-# Sentinel used where `None` is a valid user value and we still need to detect
-# "argument omitted" semantics (for example partial updates).
-_UNSET = object()
-# Authentication throttling policy defaults (overridable by env vars).
-AUTH_USER_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_USER_WINDOW_SECONDS", "300")))
-AUTH_USER_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_USER_MAX_ATTEMPTS", "5")))
-AUTH_IP_WINDOW_SECONDS = max(1, int(os.getenv("AUTH_IP_WINDOW_SECONDS", "300")))
-AUTH_IP_MAX_ATTEMPTS = max(1, int(os.getenv("AUTH_IP_MAX_ATTEMPTS", "20")))
-AUTH_LOCKOUT_SECONDS = max(1, int(os.getenv("AUTH_LOCKOUT_SECONDS", "900")))
-# Bootstrap retry policy for first-run admin creation.
-ADMIN_BOOTSTRAP_MAX_RETRIES = max(1, int(os.getenv("ADMIN_BOOTSTRAP_MAX_RETRIES", "3")))
-ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS = max(
-    0.0, float(os.getenv("ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS", "0.4"))
-)
-_BOOTSTRAP_ADMIN_PASSWORD_ENV = "OKR_BOOTSTRAP_ADMIN_PASSWORD"
-
-# Names that can become stale during hot reload if model classes are re-imported.
-# `crud_core_helpers.ensure_model_bindings_current_from_crud` refreshes bindings.
-_MODEL_BINDING_NAMES = (
-    "Goal",
-    "Objective",
-    "KeyResult",
-    "Task",
-    "WorkLog",
-    "TaskStatus",
-    "DashboardGoal",
-    "TaskWithTimer",
-    "Cycle",
-    "CheckIn",
-    "User",
-    "UserRole",
-    "WeeklyPlan",
-    "Retrospective",
-    "AuthThrottleState",
-    "Team",
-    "LifecycleState",
-    "AlignmentEdge",
-    "AlignmentType",
-    "VariationType",
-    "ExperimentStatus",
-    "ExperimentDecision",
-    "ExpectedEffectDirection",
-    "Experiment",
-    "RetroExperimentOutcome",
-)
+_ALLOWED_GOAL_UPDATE_FIELDS = ALLOWED_GOAL_UPDATE_FIELDS
+_ALLOWED_OBJECTIVE_UPDATE_FIELDS = ALLOWED_OBJECTIVE_UPDATE_FIELDS
+_ALLOWED_KEY_RESULT_UPDATE_FIELDS = ALLOWED_KEY_RESULT_UPDATE_FIELDS
+_ALLOWED_TASK_UPDATE_KWARGS = ALLOWED_TASK_UPDATE_KWARGS
+_ALLOWED_EXPERIMENT_UPDATE_FIELDS = ALLOWED_EXPERIMENT_UPDATE_FIELDS
+_UNSET = UNSET
+AUTH_USER_WINDOW_SECONDS = _AUTH_USER_WINDOW_SECONDS
+AUTH_USER_MAX_ATTEMPTS = _AUTH_USER_MAX_ATTEMPTS
+AUTH_IP_WINDOW_SECONDS = _AUTH_IP_WINDOW_SECONDS
+AUTH_IP_MAX_ATTEMPTS = _AUTH_IP_MAX_ATTEMPTS
+AUTH_LOCKOUT_SECONDS = _AUTH_LOCKOUT_SECONDS
+ADMIN_BOOTSTRAP_MAX_RETRIES = _ADMIN_BOOTSTRAP_MAX_RETRIES
+ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS = _ADMIN_BOOTSTRAP_RETRY_DELAY_SECONDS
+_BOOTSTRAP_ADMIN_PASSWORD_ENV = BOOTSTRAP_ADMIN_PASSWORD_ENV
+_MODEL_BINDING_NAMES = MODEL_BINDING_NAMES
 
 
 # ---------------------------------------------------------------------------

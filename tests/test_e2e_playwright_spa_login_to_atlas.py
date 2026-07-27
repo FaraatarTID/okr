@@ -1,24 +1,30 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+from urllib.error import URLError
+from urllib.request import urlopen
+
 import os
 import shutil
 import socket
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
-from collections.abc import Iterator
-from pathlib import Path
-from typing import Any
-from urllib.error import URLError
-from urllib.request import urlopen
 
 import pytest
 
 
 _RUN_E2E_ENV = "OKR_RUN_PLAYWRIGHT_SPA_E2E"
-_TEST_USERNAME = "e2e_admin"
+
 _TEST_PASSWORD = "E2E-Atlas-Password-123"
+_E2E_ROLES: dict[str, tuple[str, str]] = {
+    "admin": ("e2e_admin", _TEST_PASSWORD),
+    "manager": ("e2e_manager", _TEST_PASSWORD),
+    "member": ("e2e_member", _TEST_PASSWORD),
+}
 
 
 def _truthy(raw: str | None) -> bool:
@@ -29,6 +35,24 @@ def _free_local_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def _resolve_chromium_executable() -> str | None:
+    env_path = str(os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE") or "").strip()
+    if env_path:
+        if not Path(env_path).is_file():
+            return None
+        return env_path
+
+    candidates = [
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+    ]
+    for candidate in candidates:
+        if Path(candidate).is_file():
+            return candidate
+    return None
 
 
 def _npm_command() -> list[str]:
@@ -89,8 +113,11 @@ database.init_database()
 engine = database.get_engine()
 
 now = datetime.now(timezone.utc).replace(tzinfo=None)
+start = now - timedelta(days=14)
+end = now + timedelta(days=30)
+
 with Session(engine, expire_on_commit=False) as session:
-    user = User(
+    admin_user = User(
         username='e2e_admin',
         password_hash=crud.hash_password('E2E-Atlas-Password-123'),
         display_name='E2E Admin',
@@ -99,57 +126,130 @@ with Session(engine, expire_on_commit=False) as session:
         must_change_password=False,
         password_changed_at=now,
     )
-    session.add(user)
-    session.flush()
-
-    cycle = Cycle(
-        title='E2E Cycle',
-        start_date=now - timedelta(days=14),
-        end_date=now + timedelta(days=30),
+    manager_user = User(
+        username='e2e_manager',
+        password_hash=crud.hash_password('E2E-Atlas-Password-123'),
+        display_name='E2E Manager',
+        role=UserRole.MANAGER,
         is_active=True,
+        must_change_password=False,
+        password_changed_at=now,
     )
-    session.add(cycle)
+    member_user = User(
+        username='e2e_member',
+        password_hash=crud.hash_password('E2E-Atlas-Password-123'),
+        display_name='E2E Member',
+        role=UserRole.MEMBER,
+        is_active=True,
+        must_change_password=False,
+        password_changed_at=now,
+    )
+    session.add(admin_user)
+    session.add(manager_user)
+    session.flush()
+    member_user.manager_id = manager_user.id
+    session.add(member_user)
     session.flush()
 
-    goal = Goal(
-        owner_id=user.id,
-        cycle_id=cycle.id,
-        title='E2E Goal',
+    admin_cycle = Cycle(
+        title='E2E Admin Cycle',
+        start_date=start,
+        end_date=end,
+        is_active=True,
+        owner_manager_id=None,
+    )
+    manager_cycle = Cycle(
+        title='E2E Manager Cycle',
+        start_date=start,
+        end_date=end,
+        is_active=True,
+        owner_manager_id=manager_user.id,
+    )
+    session.add(admin_cycle)
+    session.add(manager_cycle)
+    session.flush()
+
+    admin_goal = Goal(
+        owner_id=admin_user.id,
+        cycle_id=admin_cycle.id,
+        title='E2E Admin Goal',
         progress=25,
         created_by='e2e_admin',
     )
-    session.add(goal)
+    manager_goal = Goal(
+        owner_id=manager_user.id,
+        cycle_id=manager_cycle.id,
+        title='E2E Manager Goal',
+        progress=20,
+        created_by='e2e_manager',
+    )
+    session.add(admin_goal)
+    session.add(manager_goal)
     session.flush()
 
-    objective = Objective(
-        goal_id=goal.id,
-        title='E2E Objective',
+    admin_objective = Objective(
+        goal_id=admin_goal.id,
+        title='E2E Admin Objective',
         progress=20,
         created_by='e2e_admin',
     )
-    session.add(objective)
+    manager_objective = Objective(
+        goal_id=manager_goal.id,
+        title='E2E Manager Objective',
+        progress=18,
+        created_by='e2e_manager',
+    )
+    session.add(admin_objective)
+    session.add(manager_objective)
     session.flush()
 
-    key_result = KeyResult(
-        objective_id=objective.id,
-        title='E2E Key Result',
+    admin_kr = KeyResult(
+        objective_id=admin_objective.id,
+        title='E2E Admin Key Result',
         progress=10,
         target_value=100.0,
         current_value=10.0,
         created_by='e2e_admin',
     )
-    session.add(key_result)
+    manager_kr = KeyResult(
+        objective_id=manager_objective.id,
+        title='E2E Manager Key Result',
+        progress=14,
+        target_value=50.0,
+        current_value=10.0,
+        created_by='e2e_manager',
+    )
+    session.add(admin_kr)
+    session.add(manager_kr)
     session.flush()
 
-    task = Task(
-        key_result_id=key_result.id,
-        title='E2E Focus Task',
+    admin_task = Task(
+        key_result_id=admin_kr.id,
+        title='E2E Admin Focus Task',
         progress=0,
         status=TaskStatus.TODO,
-        assignee_id=user.id,
+        assignee_id=admin_user.id,
         created_by='e2e_admin',
     )
-    session.add(task)
+    manager_task = Task(
+        key_result_id=manager_kr.id,
+        title='E2E Manager Focus Task',
+        progress=0,
+        status=TaskStatus.TODO,
+        assignee_id=manager_user.id,
+        created_by='e2e_manager',
+    )
+    member_task = Task(
+        key_result_id=manager_kr.id,
+        title='E2E Member Focus Task',
+        progress=0,
+        status=TaskStatus.TODO,
+        assignee_id=member_user.id,
+        created_by='e2e_member',
+    )
+    session.add(admin_task)
+    session.add(manager_task)
+    session.add(member_task)
     session.commit()
 """
     result = subprocess.run(
@@ -162,21 +262,19 @@ with Session(engine, expire_on_commit=False) as session:
     )
     if result.returncode != 0:
         raise RuntimeError(
-            f"Database seed failed.\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+            f"Database seed failed.\\nstdout:\\n{result.stdout}\\nstderr:\\n{result.stderr}"
         )
 
 
 @dataclass(frozen=True)
 class E2EStack:
     app_url: str
-    username: str
-    password: str
 
 
 @pytest.fixture(scope="module")
 def e2e_stack(
     tmp_path_factory: pytest.TempPathFactory,
-) -> Iterator[E2EStack]:
+) -> Any:
     if not _truthy(os.getenv(_RUN_E2E_ENV)):
         pytest.skip(
             f"Playwright SPA e2e is disabled. Set {_RUN_E2E_ENV}=1 to run this test."
@@ -215,26 +313,31 @@ def e2e_stack(
             "OKR_BACKEND_API_URL": f"http://127.0.0.1:{backend_port}",
             "OKR_BACKEND_HOST": "127.0.0.1",
             "OKR_BACKEND_PORT": str(backend_port),
-            "OKR_BACKEND_SERVICE_TOKEN": service_token,
-            "OKR_BACKEND_ENFORCE_TOKEN": "true",
-            "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
-            "PYTHONUNBUFFERED": "1",
-        }
-    )
+                "OKR_BACKEND_SERVICE_TOKEN": service_token,
+                "OKR_BACKEND_ENFORCE_TOKEN": "true",
+                "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
+                "OKR_ALEMBIC_UPGRADE_TARGET": "heads",
+                "PYTHONUNBUFFERED": "1",
+            }
+        )
 
     _seed_database(repo_root, env)
 
     backend_log_path = tmp_dir / "backend.log"
     bff_log_path = tmp_dir / "bff.log"
     spa_log_path = tmp_dir / "spa.log"
+    worker_log_path = tmp_dir / "worker.log"
+
     backend_process: subprocess.Popen[Any] | None = None
     bff_process: subprocess.Popen[Any] | None = None
     spa_process: subprocess.Popen[Any] | None = None
+    worker_process: subprocess.Popen[Any] | None = None
 
     with (
         backend_log_path.open("w", encoding="utf-8") as backend_log,
         bff_log_path.open("w", encoding="utf-8") as bff_log,
         spa_log_path.open("w", encoding="utf-8") as spa_log,
+        worker_log_path.open("w", encoding="utf-8") as worker_log,
     ):
         try:
             backend_process = subprocess.Popen(
@@ -249,11 +352,26 @@ def e2e_stack(
                 timeout_seconds=60,
             ):
                 _terminate_process(backend_process)
-                backend_log.flush()
                 raise RuntimeError(
-                    "Backend API did not become healthy in time.\n"
-                    f"backend.log tail:\n{_read_log_tail(backend_log_path)}"
+                    "Backend API did not become healthy in time.\\n"
+                    f"backend.log tail:\\n{_read_log_tail(backend_log_path)}"
                 )
+
+            worker_process = subprocess.Popen(
+                [sys.executable, "-m", "backend_app.worker"],
+                cwd=repo_root,
+                env=env,
+                stdout=worker_log,
+                stderr=subprocess.STDOUT,
+            )
+            if not _wait_for_http(f"http://127.0.0.1:{backend_port}/healthz", timeout_seconds=5):
+                if worker_process.poll() is not None:
+                    _terminate_process(worker_process)
+                    raise RuntimeError(
+                        "Backend worker exited during startup.\\n"
+                        f"worker.log tail:\\n{_read_log_tail(worker_log_path)}"
+                    )
+                time.sleep(0.5)
 
             bff_env = env.copy()
             bff_env.update(
@@ -281,10 +399,9 @@ def e2e_stack(
                 timeout_seconds=90,
             ):
                 _terminate_process(bff_process)
-                bff_log.flush()
                 raise RuntimeError(
-                    "SPA BFF did not become healthy in time.\n"
-                    f"bff.log tail:\n{_read_log_tail(bff_log_path)}"
+                    "SPA BFF did not become healthy in time.\\n"
+                    f"bff.log tail:\\n{_read_log_tail(bff_log_path)}"
                 )
 
             spa_env = env.copy()
@@ -309,93 +426,174 @@ def e2e_stack(
                 stdout=spa_log,
                 stderr=subprocess.STDOUT,
             )
-
             if not _wait_for_http(
                 f"http://127.0.0.1:{app_port}/login",
                 timeout_seconds=180,
             ):
                 _terminate_process(spa_process)
-                spa_log.flush()
                 raise RuntimeError(
-                    "SPA Web did not become healthy in time.\n"
-                    f"spa.log tail:\n{_read_log_tail(spa_log_path)}"
+                    "SPA Web did not become healthy in time.\\n"
+                    f"spa.log tail:\\n{_read_log_tail(spa_log_path)}"
                 )
 
-            yield E2EStack(
-                app_url=f"http://127.0.0.1:{app_port}",
-                username=_TEST_USERNAME,
-                password=_TEST_PASSWORD,
-            )
+            yield E2EStack(app_url=f"http://127.0.0.1:{app_port}")
         finally:
             _terminate_process(spa_process)
             _terminate_process(bff_process)
             _terminate_process(backend_process)
+            _terminate_process(worker_process)
 
 
-def test_login_navigate_atlas_map_and_start_timer(e2e_stack: E2EStack) -> None:
+def _login(page, username: str, password: str) -> None:
+    from playwright.sync_api import expect
+
+    username_input = page.get_by_label("Username", exact=True)
+    password_input = page.get_by_label("Password", exact=True)
+    sign_in_button = page.get_by_role("button", name="Sign in", exact=True)
+
+    expect(username_input).to_be_visible(timeout=60_000)
+    username_input.click()
+    username_input.fill("")
+    username_input.type(username, delay=15)
+    expect(password_input).to_be_visible(timeout=60_000)
+    password_input.click()
+    password_input.fill("")
+    password_input.type(password, delay=15)
+    expect(sign_in_button).to_be_enabled(timeout=60_000)
+    sign_in_button.click()
+    expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
+        timeout=90_000
+    )
+
+
+def _run_timer_path(page) -> None:
+    from playwright.sync_api import expect
+
+    active_task_select = page.locator("#focus-task-ref")
+    expect(active_task_select).to_be_visible(timeout=90_000)
+    page.wait_for_function(
+        "() => (document.querySelectorAll('#focus-task-ref option') || []).length >= 2",
+        timeout=90_000,
+    )
+    option_count = active_task_select.locator("option").count()
+    if option_count < 2:
+        pytest.fail(
+            "Active Task selector has no task options after login; cannot start timer."
+        )
+    active_task_select.select_option(index=1)
+
+    start_button = page.get_by_role("button", name="Start timer", exact=True)
+    expect(start_button).to_be_visible(timeout=90_000)
+    expect(start_button).to_be_enabled(timeout=90_000)
+    start_button.click()
+    expect(
+        page.get_by_role("button", name="Stop timer + save log", exact=True)
+    ).to_be_visible(timeout=90_000)
+
+    timer_dialog = page.get_by_role("dialog", name="Focus timer session")
+    expect(timer_dialog).to_be_visible(timeout=90_000)
+    timer_dialog.get_by_role("button", name="Close", exact=True).click()
+    expect(timer_dialog).not_to_be_visible(timeout=90_000)
+
+
+def _run_check_in_path(page) -> None:
+    from playwright.sync_api import expect
+
+    page.get_by_role("button", name="Check-In").click()
+    expect(page.get_by_role("button", name="2. Check-Ins", exact=True)).to_be_visible(
+        timeout=90_000
+    )
+    page.get_by_role("button", name="2. Check-Ins", exact=True).click()
+    expect(page.get_by_role("button", name="Submit Check-In")).to_be_visible(timeout=90_000)
+    page.get_by_role("button", name="Submit Check-In").first.click()
+    expect(page.get_by_text("Check-in saved.")).to_be_visible(timeout=90_000)
+
+
+def _run_weekly_job_path(page) -> None:
+    from playwright.sync_api import expect
+
+    page.get_by_role("button", name="Weekly Report").click()
+    weekly_pdf = page.get_by_role("button", name="Export Weekly PDF")
+    expect(weekly_pdf).to_be_visible(timeout=90_000)
+    expect(weekly_pdf).to_be_enabled(timeout=90_000)
+    weekly_pdf.click()
+    expect(weekly_pdf).to_have_text("Exporting...", timeout=90_000)
+    expect(weekly_pdf).to_have_text("Export Weekly PDF", timeout=180_000)
+    fallback_error = page.locator("text=PDF export unavailable; downloaded HTML fallback.")
+    if fallback_error.count() > 0:
+        expect(fallback_error).to_be_visible(timeout=1_000)
+
+
+def _run_admin_mutation_path(page) -> None:
+    from playwright.sync_api import expect
+
+    page.get_by_role("button", name="Admin").click()
+    expect(page.get_by_role("heading", name="Platform Controls")).to_be_visible(timeout=90_000)
+    page.get_by_role("button", name="Cycles").click()
+    page.get_by_placeholder("Cycle title (example: Q1-2026)").fill(
+        f"E2E Cycle {datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+    )
+
+    date_inputs = page.locator("input[type='date']")
+    expect(date_inputs).to_have_count(2, timeout=20_000)
+    start_day = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
+    end_day = (datetime.utcnow() + timedelta(days=6)).strftime("%Y-%m-%d")
+    date_inputs.first.fill(start_day)
+    date_inputs.nth(1).fill(end_day)
+
+    owner_select = page.locator("select").filter(
+        has_text="Select cycle owner (manager/admin)"
+    )
+    expect(owner_select).to_be_visible(timeout=20_000)
+    owner_select.select_option(label="E2E Admin")
+    page.get_by_role("button", name="Create cycle").click()
+    expect(page.get_by_text("Cycle created.")).to_be_visible(timeout=90_000)
+
+
+@pytest.mark.parametrize(
+    ("role"),
+    ["admin", "manager", "member"],
+    ids=["admin", "manager", "member"],
+)
+def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
     from playwright.sync_api import Error, expect, sync_playwright
-
+    chromium_path = _resolve_chromium_executable()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if chromium_path:
+        launch_kwargs["executable_path"] = chromium_path
     with sync_playwright() as playwright:
         try:
-            browser = playwright.chromium.launch(headless=True)
+            browser = playwright.chromium.launch(**launch_kwargs)
         except Error as exc:
+            if chromium_path:
+                pytest.skip(
+                    "Playwright could not launch Chromium using local executable. "
+                    f"Details: {exc}. Path: {chromium_path}"
+                )
             pytest.skip(
                 "Chromium runtime is unavailable for Playwright. "
-                f"Run `playwright install chromium`. Details: {exc}"
+                "Install browsers via `playwright install chromium` or set "
+                "PLAYWRIGHT_CHROMIUM_EXECUTABLE to a local Chrome path. "
+                f"Details: {exc}"
             )
 
         context = browser.new_context(viewport={"width": 1600, "height": 1000})
         page = context.new_page()
-        page.goto(
-            f"{e2e_stack.app_url}/login", wait_until="domcontentloaded", timeout=90_000
-        )
+        username, password = _E2E_ROLES[role]
+        page.goto(f"{e2e_stack.app_url}/login", wait_until="domcontentloaded", timeout=90_000)
 
-        username_input = page.get_by_label("Username", exact=True)
-        password_input = page.get_by_label("Password", exact=True)
-        sign_in_button = page.get_by_role("button", name="Sign in", exact=True)
+        _login(page, username=username, password=password)
+        _run_timer_path(page)
+        _run_check_in_path(page)
+        _run_weekly_job_path(page)
 
-        expect(username_input).to_be_visible(timeout=60_000)
-        username_input.click()
-        username_input.fill("")
-        username_input.type(e2e_stack.username, delay=15)
-
-        expect(password_input).to_be_visible(timeout=60_000)
-        password_input.click()
-        password_input.fill("")
-        password_input.type(e2e_stack.password, delay=15)
-
-        expect(sign_in_button).to_be_enabled(timeout=60_000)
-        sign_in_button.click()
-
-        expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
-            timeout=90_000
-        )
-
-        active_task_select = page.locator("#focus-task-ref")
-        expect(active_task_select).to_be_visible(timeout=90_000)
-        page.wait_for_function(
-            "() => (document.querySelectorAll('#focus-task-ref option') || []).length >= 2",
-            timeout=90_000,
-        )
-        option_count = active_task_select.locator("option").count()
-        if option_count < 2:
-            pytest.fail(
-                "Active Task selector has no task options after login; cannot start timer."
+        if role == "admin":
+            _run_admin_mutation_path(page)
+        else:
+            expect(page.get_by_role("button", name="Admin")).to_have_count(0, timeout=10_000)
+            expect(page.get_by_text("Cycle is managed by your manager/admin.")).to_be_visible(
+                timeout=20_000
             )
-        active_task_select.select_option(index=1)
-
-        start_button = page.get_by_role("button", name="Start timer", exact=True)
-        expect(start_button).to_be_visible(timeout=90_000)
-        expect(start_button).to_be_enabled(timeout=90_000)
-        start_button.click()
-        expect(
-            page.get_by_role("button", name="Stop timer + save log", exact=True)
-        ).to_be_visible(timeout=90_000)
-
-        timer_dialog = page.get_by_role("dialog", name="Focus timer session")
-        expect(timer_dialog).to_be_visible(timeout=90_000)
-        timer_dialog.get_by_role("button", name="Close", exact=True).click()
-        expect(timer_dialog).not_to_be_visible(timeout=90_000)
 
         page.get_by_role("button", name="Sign out", exact=True).click()
         expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(

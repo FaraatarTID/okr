@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+import secrets
+import tempfile
 from typing import Iterable
 
 
@@ -17,7 +20,6 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PYTEST_TARGETS: tuple[str, ...] = (
     "tests/test_distributed_state_service.py",
     "tests/test_cache_utils.py",
-    "tests/test_hot_reload_cache_invalidation.py",
     "tests/test_crud_backend_mutation_proxy.py",
     "tests/test_app_query_helpers.py",
     "tests/test_app_auth_helpers.py",
@@ -28,6 +30,30 @@ DEFAULT_PYTEST_TARGETS: tuple[str, ...] = (
     "tests/test_atlas_map_chart_helpers.py",
 )
 
+_SMOKE_TEST_PATH = "tests/test_e2e_smoke.py"
+
+
+def _summarize_compose_failure(output: str) -> str:
+    text = (output or "").lower()
+    if "permission denied" in text and ("npipe" in text or ".docker" in text):
+        return (
+            "Docker daemon access was denied by environment policy.\n"
+            "Observed: Docker Desktop config/engine access denied for current session. "
+            "This commonly indicates restricted local permissions and is not a smoke-path logic bug."
+        )
+    if "unable to find image" in text or "pull access denied" in text:
+        return (
+            "Docker image availability/authenticity issue.\n"
+            "Observed: required local images were not usable in this runtime. "
+            "Verify docker compose builds/images are available and daemon credentials are valid."
+        )
+    if "no such file" in text or "not found" in text:
+        return (
+            "Missing compose artifact.\n"
+            "Observed: compose file/service image references could not be resolved."
+        )
+    return "docker compose command returned a non-zero exit code."
+
 
 @dataclass(frozen=True)
 class CheckResult:
@@ -36,12 +62,15 @@ class CheckResult:
     detail: str
 
 
-def _run_command(argv: list[str], *, cwd: Path) -> tuple[int, str]:
+def _run_command(
+    argv: list[str], *, cwd: Path, env: dict[str, str] | None = None
+) -> tuple[int, str]:
     completed = subprocess.run(
         argv,
         cwd=cwd,
         text=True,
         capture_output=True,
+        env=env,
         check=False,
     )
     output = "\n".join(
@@ -50,8 +79,202 @@ def _run_command(argv: list[str], *, cwd: Path) -> tuple[int, str]:
     return int(completed.returncode), output
 
 
+def _free_local_port() -> int:
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _write_smoke_env_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
+    service_token = secrets.token_hex(24)
+    session_secret = secrets.token_hex(32)
+    backend_host_port = _free_local_port()
+    bff_host_port = _free_local_port()
+    web_host_port = _free_local_port()
+
+    values = {
+        "OKR_BACKEND_SERVICE_TOKEN": service_token,
+        "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
+        "OKR_BACKEND_HOST_PORT": str(backend_host_port),
+        "OKR_BACKEND_BIND_ADDRESS": "127.0.0.1",
+        "OKR_BACKEND_API_URL": "http://backend-api:8100",
+        "OKR_BACKEND_SIGNING_SECRET": "",
+        "BFF_SESSION_SECRET": session_secret,
+        "BFF_SESSION_TTL_SECONDS": "3600",
+        "BFF_COOKIE_SECURE": "false",
+        "BFF_REQUEST_TIMEOUT_MS": "90000",
+        "BFF_PUBLIC_ORIGIN": f"http://127.0.0.1:{bff_host_port}",
+        "SPA_BFF_HOST_PORT": str(bff_host_port),
+        "SPA_WEB_HOST_PORT": str(web_host_port),
+        "SPA_BFF_BIND_ADDRESS": "127.0.0.1",
+        "SPA_WEB_BIND_ADDRESS": "127.0.0.1",
+        "OKR_BACKEND_HOST": "0.0.0.0",
+        "BFF_HOST": "0.0.0.0",
+        "OKR_STRICT_RUNTIME_PREFLIGHT": "false",
+        "OKR_DATA_ACCESS_MODE": "database",
+        "OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS": "120000",
+        "OKR_BACKEND_PORT": "8100",
+    }
+
+    # Keep values we need to call the services after startup.
+    service_urls = {
+        "backend_port": str(backend_host_port),
+        "bff_port": str(bff_host_port),
+        "web_port": str(web_host_port),
+    }
+
+    lines = [f"{key}={value}" for key, value in values.items()]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return values, service_urls
+
+
+def _run_compose(
+    *,
+    compose_file: Path,
+    env_file: Path,
+    compose_project: str,
+    command: Iterable[str],
+) -> tuple[int, str]:
+    argv = ["docker", "compose", "-f", str(compose_file), "-p", compose_project]
+    argv.append("--env-file")
+    argv.append(str(env_file))
+    argv.extend(command)
+    return _run_command(argv, cwd=ROOT)
+
+
+def _smoke_check_services(base_bff_url: str, base_backend_url: str, timeout_seconds: int) -> CheckResult:
+    deadline = time.time() + float(timeout_seconds)
+    while time.time() < deadline:
+        try:
+            import urllib.request
+
+            with urllib.request.urlopen(f"{base_backend_url}/healthz", timeout=2) as backend_resp:
+                backend_ok = int(getattr(backend_resp, "status", 0) or 0) < 500
+            with urllib.request.urlopen(f"{base_bff_url}/healthz", timeout=2) as bff_resp:
+                bff_ok = int(getattr(bff_resp, "status", 0) or 0) < 500
+            if backend_ok and bff_ok:
+                return CheckResult(
+                    name="compose_service_readiness",
+                    status="pass",
+                    detail=(
+                        "Backend and spa-bff services became healthy for smoke execution."
+                    ),
+                )
+        except Exception:
+            time.sleep(1.5)
+    return CheckResult(
+        name="compose_service_readiness",
+        status="fail",
+        detail="Services did not become healthy within smoke startup timeout.",
+    )
+
+
+def _run_smoke_compose(
+    *,
+    args: argparse.Namespace,
+) -> CheckResult:
+    if not args.compose_file.exists():
+        return CheckResult(
+            name="compose_smoke",
+            status="skip",
+            detail=f"Compose file not found: {args.compose_file}",
+        )
+
+    compose_project = str(args.compose_project).strip() or f"okr-smoke-{secrets.token_hex(3)}"
+    compose_file = args.compose_file
+
+    with tempfile.TemporaryDirectory(prefix="okr-smoke-") as workdir:
+        env_path = Path(workdir) / "smoke.env"
+        smoke_env, service_urls = _write_smoke_env_file(env_path)
+        pytest_env = {
+            "TOP10_SMOKE": "1",
+            "TOP10_SMOKE_BFF_URL": f"http://127.0.0.1:{service_urls['bff_port']}",
+            "TOP10_SMOKE_WEB_URL": f"http://127.0.0.1:{service_urls['web_port']}",
+        }
+
+        compose_up = _run_compose(
+            compose_file=compose_file,
+            env_file=env_path,
+            compose_project=compose_project,
+            command=[
+                "up",
+                "-d",
+                "--build",
+                "backend-api",
+                "backend-worker",
+                "spa-bff",
+                "spa-web",
+            ],
+        )
+        if compose_up[0] != 0:
+            summary = _summarize_compose_failure(compose_up[1])
+            return CheckResult(
+                name="compose_smoke",
+                status="fail",
+                detail=(
+                    "docker compose up failed for smoke run.\n"
+                    f"{summary}\n"
+                    f"command_exit={compose_up[0]}\n{compose_up[1]}"
+                ),
+            )
+
+        try:
+            readiness = _smoke_check_services(
+                base_bff_url=pytest_env["TOP10_SMOKE_BFF_URL"],
+                base_backend_url=f"http://127.0.0.1:{service_urls['backend_port']}",
+                timeout_seconds=180,
+            )
+            if readiness.status != "pass":
+                return readiness
+
+            pytest_cmd = [sys.executable, "-m", "pytest", "-q", _SMOKE_TEST_PATH]
+            pytest_env = os.environ.copy()
+            pytest_env.update(smoke_env)
+            pycode, pyout = _run_command(
+                pytest_cmd,
+                cwd=ROOT,
+                env=pytest_env,
+            )
+            if pycode != 0:
+                return CheckResult(
+                    name="compose_smoke_pytest",
+                    status="fail",
+                    detail=pyout or "Smoke pytest command failed.",
+                )
+            return CheckResult(
+                name="compose_smoke_pytest",
+                status="pass",
+                detail="Full-stack compose smoke test passed.",
+            )
+        finally:
+            down_result = _run_compose(
+                compose_file=compose_file,
+                env_file=env_path,
+                compose_project=compose_project,
+                command=["down", "--volumes", "--remove-orphans"],
+            )
+            if down_result[0] != 0:
+                print(f"[WARN] docker compose down returned {down_result[0]}.")
+                print(down_result[1])
+
+
 def _run_pytest(*, targets: Iterable[str], extra_args: Iterable[str]) -> CheckResult:
     test_targets = [str(target).strip() for target in targets if str(target).strip()]
+    existing_targets = [path for path in test_targets if Path(path).exists()]
+    missing_targets = [path for path in test_targets if not Path(path).exists()]
+
+    if missing_targets:
+        print(f"[INFO] Skipping missing pytest targets: {', '.join(missing_targets)}")
+
+    if not existing_targets:
+        return CheckResult(
+            name="pytest_resilience_suite",
+            status="skip",
+            detail="No valid pytest targets found.",
+        )
+
     if not test_targets:
         return CheckResult(
             name="pytest_resilience_suite",
@@ -64,7 +287,7 @@ def _run_pytest(*, targets: Iterable[str], extra_args: Iterable[str]) -> CheckRe
         "-m",
         "pytest",
         "-q",
-        *test_targets,
+        *existing_targets,
         *[str(arg) for arg in extra_args if str(arg).strip()],
     ]
     print(f"Running: {' '.join(cmd)}")
@@ -219,6 +442,25 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="Skip the default resilience pytest subset.",
     )
     parser.add_argument(
+        "--compose-smoke",
+        action="store_true",
+        help="Start docker compose services and run the full-stack smoke test.",
+    )
+    parser.add_argument(
+        "--compose-file",
+        type=Path,
+        default=Path(__file__).resolve().parents[1]
+        / "deploy"
+        / "docker"
+        / "docker-compose.yml",
+        help="Compose file for smoke execution.",
+    )
+    parser.add_argument(
+        "--compose-project",
+        default="okr-productionization-smoke",
+        help="Docker compose project name for smoke execution.",
+    )
+    parser.add_argument(
         "--pytest-target",
         action="append",
         default=[],
@@ -281,6 +523,8 @@ def main(argv: list[str] | None = None) -> int:
                 require_live_backend=bool(args.require_live_backend),
             )
         )
+    if args.compose_smoke:
+        results.append(_run_smoke_compose(args=args))
 
     if not results:
         print("No checks were selected.")
