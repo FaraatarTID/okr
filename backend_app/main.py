@@ -113,7 +113,6 @@ from backend_app.scope_resolution import (
     _require_admin_or_manager_actor_scope as _require_admin_or_manager_actor_scope_impl,
     _resolve_scope_for_actor as _resolve_scope_for_actor_impl,
     _pick_primary_active_cycle,
-    _scope_cycle_id,
     _resolve_actor as _resolve_actor_impl,
     _resolve_actor_scope as _resolve_actor_scope_impl,
     _scope_role,

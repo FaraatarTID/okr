@@ -413,8 +413,8 @@ Status legend:
     - spa-bff
     - backend_app/main.py
   verification: Playwright CI smoke + regression matrix
-  status: blocked
-  notes: Added a role-parameterized SPA harness in `tests/test_e2e_playwright_spa_login_to_atlas.py` covering admin/manager/member happy paths for timer, check-in, weekly report job action, role-based admin gating, and admin mutation flow. Verification currently advances to Playwright startup and is blocked by missing Chromium runtime binaries (`playwright install chromium`); migration bootstrap blocker was fixed by supporting Alembic multi-head upgrade fallback for test bootstrap.
+  status: resolved
+  notes: Completed role-parameterized SPA harness in `tests/test_e2e_playwright_spa_login_to_atlas.py` for admin/manager/member happy paths (timer, check-in, weekly report job action, role-based admin gating, admin mutation flow). Seed data was stabilized so each role has one owned goal/objective/KR/task in one shared active cycle (`E2E Core Cycle`), timer options are now populated for all roles, and timer path now waits for non-placeholder active-task options with safe fallback behavior before selection and assertion.
 
 - id: MOD-12
   phase: Audit Closure Loop

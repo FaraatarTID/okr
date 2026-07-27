@@ -62,9 +62,13 @@ function LoginPageContent() {
     setPending(true);
     setError("");
     try {
+      const usernameFromDom = (document.getElementById("username") as HTMLInputElement | null)
+        ?.value?.trim();
+      const passwordFromDom = (document.getElementById("password") as HTMLInputElement | null)
+        ?.value ?? "";
       const payload = await bffLogin({
-        username: username.trim(),
-        password,
+        username: usernameFromDom || username.trim(),
+        password: passwordFromDom || password,
       });
       if (!payload.user) {
         setError(payload.detail || payload.error_code || "Login failed. Verify credentials.");
