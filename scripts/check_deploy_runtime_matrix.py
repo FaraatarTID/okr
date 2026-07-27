@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
+import os
+import argparse
+import json
+import re
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import argparse
-import shutil
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -85,6 +88,171 @@ def _run_checked(cmd: list[str], *, env_file: Path, context: str) -> None:
         )
 
 
+def _load_env_file_values(env_file: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key:
+            values[key] = value
+    return values
+
+
+def _run_compose_config(env_file: Path, compose_file: Path) -> str:
+    env_file_values = _load_env_file_values(env_file)
+
+    attempts = (
+        (["--env-file", str(env_file), "--format", "json"], None),
+        (["--env-file", str(env_file)], None),
+        (["--format", "json"], env_file_values),
+        ([], env_file_values),
+    )
+
+    last_error = ""
+    for flags, env_override in attempts:
+        compose_cmd = [
+            "docker",
+            "compose",
+            "-f",
+            str(compose_file),
+            "config",
+        ]
+        compose_cmd.extend(flags)
+        # normalize trailing None placeholder in older/newer flag combinations
+        compose_cmd = [item for item in compose_cmd if item is not None]
+
+        compose_env = None if env_override is None else {**os.environ, **env_override}
+        result = subprocess.run(
+            compose_cmd,
+            check=False,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            env=compose_env,
+        )
+        last_error = result.stderr
+        if result.returncode == 0:
+            return result.stdout
+
+        if "unknown flag: --env-file" in result.stderr.lower():
+            continue
+        if "unknown option: --env-file" in result.stderr.lower():
+            continue
+
+        if "--format" in compose_cmd and (
+            "unknown flag: --format" in result.stderr.lower()
+            or "unknown shorthand flag: --format" in result.stderr.lower()
+        ):
+            # retry without JSON support using same env source on next candidates
+            continue
+
+        break
+
+    raise RuntimeError(
+        "Docker compose config failed for all fallback permutations.\n"
+        f"Last stderr:\n{last_error}"
+    )
+
+
+def _coerce_compose_env(raw_env: object) -> dict[str, str]:
+    env: dict[str, str] = {}
+    if raw_env is None:
+        return env
+    if isinstance(raw_env, dict):
+        for key, value in raw_env.items():
+            env[str(key)] = "" if value is None else str(value)
+        return env
+    if isinstance(raw_env, list):
+        for entry in raw_env:
+            if not isinstance(entry, str):
+                continue
+            match = re.match(r"^([^=]+)=(.*)$", entry, re.DOTALL)
+            if match:
+                env[match.group(1)] = match.group(2)
+        return env
+    return env
+
+
+def _parse_compose_env(rendered: str) -> dict[str, dict[str, str]]:
+    def _get_service_env(data: object) -> dict[str, dict[str, str]]:
+        services: dict[str, dict[str, str]] = {}
+        if not isinstance(data, dict):
+            return services
+        for service_name, service_data in data.get("services", {}).items():
+            if not isinstance(service_data, dict):
+                continue
+            services[service_name] = _coerce_compose_env(service_data.get("environment"))
+        return services
+
+    raw = rendered.lstrip()
+    if raw.startswith("{"):
+        try:
+            compose_data = json.loads(raw)
+            return _get_service_env(compose_data)
+        except json.JSONDecodeError:
+            pass
+    return _parse_compose_env_text(rendered)
+
+
+def _parse_compose_env_text(rendered: str) -> dict[str, dict[str, str]]:
+    services: dict[str, dict[str, str]] = {}
+    service_re = re.compile(r"^  ([A-Za-z0-9._-]+):\s*$")
+    env_header_re = re.compile(r"^    environment:\s*$")
+    list_env_re = re.compile(r"^      -\s*([^=\s:]+)\s*=(.*)$")
+    map_env_re = re.compile(r"^      ([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)$")
+
+    current_service: str | None = None
+    in_environment = False
+    for raw_line in rendered.splitlines():
+        service_match = service_re.match(raw_line)
+        if service_match:
+            current_service = service_match.group(1)
+            in_environment = False
+            continue
+
+        if current_service and env_header_re.match(raw_line):
+            in_environment = True
+            services.setdefault(current_service, {})
+            continue
+
+        if in_environment:
+            if not raw_line.startswith("      "):
+                if raw_line.startswith("    "):
+                    in_environment = False
+                    current_service = None if not raw_line.startswith("  ") else current_service
+                continue
+
+            if raw_line.startswith("      - "):
+                entry_match = list_env_re.match(raw_line)
+                if entry_match:
+                    services[current_service][entry_match.group(1)] = entry_match.group(2).strip()
+                continue
+            entry_match = map_env_re.match(raw_line)
+            if entry_match:
+                services[current_service][entry_match.group(1)] = entry_match.group(2).strip()
+    return services
+
+
+def _require_compose_env_value(
+    services_env: dict[str, dict[str, str]],
+    scenario: str,
+    service: str,
+    key: str,
+    expected: str,
+) -> None:
+    service_env = services_env.get(service, {})
+    observed = service_env.get(key)
+    if observed != expected:
+        raise RuntimeError(
+            f"{service} for {scenario} missing expected {key}: "
+            f"expected {expected!r}, got {observed!r}."
+        )
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run runtime deploy config validation across scenarios."
@@ -111,6 +279,8 @@ def run_matrix(*, require_docker: bool) -> None:
             file=sys.stderr,
         )
 
+    compose_file = ROOT / "deploy" / "docker" / "docker-compose.yml"
+
     with TemporaryDirectory(prefix="okr-runtime-matrix-") as tmpdir:
         base = Path(tmpdir)
         for scenario in SCENARIOS:
@@ -135,46 +305,47 @@ def run_matrix(*, require_docker: bool) -> None:
 
             if docker_available:
                 compose_output = base / f"{scenario.name}-compose.yaml"
-                result = subprocess.run(
-                    [
-                        "docker",
-                        "compose",
-                        "-f",
-                        str(ROOT / "deploy" / "docker" / "docker-compose.yml"),
-                        "--env-file",
-                        str(env_file),
-                        "config",
-                    ],
-                    check=False,
-                    cwd=ROOT,
-                    text=True,
-                    capture_output=True,
-                )
-                if result.returncode != 0:
-                    raise RuntimeError(
-                        f"Docker compose config failed for {scenario.name}.\n"
-                        f"stdout:\n{result.stdout}\n"
-                        f"stderr:\n{result.stderr}"
-                    )
-                compose_output.write_text(result.stdout, encoding="utf-8")
+                rendered = _run_compose_config(env_file, compose_file)
+                compose_output.write_text(rendered, encoding="utf-8")
 
-                rendered = result.stdout
-                if (
-                    "OKR_BACKEND_SERVICE_TOKEN=runtime-smoke-token-please-change-2026-ci"
-                    not in rendered
-                ):
+                services_env = _parse_compose_env(rendered)
+                if not services_env:
                     raise RuntimeError(
-                        "Compose expansion did not preserve OKR_BACKEND_SERVICE_TOKEN for "
-                        f"{scenario.name}."
+                        "Compose expansion did not produce a JSON service env map for "
+                        f"{scenario.name}. This indicates a compose output format incompatibility."
                     )
-                if (
-                    "BFF_SESSION_SECRET=runtime-smoke-bff-session-secret-very-long"
-                    not in rendered
-                ):
-                    raise RuntimeError(
-                        "Compose expansion did not preserve BFF_SESSION_SECRET for "
-                        f"{scenario.name}."
-                    )
+
+                token = "runtime-smoke-token-please-change-2026-ci"
+                bff_secret = "runtime-smoke-bff-session-secret-very-long"
+                _require_compose_env_value(
+                    services_env,
+                    scenario.name,
+                    "backend-api",
+                    "OKR_BACKEND_SERVICE_TOKEN",
+                    token,
+                )
+                _require_compose_env_value(
+                    services_env,
+                    scenario.name,
+                    "backend-worker",
+                    "OKR_BACKEND_SERVICE_TOKEN",
+                    token,
+                )
+                _require_compose_env_value(
+                    services_env,
+                    scenario.name,
+                    "spa-bff",
+                    "OKR_BACKEND_SERVICE_TOKEN",
+                    token,
+                )
+                _require_compose_env_value(
+                    services_env,
+                    scenario.name,
+                    "spa-bff",
+                    "BFF_SESSION_SECRET",
+                    bff_secret,
+                )
+
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
