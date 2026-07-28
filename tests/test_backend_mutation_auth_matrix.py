@@ -270,6 +270,8 @@ def _normalize_mutation_route(
     route: tuple[str, str] | tuple[str, str],
 ) -> tuple[str, str]:
     method, path = route
+    if path.startswith("/api/"):
+        path = path.removeprefix("/api")
     segments = path.split("/")
     if len(segments) >= 4 and segments[1] == "v1" and segments[2] == "nodes":
         if len(segments) >= 5:
@@ -317,7 +319,10 @@ def _allowlist_mutation_routes() -> set[tuple[str, str]]:
         for method in methods:
             if method not in {"POST", "PUT", "PATCH", "DELETE"}:
                 continue
-            routes.add((method, _normalize_allowlist_path(path_template)))
+            normalized_path = path_template
+            if normalized_path.startswith("/api/"):
+                normalized_path = normalized_path.removeprefix("/api")
+            routes.add((method, _normalize_allowlist_path(normalized_path)))
     return routes
 
 
