@@ -123,11 +123,19 @@ def smoke_env() -> _SmokeConfig:
 
 
 def _do_login(client: OpenerDirector, *, bff_url: str) -> str:
+    username = os.getenv("TOP10_SMOKE_USERNAME", "admin").strip()
+    password = os.getenv("TOP10_SMOKE_PASSWORD", "").strip()
+    if not password:
+        pytest.skip(
+            "TOP10_SMOKE_PASSWORD is required for TOP10 smoke login. "
+            "Set TOP10_SMOKE_PASSWORD and rerun."
+        )
+
     status, payload = _request_json(
         client,
         method="POST",
         url=f"{bff_url}/session/login",
-        payload={"username": "admin", "password": "admin", "client_ip": "127.0.0.1"},
+        payload={"username": username, "password": password, "client_ip": "127.0.0.1"},
     )
     if status != 200:
         raise RuntimeError(f"Login request failed with status {status}: {payload}")

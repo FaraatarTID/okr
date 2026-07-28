@@ -31,17 +31,7 @@ from backend_app.scope_resolution import (
     _coerce_owner_ids as _coerce_owner_ids_impl,
     _coerce_string_list as _coerce_string_list_impl,
     _resolve_actor_scope as _resolve_actor_scope_impl,
-    _pick_primary_active_cycle as _pick_primary_active_cycle_impl,
     _resolve_effective_cycle_id_for_scope as _resolve_effective_cycle_id_for_scope_impl,
-    _resolve_scope_for_actor as _resolve_scope_for_actor_impl,
-    _require_admin_actor_scope as _require_admin_actor_scope_impl,
-    _require_admin_or_manager_actor_scope as _require_admin_or_manager_actor_scope_impl,
-    _scope_cycle_id as _scope_cycle_id_impl,
-    _scope_cycle_is_active as _scope_cycle_is_active_impl,
-    _scope_role as _scope_role_impl,
-    _visible_cycles_for_scope,  # noqa: F401
-    is_supabase_api_mode_enabled as _is_supabase_api_mode_enabled,
-    read_query_via_supabase_api as _read_query_via_supabase_api,
 )
 from backend_app.read_query_helpers import (
     _ALLOWED_READ_QUERY_KINDS as _ALLOWED_READ_QUERY_KINDS_IMPL,
@@ -69,6 +59,18 @@ from backend_app.response_scope_helpers import (
 )
 from backend_app.main_runtime_helpers import (
     _quota_error_code,  # noqa: F401
+    _pick_primary_active_cycle as _pick_primary_active_cycle_impl,
+    _resolve_scope_for_actor as _resolve_scope_for_actor_impl,
+    _resolve_effective_cycle_id_for_scope as _resolve_effective_cycle_id_for_scope_impl,
+    _list_cycles_for_scope as _list_cycles_for_scope_runtime_impl,
+    _scope_role as _scope_role_impl,
+    _visible_cycles_for_scope as _visible_cycles_for_scope_impl,
+    _coerce_owner_ids as _coerce_owner_ids_impl,
+    _coerce_string_list as _coerce_string_list_impl,
+    _coerce_owner_ids as _coerce_owner_ids_impl,
+    _coerce_string_list as _coerce_string_list_impl,
+    _require_admin_actor_scope as _require_admin_actor_scope_impl,
+    _require_admin_or_manager_actor_scope as _require_admin_or_manager_actor_scope_impl,
     _resolve_actor,  # noqa: F401
     _atomic_idempotent_check as _atomic_idempotent_check_impl,
     _complete_idempotent_response as _complete_idempotent_response_impl,
@@ -260,110 +262,51 @@ def _resolve_actor_scope(
     )
 
 
+def _scope_role(scope: dict[str, Any]) -> str:
+    return _scope_role_impl(scope=scope)
+
+
+def _visible_cycles_for_scope(scope: dict[str, Any], cycles: list[Any]) -> list[Any]:
+    return _visible_cycles_for_scope_impl(scope=scope, cycles=cycles)
+
+
+def _list_cycles_for_scope(
+    *, scope: dict[str, Any], active_only: bool = False
+) -> list[Any]:
+    return _list_cycles_for_scope_runtime_impl(scope=scope, active_only=active_only)
+
+
 def _resolve_scope_for_actor(
     actor: str, token_version: Optional[int] = None
 ) -> dict[str, Any]:
-    with get_session_context() as session:
-        return _resolve_actor_scope(session, actor, token_version=token_version)
+    return _resolve_scope_for_actor_impl(actor=actor, token_version=token_version)
+
+
+# Unwrapped helper entry points for seam-preserving compatibility checks.
+_resolve_actor_scope_runtime = _resolve_actor_scope
+_resolve_scope_for_actor_runtime = _resolve_scope_for_actor
 
 
 def _resolve_effective_cycle_id_for_scope(
     scope: dict[str, Any], requested_cycle_id: Optional[int], *, required: bool = True
 ) -> Optional[int]:
-    def _safe_int(value: Any) -> int:
-        return int(value)
-
-    if bool(scope.get("is_admin", False)):
-        if requested_cycle_id is None:
-            if required:
-                raise HTTPException(status_code=400, detail="cycle_id is required.")
-            return None
-        return _safe_int(requested_cycle_id)
-
-    role = _scope_role_impl(scope)
-    if role not in {"manager", "member"}:
-        if requested_cycle_id is None:
-            if required:
-                raise HTTPException(status_code=400, detail="cycle_id is required.")
-            return None
-        return _safe_int(requested_cycle_id)
-
-    if _is_supabase_api_mode_enabled():
-        kind = "cycles.active" if role == "member" else "cycles.all"
-        payload = _read_query_via_supabase_api(
-            kind=kind,
-            params={},
-            actor=str(scope.get("actor_username") or ""),
-        )
-        cycles = list((payload or {}).get("cycles") or [])
-    else:
-        cycles = list(
-            (get_active_cycles() if role == "member" else get_all_cycles()) or []
-        )
-
-    if role == "manager":
-        if requested_cycle_id is None:
-            if required:
-                raise HTTPException(status_code=400, detail="cycle_id is required.")
-            return None
-        candidate = _safe_int(requested_cycle_id)
-        owned_cycles = _visible_cycles_for_scope(
-            scope=scope,
-            cycles=[cycle for cycle in cycles],
-        )
-        if any(_scope_cycle_id_impl(cycle) == candidate for cycle in owned_cycles):
-            return candidate
-        raise HTTPException(
-            status_code=403, detail="Managers can only use their owned cycles."
-        )
-
-    active_cycles = _visible_cycles_for_scope(
+    return _resolve_effective_cycle_id_for_scope_impl(
         scope=scope,
-        cycles=[cycle for cycle in cycles if _scope_cycle_is_active_impl(cycle)],
+        requested_cycle_id=requested_cycle_id,
+        required=required,
     )
-    selected = _pick_primary_active_cycle_impl(active_cycles)
-    if not selected:
-        raise HTTPException(
-            status_code=404,
-            detail="No active cycle available for this user scope.",
-        )
-    selected_id = _scope_cycle_id_impl(selected)
-    if selected_id <= 0:
-        raise HTTPException(
-            status_code=404,
-            detail="No active cycle available for this user scope.",
-        )
-    if requested_cycle_id is not None and _safe_int(requested_cycle_id) != selected_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Members must use the manager/admin active cycle.",
-        )
-    return selected_id
-
-
-def _scope_role(scope: dict[str, Any]) -> str:
-    return _scope_role_impl(scope)
 
 
 def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
-    return _pick_primary_active_cycle_impl(cycles)
-
+    return _pick_primary_active_cycle_impl(cycles=cycles)
 
 
 def _require_admin_actor_scope(actor: str) -> None:
-    scope = _resolve_scope_for_actor(actor)
-    if not bool(scope.get("is_admin", False)):
-        raise HTTPException(status_code=403, detail="Admin privileges required.")
+    return _require_admin_actor_scope_impl(actor=actor)
 
 
 def _require_admin_or_manager_actor_scope(actor: str) -> None:
-    scope = _resolve_scope_for_actor(actor)
-    if not bool(scope.get("is_admin", False)):
-        role = str(scope.get("role") or "").strip().lower()
-        if role != "manager":
-            raise HTTPException(
-                status_code=403, detail="Manager or admin privileges required."
-            )
+    return _require_admin_or_manager_actor_scope_impl(actor=actor)
 
 
 def _coerce_owner_ids(values: Optional[list[int]]) -> list[int]:
@@ -439,4 +382,5 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
 

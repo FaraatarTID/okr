@@ -45,6 +45,10 @@ def _make_client(monkeypatch):
     return TestClient(backend_main.app), backend_main
 
 
+def _fixture_password(name: str) -> str:
+    return f"{name}-unit-test-password"
+
+
 _ROUTER_CONTRACTS = {
     ("POST", "/v1/nodes/goal"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
     ("POST", "/v1/nodes/objective"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
@@ -782,7 +786,7 @@ def test_create_user_endpoint_parses_role_and_team(monkeypatch):
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": "secret123",
+            "password": _fixture_password("member1"),
             "role": "manager",
             "display_name": "Member One",
             "manager_id": 2,
@@ -804,13 +808,14 @@ def test_create_user_endpoint_rejects_weak_password_when_strict_policy_enabled(
 ):
     client, _backend_main = _make_client(monkeypatch)
     monkeypatch.setenv("OKR_ENFORCE_STRONG_PASSWORD_POLICY", "true")
+    weak_password = "abc123"
 
     response = client.post(
         "/v1/users",
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": "weakpass",
+            "password": weak_password,
             "role": "member",
         },
     )

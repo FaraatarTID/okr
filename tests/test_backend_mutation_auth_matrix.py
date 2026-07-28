@@ -22,6 +22,10 @@ def _make_client(monkeypatch):
     return TestClient(backend_main.app), backend_main
 
 
+def _fixture_password(name: str) -> str:
+    return f"{name}-unit-test-password"
+
+
 def _deny_forbidden(*_args, **_kwargs):
     raise PermissionError("Actor is not authorized.")
 
@@ -83,7 +87,7 @@ _MUTATION_AUTH_MATRIX_ROUTES = [
         "/v1/users",
         {
             "username": "newmember",
-            "password": "placeholder-password",
+            "password": _fixture_password("newmember"),
             "role": "member",
         },
         ("create_user",),
@@ -91,7 +95,7 @@ _MUTATION_AUTH_MATRIX_ROUTES = [
     (
         "POST",
         "/v1/users/11/reset-password",
-        {"new_password": "placeholder-reset-password"},
+        {"new_password": _fixture_password("reset")},
         ("reset_user_password",),
     ),
     (
