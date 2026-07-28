@@ -44,6 +44,7 @@ _SMOKE_ENV_PREFIXES = (
 _SMOKE_ENV_NAMES = {
     "ALLOW_EXTERNAL_AI",
     "IMAGE",
+    "NODE_ENV",
     "PDF_METHOD",
 }
 
@@ -104,6 +105,7 @@ def _free_local_port() -> int:
 
 def _write_smoke_env_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
     service_token = secrets.token_hex(24)
+    signing_secret = secrets.token_hex(32)
     session_secret = secrets.token_hex(32)
     bootstrap_password = f"Sm0ke!{secrets.token_urlsafe(24)}"
     postgres_password = secrets.token_hex(24)
@@ -124,11 +126,12 @@ def _write_smoke_env_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
         "OKR_BACKEND_SERVICE_TOKEN": service_token,
         "OKR_BOOTSTRAP_ADMIN_PASSWORD": bootstrap_password,
         "OKR_BACKEND_ENFORCE_TOKEN": "true",
-        "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
+        "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "true",
         "OKR_BACKEND_HOST_PORT": str(backend_host_port),
         "OKR_BACKEND_BIND_ADDRESS": "127.0.0.1",
         "OKR_BACKEND_API_URL": "http://backend-api:8100",
-        "OKR_BACKEND_SIGNING_SECRET": "",
+        "OKR_BACKEND_SIGNING_SECRET": signing_secret,
+        "NODE_ENV": "development",
         "BFF_SESSION_SECRET": session_secret,
         "BFF_SESSION_TTL_SECONDS": "3600",
         "BFF_COOKIE_SECURE": "false",
@@ -330,6 +333,7 @@ def _run_smoke_compose(
         pytest_env = _build_smoke_pytest_env(smoke_env, service_urls)
         secret_values = (
             smoke_env["OKR_BACKEND_SERVICE_TOKEN"],
+            smoke_env["OKR_BACKEND_SIGNING_SECRET"],
             smoke_env["BFF_SESSION_SECRET"],
             smoke_env["OKR_BOOTSTRAP_ADMIN_PASSWORD"],
             smoke_env["OKR_POSTGRES_PASSWORD"],

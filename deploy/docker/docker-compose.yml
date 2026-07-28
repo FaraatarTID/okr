@@ -107,6 +107,7 @@ services:
     container_name: okr-spa-bff
     image: ${SPA_BFF_IMAGE:-okr-spa-bff:local}
     environment:
+      - NODE_ENV=${NODE_ENV:-production}
       - BFF_HOST=0.0.0.0
       - BFF_PORT=${BFF_PORT:-3001}
       - BFF_REQUEST_TIMEOUT_MS=${BFF_REQUEST_TIMEOUT_MS:-20000}

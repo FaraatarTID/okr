@@ -883,6 +883,7 @@ Documentation HQ: [README](README.md)
   - Fresh compose startup allowed `backend-api` and `backend-worker` to enter database initialization concurrently.
   - Docker Compose process-environment precedence allowed GitHub runner `OKR_*`, `BFF_*`, and related runtime variables to override the generated `--env-file`, so the supposedly isolated smoke stack could target or inherit CI configuration.
   - Once those harness defects were corrected, Linux service logs showed the backend repeatedly restarting because merge revision `x1f2e3d4c5b6a` executed SQLite-only `PRAGMA user_version` SQL against PostgreSQL after otherwise successful migrations.
+  - After migration portability was corrected, Linux proved backend and PostgreSQL healthy but showed the BFF restart loop: the smoke harness supplied an empty `OKR_BACKEND_SIGNING_SECRET` to a production-default BFF image while also requiring insecure cookies for its HTTP-only test transport.
   - Readiness polling suppressed all HTTP errors and tore down containers without reporting service state or logs.
   - A `docker compose up` failure returned before diagnostics and the cleanup `finally` block, discarding the backend startup traceback and leaving lifecycle cleanup incomplete.
   - The runner built `TOP10_SMOKE_*` variables and then replaced that environment before pytest, allowing the end-to-end test to skip.
@@ -894,12 +895,15 @@ Documentation HQ: [README](README.md)
   - Added bounded, redacted compose status/log diagnostics and unconditional teardown for `compose up` failures.
   - Added focused regression tests for environment propagation, runner isolation, early-failure diagnostics, cleanup, and redaction.
   - Replaced the merge revision's dialect-specific SQL pseudo-no-op with true Python no-ops and added a repository-wide Alembic portability guard against SQLite-only PRAGMA statements.
+  - Generated a strong shared backend signing secret, enabled request-signature enforcement, included the secret in diagnostic redaction, and parameterized the BFF Compose runtime so production remains the default while HTTP smoke explicitly uses development cookie transport.
 - Verification:
   - `python -m pytest -q tests/test_verify_resilience_script.py` → `4 passed`.
   - `python -m mypy --ignore-missing-imports --follow-imports=skip scripts/verify_resilience.py tests/test_verify_resilience_script.py` → pass.
   - `ruff check scripts/verify_resilience.py tests/test_verify_resilience_script.py` → pass.
   - `python -m pytest -q tests/test_database_integrity.py` → `13 passed`.
   - `ruff check alembic/versions/x1f2e3d4c5b6a_merge_ops_and_token_version_heads.py tests/test_database_integrity.py` → pass.
+  - `python -m pytest -q tests/test_verify_resilience_script.py tests/test_check_deploy_config_script.py tests/test_spa_bff_deploy_policy.py` → `26 passed`.
+  - `npm --prefix spa-bff test -- config.test.ts` → `13 passed`.
   - Local `python scripts/verify_resilience.py --compose-smoke` exercised the enhanced failure path but could not start containers because the Docker Desktop engine/config is unavailable.
 - Closure gate:
   - `python scripts/verify_resilience.py --compose-smoke` must pass on the Linux GitHub Actions runner before QA-09 returns to `resolved`.

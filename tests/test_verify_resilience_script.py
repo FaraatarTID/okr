@@ -27,6 +27,9 @@ def test_smoke_environment_reaches_pytest_without_losing_activation(
     assert pytest_env["TOP10_SMOKE_WEB_URL"].endswith(service_urls["web_port"])
     assert smoke_env["OKR_POSTGRES_PASSWORD"] in smoke_env["OKR_DATABASE_URL"]
     assert "@postgres:5432/okr" in smoke_env["OKR_DATABASE_URL"]
+    assert len(smoke_env["OKR_BACKEND_SIGNING_SECRET"]) >= 32
+    assert smoke_env["OKR_BACKEND_ENFORCE_REQUEST_SIGNING"] == "true"
+    assert smoke_env["NODE_ENV"] == "development"
 
 
 def test_compose_process_environment_is_isolated_from_runner(
