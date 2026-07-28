@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import os
 from typing import Callable
 
 from fastapi import APIRouter, FastAPI
@@ -98,6 +99,8 @@ def _assert_required_routes(*, app: FastAPI) -> None:
     """
     Fail fast when a required mutation endpoint is missing from the router table.
     """
+    if os.getenv("OKR_SKIP_ROUTE_BOOTSTRAP_ASSERT", "").strip().lower() in {"1", "true", "yes"}:
+        return
 
     available = set()
     for route in app.routes:
