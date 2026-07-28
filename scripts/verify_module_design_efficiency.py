@@ -12,6 +12,7 @@ import importlib
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -100,16 +101,18 @@ def _contains_module_imports(tree: ast.AST, expected_prefixes: list[str]) -> boo
     return False
 
 
-def _profile_module(path: Path, expected: dict[str, object]) -> ModuleProfile:
+def _profile_module(path: Path, expected: ModuleSpec) -> ModuleProfile:
     source = _read_file(path)
     tree = ast.parse(source)
 
-    required = expected["required"]
+    required: list[str] = expected["required"]
     required_wrappers: list[str] = expected["required_thin_wrappers"]
     imports_required: list[str] = expected["required_seams"]
     forbid: list[str] = expected["forbidden_patterns"]
     max_complexity: int = expected["max_complexity"]
     max_defs: int = expected["max_defs"]
+
+    module_name = expected["module"]
 
     defs = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
     required_missing: list[str] = []
@@ -129,11 +132,11 @@ def _profile_module(path: Path, expected: dict[str, object]) -> ModuleProfile:
 
     # Module-level symbol-level checks by importable module contract.
     try:
-        module_obj = importlib.import_module(expected["module"])
+        module_obj = importlib.import_module(module_name)
     except Exception as exc:
         required_missing.extend(required)
         return ModuleProfile(
-            module_name=expected["module"],
+            module_name=module_name,
             path=path,
             total_defs=len(defs),
             total_assignments=sum(1 for node in tree.body if isinstance(node, ast.Assign)),
@@ -153,7 +156,7 @@ def _profile_module(path: Path, expected: dict[str, object]) -> ModuleProfile:
     forbidden_hits = _string_contains_any(source, forbid)
 
     return ModuleProfile(
-        module_name=expected["module"],
+        module_name=module_name,
         path=path,
         total_defs=len(defs),
         total_assignments=sum(1 for node in tree.body if isinstance(node, ast.Assign)),
@@ -167,8 +170,19 @@ def _profile_module(path: Path, expected: dict[str, object]) -> ModuleProfile:
     )
 
 
+class ModuleSpec(TypedDict):
+    module: str
+    path: str
+    required: list[str]
+    required_thin_wrappers: list[str]
+    required_seams: list[str]
+    forbidden_patterns: list[str]
+    max_complexity: int
+    max_defs: int
+
+
 def run_checks() -> int:
-    module_specs = {
+    module_specs: dict[str, ModuleSpec] = {
         "backend_app.main": {
             "module": "backend_app.main",
             "path": "backend_app/main.py",

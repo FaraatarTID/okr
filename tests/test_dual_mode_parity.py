@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+import hashlib
 import os
 
 import pytest
@@ -22,10 +23,12 @@ def _make_client(monkeypatch):
 
 
 def _test_password(name: str) -> str:
-    return os.environ.get(
-        f"OKR_TEST_{name.upper()}_PASSWORD",
-        f"{name.lower()}_unit_test_password",
+    seed = os.environ.get(
+        f"OKR_TEST_{name.upper()}_PASSWORD_SEED",
+        os.environ.get("OKR_TEST_PASSWORD_SEED", "okr_dual_mode_test_seed"),
     )
+    digest = hashlib.sha256(f"{seed}:{name}".encode("utf-8")).hexdigest()
+    return digest[:16]
 
 
 def _run_mutation_mode(
