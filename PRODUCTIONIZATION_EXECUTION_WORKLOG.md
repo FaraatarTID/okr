@@ -1,5 +1,7 @@
 # Productionization Execution Work Log (Fresh Loop)
 
+Documentation HQ: [README](README.md)
+
 ## 2026-07-28
 
 ### Issue: QA-05 — Add facade/export contract validation for helper-adjacent modules

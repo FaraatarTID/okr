@@ -1,4 +1,5 @@
 # Production Readiness Audit
+Documentation HQ: [README](../README.md)
 
 Date: 2026-07-27
 

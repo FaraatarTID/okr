@@ -1,5 +1,7 @@
 # Productionization Execution Backlog (Fresh Loop)
 
+Documentation HQ: [README](README.md)
+
 ## Scope
 Primary source: [docs/PRODUCTIONIZATION_AUDIT.md](docs/PRODUCTIONIZATION_AUDIT.md)
 

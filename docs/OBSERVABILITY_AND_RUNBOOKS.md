@@ -1,4 +1,5 @@
 # Operations Observability Stack and Incident Runbooks
+Documentation HQ: [README](../README.md)
 
 This document closes `OBS-02` by defining the production operations visibility model in a single, concrete artifact.  
 It is the single source of truth for what to monitor, what to alert on, and how to respond.
