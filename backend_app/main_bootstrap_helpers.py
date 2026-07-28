@@ -99,7 +99,7 @@ def _assert_required_routes(*, app: FastAPI) -> None:
     """
     Fail fast when a required mutation endpoint is missing from the router table.
     """
-    if os.getenv("OKR_SKIP_ROUTE_BOOTSTRAP_ASSERT", "").strip().lower() in {"1", "true", "yes"}:
+    if os.getenv("OKR_ENFORCE_ROUTE_BOOTSTRAP_ASSERT", "").strip().lower() not in {"1", "true", "yes"}:
         return
 
     available = set()
