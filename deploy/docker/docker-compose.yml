@@ -55,6 +55,12 @@ services:
     command: ["python", "-m", "backend_app.run_api"]
     ports:
       - "${OKR_BACKEND_BIND_ADDRESS:-127.0.0.1}:${OKR_BACKEND_HOST_PORT:-8100}:${OKR_BACKEND_PORT:-8100}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:$${OKR_BACKEND_PORT:-8100}/healthz || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      start_period: 5s
     restart: unless-stopped
     depends_on:
       postgres:
@@ -91,6 +97,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      backend-api:
+        condition: service_healthy
 
   spa-bff:
     build:
@@ -112,7 +120,8 @@ services:
     ports:
       - "${SPA_BFF_BIND_ADDRESS:-127.0.0.1}:${SPA_BFF_HOST_PORT:-3001}:${BFF_PORT:-3001}"
     depends_on:
-      - backend-api
+      backend-api:
+        condition: service_healthy
     restart: unless-stopped
 
   spa-web:

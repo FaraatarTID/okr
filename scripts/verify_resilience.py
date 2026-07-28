@@ -90,12 +90,14 @@ def _free_local_port() -> int:
 def _write_smoke_env_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
     service_token = secrets.token_hex(24)
     session_secret = secrets.token_hex(32)
+    bootstrap_password = f"Sm0ke!{secrets.token_urlsafe(24)}"
     backend_host_port = _free_local_port()
     bff_host_port = _free_local_port()
     web_host_port = _free_local_port()
 
     values = {
         "OKR_BACKEND_SERVICE_TOKEN": service_token,
+        "OKR_BOOTSTRAP_ADMIN_PASSWORD": bootstrap_password,
         "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
         "OKR_BACKEND_HOST_PORT": str(backend_host_port),
         "OKR_BACKEND_BIND_ADDRESS": "127.0.0.1",
@@ -130,6 +132,23 @@ def _write_smoke_env_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
     return values, service_urls
 
 
+def _build_smoke_pytest_env(
+    smoke_env: dict[str, str], service_urls: dict[str, str]
+) -> dict[str, str]:
+    pytest_env = os.environ.copy()
+    pytest_env.update(smoke_env)
+    pytest_env.update(
+        {
+            "TOP10_SMOKE": "1",
+            "TOP10_SMOKE_BFF_URL": f"http://127.0.0.1:{service_urls['bff_port']}",
+            "TOP10_SMOKE_WEB_URL": f"http://127.0.0.1:{service_urls['web_port']}",
+            "TOP10_SMOKE_USERNAME": "admin",
+            "TOP10_SMOKE_PASSWORD": smoke_env["OKR_BOOTSTRAP_ADMIN_PASSWORD"],
+        }
+    )
+    return pytest_env
+
+
 def _run_compose(
     *,
     compose_file: Path,
@@ -144,30 +163,100 @@ def _run_compose(
     return _run_command(argv, cwd=ROOT)
 
 
-def _smoke_check_services(base_bff_url: str, base_backend_url: str, timeout_seconds: int) -> CheckResult:
-    deadline = time.time() + float(timeout_seconds)
-    while time.time() < deadline:
-        try:
-            import urllib.request
+def _redact_values(output: str, secret_values: Iterable[str]) -> str:
+    redacted = str(output or "")
+    for value in secret_values:
+        secret_value = str(value or "")
+        if secret_value:
+            redacted = redacted.replace(secret_value, "[REDACTED]")
+    return redacted
 
-            with urllib.request.urlopen(f"{base_backend_url}/healthz", timeout=2) as backend_resp:
-                backend_ok = int(getattr(backend_resp, "status", 0) or 0) < 500
-            with urllib.request.urlopen(f"{base_bff_url}/healthz", timeout=2) as bff_resp:
-                bff_ok = int(getattr(bff_resp, "status", 0) or 0) < 500
-            if backend_ok and bff_ok:
+
+def _compose_failure_diagnostics(
+    *,
+    compose_file: Path,
+    env_file: Path,
+    compose_project: str,
+    secret_values: Iterable[str],
+) -> str:
+    sections: list[str] = []
+    for label, command in (
+        ("docker compose ps", ["ps", "--all"]),
+        (
+            "docker compose logs",
+            [
+                "logs",
+                "--no-color",
+                "--tail",
+                "120",
+                "postgres",
+                "backend-api",
+                "backend-worker",
+                "spa-bff",
+                "spa-web",
+            ],
+        ),
+    ):
+        code, output = _run_compose(
+            compose_file=compose_file,
+            env_file=env_file,
+            compose_project=compose_project,
+            command=command,
+        )
+        sections.append(
+            f"{label} (exit={code}):\n"
+            f"{_redact_values(output or '<no output>', secret_values)}"
+        )
+    return "\n\n".join(sections)
+
+
+def _smoke_check_services(
+    base_bff_url: str,
+    base_backend_url: str,
+    base_web_url: str,
+    timeout_seconds: int,
+) -> CheckResult:
+    deadline = time.time() + float(timeout_seconds)
+    last_errors: dict[str, str] = {}
+    while time.time() < deadline:
+        service_checks = {
+            "backend-api": f"{base_backend_url}/healthz",
+            "spa-bff": f"{base_bff_url}/healthz",
+            "spa-web": base_web_url,
+        }
+        ready_services: set[str] = set()
+        for service_name, url in service_checks.items():
+            try:
+                import urllib.request
+
+                with urllib.request.urlopen(url, timeout=2) as response:
+                    status = int(getattr(response, "status", 0) or 0)
+                if 200 <= status < 500:
+                    ready_services.add(service_name)
+                    last_errors.pop(service_name, None)
+                else:
+                    last_errors[service_name] = f"HTTP {status}"
+            except Exception as exc:
+                last_errors[service_name] = f"{type(exc).__name__}: {exc}"
+        if len(ready_services) == len(service_checks):
                 return CheckResult(
                     name="compose_service_readiness",
                     status="pass",
                     detail=(
-                        "Backend and spa-bff services became healthy for smoke execution."
+                        "Backend, spa-bff, and spa-web became ready for smoke execution."
                     ),
                 )
-        except Exception:
-            time.sleep(1.5)
+        time.sleep(1.5)
+    error_summary = "; ".join(
+        f"{service}={error}" for service, error in sorted(last_errors.items())
+    )
     return CheckResult(
         name="compose_service_readiness",
         status="fail",
-        detail="Services did not become healthy within smoke startup timeout.",
+        detail=(
+            "Services did not become healthy within smoke startup timeout."
+            + (f" Last observations: {error_summary}" if error_summary else "")
+        ),
     )
 
 
@@ -188,11 +277,7 @@ def _run_smoke_compose(
     with tempfile.TemporaryDirectory(prefix="okr-smoke-") as workdir:
         env_path = Path(workdir) / "smoke.env"
         smoke_env, service_urls = _write_smoke_env_file(env_path)
-        pytest_env = {
-            "TOP10_SMOKE": "1",
-            "TOP10_SMOKE_BFF_URL": f"http://127.0.0.1:{service_urls['bff_port']}",
-            "TOP10_SMOKE_WEB_URL": f"http://127.0.0.1:{service_urls['web_port']}",
-        }
+        pytest_env = _build_smoke_pytest_env(smoke_env, service_urls)
 
         compose_up = _run_compose(
             compose_file=compose_file,
@@ -224,14 +309,27 @@ def _run_smoke_compose(
             readiness = _smoke_check_services(
                 base_bff_url=pytest_env["TOP10_SMOKE_BFF_URL"],
                 base_backend_url=f"http://127.0.0.1:{service_urls['backend_port']}",
+                base_web_url=pytest_env["TOP10_SMOKE_WEB_URL"],
                 timeout_seconds=180,
             )
             if readiness.status != "pass":
-                return readiness
+                diagnostics = _compose_failure_diagnostics(
+                    compose_file=compose_file,
+                    env_file=env_path,
+                    compose_project=compose_project,
+                    secret_values=(
+                        smoke_env["OKR_BACKEND_SERVICE_TOKEN"],
+                        smoke_env["BFF_SESSION_SECRET"],
+                        smoke_env["OKR_BOOTSTRAP_ADMIN_PASSWORD"],
+                    ),
+                )
+                return CheckResult(
+                    name=readiness.name,
+                    status=readiness.status,
+                    detail=f"{readiness.detail}\n\n{diagnostics}",
+                )
 
             pytest_cmd = [sys.executable, "-m", "pytest", "-q", _SMOKE_TEST_PATH]
-            pytest_env = os.environ.copy()
-            pytest_env.update(smoke_env)
             pycode, pyout = _run_command(
                 pytest_cmd,
                 cwd=ROOT,

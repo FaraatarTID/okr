@@ -1007,3 +1007,27 @@ Status legend:
   status: resolved
   notes: |
     Adds a design review gate focused on ownership concentration, delegation thinness, and efficiency signals for facade seams.
+
+- id: QA-09
+  phase: Audit Closure Loop
+  title: Make compose smoke startup deterministic and diagnostically complete
+  severity: high
+  problem: Fresh CI compose runs could start API and worker migration paths concurrently, readiness failures discarded service evidence, and the smoke pytest environment lost its activation and login variables before execution.
+  why_it_matters: The production smoke gate could fail opaquely during startup or report success after skipping the intended login/read/job path.
+  recommended_change: serialize database initialization behind API health, verify all HTTP services, preserve generated smoke credentials through pytest, and print redacted compose state and logs on readiness failure.
+  expected_benefit: deterministic fresh-database startup and actionable, secret-safe CI evidence with no false-positive skipped smoke execution.
+  acceptance_criteria:
+    - Worker and BFF wait for a healthy backend API.
+    - Readiness checks backend API, BFF, and web.
+    - The smoke pytest process receives activation, URLs, and generated bootstrap credentials.
+    - Readiness failures include redacted compose status and bounded service logs.
+    - Regression tests cover environment propagation and secret redaction.
+  dependencies: [TOP10-09]
+  affected_modules:
+    - deploy/docker/docker-compose.yml
+    - scripts/verify_resilience.py
+    - tests/test_verify_resilience_script.py
+  verification: focused pytest + ruff + compose config + compose-backed smoke in CI
+  status: resolved
+  notes: |
+    Closed after root-cause correction; local Docker daemon availability remains environment-dependent, while GitHub Actions supplies the final Linux compose execution proof.

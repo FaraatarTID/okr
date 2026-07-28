@@ -876,6 +876,25 @@ Documentation HQ: [README](README.md)
   - Result: `1 passed, 2 deselected, 3 warnings in 53.02s`
 - Outcome: deterministic startup diagnostics improved with no functional regressions in green-path admin Playwright coverage.
 
+### Issue: QA-09 — Compose smoke startup determinism and diagnostics
+- Status: **Resolved pending CI execution proof**
+- Date: 2026-07-28
+- Root cause:
+  - Fresh compose startup allowed `backend-api` and `backend-worker` to enter database initialization concurrently.
+  - Readiness polling suppressed all HTTP errors and tore down containers without reporting service state or logs.
+  - The runner built `TOP10_SMOKE_*` variables and then replaced that environment before pytest, allowing the end-to-end test to skip.
+- Changes:
+  - Added an explicit backend API health contract and gated worker/BFF startup on it.
+  - Expanded readiness to backend API, BFF, and web.
+  - Generated a strong per-run bootstrap password and propagated it, activation flags, and service URLs into pytest.
+  - Added bounded compose status/log diagnostics with generated-secret redaction.
+  - Added focused regression tests for environment propagation and redaction.
+- Verification plan:
+  - `python -m pytest -q tests/test_verify_resilience_script.py`
+  - `python -m ruff check scripts/verify_resilience.py tests/test_verify_resilience_script.py`
+  - `docker compose -f deploy/docker/docker-compose.yml --env-file <generated-env> config`
+  - `python scripts/verify_resilience.py --compose-smoke` in GitHub Actions.
+
 ### Issue: MOD-30 — Restore dual-mode compatibility seams after handler extraction
 - Status: **Closed**
 - Scope:
