@@ -1,5 +1,368 @@
 # Productionization Execution Work Log (Fresh Loop)
 
+## 2026-07-28
+
+### Issue: QA-05 — Add facade/export contract validation for helper-adjacent modules
+- Status: **Closed**
+- Scope:
+  - Add a dedicated export-contract gate for façade/adapter modules.
+  - Verify required compatibility symbols remain available on `backend_app.main` and helper seams.
+  - Fail on duplicate export manifests and duplicate `__all__` entries.
+- Files:
+  - `scripts/verify_module_export_contracts.py`
+  - `.github/workflows/ci.yml`
+- Verification:
+  - `python -m ruff check scripts/verify_module_export_contracts.py`
+  - `python scripts/verify_module_export_contracts.py`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/analyze_giant_modules.py`
+- Result:
+  - `QA-05` closed with no contract regressions found by the new gate.
+
+### Issue: QA-06 — Add senior design-efficiency review gate for facade ownership
+- Status: **Closed**
+- Scope:
+  - Introduce a non-size-threshold gate for `backend_app/main.py`, `src/crud.py`, and `src/services/supabase_api_mode.py`.
+  - Evaluate seam delegation, thin-wrapper composition, ownership concentration, and orchestration creep risk.
+  - Retire size-only giant-module analyzer from the CI quality gate.
+- Files:
+  - `scripts/verify_module_design_efficiency.py`
+  - `.github/workflows/ci.yml`
+- Verification:
+  - `python -m ruff check scripts/verify_module_design_efficiency.py`
+  - `python scripts/verify_module_design_efficiency.py`
+- Result:
+  - `QA-06` closed with clean design-efficiency pass and successful seam checks.
+
+### Issue: QA-07 — Retire active references to obsolete giant-module size gate
+- Status: **Closed**
+- Scope:
+  - Remove active backlog/worklog confusion after replacing threshold-only giant-module checks with design-efficiency checks.
+  - Keep legacy references only for historical context.
+- Files:
+  - `PRODUCTIONIZATION_EXECUTION_BACKLOG.md`
+  - `PRODUCTIONIZATION_EXECUTION_WORKLOG.md`
+  - `.github/workflows/ci.yml`
+  - `scripts/verify_module_design_efficiency.py`
+- Verification:
+  - `rg -n "analyze_giant_modules.py|Module Design Efficiency Gate|verify_module_design_efficiency.py" .github/workflows/ci.yml PRODUCTIONIZATION_EXECUTION_BACKLOG.md PRODUCTIONIZATION_EXECUTION_WORKLOG.md`
+- Result:
+  - `backlog/worklog` updated to mark the new active gate path and preserve historical references as archival context.
+  - CI no longer invokes the retired size-threshold analyzer.
+
+### Issue: QA-04 — Add runtime import + signature contract validation to helper-integrity gate
+- Status: **Closed**
+- Scope:
+  - Extend integrity gate to import targeted helper façade modules and validate key callable contracts at runtime.
+- Files:
+  - `scripts/verify_helper_integrity.py`
+  - `.github/workflows/ci.yml`
+- Verification:
+  - `python -m ruff check scripts/verify_helper_integrity.py`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/analyze_giant_modules.py`
+- Result:
+  - Runtime import checks are active for helper-adjacent modules.
+  - Missing symbol/signature failures now fail integrity gate before CI tests.
+  - `PASS` on local run: targeted modules import successfully and contract checks pass.
+
+### Issue: QA-03 — Broaden helper-integrity scope to helper-adjacent façade modules
+- Status: **Closed**
+- Scope:
+  - Extend helper-integrity verification to additional façade-adjacent helper modules and keep one CI gate entry point.
+- Files:
+  - `scripts/verify_helper_integrity.py`
+  - `.github/workflows/ci.yml`
+  - `backend_app/main_bootstrap_helpers.py`
+  - `backend_app/main_runtime_helpers.py`
+  - `backend_app/main_mutation_handlers.py`
+  - `backend_app/main_workflow_handlers.py`
+  - `src/crud_auth_helpers.py`
+  - `src/crud_runtime_helpers.py`
+- Verification:
+  - `python -m ruff check scripts/verify_helper_integrity.py`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/analyze_giant_modules.py`
+- Result:
+  - All lint and integrity checks pass with the expanded target set.
+  - No duplicate top-level definitions and no duplicate `__all__` entries were detected in the additional helper modules.
+  - Gate remains enforced by CI via existing `python scripts/verify_helper_integrity.py` call.
+
+### Issue: QA-02 — Wire helper-integrity and giant-module gates into CI quality path
+- Status: **Closed**
+- Scope:
+  - Enforce facade integrity and module-size boundary checks in CI so facade regressions are fail-fast at merge time.
+  - Add `Helper Integrity Gate` and `Giant Module Boundary Gate` steps to backend CI workflow.
+- Files:
+  - `.github/workflows/ci.yml`
+  - `scripts/verify_helper_integrity.py`
+  - `scripts/analyze_giant_modules.py`
+- Verification:
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/analyze_giant_modules.py`
+  - `python -m ruff check scripts/verify_helper_integrity.py`
+- Result:
+  - All local verification commands passed.
+  - CI step insertion is complete and ready for merge-time enforcement.
+  - `QA-02` marked complete.
+
+### Issue: QA-01 — Extend helper integrity and export hygiene checks to `backend_app/main.py` and `src/crud.py`
+- Status: **Closed**
+- Scope:
+  - Extend `scripts/verify_helper_integrity.py` into a reusable multi-module check for facade integrity.
+  - Audit both `backend_app/main.py` and `src/crud.py` for duplicate top-level helper definitions and duplicate `__all__` entries.
+  - Keep thin-wrapper constraints for delegated compatibility helpers in `main.py`.
+- Files:
+  - `scripts/verify_helper_integrity.py`
+  - `backend_app/main.py`
+  - `src/crud.py`
+- Verification:
+  - `python -m ruff check backend_app/main.py src/crud.py scripts/verify_helper_integrity.py`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/analyze_giant_modules.py`
+- Result:
+  - `ruff` passed.
+  - Integrity script passed for both modules: no duplicate top-level definitions, no duplicate `__all__` entries, thin-wrapper expectations met.
+  - Giant-module analyzer confirms both files are within threshold (`backend_app/main.py` 316 lines, `src/crud.py` 264 lines).
+  - `QA-01` marked complete.
+
+### Issue: MOD-24 — Formalize helper-definition/export integrity for `backend_app/main.py`
+- Status: **Closed**
+- Scope:
+  - Add automated checks to ensure main helper names are thin wrappers and `__all__` has no duplicate entries.
+- Files:
+  - `scripts/verify_helper_integrity.py`
+  - `backend_app/main.py`
+- Verification:
+  - `python -m ruff check scripts/verify_helper_integrity.py`
+  - `python scripts/verify_helper_integrity.py`
+- Result:
+  - Verified and closed.
+  - `ruff` passed and helper integrity script returned:
+  - `[PASS] Helper integrity checks passed for backend_app/main.py`
+
+### Issue: MOD-25 — Reduce giant-module risk in `src/services/supabase_api_mode.py`
+- Status: **Closed**
+- Scope:
+  - Decompose remaining helper + node-write/auth clusters out of `src/services/supabase_api_mode.py` into explicit ownership modules.
+  - Keep `src/services/supabase_api_mode.py` as a compatibility façade with compatibility exports only.
+ - Planned files:
+    - `src/services/supabase_api_mode.py`
+    - `src/services/supabase_api_mode_nodes.py`
+    - `src/services/supabase_api_mode_transport.py`
+    - `src/services/supabase_api_mode_read.py`
+    - `src/services/supabase_api_mode_mutation.py`
+    - `scripts/analyze_giant_modules.py`
+    - `tests/test_dual_mode_parity.py`
+  - Planned verification:
+    - `python -m ruff check src/services/supabase_api_mode.py src/services/supabase_api_mode_transport.py src/services/supabase_api_mode_nodes.py src/services/supabase_api_mode_read.py src/services/supabase_api_mode_mutation.py src/services/supabase_api_mode_operations.py src/services/supabase_api_mode_atlas.py`
+    - `python scripts/analyze_giant_modules.py`
+    - `python -m pytest -q tests/test_dual_mode_parity.py`
+   - Notes:
+     - Added `src/services/supabase_api_mode_nodes.py` for auth + node-write ownership.
+     - `src/services/supabase_api_mode.py` now re-exports ownership slices only (no local behavior definitions).
+     - `src/services/supabase_api_mode.py` now reports 124 lines in giant-module analyzer.
+ - Verification executed:
+   - `python -m ruff check src/services/supabase_api_mode.py src/services/supabase_api_mode_transport.py src/services/supabase_api_mode_nodes.py src/services/supabase_api_mode_read.py src/services/supabase_api_mode_mutation.py src/services/supabase_api_mode_operations.py src/services/supabase_api_mode_atlas.py`
+   - `python scripts/analyze_giant_modules.py`
+   - `python -m pytest -q tests/test_dual_mode_parity.py`
+ - Result:
+   - `ruff` passed on all touched `supabase_api_mode*` modules.
+   - giant-module analyzer passed with `src/services/supabase_api_mode.py lines=124`.
+   - `tests/test_dual_mode_parity.py` passed (10 passed).
+
+### Issue: MOD-26 — Harden CRUD module context determinism and backend app construction ownership
+- Status: **Closed**
+- Scope:
+  - Replace mutable `set_crud_module` context registration in CRUD adapters with deterministic `src.crud` context lookup and fail-fast behavior.
+  - Remove mutable helper-module registration calls from `src/crud.py`.
+  - Add explicit `create_app()` factory in `backend_app/main.py` and construct `app` through it.
+- Files:
+  - `src/crud.py`
+  - `src/crud_auth_helpers.py`
+  - `src/crud_runtime_helpers.py`
+  - `backend_app/main.py`
+- Verification:
+  - `python -m ruff check src/crud.py src/crud_auth_helpers.py src/crud_runtime_helpers.py backend_app/main.py`
+- Result:
+  - `src.crud` helper context is now resolved from the import registry with fail-fast behavior, removing mutable context injection.
+  - `backend_app/main.py` now owns app initialization through a single `create_app()` factory.
+
+### Issue: MOD-15 — Runtime preflight rejects public backend ingress in production
+- Status: **Closed**
+- Scope:
+  - Add production-only backend API URL validation to `evaluate_runtime_preflight`.
+  - Ensure public hostnames/IPs for `OKR_BACKEND_API_URL` are rejected before release.
+- Files:
+  - `src/runtime_preflight.py`
+  - `tests/test_runtime_preflight.py`
+- Verification:
+  - `python -m pytest -q tests/test_runtime_preflight.py -k "public_backend_api"`
+- Result:
+  - Production runtime preflight now blocks non-private backend targets in the BFF policy path, reducing accidental topology risk.
+
+### Issue: MOD-16 — Playwright SPA e2e prerequisite hardening
+- Status: **Closed**
+- Scope:
+  - Added `_require_e2e_playwright_prereqs` in `tests/test_e2e_playwright_spa_login_to_atlas.py`.
+  - The fixture now emits explicit skip guidance when Chromium executable is unavailable before launching the stack.
+  - Guidance now points to `PLAYWRIGHT_CHROMIUM_EXECUTABLE` and `playwright install chromium`.
+- Verification:
+  - `python -m pytest -q tests/test_e2e_playwright_spa_login_to_atlas.py -rs`
+  - `OKR_RUN_PLAYWRIGHT_SPA_E2E=1 python -m pytest -q tests/test_e2e_playwright_spa_login_to_atlas.py -k "test_role_based_spa_critical_paths" -rs`
+- Result:
+  - E2E skip reasons are now actionable; prerequisite discovery is centralized and clear.
+  - Full role-based critical path suite passed (3 passed, 3 warnings, 0 failed) with Playwright enabled.
+
+### Issue: MOD-17 — Remove deprecated UTC datetime usage in E2E tests
+- Status: **Closed**
+- Scope:
+  - Replaced `datetime.utcnow()` in E2E admin cycle setup with `datetime.now(timezone.utc)` in
+    `tests/test_e2e_playwright_spa_login_to_atlas.py`.
+- Files:
+  - `tests/test_e2e_playwright_spa_login_to_atlas.py`
+- Verification:
+  - `OKR_RUN_PLAYWRIGHT_SPA_E2E=1 python -m pytest -q tests/test_e2e_playwright_spa_login_to_atlas.py -k "test_role_based_spa_critical_paths"`
+- Result:
+  - Full role-based critical-path suite passed with zero `datetime.utcnow` deprecation warnings in module output (`3 passed`).
+
+### Issue: MOD-18 — Add deterministic E2E environment preflight verifier
+- Status: **Closed**
+- Scope:
+  - Add and validate `scripts/verify_e2e_environment.py` to check Playwright E2E prerequisites.
+  - Script verifies Node/npm/npx binaries, required `dev` scripts, `node_modules`, and Playwright CLI availability for `spa-web` and `spa-bff`.
+  - Failure output includes concrete remediation commands and explicit missing-setup guidance.
+- Files:
+  - `scripts/verify_e2e_environment.py`
+- Verification:
+  - `python -m ruff check scripts/verify_e2e_environment.py`
+  - `python scripts/verify_e2e_environment.py`
+  - `npm --prefix spa-web install @playwright/test`
+- Result:
+  - `ruff check` passes.
+  - Script is deterministic and returns actionable guidance but currently fails in this environment because `playwright` binaries are not installed.
+  - Install attempt fails with `EACCES` during npm registry fetch (`https://registry.npmjs.org/playwright` / `@playwright/test`), indicating workspace permission/network constraints rather than script defects.
+
+### Issue: MOD-19 — Giant module decomposition planning (main.py + crud.py)
+- Status: **Closed**
+- Scope:
+  - Extracted mutation handlers for node/cycle/team/user paths from `backend_app/main.py` into `backend_app/main_mutation_handlers.py`.
+  - Restored `backend_app/main.py` compatibility imports so route callback wiring continues to resolve at runtime.
+  - Repaired `src/crud.py` compatibility surface by adding `get_user_by_id`.
+- Files:
+  - `backend_app/main.py`
+  - `backend_app/main_mutation_handlers.py`
+  - `src/crud.py`
+  - `scripts/analyze_giant_modules.py`
+  - Verification:
+  - `python -m ruff check backend_app/main.py backend_app/main_mutation_handlers.py src/crud.py`
+  - `python -c "import backend_app.main as m; print('import-ok', hasattr(m,'api_create_goal'), hasattr(m,'api_delete_team'), hasattr(m,'api_update_user'))"`
+  - `python scripts/analyze_giant_modules.py`
+  - Result:
+  - Loop closed in this iteration: route handler ownership extracted, compatibility bindings restored, and import/runtime checks completed.
+
+### Issue: MOD-20 — Extract runtime helper ownership out of `backend_app/main.py`
+- Status: **Closed**
+- Scope:
+  - Move extracted runtime helpers (`_resolve_*`, payload, idempotency, audit/job helpers) to `backend_app/main_runtime_helpers.py`.
+  - Keep compatibility delegates in `backend_app/main.py` and preserve existing call signatures.
+  - Resolve and verify helper export surfaces and duplicate definitions.
+- Files:
+  - `backend_app/main.py`
+  - `backend_app/main_runtime_helpers.py`
+- Verification:
+  - `ruff check backend_app/main.py backend_app/main_runtime_helpers.py`
+  - Result:
+  - `main.py` no longer defines the extracted helper bodies and now delegates behavior to `main_runtime_helpers`.
+  - Duplicate implementation block was removed; exports/import surfaces were kept compatibility-safe.
+  - Ruff check for touched files passes (`All checks passed!`).
+  - `MOD-19` remains open for the broader two-file decomposition strategy (`backend_app/main.py` + `src/crud.py`).
+
+### Issue: MOD-21 — Extract runtime auth/proxy adapters from `src/crud.py`
+- Status: **Closed**
+- Scope:
+  - Extracted top-level runtime adapter wrappers (`_backend_*`, session/auth binding, user bootstrap helpers) from `src/crud.py` into `src/crud_runtime_helpers.py`.
+  - Added explicit module-context registration in `src/crud.py` to preserve existing runtime symbol rebinding behavior (`_crud_module` hook).
+  - Rewired `src/crud.py` compatibility wrappers to delegated bindings, preserving public signatures.
+- Files:
+  - `src/crud.py`
+  - `src/crud_runtime_helpers.py`
+- Verification:
+  - `ruff check src/crud.py src/crud_runtime_helpers.py`
+  - `python scripts/analyze_giant_modules.py`
+- Result:
+  - `src/crud.py` line-count dropped from 1611 to 1486 lines.
+  - Lint checks on touched files pass (`All checks passed!`).
+  - `MOD-19` remains active for remaining controlled decomposition slices of `src/crud.py`.
+
+### Issue: MOD-22 — Extract authorization/throttle helper cluster from `src/crud.py`
+- Status: **Closed**
+- Scope:
+  - Added `src/crud_auth_helpers.py` and moved auth/authorization/throttle wrappers from `src.crud` into compatibility adapter functions:
+    - `_goal_owner_predicate_*`, `_can_manage_*`, `_authorize_*`, `_normalize_*`, `_get_auth_throttle_states`,
+      `_record_failed_auth_attempt`, `_clear_auth_throttle_state`, `_authenticate_user_*`, and `authenticate_user*`.
+  - Rebound the same symbol names in `src.crud.py` to preserve all legacy call paths.
+  - Registered `src.crud` module context into `src.crud_auth_helpers` to keep `_crud_module`-style dynamic lookups correct.
+- Files:
+  - `src/crud.py`
+  - `src/crud_auth_helpers.py`
+- Verification:
+  - `ruff check src/crud.py src/crud_auth_helpers.py src/crud_runtime_helpers.py`
+  - `python scripts/analyze_giant_modules.py`
+- Result:
+  - Auth and throttle wrapper ownership moved out of `src.crud.py`; line footprint is reduced further while keeping compatibility behavior stable.
+
+### Issue: MOD-23 — Extract startup/lifecycle and router registration from `backend_app/main.py`
+- Status: **Closed**
+- Scope:
+  - Added `backend_app/main_bootstrap_helpers.py` for startup lifecycle and router registration ownership.
+  - Replaced inline `_lifespan` and router wiring in `main.py` with delegated compatibility calls while preserving behavior.
+- Files:
+  - `backend_app/main.py`
+  - `backend_app/main_bootstrap_helpers.py`
+- Verification:
+  - `python -m ruff check backend_app/main.py backend_app/main_bootstrap_helpers.py`
+  - `python scripts/analyze_giant_modules.py`
+- Result:
+  - Startup mode branch behavior (Supabase vs local DB) remains unchanged.
+  - Router registration calls are preserved via helper-mediated wiring.
+  - `backend_app/main.py` startup surface is now smaller and clearer.
+
+### Issue: MOD-14 — Delegate read-query orchestration out of `backend_app/main.py`
+- Status: **Closed**
+- Scope:
+  - Extracted `_read_query_payload` and `_ALLOWED_READ_QUERY_KINDS` logic into `backend_app/read_query_helpers.py`.
+  - Kept a compatibility wrapper in `backend_app/main.py` so route call sites and monkeypatch seams remain stable.
+  - Restored `main.py` compatibility names used by read-query tests (`_resolve_scope_for_actor`, `summarize_audit_events`, `_coerce_datetime`, serialization and scope helpers).
+- Files:
+  - `backend_app/main.py`
+  - `backend_app/read_query_helpers.py`
+- Verification:
+  - `ruff check backend_app/main.py backend_app/read_query_helpers.py` (result: all checks passed)
+  - `python -m pytest -q tests/test_backend_mutation_api.py -k "read_query"` (result: 7 passed, 110 deselected)
+  - `python -m pytest -q tests/test_dual_mode_parity.py -k "read_query_payload"` (result: 2 passed, 5 deselected)
+- Result:
+  - Giant read-query implementation moved out of `main.py`; duplicate executable definitions removed; loop remains behavior-compatible with monkeypatch-based tests and dual-mode parity checks.
+
+### Issue: MOD-13 — Final helper integrity and exports consistency pass in `backend_app/main.py`
+- Status: **Closed**
+- Scope:
+  - Verify helper extraction and delegation consistency in `backend_app/main.py`.
+  - Confirm extracted helper families remain delegated and no duplicate executable implementations were reintroduced.
+  - Verify the `__all__` surface remains intentional and stable.
+- Findings:
+  - `backend_app/main.py` delegates these helper families to external modules:
+    - Scope/auth: `backend_app/scope_resolution.py`
+    - Main-line helpers: `backend_app/main_helpers.py`
+  - `_ALLOWED_READ_QUERY_KINDS` remains in `main.py` as owned by read-query orchestration.
+  - No duplicate implementations were found for delegated helper functions in `main.py` after this pass.
+  - `__all__` stays limited to stable public API and schema exports plus `get_observability_metrics_snapshot`.
+- Verification:
+  - `python -m ruff check backend_app/main.py backend_app/main_helpers.py`
+  - Result: `All checks passed!`
+- Result:
+  - This loop closes the integrity-and-exports consistency check; no behavior changes were introduced.
+
 ## 2026-07-27
 
 ### Issue: TEST-01 — Expand critical end-to-end Playwright coverage
@@ -469,3 +832,41 @@
   - Current harness behavior remains deterministic when `OKR_RUN_PLAYWRIGHT_SPA_E2E=1`, `PLAYWRIGHT_CHROMIUM_EXECUTABLE` is set to local Chrome, and startup timeout envs are available.
 - Residual risk:
   - Playwright download/install is blocked by region-restricted CDN in this environment (`access denied` during `python -m playwright install chromium`); this remains an environment dependency risk, not a harness regression.
+### Issue: TEST-02 — E2E harness fail-fast startup diagnostics
+- Status: **Resolved**
+- Date: 2026-07-28
+- Scope: Make `tests/test_e2e_playwright_spa_login_to_atlas.py` startup checks process-aware and fail fast with explicit return codes.
+- Changes:
+  - Added `_wait_for_http_and_process(...)` helper.
+  - Swapped startup waits in `e2e_stack` fixture to use process-aware polling for backend, BFF, and SPA launches.
+  - Backend startup failure now reports explicit return code + log tail when process exits early.
+- Verification:
+  - `python -m ruff check tests/test_e2e_playwright_spa_login_to_atlas.py`
+  - `python -m pytest -q tests/test_e2e_playwright_spa_login_to_atlas.py -k "admin and role_based_spa_critical_paths"`
+  - Result: `1 passed, 2 deselected, 3 warnings in 53.02s`
+- Outcome: deterministic startup diagnostics improved with no functional regressions in green-path admin Playwright coverage.
+
+### Issue: MOD-30 — Restore dual-mode compatibility seams after handler extraction
+- Status: **Closed**
+- Scope:
+  - Repair handler dispatch so `backend_app.main` remains the single monkeypatch seam for both core mutation handlers and check-in workflow handlers.
+  - Keep compatibility-exported `*_via_supabase_api` and idempotency helpers in `backend_app/main.py` intact.
+  - Remove stale direct imports in workflow/mutation handlers that bypassed patched `backend_app.main` symbols.
+- Files:
+  - `backend_app/main.py`
+  - `backend_app/main_mutation_handlers.py`
+  - `backend_app/main_workflow_handlers.py`
+  - `backend_app/main_runtime_helpers.py`
+- Verification:
+  - `python -m ruff check src/services/supabase_api_mode.py backend_app/main.py backend_app/main_mutation_handlers.py backend_app/main_workflow_handlers.py`
+  - `python -m pytest -q tests/test_dual_mode_parity.py`
+  - `python scripts/analyze_giant_modules.py`
+  - `python -m pytest -q tests/test_e2e_playwright_spa_login_to_atlas.py -k "admin and role_based_spa_critical_paths"`
+- Result:
+  - Dual-mode dispatch seam restored with `main` indirection.
+  - Lint is clean for touched modules.
+  - `tests/test_dual_mode_parity.py` -> **7 passed**.
+  - Giant-module analyzer still flags `src/services/supabase_api_mode.py` at 1304 lines; remains open as backlog technical debt.
+- Notes:
+  - `api_create_user` now resolves via runtime main indirection as well.
+  - Created a fresh progress checkpoint in `docs/WORKLOG.md` and `docs/BACKLOG.md` for local execution traces.

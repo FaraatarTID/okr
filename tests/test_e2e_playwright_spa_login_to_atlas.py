@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.error import URLError
@@ -75,6 +75,18 @@ def _npm_command() -> list[str]:
     return [npm_path]
 
 
+def _require_e2e_playwright_prereqs() -> None:
+    chromium_path = _resolve_chromium_executable()
+    if not chromium_path:
+        pytest.skip(
+            "Playwright SPA e2e requires a Chromium-compatible browser. "
+            "Set PLAYWRIGHT_CHROMIUM_EXECUTABLE to a local Chrome/Edge binary "
+            "(for example, C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe), "
+            "or install one via Playwright browsers command (`playwright install chromium`) "
+            "in the active Node environment."
+        )
+
+
 def _wait_for_http(url: str, *, timeout_seconds: float) -> bool:
     deadline = time.time() + float(timeout_seconds)
     while time.time() < deadline:
@@ -87,6 +99,27 @@ def _wait_for_http(url: str, *, timeout_seconds: float) -> bool:
             pass
         time.sleep(0.5)
     return False
+
+
+def _wait_for_http_and_process(
+    url: str,
+    process: subprocess.Popen[Any] | None,
+    *,
+    timeout_seconds: float,
+) -> tuple[bool, int | None]:
+    deadline = time.time() + float(timeout_seconds)
+    while time.time() < deadline:
+        if process is not None and process.poll() is not None:
+            return False, process.returncode
+        try:
+            with urlopen(url, timeout=1.5) as response:  # nosec B310
+                status = int(getattr(response, "status", 0) or 0)
+                if 200 <= status < 500:
+                    return True, None
+        except (URLError, OSError):
+            pass
+        time.sleep(0.5)
+    return False, process.returncode if process is not None else None
 
 
 def _terminate_process(process: subprocess.Popen[Any] | None) -> None:
@@ -314,6 +347,7 @@ def e2e_stack(
             "Install dependencies and run `playwright install chromium`."
         ),
     )
+    _require_e2e_playwright_prereqs()
 
     repo_root = Path(__file__).resolve().parents[1]
     tmp_dir = tmp_path_factory.mktemp("playwright_spa_e2e")
@@ -378,11 +412,19 @@ def e2e_stack(
                 stdout=backend_log,
                 stderr=subprocess.STDOUT,
             )
-            if not _wait_for_http(
+            backend_ready, backend_returncode = _wait_for_http_and_process(
                 f"http://127.0.0.1:{backend_port}/healthz",
+                process=backend_process,
                 timeout_seconds=startup_timeout_backend,
-            ):
+            )
+            if not backend_ready:
                 _terminate_process(backend_process)
+                if backend_returncode is not None:
+                    raise RuntimeError(
+                        "Backend API exited during startup.\\n"
+                        f"backend returncode={backend_returncode}\\n"
+                        f"backend.log tail:\\n{_read_log_tail(backend_log_path)}"
+                    )
                 raise RuntimeError(
                     "Backend API did not become healthy in time.\\n"
                     f"backend.log tail:\\n{_read_log_tail(backend_log_path)}"
@@ -395,7 +437,12 @@ def e2e_stack(
                 stdout=worker_log,
                 stderr=subprocess.STDOUT,
             )
-            if not _wait_for_http(f"http://127.0.0.1:{backend_port}/healthz", timeout_seconds=5):
+            worker_ready, _ = _wait_for_http_and_process(
+                f"http://127.0.0.1:{backend_port}/healthz",
+                process=backend_process,
+                timeout_seconds=5,
+            )
+            if not worker_ready:
                 if worker_process.poll() is not None:
                     _terminate_process(worker_process)
                     raise RuntimeError(
@@ -425,8 +472,9 @@ def e2e_stack(
                 stdout=bff_log,
                 stderr=subprocess.STDOUT,
             )
-            if not _wait_for_http(
+            if not _wait_for_http_and_process(
                 f"http://127.0.0.1:{bff_port}/healthz",
+                process=bff_process,
                 timeout_seconds=startup_timeout_bff,
             ):
                 _terminate_process(bff_process)
@@ -457,8 +505,9 @@ def e2e_stack(
                 stdout=spa_log,
                 stderr=subprocess.STDOUT,
             )
-            if not _wait_for_http(
+            if not _wait_for_http_and_process(
                 f"http://127.0.0.1:{app_port}/login",
+                process=spa_process,
                 timeout_seconds=startup_timeout_spa,
             ):
                 _terminate_process(spa_process)
@@ -769,13 +818,13 @@ def _run_admin_mutation_path(page) -> None:
     expect(page.get_by_role("heading", name="Platform Controls")).to_be_visible(timeout=90_000)
     page.get_by_role("button", name="Cycles").click()
     page.get_by_placeholder("Cycle title (example: Q1-2026)").fill(
-        f"E2E Cycle {datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
+        f"E2E Cycle {datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
     )
 
     date_inputs = page.locator("input[type='date']")
     expect(date_inputs).to_have_count(2, timeout=20_000)
-    start_day = (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d")
-    end_day = (datetime.utcnow() + timedelta(days=6)).strftime("%Y-%m-%d")
+    start_day = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d")
+    end_day = (datetime.now(timezone.utc) + timedelta(days=6)).strftime("%Y-%m-%d")
     date_inputs.first.fill(start_day)
     date_inputs.nth(1).fill(end_day)
 

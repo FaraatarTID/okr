@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+import backend_app.main_mutation_handlers as main_mutation_handlers
 
 
 def _make_client(monkeypatch):
@@ -31,14 +32,27 @@ def _run_mutation_mode(
     supabase_handler_name: str,
     db_handler,
     supabase_handler,
+    method: str = "post",
 ):
     monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: bool(mode))
+    monkeypatch.setattr(main_mutation_handlers, "is_supabase_api_mode_enabled", lambda: bool(mode))
     monkeypatch.setattr(backend_main, "_atomic_idempotent_check", lambda **_kwargs: None)
     monkeypatch.setattr(backend_main, "_complete_idempotent_response", lambda **_kwargs: None)
-    monkeypatch.setattr(backend_main, db_handler_name, db_handler)
-    monkeypatch.setattr(backend_main, supabase_handler_name, supabase_handler)
+    monkeypatch.setattr(backend_main, db_handler_name, db_handler, raising=False)
+    monkeypatch.setattr(
+        backend_main,
+        supabase_handler_name,
+        supabase_handler,
+        raising=False,
+    )
 
-    return client.post(
+    method_norm = method.strip().lower()
+    if method_norm == "patch":
+        requester = client.patch
+    else:
+        requester = client.post
+
+    return requester(
         route,
         headers={"X-OKR-Actor": "alice"},
         json=payload,
@@ -175,6 +189,141 @@ def test_dual_mode_critical_mutation_payload_parity(
         supabase_handler_name=sup_fn,
         db_handler=_db,
         supabase_handler=_supabase,
+    )
+
+    assert db_response.status_code == expected_status
+    assert db_response.status_code == sup_response.status_code
+    assert db_response.json() == sup_response.json()
+    assert marker["calls"][0][0] == "db"
+    assert marker["calls"][1][0] == "supabase"
+
+
+@pytest.mark.parametrize(
+    ("route", "payload", "db_fn", "sup_fn", "expected_status", "method"),
+    [
+        (
+            "/v1/users",
+            {
+                "username": "dual_user_admin",
+                "password": "Sup3rS3cret!",
+                "role": "admin",
+                "display_name": "Dual User",
+                "must_change_password": False,
+                "manager_id": 4,
+                "team_id": 11,
+            },
+            "create_user",
+            "create_user_via_supabase_api",
+            201,
+            "post",
+        ),
+        (
+            "/v1/users/901",
+            {
+                "display_name": "Updated Dual User",
+                "role": "manager",
+                "manager_id": 7,
+                "team_id": 12,
+                "is_active": True,
+            },
+            "update_user",
+            "update_user_via_supabase_api",
+            200,
+            "patch",
+        ),
+        (
+            "/v1/users/901/reset-password",
+            {
+                "new_password": "NewResetPassword123!",
+                "require_change": True,
+            },
+            "reset_user_password",
+            "reset_user_password_via_supabase_api",
+            200,
+            "post",
+        ),
+    ],
+)
+def test_dual_mode_user_mutation_payload_parity(
+    monkeypatch,
+    route,
+    payload,
+    db_fn,
+    sup_fn,
+    expected_status,
+    method,
+):
+    client, backend_main = _make_client(monkeypatch)
+    marker = {"calls": []}
+
+    monkeypatch.setattr(
+        main_mutation_handlers,
+        "_require_admin_actor_scope",
+        lambda *_args, **_kwargs: None,
+    )
+
+    if route.endswith("/reset-password"):
+        def _db(**kwargs):
+            marker["calls"].append(("db", kwargs))
+            return True
+
+        def _supabase(**kwargs):
+            marker["calls"].append(("supabase", kwargs))
+            return True
+    else:
+        def _user_obj(role_value: str, *, user_id: int = 901) -> SimpleNamespace:
+            role = str(getattr(role_value, "value", role_value))
+            return SimpleNamespace(
+                id=user_id,
+                username="dual_user_admin",
+                display_name="Updated Dual User",
+                role=role,
+                manager_id=7,
+                team_id=12,
+                is_active=True,
+                must_change_password=False,
+            )
+
+        def _db(**kwargs):
+            marker["calls"].append(("db", kwargs))
+            role = getattr(kwargs.get("role"), "value", kwargs.get("role", "admin"))
+            user_id = 901 if "/v1/users/" in route else 901
+            return _user_obj(role, user_id=user_id)
+
+        def _supabase(**kwargs):
+            marker["calls"].append(("supabase", kwargs))
+            role = getattr(kwargs.get("role"), "value", kwargs.get("role", "admin"))
+            user_id = 901 if "/v1/users/" in route else 901
+            return _user_obj(role, user_id=user_id)
+
+    monkeypatch.setattr(main_mutation_handlers, db_fn, _db, raising=False)
+    monkeypatch.setattr(main_mutation_handlers, sup_fn, _supabase, raising=False)
+
+    db_response = _run_mutation_mode(
+        client=client,
+        backend_main=backend_main,
+        monkeypatch=monkeypatch,
+        mode=False,
+        route=route,
+        payload=payload,
+        db_handler_name=db_fn,
+        supabase_handler_name=sup_fn,
+        db_handler=_db,
+        supabase_handler=_supabase,
+        method=method,
+    )
+    sup_response = _run_mutation_mode(
+        client=client,
+        backend_main=backend_main,
+        monkeypatch=monkeypatch,
+        mode=True,
+        route=route,
+        payload=payload,
+        db_handler_name=db_fn,
+        supabase_handler_name=sup_fn,
+        db_handler=_db,
+        supabase_handler=_supabase,
+        method=method,
     )
 
     assert db_response.status_code == expected_status

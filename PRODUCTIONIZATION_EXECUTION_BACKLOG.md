@@ -10,6 +10,352 @@ Status legend:
 - `blocked`
 - `rejected`
 
+```yaml
+- id: QA-07
+  phase: Audit Closure Loop
+  title: Retire active giant-module size-gate references after design-efficiency migration
+  severity: low
+  problem: Legacy size-threshold references to `scripts/analyze_giant_modules.py` were still being treated as active guidance in execution artifacts after the CI gate migration.
+  why_it_matters: Audit and execution docs should match actual enforcement; stale guidance increases correction time during reviews.
+  recommended_change: Explicitly classify size-threshold references as historical and keep active gates on design-efficiency checks only.
+  expected_benefit: cleaner auditability and fewer false process blockers.
+  acceptance_criteria:
+    - CI backend quality path does not require `scripts/analyze_giant_modules.py`.
+    - `scripts/verify_module_design_efficiency.py` is the active design-efficiency gate in execution artifacts.
+    - Any historical analyzer mentions are labeled as legacy context.
+  dependencies:
+    - QA-06
+  affected_modules:
+    - PRODUCTIONIZATION_EXECUTION_WORKLOG.md
+    - PRODUCTIONIZATION_EXECUTION_BACKLOG.md
+    - .github/workflows/ci.yml
+    - scripts/verify_module_design_efficiency.py
+  verification: rg + CI snippet + worklog review
+  status: resolved
+  notes: Historical references that describe older threshold checks are retained only as archive context.
+
+- id: MOD-24
+  phase: Audit Closure Loop
+  title: Formalize helper-definition and export-surface integrity checks for `backend_app/main.py`
+  severity: medium
+  problem: Post-extraction ownership changed in `backend_app/main.py`; we need automated guardrails to prevent accidental reintroduction of duplicated helper implementations or dirty export lists.
+  why_it_matters: Duplicate helper bodies and export drift reintroduce maintainability/security review risk.
+  recommended_change: add a deterministic integrity check script that enforces wrapper-only delegated helpers and duplicate-free `__all__`.
+  expected_benefit: stable ownership boundaries and prevent regression during future refactors.
+  acceptance_criteria:
+    - `scripts/verify_helper_integrity.py` verifies known delegated wrappers are thin wrappers only.
+    - `__all__` has no duplicate entries in `backend_app/main.py`.
+    - No duplicated executable helper definitions remain in `backend_app/main.py`.
+    - Verification evidence is appended to work log.
+  dependencies: [MOD-13]
+  affected_modules:
+    - scripts/verify_helper_integrity.py
+    - backend_app/main.py
+    - PRODUCTIONIZATION_EXECUTION_WORKLOG.md
+  verification: ruff + helper integrity script
+  status: resolved
+  notes: Bounded integrity guard; does not alter business logic or route behavior.
+
+- id: MOD-25
+  phase: Audit Closure Loop
+  title: Reduce remaining giant-module risk in `src/services/supabase_api_mode.py`
+  severity: high
+  problem: `src/services/supabase_api_mode.py` remains a very large compatibility path and can drift from direct DB behavior despite earlier parity work.
+  why_it_matters: Concentrated business and transport logic in one file raises regression risk and slows mode-drift audits.
+  recommended_change: introduce explicit service-layer slices (read-path, mutation-path, validation adapters) with minimal delegation seams and parity tests per slice.
+  expected_benefit: lowers long-term maintenance risk and makes dual-mode behavior ownership auditable.
+  acceptance_criteria:
+    - `src/services/supabase_api_mode.py` is split into helper slices with compatibility imports and no behavior changes in public paths.
+    - `tests/test_dual_mode_parity.py` gets targeted coverage for touched slices.
+    - Full helper/route contract tests remain green after extraction.
+  dependencies: [DUAL-01]
+  affected_modules:
+    - src/services/supabase_api_mode.py
+    - src/services/supabase_api_mode_read.py
+    - src/services/supabase_api_mode_mutation.py
+    - tests/test_dual_mode_parity.py
+  verification: ruff + targeted pytest (`test_dual_mode_parity.py`) + analyze script
+  notes: |
+    Chosen as the next high-impact giant-module reduction after helper integrity closure.
+    In-loop ownership slice completed:
+    - extracted low-level REST/transport and shared utility helpers into
+      `src/services/supabase_api_mode_transport.py`.
+    - `src/services/supabase_api_mode.py` now imports these helpers through
+      compatibility seams.
+    - `scripts/analyze_giant_modules.py` now tracks this module for continuous
+      giant-module monitoring.
+    - ownership slices extracted in this loop:
+      - `src/services/supabase_api_mode_read.py` owns snapshot/metrics/read-query
+        logic.
+      - `src/services/supabase_api_mode_mutation.py` now owns team mutation
+        helpers.
+      - `src/services/supabase_api_mode.py` re-exports compatibility wrappers for
+        public API stability.
+    - `src/services/supabase_api_mode.py` is reduced to compatibility exports.
+    - `src/services/supabase_api_mode_nodes.py` now owns auth and node-write
+      flows.
+    - `src/services/supabase_api_mode.py` is now expected to stay under module
+      threshold; `scripts/analyze_giant_modules.py` should report it as compliant.
+  status: resolved
+- id: MOD-26
+  phase: Audit Closure Loop
+  title: Harden CRUD module context determinism and backend app construction ownership
+  severity: medium
+  problem: Runtime helper context in `src/crud.py` still relied on mutable module-registration mutation, and `backend_app/main.py` still performed app construction directly at import path.
+  why_it_matters: Mutable context injection can obscure startup and test behavior under reload or partial import conditions.
+  recommended_change: remove mutable `set_crud_module` injection from CRUD helpers, make context resolution deterministic, and expose an explicit `create_app()` factory in `backend_app/main.py`.
+  expected_benefit: deterministic startup ownership and reduced hidden shared-state coupling in core compatibility layer.
+  acceptance_criteria:
+    - `src/crud_auth_helpers.py` and `src/crud_runtime_helpers.py` resolve `src.crud` context deterministically and fail fast if missing.
+    - `src/crud.py` no longer calls mutable module-registration helpers.
+    - `backend_app/main.py` introduces `create_app()` and initializes `app` via that factory.
+  dependencies: [MOD-25]
+  affected_modules:
+    - src/crud.py
+    - src/crud_auth_helpers.py
+    - src/crud_runtime_helpers.py
+    - backend_app/main.py
+  verification: ruff + import integrity checks
+  status: resolved
+  notes: Completed deterministic context hardening in helper adapters and introduced explicit app construction via `create_app()` with router/observability registration delegated inside the factory.
+- id: MOD-15
+  phase: Audit Closure Loop
+  title: Fail runtime preflight on public backend ingress in production
+  severity: high
+  problem: Production mode can pass current preflight with external backend hostnames if not explicitly validated, which can weaken zero-trust topology assumptions in the BFF/backends path.
+  why_it_matters: Public backend endpoints increase blast radius for token and signing secret misuse.
+  recommended_change: validate backend API URLs in runtime preflight and require private/internal hostnames or private IPs in production.
+  expected_benefit: blocks unsafe runtime profiles before rollout and aligns CLI/runtime preflight behavior.
+  acceptance_criteria:
+    - `evaluate_runtime_preflight` appends error for public backend hostnames/IPs in production.
+    - Added regression tests for public hostname/IP rejection in `tests/test_runtime_preflight.py`.
+    - Regression evidence logged in work log with a concrete verification command.
+  dependencies: []
+  affected_modules:
+    - src/runtime_preflight.py
+    - tests/test_runtime_preflight.py
+  verification: targeted pytest
+  status: resolved
+  notes: Added production-only backend-host validation in runtime preflight and tests for non-private URL rejection.
+
+- id: MOD-16
+  phase: Audit Closure Loop
+  title: Make Playwright SPA e2e prerequisites fail-fast and actionable
+  severity: medium
+  problem: The e2e harness is frequently skipped with ambiguous setup paths; missing Playwright browser prerequisites can cause delayed or unclear failures.
+  why_it_matters: Teams need deterministic, documented preconditions to run meaningful role-based critical-path tests.
+  recommended_change: add upfront Playwright/Chromium prerequisite checks in `tests/test_e2e_playwright_spa_login_to_atlas.py`.
+  expected_benefit: faster local/operator feedback and a clear remediation message for setup failures.
+  acceptance_criteria:
+    - Fixture errors/skip reasons explicitly mention where to set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` or run `playwright install chromium`.
+    - Existing E2E skip reasons remain intact for env gating (`OKR_RUN_PLAYWRIGHT_SPA_E2E`).
+    - Targeted e2e harness tests remain stable.
+  dependencies: []
+  affected_modules:
+    - tests/test_e2e_playwright_spa_login_to_atlas.py
+  verification: targeted pytest
+  status: resolved
+  notes: Added `_require_e2e_playwright_prereqs` with explicit remediation guidance for Chromium executable and browser installation.
+
+- id: MOD-17
+  phase: Audit Closure Loop
+  title: Remove deprecated UTC datetime usage in E2E tests
+  severity: low
+  problem: `datetime.utcnow()` emits deprecation warnings in the SPA E2E module, adding noise to test output and obscuring regressions.
+  why_it_matters: Clean CI/test signals reduce triage cost and improve regression readability.
+  recommended_change: replace `datetime.utcnow()` with explicit UTC-aware `datetime.now(timezone.utc)` in E2E test timestamp generation.
+  expected_benefit: keeps E2E diagnostics warning-free without changing behavior.
+  acceptance_criteria:
+    - Replace all `datetime.utcnow()` calls in `tests/test_e2e_playwright_spa_login_to_atlas.py` with timezone-aware UTC usage.
+    - Preserve existing behavior for cycle date/range generation.
+    - Targeted e2e harness pass remains unchanged.
+  dependencies: []
+  affected_modules:
+    - tests/test_e2e_playwright_spa_login_to_atlas.py
+  verification: targeted pytest
+  status: resolved
+  notes: Migrated UTC timestamp calls in admin path setup to `datetime.now(timezone.utc)`.
+
+- id: MOD-18
+  phase: Audit Closure Loop
+  title: Add pre-flight environment installer verifier for E2E prerequisites
+  severity: medium
+  problem: SPA E2E runs can still be blocked by missing Node/npm/Playwright or unbuilt service repos, even when functional code is correct.
+  why_it_matters: Environment setup failures delay diagnostics and blur harness quality versus product regressions.
+  recommended_change: add a dedicated preflight script that verifies Node/npm/npx, required `dev` scripts, node_modules presence, and Playwright CLI availability in both spa-web and spa-bff.
+  expected_benefit: faster operator onboarding and deterministic skip/fail diagnosis before running Playwright suites.
+  acceptance_criteria:
+    - `scripts/verify_e2e_environment.py` checks required binaries and local deps for `spa-web` and `spa-bff`.
+    - Script prints actionable remediation guidance on failure and exits with non-zero status.
+    - Existing E2E harness behavior remains unchanged and unchanged verification commands continue to pass when properly configured.
+  dependencies: []
+  affected_modules:
+    - scripts/verify_e2e_environment.py
+    - tests/test_e2e_playwright_spa_login_to_atlas.py
+  verification: ruff + script run + install attempts
+  status: resolved
+  notes: New preflight verifier plus install-attempt evidence completed. `ruff` is clean and checks pass deterministically; `python scripts/verify_e2e_environment.py` is non-zero in this environment until Playwright binaries are installed. `npm` install attempts are blocked by registry access permissions in this workspace (`EACCES` to registry fetch), so install remains environment-blocked.
+
+- id: MOD-19
+  phase: Audit Closure Loop
+  title: Complete giant-module decomposition planning for `backend_app/main.py` and `src/crud.py`
+  severity: medium
+  problem: `backend_app/main.py` and `src/crud.py` remain giant compatibility shells without explicit ownership boundaries for every section, increasing maintenance risk despite delegated helper modules.
+  why_it_matters: Broad-file ownership makes future refactors and security behavior changes hard to localize and review.
+  recommended_change: add a measurable extraction plan, enforce a deterministic decomposition boundary, and then split remaining low-risk sections into domain helper modules while keeping public symbols stable.
+  expected_benefit: reduced maintenance friction and clearer ownership for both backend API composition and CRUD facade responsibilities.
+  acceptance_criteria:
+    - Add a giant-module audit artifact that reports line-count/ownership hotspots for `backend_app/main.py` and `src/crud.py`.
+    - Add one concrete extraction step per module in the next loop (no behavior changes).
+    - Document the extraction plan and risk register in backlog/worklog with closure evidence.
+  dependencies: []
+  affected_modules:
+  - backend_app/main.py
+  - src/crud.py
+  - scripts/analyze_giant_modules.py
+  verification: script run + backlog update
+  status: resolved
+  notes: |
+    In this loop, `backend_app/main.py` node/user/cycle/team mutation handlers were extracted to
+    `backend_app/main_mutation_handlers.py`, router compatibility imports were restored in `backend_app/main.py`,
+    and `src/crud.py` compatibility binding for `get_user_by_id` was re-added to keep direct imports stable.
+    `python scripts/analyze_giant_modules.py` now reports both files within threshold.
+
+- id: MOD-20
+  phase: Audit Closure Loop
+  title: Extract runtime helper ownership out of `backend_app/main.py`
+  severity: medium
+  problem: `backend_app/main.py` still contains large helper wrapper blocks for payload/idempotency/scope orchestration, making ownership and ownership diffs noisy.
+  why_it_matters: Bundling these helpers in main increases risk during route/auth/security changes and slows PR review.
+  recommended_change: move the runtime helper wrappers into a dedicated module (`backend_app/main_runtime_helpers.py`) with compatibility imports in `main.py`.
+  expected_benefit: explicit ownership boundaries for runtime helper logic, reduced main file surface area, and preserved behavior for existing call sites.
+  acceptance_criteria:
+    - Helper wrapper calls for payload/idempotency/scope logic are delegated to `backend_app/main_runtime_helpers.py`.
+    - No duplicate wrapper implementations remain in `backend_app/main.py`.
+    - Lint checks on touched files pass.
+    - Backlog and worklog record closure evidence.
+  dependencies:
+    - MOD-19
+  affected_modules:
+    - backend_app/main.py
+    - backend_app/main_runtime_helpers.py
+    - backend_app/main_helpers.py
+    - backend_app/scope_resolution.py
+  verification: ruff
+  status: resolved
+  notes: Completed as a bounded extraction step in this loop. `backend_app/main_runtime_helpers.py` now owns wrapper delegation for extracted runtime helpers and `main.py` imports these helpers through compatibility-only delegates.
+
+ - id: MOD-21
+   phase: Audit Closure Loop
+   title: Extract runtime auth/proxy adapters from `src/crud.py`
+   severity: medium
+   problem: `src/crud.py` still includes a broad runtime adapter block for auth/proxy/session helpers, increasing coupling despite deep helper delegation.
+   why_it_matters: Top-level ownership is mixed with facade adapters; this slows review of auth/proxy behavior and increases regression risk.
+   recommended_change: move adapter wrappers into `src/crud_runtime_helpers.py` and delegate from `src.crud` via explicit compatibility bindings.
+   expected_benefit: clearer ownership for auth/proxy/session helper surface and lower maintenance friction.
+   acceptance_criteria:
+     - `_ensure_model_bindings_current`, `_backend_*`, `_resolve_*`, and auth bootstrap helpers are delegated to `src/crud_runtime_helpers.py`.
+     - `src/crud.py` preserves public symbols and call signatures.
+     - `src/crud.py` registers module context so runtime lookups remain compatible.
+     - Lint checks pass on touched files.
+   dependencies:
+     - MOD-20
+   affected_modules:
+     - src/crud.py
+     - src/crud_runtime_helpers.py
+     - src/domain/auth_service.py
+   verification: ruff + analyze script snapshot
+   status: resolved
+  notes: Completed a bounded extraction slice; added `src/crud_runtime_helpers.py`, wired context registration (`set_crud_module`), and reassigned wrapper entry points in `src.crud`.
+
+- id: MOD-22
+  phase: Audit Closure Loop
+  title: Extract authorization/throttle helper wrappers out of `src/crud.py`
+  severity: medium
+  problem: `src/crud.py` still retains a large contiguous authorization/throttle helper cluster, increasing local review and regression risk in a critical control-path module.
+  why_it_matters: Auth and throttle behavior is security-sensitive; ownership should be explicit and isolated from unrelated facade surface.
+  recommended_change: move the auth/authorization/throttle wrapper cluster to `src/crud_auth_helpers.py` and rebind symbol names in `src.crud`.
+  expected_benefit: reduced `src.crud` auth surface and cleaner ownership boundaries without behavior change.
+  acceptance_criteria:
+    - `_goal_owner_predicate_*`, `_can_manage_*`, `_authorize_*`, `_normalize_*`, `_throttle*`, and user-auth entry points are delegated.
+    - Legacy names remain bound on `src.crud` with current signatures.
+    - Module context is registered in this compatibility layer (`set_crud_module`).
+    - `ruff` checks and giant-module analysis are executed for touched files.
+  dependencies:
+    - MOD-21
+  affected_modules:
+    - src/crud.py
+    - src/crud_auth_helpers.py
+  verification: ruff + analyze script snapshot
+  status: resolved
+  notes: Moved the contiguous auth/authorization/throttle wrapper cluster from `src/crud.py` into `src/crud_auth_helpers.py` and rebound symbols in-place.
+
+- id: MOD-23
+  phase: Audit Closure Loop
+  title: Extract main app bootstrap/router registration from `backend_app/main.py`
+  severity: medium
+  problem: `backend_app/main.py` still owns startup lifecycle and router assembly inline, keeping ownership mixed with route handlers.
+  why_it_matters: Keeping bootstrap behavior adjacent to business handlers increases review risk and slows routing-layer refactors.
+  recommended_change: move `_lifespan` and core `APIRouter` registration into `backend_app/main_bootstrap_helpers.py`.
+  expected_benefit: explicit startup/assembly ownership and reduced cognitive load in `main.py` without API surface changes.
+  acceptance_criteria:
+    - `_lifespan` behavior remains unchanged for Supabase-mode vs local DB mode.
+    - Router assembly order and registration calls are preserved via helper module.
+    - `ruff` checks on touched files pass.
+    - Giant-module audit re-run for loop evidence.
+  dependencies: [MOD-19]
+  affected_modules:
+    - backend_app/main.py
+    - backend_app/main_bootstrap_helpers.py
+    - backend_app/main_runtime_helpers.py
+  verification: ruff + analyze script snapshot
+  status: resolved
+  notes: Extracted startup lifecycle and router assembly from `main.py` into `main_bootstrap_helpers.py` via compatibility function calls.
+
+- id: MOD-14
+  phase: Audit Closure Loop
+  title: Delegate read-query orchestration out of `backend_app/main.py`
+  severity: medium
+  problem: `backend_app/main.py` still hosts monolithic read-query branching that slows maintenance and raises regression risk.
+  why_it_matters: Duplicate logic and large local dispatch functions increase chance of missed authorization/rule changes across modes.
+  recommended_change: move read-query dispatch and allowed-kinds set to `backend_app/read_query_helpers.py` while keeping a minimal compatibility wrapper in `main.py`.
+  expected_benefit: lower maintenance burden and explicit ownership of read-query domain rules.
+  acceptance_criteria:
+    - `_read_query_payload` and `_ALLOWED_READ_QUERY_KINDS` become delegated/wrapper-only in `backend_app/main.py`.
+    - Route-level and monkeypatch-compatible behavior remains intact.
+    - Read-query parity tests and focused mutation-read tests pass.
+  dependencies:
+    - MOD-13
+  affected_modules:
+    - backend_app/main.py
+    - backend_app/read_query_helpers.py
+  verification: ruff + targeted pytest
+  status: resolved
+  notes: Extracted read-query logic to `backend_app/read_query_helpers.py`, added compatibility exports for existing tests and routes, and validated with targeted `read_query` suites.
+
+- id: MOD-13
+  phase: Audit Closure Loop
+  title: Final helper integrity and exports consistency pass in `backend_app/main.py`
+  severity: medium
+  problem: Post-extraction drift can reintroduce duplicated helper implementations and loose export surfaces.
+  why_it_matters: Duplicate helper implementations erode maintainability and can reintroduce security/behavior regressions.
+  recommended_change: complete a final static integrity sweep and keep delegated wrappers as the only local ownership points.
+  expected_benefit: stable helper ownership and predictable `__all__` behavior.
+  acceptance_criteria:
+    - Static review confirms helper families are delegated to helper modules.
+    - `_ALLOWED`/constant ownership in `main.py` remains intentional.
+    - Lint and targeted checks pass on touched files.
+  dependencies:
+    - MOD-12
+  affected_modules:
+    - backend_app/main.py
+    - backend_app/main_helpers.py
+    - backend_app/scope_resolution.py
+  verification: ruff + targeted scan
+  status: resolved
+  notes: Completed duplicate-definition and export-surface consistency pass; no behavior changes introduced.
+```
+
 ## 2026-07-27
 
 ```yaml
@@ -435,4 +781,199 @@ Status legend:
   status: resolved
   notes: Removed duplicate implementations from `backend_app/main.py` for effective cycle resolution and admin/admin-or-manager scope checks; replaced with thin wrapper delegates to `backend_app/scope_resolution.py` and cleaned an unused scope-resolution import.
 
+- id: TEST-02
+  phase: Audit Closure Loop
+  title: Improve E2E harness fail-fast behavior on service startup failure
+  severity: medium
+  problem: E2E harness previously waited the full timeout even if backend/BFF/SPA processes exited, masking root-cause signals and slowing loops.
+  why_it_matters: Faster, deterministic failure diagnostics improve CI and local debugging of infra/runtime regressions.
+  recommended_change: add process-aware health polling in the Playwright E2E fixture so startup exits are detected and return codes are surfaced immediately.
+  expected_benefit: clearer root-cause evidence when services fail to boot, lower time-to-diagnosis for E2E instability.
+  acceptance_criteria:
+    - `_wait_for_http_and_process` checks process exit codes during startup waits.
+    - E2E stack setup raises explicit backend-exit returncode when available.
+    - Existing Playwright role-based critical-path behavior remains green.
+  dependencies: []
+  affected_modules:
+    - tests/test_e2e_playwright_spa_login_to_atlas.py
+  verification: ruff + targeted pytest
+  status: resolved
+  notes: Implemented process-aware startup wait helper and wiring for backend/BFF/SPA readiness in `tests/test_e2e_playwright_spa_login_to_atlas.py`. Added explicit backend exit code surfacing and kept behavior unchanged for healthy runs.
+
 - 2026-07-27: MOD-11 completed — extracted duplicated scope/actor/cycle helper logic out of `backend_app/main.py` into `backend_app/scope_resolution.py` and removed local duplicates; tests passed: 13 in `tests/test_backend_observability.py`, `tests/test_backend_error_envelope.py`, `tests/test_worker_observability.py`.
+
+
+  - id: MOD-30
+    phase: Audit Closure Loop
+    title: Restore dual-mode compatibility seams after handler/module extraction
+    severity: high
+    problem: `backend_app/main.py` and extracted handler modules were out of sync after recent extraction work, causing monkeypatch targets in dual-mode parity tests to be bypassed.
+    why_it_matters: Mode parity and regression tests are unreliable when handlers capture stale symbols at import time.
+    recommended_change: resolve `backend_app.main` symbols dynamically from handler modules and preserve exported compatibility wrappers in `main.py`.
+    expected_benefit: deterministic dual-mode behavior and stable monkeypatching in parity tests.
+    acceptance_criteria:
+      - `api_create_user` and other core mutation handlers use backend main indirection for mode checks and function dispatch.
+      - `backend_app/main.py` still exposes compatibility names expected by tests.
+      - Lint and `test_dual_mode_parity.py` pass after changes.
+      - `read_query_via_supabase_api`/`create_*_via_supabase_api` compatibility surface remains available for external monkeypatches.
+    dependencies:
+      - MOD-19
+      - MOD-20
+    affected_modules:
+      - backend_app/main.py
+      - backend_app/main_mutation_handlers.py
+      - backend_app/main_workflow_handlers.py
+      - backend_app/main_runtime_helpers.py
+    verification: ruff + targeted pytest + giant module analyzer
+    status: resolved
+    notes: |
+      Completed in this loop with dynamic runtime indirection in both mutation/workflow handlers and compatibility imports in `main.py`.
+      Also removed stale direct-mode-only import paths that bypassed monkeypatched `backend_app.main` symbols.
+
+- id: QA-01
+  phase: Audit Closure Loop
+  title: Extend helper integrity and export hygiene checks to `backend_app/main.py` and `src/crud.py`
+  severity: medium
+  problem: Single-module integrity checks are no longer sufficient for the current facade-surface risk profile.
+  why_it_matters: Duplicate helper implementations and export drift are high-risk in facade modules that own compatibility seams.
+  recommended_change: run a reusable helper-integrity gate over both `backend_app/main.py` and `src/crud.py`, covering wrapper thinness, duplicate definitions, and duplicate `__all__` entries.
+  expected_benefit: deterministic integrity evidence for facade-module drift and prevention of helper redefinition regressions.
+  acceptance_criteria:
+    - `scripts/verify_helper_integrity.py` checks both `backend_app/main.py` and `src/crud.py`.
+    - `__all__` duplicate entries are rejected.
+    - Duplicate top-level helper definitions in targeted modules are rejected.
+    - Thin-wrapper expectations for delegated helpers in `backend_app/main.py` pass.
+  dependencies: [MOD-13, MOD-24]
+  affected_modules:
+    - scripts/verify_helper_integrity.py
+    - backend_app/main.py
+    - src/crud.py
+  verification: ruff + helper integrity script
+  status: resolved
+  notes: |
+    This loop captures a reusable QA gate for facade modules after repeated decomposition and integrity-cycle reviews.
+
+- id: QA-02
+  phase: Audit Closure Loop
+  title: Wire helper-integrity and giant-module gates into backend CI quality path
+  severity: medium
+  problem: Verification exists locally but is not enforced in CI, allowing facade-integrity or giant-module drift to reach merge.
+  why_it_matters: Maintainability and regression-risk gates must be automatic at merge time.
+  recommended_change: add `python scripts/verify_helper_integrity.py` and `python scripts/analyze_giant_modules.py` to `.github/workflows/ci.yml`.
+  expected_benefit: deterministic enforcement of facade integrity and module-size boundaries in PR/merge checks.
+  acceptance_criteria:
+    - `Helper Integrity Gate` step is added and green in CI.
+    - `Giant Module Boundary Gate` step is added and green in CI.
+    - Backlog/worklog records this loop closure with verification evidence.
+  dependencies: [QA-01]
+  affected_modules:
+    - .github/workflows/ci.yml
+    - scripts/verify_helper_integrity.py
+    - scripts/analyze_giant_modules.py
+  verification: ci-local lint + local helper/gateway script execution
+  status: resolved
+  notes: |
+    This keeps the latest QA gate from being optional and ensures future decompositions are reviewed by CI.
+
+- id: QA-03
+  phase: Audit Closure Loop
+  title: Broaden helper-integrity scope to helper-adjacent façade modules
+  severity: medium
+  problem: Current integrity gating validates `main.py` and `src/crud.py`, but not all extracted helper-adjacent façade modules that still carry compatibility surface risk.
+  why_it_matters: Hidden duplicate symbols or export drift in helper modules can bypass direct facade checks and still create review and regression risk.
+  recommended_change: extend `scripts/verify_helper_integrity.py` to include `backend_app` and `src` helper-adjacent modules in duplicate/export checks.
+  expected_benefit: wider coverage of facade-like modules with low runtime risk and deterministic maintenance guardrails.
+  acceptance_criteria:
+    - `scripts/verify_helper_integrity.py` includes at least `backend_app/main_bootstrap_helpers.py`, `backend_app/main_runtime_helpers.py`, `backend_app/main_workflow_handlers.py`, `backend_app/main_mutation_handlers.py`, `src/crud_auth_helpers.py`, and `src/crud_runtime_helpers.py`.
+    - CI gate remains a single call site (`python scripts/verify_helper_integrity.py`) and enforces these new module checks.
+    - Duplicate definitions / duplicate `__all__` are rejected for all expanded targets.
+  dependencies: [QA-02]
+  affected_modules:
+    - scripts/verify_helper_integrity.py
+    - .github/workflows/ci.yml
+    - backend_app/main_bootstrap_helpers.py
+    - backend_app/main_runtime_helpers.py
+    - backend_app/main_mutation_handlers.py
+    - backend_app/main_workflow_handlers.py
+    - src/crud_auth_helpers.py
+    - src/crud_runtime_helpers.py
+  verification: ruff + helper integrity script + giant module boundary checks
+  status: resolved
+  notes: |
+    Expands QA coverage to reduce risk in modules that are critical to facade decomposition ownership.
+
+- id: QA-04
+  phase: Audit Closure Loop
+  title: Add runtime import + signature contract validation to helper-integrity gate
+  severity: medium
+  problem: Static checks can miss runtime-export drift when symbols disappear or contracts change after refactor.
+  why_it_matters: Merge-safe behavior requires both static hygiene and runtime importability of compatibility contracts.
+  recommended_change: extend `scripts/verify_helper_integrity.py` to validate importability and callable signatures for selected helper symbols.
+  expected_benefit: catches symbol and signature regressions before tests and before PR merge.
+  acceptance_criteria:
+    - Helper-integrity gate imports each targeted module successfully.
+    - Selected high-risk symbols are required to exist and be callable.
+    - Selected callable signatures are validated against manifest expectations.
+    - CI remains a single helper-integrity command in the same location.
+  dependencies: [QA-03]
+  affected_modules:
+    - scripts/verify_helper_integrity.py
+    - .github/workflows/ci.yml
+  verification: ruff + helper integrity script
+  status: resolved
+  notes: |
+    This is the first execution-mode contract gate for facade-adjacent helper exports.
+
+- id: QA-05
+  phase: Audit Closure Loop
+  title: Add facade/export contract validation for helper-adjacent modules
+  severity: medium
+  problem: Contract checks currently validate wrappers and signatures, but there is still no fail-fast rule that ensures exported compatibility symbols and __all__ surfaces stay explicit and drift-free.
+  why_it_matters: Drift in exported adapters/hook surfaces can silently break monkeypatch, integration seams, and external imports during refactors.
+  recommended_change: add a dedicated export-contract gate to verify expected symbols, callable contract for selected compat surfaces, and clean export lists (no duplicates, expected dunder entries checked), then run it in CI.
+  expected_benefit: deterministic facade/API seam integrity beyond wrapper-only checks.
+  acceptance_criteria:
+    - `scripts/verify_module_export_contracts.py` enforces required exports on `backend_app.main`, handler/helper seams, and `src` CRUD adapters.
+    - Export manifest lists are checked for duplicates.
+    - `__all__` duplicates are rejected where `__all__` is defined.
+    - CI includes a dedicated `Module Export Contract Gate` step with the new script.
+  dependencies: [QA-04]
+  affected_modules:
+    - scripts/verify_module_export_contracts.py
+    - .github/workflows/ci.yml
+    - backend_app/main.py
+    - backend_app/main_bootstrap_helpers.py
+    - backend_app/main_runtime_helpers.py
+    - backend_app/main_mutation_handlers.py
+    - backend_app/main_workflow_handlers.py
+    - src/crud_auth_helpers.py
+    - src/crud_runtime_helpers.py
+  verification: ruff + new module-export contract script + CI dry-run
+  status: resolved
+  notes: |
+    Adds a dedicated export-surface regression gate that complements helper integrity by checking both symbol presence and callability expectations for adapter seams.
+
+- id: QA-06
+  phase: Audit Closure Loop
+  title: Add senior design-efficiency review gate for facade ownership and seam efficiency
+  severity: medium
+  problem: Existing gating around `main.py`, `src/crud.py`, and `src/services/supabase_api_mode.py` was still partially size-based and did not explicitly assess ownership separation or runtime seam efficiency.
+  why_it_matters: Refactor correctness in these compatibility surfaces must be protected against logic creep, high-coupling re-accumulation, and accidental regression in the abstraction seams they own.
+  recommended_change: introduce a module design/efficiency gate that validates seam delegation, facade-thinness, wrapper thinness in `main.py`, and absence of direct orchestration logic in these facade modules.
+  expected_benefit: stronger maintenance confidence without relying on line-count thresholds.
+  acceptance_criteria:
+    - `scripts/verify_module_design_efficiency.py` is added.
+    - CI uses this gate after integrity checks.
+    - Gate fails when facade modules accumulate non-thin functions, non-delegated required symbols, or direct orchestration smells.
+    - Size-only `analyze_giant_modules` is removed from CI.
+  dependencies: [QA-05]
+  affected_modules:
+    - scripts/verify_module_design_efficiency.py
+    - .github/workflows/ci.yml
+    - backend_app/main.py
+    - src/crud.py
+    - src/services/supabase_api_mode.py
+  verification: ruff + module-design-efficiency script
+  status: resolved
+  notes: |
+    Adds a design review gate focused on ownership concentration, delegation thinness, and efficiency signals for facade seams.
