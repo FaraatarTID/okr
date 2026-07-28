@@ -898,7 +898,8 @@ Documentation HQ: [README](README.md)
   - Replaced the merge revision's dialect-specific SQL pseudo-no-op with true Python no-ops and added a repository-wide Alembic portability guard against SQLite-only PRAGMA statements.
   - Generated a strong shared backend signing secret, enabled request-signature enforcement, included the secret in diagnostic redaction, and parameterized the BFF Compose runtime so production remains the default while HTTP smoke explicitly uses development cookie transport.
   - Injected `OKR_BOOTSTRAP_ADMIN_PASSWORD` into `backend-api`, added a service-scoped deployment-contract test, and made smoke login failures preserve the backend/BFF JSON error envelope.
-  - Corrected smoke endpoint paths in `tests/test_e2e_smoke.py` from `/api/backend/read/query` and `/api/backend/jobs` to `/api/backend/v1/read/query` and `/api/backend/v1/jobs` (including `/api/backend/v1/jobs/{job_id}` polling). Without `/v1`, BFF path normalization rejected them as invalid and returned `400`.
+- Corrected smoke endpoint paths in `tests/test_e2e_smoke.py` from `/api/backend/read/query` and `/api/backend/jobs` to `/api/backend/v1/read/query` and `/api/backend/v1/jobs` (including `/api/backend/v1/jobs/{job_id}` polling). Without `/v1`, BFF path normalization rejected them as invalid and returned `400`.
+- Hardening update: treated `/v1/read/*` actor routes in BFF as read-only for CSRF enforcement by updating `spa-bff/src/server.ts`. `test_e2e_smoke.py` now sends CSRF only when available to `/v1/read/query` (to avoid brittle cookie-coupling) while retaining required CSRF enforcement for job endpoints.
 - Verification:
   - `python -m pytest -q tests/test_verify_resilience_script.py` → `4 passed`.
   - `python -m mypy --ignore-missing-imports --follow-imports=skip scripts/verify_resilience.py tests/test_verify_resilience_script.py` → pass.

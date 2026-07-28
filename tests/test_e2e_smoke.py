@@ -172,12 +172,16 @@ def _run_read_query(
     *,
     bff_url: str,
     actor: str,
+    csrf_token: str | None = None,
 ) -> dict:
+    headers: dict[str, str] = {"x-okr-actor": actor}
+    if csrf_token:
+        headers["x-xsrf-token"] = csrf_token
     status, payload = _request_json(
         client,
         method="POST",
         url=f"{bff_url}/api/backend/v1/read/query",
-        headers={"x-okr-actor": actor},
+        headers=headers,
         payload={
             "kind": "users.by_username",
             "params": {"username": actor},
@@ -262,14 +266,20 @@ def test_full_stack_smoke(smoke_env: _SmokeConfig) -> None:
         raise RuntimeError(f"Web service did not become ready: {web_url}")
 
     actor = _do_login(client, bff_url=bff_url)
+    csrf_token = _csrf_token_from_cookie(cookie_jar)
 
-    read_payload = _run_read_query(client, bff_url=bff_url, actor=actor)
+    read_payload = _run_read_query(
+        client,
+        bff_url=bff_url,
+        actor=actor,
+        csrf_token=csrf_token,
+    )
     if not isinstance(read_payload.get("user"), dict):
         raise RuntimeError(f"Invalid read payload: {read_payload}")
-
-    csrf_token = _csrf_token_from_cookie(cookie_jar)
     if not csrf_token:
-        raise RuntimeError("CSRF cookie missing after login. Cannot test state-changing route.")
+        raise RuntimeError(
+            "CSRF cookie missing after login. Cannot run state-changing smoke endpoints."
+        )
 
     job_payload = _run_job_smoke(
         client,

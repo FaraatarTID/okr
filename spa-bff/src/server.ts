@@ -445,6 +445,7 @@ export function createServer(
       const actorRequired = requiresActorHeader(request.method, backendPath);
       let actor: string | null = null;
       let sessionUser: SessionUser | null = null;
+      const isReadRoute = backendPath.startsWith("/v1/read/");
       if (actorRequired) {
         sessionUser = readSessionUserFromRequest(config, request.headers);
         if (!sessionUser) {
@@ -458,8 +459,12 @@ export function createServer(
         }
         actor = sessionUser.username;
 
-        // CSRF protection: validate double-submit cookie on state-changing requests
-        const isStateChanging = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method);
+        // CSRF protection: validate double-submit cookie on state-changing requests.
+        // Read routes are intentionally POST-based but non-mutating and do not
+        // require CSRF in this API contract.
+        const isStateChanging =
+          ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) &&
+          !isReadRoute;
         if (isStateChanging) {
           const csrfValid = validateCsrfToken({
             cookieHeader: firstHeaderValue(request.headers.cookie),
