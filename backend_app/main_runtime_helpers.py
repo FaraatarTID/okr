@@ -53,12 +53,26 @@ def _resolve_actor_scope(
 
 
 def _resolve_scope_for_actor(actor: str, token_version: Optional[int] = None) -> dict[str, Any]:
+    from backend_app import main as backend_main
+
+    backend_resolver = getattr(backend_main, "_resolve_scope_for_actor", None)
+    if backend_resolver is not None and backend_resolver is not _resolve_scope_for_actor:
+        return backend_resolver(actor=actor, token_version=token_version)
     return _resolve_scope_for_actor_impl(actor=actor, token_version=token_version)
 
 
 def _resolve_effective_cycle_id_for_scope(
     scope: dict[str, Any], requested_cycle_id: Optional[int], *, required: bool = True
 ) -> Optional[int]:
+    from backend_app import main as backend_main
+
+    backend_fn = getattr(backend_main, "_resolve_effective_cycle_id_for_scope", None)
+    if backend_fn is not None and backend_fn is not _resolve_effective_cycle_id_for_scope:
+        return backend_fn(
+            scope=scope,
+            requested_cycle_id=requested_cycle_id,
+            required=required,
+        )
     return _resolve_effective_cycle_id_for_scope_impl(
         scope=scope,
         requested_cycle_id=requested_cycle_id,
@@ -67,10 +81,20 @@ def _resolve_effective_cycle_id_for_scope(
 
 
 def _require_admin_actor_scope(actor: str) -> None:
+    from backend_app import main as backend_main
+
+    backend_fn = getattr(backend_main, "_require_admin_actor_scope", None)
+    if backend_fn is not None and backend_fn is not _require_admin_actor_scope:
+        return backend_fn(actor)
     return _require_admin_actor_scope_impl(actor=actor)
 
 
 def _require_admin_or_manager_actor_scope(actor: str) -> None:
+    from backend_app import main as backend_main
+
+    backend_fn = getattr(backend_main, "_require_admin_or_manager_actor_scope", None)
+    if backend_fn is not None and backend_fn is not _require_admin_or_manager_actor_scope:
+        return backend_fn(actor)
     return _require_admin_or_manager_actor_scope_impl(actor=actor)
 
 

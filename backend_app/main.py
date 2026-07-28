@@ -7,7 +7,7 @@ import logging
 import sys
 from typing import Any, Optional
 
-from fastapi import FastAPI, Response, status  # noqa: F401
+from fastapi import FastAPI, HTTPException, Response, status  # noqa: F401
 from sqlmodel import select  # noqa: F401
 
 from backend_app.job_limits import enforce_job_submit_limits  # noqa: F401
@@ -31,16 +31,23 @@ from backend_app.scope_resolution import (
     _coerce_owner_ids as _coerce_owner_ids_impl,
     _coerce_string_list as _coerce_string_list_impl,
     _resolve_actor_scope as _resolve_actor_scope_impl,
+    _pick_primary_active_cycle as _pick_primary_active_cycle_impl,
     _resolve_effective_cycle_id_for_scope as _resolve_effective_cycle_id_for_scope_impl,
     _resolve_scope_for_actor as _resolve_scope_for_actor_impl,
     _require_admin_actor_scope as _require_admin_actor_scope_impl,
     _require_admin_or_manager_actor_scope as _require_admin_or_manager_actor_scope_impl,
+    _scope_cycle_id as _scope_cycle_id_impl,
+    _scope_cycle_is_active as _scope_cycle_is_active_impl,
+    _scope_role as _scope_role_impl,
     _visible_cycles_for_scope,  # noqa: F401
+    is_supabase_api_mode_enabled as _is_supabase_api_mode_enabled,
+    read_query_via_supabase_api as _read_query_via_supabase_api,
 )
 from backend_app.read_query_helpers import (
     _ALLOWED_READ_QUERY_KINDS as _ALLOWED_READ_QUERY_KINDS_IMPL,
     read_query_payload as _read_query_payload_impl,
 )
+from backend_app.main_helpers import coerce_int as _coerce_int
 from backend_app.response_scope_helpers import (
     _filter_tasks_for_scope,  # noqa: F401
     _node_owner_id,  # noqa: F401
@@ -134,7 +141,36 @@ __all__ = [
 
 from src.crud import (
     authenticate_user_detailed,
+    close_experiment,  # noqa: F401
+    create_alignment,  # noqa: F401
     ensure_admin_exists,
+    create_user,
+    create_check_in,
+    create_cycle,  # noqa: F401
+    create_experiment,  # noqa: F401
+    create_objective_alignment_link,  # noqa: F401
+    upsert_retro_experiment_outcome,  # noqa: F401
+    create_retrospective,  # noqa: F401
+    create_team,  # noqa: F401
+    create_weekly_plan,  # noqa: F401
+    delete_alignment,
+    delete_cycle,  # noqa: F401
+    delete_objective_alignment_link,  # noqa: F401
+    delete_team,  # noqa: F401
+    delete_goal,
+    delete_key_result,
+    delete_objective,
+    delete_task,
+    delete_work_log,  # noqa: F401
+    reset_user_password,  # noqa: F401
+    update_cycle,  # noqa: F401
+    update_team,  # noqa: F401
+    update_experiment,
+    update_goal,
+    update_key_result,
+    update_objective,
+    update_task,  # noqa: F401
+    update_user,
     get_leadership_metrics,
     start_timer,  # noqa: F401
     stop_timer,  # noqa: F401
@@ -218,8 +254,8 @@ def _resolve_actor_scope(
     session, actor_username: str, token_version: Optional[int] = None
 ) -> dict[str, Any]:
     return _resolve_actor_scope_impl(
-        session=session,
-        actor_username=actor_username,
+        session,
+        actor_username,
         token_version=token_version,
     )
 
@@ -227,25 +263,107 @@ def _resolve_actor_scope(
 def _resolve_scope_for_actor(
     actor: str, token_version: Optional[int] = None
 ) -> dict[str, Any]:
-    return _resolve_scope_for_actor_impl(actor=actor, token_version=token_version)
+    with get_session_context() as session:
+        return _resolve_actor_scope(session, actor, token_version=token_version)
 
 
 def _resolve_effective_cycle_id_for_scope(
     scope: dict[str, Any], requested_cycle_id: Optional[int], *, required: bool = True
 ) -> Optional[int]:
-    return _resolve_effective_cycle_id_for_scope_impl(
+    def _safe_int(value: Any) -> int:
+        return int(value)
+
+    if bool(scope.get("is_admin", False)):
+        if requested_cycle_id is None:
+            if required:
+                raise HTTPException(status_code=400, detail="cycle_id is required.")
+            return None
+        return _safe_int(requested_cycle_id)
+
+    role = _scope_role_impl(scope)
+    if role not in {"manager", "member"}:
+        if requested_cycle_id is None:
+            if required:
+                raise HTTPException(status_code=400, detail="cycle_id is required.")
+            return None
+        return _safe_int(requested_cycle_id)
+
+    if _is_supabase_api_mode_enabled():
+        kind = "cycles.active" if role == "member" else "cycles.all"
+        payload = _read_query_via_supabase_api(
+            kind=kind,
+            params={},
+            actor=str(scope.get("actor_username") or ""),
+        )
+        cycles = list((payload or {}).get("cycles") or [])
+    else:
+        cycles = list(
+            (get_active_cycles() if role == "member" else get_all_cycles()) or []
+        )
+
+    if role == "manager":
+        if requested_cycle_id is None:
+            if required:
+                raise HTTPException(status_code=400, detail="cycle_id is required.")
+            return None
+        candidate = _safe_int(requested_cycle_id)
+        owned_cycles = _visible_cycles_for_scope(
+            scope=scope,
+            cycles=[cycle for cycle in cycles],
+        )
+        if any(_scope_cycle_id_impl(cycle) == candidate for cycle in owned_cycles):
+            return candidate
+        raise HTTPException(
+            status_code=403, detail="Managers can only use their owned cycles."
+        )
+
+    active_cycles = _visible_cycles_for_scope(
         scope=scope,
-        requested_cycle_id=requested_cycle_id,
-        required=required,
+        cycles=[cycle for cycle in cycles if _scope_cycle_is_active_impl(cycle)],
     )
+    selected = _pick_primary_active_cycle_impl(active_cycles)
+    if not selected:
+        raise HTTPException(
+            status_code=404,
+            detail="No active cycle available for this user scope.",
+        )
+    selected_id = _scope_cycle_id_impl(selected)
+    if selected_id <= 0:
+        raise HTTPException(
+            status_code=404,
+            detail="No active cycle available for this user scope.",
+        )
+    if requested_cycle_id is not None and _safe_int(requested_cycle_id) != selected_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Members must use the manager/admin active cycle.",
+        )
+    return selected_id
+
+
+def _scope_role(scope: dict[str, Any]) -> str:
+    return _scope_role_impl(scope)
+
+
+def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
+    return _pick_primary_active_cycle_impl(cycles)
+
 
 
 def _require_admin_actor_scope(actor: str) -> None:
-    return _require_admin_actor_scope_impl(actor=actor)
+    scope = _resolve_scope_for_actor(actor)
+    if not bool(scope.get("is_admin", False)):
+        raise HTTPException(status_code=403, detail="Admin privileges required.")
 
 
 def _require_admin_or_manager_actor_scope(actor: str) -> None:
-    return _require_admin_or_manager_actor_scope_impl(actor=actor)
+    scope = _resolve_scope_for_actor(actor)
+    if not bool(scope.get("is_admin", False)):
+        role = str(scope.get("role") or "").strip().lower()
+        if role != "manager":
+            raise HTTPException(
+                status_code=403, detail="Manager or admin privileges required."
+            )
 
 
 def _coerce_owner_ids(values: Optional[list[int]]) -> list[int]:
@@ -294,12 +412,20 @@ def _read_query_payload(*, kind: str, params: dict, actor: str) -> dict:
     )
 
 
+def _bootstrap_init_database() -> None:
+    return init_database()
+
+
+def _bootstrap_ensure_admin_exists() -> bool:
+    return ensure_admin_exists()
+
+
 def create_app() -> FastAPI:
     _lifespan = make_main_lifespan(
         is_supabase_api_mode_enabled=is_supabase_api_mode_enabled,
         ensure_supabase_api_ready=ensure_supabase_api_ready,
-        init_database=init_database,
-        ensure_admin_exists=ensure_admin_exists,
+        init_database=_bootstrap_init_database,
+        ensure_admin_exists=_bootstrap_ensure_admin_exists,
     )
 
     app = FastAPI(
