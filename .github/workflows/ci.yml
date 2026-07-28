@@ -65,6 +65,15 @@ jobs:
             tests \
             --select E9,F63,F7,F82
 
+      - name: Helper Integrity Gate
+        run: python scripts/verify_helper_integrity.py
+
+      - name: Module Export Contract Gate
+        run: python scripts/verify_module_export_contracts.py
+
+      - name: Module Design Efficiency Gate
+        run: python scripts/verify_module_design_efficiency.py
+
       - name: Duplication Check (JSCPD <= 1%)
         run: |
           npx -y jscpd@4.0.5 \

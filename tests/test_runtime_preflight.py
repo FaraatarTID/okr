@@ -71,6 +71,46 @@ def test_valid_cloud_profile_is_clean():
     assert report.ok
 
 
+def test_production_rejects_public_backend_api_host():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="https://backend.example.com:8100",
+        backend_service_token="token",
+        backend_signing_secret="secret",
+        bootstrap_admin_password="ValidAdmin123!",
+        backend_security_state_backend="database",
+        runtime_env="production",
+    )
+    assert any(
+        "appears non-private in production" in msg
+        or "non-private" in msg
+        for msg in report.errors
+    )
+
+
+def test_production_rejects_public_backend_api_ip():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="https://203.0.113.10:8100",
+        backend_service_token="token",
+        backend_signing_secret="secret",
+        bootstrap_admin_password="ValidAdmin123!",
+        backend_security_state_backend="database",
+        runtime_env="production",
+    )
+    assert any(
+        "appears non-private in production" in msg
+        or "non-private" in msg
+        for msg in report.errors
+    )
+
+
 def test_external_ai_policy_disables_key_requirement():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",

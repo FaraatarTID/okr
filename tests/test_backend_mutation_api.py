@@ -782,7 +782,7 @@ def test_create_user_endpoint_parses_role_and_team(monkeypatch):
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": "secret123",
+            "password": _fixture_password("member1"),
             "role": "manager",
             "display_name": "Member One",
             "manager_id": 2,
@@ -810,7 +810,7 @@ def test_create_user_endpoint_rejects_weak_password_when_strict_policy_enabled(
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": "weakpass",
+            "password": weak_password,
             "role": "member",
         },
     )
@@ -2751,3 +2751,4 @@ def test_resolve_actor_accepts_payload_only():
 
     actor = resolve_actor_username(header_actor=None, payload_actor="alice")
     assert actor == "alice"
+

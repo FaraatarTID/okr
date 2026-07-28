@@ -1,6 +1,8 @@
 """Runtime preflight policy checks for deployment safety."""
 
 from dataclasses import dataclass, field
+import ipaddress
+from urllib.parse import urlparse
 from typing import List, Optional
 
 from src.domain.password_policy import validate_password_policy
@@ -24,6 +26,92 @@ def _normalize_pdf_method(pdf_method: str) -> str:
     if value == "shiftpdf":
         value = "pdfshift"
     return value
+
+
+PRIVATE_DNS_SUFFIXES = (
+    ".svc",
+    ".svc.cluster.local",
+    ".cluster.local",
+    ".local",
+    ".internal",
+    ".intranet",
+    ".lan",
+    ".home",
+)
+
+
+_PRIVATE_V4_NETWORKS = tuple(
+    map(
+        ipaddress.ip_network,
+        (
+            "10.0.0.0/8",
+            "172.16.0.0/12",
+            "192.168.0.0/16",
+            "169.254.0.0/16",
+        ),
+    )
+)
+
+_PRIVATE_V6_NETWORKS = tuple(
+    map(
+        ipaddress.ip_network,
+        (
+            "fc00::/7",
+            "fe80::/10",
+        ),
+    )
+)
+
+
+def _is_private_or_internal_backend_host(hostname: str) -> bool:
+    host = str(hostname or "").strip().lower()
+    if not host:
+        return False
+
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        if ip.version == 4 and any(ip in network for network in _PRIVATE_V4_NETWORKS):
+            return True
+        if ip.version == 6 and any(ip in network for network in _PRIVATE_V6_NETWORKS):
+            return True
+        return False
+
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    if host in {"backend-api", "backend", "backend-service", "okr-backend-api"}:
+        return True
+    if host.endswith(".svc"):
+        return True
+    if host.count(".") == 0:
+        return False
+    return any(host.endswith(suffix) for suffix in PRIVATE_DNS_SUFFIXES)
+
+
+def _validate_production_backend_url(
+    backend_url: str, report: RuntimePreflightReport
+) -> None:
+    value = str(backend_url or "").strip()
+    if not value:
+        return
+
+    parsed = urlparse(value)
+    if not parsed.scheme or parsed.scheme not in {"http", "https"}:
+        report.errors.append(
+            "OKR_BACKEND_API_URL must use http:// or https:// scheme in production."
+        )
+        return
+    if not parsed.hostname:
+        report.errors.append("OKR_BACKEND_API_URL must include a valid hostname.")
+        return
+
+    if not _is_private_or_internal_backend_host(parsed.hostname):
+        report.errors.append(
+            f"OKR_BACKEND_API_URL hostname '{parsed.hostname}' appears non-private in production. "
+            "Use an internal service hostname or private IP."
+        )
 
 
 def evaluate_runtime_preflight(
@@ -99,6 +187,9 @@ def evaluate_runtime_preflight(
         report.errors.append(
             "Production backend mode requires OKR_BACKEND_SIGNING_SECRET."
         )
+
+    if is_production and backend_url and backend_url.lower() != "auto":
+        _validate_production_backend_url(backend_url, report)
 
     security_state_backend = str(backend_security_state_backend or "").strip().lower()
     if not security_state_backend:
