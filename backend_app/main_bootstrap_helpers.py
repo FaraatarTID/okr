@@ -8,6 +8,11 @@ from typing import Callable
 from fastapi import APIRouter, FastAPI
 
 
+_REQUIRED_MUTATION_ROUTES = {
+    ("POST", "/v1/nodes/goal"),
+}
+
+
 def make_main_lifespan(
     *,
     is_supabase_api_mode_enabled: Callable[[], bool],
@@ -85,3 +90,34 @@ def register_main_routers(*, app: FastAPI, main_module) -> None:
     _analytics_mutation_router = APIRouter()
     register_analytics_mutation_routes(_analytics_mutation_router, main_module)
     app.include_router(_analytics_mutation_router)
+
+    _assert_required_routes(app=app)
+
+
+def _assert_required_routes(*, app: FastAPI) -> None:
+    """
+    Fail fast when a required mutation endpoint is missing from the router table.
+    """
+
+    available = set()
+    for route in app.routes:
+        if getattr(route, "path", None) is None or getattr(route, "methods", None) is None:
+            continue
+        methods = set(route.methods or set())
+        for method in methods:
+            available.add((method, _normalize_route_path(route.path)))
+
+    for method, path in sorted(_REQUIRED_MUTATION_ROUTES):
+        if (method, _normalize_route_path(path)) not in available:
+            # Include a concise fallback that surfaces contract issues early.
+            raise RuntimeError(
+                f"Required route missing during bootstrap: {method} {path}"
+            )
+
+
+def _normalize_route_path(path: str) -> str:
+    """Normalize route path for stable equality checks."""
+    normalized = "/" + "/".join(segment for segment in (path or "").split("/") if segment)
+    if normalized == "//":
+        normalized = "/"
+    return normalized
