@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+import importlib
 import hashlib
 import os
 
@@ -144,7 +145,8 @@ def _find_route(method: str, path: str):
 
 
 def _all_routes():
-    import backend_app.main as backend_main
+    backend_main = importlib.import_module("backend_app.main")
+    backend_main = importlib.reload(backend_main)
 
     return backend_main.app.routes
 
