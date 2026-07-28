@@ -176,7 +176,7 @@ def _run_read_query(
     status, payload = _request_json(
         client,
         method="POST",
-        url=f"{bff_url}/api/backend/read/query",
+        url=f"{bff_url}/api/backend/v1/read/query",
         headers={"x-okr-actor": actor},
         payload={
             "kind": "users.by_username",
@@ -201,7 +201,7 @@ def _run_job_smoke(
     status, payload = _request_json(
         client,
         method="POST",
-        url=f"{bff_url}/api/backend/jobs",
+        url=f"{bff_url}/api/backend/v1/jobs",
         headers={"x-okr-actor": actor, "x-xsrf-token": csrf_token},
         payload={"kind": "ai.generate_json", "payload": {"prompt": "smoke test"}},
     )
@@ -219,7 +219,7 @@ def _run_job_smoke(
         poll_status, poll_payload = _request_json(
             client,
             method="GET",
-            url=f"{bff_url}/api/backend/jobs/{job_id}",
+            url=f"{bff_url}/api/backend/v1/jobs/{job_id}",
             headers={"x-okr-actor": actor},
         )
         if poll_status != 200:
