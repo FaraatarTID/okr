@@ -166,15 +166,16 @@ def format_deadline_display(deadline: Any) -> str:
         dt = from_epoch_millis(deadline_ms)
 
     date_str = dt.strftime("%b %d")
-    days = get_days_remaining(deadline_ms)
+    now = utc_now_naive()
+    delta_days = (dt.date() - now.date()).days
 
-    if days < 0:
-        return f"{date_str} ({abs(days)}d overdue)"
-    if days == 0:
+    if delta_days < 0:
+        return f"{date_str} ({abs(delta_days)}d overdue)"
+    if delta_days == 0:
         return f"{date_str} (Today)"
-    if days == 1:
+    if delta_days == 1:
         return f"{date_str} (Tomorrow)"
-    return f"{date_str} ({days}d left)"
+    return f"{date_str} ({delta_days}d left)"
 
 
 def get_deadline_summary(nodes: dict) -> dict:

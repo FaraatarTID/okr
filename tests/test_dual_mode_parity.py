@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,6 +19,13 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     return TestClient(backend_main.app), backend_main
+
+
+def _test_password(name: str) -> str:
+    return os.environ.get(
+        f"OKR_TEST_{name.upper()}_PASSWORD",
+        f"{name.lower()}_unit_test_password",
+    )
 
 
 def _run_mutation_mode(
@@ -205,7 +213,7 @@ def test_dual_mode_critical_mutation_payload_parity(
             "/v1/users",
             {
                 "username": "dual_user_admin",
-                "password": "admin_test_password",
+                "password": _test_password("admin"),
                 "role": "admin",
                 "display_name": "Dual User",
                 "must_change_password": False,
@@ -234,7 +242,7 @@ def test_dual_mode_critical_mutation_payload_parity(
         (
             "/v1/users/901/reset-password",
             {
-                "new_password": "reset_password_for_test",
+                "new_password": _test_password("reset"),
                 "require_change": True,
             },
             "reset_user_password",

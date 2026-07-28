@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from sqlmodel import Session, select  # noqa: F401
 from sqlalchemy.orm import selectinload  # noqa: F401
+from sqlalchemy.exc import OperationalError  # noqa: F401
 import logging
 from datetime import datetime  # noqa: F401
 from typing import List, Optional  # noqa: F401
@@ -188,7 +189,9 @@ _can_manage_owner = _crud_auth_helpers._can_manage_owner
 _resolve_goal_for_node = _crud_auth_helpers._resolve_goal_for_node
 _authorize_node_mutation = _crud_auth_helpers._authorize_node_mutation
 _authorize_node_scoped_access = _crud_auth_helpers._authorize_node_scoped_access
-get_user_goals = _crud_auth_helpers.get_user_goals
+def get_user_goals(username: str, cycle_id: int):
+    """Backward-compatible positional entrypoint for user goals."""
+    return _crud_auth_helpers.get_user_goals(username=username, cycle_id=cycle_id)
 _require_actor_user = _crud_auth_helpers._require_actor_user
 _require_admin_actor = _crud_auth_helpers._require_admin_actor
 _authorize_self_or_admin = _crud_auth_helpers._authorize_self_or_admin

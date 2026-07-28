@@ -140,13 +140,15 @@ def verify_password(password: str, password_hash: str) -> bool:
 def create_user(
     username: str,
     password: str,
-    role,
+    role=None,
     display_name: Optional[str] = None,
     manager_id: Optional[int] = None,
     team_id: Optional[int] = None,
     must_change_password: bool = False,
     actor_username: Optional[str] = None,
 ) -> object:
+    if role is None:
+        role = _crud_module_context().UserRole.MEMBER
     return auth_service.create_user_from_crud(
         crud_module=_crud_module_context(),
         username=username,

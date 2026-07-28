@@ -60,7 +60,6 @@ from src.crud import (
     delete_objective_alignment_link,
     delete_work_log,
     upsert_retro_experiment_outcome,
-    update_experiment,
 )
 from src.database import get_session_context
 from src.models import (
@@ -186,7 +185,7 @@ def api_create_experiment(
                 expected_effect_size=payload.expected_effect_size,
             )
         else:
-            experiment = create_experiment(
+            experiment = _resolve_backend_main().create_experiment(
                 key_result_id=payload.key_result_id,
                 cycle_id=payload.cycle_id,
                 hypothesis=payload.hypothesis,
@@ -313,7 +312,7 @@ def api_update_experiment(
                         field_name="current_status",
                     )
                     _validate_experiment_transition(current_status, updates["status"])
-            experiment = update_experiment(
+            experiment = _resolve_backend_main().update_experiment(
                 int(experiment_id),
                 actor_username=actor,
                 **updates,
@@ -399,7 +398,7 @@ def api_close_experiment(
                 actor_username=actor,
             )
         else:
-            experiment = close_experiment(
+            experiment = _resolve_backend_main().close_experiment(
                 experiment_id=int(experiment_id),
                 decision=_coerce_enum(
                     payload.decision,
@@ -475,7 +474,7 @@ def api_create_retrospective(
                 actor_username=actor,
             )
         else:
-            retro = create_retrospective(
+            retro = _resolve_backend_main().create_retrospective(
                 user_id=payload.user_id,
                 cycle_id=int(cycle_id),
                 week_start_date=payload.week_start_date,
@@ -515,7 +514,7 @@ def api_upsert_retro_experiment_outcome(
                 actor_username=actor,
             )
         else:
-            outcome = upsert_retro_experiment_outcome(
+            outcome = _resolve_backend_main().upsert_retro_experiment_outcome(
                 retrospective_id=int(retrospective_id),
                 experiment_id=payload.experiment_id,
                 decision=_coerce_enum(
@@ -555,7 +554,7 @@ def api_create_weekly_plan(
                 actor_username=actor,
             )
         else:
-            plan = create_weekly_plan(
+            plan = _resolve_backend_main().create_weekly_plan(
                 user_id=payload.user_id,
                 start_date=payload.start_date,
                 end_date=payload.end_date,
@@ -595,7 +594,7 @@ def api_create_alignment(
                 actor_username=actor,
             )
         else:
-            edge = create_alignment(
+            edge = _resolve_backend_main().create_alignment(
                 parent_id=payload.parent_id,
                 child_id=payload.child_id,
                 alignment_type=str(_enum_value(alignment_type)),
@@ -623,7 +622,7 @@ def api_delete_alignment(
                 actor_username=actor,
             )
         else:
-            deleted = delete_alignment(int(edge_id), actor_username=actor)
+            deleted = _resolve_backend_main().delete_alignment(int(edge_id), actor_username=actor)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -641,7 +640,7 @@ def api_create_objective_alignment_link(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     try:
-        link = create_objective_alignment_link(
+        link = _resolve_backend_main().create_objective_alignment_link(
             objective_id=payload.objective_id,
             linked_entity_type=payload.linked_entity_type,
             linked_entity_id=payload.linked_entity_id,
@@ -669,7 +668,7 @@ def api_delete_objective_alignment_link(
 ) -> ObjectiveAlignmentLinkDeleteResponse:
     actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
     try:
-        deleted = delete_objective_alignment_link(
+        deleted = _resolve_backend_main().delete_objective_alignment_link(
             link_id=int(link_id), actor_username=actor
         )
     except PermissionError as exc:
@@ -687,7 +686,9 @@ def api_delete_work_log(
 ) -> WorkLogDeleteResponse:
     actor = _resolve_actor(header_actor=x_okr_actor, payload_actor=None)
     try:
-        deleted = delete_work_log(int(work_log_id), actor_username=actor)
+        deleted = _resolve_backend_main().delete_work_log(
+            int(work_log_id), actor_username=actor
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     if not deleted:

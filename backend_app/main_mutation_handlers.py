@@ -358,13 +358,24 @@ def api_update_node(
             )
         else:
             if normalized_type == "GOAL":
-                node = update_goal(node_id, actor_username=actor, **updates)
+                from backend_app import main as main_module
+
+                node = main_module.update_goal(node_id, actor_username=actor, **updates)
             elif normalized_type == "OBJECTIVE":
-                node = update_objective(node_id, actor_username=actor, **updates)
+                from backend_app import main as main_module
+
+                node = main_module.update_objective(node_id, actor_username=actor, **updates)
             elif normalized_type == "KEY_RESULT":
-                node = update_key_result(node_id, actor_username=actor, **updates)
+                from backend_app import main as main_module
+
+                node = main_module.update_key_result(node_id, actor_username=actor, **updates)
             else:
-                node = update_task(node_id, actor_username=actor, **updates)
+                # Keep task mutation patchable by test via backend_app.main.update_task.
+                from backend_app import main as main_module
+
+                node = main_module.update_task(
+                    node_id, actor_username=actor, **updates
+                )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -400,13 +411,24 @@ def api_delete_node(
             )
         else:
             if normalized_type == "GOAL":
-                deleted = delete_goal(node_id, actor_username=actor)
+                # Keep deletion dispatch patchable by test via backend_app.main.delete_goal.
+                from backend_app import main as main_module
+
+                deleted = main_module.delete_goal(node_id, actor_username=actor)
             elif normalized_type == "OBJECTIVE":
-                deleted = delete_objective(node_id, actor_username=actor)
+                from backend_app import main as main_module
+
+                deleted = main_module.delete_objective(node_id, actor_username=actor)
             elif normalized_type == "KEY_RESULT":
-                deleted = delete_key_result(node_id, actor_username=actor)
+                from backend_app import main as main_module
+
+                deleted = main_module.delete_key_result(
+                    node_id, actor_username=actor
+                )
             else:
-                deleted = delete_task(node_id, actor_username=actor)
+                from backend_app import main as main_module
+
+                deleted = main_module.delete_task(node_id, actor_username=actor)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
