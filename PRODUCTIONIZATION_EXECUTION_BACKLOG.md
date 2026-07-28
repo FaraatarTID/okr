@@ -1031,4 +1031,4 @@ Status legend:
   verification: focused pytest + ruff + compose config + compose-backed smoke in CI
   status: in_progress
   notes: |
-    Root-cause corrections are implemented and focused pytest, Ruff, and mypy gates pass locally. Closure is intentionally pending a green Linux compose-backed GitHub Actions run. Local Docker execution is blocked because the Docker Desktop engine/config is unavailable in the current session.
+    Root-cause corrections are implemented and focused pytest, Ruff, and mypy gates pass locally. Enhanced CI diagnostics subsequently exposed SQLite-only `PRAGMA user_version` SQL in a no-op Alembic merge revision; the revision now uses Python no-ops and a migration-portability regression test rejects SQLite-only PRAGMA statements. Closure is intentionally pending a green Linux compose-backed GitHub Actions run. Local Docker execution is blocked because the Docker Desktop engine/config is unavailable in the current session.

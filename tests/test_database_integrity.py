@@ -203,6 +203,20 @@ def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(monkeypatch, tmp_path
     engine.dispose()
 
 
+def test_alembic_revisions_do_not_embed_sqlite_only_pragma():
+    versions_dir = ROOT_DIR / "alembic" / "versions"
+    offenders = [
+        path.name
+        for path in sorted(versions_dir.glob("*.py"))
+        if "PRAGMA " in path.read_text(encoding="utf-8").upper()
+    ]
+
+    assert offenders == [], (
+        "Alembic revisions must remain portable across SQLite and PostgreSQL; "
+        f"SQLite-only PRAGMA found in: {', '.join(offenders)}"
+    )
+
+
 def test_run_migrations_adopts_legacy_database_without_alembic_version(
     monkeypatch, tmp_path
 ):
