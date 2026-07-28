@@ -98,10 +98,26 @@ _ROUTER_CONTRACTS = {
 
 
 def _find_route(method: str, path: str):
+    def _normalized(p: str) -> str:
+        if not p:
+            return "/"
+        normalized = "/" + "/".join(segment for segment in p.split("/") if segment)
+        if normalized.endswith("/"):
+            normalized = normalized[:-1]
+        return normalized
+
+    normalized_target = _normalized(path)
+    alt_targets = {normalized_target}
+    if normalized_target.startswith("/api/"):
+        alt_targets.add(normalized_target.removeprefix("/api"))
+    elif normalized_target.startswith("/"):
+        alt_targets.add(f"/api{normalized_target}")
+
     for route in _all_routes():
         if not isinstance(route, APIRoute):
             continue
-        if path == route.path and method in (route.methods or set()):
+        candidate_paths = {_normalized(getattr(route, "path", "")), _normalized(getattr(route, "path_format", ""))}
+        if any(candidate in alt_targets for candidate in candidate_paths) and method in (route.methods or set()):
             return route
     return None
 
