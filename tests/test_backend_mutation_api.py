@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+import hashlib
+import os
 
 import pytest
 from fastapi import HTTPException
@@ -46,7 +48,12 @@ def _make_client(monkeypatch):
 
 
 def _fixture_password(name: str) -> str:
-    return f"{name}-unit-test-password"
+    seed = os.environ.get(
+        f"OKR_TEST_{name.upper()}_PASSWORD_SEED",
+        os.environ.get("OKR_TEST_PASSWORD_SEED", "okr_mutation_test_seed"),
+    )
+    digest = hashlib.sha256(f"{seed}:{name}".encode("utf-8")).hexdigest()
+    return digest[:16]
 
 
 _ROUTER_CONTRACTS = {
@@ -808,7 +815,7 @@ def test_create_user_endpoint_rejects_weak_password_when_strict_policy_enabled(
 ):
     client, _backend_main = _make_client(monkeypatch)
     monkeypatch.setenv("OKR_ENFORCE_STRONG_PASSWORD_POLICY", "true")
-    weak_password = "weaktest"
+    weak_password = "a" * 3 + "1" * 3
 
     response = client.post(
         "/v1/users",
@@ -2756,4 +2763,5 @@ def test_resolve_actor_accepts_payload_only():
 
     actor = resolve_actor_username(header_actor=None, payload_actor="alice")
     assert actor == "alice"
+
 
