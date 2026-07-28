@@ -242,6 +242,8 @@ export function createServer(
 
   app.setErrorHandler((error, request, reply) => {
     const state = request as BffRequestState & typeof request;
+    const errorName = error instanceof Error ? error.name : "Error";
+    const errorMessage = error instanceof Error ? error.message : String(error);
     const requestId = state._okrRequestId || readRequestId(request.headers);
     const correlationId = state._okrCorrelationId || readCorrelationId(request.headers);
     app.log.error(
@@ -253,8 +255,8 @@ export function createServer(
           request_id: requestId,
           correlation_id: correlationId,
           error_code: "BFF_UNHANDLED_ERROR",
-          error_type: error?.name || "Error",
-          error_message: error instanceof Error ? error.message : String(error),
+          error_type: errorName,
+          error_message: errorMessage,
         },
       ),
     );

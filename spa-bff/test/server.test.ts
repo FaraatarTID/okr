@@ -139,7 +139,7 @@ describe("spa-bff server", () => {
     const originalInfo = app.log.info.bind(app.log);
     app.log.info = ((...entries: unknown[]) => {
       infoLogs.push(entries.length === 1 ? entries[0] : entries);
-      return originalInfo(...entries);
+      return Reflect.apply(originalInfo, app.log, entries);
     }) as never;
 
     const response = await app.inject({

@@ -19,13 +19,22 @@ ALLOWED_LICENSES = {
     "0BSD",
     "Apache-2.0",
     "Apache Software License",
+    "Apache Software License; MIT License",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "BSD-3-Clause-Clear",
+    "BSD License",
+    "GNU Library or Lesser General Public License (LGPL)",
     "ISC",
+    "LGPL",
     "MIT",
+    "MIT License",
+    "MIT-0",
     "MPL-2.0",
     "Python-2.0",
+    "Python Software Foundation License",
+    "PSF",
+    "PSF-2.0",
     "Unlicense",
 }
 
@@ -57,6 +66,8 @@ def _is_allowed_license_expr(license_name: str) -> bool:
         return all(part.strip() in ALLOWED_LICENSES for part in license_name.split(" OR "))
     if " AND " in license_name:
         return all(part.strip() in ALLOWED_LICENSES for part in license_name.split(" AND "))
+    if ";" in license_name:
+        return all(part.strip() in ALLOWED_LICENSES for part in license_name.split(";"))
     return False
 
 
@@ -104,7 +115,7 @@ def _run_pip_licenses() -> list[LicenseFinding]:
     for row in rows:
         package = str(row.get("Name", "unknown"))
         license_name = _normalize_license(str(row.get("License", "unknown")))
-        if license_name not in ALLOWED_LICENSES:
+        if not _is_allowed_license_expr(license_name):
             findings.append(
                 LicenseFinding(
                     scope="backend-python",

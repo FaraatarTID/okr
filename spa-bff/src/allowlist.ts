@@ -157,6 +157,11 @@ export const ALLOWLIST_POLICY_ROUTES: readonly AllowlistRule[] = [
     methods: ["DELETE"],
     pathRegex: /^\/v1\/work-logs\/\d+$/,
   },
+  {
+    pathTemplate: "/v1/state/{key}",
+    methods: ["POST"],
+    pathRegex: /^\/v1\/state\/[^/]+$/,
+  },
 ];
 
 const ACTOR_OPTIONAL_POLICY_ROUTES: readonly AllowlistRule[] = [

@@ -26,6 +26,7 @@ describe("isAllowlistedRoute", () => {
     expect(isAllowlistedRoute("GET", "/v1/admin/ai-health")).toBe(true);
     expect(isAllowlistedRoute("PATCH", "/v1/nodes/task/42")).toBe(true);
     expect(isAllowlistedRoute("DELETE", "/v1/work-logs/77")).toBe(true);
+    expect(isAllowlistedRoute("POST", "/v1/state/atlas")).toBe(true);
   });
 
   it("allows node CRUD routes for all pilot node types", () => {
@@ -49,9 +50,6 @@ describe("isAllowlistedRoute", () => {
     expect(isAllowlistedRoute("GET", "/v1/auth/login")).toBe(false);
     expect(isAllowlistedRoute("POST", "/v1/healthz")).toBe(false);
     expect(isAllowlistedRoute("OPTIONS", "/v1/read/query")).toBe(false);
-    // `/v1/state/{key}` stays backend-internal on purpose; distributed-state
-    // coordination uses the backend client directly rather than the BFF.
-    expect(isAllowlistedRoute("POST", "/v1/state/atlas")).toBe(false);
   });
 });
 
