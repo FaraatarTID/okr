@@ -131,12 +131,22 @@ def _do_login(client: OpenerDirector, *, bff_url: str) -> str:
             "Set TOP10_SMOKE_PASSWORD and rerun."
         )
 
-    status, payload = _request_json(
-        client,
-        method="POST",
-        url=f"{bff_url}/session/login",
-        payload={"username": username, "password": password, "client_ip": "127.0.0.1"},
-    )
+    try:
+        status, payload = _request_json(
+            client,
+            method="POST",
+            url=f"{bff_url}/session/login",
+            payload={
+                "username": username,
+                "password": password,
+                "client_ip": "127.0.0.1",
+            },
+        )
+    except HTTPError as exc:
+        payload = _parse_response(exc)
+        raise RuntimeError(
+            f"Login request failed with status {exc.code}: {payload}"
+        ) from exc
     if status != 200:
         raise RuntimeError(f"Login request failed with status {status}: {payload}")
     if not bool(payload.get("success")):
