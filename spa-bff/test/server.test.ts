@@ -133,6 +133,38 @@ describe("spa-bff server", () => {
     });
   });
 
+  it("emits structured request logs with observability identifiers", async () => {
+    const infoLogs: unknown[] = [];
+    const app = createServer(baseConfig, { fetchFn: vi.fn() });
+    const originalInfo = app.log.info.bind(app.log);
+    app.log.info = ((...entries: unknown[]) => {
+      infoLogs.push(entries.length === 1 ? entries[0] : entries);
+      return Reflect.apply(originalInfo, app.log, entries);
+    }) as never;
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/healthz",
+      headers: {
+        "x-request-id": "req-xyz-1",
+        "x-correlation-id": "corr-xyz-1",
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const structured = infoLogs
+      .map((entry) => (typeof entry === "string" ? JSON.parse(entry) : entry))
+      .filter((item) => item && item.event === "bff_request_completed");
+    expect(structured.length).toBeGreaterThan(0);
+    const latest = structured[structured.length - 1] as Record<string, unknown>;
+    expect(latest["method"]).toBe("GET");
+    expect(latest["route"]).toBe("/healthz");
+    expect(latest["status"]).toBe(200);
+    expect(latest["request_id"]).toBe("req-xyz-1");
+    expect(latest["correlation_id"]).toBe("corr-xyz-1");
+  });
+
   it("creates session cookie via /session/login", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response(
@@ -205,6 +237,9 @@ describe("spa-bff server", () => {
       success: false,
       error_code: "INVALID_CREDENTIALS",
     });
+    expect(response.json().code).toBe("INVALID_CREDENTIALS");
+    expect(response.json().message).toBe("Invalid username or password.");
+    expect(typeof response.json().request_id).toBe("string");
   });
 
   it("returns session user for /session/me", async () => {
@@ -263,15 +298,17 @@ describe("spa-bff server", () => {
       fetchFn: vi.fn(),
     });
     const response = await app.inject({
-      method: "POST",
-      url: "/api/backend/v1/state/forbidden",
-      payload: { value: "x" },
-      headers: { cookie: sessionCookie() },
+      method: "GET",
+      url: "/api/backend/v1/nonallowlisted/example",
     });
     await app.close();
 
     expect(response.statusCode).toBe(403);
     expect(response.json().error).toContain("allowlisted");
+    expect(response.json().code).toBe("ROUTE_NOT_ALLOWLISTED");
+    expect(response.json().message).toContain("allowlisted");
+    expect(typeof response.json().request_id).toBe("string");
+    expect(response.json().request_id).toBeTruthy();
   });
 
   it("uses session actor for actor-scoped routes and ignores forged client actor header", async () => {
@@ -330,6 +367,10 @@ describe("spa-bff server", () => {
     await app.close();
 
     expect(response.statusCode).toBe(401);
+    expect(response.json().code).toBe("MISSING_SESSION");
+    expect(response.json().message).toContain("Missing or invalid session");
+    expect(typeof response.json().request_id).toBe("string");
+    expect(response.json().request_id).toBeTruthy();
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -406,10 +447,42 @@ describe("spa-bff server", () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json().detail).toContain("Insufficient");
+    expect(response.json().code).toBe("HTTP_403");
+    expect(response.json().message).toContain("Insufficient");
+    expect(typeof response.json().request_id).toBe("string");
+    expect(response.json().request_id).toBeTruthy();
 
     const [, options] = fetchFn.mock.calls[0] as [string, RequestInit];
     const headers = (options.headers ?? {}) as Record<string, string>;
     expect(headers["x-okr-actor"]).toBe("member-1");
+  });
+
+  it("adds a canonical message field for backend error payloads", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: "Backend service unavailable" }),
+        {
+        status: 503,
+        headers: { "content-type": "application/json" },
+      },
+      ),
+    );
+
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/backend/v1/timer/start",
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
+      payload: { task_id: 42, user_id: "member-1" },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json().code).toBe("HTTP_503");
+    expect(response.json().message).toBe("Backend service unavailable");
+    expect(response.json().error).toBe("Backend service unavailable");
+    expect(typeof response.json().request_id).toBe("string");
+    expect(response.json().request_id).toBeTruthy();
   });
 
   it("proxies timer stop success response payload", async () => {

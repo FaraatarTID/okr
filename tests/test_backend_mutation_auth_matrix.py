@@ -4,6 +4,7 @@ import re
 
 from fastapi.testclient import TestClient
 import pytest
+from pathlib import Path
 
 import backend_app.main as backend_main
 from backend_app.main import BACKUP_FORMAT_VERSION
@@ -19,6 +20,10 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     return TestClient(backend_main.app), backend_main
+
+
+def _fixture_password(name: str) -> str:
+    return f"{name}-unit-test-password"
 
 
 def _deny_forbidden(*_args, **_kwargs):
@@ -82,7 +87,7 @@ _MUTATION_AUTH_MATRIX_ROUTES = [
         "/v1/users",
         {
             "username": "newmember",
-            "password": "placeholder-password",
+            "password": _fixture_password("newmember"),
             "role": "member",
         },
         ("create_user",),
@@ -90,7 +95,7 @@ _MUTATION_AUTH_MATRIX_ROUTES = [
     (
         "POST",
         "/v1/users/11/reset-password",
-        {"new_password": "placeholder-reset-password"},
+        {"new_password": _fixture_password("reset")},
         ("reset_user_password",),
     ),
     (
@@ -257,12 +262,16 @@ _MUTATION_MATRIX_ROUTE_SET = {
 
 _ROUTE_PARAM_NORMALIZER = re.compile(r"{[^}]+}")
 _NUMERIC_SEGMENT = re.compile(r"/\d+")
+_ALLOWLIST_PATH_WITH_TYPE_RE = re.compile(r"{[^{}:]+:int}")
+_ALLOWLIST_PATH_PARAM_RE = re.compile(r"{[^{}]+}")
 
 
 def _normalize_mutation_route(
     route: tuple[str, str] | tuple[str, str],
 ) -> tuple[str, str]:
     method, path = route
+    if path.startswith("/api/"):
+        path = path.removeprefix("/api")
     segments = path.split("/")
     if len(segments) >= 4 and segments[1] == "v1" and segments[2] == "nodes":
         if len(segments) >= 5:
@@ -289,6 +298,34 @@ def _normalize_mutation_route(
     return method, normalized_path
 
 
+def _normalize_allowlist_path(path_template: str) -> str:
+    normalized = _ALLOWLIST_PATH_WITH_TYPE_RE.sub("{param}", path_template)
+    normalized = _ALLOWLIST_PATH_PARAM_RE.sub("{param}", normalized)
+    return normalized
+
+
+def _allowlist_mutation_routes() -> set[tuple[str, str]]:
+    project_root = Path(__file__).resolve().parents[1]
+    allowlist_file = project_root / "spa-bff" / "src" / "allowlist.ts"
+    allowlist_text = allowlist_file.read_text(encoding="utf-8")
+
+    entry_re = re.compile(
+        r"\{\s*pathTemplate:\s*\"([^\"]+)\"\s*,\s*methods:\s*\[([^\]]+)\]",
+        re.MULTILINE,
+    )
+    routes: set[tuple[str, str]] = set()
+    for path_template, method_blob in entry_re.findall(allowlist_text):
+        methods = re.findall(r"\"(GET|POST|PUT|PATCH|DELETE)\"", method_blob)
+        for method in methods:
+            if method not in {"POST", "PUT", "PATCH", "DELETE"}:
+                continue
+            normalized_path = path_template
+            if normalized_path.startswith("/api/"):
+                normalized_path = normalized_path.removeprefix("/api")
+            routes.add((method, _normalize_allowlist_path(normalized_path)))
+    return routes
+
+
 def _render_route(method: str, path: str) -> str:
     return f"{method} {path}"
 
@@ -296,13 +333,22 @@ def _render_route(method: str, path: str) -> str:
 def _mutating_v1_routes_from_app() -> set[tuple[str, str]]:
     import backend_app.main as backend_main
 
+    def _iter_api_routes(routes):
+        for route in routes:
+            if isinstance(route, APIRoute):
+                yield route
+                continue
+            original_router = getattr(route, "original_router", None)
+            if original_router is not None:
+                yield from _iter_api_routes(getattr(original_router, "routes", []))
+
     mutation_routes = set()
-    for route in backend_main.app.routes:
+    for route in _iter_api_routes(backend_main.app.routes):
         if not isinstance(route, APIRoute):
             continue
         for method in route.methods or ():
-            if method in {"POST", "PUT", "PATCH", "DELETE"} and route.path.startswith(
-                "/v1/"
+            if method in {"POST", "PUT", "PATCH", "DELETE"} and (
+                route.path.startswith("/v1/") or route.path.startswith("/api/v1/")
             ):
                 mutation_routes.add((method, route.path))
     return mutation_routes
@@ -329,6 +375,25 @@ def test_mutation_route_matrix_covers_all_v1_mutation_routes():
     matrix_only_routes = sorted(matrix_routes - app_routes)
     assert not matrix_only_routes, "Matrix contains stale route(s): " + ", ".join(
         _render_route(*route) for route in matrix_only_routes
+    )
+
+
+def test_mutation_routes_are_in_bff_allowlist():
+    app_routes = {
+        _normalize_mutation_route(route) for route in _mutating_v1_routes_from_app()
+    }
+    allowlist_routes = _allowlist_mutation_routes() & app_routes
+
+    missing_from_allowlist = sorted(app_routes - allowlist_routes)
+    assert not missing_from_allowlist, (
+        "Mutation routes missing from BFF allowlist: "
+        + ", ".join(_render_route(*route) for route in missing_from_allowlist)
+    )
+
+    stale_allowlist_entries = sorted(allowlist_routes - app_routes)
+    assert not stale_allowlist_entries, (
+        "BFF allowlist has stale mutation routes: "
+        + ", ".join(_render_route(*route) for route in stale_allowlist_entries)
     )
 
 

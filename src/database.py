@@ -16,7 +16,7 @@ import time
 import traceback
 from collections.abc import Mapping
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, time as datetime_time
 from decimal import Decimal
 from threading import Lock
 from typing import Optional
@@ -430,9 +430,19 @@ def run_migrations():
         script_location = os.path.join(parent_dir, "alembic")
         alembic_cfg.set_main_option("script_location", script_location)
 
+        upgrade_target = os.getenv("OKR_ALEMBIC_UPGRADE_TARGET", "head")
         try:
-            command.upgrade(alembic_cfg, "head")
+            command.upgrade(alembic_cfg, upgrade_target)
         except Exception as exc:
+            if (
+                upgrade_target == "head"
+                and "Multiple head revisions are present for given argument 'head'" in str(exc)
+            ):
+                logger.warning(
+                    "Multiple alembic heads detected; falling back to 'heads' upgrade target."
+                )
+                command.upgrade(alembic_cfg, "heads")
+                return
             # Alembic can raise KeyError('config') during cleanup when multiple
             # script threads race through init. If DB is already at head, continue.
             if _is_benign_alembic_config_keyerror(
@@ -499,7 +509,7 @@ def _json_backup_encode_value(value):
         return {"__okr_type__": "datetime", "value": value.isoformat()}
     if isinstance(value, date):
         return {"__okr_type__": "date", "value": value.isoformat()}
-    if isinstance(value, time):
+    if isinstance(value, datetime_time):
         return {"__okr_type__": "time", "value": value.isoformat()}
     if isinstance(value, Decimal):
         return {"__okr_type__": "decimal", "value": str(value)}
@@ -521,7 +531,7 @@ def _json_backup_decode_value(value):
     if value_type == "date" and isinstance(raw, str):
         return date.fromisoformat(raw)
     if value_type == "time" and isinstance(raw, str):
-        return time.fromisoformat(raw)
+        return datetime_time.fromisoformat(raw)
     if value_type == "decimal" and raw is not None:
         return Decimal(str(raw))
     if value_type == "bytes" and isinstance(raw, str):

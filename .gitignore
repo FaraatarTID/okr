@@ -42,6 +42,10 @@ logs/
 log/
 **/logs/
 
+# Optional loop docs (generated operational notes)
+docs/BACKLOG.md
+docs/WORKLOG.md
+
 # OS/editor
 .DS_Store
 .idea/

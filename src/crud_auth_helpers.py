@@ -10,8 +10,10 @@ from __future__ import annotations
 from datetime import timedelta
 import os
 import time
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 import bcrypt
+import sys
 
 from src import crud_core_helpers
 from sqlalchemy import or_
@@ -165,11 +167,7 @@ def new_auth_throttle_state_from_crud(
 def remaining_lockout_seconds_from_crud(*, crud_module, state, now) -> int:
     if not state or not state.locked_until:
         return 0
-    locked_until = ensure_utc(state.locked_until)
-    now_utc = ensure_utc(now)
-    if locked_until is None or now_utc is None:
-        return 0
-    delta = locked_until - now_utc
+    delta = ensure_utc(state.locked_until) - ensure_utc(now)
     remaining = int(delta.total_seconds())
     return remaining if remaining > 0 else 0
 
@@ -193,11 +191,7 @@ def prepare_throttle_state_for_check_from_crud(
         return 0
 
     window_started = state.window_started_at or now
-    now_utc = ensure_utc(now)
-    window_started_utc = ensure_utc(window_started)
-    if now_utc is None or window_started_utc is None:
-        return 0
-    if (now_utc - window_started_utc).total_seconds() >= window_seconds:
+    if (ensure_utc(now) - ensure_utc(window_started)).total_seconds() >= window_seconds:
         state.failed_attempts = 0
         state.window_started_at = now
         state.updated_at = now
@@ -399,11 +393,7 @@ def create_user_from_crud(
                 crud_module.UserRole.ADMIN,
             ):
                 raise ValueError("manager_id must reference a manager or admin.")
-        if (
-            enforce_manager_chain
-            and role == crud_module.UserRole.MEMBER
-            and manager_id is None
-        ):
+        if enforce_manager_chain and role == crud_module.UserRole.MEMBER and manager_id is None:
             raise ValueError("Member users must have a manager_id.")
 
         user = crud_module.User(
@@ -911,11 +901,7 @@ def update_user_from_crud(
                 crud_module.UserRole.ADMIN,
             ):
                 raise ValueError("manager_id must reference a manager or admin.")
-        if (
-            actor_username
-            and next_role == crud_module.UserRole.MEMBER
-            and next_manager_id is None
-        ):
+        if actor_username and next_role == crud_module.UserRole.MEMBER and next_manager_id is None:
             raise ValueError("Member users must have a manager_id.")
 
         if display_name is not None:
@@ -987,8 +973,6 @@ def reset_user_password_from_crud(
             user.password_changed_at = (
                 None if require_change else crud_module.utc_now_naive()
             )
-            # Invalidate existing sessions by incrementing token_version
-            user.token_version = (getattr(user, "token_version", 0) or 0) + 1
             session.add(user)
             session.flush()
             session.refresh(user)
@@ -1012,7 +996,7 @@ def reset_user_password_from_crud(
         return True
     except PermissionError:
         raise
-    except Exception:
+    except Exception as exc:
         crud_module.audit_log(
             "reset_password_failed",
             "user",
@@ -1062,9 +1046,7 @@ def ensure_admin_exists_once_from_crud(*, crud_module) -> bool:
                 bootstrap_admin_password,
                 admin.password_hash,
             ):
-                admin.password_hash = crud_module.hash_password(
-                    bootstrap_admin_password
-                )
+                admin.password_hash = crud_module.hash_password(bootstrap_admin_password)
                 admin.password_changed_at = None
                 session.add(admin)
                 session.commit()
@@ -1114,3 +1096,239 @@ def ensure_admin_exists_from_crud(*, crud_module) -> bool:
     if last_exc is not None:
         raise last_exc
     return False
+
+
+def _crud_module_context():
+    crud_module = sys.modules.get("src.crud")
+    if crud_module is None:
+        raise RuntimeError("src.crud module is not available for CRUD auth helper context.")
+    return crud_module
+
+
+def _goal_owner_predicate_by_username(username: str):
+    return goal_owner_predicate_by_username_from_crud(
+        crud_module=_crud_module_context(),
+        username=username,
+    )
+
+
+def _goal_owner_predicate_by_user_id(user_id: int):
+    return goal_owner_predicate_by_user_id_from_crud(
+        crud_module=_crud_module_context(),
+        user_id=user_id,
+    )
+
+
+def _timer_owner_predicate_by_username(username: str):
+    return timer_owner_predicate_by_username_from_crud(
+        crud_module=_crud_module_context(),
+        username=username,
+    )
+
+
+def _can_manage_goal(session, actor, goal) -> bool:
+    return can_manage_goal_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        actor=actor,
+        goal=goal,
+    )
+
+
+def _can_manage_owner(session, actor, owner_id: int | None) -> bool:
+    return can_manage_owner_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        actor=actor,
+        owner_id=owner_id,
+    )
+
+
+def _resolve_goal_for_node(session, node_type: str, node_id: int):
+    return resolve_goal_for_node_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        node_id=node_id,
+        node_type_upper=node_type,
+    )
+
+
+def _authorize_node_mutation(
+    session, node_type: str, node_id: int, actor_username: Optional[str]
+):
+    return authorize_node_mutation_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        node_type=node_type,
+        node_id=node_id,
+        actor_username=actor_username,
+    )
+
+
+def _authorize_node_scoped_access(
+    session, node_type: str, node_id: int, actor_username: Optional[str]
+):
+    return authorize_node_scoped_access_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        node_type=node_type,
+        node_id=node_id,
+        actor_username=actor_username,
+    )
+
+
+def get_user_goals(*, username: str, cycle_id: int):
+    return get_user_goals_from_crud(
+        crud_module=_crud_module_context(),
+        username=username,
+        cycle_id=cycle_id,
+    )
+
+
+def _require_actor_user(session, actor_username: Optional[str]):
+    return require_actor_user_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        actor_username=actor_username,
+    )
+
+
+def _require_admin_actor(session, actor_username: Optional[str]):
+    return require_admin_actor_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        actor_username=actor_username,
+    )
+
+
+def _authorize_self_or_admin(
+    session, actor_username: Optional[str], target_user_id: int
+):
+    return authorize_self_or_admin_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        actor_username=actor_username,
+        target_user_id=target_user_id,
+    )
+
+
+def _normalize_throttle_username(username: str) -> str:
+    return normalize_throttle_username_from_crud(username=username)
+
+
+def _normalize_client_ip(client_ip: Optional[str]) -> Optional[str]:
+    return normalize_client_ip_from_crud(client_ip=client_ip)
+
+
+def _get_auth_throttle_states(session, normalized_username: str, normalized_ip: Optional[str]):
+    return get_auth_throttle_states_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        normalized_username=normalized_username,
+        normalized_ip=normalized_ip,
+    )
+
+
+def _new_auth_throttle_state(scope: str, identifier: str, now):
+    return new_auth_throttle_state_from_crud(
+        crud_module=_crud_module_context(),
+        scope=scope,
+        identifier=identifier,
+        now=now,
+    )
+
+
+def _remaining_lockout_seconds(state, now) -> int:
+    return remaining_lockout_seconds_from_crud(
+        crud_module=_crud_module_context(),
+        state=state,
+        now=now,
+    )
+
+
+def _prepare_throttle_state_for_check(state, now, window_seconds: int) -> int:
+    return prepare_throttle_state_for_check_from_crud(
+        crud_module=_crud_module_context(),
+        state=state,
+        now=now,
+        window_seconds=window_seconds,
+    )
+
+
+def _record_failed_auth_attempt(
+    state,
+    now,
+    window_seconds: int,
+    max_attempts: int,
+    lockout_seconds: int,
+) -> int:
+    return record_failed_auth_attempt_from_crud(
+        crud_module=_crud_module_context(),
+        state=state,
+        now=now,
+        window_seconds=window_seconds,
+        max_attempts=max_attempts,
+        lockout_seconds=lockout_seconds,
+    )
+
+
+def _clear_auth_throttle_state(state, now) -> bool:
+    return clear_auth_throttle_state_from_crud(
+        state=state,
+        now=now,
+    )
+
+
+def _is_auth_throttle_operational_error(exc) -> bool:
+    return is_auth_throttle_operational_error_from_crud(exc=exc)
+
+
+def _is_auth_throttle_schema_operational_error(exc) -> bool:
+    return is_auth_throttle_schema_operational_error_from_crud(exc=exc)
+
+
+def _is_transient_connection_operational_error(exc) -> bool:
+    return is_transient_connection_operational_error_from_crud(exc=exc)
+
+
+def _authenticate_user_without_throttle(
+    session,
+    username: str,
+    password: str,
+    normalized_username: str,
+    normalized_ip: Optional[str],
+):
+    return authenticate_user_without_throttle_from_crud(
+        crud_module=_crud_module_context(),
+        session=session,
+        username=username,
+        password=password,
+        normalized_username=normalized_username,
+        normalized_ip=normalized_ip,
+    )
+
+
+def authenticate_user_detailed(username: str, password: str, client_ip: Optional[str] = None):
+    return authenticate_user_detailed_from_crud(
+        crud_module=_crud_module_context(),
+        username=username,
+        password=password,
+        client_ip=client_ip,
+    )
+
+
+def authenticate_user(username: str, password: str, client_ip: Optional[str] = None):
+    return authenticate_user_from_crud(
+        crud_module=_crud_module_context(),
+        username=username,
+        password=password,
+        client_ip=client_ip,
+    )
+
+
+def ensure_admin_exists() -> bool:
+    return ensure_admin_exists_from_crud(crud_module=_crud_module_context())
+
+
+def ensure_admin_exists_once() -> bool:
+    return ensure_admin_exists_once_from_crud(crud_module=_crud_module_context())

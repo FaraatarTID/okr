@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 from fastapi import HTTPException
 
@@ -101,3 +103,34 @@ def test_backend_admin_observability_metrics_endpoint(monkeypatch):
     }
     assert "GET /v1/admin/observability/metrics" in by_route
     assert "GET /healthz" in by_route
+
+
+def test_backend_request_log_events_are_structured(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    logs: list[str] = []
+
+    monkeypatch.setattr(
+        backend_main._LOGGER,
+        "info",
+        lambda payload: logs.append(str(payload)),
+    )
+
+    response = client.get(
+        "/healthz",
+        headers={
+            "X-Correlation-ID": "corr-test-1",
+            "X-Request-ID": "req-test-1",
+        },
+    )
+    assert response.status_code == 200
+
+    parsed = [json.loads(item) for item in logs if item.strip().startswith("{") and item.strip().endswith("}")]
+    request_logs = [entry for entry in parsed if entry.get("event") == "http_request"]
+    assert request_logs, "structured request log event not emitted"
+    latest = request_logs[-1]
+    assert latest["method"] == "GET"
+    assert latest["route"] == "/healthz"
+    assert latest["status"] == 200
+    assert latest["correlation_id"] == "corr-test-1"
+    assert latest["request_id"] == "req-test-1"
+    assert latest["event"] == "http_request"

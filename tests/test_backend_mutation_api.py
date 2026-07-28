@@ -1,9 +1,37 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
+import hashlib
+import os
 
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from starlette.routing import Match
+
+from fastapi.routing import APIRoute
+
+from backend_app.schemas import (
+    AlignmentMutationView,
+    AlignmentDeleteResponse,
+    CheckInMutationView,
+    CycleMutationView,
+    CycleDeleteResponse,
+    ExperimentMutationView,
+    JobView,
+    JobCancelResponse,
+    NodeDeleteResponse,
+    NodeMutationView,
+    ObjectiveAlignmentLinkMutationView,
+    ObjectiveAlignmentLinkDeleteResponse,
+    RetrospectiveMutationView,
+    RetroExperimentOutcomeView,
+    TeamDeleteResponse,
+    TeamMutationView,
+    UserMutationView,
+    UserPasswordResetResponse,
+    WeeklyPlanMutationView,
+    WorkLogDeleteResponse,
+)
 
 
 def _make_client(monkeypatch):
@@ -18,6 +46,168 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     return TestClient(backend_main.app), backend_main
+
+
+def _fixture_password(name: str) -> str:
+    seed = os.environ.get(
+        f"OKR_TEST_{name.upper()}_PASSWORD_SEED",
+        os.environ.get("OKR_TEST_PASSWORD_SEED", "okr_mutation_test_seed"),
+    )
+    digest = hashlib.sha256(f"{seed}:{name}".encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
+_ROUTER_CONTRACTS = {
+    ("POST", "/v1/nodes/goal"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
+    ("POST", "/v1/nodes/objective"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
+    ("POST", "/v1/nodes/key_result"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
+    ("POST", "/v1/nodes/task"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
+    ("PATCH", "/v1/nodes/{node_type}/{node_id}"): (200, NodeMutationView, "backend_app.routers.node_mutation_routes"),
+    ("DELETE", "/v1/nodes/{node_type}/{node_id}"): (200, NodeDeleteResponse, "backend_app.routers.node_mutation_routes"),
+    ("POST", "/v1/cycles"): (201, CycleMutationView, "backend_app.routers.cycle_mutation_routes"),
+    ("PATCH", "/v1/cycles/{cycle_id}"): (200, None, "backend_app.routers.cycle_mutation_routes"),
+    ("DELETE", "/v1/cycles/{cycle_id}"): (200, CycleDeleteResponse, "backend_app.routers.cycle_mutation_routes"),
+    ("POST", "/v1/teams"): (201, TeamMutationView, "backend_app.routers.team_mutation_routes"),
+    ("PATCH", "/v1/teams/{team_id}"): (200, TeamMutationView, "backend_app.routers.team_mutation_routes"),
+    ("DELETE", "/v1/teams/{team_id}"): (200, TeamDeleteResponse, "backend_app.routers.team_mutation_routes"),
+    ("POST", "/v1/users"): (201, UserMutationView, "backend_app.routers.user_mutation_routes"),
+    ("PATCH", "/v1/users/{user_id}"): (200, UserMutationView, "backend_app.routers.user_mutation_routes"),
+    ("POST", "/v1/users/{user_id}/reset-password"): (200, UserPasswordResetResponse, "backend_app.routers.user_mutation_routes"),
+    ("POST", "/v1/check-ins"): (201, CheckInMutationView, "backend_app.routers.checkin_mutation_routes"),
+    ("POST", "/v1/experiments"): (201, ExperimentMutationView, "backend_app.routers.experiment_mutation_routes"),
+    ("PATCH", "/v1/experiments/{experiment_id}"): (200, ExperimentMutationView, "backend_app.routers.experiment_mutation_routes"),
+    ("POST", "/v1/experiments/{experiment_id}/close"): (200, ExperimentMutationView, "backend_app.routers.experiment_mutation_routes"),
+    ("POST", "/v1/alignments"): (201, AlignmentMutationView, "backend_app.routers.analytics_mutation_routes"),
+    ("DELETE", "/v1/alignments/{edge_id}"): (200, AlignmentDeleteResponse, "backend_app.routers.analytics_mutation_routes"),
+    ("POST", "/v1/objective-alignment-links"): (201, ObjectiveAlignmentLinkMutationView, "backend_app.routers.analytics_mutation_routes"),
+    ("DELETE", "/v1/objective-alignment-links/{link_id}"): (200, ObjectiveAlignmentLinkDeleteResponse, "backend_app.routers.analytics_mutation_routes"),
+    ("DELETE", "/v1/work-logs/{work_log_id}"): (200, WorkLogDeleteResponse, "backend_app.routers.analytics_mutation_routes"),
+    ("POST", "/v1/retrospectives"): (201, RetrospectiveMutationView, "backend_app.routers.analytics_mutation_routes"),
+    ("PUT", "/v1/retrospectives/{retrospective_id}/experiment-outcomes"): (200, RetroExperimentOutcomeView, "backend_app.routers.analytics_mutation_routes"),
+    ("POST", "/v1/weekly-plans"): (201, WeeklyPlanMutationView, "backend_app.routers.analytics_mutation_routes"),
+    ("POST", "/v1/jobs"): (202, JobView, "backend_app.routers.operations_routes"),
+    ("DELETE", "/v1/jobs/{job_id}"): (204, None, "backend_app.routers.operations_routes"),
+    ("POST", "/v1/jobs/{job_id}/cancel"): (200, JobCancelResponse, "backend_app.routers.operations_routes"),
+    ("POST", "/v1/timer/start"): (200, None, "backend_app.routers.operations_routes"),
+    ("POST", "/v1/timer/stop"): (200, None, "backend_app.routers.operations_routes"),
+    ("POST", "/v1/ai/analyze-node"): (200, None, "backend_app.routers.ai_routes"),
+    ("POST", "/v1/ai/strategy-pulse"): (200, None, "backend_app.routers.ai_routes"),
+    ("POST", "/v1/ai/team-coach"): (200, None, "backend_app.routers.ai_routes"),
+    ("POST", "/v1/state/{key}"): (200, None, "backend_app.routers.platform_routes"),
+    ("POST", "/v1/admin/db-restore"): (200, None, "backend_app.routers.platform_routes"),
+}
+
+
+def _find_route(method: str, path: str):
+    def _iter_api_routes(routes):
+        for route in routes:
+            if isinstance(route, APIRoute):
+                yield route
+                continue
+            original_router = getattr(route, "original_router", None)
+            if original_router is not None:
+                yield from _iter_api_routes(getattr(original_router, "routes", []))
+
+    def _iter_all_routes():
+        from backend_app.main import app
+
+        return _iter_api_routes(app.routes)
+
+    def _canonical_path(p: str) -> str:
+        if not p:
+            return "/"
+        normalized = "/" + "/".join(segment for segment in p.split("/") if segment)
+        if normalized.endswith("/"):
+            normalized = normalized[:-1]
+        if normalized.startswith("/api/"):
+            normalized = normalized.removeprefix("/api")
+        return normalized
+
+    def _normalized(p: str) -> str:
+        if not p:
+            return "/"
+        normalized = "/" + "/".join(segment for segment in p.split("/") if segment)
+        if normalized.endswith("/"):
+            normalized = normalized[:-1]
+        return normalized
+
+    normalized_target = _normalized(path)
+    alt_targets = {normalized_target}
+    if normalized_target.startswith("/api/"):
+        alt_targets.add(normalized_target.removeprefix("/api"))
+    elif normalized_target.startswith("/"):
+        alt_targets.add(f"/api{normalized_target}")
+
+    for route in _iter_all_routes():
+        if not isinstance(route, APIRoute):
+            continue
+        route_path = _canonical_path(getattr(route, "path", ""))
+        for candidate_path in alt_targets:
+            if route_path == _canonical_path(candidate_path):
+                if method in (route.methods or set()):
+                    return route
+            scope = {
+                "type": "http",
+                "method": method,
+                "path": _normalized(candidate_path),
+            }
+            match, _ = route.matches(scope)
+            if match == Match.FULL and method in (route.methods or set()):
+                return route
+    return None
+
+
+def test_router_contracts_for_mutation_endpoints_stay_stable():
+    for (method, path), (status_code, response_model, expected_module) in _ROUTER_CONTRACTS.items():
+        route = _find_route(method, path)
+        assert route is not None, f"Missing route {method} {path}"
+        assert (route.status_code or 200) == status_code, (
+            f"Route {method} {path} changed status from {status_code} to {route.status_code}"
+        )
+
+        if response_model is None:
+            pass
+        else:
+            assert route.response_model is response_model, (
+                f"Route {method} {path} response_model changed"
+            )
+
+        assert route.endpoint.__module__ == expected_module, (
+            f"Route {method} {path} should be implemented in {expected_module}, "
+            f"found {route.endpoint.__module__}"
+        )
+
+
+def test_router_modules_expose_registration_functions():
+    import importlib
+
+    router_modules = [
+        "backend_app.routers.node_mutation_routes",
+        "backend_app.routers.cycle_mutation_routes",
+        "backend_app.routers.team_mutation_routes",
+        "backend_app.routers.user_mutation_routes",
+        "backend_app.routers.checkin_mutation_routes",
+        "backend_app.routers.experiment_mutation_routes",
+        "backend_app.routers.analytics_mutation_routes",
+        "backend_app.routers.operations_routes",
+        "backend_app.routers.ai_routes",
+        "backend_app.routers.platform_routes",
+    ]
+    for module_name in router_modules:
+        module = importlib.import_module(module_name)
+        register_name = "register_" + module_name.rsplit("_", 1)[0].split(".")[-1] + "_routes"
+        if module_name.endswith("ai_routes"):
+            register_name = "register_ai_routes"
+        elif module_name.endswith("platform_routes"):
+            register_name = "register_platform_routes"
+        elif module_name.endswith("analytics_mutation_routes"):
+            register_name = "register_analytics_mutation_routes"
+        elif module_name.endswith("checkin_mutation_routes"):
+            register_name = "register_checkin_mutation_routes"
+        elif module_name.endswith("operations_routes"):
+            register_name = "register_operations_routes"
+        assert hasattr(module, register_name), f"{module_name} missing {register_name}"
+        assert callable(getattr(module, register_name)), f"{module_name}.{register_name} is not callable"
 
 
 def test_backend_startup_bootstraps_admin_user(monkeypatch):
@@ -648,7 +838,7 @@ def test_create_user_endpoint_parses_role_and_team(monkeypatch):
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": "secret123",
+            "password": _fixture_password("member1"),
             "role": "manager",
             "display_name": "Member One",
             "manager_id": 2,
@@ -670,13 +860,14 @@ def test_create_user_endpoint_rejects_weak_password_when_strict_policy_enabled(
 ):
     client, _backend_main = _make_client(monkeypatch)
     monkeypatch.setenv("OKR_ENFORCE_STRONG_PASSWORD_POLICY", "true")
+    weak_password = "a" * 3 + "1" * 3
 
     response = client.post(
         "/v1/users",
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": "weakpass",
+            "password": weak_password,
             "role": "member",
         },
     )
@@ -2617,3 +2808,5 @@ def test_resolve_actor_accepts_payload_only():
 
     actor = resolve_actor_username(header_actor=None, payload_actor="alice")
     assert actor == "alice"
+
+

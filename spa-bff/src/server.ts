@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 import { isAllowlistedRoute, normalizeBackendPath, requiresActorHeader } from "./allowlist.js";
@@ -30,6 +31,95 @@ const RESPONSE_HEADER_BLOCKLIST = new Set([
   "transfer-encoding",
   "upgrade",
 ]);
+
+function readRequestId(headers: Record<string, string | string[] | undefined>): string {
+  return (
+    firstHeaderValue(headers["x-request-id"]) ||
+    firstHeaderValue(headers["x-okr-request-id"]) ||
+    randomUUID()
+  );
+}
+
+function readCorrelationId(headers: Record<string, string | string[] | undefined>): string {
+  return (
+    firstHeaderValue(headers["x-correlation-id"]) ||
+    firstHeaderValue(headers["x-okr-correlation-id"]) ||
+    readRequestId(headers)
+  );
+}
+
+function buildErrorEnvelope(
+  code: string,
+  message: string,
+  requestId: string,
+  extras?: Record<string, unknown>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    code,
+    error: message,
+    message,
+    request_id: requestId,
+  };
+  if (extras && Object.keys(extras).length > 0) {
+    Object.assign(payload, extras);
+  }
+  return payload;
+}
+
+function buildBackendErrorEnvelope(
+  statusCode: number,
+  body: Buffer,
+  requestId: string,
+): Record<string, unknown> {
+  const fallbackMessage = `Backend returned ${statusCode}.`;
+  if (!body.length) {
+    return buildErrorEnvelope(`HTTP_${statusCode}`, fallbackMessage, requestId);
+  }
+
+  try {
+    const parsed = JSON.parse(body.toString("utf-8")) as Record<string, unknown>;
+    const detail = typeof parsed["detail"] === "string" ? String(parsed["detail"]) : "";
+    const message =
+      typeof parsed["message"] === "string" && parsed["message"]
+        ? String(parsed["message"])
+        : detail
+          ? detail
+          : typeof parsed["error"] === "string" && parsed["error"]
+            ? String(parsed["error"])
+            : fallbackMessage;
+    const code = typeof parsed["error_code"] === "string" && parsed["error_code"]
+      ? String(parsed["error_code"])
+      : `HTTP_${statusCode}`;
+    return buildErrorEnvelope(code, message, requestId, parsed);
+  } catch {
+    return buildErrorEnvelope(`HTTP_${statusCode}`, fallbackMessage, requestId, {
+      body: body.toString("utf-8"),
+    });
+  }
+}
+
+function buildBffLogPayload(
+  event: string,
+  request: { method: string; url: string },
+  status: number,
+  opts?: Record<string, unknown>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    event,
+    method: request.method,
+    route: request.url,
+    status,
+    ts: new Date().toISOString(),
+    ...opts,
+  };
+  return payload;
+}
+
+type BffRequestState = {
+  _okrStartTs?: number;
+  _okrCorrelationId?: string;
+  _okrRequestId?: string;
+};
 
 function firstHeaderValue(raw: string | string[] | undefined): string {
   if (Array.isArray(raw)) {
@@ -121,6 +211,64 @@ export function createServer(
     reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   });
 
+  app.addHook("onRequest", async (request) => {
+    const state = request as BffRequestState & typeof request;
+    state._okrStartTs = Date.now();
+    state._okrRequestId = readRequestId(request.headers);
+    state._okrCorrelationId = firstHeaderValue(request.headers["x-correlation-id"])
+      || firstHeaderValue(request.headers["x-okr-correlation-id"])
+      || state._okrRequestId;
+  });
+
+  app.addHook("onResponse", async (request, reply) => {
+    const state = request as BffRequestState & typeof request;
+    const durationMs = Date.now() - (state._okrStartTs ?? Date.now());
+    const requestId = state._okrRequestId || readRequestId(request.headers);
+    const correlationId = state._okrCorrelationId || readCorrelationId(request.headers);
+    app.log.info(
+      buildBffLogPayload(
+        "bff_request_completed",
+        request,
+        reply.statusCode,
+        {
+          request_id: requestId,
+          correlation_id: correlationId,
+          actor: firstHeaderValue(request.headers["x-okr-actor"]),
+          duration_ms: durationMs,
+        },
+      ),
+    );
+  });
+
+  app.setErrorHandler((error, request, reply) => {
+    const state = request as BffRequestState & typeof request;
+    const errorName = error instanceof Error ? error.name : "Error";
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const requestId = state._okrRequestId || readRequestId(request.headers);
+    const correlationId = state._okrCorrelationId || readCorrelationId(request.headers);
+    app.log.error(
+      buildBffLogPayload(
+        "bff_unhandled_error",
+        request,
+        500,
+        {
+          request_id: requestId,
+          correlation_id: correlationId,
+          error_code: "BFF_UNHANDLED_ERROR",
+          error_type: errorName,
+          error_message: errorMessage,
+        },
+      ),
+    );
+    reply.code(500).send(
+      buildErrorEnvelope(
+        "BFF_UNHANDLED_ERROR",
+        "BFF request failed unexpectedly.",
+        requestId,
+      ),
+    );
+  });
+
   app.get("/healthz", async () => {
     return {
       status: "ok",
@@ -129,6 +277,7 @@ export function createServer(
   });
 
   app.post("/session/login", async (request, reply) => {
+    const requestId = readRequestId(request.headers);
     try {
       const result = await proxyToBackend(
         config,
@@ -151,7 +300,12 @@ export function createServer(
         }
         reply.code(result.status);
         if (result.body.length === 0) {
-          return reply.send();
+          return reply.send(
+            buildBackendErrorEnvelope(result.status, Buffer.alloc(0), requestId),
+          );
+        }
+        if (result.status >= 400) {
+          return reply.send(buildBackendErrorEnvelope(result.status, result.body, requestId));
         }
         return reply.send(result.body);
       }
@@ -160,9 +314,13 @@ export function createServer(
       try {
         payload = JSON.parse(result.body.toString("utf-8"));
       } catch {
-        return reply.code(502).send({
-          error: "Backend login response could not be parsed.",
-        });
+        return reply.code(502).send(
+          buildErrorEnvelope(
+            "BACKEND_RESPONSE_PARSE_ERROR",
+            "Backend login response could not be parsed.",
+            requestId,
+          ),
+        );
       }
 
       const payloadRecord =
@@ -178,9 +336,12 @@ export function createServer(
           detail ||
           (errorCode ? `Login failed: ${errorCode}` : "Invalid username or password.");
         return reply.code(401).send({
-          success: false,
-          error_code: errorCode || "INVALID_CREDENTIALS",
-          detail: message,
+          ...buildErrorEnvelope(
+            errorCode || "INVALID_CREDENTIALS",
+            message,
+            requestId,
+            { success: false, error_code: errorCode || "INVALID_CREDENTIALS", detail: message },
+          ),
         });
       }
 
@@ -209,18 +370,32 @@ export function createServer(
         user,
       });
     } catch (error) {
-      request.log.error({ err: error }, "BFF session login failure");
-      return reply.code(502).send({
-        error: "Session login request failed.",
-      });
+      const requestId = readRequestId(request.headers);
+      const correlationId = readCorrelationId(request.headers);
+      app.log.error(
+        buildBffLogPayload("bff_session_login_error", request, 502, {
+          request_id: requestId,
+          correlation_id: correlationId,
+          error_code: "BACKEND_PROXY_ERROR",
+          error_type: error instanceof Error ? error.name : "Error",
+        }),
+      );
+      return reply.code(502).send(
+        buildErrorEnvelope(
+          "BACKEND_PROXY_ERROR",
+          "Session login request failed.",
+          readRequestId(request.headers),
+        ),
+      );
     }
   });
 
   app.get("/session/me", async (request, reply) => {
     const sessionUser = readSessionUserFromRequest(config, request.headers);
+    const requestId = readRequestId(request.headers);
     if (!sessionUser) {
       return reply.code(401).send({
-        error: "Missing or invalid session.",
+        ...buildErrorEnvelope("MISSING_SESSION", "Missing or invalid session.", requestId),
       });
     }
     try {
@@ -252,27 +427,44 @@ export function createServer(
       const rawWildcardPath = request.params["*"];
       const backendPath = normalizeBackendPath(rawWildcardPath);
       if (!backendPath) {
-        return reply.code(400).send({ error: "Invalid backend path." });
+        return reply.code(400).send(
+          buildErrorEnvelope("INVALID_BACKEND_PATH", "Invalid backend path.", readRequestId(request.headers)),
+        );
       }
 
       if (!isAllowlistedRoute(request.method, backendPath)) {
-        return reply.code(403).send({ error: "Route not allowlisted by spa-bff policy." });
+        return reply.code(403).send(
+          buildErrorEnvelope(
+            "ROUTE_NOT_ALLOWLISTED",
+            "Route not allowlisted by spa-bff policy.",
+            readRequestId(request.headers),
+          ),
+        );
       }
 
       const actorRequired = requiresActorHeader(request.method, backendPath);
       let actor: string | null = null;
       let sessionUser: SessionUser | null = null;
+      const isReadRoute = backendPath.startsWith("/v1/read/");
       if (actorRequired) {
         sessionUser = readSessionUserFromRequest(config, request.headers);
         if (!sessionUser) {
           return reply.code(401).send({
-            error: "Missing or invalid session for actor-scoped route.",
+            ...buildErrorEnvelope(
+              "MISSING_SESSION",
+              "Missing or invalid session for actor-scoped route.",
+              readRequestId(request.headers),
+            ),
           });
         }
         actor = sessionUser.username;
 
-        // CSRF protection: validate double-submit cookie on state-changing requests
-        const isStateChanging = ["POST", "PATCH", "PUT", "DELETE"].includes(request.method);
+        // CSRF protection: validate double-submit cookie on state-changing requests.
+        // Read routes are intentionally POST-based but non-mutating and do not
+        // require CSRF in this API contract.
+        const isStateChanging =
+          ["POST", "PATCH", "PUT", "DELETE"].includes(request.method) &&
+          !isReadRoute;
         if (isStateChanging) {
           const csrfValid = validateCsrfToken({
             cookieHeader: firstHeaderValue(request.headers.cookie),
@@ -280,23 +472,25 @@ export function createServer(
           });
           if (!csrfValid) {
             return reply.code(403).send({
-              error: "CSRF token validation failed. Include X-XSRF-TOKEN header matching the okr_csrf_token cookie.",
+              ...buildErrorEnvelope(
+                "INVALID_CSRF_TOKEN",
+                "CSRF token validation failed. Include X-XSRF-TOKEN header matching the okr_csrf_token cookie.",
+                readRequestId(request.headers),
+              ),
             });
           }
         }
       }
 
-      if (actorRequired) {
+    if (actorRequired) {
         const attemptedActor = firstHeaderValue(request.headers["x-okr-actor"]);
         if (attemptedActor && actor && attemptedActor !== actor) {
-          request.log.warn(
-            {
+          app.log.warn(
+            buildBffLogPayload("bff_actor_header_rewrite", request, 403, {
               attempted_actor: attemptedActor,
               session_actor: actor,
-              method: request.method,
               path: backendPath,
-            },
-            "Ignoring client supplied actor header; session actor enforced",
+            }),
           );
         }
       }
@@ -333,13 +527,37 @@ export function createServer(
 
         reply.code(result.status);
         if (result.body.length === 0) {
+          if (result.status >= 400) {
+            return reply.send(
+              buildBackendErrorEnvelope(result.status, Buffer.alloc(0), readRequestId(request.headers)),
+            );
+          }
           return reply.send();
         }
+        if (result.status >= 400) {
+          return reply.send(
+            buildBackendErrorEnvelope(result.status, result.body, readRequestId(request.headers)),
+          );
+        }
         return reply.send(result.body);
-      } catch (error) {
-        request.log.error({ err: error }, "BFF backend proxy failure");
-        return reply.code(502).send({
-          error: "Backend proxy request failed.",
+    } catch (error) {
+      const requestId = readRequestId(request.headers);
+      const correlationId = readCorrelationId(request.headers);
+      app.log.error(
+        buildBffLogPayload("bff_backend_proxy_error", request, 502, {
+          request_id: requestId,
+          correlation_id: correlationId,
+          error_code: "BACKEND_PROXY_ERROR",
+          error_type: error instanceof Error ? error.name : "Error",
+          path: backendPath,
+        }),
+      );
+      return reply.code(502).send({
+        ...buildErrorEnvelope(
+          "BACKEND_PROXY_ERROR",
+            "Backend proxy request failed.",
+            readRequestId(request.headers),
+          ),
         });
       }
     },

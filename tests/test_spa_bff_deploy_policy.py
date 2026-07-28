@@ -18,6 +18,17 @@ def test_compose_backend_api_defaults_to_loopback_bind_address() -> None:
     assert "${OKR_BACKEND_BIND_ADDRESS:-127.0.0.1}" in compose
 
 
+def test_compose_injects_bootstrap_password_into_backend_api() -> None:
+    compose = _read("deploy/docker/docker-compose.yml")
+    backend_api = compose.split("  backend-api:", 1)[1].split(
+        "  backend-worker:", 1
+    )[0]
+    assert (
+        "OKR_BOOTSTRAP_ADMIN_PASSWORD=${OKR_BOOTSTRAP_ADMIN_PASSWORD:-}"
+        in backend_api
+    )
+
+
 def test_compose_spa_bff_defaults_to_loopback_bind_address() -> None:
     compose = _read("deploy/docker/docker-compose.yml")
     assert "${SPA_BFF_BIND_ADDRESS:-127.0.0.1}" in compose

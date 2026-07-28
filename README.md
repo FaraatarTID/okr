@@ -244,6 +244,7 @@ If you are a first-time reader, skip this section until after `Start Here`.
 - Architecture (system): [ARCHITECTURE.md](ARCHITECTURE.md)
 - Maintainer map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
 - Production readiness report: [docs/PRODUCTION_READINESS_REPORT.md](docs/PRODUCTION_READINESS_REPORT.md)
+- Production readiness runbooks and dashboards: [docs/OBSERVABILITY_AND_RUNBOOKS.md](docs/OBSERVABILITY_AND_RUNBOOKS.md)
 - Productionization backlog: [PRODUCTIONIZATION_BACKLOG.md](PRODUCTIONIZATION_BACKLOG.md)
 - User Guide (EN): [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
 - User Guide (FA): [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
