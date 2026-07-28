@@ -6,6 +6,7 @@ import os
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from starlette.routing import Match
 
 from fastapi.routing import APIRoute
 
@@ -116,9 +117,15 @@ def _find_route(method: str, path: str):
     for route in _all_routes():
         if not isinstance(route, APIRoute):
             continue
-        candidate_paths = {_normalized(getattr(route, "path", "")), _normalized(getattr(route, "path_format", ""))}
-        if any(candidate in alt_targets for candidate in candidate_paths) and method in (route.methods or set()):
-            return route
+        for candidate_path in alt_targets:
+            scope = {
+                "type": "http",
+                "method": method,
+                "path": candidate_path,
+            }
+            match, _ = route.matches(scope)
+            if match == Match.FULL and method in (route.methods or set()):
+                return route
     return None
 
 
