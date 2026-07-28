@@ -877,23 +877,28 @@ Documentation HQ: [README](README.md)
 - Outcome: deterministic startup diagnostics improved with no functional regressions in green-path admin Playwright coverage.
 
 ### Issue: QA-09 — Compose smoke startup determinism and diagnostics
-- Status: **Resolved pending CI execution proof**
+- Status: **Active — implementation verified locally; CI execution proof pending**
 - Date: 2026-07-28
 - Root cause:
   - Fresh compose startup allowed `backend-api` and `backend-worker` to enter database initialization concurrently.
+  - Docker Compose process-environment precedence allowed GitHub runner `OKR_*`, `BFF_*`, and related runtime variables to override the generated `--env-file`, so the supposedly isolated smoke stack could target or inherit CI configuration.
   - Readiness polling suppressed all HTTP errors and tore down containers without reporting service state or logs.
+  - A `docker compose up` failure returned before diagnostics and the cleanup `finally` block, discarding the backend startup traceback and leaving lifecycle cleanup incomplete.
   - The runner built `TOP10_SMOKE_*` variables and then replaced that environment before pytest, allowing the end-to-end test to skip.
 - Changes:
   - Added an explicit backend API health contract and gated worker/BFF startup on it.
   - Expanded readiness to backend API, BFF, and web.
-  - Generated a strong per-run bootstrap password and propagated it, activation flags, and service URLs into pytest.
-  - Added bounded compose status/log diagnostics with generated-secret redaction.
-  - Added focused regression tests for environment propagation and redaction.
-- Verification plan:
-  - `python -m pytest -q tests/test_verify_resilience_script.py`
-  - `python -m ruff check scripts/verify_resilience.py tests/test_verify_resilience_script.py`
-  - `docker compose -f deploy/docker/docker-compose.yml --env-file <generated-env> config`
-  - `python scripts/verify_resilience.py --compose-smoke` in GitHub Actions.
+  - Generated strong per-run bootstrap, service, session, and PostgreSQL credentials with an explicit internal database URL.
+  - Isolated the Compose subprocess from inherited application/runtime variables while preserving Docker/runner infrastructure variables.
+  - Added bounded, redacted compose status/log diagnostics and unconditional teardown for `compose up` failures.
+  - Added focused regression tests for environment propagation, runner isolation, early-failure diagnostics, cleanup, and redaction.
+- Verification:
+  - `python -m pytest -q tests/test_verify_resilience_script.py` → `4 passed`.
+  - `python -m mypy --ignore-missing-imports --follow-imports=skip scripts/verify_resilience.py tests/test_verify_resilience_script.py` → pass.
+  - `ruff check scripts/verify_resilience.py tests/test_verify_resilience_script.py` → pass.
+  - Local `python scripts/verify_resilience.py --compose-smoke` exercised the enhanced failure path but could not start containers because the Docker Desktop engine/config is unavailable.
+- Closure gate:
+  - `python scripts/verify_resilience.py --compose-smoke` must pass on the Linux GitHub Actions runner before QA-09 returns to `resolved`.
 
 ### Issue: MOD-30 — Restore dual-mode compatibility seams after handler extraction
 - Status: **Closed**

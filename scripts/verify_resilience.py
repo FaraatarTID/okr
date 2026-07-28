@@ -31,6 +31,21 @@ DEFAULT_PYTEST_TARGETS: tuple[str, ...] = (
 )
 
 _SMOKE_TEST_PATH = "tests/test_e2e_smoke.py"
+_SMOKE_ENV_PREFIXES = (
+    "AI_",
+    "BFF_",
+    "GEMINI_",
+    "NEXT_PUBLIC_OKR_",
+    "OKR_",
+    "PDFSHIFT_",
+    "SPA_",
+    "SUPABASE_",
+)
+_SMOKE_ENV_NAMES = {
+    "ALLOW_EXTERNAL_AI",
+    "IMAGE",
+    "PDF_METHOD",
+}
 
 
 def _summarize_compose_failure(output: str) -> str:
@@ -91,13 +106,24 @@ def _write_smoke_env_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
     service_token = secrets.token_hex(24)
     session_secret = secrets.token_hex(32)
     bootstrap_password = f"Sm0ke!{secrets.token_urlsafe(24)}"
+    postgres_password = secrets.token_hex(24)
     backend_host_port = _free_local_port()
     bff_host_port = _free_local_port()
     web_host_port = _free_local_port()
+    postgres_host_port = _free_local_port()
 
     values = {
+        "OKR_POSTGRES_USER": "okr",
+        "OKR_POSTGRES_PASSWORD": postgres_password,
+        "OKR_POSTGRES_DB": "okr",
+        "OKR_POSTGRES_HOST_PORT": str(postgres_host_port),
+        "OKR_DATABASE_URL": (
+            "postgresql+psycopg2://"
+            f"okr:{postgres_password}@postgres:5432/okr"
+        ),
         "OKR_BACKEND_SERVICE_TOKEN": service_token,
         "OKR_BOOTSTRAP_ADMIN_PASSWORD": bootstrap_password,
+        "OKR_BACKEND_ENFORCE_TOKEN": "true",
         "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
         "OKR_BACKEND_HOST_PORT": str(backend_host_port),
         "OKR_BACKEND_BIND_ADDRESS": "127.0.0.1",
@@ -118,6 +144,12 @@ def _write_smoke_env_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
         "OKR_DATA_ACCESS_MODE": "database",
         "OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS": "120000",
         "OKR_BACKEND_PORT": "8100",
+        "ALLOW_EXTERNAL_AI": "false",
+        "AI_PROVIDER": "gemini",
+        "GEMINI_API_KEY": "",
+        "AI_BASE_URL": "",
+        "AI_API_KEY": "",
+        "PDFSHIFT_API_KEY": "",
     }
 
     # Keep values we need to call the services after startup.
@@ -160,7 +192,25 @@ def _run_compose(
     argv.append("--env-file")
     argv.append(str(env_file))
     argv.extend(command)
-    return _run_command(argv, cwd=ROOT)
+
+    # Docker Compose gives process variables precedence over --env-file. Remove
+    # application-owned variables inherited from the runner, then overlay the
+    # generated smoke values so CI secrets cannot redirect or reconfigure the
+    # isolated stack.
+    compose_env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in _SMOKE_ENV_NAMES
+        and not key.startswith(_SMOKE_ENV_PREFIXES)
+    }
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        compose_env[key.strip()] = value
+
+    return _run_command(argv, cwd=ROOT, env=compose_env)
 
 
 def _redact_values(output: str, secret_values: Iterable[str]) -> str:
@@ -278,34 +328,48 @@ def _run_smoke_compose(
         env_path = Path(workdir) / "smoke.env"
         smoke_env, service_urls = _write_smoke_env_file(env_path)
         pytest_env = _build_smoke_pytest_env(smoke_env, service_urls)
-
-        compose_up = _run_compose(
-            compose_file=compose_file,
-            env_file=env_path,
-            compose_project=compose_project,
-            command=[
-                "up",
-                "-d",
-                "--build",
-                "backend-api",
-                "backend-worker",
-                "spa-bff",
-                "spa-web",
-            ],
+        secret_values = (
+            smoke_env["OKR_BACKEND_SERVICE_TOKEN"],
+            smoke_env["BFF_SESSION_SECRET"],
+            smoke_env["OKR_BOOTSTRAP_ADMIN_PASSWORD"],
+            smoke_env["OKR_POSTGRES_PASSWORD"],
         )
-        if compose_up[0] != 0:
-            summary = _summarize_compose_failure(compose_up[1])
-            return CheckResult(
-                name="compose_smoke",
-                status="fail",
-                detail=(
-                    "docker compose up failed for smoke run.\n"
-                    f"{summary}\n"
-                    f"command_exit={compose_up[0]}\n{compose_up[1]}"
-                ),
-            )
 
         try:
+            compose_up = _run_compose(
+                compose_file=compose_file,
+                env_file=env_path,
+                compose_project=compose_project,
+                command=[
+                    "up",
+                    "-d",
+                    "--build",
+                    "backend-api",
+                    "backend-worker",
+                    "spa-bff",
+                    "spa-web",
+                ],
+            )
+            if compose_up[0] != 0:
+                summary = _summarize_compose_failure(compose_up[1])
+                diagnostics = _compose_failure_diagnostics(
+                    compose_file=compose_file,
+                    env_file=env_path,
+                    compose_project=compose_project,
+                    secret_values=secret_values,
+                )
+                compose_output = _redact_values(compose_up[1], secret_values)
+                return CheckResult(
+                    name="compose_smoke",
+                    status="fail",
+                    detail=(
+                        "docker compose up failed for smoke run.\n"
+                        f"{summary}\n"
+                        f"command_exit={compose_up[0]}\n{compose_output}"
+                        f"\n\n{diagnostics}"
+                    ),
+                )
+
             readiness = _smoke_check_services(
                 base_bff_url=pytest_env["TOP10_SMOKE_BFF_URL"],
                 base_backend_url=f"http://127.0.0.1:{service_urls['backend_port']}",
@@ -317,11 +381,7 @@ def _run_smoke_compose(
                     compose_file=compose_file,
                     env_file=env_path,
                     compose_project=compose_project,
-                    secret_values=(
-                        smoke_env["OKR_BACKEND_SERVICE_TOKEN"],
-                        smoke_env["BFF_SESSION_SECRET"],
-                        smoke_env["OKR_BOOTSTRAP_ADMIN_PASSWORD"],
-                    ),
+                    secret_values=secret_values,
                 )
                 return CheckResult(
                     name=readiness.name,
