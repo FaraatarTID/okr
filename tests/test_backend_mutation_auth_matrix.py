@@ -333,8 +333,17 @@ def _render_route(method: str, path: str) -> str:
 def _mutating_v1_routes_from_app() -> set[tuple[str, str]]:
     import backend_app.main as backend_main
 
+    def _iter_api_routes(routes):
+        for route in routes:
+            if isinstance(route, APIRoute):
+                yield route
+                continue
+            original_router = getattr(route, "original_router", None)
+            if original_router is not None:
+                yield from _iter_api_routes(getattr(original_router, "routes", []))
+
     mutation_routes = set()
-    for route in backend_main.app.routes:
+    for route in _iter_api_routes(backend_main.app.routes):
         if not isinstance(route, APIRoute):
             continue
         for method in route.methods or ():

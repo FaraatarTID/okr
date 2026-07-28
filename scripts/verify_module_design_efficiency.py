@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import ast
 import importlib
-import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -18,7 +17,6 @@ from typing import TypedDict
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-os.environ.setdefault("OKR_ENFORCE_ROUTE_BOOTSTRAP_ASSERT", "0")
 
 
 @dataclass

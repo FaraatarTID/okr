@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from backend_app.schemas import (
     AtlasSnapshotRequest,
     LeadershipMetricsRequest,
@@ -165,11 +165,11 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
     )
     def api_admin_db_backup(
         x_okr_actor: Optional[str] = Header(default=None),
-    ) -> main.Response:
+    ) -> Response:
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         main._require_admin_actor_scope(actor)
         backup_bytes = main.export_database_backup()
-        return main.Response(content=backup_bytes, media_type="application/json")
+        return Response(content=backup_bytes, media_type="application/json")
 
     @router.post(
         "/v1/admin/db-restore",

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import importlib
 import inspect
-import os
 import sys
 from pathlib import Path
 
@@ -13,7 +12,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-os.environ.setdefault("OKR_ENFORCE_ROUTE_BOOTSTRAP_ASSERT", "0")
 
 
 EXPECTED_EXPORTS: dict[str, list[str]] = {

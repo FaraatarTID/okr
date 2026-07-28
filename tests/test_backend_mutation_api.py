@@ -1,6 +1,5 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
-import importlib
 import hashlib
 import os
 
@@ -100,6 +99,20 @@ _ROUTER_CONTRACTS = {
 
 
 def _find_route(method: str, path: str):
+    def _iter_api_routes(routes):
+        for route in routes:
+            if isinstance(route, APIRoute):
+                yield route
+                continue
+            original_router = getattr(route, "original_router", None)
+            if original_router is not None:
+                yield from _iter_api_routes(getattr(original_router, "routes", []))
+
+    def _iter_all_routes():
+        from backend_app.main import app
+
+        return _iter_api_routes(app.routes)
+
     def _canonical_path(p: str) -> str:
         if not p:
             return "/"
@@ -125,7 +138,7 @@ def _find_route(method: str, path: str):
     elif normalized_target.startswith("/"):
         alt_targets.add(f"/api{normalized_target}")
 
-    for route in _all_routes():
+    for route in _iter_all_routes():
         if not isinstance(route, APIRoute):
             continue
         route_path = _canonical_path(getattr(route, "path", ""))
@@ -142,13 +155,6 @@ def _find_route(method: str, path: str):
             if match == Match.FULL and method in (route.methods or set()):
                 return route
     return None
-
-
-def _all_routes():
-    backend_main = importlib.import_module("backend_app.main")
-    backend_main = importlib.reload(backend_main)
-
-    return backend_main.app.routes
 
 
 def test_router_contracts_for_mutation_endpoints_stay_stable():

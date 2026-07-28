@@ -13,6 +13,34 @@ Status legend:
 - `rejected`
 
 ```yaml
+- id: QA-08
+  phase: Audit Closure Loop
+  title: Remove legacy route-guard env gating and harden version-stable route contract checks
+  severity: medium
+  problem: Mutation-route contract checks and startup bootstrap guards relied on version-sensitive assumptions about route container shape and CI/environment-specific toggle flags, causing CI-only failures for `POST /v1/nodes/goal`.
+  why_it_matters: Route contracts and startup fail-fast checks must be deterministic across FastAPI versions and CI/runtime environments.
+  recommended_change: recurse into included router containers in contract assertions and treat bootstrap mutation-route guard assertions as required behavior independent of env toggle flags.
+  expected_benefit: stable CI across FastAPI upgrades with no false negatives from route representation shifts.
+  acceptance_criteria:
+    - Backend mutation contract test resolves `POST /v1/nodes/goal` consistently across local and CI runtime stacks.
+    - `backend_app/main_bootstrap_helpers.py` collects required routes from nested `include_router` containers.
+    - `tests/test_main_router_bootstrap_guard.py` validates bootstrap guard behavior without env-toggling.
+    - `scripts/verify_*` gates no longer set `OKR_ENFORCE_ROUTE_BOOTSTRAP_ASSERT` by default.
+  dependencies:
+    - MOD-23
+  affected_modules:
+    - tests/test_backend_mutation_api.py
+    - tests/test_backend_mutation_auth_matrix.py
+    - tests/test_main_router_bootstrap_guard.py
+    - backend_app/main_bootstrap_helpers.py
+    - backend_app/routers/platform_routes.py
+    - scripts/verify_helper_integrity.py
+    - scripts/verify_module_export_contracts.py
+    - scripts/verify_module_design_efficiency.py
+  verification: pytest + helper/export/design scripts + openapi call
+  status: resolved
+  notes: Closed route-contract false-negative in CI; `POST /v1/nodes/goal` now resolves through nested route traversal and bootstrap guard is enforced unconditionally.
+
 - id: QA-07
   phase: Audit Closure Loop
   title: Retire active giant-module size-gate references after design-efficiency migration

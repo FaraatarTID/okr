@@ -4,6 +4,34 @@ Documentation HQ: [README](README.md)
 
 ## 2026-07-28
 
+### Issue: QA-08 — Remove legacy route-guard env gating and harden version-stable route contract checks
+- Status: **Closed**
+- Scope:
+  - Make route contract checks resilient to FastAPI nested route containers.
+  - Remove bootstrap env gating for mutation-route preflight assertions.
+  - Fix admin backup response typing that interfered with OpenAPI schema generation.
+- Files:
+  - `tests/test_backend_mutation_api.py`
+  - `tests/test_backend_mutation_auth_matrix.py`
+  - `tests/test_main_router_bootstrap_guard.py`
+  - `backend_app/main_bootstrap_helpers.py`
+  - `backend_app/routers/platform_routes.py`
+  - `scripts/verify_helper_integrity.py`
+  - `scripts/verify_module_export_contracts.py`
+  - `scripts/verify_module_design_efficiency.py`
+- Verification:
+  - `python -m pytest -q tests/test_backend_mutation_api.py::test_router_contracts_for_mutation_endpoints_stay_stable tests/test_main_router_bootstrap_guard.py`
+  - `python -m pytest -q tests/test_backend_mutation_auth_matrix.py::test_mutation_route_matrix_covers_all_v1_mutation_routes`
+  - `python -m pytest -q --maxfail=1`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/verify_module_export_contracts.py`
+  - `python scripts/verify_module_design_efficiency.py`
+  - `python -c "import backend_app.main as m; m.app.openapi(); print('openapi_ok')"`
+- Result:
+  - Route contract test now consistently passes in CI-compatible `.venv` (`510 passed, 8 skipped` full suite).
+  - Bootstrap guard remains enforced and no longer depends on an opt-in env toggle.
+  - OpenAPI schema generation no longer fails on `main.Response` forward-ref annotation.
+
 ### Issue: QA-05 — Add facade/export contract validation for helper-adjacent modules
 - Status: **Closed**
 - Scope:

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-import os
 from typing import Callable
 
 from fastapi import APIRouter, FastAPI
+from fastapi.routing import APIRoute
 
 
 _REQUIRED_MUTATION_ROUTES = {
@@ -99,16 +99,26 @@ def _assert_required_routes(*, app: FastAPI) -> None:
     """
     Fail fast when a required mutation endpoint is missing from the router table.
     """
-    if os.getenv("OKR_ENFORCE_ROUTE_BOOTSTRAP_ASSERT", "").strip().lower() not in {"1", "true", "yes"}:
-        return
-
     available = set()
-    for route in app.routes:
-        if getattr(route, "path", None) is None or getattr(route, "methods", None) is None:
-            continue
-        methods = set(route.methods or set())
-        for method in methods:
-            available.add((method, _normalize_route_path(route.path)))
+
+    def _collect(route_objects):
+        for route in route_objects:
+            if isinstance(route, APIRoute):
+                methods = set(route.methods or set())
+                for method in methods:
+                    available.add((method, _normalize_route_path(route.path)))
+                continue
+
+            original_router = getattr(route, "original_router", None)
+            if original_router is not None:
+                _collect(getattr(original_router, "routes", []))
+                continue
+
+            nested_routes = getattr(route, "routes", None)
+            if nested_routes is not None:
+                _collect(nested_routes)
+
+    _collect(app.routes)
 
     for method, path in sorted(_REQUIRED_MUTATION_ROUTES):
         if (method, _normalize_route_path(path)) not in available:

@@ -28,7 +28,6 @@ def test_main_import_route_guard_is_enforced():
         capture_output=True,
         text=True,
         cwd=os.getcwd(),
-        env={**os.environ, "OKR_ENFORCE_ROUTE_BOOTSTRAP_ASSERT": "1"},
     )
 
     assert process.returncode == 0
