@@ -8,6 +8,7 @@ import os
 import socket
 import subprocess
 import sys
+import secrets
 import time
 from pathlib import Path
 
@@ -92,6 +93,9 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
         env["OKR_POSTGRES_USER"] = args.postgres_user
         env["OKR_POSTGRES_PASSWORD"] = args.postgres_password
         env["OKR_POSTGRES_DB"] = args.postgres_db
+        env["BFF_SESSION_SECRET"] = str(
+            os.environ.get("BFF_SESSION_SECRET", "").strip() or secrets.token_hex(32)
+        )
 
         up_code, up_out = _run_compose(
             compose_file=compose_file,
