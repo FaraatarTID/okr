@@ -31,13 +31,11 @@ from backend_app.scope_resolution import (
     _coerce_owner_ids as _coerce_owner_ids_impl,
     _coerce_string_list as _coerce_string_list_impl,
     _resolve_actor_scope as _resolve_actor_scope_impl,
-    _resolve_effective_cycle_id_for_scope as _resolve_effective_cycle_id_for_scope_impl,
 )
 from backend_app.read_query_helpers import (
     _ALLOWED_READ_QUERY_KINDS as _ALLOWED_READ_QUERY_KINDS_IMPL,
     read_query_payload as _read_query_payload_impl,
 )
-from backend_app.main_helpers import coerce_int as _coerce_int
 from backend_app.response_scope_helpers import (
     _filter_tasks_for_scope,  # noqa: F401
     _node_owner_id,  # noqa: F401
@@ -61,23 +59,20 @@ from backend_app.main_runtime_helpers import (
     _quota_error_code,  # noqa: F401
     _pick_primary_active_cycle as _pick_primary_active_cycle_impl,
     _resolve_scope_for_actor as _resolve_scope_for_actor_impl,
-    _resolve_effective_cycle_id_for_scope as _resolve_effective_cycle_id_for_scope_impl,
     _list_cycles_for_scope as _list_cycles_for_scope_runtime_impl,
     _scope_role as _scope_role_impl,
     _visible_cycles_for_scope as _visible_cycles_for_scope_impl,
-    _coerce_owner_ids as _coerce_owner_ids_impl,
-    _coerce_string_list as _coerce_string_list_impl,
-    _coerce_owner_ids as _coerce_owner_ids_impl,
-    _coerce_string_list as _coerce_string_list_impl,
     _require_admin_actor_scope as _require_admin_actor_scope_impl,
     _require_admin_or_manager_actor_scope as _require_admin_or_manager_actor_scope_impl,
     _resolve_actor,  # noqa: F401
     _atomic_idempotent_check as _atomic_idempotent_check_impl,
+    _resolve_effective_cycle_id_for_scope as _resolve_effective_cycle_id_for_scope_impl,
     _complete_idempotent_response as _complete_idempotent_response_impl,
     _load_idempotent_response as _load_idempotent_response_impl,
     _store_idempotent_response as _store_idempotent_response_impl,
     _safe_audit_job_submit,  # noqa: F401
     _status_for_value_error,  # noqa: F401
+    coerce_int as _coerce_int_impl,
     get_observability_metrics_snapshot,
 )
 from src.audit import audit_log, error_log  # noqa: F401
@@ -105,6 +100,7 @@ from src.crud import (
     create_objective,  # noqa: F401
     create_key_result,  # noqa: F401
     create_task,  # noqa: F401
+    create_user,  # noqa: F401
     create_check_in,  # noqa: F401
     list_experiments_for_kr,  # noqa: F401
     list_experiments_for_retro_window,  # noqa: F401
@@ -145,37 +141,37 @@ from src.crud import (
     authenticate_user_detailed,
     close_experiment,  # noqa: F401
     create_alignment,  # noqa: F401
-    ensure_admin_exists,
-    create_user,
-    create_check_in,
+    create_check_in,  # noqa: F401
     create_cycle,  # noqa: F401
     create_experiment,  # noqa: F401
     create_objective_alignment_link,  # noqa: F401
-    upsert_retro_experiment_outcome,  # noqa: F401
     create_retrospective,  # noqa: F401
     create_team,  # noqa: F401
+    create_user,  # noqa: F401
     create_weekly_plan,  # noqa: F401
-    delete_alignment,
+    delete_alignment,  # noqa: F401
     delete_cycle,  # noqa: F401
+    delete_goal,  # noqa: F401
+    delete_key_result,  # noqa: F401
+    delete_objective,  # noqa: F401
     delete_objective_alignment_link,  # noqa: F401
+    delete_task,  # noqa: F401
     delete_team,  # noqa: F401
-    delete_goal,
-    delete_key_result,
-    delete_objective,
-    delete_task,
     delete_work_log,  # noqa: F401
-    reset_user_password,  # noqa: F401
-    update_cycle,  # noqa: F401
-    update_team,  # noqa: F401
-    update_experiment,
-    update_goal,
-    update_key_result,
-    update_objective,
-    update_task,  # noqa: F401
-    update_user,
+    ensure_admin_exists,
     get_leadership_metrics,
+    reset_user_password,  # noqa: F401
     start_timer,  # noqa: F401
     stop_timer,  # noqa: F401
+    upsert_retro_experiment_outcome,  # noqa: F401
+    update_cycle,  # noqa: F401
+    update_experiment,  # noqa: F401
+    update_goal,  # noqa: F401
+    update_key_result,  # noqa: F401
+    update_objective,  # noqa: F401
+    update_task,  # noqa: F401
+    update_team,  # noqa: F401
+    update_user,  # noqa: F401
 )
 from src.database import (
     BACKUP_FORMAT_VERSION,
@@ -315,6 +311,10 @@ def _coerce_owner_ids(values: Optional[list[int]]) -> list[int]:
 
 def _coerce_string_list(values: Any) -> list[str]:
     return _coerce_string_list_impl(values=values)
+
+
+def _coerce_int(value: Any, *, field_name: str) -> int:
+    return _coerce_int_impl(value=value, field_name=field_name)
 
 
 def _atomic_idempotent_check(*, session, actor: str, scope_id: Optional[str], payload: Any) -> tuple[bool, bool]:
