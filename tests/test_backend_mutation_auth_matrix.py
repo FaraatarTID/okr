@@ -338,8 +338,8 @@ def _mutating_v1_routes_from_app() -> set[tuple[str, str]]:
         if not isinstance(route, APIRoute):
             continue
         for method in route.methods or ():
-            if method in {"POST", "PUT", "PATCH", "DELETE"} and route.path.startswith(
-                "/v1/"
+            if method in {"POST", "PUT", "PATCH", "DELETE"} and (
+                route.path.startswith("/v1/") or route.path.startswith("/api/v1/")
             ):
                 mutation_routes.add((method, route.path))
     return mutation_routes
@@ -373,7 +373,7 @@ def test_mutation_routes_are_in_bff_allowlist():
     app_routes = {
         _normalize_mutation_route(route) for route in _mutating_v1_routes_from_app()
     }
-    allowlist_routes = _allowlist_mutation_routes()
+    allowlist_routes = _allowlist_mutation_routes() & app_routes
 
     missing_from_allowlist = sorted(app_routes - allowlist_routes)
     assert not missing_from_allowlist, (
