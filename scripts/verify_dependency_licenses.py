@@ -83,6 +83,10 @@ def _normalize_license(value: str) -> str:
     if not isinstance(value, str):
         return "unknown"
     normalized = value.strip()
+    if normalized in {"Mozilla Public License 2.0 (MPL 2.0)", "Mozilla Public License Version 2.0"}:
+        return "MPL-2.0"
+    if normalized.startswith("Mozilla Public License") and "MPL 2.0" in normalized:
+        return "MPL-2.0"
     if "/" in normalized and normalized.upper().startswith("SEE LICENSE"):
         return "SEE LICENSE"
     return normalized
