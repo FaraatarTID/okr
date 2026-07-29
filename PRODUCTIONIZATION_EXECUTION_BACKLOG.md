@@ -13,6 +13,29 @@ Status legend:
 - `rejected`
 
 ```yaml
+- id: BE-111
+  phase: Audit Closure Loop
+  title: Restore seam contract compatibility across backend/core mutation helpers
+  severity: high
+  problem: legacy `crud_module=` keyword arguments were still being introduced in mutation/read seams, creating fragile adapter paths and CI-specific failures.
+  why_it_matters: Compatibility seams must tolerate legacy call patterns to keep backend/client proxy and test monkeypatches safe.
+  recommended_change: harden seam entrypoints to accept and tolerate legacy kwargs without changing behavior.
+  expected_benefit: stabilized helper contracts and deterministic compatibility across direct/local/backend-proxy mutation paths.
+  acceptance_criteria:
+    - `src/crud_runtime_helpers.py`, `src/domain/auth_service.py`, `src/crud_core_helpers.py` accept optional legacy `crud_module` args in seam helpers.
+    - targeted seam + mutation proxy tests pass (`test_helper_seam_contracts`, `test_crud_backend_mutation_proxy`).
+  dependencies:
+    - MOD-26
+  affected_modules:
+    - src/crud_runtime_helpers.py
+    - src/domain/auth_service.py
+    - src/crud_core_helpers.py
+    - tests/test_helper_seam_contracts.py
+    - tests/test_crud_backend_mutation_proxy.py
+  verification: ruff + pytest (targeted seam and proxy tests)
+  status: resolved
+  notes: Backward-compatible seam contract handling added for stale keyword args; regression tests updated to exercise compatibility in a CI-safe contract harness.
+
 - id: QA-08
   phase: Audit Closure Loop
   title: Remove legacy route-guard env gating and harden version-stable route contract checks
@@ -63,6 +86,30 @@ Status legend:
   verification: rg + CI snippet + worklog review
   status: resolved
   notes: Historical references that describe older threshold checks are retained only as archive context.
+
+- id: BE-116
+  phase: Audit Closure Loop
+  title: Complete security and release-hygiene cleanup
+  severity: medium
+  problem: secret and dependency hygiene had not yet been enforced through a single active gate in CI and pre-commit.
+  why_it_matters: inconsistent hygiene reduces confidence in auditability and release safety.
+  recommended_change: centralize test credential handling plus add deterministic secret-hygiene validation in repo gates.
+  expected_benefit: cleaner release boundary and fewer unplanned security/process regressions.
+  acceptance_criteria:
+    - `python scripts/verify_secret_hygiene.py` is enforced in CI and pre-commit.
+    - Active docs reference one canonical worklog/backlog path for this closure loop.
+    - Test credentials in mutation/auth suites use shared deterministic helpers.
+  dependencies:
+    - QA-07
+  affected_modules:
+    - .github/workflows/ci.yml
+    - scripts/verify_secret_hygiene.py
+    - tests/test_backend_mutation_api.py
+    - tests/test_backend_mutation_auth_matrix.py
+    - tests/test_dual_mode_parity.py
+  verification: CI gate + pre-commit hook + focused pytest pass on credential helper swaps
+  status: resolved
+  notes: Verified with focused ruff + targeted tests and new guard script pass.
 
 - id: MOD-24
   phase: Audit Closure Loop
@@ -137,7 +184,7 @@ Status legend:
   expected_benefit: deterministic startup ownership and reduced hidden shared-state coupling in core compatibility layer.
   acceptance_criteria:
     - `src/crud_auth_helpers.py` and `src/crud_runtime_helpers.py` resolve `src.crud` context deterministically and fail fast if missing.
-    - `src/crud.py` no longer calls mutable module-registration helpers.
+    - `src.crud.py` no longer calls mutable module-registration helpers.
     - `backend_app/main.py` introduces `create_app()` and initializes `app` via that factory.
   dependencies: [MOD-25]
   affected_modules:
@@ -148,6 +195,26 @@ Status legend:
   verification: ruff + import integrity checks
   status: resolved
   notes: Completed deterministic context hardening in helper adapters and introduced explicit app construction via `create_app()` with router/observability registration delegated inside the factory.
+
+- id: BE-113
+  phase: Legacy Surface Debt Closure
+  title: Remove obsolete Streamlit `src/ui` POC surface
+  severity: medium
+  problem: `src/ui` directory contains dead Streamlit compatibility stubs that no longer match runtime architecture and increase cognitive and release friction.
+  why_it_matters: Deprecated frontend surfaces can mask ownership debt and complicate auditability, onboarding, and packaging.
+  recommended_change: remove the obsolete directory and confirm no remaining imports reference it.
+  expected_benefit: reduced maintenance surface and clearer production runtime boundary.
+  acceptance_criteria:
+    - No runtime references to `src.ui` exist in backend, scripts, tests, CI, and docs execution flow.
+    - `src/ui` directory removed from repository.
+    - Startup/import smoke checks remain green after removal.
+  dependencies:
+    - QA-08
+  affected_modules:
+    - src/ui
+  verification: path scan and targeted import/startup smoke
+  status: resolved
+  notes: Removed `src/ui` stubs and verified no runtime imports remain.
 - id: MOD-15
   phase: Audit Closure Loop
   title: Fail runtime preflight on public backend ingress in production
@@ -384,7 +451,6 @@ Status legend:
   verification: ruff + targeted scan
   status: resolved
   notes: Completed duplicate-definition and export-surface consistency pass; no behavior changes introduced.
-```
 
 ## 2026-07-27
 
@@ -1034,3 +1100,4 @@ Status legend:
     Root-cause corrections are implemented and focused pytest, Ruff, and mypy gates pass locally. Enhanced CI diagnostics subsequently exposed SQLite-only `PRAGMA user_version` SQL in a no-op Alembic merge revision; the revision now uses Python no-ops and a migration-portability regression test rejects SQLite-only PRAGMA statements. The next Linux run proved backend/PostgreSQL health and exposed BFF preflight rejection of the empty signing secret; smoke now generates a shared signing secret, enforces signed backend requests, and explicitly selects development transport mode for its HTTP-only cookie path while Compose retains a production default. The following run reached full-stack login and exposed missing Compose propagation of the generated bootstrap password; `backend-api` now receives that password and a deployment-contract test protects the wiring. Closure is intentionally pending a green Linux compose-backed GitHub Actions run. Local Docker execution is blocked because the Docker Desktop engine/config is unavailable in the current session.
     Follow-up discovered in CI smoke: `/api/backend/read/query` and `/api/backend/jobs` were called without `/v1` in `tests/test_e2e_smoke.py`. This bypassed BFF path allowlist normalization and returned `400` before API contract assertions. Updated smoke routes to `/api/backend/v1/read/query` and `/api/backend/v1/jobs`.
     Additional follow-up in this loop: CI smoke exposed intermittent `403` on `/v1/read/query` because CSRF enforcement treated this read-only actor route as state-changing. The BFF now treats `/v1/read/*` as non-state-changing for CSRF purposes, and `tests/test_e2e_smoke.py` now reads CSRF token defensively for read queries to avoid brittle cookie coupling.
+

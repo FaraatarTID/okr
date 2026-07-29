@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
-import hashlib
-import os
+
+from tests._test_credentials import credential_password
 
 import pytest
 from fastapi import HTTPException
@@ -46,15 +46,6 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     return TestClient(backend_main.app), backend_main
-
-
-def _fixture_password(name: str) -> str:
-    seed = os.environ.get(
-        f"OKR_TEST_{name.upper()}_PASSWORD_SEED",
-        os.environ.get("OKR_TEST_PASSWORD_SEED", "okr_mutation_test_seed"),
-    )
-    digest = hashlib.sha256(f"{seed}:{name}".encode("utf-8")).hexdigest()
-    return digest[:16]
 
 
 _ROUTER_CONTRACTS = {
@@ -838,7 +829,7 @@ def test_create_user_endpoint_parses_role_and_team(monkeypatch):
         headers={"X-OKR-Actor": "admin"},
         json={
             "username": "member1",
-            "password": _fixture_password("member1"),
+            "password": credential_password("member1"),
             "role": "manager",
             "display_name": "Member One",
             "manager_id": 2,
@@ -2808,5 +2799,3 @@ def test_resolve_actor_accepts_payload_only():
 
     actor = resolve_actor_username(header_actor=None, payload_actor="alice")
     assert actor == "alice"
-
-

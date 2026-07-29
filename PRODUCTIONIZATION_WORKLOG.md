@@ -1,6 +1,10 @@
-# Productionization Work Log
+# Productionization Work Log (Archived)
 
 Documentation HQ: [README](README.md)
+
+**Active productionization logging is tracked in**
+`PRODUCTIONIZATION_EXECUTION_WORKLOG.md`.
+This file is archived for historical reference only.
 
 ## 2026-07-26
 

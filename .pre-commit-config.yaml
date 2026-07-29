@@ -49,6 +49,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: secret-hygiene-check
+        name: Secret hygiene check
+        entry: python scripts/verify_secret_hygiene.py
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: mypy-check-expanded
         name: Mypy check (expanded)
         entry: python -m mypy --ignore-missing-imports --follow-imports=skip scripts backend_app/config.py backend_app/worker.py backend_app/run_api.py backend_app/path_setup.py

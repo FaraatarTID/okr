@@ -22,6 +22,32 @@ def _parse_response(response) -> dict:
     return json.loads(body)
 
 
+def _error_payload_from_http_error(exc: HTTPError) -> dict:
+    try:
+        return _parse_response(exc)
+    except Exception:
+        return {"error": str(exc)}
+
+
+def _error_hint(status: int) -> str:
+    if status == 401:
+        return (
+            "Authentication failed. Check generated smoke credential propagation and "
+            "backend bootstrap auth path."
+        )
+    if status == 403:
+        return (
+            "Request denied by policy/authorization. Check CSRF/session cookie policy "
+            "and role-scoped endpoint expectations."
+        )
+    if status == 400:
+        return (
+            "Bad request from BFF allowlist/validation path. Verify request schema and "
+            "route prefix expectations."
+        )
+    return "Unexpected auth/path validation response."
+
+
 def _request_json(
     client: OpenerDirector,
     *,
@@ -51,8 +77,11 @@ def _wait_for_ok(client: OpenerDirector, *, url: str, timeout_seconds: float = 1
     while time.time() < deadline:
         try:
             with client.open(Request(url=url, method="GET"), timeout=4) as response:
-                if 200 <= int(response.status) < 500:
+                status = int(response.status)
+                if 200 <= status < 300:
                     return True
+        except HTTPError as exc:
+            _ = exc.code
         except (URLError, OSError):
             pass
         time.sleep(0.5)
@@ -143,9 +172,9 @@ def _do_login(client: OpenerDirector, *, bff_url: str) -> str:
             },
         )
     except HTTPError as exc:
-        payload = _parse_response(exc)
+        payload = _error_payload_from_http_error(exc)
         raise RuntimeError(
-            f"Login request failed with status {exc.code}: {payload}"
+            f"Login request failed with status {exc.code}: {_error_hint(exc.code)} Payload={payload}"
         ) from exc
     if status != 200:
         raise RuntimeError(f"Login request failed with status {status}: {payload}")
@@ -188,6 +217,21 @@ def _run_read_query(
             "actor_username": actor,
         },
     )
+    if status == 401:
+        raise RuntimeError(
+            "Read query returned 401 unauthorized. This should be prevented at readiness/login "
+            "stage; verify CSRF/read-policy behavior and session propagation."
+        )
+    if status == 400:
+        raise RuntimeError(
+            "Read query returned 400 (bad request). Route and payload likely mismatched "
+            "BFF allowlist schema."
+        )
+    if status == 403:
+        raise RuntimeError(
+            "Read query returned 403 forbidden. Verify BFF allowlist/authorization "
+            "constraints for /api/backend/v1/read/query."
+        )
     if status != 200:
         raise RuntimeError(f"Read query returned status {status}: {payload}")
     if "user" not in payload:
@@ -209,6 +253,18 @@ def _run_job_smoke(
         headers={"x-okr-actor": actor, "x-xsrf-token": csrf_token},
         payload={"kind": "ai.generate_json", "payload": {"prompt": "smoke test"}},
     )
+    if status == 401:
+        raise RuntimeError(
+            "Job submit returned 401 unauthorized. Verify BFF session/authz wiring and CSRF token."
+        )
+    if status == 403:
+        raise RuntimeError(
+            "Job submit returned 403 forbidden. Verify actor role and CSRF/session header policy."
+        )
+    if status == 400:
+        raise RuntimeError(
+            "Job submit returned 400. Validate payload fields and BFF jobs allowlist contract."
+        )
     if status != 202:
         raise RuntimeError(f"Job submit returned status {status}: {payload}")
 
@@ -226,6 +282,10 @@ def _run_job_smoke(
             url=f"{bff_url}/api/backend/v1/jobs/{job_id}",
             headers={"x-okr-actor": actor},
         )
+        if poll_status in {401, 403, 400}:
+            raise RuntimeError(
+                f"Job poll returned {poll_status}: {_error_hint(poll_status)} Payload={poll_payload}"
+            )
         if poll_status != 200:
             raise RuntimeError(
                 f"Job poll returned status {poll_status} for {job_id}: {poll_payload}"

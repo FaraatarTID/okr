@@ -94,19 +94,27 @@ def _enforce_backend_mutation_failure_policy(payload: Dict[str, Any]) -> None:
     )
 
 
-def _node_from_backend_payload(payload: Dict[str, Any]):
+def _node_from_backend_payload(
+    payload: Dict[str, Any], *, crud_module: Optional[Any] = None
+):
+    if crud_module is None:
+        crud_module = sys.modules.get("src.crud")
     return crud_core_helpers.node_from_backend_payload_from_crud(
         payload=payload,
+        crud_module=crud_module,
     )
 
 
 def _validate_update_fields(
-    entity_name: str, updates: dict, allowed_fields: set
+    entity_name: str, updates: dict, allowed_fields: set, *, crud_module: Optional[Any] = None
 ) -> None:
+    if crud_module is None:
+        crud_module = sys.modules.get("src.crud")
     return crud_core_helpers.validate_update_fields_from_crud(
         entity_name=entity_name,
         updates=updates,
         allowed_fields=allowed_fields,
+        crud_module=crud_module,
     )
 
 

@@ -284,7 +284,7 @@ def _smoke_check_services(
 
                 with urllib.request.urlopen(url, timeout=2) as response:
                     status = int(getattr(response, "status", 0) or 0)
-                if 200 <= status < 500:
+                if 200 <= status < 300:
                     ready_services.add(service_name)
                     last_errors.pop(service_name, None)
                 else:
