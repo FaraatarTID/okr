@@ -140,7 +140,24 @@ def _check_docker_daemon() -> CheckResult:
             passed=False,
             details=f"Failed to run docker info: {exc}",
         )
+
+    combined = (completed.stdout + completed.stderr).lower()
     if completed.returncode != 0:
+        if (
+            ("permission denied" in combined or "access is denied" in combined)
+            and ("npipe" in combined or ".docker" in combined)
+        ):
+            details = (
+                "docker is installed but daemon permission is denied.\n"
+                "Fixes: (1) start Docker Desktop and grant your user Docker access,\n"
+                "(2) reopen this shell after permission changes,\n"
+                "(3) if using Linux CI agents, ensure docker group membership or sudo access."
+            )
+            return CheckResult(
+                name="Docker daemon",
+                passed=False,
+                details=details,
+            )
         return CheckResult(
             name="Docker daemon",
             passed=False,

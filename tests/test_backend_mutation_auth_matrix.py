@@ -23,7 +23,15 @@ def _make_client(monkeypatch):
 
 
 def _fixture_password(name: str) -> str:
-    return f"{name}-unit-test-password"
+    import hashlib
+    import os
+
+    seed = os.environ.get(
+        f"OKR_TEST_{name.upper()}_PASSWORD_SEED",
+        os.environ.get("OKR_TEST_PASSWORD_SEED", "okr_mutation_auth_matrix_seed"),
+    )
+    digest = hashlib.sha256(f"{seed}:{name}".encode("utf-8")).hexdigest()
+    return digest[:16]
 
 
 def _deny_forbidden(*_args, **_kwargs):
