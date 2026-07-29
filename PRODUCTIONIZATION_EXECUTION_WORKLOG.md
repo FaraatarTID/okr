@@ -1083,3 +1083,40 @@ Documentation HQ: [README](README.md)
 - Notes:
   - `api_create_user` now resolves via runtime main indirection as well.
   - Created a fresh progress checkpoint in `docs/WORKLOG.md` and `docs/BACKLOG.md` for local execution traces.
+
+### Issue: LOOP-19 — Strategic `backend_app/main.py` orchestration decomposition
+- Status: **Resolved**
+- Start Date: 2026-07-29
+- End Date: 2026-07-29
+- Scope:
+  - Start a bounded extraction pass that keeps behavior unchanged while reducing `backend_app/main.py` orchestration density.
+  - Introduce explicit slices for bootstrap/config orchestration, route assembly wiring, and seam-safe compatibility exports if/where needed.
+  - Keep route and helper contracts stable while tightening readability and ownership boundaries.
+- Planned work:
+  - Define new orchestration module boundaries and import contracts.
+  - Move orchestration blocks from `main.py` into bounded modules with explicit, tested entrypoints.
+  - Re-run seam and gate suite immediately after each extraction step, not only end-of-loop.
+- Verification to execute in this loop:
+  - `python -m ruff check backend_app/main.py backend_app/main_bootstrap_helpers.py backend_app/main_mutation_handlers.py backend_app/main_workflow_handlers.py backend_app/main_runtime_helpers.py`
+  - `python -m pytest -q tests/test_module_main_seams.py tests/test_backend_mutation_api.py tests/test_bff_allowlist_contract.py`
+  - `python scripts/verify_module_export_contracts.py`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/verify_module_design_efficiency.py`
+  - `python -m ruff check backend_app/main.py backend_app/main_orchestration.py backend_app/main_bootstrap_helpers.py`
+  - `python -m pytest -q tests/test_module_main_seams.py tests/test_bff_allowlist_contract.py`
+- Acceptance criteria:
+  - All targeted verification commands remain green.
+  - Route contract tests (`POST /v1/nodes/goal` etc.) remain stable under CI and local runs.
+  - Backlog record now reflects this loop with evidence outputs and residual risks.
+
+Evidence executed during LOOP-19:
+- `python -m ruff check backend_app/main.py backend_app/main_orchestration.py backend_app/main_bootstrap_helpers.py`
+- `python -m pytest -q tests/test_module_main_seams.py tests/test_bff_allowlist_contract.py`
+- `python -m pytest -q tests/test_backend_mutation_api.py::test_router_contracts_for_mutation_endpoints_stay_stable`
+- `python scripts/verify_module_export_contracts.py`
+- `python scripts/verify_helper_integrity.py`
+- `python scripts/verify_module_design_efficiency.py`
+
+Implementation notes:
+- Added `backend_app/main_orchestration.py` with `compose_main_app` to own app construction, observability handler install, and router registration.
+- Kept `backend_app/main.py` as a thin entrypoint that delegates orchestration while preserving all existing compatibility seams.

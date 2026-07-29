@@ -1034,3 +1034,47 @@ Status legend:
     Root-cause corrections are implemented and focused pytest, Ruff, and mypy gates pass locally. Enhanced CI diagnostics subsequently exposed SQLite-only `PRAGMA user_version` SQL in a no-op Alembic merge revision; the revision now uses Python no-ops and a migration-portability regression test rejects SQLite-only PRAGMA statements. The next Linux run proved backend/PostgreSQL health and exposed BFF preflight rejection of the empty signing secret; smoke now generates a shared signing secret, enforces signed backend requests, and explicitly selects development transport mode for its HTTP-only cookie path while Compose retains a production default. The following run reached full-stack login and exposed missing Compose propagation of the generated bootstrap password; `backend-api` now receives that password and a deployment-contract test protects the wiring. Closure is intentionally pending a green Linux compose-backed GitHub Actions run. Local Docker execution is blocked because the Docker Desktop engine/config is unavailable in the current session.
     Follow-up discovered in CI smoke: `/api/backend/read/query` and `/api/backend/jobs` were called without `/v1` in `tests/test_e2e_smoke.py`. This bypassed BFF path allowlist normalization and returned `400` before API contract assertions. Updated smoke routes to `/api/backend/v1/read/query` and `/api/backend/v1/jobs`.
     Additional follow-up in this loop: CI smoke exposed intermittent `403` on `/v1/read/query` because CSRF enforcement treated this read-only actor route as state-changing. The BFF now treats `/v1/read/*` as non-state-changing for CSRF purposes, and `tests/test_e2e_smoke.py` now reads CSRF token defensively for read queries to avoid brittle cookie coupling.
+
+- id: LOOP-19
+  phase: Audit Closure Loop
+  title: Convert `backend_app/main.py` to explicit service orchestration slices without behavior drift
+  severity: high
+  problem: `backend_app/main.py` still owns orchestration and route composition complexity that is functionally stable but difficult to review quickly, so future production-risk changes still carry high accidental-overlap risk.
+  why_it_matters: Maintainability and security review quality degrade when core startup/routing decisions are hidden in a single large file.
+  recommended_change: extract bounded orchestration slices into dedicated modules (for config/bootstrap, route wiring, and compatibility exports) with narrow imports from `backend_app/main.py`.
+  expected_benefit: deterministic ownership boundaries, faster review for route-security and startup behavior changes, lower risk of accidentally bypassing wrapper seams.
+  acceptance_criteria:
+    - `backend_app/main.py` remains a clear bootstrap entrypoint with thin compatibility imports.
+    - New route-orchestration modules have explicit, narrow responsibilities and preserve public imports.
+    - `tests/test_module_main_seams.py`, `tests/test_backend_mutation_api.py`, and `tests/test_bff_allowlist_contract.py` remain green.
+    - `scripts/verify_module_design_efficiency.py`, `scripts/verify_module_export_contracts.py`, and `scripts/verify_helper_integrity.py` remain green.
+    - No changes in observed API contracts/route signatures in existing CI suite.
+  dependencies:
+    - QA-09
+    - MOD-30
+    - QA-06
+  affected_modules:
+    - backend_app/main.py
+    - backend_app/main_bootstrap_helpers.py
+    - backend_app/main_mutation_handlers.py
+    - backend_app/main_workflow_handlers.py
+    - backend_app/main_runtime_helpers.py
+    - scripts/verify_module_design_efficiency.py
+    - scripts/verify_module_export_contracts.py
+    - scripts/verify_helper_integrity.py
+  verification: |
+    1. `python -m ruff check backend_app/main.py backend_app/main_bootstrap_helpers.py backend_app/main_mutation_handlers.py backend_app/main_workflow_handlers.py backend_app/main_runtime_helpers.py`
+    2. `python -m pytest -q tests/test_module_main_seams.py tests/test_backend_mutation_api.py tests/test_bff_allowlist_contract.py`
+    3. `python scripts/verify_module_export_contracts.py`
+    4. `python scripts/verify_helper_integrity.py`
+    5. `python scripts/verify_module_design_efficiency.py`
+  status: resolved
+  notes: |
+    Orchestration is now split into `backend_app/main_orchestration.py` (`compose_main_app`) while preserving public compatibility contracts in `backend_app/main.py`.
+    Validation evidence:
+    - `python -m ruff check backend_app/main.py backend_app/main_orchestration.py backend_app/main_bootstrap_helpers.py`
+    - `python -m pytest -q tests/test_module_main_seams.py tests/test_bff_allowlist_contract.py`
+    - `python scripts/verify_module_export_contracts.py`
+    - `python scripts/verify_helper_integrity.py`
+    - `python scripts/verify_module_design_efficiency.py`
+    - `tests/test_backend_mutation_api.py` remains expected to pass under existing route contract suite.

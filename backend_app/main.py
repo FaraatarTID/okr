@@ -141,13 +141,11 @@ from src.crud import (
     authenticate_user_detailed,
     close_experiment,  # noqa: F401
     create_alignment,  # noqa: F401
-    create_check_in,  # noqa: F401
     create_cycle,  # noqa: F401
     create_experiment,  # noqa: F401
     create_objective_alignment_link,  # noqa: F401
     create_retrospective,  # noqa: F401
     create_team,  # noqa: F401
-    create_user,  # noqa: F401
     create_weekly_plan,  # noqa: F401
     delete_alignment,  # noqa: F401
     delete_cycle,  # noqa: F401
@@ -186,7 +184,7 @@ from src.domain.read_queries import build_atlas_scope_snapshot
 from src.domain import analysis as analysis_domain
 from src.services.ai_provider import run_ai_health_check
 from src.services import ai_service
-from backend_app.observability_http import install_observability_handlers
+from backend_app.main_orchestration import compose_main_app
 from backend_app.main_mutation_handlers import (
     api_create_goal,  # noqa: F401
     api_create_objective,  # noqa: F401
@@ -220,10 +218,6 @@ from src.services.supabase_api_mode import (
     stop_timer_via_supabase_api,  # noqa: F401
 )
 from src.services.pdf_service import get_pdf_runtime_diagnostics
-from backend_app.main_bootstrap_helpers import (
-    make_main_lifespan,
-    register_main_routers,
-)
 from backend_app.main_workflow_handlers import (
     api_close_experiment,  # noqa: F401
     api_create_alignment,  # noqa: F401
@@ -364,21 +358,14 @@ def _bootstrap_ensure_admin_exists() -> bool:
 
 
 def create_app() -> FastAPI:
-    _lifespan = make_main_lifespan(
+    return compose_main_app(
+        logger=_LOGGER,
+        main_module=sys.modules[__name__],
         is_supabase_api_mode_enabled=is_supabase_api_mode_enabled,
         ensure_supabase_api_ready=ensure_supabase_api_ready,
         init_database=_bootstrap_init_database,
         ensure_admin_exists=_bootstrap_ensure_admin_exists,
     )
-
-    app = FastAPI(
-        title="OKR Internal Backend",
-        version="0.1.0",
-        lifespan=_lifespan,
-    )
-    install_observability_handlers(app, _LOGGER)
-    register_main_routers(app=app, main_module=sys.modules[__name__])
-    return app
 
 
 app = create_app()
