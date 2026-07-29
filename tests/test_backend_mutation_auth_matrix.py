@@ -5,6 +5,7 @@ import re
 from fastapi.testclient import TestClient
 import pytest
 from pathlib import Path
+from tests._test_credentials import credential_password
 
 import backend_app.main as backend_main
 from backend_app.main import BACKUP_FORMAT_VERSION
@@ -20,10 +21,6 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     return TestClient(backend_main.app), backend_main
-
-
-def _fixture_password(name: str) -> str:
-    return f"{name}-unit-test-password"
 
 
 def _deny_forbidden(*_args, **_kwargs):
@@ -87,7 +84,7 @@ _MUTATION_AUTH_MATRIX_ROUTES = [
         "/v1/users",
         {
             "username": "newmember",
-            "password": _fixture_password("newmember"),
+            "password": credential_password("newmember"),
             "role": "member",
         },
         ("create_user",),
@@ -95,7 +92,7 @@ _MUTATION_AUTH_MATRIX_ROUTES = [
     (
         "POST",
         "/v1/users/11/reset-password",
-        {"new_password": _fixture_password("reset")},
+        {"new_password": credential_password("reset")},
         ("reset_user_password",),
     ),
     (

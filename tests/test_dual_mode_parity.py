@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from types import SimpleNamespace
-import hashlib
-import os
+
+from tests._test_credentials import credential_password
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,15 +20,6 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
     return TestClient(backend_main.app), backend_main
-
-
-def _test_password(name: str) -> str:
-    seed = os.environ.get(
-        f"OKR_TEST_{name.upper()}_PASSWORD_SEED",
-        os.environ.get("OKR_TEST_PASSWORD_SEED", "okr_dual_mode_test_seed"),
-    )
-    digest = hashlib.sha256(f"{seed}:{name}".encode("utf-8")).hexdigest()
-    return digest[:16]
 
 
 def _run_mutation_mode(
@@ -216,7 +207,7 @@ def test_dual_mode_critical_mutation_payload_parity(
             "/v1/users",
             {
                 "username": "dual_user_admin",
-                "password": _test_password("admin"),
+                "password": credential_password("admin"),
                 "role": "admin",
                 "display_name": "Dual User",
                 "must_change_password": False,
@@ -245,7 +236,7 @@ def test_dual_mode_critical_mutation_payload_parity(
         (
             "/v1/users/901/reset-password",
             {
-                "new_password": _test_password("reset"),
+            "new_password": credential_password("reset"),
                 "require_change": True,
             },
             "reset_user_password",
@@ -405,4 +396,3 @@ def test_dual_mode_read_query_payload_parity(monkeypatch, kind, params, expected
     assert db_response.json() == expected
     assert sup_response.status_code == 200
     assert sup_response.json() == expected
-

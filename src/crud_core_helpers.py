@@ -179,7 +179,12 @@ def try_backend_mutation(
     crud_module._enforce_backend_mutation_failure_policy(backend_result)
 
 
-def node_from_backend_payload_from_crud(*, payload: Dict[str, Any]):
+def node_from_backend_payload_from_crud(
+    *,
+    payload: Dict[str, Any],
+    crud_module: Optional[Any] = None,
+    **_ignored,
+):
     node_data = payload.get("node")
     if isinstance(node_data, dict):
         return SimpleNamespace(**node_data)
@@ -187,7 +192,12 @@ def node_from_backend_payload_from_crud(*, payload: Dict[str, Any]):
 
 
 def validate_update_fields_from_crud(
-    *, entity_name: str, updates: dict, allowed_fields: set
+    *,
+    entity_name: str,
+    updates: dict,
+    allowed_fields: set,
+    crud_module: Optional[Any] = None,
+    **_ignored,
 ) -> None:
     """Raise on update keys that are not explicitly allowed."""
     invalid_fields = sorted(
