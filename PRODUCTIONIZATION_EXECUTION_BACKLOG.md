@@ -1222,3 +1222,94 @@ Status legend:
     - `python scripts/verify_helper_integrity.py`
     - `python scripts/verify_module_design_efficiency.py`
     - `tests/test_backend_mutation_api.py` remains expected to pass under existing route contract suite.
+
+- id: LOOP-20.1
+  phase: Strategic Post-Closure
+  title: PostgreSQL parity lane for migrations, authz, and locking-sensitive flows
+  severity: high
+  problem: SQLite-based tests are fast but can miss production failures tied to PostgreSQL-specific constraints, RLS, transactions, and lock behavior.
+  why_it_matters: Production incidents can hide behind green SQLite suites when lock timing, migration scripts, or RLS policies behave differently on PostgreSQL.
+  expected_benefit: deterministic confidence for high-risk data flows and safer database behavior assertions in CI.
+  acceptance_criteria:
+    - Add a PostgreSQL-backed CI verification lane that executes migration + authz + locking-sensitive tests.
+    - Keep this suite separate from the fast unit path to preserve developer iteration speed.
+    - Include job-claims, timer locking, and migration consistency assertions.
+  dependencies:
+    - LOOP-19
+    - TOP10-03
+  affected_modules:
+    - scripts/verify_postgresql_integration.py
+    - .github/workflows/ci.yml
+    - tests/test_postgresql_integration.py
+  verification:
+    - `python -m pytest -q tests/test_postgresql_integration.py`
+    - `python scripts/verify_postgresql_integration.py --ensure-docker-service`
+  status: open
+
+- id: LOOP-20.2
+  phase: Strategic Post-Closure
+  title: Add release and rollback operational readiness gates
+  severity: high
+  problem: Deployment/run safety still relies on partial manual runbook execution and non-immutable release assumptions.
+  why_it_matters: Without deterministic release-preflight and rollback checks, outages become harder to reverse safely and evidence is delayed until incident time.
+  expected_benefit: predictable, repeatable release posture with documented rollback decision points and preflight validation.
+  acceptance_criteria:
+    - Add release preflight checks for image immutability, migration preflight, and startup assumptions.
+    - Add rollback rehearsal commands and evidence capture in CI or a release-run script.
+    - Document the release/rollback flow in a canonical operations section.
+  dependencies:
+    - LOOP-20.1
+    - TEST-02
+  affected_modules:
+    - .github/workflows/ci.yml
+    - DEPLOYMENT.md
+  verification:
+    - `python scripts/verify_dependency_licenses.py`
+    - release simulation script output artifact
+  status: open
+
+- id: LOOP-20.3
+  phase: Strategic Post-Closure
+  title: Enforce dependency vulnerability and license policy gates
+  severity: medium
+  problem: Supply-chain and policy gates exist but still require manual correction and do not always block merge automatically.
+  why_it_matters: Vulnerabilities and policy violations can enter merge flows and increase exploitability or compliance risk.
+  expected_benefit: no unreviewed dependency/license violations in merge path and consistent exception review workflow.
+  acceptance_criteria:
+    - Make Python and Node dependency/license checks fail CI on unresolved findings.
+    - Keep exception handling explicit and tracked in versioned allowlist/config.
+    - Add remediation workflow checkpoints to backlog/roadmap evidence.
+  dependencies:
+    - LOOP-20.1
+    - TOP10-06
+  affected_modules:
+    - scripts/verify_dependency_licenses.py
+    - scripts/verify_secret_hygiene.py
+    - .github/workflows/ci.yml
+  verification:
+    - `python scripts/verify_dependency_licenses.py`
+    - `python scripts/verify_secret_hygiene.py`
+  status: open
+
+- id: LOOP-20.4
+  phase: Strategic Post-Closure
+  title: Expand observability and operator diagnostics before full production scale
+  severity: medium
+  problem: Existing diagnostics prove many paths but do not yet provide consistently correlated operator-first evidence for all failure classes.
+  why_it_matters: Faster root-cause and safer escalation require standardized correlation and deterministic fail-fast diagnostics across services.
+  expected_benefit: reduced time-to-diagnosis and clearer operator handoff from smoke/test failure to fix action.
+  acceptance_criteria:
+    - Standardize correlation/structured log expectations across backend, BFF, and worker for key failure modes.
+    - Extend runbook diagnostics for smoke startup/login/read/mutation paths with redacted evidence output.
+    - Add admin operation smoke drills (retry/cancel/export/check) as documented commands.
+  dependencies:
+    - LOOP-20.1
+    - LOOP-20.2
+  affected_modules:
+    - scripts/verify_resilience.py
+    - tests/test_verify_resilience_script.py
+    - docs/OBSERVABILITY_AND_RUNBOOKS.md
+  verification:
+    - `python -m pytest -q tests/test_verify_resilience_script.py`
+    - manual operator diagnostic rehearsal log
+  status: open

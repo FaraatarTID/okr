@@ -102,7 +102,6 @@ def _enforce_backend_mutation_failure_policy(payload: Dict[str, Any]) -> None:
 
 def _node_from_backend_payload(payload: Dict[str, Any]):
     return crud_core_helpers.node_from_backend_payload_from_crud(
-        crud_module=_crud_module_context(),
         payload=payload,
     )
 
