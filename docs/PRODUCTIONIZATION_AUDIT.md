@@ -22,6 +22,23 @@ Production readiness score: **3.0 / 5**.
 | Scalability | 2.6 | PostgreSQL-centric design can scale to moderate load; horizontal behavior depends on DB/Redis-backed state and careful pooler configuration. |
 | Operations | 2.8 | Docker/Kubernetes assets and deploy checks exist; observability, runbooks, dashboards, and admin process ergonomics need work. |
 
+## Readiness Documentation Governance
+
+Decision date: 2026-07-29
+
+This file is the repository's single canonical production-readiness verdict. Execution backlogs and worklogs may track remediation and evidence, but they must not publish independent readiness classifications or scores.
+
+Readiness-document changes follow these rules:
+
+1. Update the current verdict in this file and add a dated decision record explaining the evidence and change.
+2. Do not create a parallel readiness report. If this file must be replaced, delete it and retire all incoming links in the same change that introduces its successor.
+3. Delete superseded readiness documents from the tracked repository; a banner or stale index entry is not sufficient retirement.
+4. Keep the README Documentation HQ linked to exactly one canonical readiness verdict.
+5. Require CI to reject competing readiness-report artifacts and stale canonical-readiness links.
+6. Use descriptive commit messages for productionization work. Generic messages such as `patch` do not provide acceptable audit evidence.
+
+The 2026-07-24 `docs/PRODUCTION_READINESS_REPORT.md` is superseded by this audit and must be removed as part of the governance-remediation backlog item.
+
 ## Phase 1 — Application Archaeology
 
 ### Product Understanding
