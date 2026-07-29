@@ -7,15 +7,17 @@ helper modules for concrete behavior.
 
 from __future__ import annotations
 
-import sys
+import importlib
+
 from typing import Any, Dict, Optional
 
 from src.domain import auth_service
+from src.domain import read_service
 from src import crud_core_helpers
 
 
 def _crud_module_context():
-    crud_module = sys.modules.get("src.crud")
+    crud_module = importlib.import_module("src.crud")
     if crud_module is None:
         raise RuntimeError("src.crud module is not available for CRUD runtime helper context.")
     return crud_module
@@ -98,7 +100,7 @@ def _node_from_backend_payload(
     payload: Dict[str, Any], *, crud_module: Optional[Any] = None
 ):
     if crud_module is None:
-        crud_module = sys.modules.get("src.crud")
+        crud_module = _crud_module_context()
     return crud_core_helpers.node_from_backend_payload_from_crud(
         payload=payload,
         crud_module=crud_module,
@@ -109,7 +111,7 @@ def _validate_update_fields(
     entity_name: str, updates: dict, allowed_fields: set, *, crud_module: Optional[Any] = None
 ) -> None:
     if crud_module is None:
-        crud_module = sys.modules.get("src.crud")
+        crud_module = _crud_module_context()
     return crud_core_helpers.validate_update_fields_from_crud(
         entity_name=entity_name,
         updates=updates,
@@ -169,7 +171,7 @@ def create_user(
 
 
 def get_user_by_username(username: str) -> object:
-    return auth_service.get_user_by_username_from_crud(
+    return read_service.get_user_by_username_from_crud(
         crud_module=_crud_module_context(),
         username=username,
     )

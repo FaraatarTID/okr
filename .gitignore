@@ -22,9 +22,11 @@ node_modules/
 
 # Generated reports
 .jscpd-report/
+pytest-spa-e2e-results.xml
 
 # Test artifacts
 .test-artifacts/
+.tmp-backend-api-test.env
 
 # Runtime tmp
 tmp/

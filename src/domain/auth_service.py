@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+import importlib
 
 from sqlalchemy.exc import OperationalError
 
@@ -169,21 +170,7 @@ def create_user_from_crud(
 
 
 def get_user_by_username_from_crud(*, crud_module, username: str):
-    """Get a user by username."""
-    if backend_read_proxy_enabled_from_crud(crud_module=crud_module):
-        from src.services import backend_client
-
-        actor = resolve_backend_actor_from_crud(crud_module=crud_module)
-        backend_result = backend_client.read_user_by_username(
-            str(username or "").strip(),
-            actor_username=actor,
-        )
-        return backend_read_result_or_raise_from_crud(
-            crud_module=crud_module,
-            operation="get_user_by_username",
-            result=backend_result,
-        )
-    return crud_auth_helpers.get_user_by_username_from_crud(
+    return _read_service_context().get_user_by_username_from_crud(
         crud_module=crud_module,
         username=username,
     )
@@ -266,7 +253,7 @@ def authorize_node_scoped_access_from_crud(
 
 
 def get_user_goals_from_crud(*, crud_module, username: str, cycle_id: int):
-    return crud_auth_helpers.get_user_goals_from_crud(
+    return _read_service_context().get_user_goals_from_crud(
         crud_module=crud_module,
         username=username,
         cycle_id=cycle_id,
@@ -274,21 +261,7 @@ def get_user_goals_from_crud(*, crud_module, username: str, cycle_id: int):
 
 
 def get_user_by_id_from_crud(*, crud_module, user_id: int):
-    """Get a user by ID."""
-    if backend_read_proxy_enabled_from_crud(crud_module=crud_module):
-        from src.services import backend_client
-
-        actor = resolve_backend_actor_from_crud(crud_module=crud_module)
-        backend_result = backend_client.read_user_by_id(
-            int(user_id),
-            actor_username=actor,
-        )
-        return backend_read_result_or_raise_from_crud(
-            crud_module=crud_module,
-            operation="get_user_by_id",
-            result=backend_result,
-        )
-    return crud_auth_helpers.get_user_by_id_from_crud(
+    return _read_service_context().get_user_by_id_from_crud(
         crud_module=crud_module,
         user_id=user_id,
     )
@@ -494,45 +467,23 @@ def authenticate_user_from_crud(
 
 
 def get_all_users_from_crud(*, crud_module):
-    """Get all users."""
-    if backend_read_proxy_enabled_from_crud(crud_module=crud_module):
-        from src.services import backend_client
-
-        actor = resolve_backend_actor_from_crud(crud_module=crud_module)
-        backend_result = backend_client.read_all_users(actor_username=actor)
-        return list(
-            backend_read_result_or_raise_from_crud(
-                crud_module=crud_module,
-                operation="get_all_users",
-                result=backend_result,
-            )
-            or []
-        )
-    return crud_auth_helpers.get_all_users_from_crud(crud_module=crud_module)
+    return _read_service_context().get_all_users_from_crud(crud_module=crud_module)
 
 
 def get_team_members_from_crud(*, crud_module, manager_id: int) -> List[Any]:
-    """Get all users managed by a specific manager."""
-    if backend_read_proxy_enabled_from_crud(crud_module=crud_module):
-        from src.services import backend_client
-
-        actor = resolve_backend_actor_from_crud(crud_module=crud_module)
-        backend_result = backend_client.read_team_members(
-            int(manager_id),
-            actor_username=actor,
-        )
-        return list(
-            backend_read_result_or_raise_from_crud(
-                crud_module=crud_module,
-                operation="get_team_members",
-                result=backend_result,
-            )
-            or []
-        )
-    return crud_auth_helpers.get_team_members_from_crud(
+    return _read_service_context().get_team_members_from_crud(
         crud_module=crud_module,
         manager_id=manager_id,
     )
+
+
+def _read_service_context():
+    read_service = importlib.import_module("src.domain.read_service")
+    if read_service is None:
+        raise RuntimeError(
+            "src.domain.read_service module is not available for CRUD auth service context."
+        )
+    return read_service
 
 
 def update_user_from_crud(

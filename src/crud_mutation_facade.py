@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import List, Optional
+import importlib
 
 from src.domain import auth_service
 from src.domain.crud_contracts import UNSET as _UNSET
@@ -45,9 +46,7 @@ from src.models import (
 
 
 def _crud_module():
-    import sys
-
-    return sys.modules.get("src.crud", sys.modules[__name__])
+    return importlib.import_module("src.crud")
 
 
 def update_user(
