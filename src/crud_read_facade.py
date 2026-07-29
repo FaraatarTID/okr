@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import List, Optional
+import importlib
 
 from src.domain import read_service
 from src.models import (
@@ -22,9 +23,7 @@ from src.models import (
 
 
 def _crud_module():
-    import sys
-
-    return sys.modules.get("src.crud", sys.modules[__name__])
+    return importlib.import_module("src.crud")
 
 
 def get_all_users() -> List[User]:

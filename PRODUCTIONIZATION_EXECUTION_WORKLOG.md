@@ -4,6 +4,72 @@ Documentation HQ: [README](README.md)
 
 ## 2026-07-29
 
+### Loop Continuation: 2026-07-30 Operational Debt Closure
+- Status: **In Progress**
+- Plan started:
+  - Continue ownership-risk reduction in `src/crud.py` seam layers while preserving existing public contracts.
+  - Remove legacy seam workarounds and align docs so only one readiness verdict source is authoritative.
+  - Keep CI-facing artifacts clean by removing committed debug artifacts from runtime/e2e paths.
+- Evidence:
+  - Removed root-level debug artifacts:
+    - `.tmp-backend-api-test.env`
+    - `pytest-spa-e2e-results.xml`
+  - Added `.gitignore` entries for both artifacts to prevent reintroduction.
+  - Added next-loop execution priorities in `PRODUCTIONIZATION_EXECUTION_BACKLOG.md` (BE-114 / BE-119 / BE-117 / BE-120).
+  - Evidence for first BE-114/BE-119 actions:
+    - Removed `sys.modules.get("src.crud")` fallback usage from runtime/read seam shims.
+    - `src/crud_runtime_helpers.py` now resolves module context through deterministic `importlib.import_module("src.crud")`.
+    - `src/crud_read_facade.py` now resolves compatibility shim module through deterministic import instead of local module cache self-lookups.
+    - Pending: add explicit ownership matrix and seam regression assertions before marking BE-114 as complete.
+  - `BE-119` progress updated:
+    - Updated all remaining seam workarounds to use deterministic import resolution:
+      - `src/crud_auth_helpers.py`
+      - `src/crud_mutation_facade.py`
+      - `src/crud_timer_facade.py`
+      - `src/crud_runtime_helpers.py`
+      - `src/crud_read_facade.py`
+    - Removed legacy test fixture debug artifacts and tracked them in `.gitignore`:
+      - `.tmp-backend-api-test.env`
+      - `pytest-spa-e2e-results.xml`
+    - Loop status note: BE-119 is now considered closed pending final test evidence if desired.
+  - `BE-117` and `BE-120` progress updated:
+    - Added authoritative readiness-governance marker in `docs/PRODUCTIONIZATION_AUDIT.md` with explicit supersession of `docs/PRODUCTION_READINESS_REPORT.md`.
+    - Confirmed `docs/BACKLOG.md` and `docs/WORKLOG.md` now only point to active execution tracking artifacts.
+    - Re-validated that `src/ui` is absent and no active import/runtime path references remain.
+    - Verification evidence:
+      - `rg -n "src/ui|from src\\.ui|import src\\.ui|streamlit" .`
+      - `python scripts/check_docs_hq_links.py`
+
+### Issue: BE-117 — Enforce documentation consistency between readiness artifacts
+- Status: **Resolved**
+- Scope:
+  - Declared a single authoritative readiness source in `docs/PRODUCTIONIZATION_AUDIT.md` and superseded older contradictory verdicts.
+- Files:
+  - `docs/PRODUCTIONIZATION_AUDIT.md`
+  - `docs/PRODUCTION_READINESS_REPORT.md`
+  - `PRODUCTIONIZATION_EXECUTION_BACKLOG.md`
+  - `PRODUCTIONIZATION_EXECUTION_WORKLOG.md`
+  - `docs/BACKLOG.md`
+  - `docs/WORKLOG.md`
+- Verification:
+  - `rg -n "Production-ready|production-ready|supersed|Documentation HQ" docs/PRODUCTIONIZATION_AUDIT.md docs/PRODUCTION_READINESS_REPORT.md docs/BACKLOG.md docs/WORKLOG.md`
+  - `python scripts/check_docs_hq_links.py`
+- Result:
+  - Contradictory readiness verdicts across canonical docs were removed and readiness authority is now explicit.
+
+### Issue: BE-120 — Remove remaining historical scaffolding artifacts from active docs/runtime surface
+- Status: **Resolved**
+- Scope:
+  - Closed remaining active-documentation/runtime mentions of obsolete `src/ui` surface and confirmed no startup/import path still resolves it.
+- Files:
+  - `src/ui` (not present)
+  - `docs/PRODUCTION_READINESS_REPORT.md`
+- Verification:
+  - `rg -n "src/ui|from src\\.ui|import src\\.ui|streamlit" .`
+  - `python -m pytest -q tests/test_helper_seam_contracts.py`
+- Result:
+  - `src/ui` is removed from runtime and active docs surfaces.
+
 ### Issue: BE-111 — Restore and guard seam contracts between backend_app.main and compatibility layers
 - Status: **Resolved**
 - Scope:
@@ -24,15 +90,25 @@ Documentation HQ: [README](README.md)
 ### Issue: BE-114 — Consolidate read/query ownership overlap and seal seam contract regressions
 - Status: **Resolved**
 - Scope:
-  - Closed remaining seam drift in CRUD read helpers by making compatibility seams in `src/crud_core_helpers.py` tolerant of legacy `crud_module` keyword arguments.
-  - This preserves `src/crud_read_facade.py`/`src/domain/read_service.py` responsibility boundaries (facade compatibility vs domain logic) without changing behavior.
+  - Closed remaining read/query ownership overlap between `src/domain/auth_service.py` and `src/domain/read_service.py`.
+  - Moved read-oriented behavior for user/team/read-query APIs into `src/domain/read_service.py` and kept compatibility shims in `auth_service` as thin delegations.
+  - Added explicit read-service delegation for:
+    - `get_user_by_username_from_crud`
+    - `get_user_by_id_from_crud`
+    - `get_all_users_from_crud`
+    - `get_team_members_from_crud`
+    - `get_user_goals_from_crud`
+  - Updated `src/crud_runtime_helpers.py` `get_user_by_username` to call `src.domain.read_service` directly, reinforcing facade/service layering.
 - Files:
-  - `src/crud_core_helpers.py`
+  - `src/domain/read_service.py`
+  - `src/domain/auth_service.py`
+  - `src/crud_runtime_helpers.py`
+  - `tests/test_helper_seam_contracts.py`
 - Verification:
-  - `python -m ruff check src/crud_core_helpers.py`
-  - `python -m pytest -q tests/test_crud_backend_mutation_proxy.py::test_create_goal_uses_backend_mutation_proxy tests/test_crud_backend_mutation_proxy.py::test_update_task_backend_permission_error_bubbles`
+  - `python -m ruff check src/domain/read_service.py src/domain/auth_service.py src/crud_runtime_helpers.py tests/test_helper_seam_contracts.py`
+  - `python -m pytest -q tests/test_helper_seam_contracts.py tests/test_crud_backend_mutation_proxy.py::test_create_goal_uses_backend_mutation_proxy`
 - Result:
-  - Compatibility seam functions now accept optional `crud_module` kwargs consistently, preventing CI failures from stale keyword contracts.
+  - Read semantics now live in `read_service`, auth remains authorization-focused, and compatibility surfaces continue to pass through correctly.
 
 ### Issue: BE-115 — Resolve compose smoke login/session blockers (400/401/403)
 - Status: **Resolved**

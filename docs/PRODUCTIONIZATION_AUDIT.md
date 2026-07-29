@@ -5,6 +5,12 @@ Date: 2026-07-27
 
 This audit treats the repository as an inherited system that must be operated, modified, and scaled without relying on prototype-era context.
 
+## Canonical readiness governance
+
+- Authoritative verdict for this repository (current): **Production-risky but recoverable** (3.0/5), captured here.
+- This document supersedes `docs/PRODUCTION_READINESS_REPORT.md` dated 2026-07-24.
+- Historical readiness artifacts remain for audit traceability and should not be treated as active governance sources.
+
 ## Executive Summary
 
 The application is an OKR and strategy-execution workspace that separates strategic change work from BAU operational work. It includes a Next.js SPA, a Fastify BFF, a FastAPI backend API, a backend worker, SQLModel/PostgreSQL persistence, Alembic migrations, and optional AI/PDF integrations.

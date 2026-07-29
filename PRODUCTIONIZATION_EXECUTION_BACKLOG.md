@@ -5,6 +5,68 @@ Documentation HQ: [README](README.md)
 ## Scope
 Primary source: [docs/PRODUCTIONIZATION_AUDIT.md](docs/PRODUCTIONIZATION_AUDIT.md)
 
+## 2026-07-30 Loop Continuation Plan
+
+- [x] **P0 [BE-114] Resolve remaining ownership overlap between `src/crud_read_facade.py`, `src/crud_runtime_helpers.py`, and `src/domain/*_service.py` without behavior change**
+  - [x] Produce definitive ownership matrix:
+    - `src/domain/read_service.py`: read/query ownership (`get_user_*`, `get_team_*`, `get_all_users`, `get_user_goals`).
+    - `src/domain/auth_service.py`: authentication, authorization, throttle, mutation orchestration + read-service delegation for read APIs.
+    - `src/crud_read_facade.py` + `src/crud_runtime_helpers.py`: compatibility facades that call service-owned entrypoints.
+  - [x] Remove duplicated read implementations in `src/domain/auth_service.py` by delegating read APIs to `src/domain/read_service.py`.
+  - [x] Keep compatibility shims in call-through layers so legacy imports remain valid.
+  - [x] Add regression test proving `src/domain/auth_service.py` read wrappers delegate to read service contracts.
+  - [x] Validation: `ruff + targeted pytest` for seam/ownership regression paths.
+  - Dependencies: `BE-111`, `MOD-26`
+  - Files:
+    - `src/crud.py`
+    - `src/crud_read_facade.py`
+    - `src/crud_runtime_helpers.py`
+    - `src/domain/read_service.py`
+    - `src/domain/auth_service.py`
+    - `tests/test_helper_seam_contracts.py`
+
+- [x] **P1 [BE-119] Remove compatibility-workarounds and legacy test-mode hacks used only for startup/coverage shortcuts**
+  - [ ] Remove `sys.modules.get("src.crud", ...)`-style self-lookup workarounds from test-facing seams.
+  - [ ] Replace with explicit dependency injection/shim registration in test helpers where required.
+  - [ ] Validate with `test_helper_seam_contracts.py` and targeted mutation proxy coverage.
+  - [ ] Files:
+    - `src/crud_runtime_helpers.py`
+    - `src/crud_auth_helpers.py`
+    - `src/crud_mutation_facade.py`
+    - `src/crud_timer_facade.py`
+    - `src/crud_read_facade.py`
+    - `tests/test_helper_seam_contracts.py`
+    - `tests/test_crud_backend_mutation_proxy.py`
+  - [x] Remove `sys.modules.get("src.crud")` seams from the listed adapter modules and replace with deterministic `importlib` imports.
+  - [x] Preserve compatibility behavior while eliminating hidden module-registration reliance in seam resolution.
+  - [x] Update `.gitignore` and remove committed debug artifacts to reduce noisy reruns.
+
+- [x] **P1 [BE-117] Enforce documentation consistency between readiness artifacts**
+  - [x] Added a single authoritative readiness verdict marker and supersession note in `docs/PRODUCTIONIZATION_AUDIT.md`.
+  - [x] Kept `PRODUCTIONIZATION_EXECUTION_BACKLOG.md` and `PRODUCTIONIZATION_EXECUTION_WORKLOG.md` as canonical loop artifacts.
+  - [x] Confirmed `docs/BACKLOG.md` and `docs/WORKLOG.md` contain only legacy traceability pointers to the canonical execution artifacts.
+  - [x] Validation: periodic `scripts/check_docs_hq_links.py` and grep check for stale readiness verdict references.
+  - [ ] Files:
+    - `docs/PRODUCTIONIZATION_AUDIT.md`
+    - `PRODUCTIONIZATION_EXECUTION_BACKLOG.md`
+    - `PRODUCTIONIZATION_EXECUTION_WORKLOG.md`
+    - `docs/BACKLOG.md`
+    - `docs/WORKLOG.md`
+    - `scripts/check_docs_hq_links.py`
+
+- [x] **P2 [BE-120] Remove remaining historical scaffolding artifacts from active docs/runtime surface**
+  - [x] Confirmed obsolete CI/e2e debug artifacts were removed and protected by `.gitignore`.
+  - [x] Confirmed obsolete `src/ui` surface references were removed from active readiness/docs runtime surfaces.
+  - [x] Confirmed no runtime or startup import path resolves `src/ui` across code, scripts, docs, and CI.
+  - [ ] Files:
+    - `.gitignore`
+    - `src/ui`
+    - `docs/PRODUCTION_READINESS_REPORT.md`
+    - `scripts/verify_dependency_licenses.py`
+    - `scripts/verify_module_design_efficiency.py`
+
+## 2026-07-29
+
 Status legend:
 - `pending`
 - `in_progress`
@@ -1095,9 +1157,9 @@ Status legend:
     - scripts/verify_resilience.py
     - tests/test_verify_resilience_script.py
   verification: focused pytest + ruff + compose config + compose-backed smoke in CI
-  status: in_progress
+  status: resolved
   notes: |
-    Root-cause corrections are implemented and focused pytest, Ruff, and mypy gates pass locally. Enhanced CI diagnostics subsequently exposed SQLite-only `PRAGMA user_version` SQL in a no-op Alembic merge revision; the revision now uses Python no-ops and a migration-portability regression test rejects SQLite-only PRAGMA statements. The next Linux run proved backend/PostgreSQL health and exposed BFF preflight rejection of the empty signing secret; smoke now generates a shared signing secret, enforces signed backend requests, and explicitly selects development transport mode for its HTTP-only cookie path while Compose retains a production default. The following run reached full-stack login and exposed missing Compose propagation of the generated bootstrap password; `backend-api` now receives that password and a deployment-contract test protects the wiring. Closure is intentionally pending a green Linux compose-backed GitHub Actions run. Local Docker execution is blocked because the Docker Desktop engine/config is unavailable in the current session.
+    Root-cause corrections are implemented and focused pytest, Ruff, and mypy gates pass locally. Enhanced CI diagnostics subsequently exposed SQLite-only `PRAGMA user_version` SQL in a no-op Alembic merge revision; the revision now uses Python no-ops and a migration-portability regression test rejects SQLite-only PRAGMA statements. The next Linux run proved backend/PostgreSQL health and exposed BFF preflight rejection of the empty signing secret; smoke now generates a shared signing secret, enforces signed backend requests, and explicitly selects development transport mode for its HTTP-only cookie path while Compose retains a production default. The following run reached full-stack login and exposed missing Compose propagation of the generated bootstrap password; `backend-api` now receives that password and a deployment-contract test protects the wiring. The Compose smoke closure is now validated by successful Linux CI execution.
     Follow-up discovered in CI smoke: `/api/backend/read/query` and `/api/backend/jobs` were called without `/v1` in `tests/test_e2e_smoke.py`. This bypassed BFF path allowlist normalization and returned `400` before API contract assertions. Updated smoke routes to `/api/backend/v1/read/query` and `/api/backend/v1/jobs`.
     Additional follow-up in this loop: CI smoke exposed intermittent `403` on `/v1/read/query` because CSRF enforcement treated this read-only actor route as state-changing. The BFF now treats `/v1/read/*` as non-state-changing for CSRF purposes, and `tests/test_e2e_smoke.py` now reads CSRF token defensively for read queries to avoid brittle cookie coupling.
 
