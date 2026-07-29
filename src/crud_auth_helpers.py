@@ -10,10 +10,8 @@ from __future__ import annotations
 from datetime import timedelta
 import os
 import time
-from types import SimpleNamespace
 from typing import Any, Dict, Optional
 import bcrypt
-import sys
 
 from src import crud_core_helpers
 from sqlalchemy import or_
@@ -996,7 +994,7 @@ def reset_user_password_from_crud(
         return True
     except PermissionError:
         raise
-    except Exception as exc:
+    except Exception:
         crud_module.audit_log(
             "reset_password_failed",
             "user",
@@ -1099,7 +1097,8 @@ def ensure_admin_exists_from_crud(*, crud_module) -> bool:
 
 
 def _crud_module_context():
-    crud_module = sys.modules.get("src.crud")
+    from src import crud as crud_module
+
     if crud_module is None:
         raise RuntimeError("src.crud module is not available for CRUD auth helper context.")
     return crud_module

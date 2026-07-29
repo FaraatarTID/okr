@@ -15,7 +15,7 @@ from src import (
     crud_reflection_helpers,
     crud_team_helpers,
 )
-from src.domain import auth_service
+from src import crud_core_helpers
 from src.models import (
     Cycle,
     Experiment,
@@ -29,38 +29,48 @@ from src.models import (
 
 
 def backend_read_proxy_enabled_from_crud(*, crud_module) -> bool:
-    return auth_service.backend_read_proxy_enabled_from_crud(
-        crud_module=crud_module,
+    return crud_core_helpers.backend_mutation_proxy_enabled_from_crud(
+        crud_module=crud_module
     )
 
 
 def resolve_backend_actor_from_crud(
     *, crud_module, actor_username: Optional[str] = None
 ) -> str:
-    return auth_service.resolve_backend_actor_from_crud(
-        crud_module=crud_module,
-        actor_username=actor_username,
-    )
+    from src.services import backend_client
+
+    return str(
+        backend_client.resolve_actor_username(actor_username=actor_username)
+    ).strip()
 
 
 def raise_backend_read_error_from_crud(
     *, crud_module, operation: str, payload: dict[str, Any]
 ) -> None:
-    return auth_service.raise_backend_read_error_from_crud(
-        crud_module=crud_module,
-        operation=operation,
-        payload=payload,
-    )
+    message = str(
+        payload.get("error") or f"Backend read failed for {operation}."
+    ).strip()
+    try:
+        code = int(payload.get("status_code") or 0)
+    except Exception:
+        code = 0
+    if code in {401, 403}:
+        raise PermissionError(message)
+    if code == 404:
+        raise ValueError(message or "Not found.")
+    raise ValueError(message)
 
 
 def backend_read_result_or_raise_from_crud(
     *, crud_module, operation: str, result
 ) -> Any:
-    return auth_service.backend_read_result_or_raise_from_crud(
-        crud_module=crud_module,
-        operation=operation,
-        result=result,
-    )
+    if isinstance(result, dict) and "error" in result:
+        raise_backend_read_error_from_crud(
+            crud_module=crud_module,
+            operation=operation,
+            payload=result,
+        )
+    return result
 
 
 def get_krs_needing_checkin_from_crud(
@@ -172,25 +182,25 @@ def get_active_experiments_for_kr_from_crud(
 
 
 def get_user_by_username_from_crud(*, crud_module, username: str) -> Optional[User]:
-    return auth_service.get_user_by_username_from_crud(
+    return crud_auth_helpers.get_user_by_username_from_crud(
         crud_module=crud_module,
         username=username,
     )
 
 
 def get_user_by_id_from_crud(*, crud_module, user_id: int) -> Optional[User]:
-    return auth_service.get_user_by_id_from_crud(
+    return crud_auth_helpers.get_user_by_id_from_crud(
         crud_module=crud_module,
         user_id=user_id,
     )
 
 
 def get_all_users_from_crud(*, crud_module) -> List[User]:
-    return auth_service.get_all_users_from_crud(crud_module=crud_module)
+    return list(crud_auth_helpers.get_all_users_from_crud(crud_module=crud_module))
 
 
 def get_team_members_from_crud(*, crud_module, manager_id: int) -> List[User]:
-    return auth_service.get_team_members_from_crud(
+    return crud_auth_helpers.get_team_members_from_crud(
         crud_module=crud_module,
         manager_id=manager_id,
     )

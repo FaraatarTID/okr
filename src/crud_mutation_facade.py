@@ -9,12 +9,12 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 
-from src.domain import auth_service
 from src.domain.crud_contracts import UNSET as _UNSET
 from src import (
     crud_alignment_helpers,
     crud_checkin_helpers,
     crud_create_helpers,
+    crud_auth_helpers,
     crud_cycle_helpers,
     crud_delete_helpers,
     crud_experiment_helpers,
@@ -45,9 +45,9 @@ from src.models import (
 
 
 def _crud_module():
-    import sys
+    from src import crud as crud_module
 
-    return sys.modules.get("src.crud", sys.modules[__name__])
+    return crud_module
 
 
 def update_user(
@@ -59,7 +59,7 @@ def update_user(
     is_active: Optional[bool] = None,
     actor_username: Optional[str] = None,
 ) -> Optional[User]:
-    return auth_service.update_user_from_crud(
+    return crud_auth_helpers.update_user_from_crud(
         crud_module=_crud_module(),
         user_id=user_id,
         display_name=display_name,
@@ -77,7 +77,7 @@ def reset_user_password(
     require_change: bool = False,
     actor_username: Optional[str] = None,
 ) -> bool:
-    return auth_service.reset_user_password_from_crud(
+    return crud_auth_helpers.reset_user_password_from_crud(
         crud_module=_crud_module(),
         user_id=user_id,
         new_password=new_password,
@@ -88,14 +88,14 @@ def reset_user_password(
 
 def _ensure_admin_exists_once() -> bool:
     """Create the bootstrap admin once per process startup path."""
-    return auth_service.ensure_admin_exists_once_from_crud(
+    return crud_auth_helpers.ensure_admin_exists_once_from_crud(
         crud_module=_crud_module(),
     )
 
 
 def ensure_admin_exists() -> bool:
     """Create a default admin user if no users exist."""
-    return auth_service.ensure_admin_exists_from_crud(crud_module=_crud_module())
+    return crud_auth_helpers.ensure_admin_exists_from_crud(crud_module=_crud_module())
 
 
 def create_check_in(

@@ -57,6 +57,9 @@ jobs:
       - name: Dependency License Compliance
         run: python scripts/verify_dependency_licenses.py
 
+      - name: Secret Hygiene Gate
+        run: python scripts/verify_secret_hygiene.py
+
       - name: Lint (Ruff)
         run: |
           python -m ruff check \

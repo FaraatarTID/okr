@@ -618,7 +618,7 @@ function Start-DockerServices {
     Write-Log "Starting docker services: $($services -join ', ')"
     $startArgs = @("compose","-f",$composeFile,"--env-file",$envFile,"up","-d")
     $startArgs += $services
-    $result = Invoke-HiddenProcess -Executable "docker" -Arguments $startArgs -NoWait
+    $result = Invoke-HiddenProcess -Executable "docker" -Arguments $startArgs
     if ($result.ExitCode -ne 0) {
         Write-Log "docker up failed: $($result.StdErr)"
         return
@@ -631,13 +631,56 @@ function Stop-DockerServices {
     param()
     if (-not (Test-Path $composeFile)) {
         Show-NotConfigured $composeFile
-        return
+        return $false
+    }
+    if (-not (Test-Path $envFile)) {
+        Show-NotConfigured $envFile
+        return $false
     }
     Write-Log "Stopping docker services."
-    $result = Invoke-HiddenProcess -Executable "docker" -Arguments @("compose","-f",$composeFile,"--env-file",$envFile,"down") -NoWait
+    $result = Invoke-HiddenProcess -Executable "docker" -Arguments @("compose","-f",$composeFile,"--env-file",$envFile,"down")
     if ($result.ExitCode -ne 0) {
         Write-Log "docker down failed: $($result.StdErr)"
+        return $false
     }
+    Write-Log "Docker services stopped."
+    return $true
+}
+
+function Wait-DockerServicesStopped {
+    param([int]$TimeoutSeconds = 45)
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        $result = Run-CommandCapture -Executable "docker" -Arguments @(
+            "compose","-f",$composeFile,"--env-file",$envFile,"ps","--services","--filter","status=running"
+        )
+        if ($result.ExitCode -ne 0) {
+            return $true
+        }
+        $runningServices = $result.StdOut -split "`r?`n" | Where-Object { $_ -match "\S" }
+        if (-not $runningServices) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 800
+    } while ((Get-Date) -lt $deadline)
+
+    Write-Log "Timed out waiting for docker services to stop."
+    return $false
+}
+
+function Restart-DockerServices {
+    param()
+    Write-Log "Restarting docker services."
+    if (-not (Stop-DockerServices)) {
+        Write-Log "Restart aborted because docker services did not stop cleanly."
+        return
+    }
+    if (-not (Wait-DockerServicesStopped)) {
+        Write-Log "Restart aborted because services did not fully stop within timeout."
+        return
+    }
+    Start-DockerServices
 }
 
 $form = New-Object System.Windows.Forms.Form
@@ -688,9 +731,7 @@ $btnRestart = New-Object System.Windows.Forms.Button
 $btnRestart.Text = "Restart"
 $btnRestart.SetBounds(302, 28, 130, 34)
 $btnRestart.Add_Click({
-    Stop-DockerServices
-    Start-Sleep -Milliseconds 700
-    Start-DockerServices
+    Restart-DockerServices
 })
 
 $btnOpenWeb = New-Object System.Windows.Forms.Button

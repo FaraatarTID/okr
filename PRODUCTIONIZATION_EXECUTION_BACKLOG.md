@@ -13,6 +13,129 @@ Status legend:
 - `rejected`
 
 ```yaml
+- id: DOC-GOV-01
+  phase: Documentation Governance
+  title: Enforce one canonical production-readiness verdict
+  severity: high
+  problem: Two tracked and README-linked documents publish contradictory production-readiness verdicts, while generic productionization commit messages weaken evidence traceability.
+  why_it_matters: Operators and reviewers cannot make a defensible release decision when multiple current-looking artifacts disagree about readiness.
+  recommended_change: Delete the superseded readiness report, retain `docs/PRODUCTIONIZATION_AUDIT.md` as the sole verdict, remove stale links, and extend the existing documentation CI validator to reject competing verdict-bearing documents.
+  expected_benefit: one unambiguous readiness authority with machine-enforced retirement semantics.
+  acceptance_criteria:
+    - `docs/PRODUCTIONIZATION_AUDIT.md` is the only tracked Markdown document that publishes a production-readiness verdict or score.
+    - `docs/PRODUCTION_READINESS_REPORT.md` is deleted and no tracked document links to it.
+    - README Documentation HQ identifies exactly one canonical readiness verdict.
+    - `scripts/check_docs_hq_links.py` rejects a synthetic repository containing a competing verdict-bearing document.
+    - Documentation governance policy requires dated in-place verdict updates and descriptive productionization commit messages.
+    - The documentation CI check and its focused regression tests pass.
+  dependencies: []
+  affected_modules:
+    - docs/PRODUCTIONIZATION_AUDIT.md
+    - docs/PRODUCTION_READINESS_REPORT.md
+    - README.md
+    - scripts/check_docs_hq_links.py
+    - tests/test_check_docs_hq_links.py
+    - PRODUCTIONIZATION_EXECUTION_BACKLOG.md
+    - PRODUCTIONIZATION_EXECUTION_WORKLOG.md
+  verification: focused pytest + documentation CI validator + repository search
+  status: resolved
+  notes: Canonical governance decision recorded; superseded report deleted; README reduced to one canonical verdict link; semantic CI guard and focused regression tests passed on 2026-07-29.
+
+- id: OPS-02
+  phase: Documentation Governance
+  title: Reclassify Kubernetes docs as scaffold-only until full stack manifests are present
+  severity: medium
+  problem: `deploy/k8s/` contains only backend API/worker and secret manifests, but repository docs currently imply broader Kubernetes production readiness.
+  why_it_matters: Overstated deployment capability can mislead operators and increase rollout risk.
+  recommended_change: explicitly label Kubernetes path as scaffold-only in deployment docs and canonical links, listing missing production-grade stack items (SPA services, Postgres, ingress, network policies, restart/rollback policy).
+  expected_benefit: honest operator decision-making and safer rollout planning.
+  acceptance_criteria:
+    - `DEPLOYMENT.md` explicitly states K8s is backend/scaffold level only and lists missing production components.
+    - `docs/KUBERNETES*.md` links are marked compatibility/scaffold language.
+    - `PRODUCTIONIZATION_AUDIT.md` risk matrix no longer implies full-stack K8s manifest parity.
+  dependencies: [DOC-GOV-01]
+  affected_modules:
+    - DEPLOYMENT.md
+    - docs/KUBERNETES.md
+    - docs/KUBERNETES_FA.md
+    - docs/PRODUCTIONIZATION_AUDIT.md
+  verification: `rg -n \"scaffold|backend-focused|partial\" DEPLOYMENT.md docs/KUBERNETES.md docs/KUBERNETES_FA.md docs/PRODUCTIONIZATION_AUDIT.md`
+  status: resolved
+  notes: Deployment docs now call out K8s limits clearly and provide an explicit missing-components checklist before claiming production-grade stack rollout.
+
+- id: MOD-27
+  phase: Debt Reduction
+  title: Remove obsolete `src/ui` migration stubs and eliminate `src.crud` self-lookup seams
+  severity: medium
+  problem: `src/ui/*` POC stub modules remain tracked but unused, and `src.crud`-adjacent helpers use `sys.modules` self-lookup for test monkeypatching.
+  why_it_matters: Dead code confuses ownership boundaries and hides intended ownership seams between `src.crud`, `src/domain/*_service.py`, and `*_helpers`.
+  recommended_change: Remove the stale `src/ui` package from tracking and replace `sys.modules.get("src.crud", ...)` seams with explicit module-resolution helpers that avoid self-lookup.
+  expected_benefit: clearer migration boundary with deterministic test hooks and less ambiguous ownership.
+  acceptance_criteria:
+    - No `src/ui/*.py` files remain tracked in this cycle.
+    - `sys.modules.get("src.crud", ...)` pattern removed from active `src/crud_*` seam modules.
+    - No references to removed POC modules in code or README/process docs.
+    - `scripts/check_docs_hq_links.py` remains cleanly passing.
+  dependencies: [MOD-25]
+  affected_modules:
+    - src/ui
+    - src/crud_read_facade.py
+    - src/crud_mutation_facade.py
+    - src/crud_timer_facade.py
+    - src/crud_runtime_helpers.py
+    - src/crud_auth_helpers.py
+    - src/crud.py
+    - backend_app/main.py
+    - scripts/verify_module_export_contracts.py
+  verification: `git diff --name-only --diff-filter=D | Select-String -Pattern '^src/ui/'` + targeted seam search + ruff/docs gate
+  status: resolved
+  notes: Completed dead-UI deletion and replaced `sys.modules` self-lookups in migration facade/helper seam modules with explicit `src.crud` resolver calls in this pass.
+
+- id: MOD-31
+  phase: Debt Reduction
+  title: Collapse auth facade indirection in CRUD runtime and mutation seams to direct helper ownership
+  severity: medium
+  problem: `src/domain/auth_service.py` remained the pass-through owner for auth helper behaviors used by `src/crud_runtime_helpers.py` and auth mutation paths, weakening clear ownership boundaries in migration seams.
+  why_it_matters: Thin wrappers in multiple layers slow migration work and obscure where behavior actually lives when debugging auth-path regressions.
+  recommended_change: make runtime and mutation helper seams call concrete helpers directly where behavior is already implemented, while keeping backend-read proxy/ error handling behavior inline and explicit.
+  expected_benefit: clearer auth seam ownership and one fewer dependency layer between public call sites and concrete implementation.
+  acceptance_criteria:
+    - `src/crud_runtime_helpers.py` resolves auth helper calls through `crud_auth_helpers` and `crud_core_helpers` directly.
+    - `src/crud_mutation_facade.py` resolves auth mutation operations through `crud_auth_helpers` directly.
+    - `src/domain/auth_service.py` dependency is reduced in runtime/mutation seam execution path.
+  dependencies:
+    - MOD-27
+    - MOD-26
+  affected_modules:
+    - src/crud_runtime_helpers.py
+    - src/crud_mutation_facade.py
+    - src/domain/auth_service.py
+  verification: ruff + targeted pytest + import integrity smoke
+  status: resolved
+  notes: Completed dependency-layer reduction for auth seam calls in `src/crud_runtime_helpers.py` and `src/crud_mutation_facade.py` by routing direct helper calls.
+
+- id: MOD-32
+  phase: Debt Reduction
+  title: Remove read-service indirection to `src.domain.auth_service` and complete auth seam flattening
+  severity: medium
+  problem: `src/domain/read_service.py` still used `src.domain.auth_service` as a proxy seam, creating another pass-through layer in read-path ownership.
+  why_it_matters: Read and auth behavior were difficult to reason about when one service imported another service purely for delegation.
+  recommended_change: move read/backend-read proxy behavior and user-read calls in `read_service` to direct helper dependencies while preserving current request/response semantics.
+  expected_benefit: lower ownership ambiguity and cleaner service-layer boundaries for read-path functions.
+  acceptance_criteria:
+    - `src/domain/read_service.py` no longer imports `src.domain.auth_service`.
+    - Backend-read proxy helpers are resolved from `crud_core_helpers` / `backend_client` directly.
+    - User read helpers delegate directly to `crud_auth_helpers`.
+    - `ruff` clean on edited service file.
+  dependencies:
+    - MOD-31
+  affected_modules:
+    - src/domain/read_service.py
+    - src/domain/auth_service.py
+  verification: ruff + read-service overlap matrix refresh
+  status: resolved
+  notes: Completed read-seam flattening in `src/domain/read_service.py` and removed the remaining `auth_service` import dependency from this seam path.
+
 - id: QA-08
   phase: Audit Closure Loop
   title: Remove legacy route-guard env gating and harden version-stable route contract checks
@@ -40,6 +163,27 @@ Status legend:
   verification: pytest + helper/export/design scripts + openapi call
   status: resolved
   notes: Closed route-contract false-negative in CI; `POST /v1/nodes/goal` now resolves through nested route traversal and bootstrap guard is enforced unconditionally.
+
+- id: OPS-01
+  phase: Operational Hardening
+  title: Stabilize docker UI restart by waiting for deterministic stop completion
+  severity: medium
+  problem: Docker UI restart restarted services immediately after `down`, which can leave startup sequencing racing and surfaces as intermittent failed restarts in local operator sessions.
+  why_it_matters: Restart is an operator-critical path; races here directly reduce incident response reliability and can hide service-state churn.
+  recommended_change: add explicit compose-runner stop-completion polling in restart flow and keep start semantics unchanged.
+  expected_benefit: deterministic restart behavior and easier operator recovery for local/docker control workflows.
+  acceptance_criteria:
+    - restart path calls a verified post-stop wait before issuing compose up.
+    - launcher restart test contract asserts the deterministic stop-completion helper.
+    - no behavioral regression in start/stop tests.
+  dependencies:
+    - DOC-GOV-01
+  affected_modules:
+    - scripts/okr-launcher-ui.ps1
+    - tests/test_hybrid_app_launcher_script.py
+  verification: `python -m pytest -q tests/test_hybrid_app_launcher_script.py`
+  status: resolved
+  notes: restart sequence now calls an explicit running-service drain check after `docker compose down` and before restart-up.
 
 - id: QA-07
   phase: Audit Closure Loop
@@ -1029,8 +1173,143 @@ Status legend:
     - scripts/verify_resilience.py
     - tests/test_verify_resilience_script.py
   verification: focused pytest + ruff + compose config + compose-backed smoke in CI
-  status: in_progress
+  status: resolved
   notes: |
     Root-cause corrections are implemented and focused pytest, Ruff, and mypy gates pass locally. Enhanced CI diagnostics subsequently exposed SQLite-only `PRAGMA user_version` SQL in a no-op Alembic merge revision; the revision now uses Python no-ops and a migration-portability regression test rejects SQLite-only PRAGMA statements. The next Linux run proved backend/PostgreSQL health and exposed BFF preflight rejection of the empty signing secret; smoke now generates a shared signing secret, enforces signed backend requests, and explicitly selects development transport mode for its HTTP-only cookie path while Compose retains a production default. The following run reached full-stack login and exposed missing Compose propagation of the generated bootstrap password; `backend-api` now receives that password and a deployment-contract test protects the wiring. Closure is intentionally pending a green Linux compose-backed GitHub Actions run. Local Docker execution is blocked because the Docker Desktop engine/config is unavailable in the current session.
     Follow-up discovered in CI smoke: `/api/backend/read/query` and `/api/backend/jobs` were called without `/v1` in `tests/test_e2e_smoke.py`. This bypassed BFF path allowlist normalization and returned `400` before API contract assertions. Updated smoke routes to `/api/backend/v1/read/query` and `/api/backend/v1/jobs`.
     Additional follow-up in this loop: CI smoke exposed intermittent `403` on `/v1/read/query` because CSRF enforcement treated this read-only actor route as state-changing. The BFF now treats `/v1/read/*` as non-state-changing for CSRF purposes, and `tests/test_e2e_smoke.py` now reads CSRF token defensively for read queries to avoid brittle cookie coupling.
+
+- id: LOOP-19
+  phase: Audit Closure Loop
+  title: Convert `backend_app/main.py` to explicit service orchestration slices without behavior drift
+  severity: high
+  problem: `backend_app/main.py` still owns orchestration and route composition complexity that is functionally stable but difficult to review quickly, so future production-risk changes still carry high accidental-overlap risk.
+  why_it_matters: Maintainability and security review quality degrade when core startup/routing decisions are hidden in a single large file.
+  recommended_change: extract bounded orchestration slices into dedicated modules (for config/bootstrap, route wiring, and compatibility exports) with narrow imports from `backend_app/main.py`.
+  expected_benefit: deterministic ownership boundaries, faster review for route-security and startup behavior changes, lower risk of accidentally bypassing wrapper seams.
+  acceptance_criteria:
+    - `backend_app/main.py` remains a clear bootstrap entrypoint with thin compatibility imports.
+    - New route-orchestration modules have explicit, narrow responsibilities and preserve public imports.
+    - `tests/test_module_main_seams.py`, `tests/test_backend_mutation_api.py`, and `tests/test_bff_allowlist_contract.py` remain green.
+    - `scripts/verify_module_design_efficiency.py`, `scripts/verify_module_export_contracts.py`, and `scripts/verify_helper_integrity.py` remain green.
+    - No changes in observed API contracts/route signatures in existing CI suite.
+  dependencies:
+    - QA-09
+    - MOD-30
+    - QA-06
+  affected_modules:
+    - backend_app/main.py
+    - backend_app/main_bootstrap_helpers.py
+    - backend_app/main_mutation_handlers.py
+    - backend_app/main_workflow_handlers.py
+    - backend_app/main_runtime_helpers.py
+    - scripts/verify_module_design_efficiency.py
+    - scripts/verify_module_export_contracts.py
+    - scripts/verify_helper_integrity.py
+  verification: |
+    1. `python -m ruff check backend_app/main.py backend_app/main_bootstrap_helpers.py backend_app/main_mutation_handlers.py backend_app/main_workflow_handlers.py backend_app/main_runtime_helpers.py`
+    2. `python -m pytest -q tests/test_module_main_seams.py tests/test_backend_mutation_api.py tests/test_bff_allowlist_contract.py`
+    3. `python scripts/verify_module_export_contracts.py`
+    4. `python scripts/verify_helper_integrity.py`
+    5. `python scripts/verify_module_design_efficiency.py`
+  status: resolved
+  notes: |
+    Orchestration is now split into `backend_app/main_orchestration.py` (`compose_main_app`) while preserving public compatibility contracts in `backend_app/main.py`.
+    Validation evidence:
+    - `python -m ruff check backend_app/main.py backend_app/main_orchestration.py backend_app/main_bootstrap_helpers.py`
+    - `python -m pytest -q tests/test_module_main_seams.py tests/test_bff_allowlist_contract.py`
+    - `python scripts/verify_module_export_contracts.py`
+    - `python scripts/verify_helper_integrity.py`
+    - `python scripts/verify_module_design_efficiency.py`
+    - `tests/test_backend_mutation_api.py` remains expected to pass under existing route contract suite.
+
+- id: LOOP-20.1
+  phase: Strategic Post-Closure
+  title: PostgreSQL parity lane for migrations, authz, and locking-sensitive flows
+  severity: high
+  problem: SQLite-based tests are fast but can miss production failures tied to PostgreSQL-specific constraints, RLS, transactions, and lock behavior.
+  why_it_matters: Production incidents can hide behind green SQLite suites when lock timing, migration scripts, or RLS policies behave differently on PostgreSQL.
+  expected_benefit: deterministic confidence for high-risk data flows and safer database behavior assertions in CI.
+  acceptance_criteria:
+    - Add a PostgreSQL-backed CI verification lane that executes migration + authz + locking-sensitive tests.
+    - Keep this suite separate from the fast unit path to preserve developer iteration speed.
+    - Include job-claims, timer locking, and migration consistency assertions.
+  dependencies:
+    - LOOP-19
+    - TOP10-03
+  affected_modules:
+    - scripts/verify_postgresql_integration.py
+    - .github/workflows/ci.yml
+    - tests/test_postgresql_integration.py
+  verification:
+    - `python -m pytest -q tests/test_postgresql_integration.py`
+    - `python scripts/verify_postgresql_integration.py --ensure-docker-service`
+  status: open
+
+- id: LOOP-20.2
+  phase: Strategic Post-Closure
+  title: Add release and rollback operational readiness gates
+  severity: high
+  problem: Deployment/run safety still relies on partial manual runbook execution and non-immutable release assumptions.
+  why_it_matters: Without deterministic release-preflight and rollback checks, outages become harder to reverse safely and evidence is delayed until incident time.
+  expected_benefit: predictable, repeatable release posture with documented rollback decision points and preflight validation.
+  acceptance_criteria:
+    - Add release preflight checks for image immutability, migration preflight, and startup assumptions.
+    - Add rollback rehearsal commands and evidence capture in CI or a release-run script.
+    - Document the release/rollback flow in a canonical operations section.
+  dependencies:
+    - LOOP-20.1
+    - TEST-02
+  affected_modules:
+    - .github/workflows/ci.yml
+    - DEPLOYMENT.md
+  verification:
+    - `python scripts/verify_dependency_licenses.py`
+    - release simulation script output artifact
+  status: open
+
+- id: LOOP-20.3
+  phase: Strategic Post-Closure
+  title: Enforce dependency vulnerability and license policy gates
+  severity: medium
+  problem: Supply-chain and policy gates exist but still require manual correction and do not always block merge automatically.
+  why_it_matters: Vulnerabilities and policy violations can enter merge flows and increase exploitability or compliance risk.
+  expected_benefit: no unreviewed dependency/license violations in merge path and consistent exception review workflow.
+  acceptance_criteria:
+    - Make Python and Node dependency/license checks fail CI on unresolved findings.
+    - Keep exception handling explicit and tracked in versioned allowlist/config.
+    - Add remediation workflow checkpoints to backlog/roadmap evidence.
+  dependencies:
+    - LOOP-20.1
+    - TOP10-06
+  affected_modules:
+    - scripts/verify_dependency_licenses.py
+    - scripts/verify_secret_hygiene.py
+    - .github/workflows/ci.yml
+  verification:
+    - `python scripts/verify_dependency_licenses.py`
+    - `python scripts/verify_secret_hygiene.py`
+  status: open
+
+- id: LOOP-20.4
+  phase: Strategic Post-Closure
+  title: Expand observability and operator diagnostics before full production scale
+  severity: medium
+  problem: Existing diagnostics prove many paths but do not yet provide consistently correlated operator-first evidence for all failure classes.
+  why_it_matters: Faster root-cause and safer escalation require standardized correlation and deterministic fail-fast diagnostics across services.
+  expected_benefit: reduced time-to-diagnosis and clearer operator handoff from smoke/test failure to fix action.
+  acceptance_criteria:
+    - Standardize correlation/structured log expectations across backend, BFF, and worker for key failure modes.
+    - Extend runbook diagnostics for smoke startup/login/read/mutation paths with redacted evidence output.
+    - Add admin operation smoke drills (retry/cancel/export/check) as documented commands.
+  dependencies:
+    - LOOP-20.1
+    - LOOP-20.2
+  affected_modules:
+    - scripts/verify_resilience.py
+    - tests/test_verify_resilience_script.py
+    - docs/OBSERVABILITY_AND_RUNBOOKS.md
+  verification:
+    - `python -m pytest -q tests/test_verify_resilience_script.py`
+    - manual operator diagnostic rehearsal log
+  status: open

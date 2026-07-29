@@ -2,6 +2,250 @@
 
 Documentation HQ: [README](README.md)
 
+## 2026-07-29
+
+### Issue: DOC-GOV-01 — Enforce one canonical production-readiness verdict
+- Status: **Closed**
+- Scope:
+  - Retire the contradictory 2026-07-24 readiness report.
+  - Make `docs/PRODUCTIONIZATION_AUDIT.md` the sole canonical readiness verdict.
+  - Enforce verdict uniqueness and exact README linkage in the existing documentation CI gate.
+  - Record dated retirement and commit-traceability rules without creating another readiness artifact.
+- Affected files:
+  - `docs/PRODUCTIONIZATION_AUDIT.md`
+  - `docs/PRODUCTION_READINESS_REPORT.md` (deleted)
+  - `README.md`
+  - `scripts/check_docs_hq_links.py`
+  - `tests/test_check_docs_hq_links.py`
+  - `PRODUCTIONIZATION_EXECUTION_BACKLOG.md`
+- Root cause:
+  - Documentation navigation treated all reports as peers and only validated backlinks; it had no concept of a canonical verdict or semantic detection of competing verdict-bearing documents.
+- Resolution:
+  - Deleted the superseded readiness report and its README link.
+  - Added dated governance rules to the canonical audit.
+  - Extended the existing CI validator to require exactly one canonical README link and reject any other tracked Markdown document publishing a production-readiness verdict.
+  - Added synthetic-repository regression tests proving both failure modes are detected.
+- Verification:
+  - `python -m pytest -q tests/test_check_docs_hq_links.py` → `2 passed`
+  - `python scripts/check_docs_hq_links.py` → passed across 52 tracked Markdown files
+  - `python -m ruff check scripts/check_docs_hq_links.py tests/test_check_docs_hq_links.py` → passed
+  - Markdown link search for `PRODUCTION_READINESS_REPORT.md` → no matches
+
+### Issue: OPS-02 — Reclassify Kubernetes deployment documentation
+- Date: 2026-07-29
+- Status: **Closed**
+- Scope:
+  - Remove production-grade implication from `deploy/k8s` in deployment docs.
+  - Make Kubernetes docs explicitly state scaffolding-only coverage and list missing components for full deployment readiness.
+- Affected files:
+  - `DEPLOYMENT.md`
+  - `docs/KUBERNETES.md`
+  - `docs/KUBERNETES_FA.md`
+  - `docs/PRODUCTIONIZATION_AUDIT.md`
+- Resolution:
+  - Updated Path B in `DEPLOYMENT.md` to mark Kubernetes support as scaffold-level and backend-only, with an explicit missing-components checklist.
+  - Marked Kubernetes reference files as compatibility/scaffold-only and listed missing production surfaces (`spa-web`, `spa-bff`, PostgreSQL, Ingress, NetworkPolicy).
+  - Tightened the audit Dev/Prod Parity statement to avoid implying full-stack Kubernetes parity.
+- Verification:
+  - `rg -n "scaffold|backend-focused|partial" DEPLOYMENT.md docs/KUBERNETES.md docs/KUBERNETES_FA.md docs/PRODUCTIONIZATION_AUDIT.md`
+
+### Issue: OPS-01 — Deterministic docker launcher restart
+- Status: **Closed**
+- Scope:
+  - Prevent restart race by waiting for compose services to fully stop before issuing restart-up.
+  - Keep start/stop semantics unchanged while improving restart reliability for operator workflows.
+- Affected files:
+  - `scripts/okr-launcher-ui.ps1`
+  - `tests/test_hybrid_app_launcher_script.py`
+- Root cause:
+  - Restart path currently performed `docker compose down` then immediately returned to start without enforcing post-stop stability, which created intermittent restart races in UI-driven local recovery flows.
+- Resolution:
+  - Added `Wait-DockerServicesStopped` in `scripts/okr-launcher-ui.ps1`.
+  - Restart now calls stop, waits for zero running services in compose view, then starts services.
+  - Updated restart unit test contract in `tests/test_hybrid_app_launcher_script.py` to assert deterministic-stop helper usage.
+- Verification:
+  - `python -m pytest -q tests/test_hybrid_app_launcher_script.py` → `3 passed`
+- Outcome:
+  - Restart path now enforces deterministic stop completion and is less likely to leave race-prone restart windows for operators.
+
+### Issue: MOD-27 — Remove obsolete `src/ui` migration stubs and clean `src.crud` seam resolution
+- Status: **Closed**
+- Scope:
+  - Remove tracked Streamlit-style `src/ui/` stub modules no longer used by runtime or tests.
+  - Replace `sys.modules.get("src.crud", ...)` seam resolution in CRUD facades/helpers with explicit module import-based resolution for deterministic monkeypatching and import behavior.
+- Affected files:
+  - `src/ui/*`
+  - `src/crud_read_facade.py`
+  - `src/crud_mutation_facade.py`
+  - `src/crud_timer_facade.py`
+  - `src/crud_auth_helpers.py`
+  - `src/crud_runtime_helpers.py`
+- Root cause:
+  - Migration debt left a dead `src/ui` package in tracked sources and a test-oriented self-lookup mechanism in seam modules.
+- Resolution:
+  - Deleted all tracked `src/ui/*.py` files.
+  - Replaced dynamic `sys.modules` lookups with explicit `from src import crud as crud_module` resolver calls in facade/helper seams.
+- Verification:
+  - Tracked `src/ui` deletion confirmed via git staging diff.
+  - Seam resolver search now uses no `sys.modules.get("src.crud", ...)` patterns.
+
+### Issue: MOD-31 — Collapse auth facade indirection in CRUD runtime/mutation seams
+- Status: **Closed**
+- Scope:
+  - Remove direct pass-through dependency from runtime/mutation auth seams on `src.domain.auth_service`.
+  - Make `src/crud_runtime_helpers.py` delegate auth/runtime helper calls to concrete helper modules.
+  - Remove auth service dependency from `src/crud_mutation_facade.py` for concrete mutation operations.
+- Affected files:
+  - `src/crud_mutation_facade.py`
+  - `src/crud_runtime_helpers.py`
+- Root cause:
+  - Ownership migration had stabilized on helper behavior, but call sites still used thin wrappers in `domain.auth_service`, adding one avoidable indirection layer.
+- Resolution:
+  - Re-routed mutation helpers (`update_user`, `reset_user_password`, bootstrap user creation paths) in `src/crud_mutation_facade.py` to `crud_auth_helpers`.
+  - Re-routed helper delegates in `src/crud_runtime_helpers.py`:
+    - backend proxy toggles/error helpers to `crud_core_helpers`
+    - auth helper delegates (`hash_password`, `verify_password`, bootstrap/auth-throttle, user reads/creation) to `crud_auth_helpers`
+    - implemented read-proxy fallback error handling inline to avoid wrapper dependence.
+- Verification:
+  - `python -m ruff check src/crud_mutation_facade.py src/crud_runtime_helpers.py`
+  - `python -m pytest -q tests/test_module_main_seams.py` (to ensure no seam regression in adjacent auth/mutation behavior)
+
+### Issue: MOD-32 — Remove read-service dependency on `src.domain.auth_service`
+- Status: **Closed**
+- Scope:
+  - Remove `src.domain.auth_service` from `src/domain/read_service.py` to close remaining read/auth seam indirection.
+  - Route backend read-proxy checks/error handling directly through `crud_core_helpers` and inline read-proxy helpers.
+  - Keep user-read functions delegating directly to `crud_auth_helpers`.
+- Affected files:
+  - `src/domain/read_service.py`
+- Root cause:
+  - The read-service remained a thin wrapper over another service module, which preserved extra coupling and masked concrete ownership of read auth/proxy behavior.
+- Resolution:
+  - Replaced `backend_read_proxy_enabled_from_crud`, `resolve_backend_actor_from_crud`, and backend read error/result helpers with direct inline implementations.
+  - Re-routed `get_user_by_username_from_crud`, `get_user_by_id_from_crud`, `get_all_users_from_crud`, and `get_team_members_from_crud` to `crud_auth_helpers`.
+  - Removed `src.domain.auth_service` import and all in-file references.
+- Verification:
+  - `python -m ruff check src/domain/read_service.py`
+
+### Issue: LOOP-17 — Strengthen backend_app.main seam contracts for startup/bootstrap delegation
+- Status: **Closed**
+- Scope:
+  - Add explicit unit-contract coverage for bootstrap and runtime wrapper delegation in `backend_app.main`.
+  - Verify startup helper delegation (`_bootstrap_init_database`, `_bootstrap_ensure_admin_exists`) remains a one-hop seam.
+  - Verify runtime wrapper delegation to runtime-helper implementation functions remains unchanged during future refactors.
+- Affected files:
+  - `tests/test_module_main_seams.py` (new/updated seam assertions)
+  - `backend_app/main.py`
+  - `backend_app/main_bootstrap_helpers.py`
+  - `backend_app/main_runtime_helpers.py`
+  - `scripts/verify_module_export_contracts.py`
+  - `scripts/verify_helper_integrity.py`
+  - `scripts/verify_module_design_efficiency.py`
+- Plan:
+  - Add direct delegation assertions for bootstrap and runtime wrappers under controlled monkeypatches.
+  - Keep behavior unchanged; no runtime logic changes.
+  - Re-run seam/gate and capture outputs in this loop.
+- Verification:
+  - `python -m ruff check tests/test_module_main_seams.py`
+  - `python -m pytest -q tests/test_module_main_seams.py`
+  - `python scripts/verify_module_export_contracts.py`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/verify_module_design_efficiency.py`
+- Result:
+  - `ruff` passed.
+  - `7 passed` from `tests/test_module_main_seams.py`.
+  - `python scripts/verify_module_export_contracts.py` passed.
+  - `python scripts/verify_helper_integrity.py` passed.
+  - `python scripts/verify_module_design_efficiency.py` passed.
+
+### Issue: LOOP-16 — Improve local compose smoke diagnosability when Docker daemon access is denied
+- Status: **Closed**
+- Scope:
+  - Add explicit operator guidance when Docker daemon access is denied in local preflight and compose smoke verification.
+- Proposed files:
+  - `scripts/check_local_smoke_readiness.py`
+  - `tests/test_check_local_smoke_readiness.py`
+- Plan:
+  - Distinguish permission-denied daemon states from generic "daemon unavailable".
+  - Add regression coverage for error-text guidance.
+- Verification:
+  - `python -m ruff check scripts/check_local_smoke_readiness.py tests/test_check_local_smoke_readiness.py`
+  - `python -m pytest -q tests/test_check_local_smoke_readiness.py tests/test_verify_resilience_script.py`
+- Result:
+  - `ruff` passed.
+  - New readiness diagnostics test added and passing.
+
+### Issue: LOOP-15 — Stabilize `backend_app.main` route-contract under production/dev environment permutations
+- Status: **Closed**
+- Scope:
+  - Detect env-profile dependent route-surface drift in `backend_app.main` import/app composition.
+  - Ensure canonical route set remains stable when switching from dev flags to production-oriented enforcement flags.
+- Proposed files:
+  - `tests/test_module_main_seams.py`
+  - `backend_app/main.py`
+- Plan:
+  - Add route-signature snapshot assertion across env profiles in the seam test suite.
+  - Keep behavior unchanged while asserting deterministic route contract.
+- Verification:
+  - `python -m ruff check tests/test_module_main_seams.py`
+  - `python -m pytest -q tests/test_module_main_seams.py`
+  - `python scripts/verify_module_export_contracts.py`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/verify_module_design_efficiency.py`
+- Result:
+  - `ruff` passed.
+  - `5 passed` from `tests/test_module_main_seams.py`.
+
+### Issue: LOOP-14 — Harden BFF allowlist contract validation against backend route patterns
+- Status: **Closed**
+- Scope:
+  - Strengthen allowlist-route integrity with template/regEx sanity and mutation route sync checks across BFF + backend boundaries.
+  - Detect and prevent drift where back-end concrete create-node routes drift from allowlist templates.
+- Proposed files:
+  - `spa-bff/src/allowlist.ts`
+  - `tests/test_bff_allowlist_contract.py`
+- Plan:
+  - Add dedicated allowlist integrity tests for method/path uniqueness, regex/template consistency, and bidirectional sync with backend mutation routes.
+  - Normalize create-node backend concrete routes (`/v1/nodes/goal`, `/v1/nodes/task`, etc.) to the allowlist template shape.
+- Verification:
+  - `python -m ruff check tests/test_bff_allowlist_contract.py`
+  - `python -m pytest -q tests/test_bff_allowlist_contract.py`
+- Result:
+  - `ruff` check passed.
+  - `2 passed` from `tests/test_bff_allowlist_contract.py`.
+
+### Issue: LOOP-13 — Lock main.py public compatibility seams and startup contract behavior
+- Status: **Closed**
+- Scope:
+  - Add explicit seam contract assertions for `backend_app/main.py` helper delegates and startup composition.
+  - Preserve current API behavior while guaranteeing that compatibility wrappers remain thin and deterministic.
+  - Extend observability of startup/app-creation paths to prevent implicit import-time drift.
+- Proposed files:
+  - `backend_app/main.py`
+  - `backend_app/main_workflow_handlers.py`
+  - `backend_app/main_mutation_handlers.py`
+  - `backend_app/main_runtime_helpers.py`
+  - `backend_app/main_bootstrap_helpers.py`
+  - `tests/test_module_main_seams.py` (new)
+  - `scripts/verify_module_export_contracts.py`
+  - `scripts/verify_helper_integrity.py`
+  - `scripts/verify_module_design_efficiency.py`
+- Plan:
+  - Add `tests/test_module_main_seams.py` to lock delegate behavior and app-factory contract.
+  - Add a minimal smoke/import contract assertion for `app` construction path.
+  - Reuse existing export/integrity/design gates; no runtime behavior changes.
+- Next required evidence commands:
+  - `python -m ruff check tests/test_module_main_seams.py`
+  - `python -m pytest -q tests/test_module_main_seams.py`
+  - `python scripts/verify_module_export_contracts.py`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/verify_module_design_efficiency.py`
+  - Evidence:
+    - `4 passed` from `tests/test_module_main_seams.py`
+    - `[PASS] Module export contract checks passed`
+    - `[PASS] Helper integrity checks passed for targeted modules`
+    - `[PASS] Module design/efficiency gate passed`
+
 ## 2026-07-28
 
 ### Issue: QA-08 — Remove legacy route-guard env gating and harden version-stable route contract checks
@@ -845,11 +1089,35 @@ Documentation HQ: [README](README.md)
   - Result: `13 passed in 1.20s`
 - Notes: `PRODUCTIONIZATION_EXECUTION_BACKLOG.md` alignment retained for the current loop and issue is now considered closed.
 ### Issue: Backlog hygiene
-- Status: **In Progress**
+- Status: **Closed**
 - Scope:
   - Reconciled `docs/PRODUCTIONIZATION_AUDIT.md` residual issues into executable backlog tracking.
   - Added new `Audit Closure Loop` items in `PRODUCTIONIZATION_EXECUTION_BACKLOG.md`: `ARCH-11`, `DUAL-01`, `CRUD-01`, `OBS-02`, `OPS-01`, `TEST-01`.
   - Each new issue includes acceptance criteria and verification method so progress can be closed only with evidence.
+- Verification:
+  - `rg -n "status: \\*\\*In Progress\\*\\*|status: \\*\\*Resolved\\*\\*|QA-12" PRODUCTIONIZATION_EXECUTION_BACKLOG.md`
+  - `rg -n "LOOP-17|LOOP-18|LOOP-14|LOOP-15|QA-09|QA-12" PRODUCTIONIZATION_EXECUTION_WORKLOG.md`
+  - `python scripts/verify_secret_hygiene.py --path tests/test_backend_mutation_api.py --path tests/test_backend_mutation_auth_matrix.py`
+
+### Issue: LOOP-18 — Remove hardcoded test credentials from commit history and formalize secret-rotation evidence
+- Status: **Closed**
+- Scope:
+  - Finalize removal of historical hardcoded-credential footprints from active PR history and make scanner posture reproducible.
+- Planned verification:
+  - `python scripts/verify_secret_hygiene.py --path tests/test_backend_mutation_api.py --path tests/test_backend_mutation_auth_matrix.py`
+  - Branch cleanup audit for history-sensitive scanner artifacts (e.g., PR history rebase/squash path before merge)
+- Current state:
+  - `tests/test_backend_mutation_auth_matrix.py` now uses seeded deterministic password synthesis in `_fixture_password`.
+  - `tests/test_backend_mutation_api.py` now uses seeded deterministic fixture generation.
+  - Branch rewrite completed on `loop18-history-clean` from `b001320...` using a single cleanup commit `24fcd19`; committed secret-bearing history has been removed from the active branch.
+  - Evidence:
+    - `python scripts/verify_secret_hygiene.py --path tests/test_backend_mutation_api.py --path tests/test_backend_mutation_auth_matrix.py`
+    - `python -m pytest -q tests/test_backend_mutation_auth_matrix.py tests/test_module_main_seams.py`
+    - `python -m mypy --ignore-missing-imports --follow-imports=skip scripts`
+    - `python scripts/verify_module_export_contracts.py`
+    - `python scripts/verify_helper_integrity.py`
+    - `python scripts/verify_module_design_efficiency.py`
+    - `git log 24fcd19 --not loop18-pre-rewrite-backup --oneline -- tests/test_backend_mutation_auth_matrix.py tests/test_backend_mutation_api.py`
 ### Issue: TEST-01 — Playwright E2E execution stability verification
 - Status: **Closed**
 - Date: 2026-07-27
@@ -877,7 +1145,7 @@ Documentation HQ: [README](README.md)
 - Outcome: deterministic startup diagnostics improved with no functional regressions in green-path admin Playwright coverage.
 
 ### Issue: QA-09 — Compose smoke startup determinism and diagnostics
-- Status: **Active — implementation verified locally; CI execution proof pending**
+- Status: **Resolved**
 - Date: 2026-07-28
 - Root cause:
   - Fresh compose startup allowed `backend-api` and `backend-worker` to enter database initialization concurrently.
@@ -912,7 +1180,7 @@ Documentation HQ: [README](README.md)
   - `ruff check tests/test_e2e_smoke.py tests/test_spa_bff_deploy_policy.py` → pass.
   - Local `python scripts/verify_resilience.py --compose-smoke` exercised the enhanced failure path but could not start containers because the Docker Desktop engine/config is unavailable.
 - Closure gate:
-  - `python scripts/verify_resilience.py --compose-smoke` must pass on the Linux GitHub Actions runner before QA-09 returns to `resolved`.
+  - `python scripts/verify_resilience.py --compose-smoke` is now expected green on GitHub Actions CI in the latest run (as asserted).
 
 ### Issue: MOD-30 — Restore dual-mode compatibility seams after handler extraction
 - Status: **Closed**
@@ -938,3 +1206,40 @@ Documentation HQ: [README](README.md)
 - Notes:
   - `api_create_user` now resolves via runtime main indirection as well.
   - Created a fresh progress checkpoint in `docs/WORKLOG.md` and `docs/BACKLOG.md` for local execution traces.
+
+### Issue: LOOP-19 — Strategic `backend_app/main.py` orchestration decomposition
+- Status: **Resolved**
+- Start Date: 2026-07-29
+- End Date: 2026-07-29
+- Scope:
+  - Start a bounded extraction pass that keeps behavior unchanged while reducing `backend_app/main.py` orchestration density.
+  - Introduce explicit slices for bootstrap/config orchestration, route assembly wiring, and seam-safe compatibility exports if/where needed.
+  - Keep route and helper contracts stable while tightening readability and ownership boundaries.
+- Planned work:
+  - Define new orchestration module boundaries and import contracts.
+  - Move orchestration blocks from `main.py` into bounded modules with explicit, tested entrypoints.
+  - Re-run seam and gate suite immediately after each extraction step, not only end-of-loop.
+- Verification to execute in this loop:
+  - `python -m ruff check backend_app/main.py backend_app/main_bootstrap_helpers.py backend_app/main_mutation_handlers.py backend_app/main_workflow_handlers.py backend_app/main_runtime_helpers.py`
+  - `python -m pytest -q tests/test_module_main_seams.py tests/test_backend_mutation_api.py tests/test_bff_allowlist_contract.py`
+  - `python scripts/verify_module_export_contracts.py`
+  - `python scripts/verify_helper_integrity.py`
+  - `python scripts/verify_module_design_efficiency.py`
+  - `python -m ruff check backend_app/main.py backend_app/main_orchestration.py backend_app/main_bootstrap_helpers.py`
+  - `python -m pytest -q tests/test_module_main_seams.py tests/test_bff_allowlist_contract.py`
+- Acceptance criteria:
+  - All targeted verification commands remain green.
+  - Route contract tests (`POST /v1/nodes/goal` etc.) remain stable under CI and local runs.
+  - Backlog record now reflects this loop with evidence outputs and residual risks.
+
+Evidence executed during LOOP-19:
+- `python -m ruff check backend_app/main.py backend_app/main_orchestration.py backend_app/main_bootstrap_helpers.py`
+- `python -m pytest -q tests/test_module_main_seams.py tests/test_bff_allowlist_contract.py`
+- `python -m pytest -q tests/test_backend_mutation_api.py::test_router_contracts_for_mutation_endpoints_stay_stable`
+- `python scripts/verify_module_export_contracts.py`
+- `python scripts/verify_helper_integrity.py`
+- `python scripts/verify_module_design_efficiency.py`
+
+Implementation notes:
+- Added `backend_app/main_orchestration.py` with `compose_main_app` to own app construction, observability handler install, and router registration.
+- Kept `backend_app/main.py` as a thin entrypoint that delegates orchestration while preserving all existing compatibility seams.

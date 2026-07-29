@@ -231,6 +231,20 @@ Release governance (CI)
   - Gate command executed by workflow:
     - `python scripts/check_deploy_config.py --mode runtime --env-file /tmp/okr-runtime-gate/runtime.env`
 
+Dependency governance controls (CI loop):
+
+- License policy is now explicit in `scripts/dependency_license_policy.json`.
+- CI validates:
+  - `python scripts/verify_dependency_licenses.py`
+  - `python scripts/verify_secret_hygiene.py`
+- If a package with legacy licensing needs exception handling:
+  - Add package-level exception entries in `scripts/dependency_license_policy.json` (not inline scripts).
+- If hardcoded credential-like literals appear in test scaffolding, update fixture inputs to derive from environment-driven seeds or explicit fixtures instead of literal values.
+- Secret incident response playbook (minimum):
+  - rotate/revoke the exposed credential
+  - remove/replace hardcoded value with test-seed indirection
+  - document in loop worklog and add regression coverage for the impacted input path
+
 Admin bootstrap
 
 - On first run (empty DB), an admin user is created:

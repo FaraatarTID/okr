@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DOCKER_LAUNCHER = ROOT / "run_hybrid_app.bat"
 LOCAL_LAUNCHER = ROOT / "run_hybrid_app_local.bat"
+DOCKER_UI_LAUNCHER = ROOT / "scripts" / "okr-launcher-ui.ps1"
 
 
 def test_hybrid_launcher_exists_and_targets_spa_stack() -> None:
@@ -69,3 +70,20 @@ def test_local_hybrid_launcher_exists_and_starts_backend_bff_spa_without_docker(
     assert "Invoke-WebRequest" in payload
     assert ":startup_failed" in payload
     assert "http://127.0.0.1:3000" in payload
+
+
+def test_docker_ui_restart_waits_for_stop_before_starting() -> None:
+    payload = DOCKER_UI_LAUNCHER.read_text(encoding="utf-8")
+
+    assert "function Restart-DockerServices" in payload
+    assert (
+        '$result = Invoke-HiddenProcess -Executable "docker" -Arguments $startArgs'
+        in payload
+    )
+    assert (
+        '$result = Invoke-HiddenProcess -Executable "docker" -Arguments '
+        '@("compose","-f",$composeFile,"--env-file",$envFile,"down")' in payload
+    )
+    assert "if (-not (Stop-DockerServices))" in payload
+    assert "Wait-DockerServicesStopped" in payload
+    assert '$btnRestart.Add_Click({\n    Restart-DockerServices\n})' in payload

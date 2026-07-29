@@ -338,6 +338,8 @@ Path B: Horizontal Cluster Scaling (Kubernetes / ECS / Nomad)
 
 Use this if you need high availability or need to scale compute resources independently. In this mode, services are **de-coupled** into separate containers.
 
+Important: Kubernetes support in this repository is **scaffolding-level only**. The current `deploy/k8s/` set covers backend API and worker runtime components only and is not production-complete for full stack, database, ingress, or policy controls.
+
 ### 1. De-coupled Architecture
 
 A cluster deployment splits the app into three distinct tiers:
@@ -380,7 +382,14 @@ To run successfully in a cluster, set these environment variables:
 
 ### 4. Kubernetes Implementation
 
-Manifests are provided in `deploy/k8s/`.
+Manifest baseline is currently scaffold-only in `deploy/k8s/` and contains backend components only (`backend-api` and `backend-worker` deployments/services + database/API secrets).
+The following are not included yet and must be added before production-grade Kubernetes rollout:
+
+- PostgreSQL database lifecycle (stateful or managed DB service and readiness policies)
+- `spa-web` and `spa-bff` deployment/services
+- Ingress, TLS, and DNS host routing
+- NetworkPolicy/service-mesh guardrails
+- PodDisruptionBudget/affinity/topology controls and full rollback/restart playbook
 
 1. **Namespace**: `kubectl create ns okr`
 2. **Secrets**: Create a `Secret` for `OKR_DATABASE_URL` and `OKR_BACKEND_SERVICE_TOKEN`.

@@ -1,0 +1,120 @@
+{
+  "license_aliases": {
+    "mozilla public license 2.0 (mpl 2.0)": "MPL-2.0",
+    "mozilla public license version 2.0": "MPL-2.0",
+    "python software foundation license": "Python Software Foundation License",
+    "python software foundation": "Python Software Foundation License",
+    "psf": "PSF-2.0",
+    "psf-2": "PSF-2.0"
+  },
+  "scopes": {
+    "backend-python": {
+      "allowed_licenses": [
+        "0BSD",
+        "Apache-2.0",
+        "Apache Software License",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "BSD-3-Clause-Clear",
+        "BSD License",
+        "GNU Library or Lesser General Public License (LGPL)",
+        "ISC",
+        "LGPL",
+        "MIT",
+        "MIT License",
+        "MIT-0",
+        "MPL-2.0",
+        "Python-2.0",
+        "Python Software Foundation License",
+        "PSF",
+        "PSF-2.0",
+        "Unlicense",
+        "Apache Software License; MIT License"
+      ],
+      "package_exceptions": {
+        "markupsafe": ["BSD License"],
+        "python-multipart": ["MIT"],
+        "pyyaml": ["MIT"],
+        "certifi": ["MPL-2.0"],
+        "mako": ["MIT"],
+        "cffi": ["MIT-0"],
+        "cryptography": ["Apache-2.0", "BSD-3-Clause"],
+        "defusedxml": ["Python Software Foundation License"],
+        "greenlet": ["MIT", "Python Software Foundation License"],
+        "h11": ["MIT License"],
+        "httpx": ["BSD-3-Clause", "BSD License"],
+        "markdown-it-py": ["MIT License"],
+        "mdurl": ["MIT License"],
+        "mypy": ["MIT License"],
+        "packageurl-python": ["MIT License"],
+        "packaging": ["Apache-2.0", "BSD-2-Clause"],
+        "pluggy": ["MIT License"],
+        "psycopg2-binary": ["GNU Library or Lesser General Public License (LGPL)"],
+        "pyasn1-modules": ["BSD License"],
+        "pyee": ["MIT License"],
+        "pytest": ["MIT License"],
+        "redis": ["MIT License"],
+        "rich": ["MIT License"],
+        "ruff": ["MIT License"],
+        "sniffio": ["Apache Software License; MIT License"],
+        "tomli-w": ["MIT License"],
+        "typing-extensions": ["Python Software Foundation License"],
+        "websockets": ["BSD License"]
+      }
+    },
+    "spa-bff": {
+      "allowed_licenses": [
+        "0BSD",
+        "Apache-2.0",
+        "Apache License 2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "BSD-3-Clause-Clear",
+        "BSD License",
+        "ISC",
+        "MIT",
+        "MIT License",
+        "MIT-0",
+        "UNLICENSED"
+      ],
+      "package_exceptions": {}
+    },
+    "spa-web": {
+      "allowed_licenses": [
+        "0BSD",
+        "Apache-2.0",
+        "Apache License 2.0",
+        "BSD-2-Clause",
+        "BSD-3-Clause",
+        "BSD-3-Clause-Clear",
+        "BSD License",
+        "ISC",
+        "MIT",
+        "MIT License",
+        "MIT-0",
+        "UNLICENSED",
+        "LGPL-3.0-or-later",
+        "Apache-2.0 AND LGPL-3.0-or-later",
+        "Apache-2.0 AND LGPL-3.0-or-later AND MIT",
+        "LGPL-3.0-or-later"
+      ],
+      "package_exceptions": {
+        "caniuse-lite": ["CC-BY-4.0", "no-restriction"],
+        "@img/sharp-wasm32": ["Apache-2.0 AND LGPL-3.0-or-later AND MIT"],
+        "@img/sharp-win32-arm64": ["Apache-2.0 AND LGPL-3.0-or-later"],
+        "@img/sharp-win32-ia32": ["Apache-2.0 AND LGPL-3.0-or-later"],
+        "@img/sharp-win32-x64": ["Apache-2.0 AND LGPL-3.0-or-later"],
+        "@img/sharp-libvips-darwin-arm64": ["LGPL-3.0-or-later"],
+        "@img/sharp-libvips-darwin-x64": ["LGPL-3.0-or-later"],
+        "@img/sharp-libvips-linux-arm": ["LGPL-3.0-or-later"],
+        "@img/sharp-libvips-linux-arm64": ["LGPL-3.0-or-later"],
+        "@img/sharp-libvips-linux-ppc64": ["LGPL-3.0-or-later"],
+        "@img/sharp-libvips-linux-riscv64": ["LGPL-3.0-or-later"],
+        "@img/sharp-libvips-linux-s390x": ["LGPL-3.0-or-later"],
+        "@img/sharp-libvips-linux-x64": ["LGPL-3.0-or-later"],
+        "@img/sharp-libvips-linuxmusl-arm64": ["LGPL-3.0-or-later"],
+        "@img/sharp-libvips-linuxmusl-x64": ["LGPL-3.0-or-later"]
+      }
+    }
+  }
+}
