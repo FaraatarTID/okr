@@ -4,6 +4,33 @@ Documentation HQ: [README](README.md)
 
 ## 2026-07-29
 
+### Issue: DOC-GOV-01 — Enforce one canonical production-readiness verdict
+- Status: **Closed**
+- Scope:
+  - Retire the contradictory 2026-07-24 readiness report.
+  - Make `docs/PRODUCTIONIZATION_AUDIT.md` the sole canonical readiness verdict.
+  - Enforce verdict uniqueness and exact README linkage in the existing documentation CI gate.
+  - Record dated retirement and commit-traceability rules without creating another readiness artifact.
+- Affected files:
+  - `docs/PRODUCTIONIZATION_AUDIT.md`
+  - `docs/PRODUCTION_READINESS_REPORT.md` (deleted)
+  - `README.md`
+  - `scripts/check_docs_hq_links.py`
+  - `tests/test_check_docs_hq_links.py`
+  - `PRODUCTIONIZATION_EXECUTION_BACKLOG.md`
+- Root cause:
+  - Documentation navigation treated all reports as peers and only validated backlinks; it had no concept of a canonical verdict or semantic detection of competing verdict-bearing documents.
+- Resolution:
+  - Deleted the superseded readiness report and its README link.
+  - Added dated governance rules to the canonical audit.
+  - Extended the existing CI validator to require exactly one canonical README link and reject any other tracked Markdown document publishing a production-readiness verdict.
+  - Added synthetic-repository regression tests proving both failure modes are detected.
+- Verification:
+  - `python -m pytest -q tests/test_check_docs_hq_links.py` → `2 passed`
+  - `python scripts/check_docs_hq_links.py` → passed across 52 tracked Markdown files
+  - `python -m ruff check scripts/check_docs_hq_links.py tests/test_check_docs_hq_links.py` → passed
+  - Markdown link search for `PRODUCTION_READINESS_REPORT.md` → no matches
+
 ### Issue: LOOP-17 — Strengthen backend_app.main seam contracts for startup/bootstrap delegation
 - Status: **Closed**
 - Scope:

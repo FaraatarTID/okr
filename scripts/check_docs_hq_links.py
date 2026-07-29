@@ -15,6 +15,16 @@ HQ_LINK_RE = re.compile(
     r"^Documentation HQ:\s*\[README\]\((?P<link>[^)]+)\)\s*$",
     re.MULTILINE,
 )
+CANONICAL_READINESS_RELATIVE_PATH = Path("docs/PRODUCTIONIZATION_AUDIT.md")
+CANONICAL_READINESS_LINK_RE = re.compile(
+    r"\[[^\]]+\]\((?:\./)?docs/PRODUCTIONIZATION_AUDIT\.md"
+    r"(?:[?#][^)]+)?\)"
+)
+READINESS_VERDICT_RE = re.compile(
+    r"^(?:\*{0,2}verdict\*{0,2}|readiness classification|"
+    r"production readiness score)\s*:",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 def _tracked_markdown_files() -> list[Path]:
@@ -57,9 +67,17 @@ def _expected_readme_link(doc_path: Path) -> str:
     return os.path.relpath(ROOT_README, doc_path.parent).replace("\\", "/")
 
 
+def _publishes_production_readiness_verdict(text: str) -> bool:
+    normalized = text.lower().replace("-", " ")
+    return "production readiness" in normalized and bool(
+        READINESS_VERDICT_RE.search(text)
+    )
+
+
 def validate() -> int:
     errors: list[str] = []
     files = _tracked_markdown_files()
+    canonical_readiness_doc = (ROOT / CANONICAL_READINESS_RELATIVE_PATH).resolve()
 
     if not ROOT_README.exists():
         print("ERROR: README.md not found at repository root.")
@@ -68,6 +86,19 @@ def validate() -> int:
     readme_text = ROOT_README.read_text(encoding="utf-8")
     if "## Documentation HQ" not in readme_text:
         errors.append("README.md is missing the '## Documentation HQ' section.")
+    canonical_link_count = len(CANONICAL_READINESS_LINK_RE.findall(readme_text))
+    if canonical_link_count != 1:
+        errors.append(
+            "README.md must link exactly once to the canonical readiness verdict "
+            f"(found {canonical_link_count})."
+        )
+
+    tracked_paths = {path.resolve() for path in files}
+    if canonical_readiness_doc not in tracked_paths:
+        errors.append(
+            f"{CANONICAL_READINESS_RELATIVE_PATH.as_posix()}: canonical "
+            "production-readiness verdict document is not tracked."
+        )
 
     for doc in files:
         if doc == ROOT_README:
@@ -78,6 +109,15 @@ def validate() -> int:
         except UnicodeDecodeError:
             errors.append(f"{_display_path(doc)}: not valid UTF-8 text.")
             continue
+
+        if (
+            doc.resolve() != canonical_readiness_doc
+            and _publishes_production_readiness_verdict(text)
+        ):
+            errors.append(
+                f"{_display_path(doc)}: competing production-readiness verdict "
+                "document; update the canonical audit instead."
+            )
 
         match = HQ_LINK_RE.search(text)
         if not match:

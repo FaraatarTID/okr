@@ -37,7 +37,7 @@ Readiness-document changes follow these rules:
 5. Require CI to reject competing readiness-report artifacts and stale canonical-readiness links.
 6. Use descriptive commit messages for productionization work. Generic messages such as `patch` do not provide acceptable audit evidence.
 
-The 2026-07-24 `docs/PRODUCTION_READINESS_REPORT.md` is superseded by this audit and must be removed as part of the governance-remediation backlog item.
+The superseded 2026-07-24 `docs/PRODUCTION_READINESS_REPORT.md` was removed on 2026-07-29 under backlog item `DOC-GOV-01`.
 
 ## Phase 1 — Application Archaeology
 

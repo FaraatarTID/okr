@@ -13,6 +13,34 @@ Status legend:
 - `rejected`
 
 ```yaml
+- id: DOC-GOV-01
+  phase: Documentation Governance
+  title: Enforce one canonical production-readiness verdict
+  severity: high
+  problem: Two tracked and README-linked documents publish contradictory production-readiness verdicts, while generic productionization commit messages weaken evidence traceability.
+  why_it_matters: Operators and reviewers cannot make a defensible release decision when multiple current-looking artifacts disagree about readiness.
+  recommended_change: Delete the superseded readiness report, retain `docs/PRODUCTIONIZATION_AUDIT.md` as the sole verdict, remove stale links, and extend the existing documentation CI validator to reject competing verdict-bearing documents.
+  expected_benefit: one unambiguous readiness authority with machine-enforced retirement semantics.
+  acceptance_criteria:
+    - `docs/PRODUCTIONIZATION_AUDIT.md` is the only tracked Markdown document that publishes a production-readiness verdict or score.
+    - `docs/PRODUCTION_READINESS_REPORT.md` is deleted and no tracked document links to it.
+    - README Documentation HQ identifies exactly one canonical readiness verdict.
+    - `scripts/check_docs_hq_links.py` rejects a synthetic repository containing a competing verdict-bearing document.
+    - Documentation governance policy requires dated in-place verdict updates and descriptive productionization commit messages.
+    - The documentation CI check and its focused regression tests pass.
+  dependencies: []
+  affected_modules:
+    - docs/PRODUCTIONIZATION_AUDIT.md
+    - docs/PRODUCTION_READINESS_REPORT.md
+    - README.md
+    - scripts/check_docs_hq_links.py
+    - tests/test_check_docs_hq_links.py
+    - PRODUCTIONIZATION_EXECUTION_BACKLOG.md
+    - PRODUCTIONIZATION_EXECUTION_WORKLOG.md
+  verification: focused pytest + documentation CI validator + repository search
+  status: resolved
+  notes: Canonical governance decision recorded; superseded report deleted; README reduced to one canonical verdict link; semantic CI guard and focused regression tests passed on 2026-07-29.
+
 - id: QA-08
   phase: Audit Closure Loop
   title: Remove legacy route-guard env gating and harden version-stable route contract checks

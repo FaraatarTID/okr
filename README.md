@@ -243,9 +243,8 @@ If you are a first-time reader, skip this section until after `Start Here`.
 
 - Architecture (system): [ARCHITECTURE.md](ARCHITECTURE.md)
 - Maintainer map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
-- Production readiness report: [docs/PRODUCTION_READINESS_REPORT.md](docs/PRODUCTION_READINESS_REPORT.md)
+- Canonical production readiness verdict: [docs/PRODUCTIONIZATION_AUDIT.md](docs/PRODUCTIONIZATION_AUDIT.md)
 - Production readiness runbooks and dashboards: [docs/OBSERVABILITY_AND_RUNBOOKS.md](docs/OBSERVABILITY_AND_RUNBOOKS.md)
-- Productionization audit source: [docs/PRODUCTIONIZATION_AUDIT.md](docs/PRODUCTIONIZATION_AUDIT.md)
 - Productionization active loop backlog: [PRODUCTIONIZATION_EXECUTION_BACKLOG.md](PRODUCTIONIZATION_EXECUTION_BACKLOG.md)
 - Productionization active loop worklog: [PRODUCTIONIZATION_EXECUTION_WORKLOG.md](PRODUCTIONIZATION_EXECUTION_WORKLOG.md)
 - Historical productionization backlog snapshot: [PRODUCTIONIZATION_BACKLOG.md](PRODUCTIONIZATION_BACKLOG.md)
