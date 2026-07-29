@@ -31,6 +31,102 @@ Documentation HQ: [README](README.md)
   - `python -m ruff check scripts/check_docs_hq_links.py tests/test_check_docs_hq_links.py` → passed
   - Markdown link search for `PRODUCTION_READINESS_REPORT.md` → no matches
 
+### Issue: OPS-02 — Reclassify Kubernetes deployment documentation
+- Date: 2026-07-29
+- Status: **Closed**
+- Scope:
+  - Remove production-grade implication from `deploy/k8s` in deployment docs.
+  - Make Kubernetes docs explicitly state scaffolding-only coverage and list missing components for full deployment readiness.
+- Affected files:
+  - `DEPLOYMENT.md`
+  - `docs/KUBERNETES.md`
+  - `docs/KUBERNETES_FA.md`
+  - `docs/PRODUCTIONIZATION_AUDIT.md`
+- Resolution:
+  - Updated Path B in `DEPLOYMENT.md` to mark Kubernetes support as scaffold-level and backend-only, with an explicit missing-components checklist.
+  - Marked Kubernetes reference files as compatibility/scaffold-only and listed missing production surfaces (`spa-web`, `spa-bff`, PostgreSQL, Ingress, NetworkPolicy).
+  - Tightened the audit Dev/Prod Parity statement to avoid implying full-stack Kubernetes parity.
+- Verification:
+  - `rg -n "scaffold|backend-focused|partial" DEPLOYMENT.md docs/KUBERNETES.md docs/KUBERNETES_FA.md docs/PRODUCTIONIZATION_AUDIT.md`
+
+### Issue: OPS-01 — Deterministic docker launcher restart
+- Status: **Closed**
+- Scope:
+  - Prevent restart race by waiting for compose services to fully stop before issuing restart-up.
+  - Keep start/stop semantics unchanged while improving restart reliability for operator workflows.
+- Affected files:
+  - `scripts/okr-launcher-ui.ps1`
+  - `tests/test_hybrid_app_launcher_script.py`
+- Root cause:
+  - Restart path currently performed `docker compose down` then immediately returned to start without enforcing post-stop stability, which created intermittent restart races in UI-driven local recovery flows.
+- Resolution:
+  - Added `Wait-DockerServicesStopped` in `scripts/okr-launcher-ui.ps1`.
+  - Restart now calls stop, waits for zero running services in compose view, then starts services.
+  - Updated restart unit test contract in `tests/test_hybrid_app_launcher_script.py` to assert deterministic-stop helper usage.
+- Verification:
+  - `python -m pytest -q tests/test_hybrid_app_launcher_script.py` → `3 passed`
+- Outcome:
+  - Restart path now enforces deterministic stop completion and is less likely to leave race-prone restart windows for operators.
+
+### Issue: MOD-27 — Remove obsolete `src/ui` migration stubs and clean `src.crud` seam resolution
+- Status: **Closed**
+- Scope:
+  - Remove tracked Streamlit-style `src/ui/` stub modules no longer used by runtime or tests.
+  - Replace `sys.modules.get("src.crud", ...)` seam resolution in CRUD facades/helpers with explicit module import-based resolution for deterministic monkeypatching and import behavior.
+- Affected files:
+  - `src/ui/*`
+  - `src/crud_read_facade.py`
+  - `src/crud_mutation_facade.py`
+  - `src/crud_timer_facade.py`
+  - `src/crud_auth_helpers.py`
+  - `src/crud_runtime_helpers.py`
+- Root cause:
+  - Migration debt left a dead `src/ui` package in tracked sources and a test-oriented self-lookup mechanism in seam modules.
+- Resolution:
+  - Deleted all tracked `src/ui/*.py` files.
+  - Replaced dynamic `sys.modules` lookups with explicit `from src import crud as crud_module` resolver calls in facade/helper seams.
+- Verification:
+  - Tracked `src/ui` deletion confirmed via git staging diff.
+  - Seam resolver search now uses no `sys.modules.get("src.crud", ...)` patterns.
+
+### Issue: MOD-31 — Collapse auth facade indirection in CRUD runtime/mutation seams
+- Status: **Closed**
+- Scope:
+  - Remove direct pass-through dependency from runtime/mutation auth seams on `src.domain.auth_service`.
+  - Make `src/crud_runtime_helpers.py` delegate auth/runtime helper calls to concrete helper modules.
+  - Remove auth service dependency from `src/crud_mutation_facade.py` for concrete mutation operations.
+- Affected files:
+  - `src/crud_mutation_facade.py`
+  - `src/crud_runtime_helpers.py`
+- Root cause:
+  - Ownership migration had stabilized on helper behavior, but call sites still used thin wrappers in `domain.auth_service`, adding one avoidable indirection layer.
+- Resolution:
+  - Re-routed mutation helpers (`update_user`, `reset_user_password`, bootstrap user creation paths) in `src/crud_mutation_facade.py` to `crud_auth_helpers`.
+  - Re-routed helper delegates in `src/crud_runtime_helpers.py`:
+    - backend proxy toggles/error helpers to `crud_core_helpers`
+    - auth helper delegates (`hash_password`, `verify_password`, bootstrap/auth-throttle, user reads/creation) to `crud_auth_helpers`
+    - implemented read-proxy fallback error handling inline to avoid wrapper dependence.
+- Verification:
+  - `python -m ruff check src/crud_mutation_facade.py src/crud_runtime_helpers.py`
+  - `python -m pytest -q tests/test_module_main_seams.py` (to ensure no seam regression in adjacent auth/mutation behavior)
+
+### Issue: MOD-32 — Remove read-service dependency on `src.domain.auth_service`
+- Status: **Closed**
+- Scope:
+  - Remove `src.domain.auth_service` from `src/domain/read_service.py` to close remaining read/auth seam indirection.
+  - Route backend read-proxy checks/error handling directly through `crud_core_helpers` and inline read-proxy helpers.
+  - Keep user-read functions delegating directly to `crud_auth_helpers`.
+- Affected files:
+  - `src/domain/read_service.py`
+- Root cause:
+  - The read-service remained a thin wrapper over another service module, which preserved extra coupling and masked concrete ownership of read auth/proxy behavior.
+- Resolution:
+  - Replaced `backend_read_proxy_enabled_from_crud`, `resolve_backend_actor_from_crud`, and backend read error/result helpers with direct inline implementations.
+  - Re-routed `get_user_by_username_from_crud`, `get_user_by_id_from_crud`, `get_all_users_from_crud`, and `get_team_members_from_crud` to `crud_auth_helpers`.
+  - Removed `src.domain.auth_service` import and all in-file references.
+- Verification:
+  - `python -m ruff check src/domain/read_service.py`
+
 ### Issue: LOOP-17 — Strengthen backend_app.main seam contracts for startup/bootstrap delegation
 - Status: **Closed**
 - Scope:

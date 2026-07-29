@@ -22,9 +22,9 @@ from src.models import (
 
 
 def _crud_module():
-    import sys
+    from src import crud as crud_module
 
-    return sys.modules.get("src.crud", sys.modules[__name__])
+    return crud_module
 
 
 def get_all_users() -> List[User]:

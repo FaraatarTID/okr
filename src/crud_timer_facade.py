@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-import sys
 from typing import Optional
 
 from sqlmodel import Session
@@ -13,7 +12,9 @@ from src.models import Task, TaskWithTimer, WorkLog
 
 
 def _crud_module():
-    return sys.modules.get("src.crud", sys.modules[__name__])
+    from src import crud as crud_module
+
+    return crud_module
 
 
 def get_active_timer(user_id: str) -> Optional[TaskWithTimer]:

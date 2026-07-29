@@ -1,7 +1,7 @@
 # Production Readiness Audit
 Documentation HQ: [README](../README.md)
 
-Date: 2026-07-27
+Date: 2026-07-29 (active canonical verdict date)
 
 This audit treats the repository as an inherited system that must be operated, modified, and scaled without relying on prototype-era context.
 
@@ -269,7 +269,7 @@ Keep the current modular monolith plus BFF and worker. Do not introduce microser
 | 7. Port Binding | 4 | FastAPI, Fastify, and Next.js are independently runnable services with health endpoints. | Low | Document exact ports, private/public ingress, and readiness semantics per service. | S |
 | 8. Concurrency | 2 | Horizontal scale is plausible but depends on DB/Redis state and careful row locking. | High | Add load tests, multi-worker tests, queue-depth alerts, and DB pooler validation in CI. | M-L |
 | 9. Disposability | 2 | Startup validation exists; graceful shutdown and recovery drills are not obvious. | Medium | Add SIGTERM handling verification, readiness/liveness probes, worker lease expiry tests, and startup timing budgets. | M |
-| 10. Dev/Prod Parity | 2 | Docker Compose and K8s manifests exist; local SQLite/test modes can diverge from PostgreSQL behavior. | Medium | Add PostgreSQL-backed integration profile in CI and local compose; document parity exceptions. | M |
+ | 10. Dev/Prod Parity | 2 | Docker Compose is the primary production path; Kubernetes manifests are partial (backend-focused scaffold) and local SQLite/test modes can diverge from PostgreSQL behavior. | Medium | Add PostgreSQL-backed integration profile in CI and local compose; document parity exceptions and K8s completion prerequisites. | M |
 | 11. Logging | 3 | Structured backend logging, audit events, and metrics snapshot exist. | Medium | Standardize JSON logs across BFF/backend/worker; add tracing, dashboards, and alerts. | M |
 | 12. Admin Processes | 2 | Alembic and scripts exist; operational one-off workflows are not packaged. | Medium | Add CLI admin commands for user recovery, job retry/cancel, audit export, backup restore test, and data fixes. | M |
 

@@ -85,5 +85,5 @@ def test_docker_ui_restart_waits_for_stop_before_starting() -> None:
         '@("compose","-f",$composeFile,"--env-file",$envFile,"down")' in payload
     )
     assert "if (-not (Stop-DockerServices))" in payload
-    assert "Start-Sleep -Milliseconds 700" not in payload
+    assert "Wait-DockerServicesStopped" in payload
     assert '$btnRestart.Add_Click({\n    Restart-DockerServices\n})' in payload

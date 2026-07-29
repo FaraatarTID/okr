@@ -41,6 +41,101 @@ Status legend:
   status: resolved
   notes: Canonical governance decision recorded; superseded report deleted; README reduced to one canonical verdict link; semantic CI guard and focused regression tests passed on 2026-07-29.
 
+- id: OPS-02
+  phase: Documentation Governance
+  title: Reclassify Kubernetes docs as scaffold-only until full stack manifests are present
+  severity: medium
+  problem: `deploy/k8s/` contains only backend API/worker and secret manifests, but repository docs currently imply broader Kubernetes production readiness.
+  why_it_matters: Overstated deployment capability can mislead operators and increase rollout risk.
+  recommended_change: explicitly label Kubernetes path as scaffold-only in deployment docs and canonical links, listing missing production-grade stack items (SPA services, Postgres, ingress, network policies, restart/rollback policy).
+  expected_benefit: honest operator decision-making and safer rollout planning.
+  acceptance_criteria:
+    - `DEPLOYMENT.md` explicitly states K8s is backend/scaffold level only and lists missing production components.
+    - `docs/KUBERNETES*.md` links are marked compatibility/scaffold language.
+    - `PRODUCTIONIZATION_AUDIT.md` risk matrix no longer implies full-stack K8s manifest parity.
+  dependencies: [DOC-GOV-01]
+  affected_modules:
+    - DEPLOYMENT.md
+    - docs/KUBERNETES.md
+    - docs/KUBERNETES_FA.md
+    - docs/PRODUCTIONIZATION_AUDIT.md
+  verification: `rg -n \"scaffold|backend-focused|partial\" DEPLOYMENT.md docs/KUBERNETES.md docs/KUBERNETES_FA.md docs/PRODUCTIONIZATION_AUDIT.md`
+  status: resolved
+  notes: Deployment docs now call out K8s limits clearly and provide an explicit missing-components checklist before claiming production-grade stack rollout.
+
+- id: MOD-27
+  phase: Debt Reduction
+  title: Remove obsolete `src/ui` migration stubs and eliminate `src.crud` self-lookup seams
+  severity: medium
+  problem: `src/ui/*` POC stub modules remain tracked but unused, and `src.crud`-adjacent helpers use `sys.modules` self-lookup for test monkeypatching.
+  why_it_matters: Dead code confuses ownership boundaries and hides intended ownership seams between `src.crud`, `src/domain/*_service.py`, and `*_helpers`.
+  recommended_change: Remove the stale `src/ui` package from tracking and replace `sys.modules.get("src.crud", ...)` seams with explicit module-resolution helpers that avoid self-lookup.
+  expected_benefit: clearer migration boundary with deterministic test hooks and less ambiguous ownership.
+  acceptance_criteria:
+    - No `src/ui/*.py` files remain tracked in this cycle.
+    - `sys.modules.get("src.crud", ...)` pattern removed from active `src/crud_*` seam modules.
+    - No references to removed POC modules in code or README/process docs.
+    - `scripts/check_docs_hq_links.py` remains cleanly passing.
+  dependencies: [MOD-25]
+  affected_modules:
+    - src/ui
+    - src/crud_read_facade.py
+    - src/crud_mutation_facade.py
+    - src/crud_timer_facade.py
+    - src/crud_runtime_helpers.py
+    - src/crud_auth_helpers.py
+    - src/crud.py
+    - backend_app/main.py
+    - scripts/verify_module_export_contracts.py
+  verification: `git diff --name-only --diff-filter=D | Select-String -Pattern '^src/ui/'` + targeted seam search + ruff/docs gate
+  status: resolved
+  notes: Completed dead-UI deletion and replaced `sys.modules` self-lookups in migration facade/helper seam modules with explicit `src.crud` resolver calls in this pass.
+
+- id: MOD-31
+  phase: Debt Reduction
+  title: Collapse auth facade indirection in CRUD runtime and mutation seams to direct helper ownership
+  severity: medium
+  problem: `src/domain/auth_service.py` remained the pass-through owner for auth helper behaviors used by `src/crud_runtime_helpers.py` and auth mutation paths, weakening clear ownership boundaries in migration seams.
+  why_it_matters: Thin wrappers in multiple layers slow migration work and obscure where behavior actually lives when debugging auth-path regressions.
+  recommended_change: make runtime and mutation helper seams call concrete helpers directly where behavior is already implemented, while keeping backend-read proxy/ error handling behavior inline and explicit.
+  expected_benefit: clearer auth seam ownership and one fewer dependency layer between public call sites and concrete implementation.
+  acceptance_criteria:
+    - `src/crud_runtime_helpers.py` resolves auth helper calls through `crud_auth_helpers` and `crud_core_helpers` directly.
+    - `src/crud_mutation_facade.py` resolves auth mutation operations through `crud_auth_helpers` directly.
+    - `src/domain/auth_service.py` dependency is reduced in runtime/mutation seam execution path.
+  dependencies:
+    - MOD-27
+    - MOD-26
+  affected_modules:
+    - src/crud_runtime_helpers.py
+    - src/crud_mutation_facade.py
+    - src/domain/auth_service.py
+  verification: ruff + targeted pytest + import integrity smoke
+  status: resolved
+  notes: Completed dependency-layer reduction for auth seam calls in `src/crud_runtime_helpers.py` and `src/crud_mutation_facade.py` by routing direct helper calls.
+
+- id: MOD-32
+  phase: Debt Reduction
+  title: Remove read-service indirection to `src.domain.auth_service` and complete auth seam flattening
+  severity: medium
+  problem: `src/domain/read_service.py` still used `src.domain.auth_service` as a proxy seam, creating another pass-through layer in read-path ownership.
+  why_it_matters: Read and auth behavior were difficult to reason about when one service imported another service purely for delegation.
+  recommended_change: move read/backend-read proxy behavior and user-read calls in `read_service` to direct helper dependencies while preserving current request/response semantics.
+  expected_benefit: lower ownership ambiguity and cleaner service-layer boundaries for read-path functions.
+  acceptance_criteria:
+    - `src/domain/read_service.py` no longer imports `src.domain.auth_service`.
+    - Backend-read proxy helpers are resolved from `crud_core_helpers` / `backend_client` directly.
+    - User read helpers delegate directly to `crud_auth_helpers`.
+    - `ruff` clean on edited service file.
+  dependencies:
+    - MOD-31
+  affected_modules:
+    - src/domain/read_service.py
+    - src/domain/auth_service.py
+  verification: ruff + read-service overlap matrix refresh
+  status: resolved
+  notes: Completed read-seam flattening in `src/domain/read_service.py` and removed the remaining `auth_service` import dependency from this seam path.
+
 - id: QA-08
   phase: Audit Closure Loop
   title: Remove legacy route-guard env gating and harden version-stable route contract checks
@@ -68,6 +163,27 @@ Status legend:
   verification: pytest + helper/export/design scripts + openapi call
   status: resolved
   notes: Closed route-contract false-negative in CI; `POST /v1/nodes/goal` now resolves through nested route traversal and bootstrap guard is enforced unconditionally.
+
+- id: OPS-01
+  phase: Operational Hardening
+  title: Stabilize docker UI restart by waiting for deterministic stop completion
+  severity: medium
+  problem: Docker UI restart restarted services immediately after `down`, which can leave startup sequencing racing and surfaces as intermittent failed restarts in local operator sessions.
+  why_it_matters: Restart is an operator-critical path; races here directly reduce incident response reliability and can hide service-state churn.
+  recommended_change: add explicit compose-runner stop-completion polling in restart flow and keep start semantics unchanged.
+  expected_benefit: deterministic restart behavior and easier operator recovery for local/docker control workflows.
+  acceptance_criteria:
+    - restart path calls a verified post-stop wait before issuing compose up.
+    - launcher restart test contract asserts the deterministic stop-completion helper.
+    - no behavioral regression in start/stop tests.
+  dependencies:
+    - DOC-GOV-01
+  affected_modules:
+    - scripts/okr-launcher-ui.ps1
+    - tests/test_hybrid_app_launcher_script.py
+  verification: `python -m pytest -q tests/test_hybrid_app_launcher_script.py`
+  status: resolved
+  notes: restart sequence now calls an explicit running-service drain check after `docker compose down` and before restart-up.
 
 - id: QA-07
   phase: Audit Closure Loop
