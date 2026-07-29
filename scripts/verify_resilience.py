@@ -263,6 +263,30 @@ def _compose_failure_diagnostics(
     return "\n\n".join(sections)
 
 
+def _smoke_http_blocker_hints(output: str) -> str:
+    text = (output or "").lower()
+    hints: list[str] = []
+    if "http error: 401" in text or "unauthorized" in text:
+        hints.append(
+            "401 Unauthorized: login flow or session cookies were rejected. "
+            "Check BFF session config (BFF_SESSION_SECRET, BFF_PUBLIC_ORIGIN) "
+            "and ensure bootstrap admin password is accepted."
+        )
+    if "http error: 403" in text or "forbidden" in text:
+        hints.append(
+            "403 Forbidden: route auth/allowlist mismatch. "
+            "Verify BFF allowlist entries and test credentials/roles for smoke actor."
+        )
+    if "http error: 400" in text or "bad request" in text:
+        hints.append(
+            "400 Bad Request: request payload/session bootstrap mismatch. "
+            "Check smoke credentials, bootstrap actor credentials, and BFF/backend route compatibility."
+        )
+    if not hints:
+        return ""
+    return "\n".join(["Smoke blocker hints:"] + [f"- {hint}" for hint in hints])
+
+
 def _smoke_check_services(
     base_bff_url: str,
     base_backend_url: str,
@@ -381,6 +405,10 @@ def _run_smoke_compose(
                 timeout_seconds=180,
             )
             if readiness.status != "pass":
+                readiness_detail = readiness.detail
+                hints = _smoke_http_blocker_hints(readiness_detail)
+                if hints:
+                    readiness_detail = f"{readiness_detail}\n\n{hints}"
                 diagnostics = _compose_failure_diagnostics(
                     compose_file=compose_file,
                     env_file=env_path,
@@ -390,7 +418,7 @@ def _run_smoke_compose(
                 return CheckResult(
                     name=readiness.name,
                     status=readiness.status,
-                    detail=f"{readiness.detail}\n\n{diagnostics}",
+                    detail=f"{readiness_detail}\n\n{diagnostics}",
                 )
 
             pytest_cmd = [sys.executable, "-m", "pytest", "-q", _SMOKE_TEST_PATH]
@@ -400,11 +428,16 @@ def _run_smoke_compose(
                 env=pytest_env,
             )
             if pycode != 0:
+                hints = _smoke_http_blocker_hints(pyout)
+                detail = pyout or "Smoke pytest command failed."
+                if hints:
+                    detail = f"{detail}\n\n{hints}"
                 return CheckResult(
                     name="compose_smoke_pytest",
                     status="fail",
-                    detail=pyout or "Smoke pytest command failed.",
+                    detail=detail,
                 )
+
             return CheckResult(
                 name="compose_smoke_pytest",
                 status="pass",

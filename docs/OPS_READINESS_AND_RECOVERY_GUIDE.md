@@ -4,6 +4,9 @@ Documentation HQ: [README](../README.md)
 
 ## Scope
 
+**Execution Docs:** This guide is operationally aligned to the active productionization trail:
+`docs/PRODUCTIONIZATION_AUDIT.md` → `PRODUCTIONIZATION_EXECUTION_BACKLOG.md` → `PRODUCTIONIZATION_EXECUTION_WORKLOG.md`.
+
 - Closure item: `OPS-01` from `PRODUCTIONIZATION_EXECUTION_BACKLOG.md`.
 - Goal: make growth-risk table management and recovery operations auditable, bounded, and repeatable without ad-hoc procedures.
 
@@ -91,4 +94,3 @@ Completion evidence expected:
 - Restore attempts emit `restore_attempt` audit event with payload/version metadata.
 - Partition/retention SQL contract exists in migrations or approved ADR-like migration plan.
 - No direct restore attempts are possible in production without controlled override policy.
-

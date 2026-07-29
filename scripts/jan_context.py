@@ -122,7 +122,20 @@ def _build_report(prefer: Optional[str]) -> Dict[str, Any]:
         }
     port, api_key = state
     base_url = f"http://127.0.0.1:{port}/v1"
-    models = _fetch_models(base_url, api_key)
+    try:
+        models = _fetch_models(base_url, api_key)
+    except RuntimeError as exc:
+        print(
+            f"[WARN] Jan models endpoint not reachable; skipping context refresh: {exc}",
+            file=sys.stderr,
+        )
+        return {
+            "AI_BASE_URL": "",
+            "AI_API_KEY": "",
+            "AI_MODEL": "",
+            "JAN_MODEL_IDS": [],
+            "JAN_LOG_PATH": str(_jan_log_path()),
+        }
     model_ids = [
         str(model.get("id") or "").strip()
         for model in models
@@ -221,11 +234,9 @@ def main() -> int:
     report = _build_report(args.prefer)
 
     if not report.get("AI_BASE_URL"):
-        print(
-            "[WARN] Jan AI router not found or not running; skipping context refresh.",
-            file=sys.stderr,
-        )
-        return 0
+        message = "Jan AI router not found or not running; skipping context refresh."
+        print(f"[WARN] {message}", file=sys.stderr)
+        return 2
 
     if args.json:
         print(json.dumps(report, indent=2, ensure_ascii=False))

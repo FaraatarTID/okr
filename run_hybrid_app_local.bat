@@ -69,6 +69,14 @@ if %NODE_MAJOR% lss 20 (
 )
 
 echo [3/7] Resolving database URL...
+echo [3.5/7] Running local smoke readiness preflight...
+"%PYEXE%" scripts\check_local_smoke_readiness.py --root "%ROOT_CLEAN%"
+if errorlevel 1 (
+    echo [ERROR] Local smoke readiness preflight failed.
+    pause
+    exit /b 1
+)
+
 set "DB_URL_CANDIDATE=%OKR_DATABASE_URL%"
 set "OKR_DATABASE_URL="
 
@@ -193,19 +201,51 @@ if not exist "%ROOT%spa-bff\node_modules" (
 )
 if not exist "%ROOT%spa-web\node_modules" (
     echo [INFO] Installing spa-web dependencies...
-    call npm --prefix "%ROOT%spa-web" install
+    call :install_spa_web_dependencies
     if errorlevel 1 (
         echo [ERROR] Failed to install spa-web dependencies.
         pause
         exit /b 1
     )
 )
+if not exist "%ROOT%spa-web\node_modules" (
+    echo [WARN] spa-web node_modules was not created.
+    call :install_spa_web_dependencies
+    if errorlevel 1 (
+        echo [ERROR] Failed to install spa-web dependencies.
+        pause
+        exit /b 1
+    )
+)
+set "NEXT_CLI=%ROOT%spa-web\node_modules\.bin\next.cmd"
+if not exist "%NEXT_CLI%" set "NEXT_CLI=%ROOT%spa-web\node_modules\.bin\next"
+if not exist "%NEXT_CLI%" (
+    echo [WARN] spa-web dependency next is missing from node_modules.
+    echo [WARN] Re-installing spa-web dependencies with production defaults...
+    call :install_spa_web_dependencies
+    if errorlevel 1 (
+        echo [ERROR] Failed to install spa-web dependencies.
+        pause
+        exit /b 1
+    )
+)
+if not exist "%NEXT_CLI%" (
+    if exist "%ROOT%spa-web\node_modules\.bin\next" set "NEXT_CLI=%ROOT%spa-web\node_modules\.bin\next"
+)
+if not exist "%NEXT_CLI%" (
+    echo [ERROR] spa-web still missing next CLI under node_modules\.bin.
+    echo [HINT] Verify spa-web/package.json includes next and run: npm --prefix "%ROOT%spa-web" install
+    echo [HINT] or from spa-web directory: cd "%ROOT%spa-web" && npm install
+    pause
+    exit /b 1
+)
 
 echo [INFO] Clearing stale Next.js cache...
 if exist "%ROOT%spa-web\.next" rd /s /q "%ROOT%spa-web\.next" >nul 2>&1
 echo [INFO] Building spa-web production bundle...
 pushd "%ROOT%spa-web"
-call npm run build
+if "%NEXT_CLI%"=="" set "NEXT_CLI=%ROOT%spa-web\node_modules\.bin\next.cmd"
+call "%NEXT_CLI%" build
 popd
 if errorlevel 1 (
     echo [ERROR] Failed to build spa-web.
@@ -270,8 +310,16 @@ set "SPAWN_PID_FILE=%PID_FILE%"
 set "SPAWN_LAST_PID_FILE=%LAST_PID_FILE%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_backend_failed
-call :set_last_spawned_pid_from_file
-if not errorlevel 1 set "BACKEND_PID=%LAST_SPAWNED_PID%"
+if not exist "%LAST_PID_FILE%" (
+    echo [ERROR] Backend API process PID file was not created.
+    goto :startup_failed
+)
+for /f "usebackq delims=" %%P in ("%LAST_PID_FILE%") do set "LAST_SPAWNED_PID=%%P"
+if not defined LAST_SPAWNED_PID (
+    echo [ERROR] Backend API PID file is empty.
+    goto :startup_failed
+)
+set "BACKEND_PID=%LAST_SPAWNED_PID%"
 
 echo [INFO] Waiting for Backend API warm-up before launching other services...
 call :wait_for_http "Backend API" "http://127.0.0.1:8100/healthz" 120
@@ -587,11 +635,70 @@ exit /b 0
     "try { $proc = Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $cwd -RedirectStandardOutput $out -RedirectStandardError $err -WindowStyle Hidden -PassThru -ErrorAction Stop; if ($pidFile) { Add-Content -Path $pidFile -Value ([string]$proc.Id) -Encoding Ascii }; if ($lastPidFile) { Set-Content -Path $lastPidFile -Value ([string]$proc.Id) -Encoding Ascii }; exit 0 } catch { Write-Host $_.Exception.Message; exit 1 }"
 exit /b %ERRORLEVEL%
 
-:set_last_spawned_pid_from_file
-set "LAST_SPAWNED_PID="
-if not exist "%LAST_PID_FILE%" exit /b 1
-set /p LAST_SPAWNED_PID=<"%LAST_PID_FILE%"
-if not defined LAST_SPAWNED_PID exit /b 1
+:install_spa_web_dependencies
+rem Prefix-based install can be unreliable in some npm runtimes; prefer local directory install.
+rem call npm --prefix "%ROOT%spa-web" install
+pushd "%ROOT%spa-web"
+if errorlevel 1 (
+    echo [ERROR] spa-web directory not found or inaccessible.
+    exit /b 1
+)
+
+rem First attempt: standard install for existing lockfile behavior.
+call npm install --no-audit --no-fund
+set "NPM_INSTALL_RC=%ERRORLEVEL%"
+
+if not "%NPM_INSTALL_RC%"=="0" (
+    echo [WARN] Initial spa-web install failed (%NPM_INSTALL_RC%). Attempting EPERM-safe repair path.
+    if exist node_modules\@next rd /s /q node_modules\@next >nul 2>&1
+    if exist node_modules\next rd /s /q node_modules\next >nul 2>&1
+    if exist node_modules\@swc rd /s /q node_modules\@swc >nul 2>&1
+    if exist node_modules\.pnpm-lock.yaml del /q node_modules\.pnpm-lock.yaml >nul 2>&1
+    if exist node_modules\package-lock.json del /q node_modules\package-lock.json >nul 2>&1
+    if exist node_modules rd /s /q node_modules >nul 2>&1
+    call npm cache clean --force
+    call npm install --no-audit --no-fund --no-progress
+    set "NPM_INSTALL_RC=%ERRORLEVEL%"
+
+    if not "%NPM_INSTALL_RC%"=="0" (
+        echo [WARN] Retrying lockfile refresh with --package-lock-only.
+        call npm install --package-lock-only --no-audit --no-fund
+        set "LOCKFILE_RC=%ERRORLEVEL%"
+        if not "%LOCKFILE_RC%"=="0" (
+            popd
+            exit /b %LOCKFILE_RC%
+        )
+        call npm install --no-audit --no-fund --no-progress
+        set "NPM_INSTALL_RC=%ERRORLEVEL%"
+    )
+)
+
+if not "%NPM_INSTALL_RC%"=="0" (
+    popd
+    exit /b %NPM_INSTALL_RC%
+)
+
+if not exist "node_modules\.bin\next.cmd" if not exist "node_modules\.bin\next" (
+    echo [ERROR] Next CLI not found after spa-web installation.
+    echo [INFO] Current dependency tree snapshot:
+    dir node_modules\.bin 2>nul
+    popd
+    exit /b 1
+)
+
+if exist node_modules\.bin\next.cmd (
+    call node_modules\.bin\next.cmd --version >nul 2>&1
+) else (
+    call node_modules\.bin\next --version >nul 2>&1
+)
+if errorlevel 1 (
+    popd
+    echo [ERROR] Next CLI verification failed after spa-web install.
+    exit /b 1
+)
+
+popd
+if not exist "%ROOT%spa-web\node_modules" exit /b 1
 exit /b 0
 
 :stop_stale_hybrid_processes

@@ -2,6 +2,8 @@
 
 Documentation HQ: [README](README.md)
 
+**Worklog Mode:** This is a historical productionization worklog. For current execution-loop evidence and live status, use [PRODUCTIONIZATION_EXECUTION_WORKLOG.md](PRODUCTIONIZATION_EXECUTION_WORKLOG.md) and [PRODUCTIONIZATION_EXECUTION_BACKLOG.md](PRODUCTIONIZATION_EXECUTION_BACKLOG.md).
+
 ## 2026-07-26
 
 ### Issue: ARCH-04 — Extract domain services from oversized CRUD facade

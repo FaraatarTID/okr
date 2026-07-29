@@ -19,7 +19,13 @@ def _parse_response(response) -> dict:
     body = response.read().decode("utf-8").strip()
     if not body:
         return {}
-    return json.loads(body)
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        return {
+            "raw_text": body,
+            "payload_type": "text",
+        }
 
 
 def _request_json(

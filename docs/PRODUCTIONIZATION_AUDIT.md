@@ -511,3 +511,156 @@ Second, I would reduce the highest-change-risk modules without changing business
 Third, I would make PostgreSQL the truth in CI for anything involving migrations, authorization, locking, indexes, and RLS. SQLite is useful for fast tests but is not enough for production confidence.
 
 I would deliberately leave microservices, event sourcing, and a full frontend rewrite alone. The current modular-monolith-with-BFF shape is acceptable if boundaries are enforced, operational maturity improves, and duplicated fallback paths are controlled.
+
+---
+
+## 2026-07-29 Productionization Decision Record
+
+This update records the concrete productionization posture after re-inspecting the repository on 2026-07-29. It is intentionally biased toward handoff risk and operational failure modes rather than feature completeness.
+
+### Evidence Snapshot Used For This Audit
+
+- Product scope and BAU/OKR boundary are stated in `README.md`.
+- The deployable topology is encoded in `deploy/docker/docker-compose.yml`: PostgreSQL, `backend-api`, `backend-worker`, `spa-bff`, and `spa-web`.
+- Backend runtime configuration is centralized in `backend_app/config.py`, but production safety depends on many environment variables.
+- The browser-facing BFF has an explicit route allowlist in `spa-bff/src/allowlist.ts` and production validation in `spa-bff/src/config.ts`.
+- Database access is centralized in `src/database.py`, with PostgreSQL required at runtime unless SQLite is explicitly configured.
+- Durable jobs are implemented through `backend_app/jobs.py` and the `AsyncJob` model.
+- Schema evolution is handled through Alembic migrations under `alembic/versions`.
+- Critical behavior is covered by many targeted tests under `tests/`, plus BFF and SPA package-level test suites.
+
+### Production Classification
+
+The application should be treated as **production risky** rather than prototype-only. It has enough architecture to be deployed for a controlled internal or early customer environment, but not enough operational maturity to scale without avoidable incidents.
+
+Acceptable use today:
+
+- Controlled internal deployment.
+- Limited pilot with known users and manual operator attention.
+- Production-like rehearsal with non-critical data.
+
+Not acceptable without additional work:
+
+- Large multi-tenant rollout.
+- Regulated-data deployment without a formal security review.
+- High-availability promises with no on-call runbooks, backup drills, or SLO dashboards.
+
+### Detailed Twelve-Factor Scoring
+
+| Factor | Score | Current state | Evidence | Risk level | Recommended fix | Effort |
+| --- | ---: | --- | --- | --- | --- | --- |
+| 1. Codebase | 3 | One repository holds frontend, BFF, backend, worker, migrations, deploy config, docs, and tests. Structure is understandable but broad. | `spa-web/`, `spa-bff/`, `backend_app/`, `src/`, `alembic/`, `deploy/docker/`, `tests/`. | Medium | Add a maintained ownership map and mark deprecated/backlog documents as historical or active. | S |
+| 2. Dependencies | 3 | Dependencies are explicit. Python versions are pinned; Node installs are locked but manifest ranges can float before lock refresh. | `backend_app/requirements.txt`, `spa-web/package-lock.json`, `spa-bff/package-lock.json`. | Medium | Add scheduled dependency update PRs, `pip-audit`, `npm audit`, and license policy gates. | S-M |
+| 3. Configuration | 3 | Runtime is env-driven with validation, but there are many knobs and some defaults are development-oriented. | `backend_app/config.py`, `spa-bff/src/config.ts`, `deploy/docker/.env.example`. | Medium | Generate a config schema/reference from code and fail startup for unsafe production combinations. | M |
+| 4. Backing Services | 3 | PostgreSQL/Supabase, Redis security state, AI providers, and PDF providers are modeled as resources. | `src/database.py`, `backend_app/config.py`, `src/services/ai_provider.py`, `src/services/pdf_service.py`. | Medium | Define supported production backing-service combinations and health/timeout budgets per dependency. | M |
+| 5. Build / Release / Run | 2 | Docker assets exist, but CI release promotion, immutable release manifests, and rollback execution are not first-class. | `deploy/docker/docker-compose.yml`, `deploy/docker/Dockerfile`, `spa-web/Dockerfile`, `spa-bff/Dockerfile`. | High | Add a release pipeline that builds once, runs migrations separately, promotes immutable images, and documents rollback. | M |
+| 6. Processes | 3 | Web processes can be stateless if BFF session and backend security state are shared; jobs are durable in the DB. | `spa-bff/src/session.ts`, `backend_app/jobs.py`, `backend_app/security_state.py`. | Medium | Block memory-backed security state in production and add worker restart/replay tests. | S-M |
+| 7. Port Binding | 4 | SPA, BFF, and API bind ports independently and are runnable services. | Compose exposes `spa-web`, `spa-bff`, and `backend-api`. | Low | Document public/private port contracts and ingress assumptions in one operations guide. | S |
+| 8. Concurrency | 2 | Horizontal scaling is possible but depends on database locks, Redis/database shared state, and job-claim correctness. | `backend_app/jobs.py`, timer and job tests under `tests/`. | High | Add multi-worker integration tests, load tests, and queue depth alerts before scaling. | M-L |
+| 9. Disposability | 2 | Health checks exist for API and database; worker health and graceful shutdown validation are weak. | `deploy/docker/docker-compose.yml`. | Medium | Add SIGTERM tests, readiness/liveness probes, worker lease-expiry metrics, and restart playbooks. | M |
+| 10. Dev/Prod Parity | 2 | Compose gives a production-like path, but SQLite/local test behavior can differ from PostgreSQL locks, indexes, and RLS. | `src/database.py`, `tests/test_postgres_integration_smoke.py`. | Medium | Run a PostgreSQL integration profile in CI for migrations, RLS, and lock-sensitive flows. | M |
+| 11. Logging | 3 | Audit events and metrics primitives exist; end-to-end structured logs/traces are not guaranteed. | `src/audit.py`, `src/observability.py`, `src/observability_metrics.py`. | Medium | Standardize JSON logs and OpenTelemetry correlation across browser, BFF, API, worker, DB, and providers. | M |
+| 12. Admin Processes | 2 | Alembic and ad hoc scripts exist, but one-off operational workflows are not packaged as safe admin tools. | `alembic/`, `scripts/`, `backend_app/jobs.py`. | Medium | Build authenticated admin CLI commands for migrations, job retry/cancel, user recovery, backup restore tests, and audit export. | M |
+
+### Code Quality Findings By Severity
+
+Critical:
+
+- No immediate source-code defect was proven that requires an emergency hotfix before any non-public pilot. This does not mean the system is safe; it means the largest observed risks are architectural and operational.
+
+High:
+
+- `backend_app/main.py` is still an integration hotspot. Even after helper extraction, it imports and re-exports many unrelated capabilities, which makes route ownership and regression boundaries difficult.
+- `src/database.py` is large and mixes URL policy, engine construction, serialization/import-export concerns, and session mechanics.
+- `src/models.py` is large enough that schema ownership and migration review will degrade as more developers join.
+- Direct database mode and Supabase API mode can diverge unless every behavior has parity tests.
+- The BFF allowlist is manually curated; manual security policy lists eventually drift.
+
+Medium:
+
+- Operational documents overlap; future maintainers may not know which document is authoritative.
+- AI and PDF paths are optional but business-visible; failures need product-level degradation rules.
+- Frontend E2E coverage appears thinner than backend regression coverage.
+- JSON job payload/result fields simplify extensibility but need schema validation and retention classification.
+
+Low:
+
+- Naming is understandable but mixes implementation names and product metaphors; keep glossary references close to code ownership docs.
+- Historical productionization worklogs are useful but should be separated from active runbooks.
+
+### Security Hardening Priorities
+
+1. Treat the BFF route allowlist as a generated contract, not a hand-maintained safety net.
+2. Require strong production secrets and a documented rotation drill for BFF session secret, backend service token, signing secret, database credentials, AI keys, and PDF provider keys.
+3. Verify that direct backend ingress is private in every deployment target, not only Docker Compose.
+4. Run authorization, RLS, and read-scope tests against real PostgreSQL before each production release.
+5. Add security-event dashboards for login failures, token-version invalidations, rate-limit hits, admin password resets, backup exports, and restore attempts.
+6. Add dependency vulnerability gates with documented expiration dates for accepted exceptions.
+
+### Database Productionization Priorities
+
+- Add a migration checklist requiring lock-impact assessment, backfill plan, rollback/roll-forward decision, and PostgreSQL rehearsal.
+- Create query-plan budgets for Atlas snapshots, leadership metrics, stale check-ins, audit summaries, and job queue claims.
+- Define retention and archive policies for `async_job`, `audit_event`, backups, AI prompts/results, and generated PDFs.
+- Add periodic integrity audits for orphaned hierarchy nodes, cross-cycle alignment edges, open work logs, and role/team ownership drift.
+- Prefer Redis for high-volume distributed security/rate state if database contention appears in load tests.
+
+### Observability Minimum Bar Before Scaling
+
+Engineers should be able to answer the following from dashboards without shelling into containers:
+
+- Are SPA, BFF, API, worker, PostgreSQL, AI provider, and PDF provider healthy?
+- What is the error rate and p95/p99 latency by route and job kind?
+- Which users, teams, routes, and jobs were affected by an incident?
+- Are jobs queued, stuck, retrying, canceled, or failing by kind?
+- Is the database near connection, lock, storage, slow-query, or index-bloat limits?
+- Did the latest deploy, migration, or config change correlate with the incident?
+
+### Refactoring Roadmap With Ownership Detail
+
+#### Immediate: 0-7 days
+
+1. Problem: Production safety depends on correct environment values. Why it matters: one bad deployment can expose backend APIs or break horizontal auth/rate limiting. Proposed change: make production config validation a mandatory CI and startup gate for Docker Compose/Kubernetes. Expected benefit: unsafe runtime combinations fail before serving traffic. Risk: stricter checks may block current staging configs. Effort: S.
+2. Problem: No single full-stack smoke test proves the deployed topology. Why it matters: unit tests cannot prove that SPA, BFF, API, worker, database, auth, and jobs work together. Proposed change: add a compose smoke test that logs in, fetches `/me`, reads Atlas, performs a low-risk mutation, submits/polls a job, and checks health endpoints. Expected benefit: faster deploy confidence. Risk: CI runtime and test-data setup. Effort: M.
+3. Problem: Allowlist/auth route drift is manual. Why it matters: new routes can become unintentionally reachable or insufficiently tested. Proposed change: generate a route inventory and compare backend routes, BFF allowlist entries, auth requirements, and tests. Expected benefit: security regressions become review failures. Risk: initial false positives. Effort: M.
+4. Problem: Dependency risk is not continuously surfaced. Why it matters: known vulnerabilities can remain invisible. Proposed change: add Python and Node audit jobs with explicit exception files. Expected benefit: shorter exposure windows. Risk: noisy advisories. Effort: S.
+
+#### Short term: 1-4 weeks
+
+1. Problem: Backend route orchestration remains centralized. Why it matters: multiple developers will collide and accidentally change unrelated behavior. Proposed change: move route handlers into domain application services with typed request/response contracts. Expected benefit: safer reviews and smaller test scope. Risk: accidental behavior drift during extraction. Effort: L.
+2. Problem: Error handling is not a product contract. Why it matters: frontend, support, and operators need stable error codes and request IDs. Proposed change: define a shared error envelope and enforce it in backend and BFF tests. Expected benefit: faster debugging and better UX. Risk: frontend compatibility updates. Effort: M.
+3. Problem: PostgreSQL-specific behavior is under-rehearsed. Why it matters: SQLite does not prove locks, indexes, RLS, or migration timing. Proposed change: run PostgreSQL integration tests in CI for migrations, authorization, timer locking, and job claims. Expected benefit: fewer production-only failures. Risk: slower CI. Effort: M.
+4. Problem: Observability is incomplete across service boundaries. Why it matters: incident response will rely on log spelunking. Proposed change: JSON logs, request IDs, OpenTelemetry traces, and basic dashboards. Expected benefit: lower mean time to detect and repair. Risk: tooling configuration work. Effort: M.
+
+#### Medium term: 1-3 months
+
+1. Problem: Dual data access modes create hidden complexity. Why it matters: every bug fix must be correct in both direct SQL and Supabase API behavior. Proposed change: choose one primary production write path and quarantine fallback mode behind parity tests or remove it. Expected benefit: simpler mental model. Risk: reduced emergency flexibility. Effort: L.
+2. Problem: Growth path for audit/job/reporting tables is informal. Why it matters: operational tables become performance problems before product data does. Proposed change: retention jobs, archive/export policy, indexes, partitioning only where query plans justify it. Expected benefit: predictable database growth. Risk: migration complexity. Effort: M-L.
+3. Problem: Admin operations are not packaged as safe workflows. Why it matters: incidents invite risky manual SQL. Proposed change: authenticated admin CLI for user recovery, job retry/cancel, audit export, config diagnostics, and backup restore verification. Expected benefit: repeatable operations. Risk: CLI authorization and audit requirements. Effort: M.
+
+#### Long term
+
+1. Problem: Domain behavior remains close to ORM and transport modules. Why it matters: product changes will be harder to reason about. Proposed change: introduce command/query application services and DTO boundaries incrementally by critical workflow. Expected benefit: easier feature work and safer refactors. Risk: excessive abstraction if not tied to real changes. Effort: L.
+2. Problem: Leadership analytics may outgrow OLTP reads. Why it matters: dashboards should not degrade mutation latency. Proposed change: add materialized/cached read models only for measured hot paths. Expected benefit: scalable reporting without microservices. Risk: cache invalidation. Effort: L.
+3. Problem: AI/PDF integrations can become uncontrolled cost and latency surfaces. Why it matters: external providers fail and bills grow. Proposed change: per-team budgets, circuit breakers, queue controls, and explicit retention. Expected benefit: predictable behavior under provider pressure. Risk: tighter product limits. Effort: M-L.
+
+### Top 10 Actions Before Scaling, Ranked By Impact
+
+1. Enforce private backend ingress, strong secrets, request signing, and distributed security state in all production-like deployments.
+2. Add a full-stack Docker Compose smoke test and run it in CI before releases.
+3. Add PostgreSQL-backed CI for Alembic migrations, RLS, authorization, timer locks, and job claims.
+4. Generate route/auth/allowlist contract checks.
+5. Standardize error envelopes and correlation IDs across SPA, BFF, API, worker, and logs.
+6. Add dashboards and alerts for API/BFF errors, login failures, queue age, job failures, DB locks, and provider outages.
+7. Split `backend_app/main.py` and other large modules along application-service boundaries without rewriting business logic.
+8. Decide whether Supabase API mode is a supported production path or an emergency/admin-only fallback.
+9. Define retention, backup, restore-drill, and data-export policies for operational and sensitive data.
+10. Expand Playwright and component coverage for role-based Atlas journeys.
+
+### If This Was My Company
+
+I would first prevent invisible production failures: config validation, private ingress, distributed state, smoke tests, route/auth contract checks, and minimum dashboards. Those changes reduce outage and breach probability without changing the product model.
+
+I would then reduce the worst maintainability risks by extracting backend application services around login/session, OKR mutations, timer/work-log, jobs, admin backup/restore, and reporting. I would not rewrite the frontend or split the backend into microservices until query plans, team size, and deployment pain prove the need.
+
+I would deliberately leave the current modular-monolith shape in place, preserve the existing OKR business rules, and focus on tests around critical workflows. The fastest path to a safer system is to make current behavior observable, enforceable, and easier to change.
