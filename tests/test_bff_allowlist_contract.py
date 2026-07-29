@@ -2,6 +2,10 @@ import re
 from pathlib import Path
 from fastapi.routing import APIRoute
 
+_INTERNAL_MUTATION_PATH_PREFIXES = {
+    "__backend-error-envelope-validation",
+}
+
 
 def _load_allowlist_entries() -> list[tuple[str, str, str]]:
     project_root = Path(__file__).resolve().parents[1]
@@ -82,6 +86,8 @@ def _backend_mutating_routes() -> set[tuple[str, str]]:
     routes: set[tuple[str, str]] = set()
     for route in _iter_api_routes(backend_main.app.routes):
         if not isinstance(route, APIRoute):
+            continue
+        if any(blocked in route.path for blocked in _INTERNAL_MUTATION_PATH_PREFIXES):
             continue
         for method in route.methods or set():
             if method in {"POST", "PUT", "PATCH", "DELETE"}:

@@ -18,8 +18,21 @@ def _import_main_with_dev_profile(monkeypatch):
     return importlib.import_module("backend_app.main")
 
 
+def _iter_api_routes(routes):
+    for route in routes:
+        if isinstance(route, APIRoute):
+            yield route
+            continue
+        child_routes = getattr(route, "routes", None)
+        if isinstance(child_routes, list):
+            yield from _iter_api_routes(child_routes)
+
+
 def _snapshot_routes(module) -> set[tuple[str, str]]:
-    return {(route.path, ",".join(sorted(route.methods or []))) for route in module.app.routes}
+    return {
+        (route.path, ",".join(sorted(route.methods or [])))
+        for route in _iter_api_routes(module.app.routes)
+    }
 
 
 def test_main_app_factory_contract(monkeypatch):
