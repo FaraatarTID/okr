@@ -1,4 +1,5 @@
 from src.runtime_preflight import evaluate_runtime_preflight
+from tests._test_credentials import credential_password
 
 
 def test_pdfshift_requires_api_key():
@@ -80,7 +81,7 @@ def test_production_rejects_public_backend_api_host():
         backend_api_url="https://backend.example.com:8100",
         backend_service_token="token",
         backend_signing_secret="secret",
-        bootstrap_admin_password="ValidAdmin123!",
+        bootstrap_admin_password=credential_password("production_bootstrap_admin"),
         backend_security_state_backend="database",
         runtime_env="production",
     )
@@ -100,7 +101,7 @@ def test_production_rejects_public_backend_api_ip():
         backend_api_url="https://203.0.113.10:8100",
         backend_service_token="token",
         backend_signing_secret="secret",
-        bootstrap_admin_password="ValidAdmin123!",
+        bootstrap_admin_password=credential_password("production_bootstrap_admin"),
         backend_security_state_backend="database",
         runtime_env="production",
     )
@@ -240,7 +241,7 @@ def test_production_requires_distributed_security_state_backend():
         backend_api_url="http://backend-api:8100",
         backend_service_token="token",
         backend_signing_secret="secret",
-        bootstrap_admin_password="ValidAdmin123!",
+        bootstrap_admin_password=credential_password("production_bootstrap_admin"),
         backend_security_state_backend="memory",
         runtime_env="production",
     )
@@ -256,7 +257,7 @@ def test_production_accepts_database_security_state_backend():
         backend_api_url="http://backend-api:8100",
         backend_service_token="token",
         backend_signing_secret="secret",
-        bootstrap_admin_password="ValidAdmin123!",
+        bootstrap_admin_password=credential_password("production_bootstrap_admin"),
         backend_security_state_backend="database",
         runtime_env="production",
     )
@@ -272,7 +273,7 @@ def test_production_requires_redis_url_when_redis_backend_selected():
         backend_api_url="http://backend-api:8100",
         backend_service_token="token",
         backend_signing_secret="secret",
-        bootstrap_admin_password="ValidAdmin123!",
+        bootstrap_admin_password=credential_password("production_bootstrap_admin"),
         backend_security_state_backend="redis",
         backend_security_state_redis_url="",
         runtime_env="production",
@@ -289,7 +290,7 @@ def test_production_accepts_redis_security_state_backend_with_url():
         backend_api_url="http://backend-api:8100",
         backend_service_token="token",
         backend_signing_secret="secret",
-        bootstrap_admin_password="ValidAdmin123!",
+        bootstrap_admin_password=credential_password("production_bootstrap_admin"),
         backend_security_state_backend="redis",
         backend_security_state_redis_url="redis://redis:6379/0",
         runtime_env="production",
