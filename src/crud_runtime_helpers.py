@@ -111,7 +111,6 @@ def _validate_update_fields(
     entity_name: str, updates: dict, allowed_fields: set
 ) -> None:
     return crud_core_helpers.validate_update_fields_from_crud(
-        crud_module=_crud_module_context(),
         entity_name=entity_name,
         updates=updates,
         allowed_fields=allowed_fields,
