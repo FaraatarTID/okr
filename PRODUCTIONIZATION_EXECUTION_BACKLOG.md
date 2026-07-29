@@ -1278,11 +1278,15 @@ Status legend:
     - python scripts/verify_secret_hygiene.py --path tests/test_backend_mutation_api.py --path tests/test_backend_mutation_auth_matrix.py
     - git log --oneline --decorate -n 5
     - rg -n "unit-test-password|_fixture_password\\(" tests/test_backend_mutation_api.py tests/test_backend_mutation_auth_matrix.py
-  status: in_progress
+  status: resolved
   notes: >
-    `test_backend_mutation_auth_matrix.py` credential fixture has been converted to deterministic seeded hashes.
-    Remaining work is operational: ensure the branch no longer contains old secret-bearing commits in active PR history
-    by applying a controlled rebase/squash path and capturing evidence.
+    `test_backend_mutation_auth_matrix.py` and `test_backend_mutation_api.py` now use seeded deterministic
+    fixtures; `git log` history was rewritten on `loop18-history-clean` from the merge base (`b001320...`)
+    to remove secret-bearing commits (`e3dea45`, `943785e`) from active PR history.
+    Evidence captured in worklog:
+    `python scripts/verify_secret_hygiene.py --path tests/test_backend_mutation_api.py --path tests/test_backend_mutation_auth_matrix.py`,
+    `git log 24fcd19 --not loop18-pre-rewrite-backup --oneline`,
+    `git log --oneline -n 5`.
 
 - id: QA-12
   phase: Audit Closure Loop

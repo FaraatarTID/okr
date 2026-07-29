@@ -977,7 +977,7 @@ Documentation HQ: [README](README.md)
   - `python scripts/verify_secret_hygiene.py --path tests/test_backend_mutation_api.py --path tests/test_backend_mutation_auth_matrix.py`
 
 ### Issue: LOOP-18 — Remove hardcoded test credentials from commit history and formalize secret-rotation evidence
-- Status: **In Progress**
+- Status: **Closed**
 - Scope:
   - Finalize removal of historical hardcoded-credential footprints from active PR history and make scanner posture reproducible.
 - Planned verification:
@@ -985,7 +985,16 @@ Documentation HQ: [README](README.md)
   - Branch cleanup audit for history-sensitive scanner artifacts (e.g., PR history rebase/squash path before merge)
 - Current state:
   - `tests/test_backend_mutation_auth_matrix.py` now uses seeded deterministic password synthesis in `_fixture_password`.
-  - `tests/test_backend_mutation_api.py` still requires targeted review to complete commit-history-level credential retirement.
+  - `tests/test_backend_mutation_api.py` now uses seeded deterministic fixture generation.
+  - Branch rewrite completed on `loop18-history-clean` from `b001320...` using a single cleanup commit `24fcd19`; committed secret-bearing history has been removed from the active branch.
+  - Evidence:
+    - `python scripts/verify_secret_hygiene.py --path tests/test_backend_mutation_api.py --path tests/test_backend_mutation_auth_matrix.py`
+    - `python -m pytest -q tests/test_backend_mutation_auth_matrix.py tests/test_module_main_seams.py`
+    - `python -m mypy --ignore-missing-imports --follow-imports=skip scripts`
+    - `python scripts/verify_module_export_contracts.py`
+    - `python scripts/verify_helper_integrity.py`
+    - `python scripts/verify_module_design_efficiency.py`
+    - `git log 24fcd19 --not loop18-pre-rewrite-backup --oneline -- tests/test_backend_mutation_auth_matrix.py tests/test_backend_mutation_api.py`
 ### Issue: TEST-01 — Playwright E2E execution stability verification
 - Status: **Closed**
 - Date: 2026-07-27
