@@ -95,8 +95,7 @@ def _enforce_backend_mutation_failure_policy(payload: Dict[str, Any]) -> None:
 
 
 def _node_from_backend_payload(payload: Dict[str, Any]):
-    return auth_service.node_from_backend_payload_from_crud(
-        crud_module=_crud_module_context(),
+    return crud_core_helpers.node_from_backend_payload_from_crud(
         payload=payload,
     )
 
@@ -104,8 +103,7 @@ def _node_from_backend_payload(payload: Dict[str, Any]):
 def _validate_update_fields(
     entity_name: str, updates: dict, allowed_fields: set
 ) -> None:
-    return auth_service.validate_update_fields_from_crud(
-        crud_module=_crud_module_context(),
+    return crud_core_helpers.validate_update_fields_from_crud(
         entity_name=entity_name,
         updates=updates,
         allowed_fields=allowed_fields,
