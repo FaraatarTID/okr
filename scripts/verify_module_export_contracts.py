@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import inspect
+import textwrap
 import sys
 from pathlib import Path
 
@@ -155,6 +156,28 @@ EXPECTED_EXPORTS: dict[str, list[str]] = {
     ],
 }
 
+FACADE_DELEGATION_SNAPSHOTS: dict[str, dict[str, list[str]]] = {
+    "backend_app.main": {
+        "_resolve_actor_scope": ["_resolve_actor_scope_impl("],
+        "_resolve_scope_for_actor": ["_resolve_scope_for_actor_impl("],
+        "_resolve_effective_cycle_id_for_scope": [
+            "_resolve_effective_cycle_id_for_scope_impl("
+        ],
+        "_require_admin_actor_scope": ["_require_admin_actor_scope_impl("],
+        "_require_admin_or_manager_actor_scope": [
+            "_require_admin_or_manager_actor_scope_impl("
+        ],
+        "_coerce_owner_ids": ["_coerce_owner_ids_impl("],
+        "_coerce_string_list": ["_coerce_string_list_impl("],
+        "_coerce_int": ["_coerce_int_impl("],
+        "_read_query_payload": ["_read_query_payload_impl("],
+        "_atomic_idempotent_check": ["_atomic_idempotent_check_impl("],
+        "_complete_idempotent_response": ["_complete_idempotent_response_impl("],
+        "_load_idempotent_response": ["_load_idempotent_response_impl("],
+        "_store_idempotent_response": ["_store_idempotent_response_impl("],
+    }
+}
+
 MANDATORY_CALLABLES: dict[str, list[str]] = {
     "backend_app.main": ["create_app", "_resolve_actor_scope", "_coerce_int", "api_create_goal"],
     "backend_app.main_bootstrap_helpers": ["make_main_lifespan", "register_main_routers"],
@@ -183,6 +206,14 @@ def _check_all_dunder_exports(module_obj: object, module_name: str, issues: list
 
     normalized = [str(item) for item in raw_exports]
     issues.extend(_find_duplicate_entries(normalized, module_name, "export"))
+
+
+def _snapshot_signature_matches(func_obj: object, expected_fragments: list[str]) -> bool:
+    source = inspect.getsource(func_obj)
+    compact_source = textwrap.dedent(source).replace(" ", "")
+    compact_source = compact_source.replace("\n", "")
+    normalized_fragments = [fragment.replace(" ", "") for fragment in expected_fragments]
+    return all(fragment in compact_source for fragment in normalized_fragments)
 
 
 def check() -> int:
@@ -214,6 +245,29 @@ def check() -> int:
         if not inspect.ismodule(module_obj):
             issues.append(f"{module_name}: failed module import sanity check")
             continue
+
+        delegate_snapshot = FACADE_DELEGATION_SNAPSHOTS.get(module_name, {})
+        for symbol, fragments in delegate_snapshot.items():
+            if not hasattr(module_obj, symbol):
+                continue
+            symbol_obj = getattr(module_obj, symbol)
+            if not inspect.isfunction(symbol_obj):
+                issues.append(
+                    f"{module_name}: delegation snapshot requires function '{symbol}' "
+                    "to remain a callable wrapper"
+                )
+                continue
+            if symbol_obj.__module__ != module_name:
+                issues.append(
+                    f"{module_name}: delegation snapshot expects '{symbol}' to remain local "
+                    "(module-local wrapper), but it is imported from elsewhere"
+                )
+                continue
+            if not _snapshot_signature_matches(symbol_obj, fragments):
+                issues.append(
+                    f"{module_name}: delegation snapshot drift for '{symbol}' "
+                    f"(expected fragments {fragments} absent)"
+                )
 
         for symbol in expected:
             if symbol.startswith("__"):

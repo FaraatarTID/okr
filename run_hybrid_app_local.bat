@@ -69,6 +69,14 @@ if %NODE_MAJOR% lss 20 (
 )
 
 echo [3/7] Resolving database URL...
+echo [3.5/7] Running local smoke readiness preflight...
+"%PYEXE%" scripts\check_local_smoke_readiness.py --root "%ROOT_CLEAN%"
+if errorlevel 1 (
+    echo [ERROR] Local smoke readiness preflight failed.
+    pause
+    exit /b 1
+)
+
 set "DB_URL_CANDIDATE=%OKR_DATABASE_URL%"
 set "OKR_DATABASE_URL="
 
@@ -631,10 +639,65 @@ exit /b %ERRORLEVEL%
 rem Prefix-based install can be unreliable in some npm runtimes; prefer local directory install.
 rem call npm --prefix "%ROOT%spa-web" install
 pushd "%ROOT%spa-web"
-call npm install
+if errorlevel 1 (
+    echo [ERROR] spa-web directory not found or inaccessible.
+    exit /b 1
+)
+
+rem First attempt: standard install for existing lockfile behavior.
+call npm install --no-audit --no-fund
 set "NPM_INSTALL_RC=%ERRORLEVEL%"
+
+if not "%NPM_INSTALL_RC%"=="0" (
+    echo [WARN] Initial spa-web install failed (%NPM_INSTALL_RC%). Attempting EPERM-safe repair path.
+    if exist node_modules\@next rd /s /q node_modules\@next >nul 2>&1
+    if exist node_modules\next rd /s /q node_modules\next >nul 2>&1
+    if exist node_modules\@swc rd /s /q node_modules\@swc >nul 2>&1
+    if exist node_modules\.pnpm-lock.yaml del /q node_modules\.pnpm-lock.yaml >nul 2>&1
+    if exist node_modules\package-lock.json del /q node_modules\package-lock.json >nul 2>&1
+    if exist node_modules rd /s /q node_modules >nul 2>&1
+    call npm cache clean --force
+    call npm install --no-audit --no-fund --no-progress
+    set "NPM_INSTALL_RC=%ERRORLEVEL%"
+
+    if not "%NPM_INSTALL_RC%"=="0" (
+        echo [WARN] Retrying lockfile refresh with --package-lock-only.
+        call npm install --package-lock-only --no-audit --no-fund
+        set "LOCKFILE_RC=%ERRORLEVEL%"
+        if not "%LOCKFILE_RC%"=="0" (
+            popd
+            exit /b %LOCKFILE_RC%
+        )
+        call npm install --no-audit --no-fund --no-progress
+        set "NPM_INSTALL_RC=%ERRORLEVEL%"
+    )
+)
+
+if not "%NPM_INSTALL_RC%"=="0" (
+    popd
+    exit /b %NPM_INSTALL_RC%
+)
+
+if not exist "node_modules\.bin\next.cmd" if not exist "node_modules\.bin\next" (
+    echo [ERROR] Next CLI not found after spa-web installation.
+    echo [INFO] Current dependency tree snapshot:
+    dir node_modules\.bin 2>nul
+    popd
+    exit /b 1
+)
+
+if exist node_modules\.bin\next.cmd (
+    call node_modules\.bin\next.cmd --version >nul 2>&1
+) else (
+    call node_modules\.bin\next --version >nul 2>&1
+)
+if errorlevel 1 (
+    popd
+    echo [ERROR] Next CLI verification failed after spa-web install.
+    exit /b 1
+)
+
 popd
-if defined NPM_INSTALL_RC if not "%NPM_INSTALL_RC%"=="0" exit /b %NPM_INSTALL_RC%
 if not exist "%ROOT%spa-web\node_modules" exit /b 1
 exit /b 0
 

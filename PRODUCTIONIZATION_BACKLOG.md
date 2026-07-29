@@ -2,6 +2,9 @@
 
 Documentation HQ: [README](README.md)
 
+**Backlog Mode:** This file is a historical snapshot retained for continuity.
+For active execution-cycle tracking, use [PRODUCTIONIZATION_EXECUTION_BACKLOG.md](PRODUCTIONIZATION_EXECUTION_BACKLOG.md).
+
 This backlog is the structured set of productionization work and its completion status for the repository.
 
 ## 2026-07-26

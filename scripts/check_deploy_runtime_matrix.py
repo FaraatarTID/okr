@@ -16,6 +16,9 @@ from tempfile import TemporaryDirectory
 
 
 ROOT = Path(__file__).resolve().parents[1]
+COMPOSE_SERVICE_PORT_RE = re.compile(
+    r"^([0-9]{1,5}:[0-9]{1,5}:[0-9]{1,5}|[0-9]{1,5}:[0-9]{1,5}|[0-9]{1,5})$"
+)
 
 
 @dataclass(frozen=True)
@@ -241,6 +244,250 @@ def _parse_compose_env_text(rendered: str) -> dict[str, dict[str, str]]:
     return services
 
 
+def _parse_compose_port_bindings(rendered: str) -> dict[str, list[str]]:
+    services: dict[str, list[str]] = {}
+    service_re = re.compile(r"^  ([A-Za-z0-9._-]+):\s*$")
+    ports_header_re = re.compile(r"^    ports:\s*$")
+    ports_entry_re = re.compile(r"^      -\s*(.+)\s*$")
+
+    current_service: str | None = None
+    in_ports = False
+    for raw_line in rendered.splitlines():
+        service_match = service_re.match(raw_line)
+        if service_match:
+            current_service = service_match.group(1)
+            in_ports = False
+            continue
+
+        if current_service and ports_header_re.match(raw_line):
+            in_ports = True
+            services.setdefault(current_service, [])
+            continue
+
+        if in_ports:
+            if not raw_line.startswith("      "):
+                if raw_line.startswith("    "):
+                    in_ports = False
+                    current_service = None
+                continue
+            if current_service is None:
+                continue
+            entry_match = ports_entry_re.match(raw_line)
+            if entry_match:
+                raw_entry = entry_match.group(1).strip().strip('"').strip("'")
+                if raw_entry:
+                    services.setdefault(current_service, []).append(raw_entry)
+            continue
+
+    return {name: entries for name, entries in services.items() if entries}
+
+
+def _parse_compose_ports(rendered: str) -> dict[str, list[str]]:
+    raw = rendered.lstrip()
+    if raw.startswith("{"):
+        try:
+            compose_data = json.loads(raw)
+            services = compose_data.get("services", {})
+            if not isinstance(services, dict):
+                return {}
+
+            result: dict[str, list[str]] = {}
+            for service_name, service_data in services.items():
+                if not isinstance(service_data, dict):
+                    continue
+                service_ports = service_data.get("ports")
+                if not isinstance(service_ports, list):
+                    continue
+                ports: list[str] = []
+                for entry in service_ports:
+                    if isinstance(entry, str):
+                        ports.append(entry.strip())
+                    elif isinstance(entry, dict):
+                        target = str(entry.get("target", "")).strip()
+                        published = str(entry.get("published", "")).strip()
+                        host = str(
+                            entry.get("host") if entry.get("host") is not None else entry.get("host_ip", "")
+                        ).strip()
+                        if host:
+                            if published and target:
+                                ports.append(f"{host}:{published}:{target}")
+                            elif target:
+                                ports.append(f"{host}:{target}")
+                        elif published and target:
+                            ports.append(f"{published}:{target}")
+                if ports:
+                    result[service_name] = ports
+            return result
+        except json.JSONDecodeError:
+            pass
+
+    return _parse_compose_port_bindings(rendered)
+
+
+def _port_binding_is_loopback(bind_host: str) -> bool:
+    host = bind_host.strip().lower()
+    return host in {"127.0.0.1", "::1", "localhost"}
+
+
+def _parse_host_from_port_binding(binding: str) -> str | None:
+    value = binding.strip()
+    if value.startswith("["):
+        end = value.find("]")
+        if end == -1:
+            return None
+        return value[1:end]
+    if COMPOSE_SERVICE_PORT_RE.match(value):
+        parts = value.split(":")
+        if len(parts) == 2:
+            host, _published_or_container = parts
+            return None if host.isdigit() else host
+        if len(parts) == 3:
+            return parts[0]
+        if len(parts) == 1:
+            return None
+        return parts[0]
+    return None
+
+
+def _require_loopback_backend_api_bind(
+    scenario: str,
+    services_env: dict[str, dict[str, str]],
+    service_port_bindings: dict[str, list[str]],
+) -> None:
+    backend_env = services_env.get("backend-api", {})
+    bind_host = backend_env.get("OKR_BACKEND_BIND_ADDRESS", "")
+    if bind_host:
+        if not _port_binding_is_loopback(bind_host):
+            raise RuntimeError(
+                f"backend-api for {scenario} has unsafe bind host {bind_host!r} via "
+                "OKR_BACKEND_BIND_ADDRESS; expected loopback host."
+            )
+
+    saw_port_with_explicit_host = False
+
+    for binding in service_port_bindings.get("backend-api", []):
+        if not COMPOSE_SERVICE_PORT_RE.match(binding):
+            continue
+        host = _parse_host_from_port_binding(binding)
+        if host is None:
+            raise RuntimeError(
+                f"backend-api for {scenario} exposes port binding '{binding}' without "
+                "an explicit host; refuse production-like profile."
+            )
+        if not _port_binding_is_loopback(host):
+            raise RuntimeError(
+                f"backend-api for {scenario} binds public host {host!r} in compose port map; "
+                f"expected 127.0.0.1/::1/localhost in binding {binding!r}."
+            )
+        saw_port_with_explicit_host = True
+
+
+def _validate_k8s_backend_runtime_ingress() -> None:
+    service_file = ROOT / "deploy" / "k8s" / "service-backend-api.yaml"
+    deployment_file = ROOT / "deploy" / "k8s" / "deployment-backend-api.yaml"
+
+    if not service_file.exists():
+        raise RuntimeError("Kubernetes backend API service file missing.")
+    if not deployment_file.exists():
+        raise RuntimeError("Kubernetes backend API deployment file missing.")
+
+    service_type_re = re.compile(r"^\s*type:\s*(\S+)\s*$")
+    service_type: str | None = None
+    for line in service_file.read_text(encoding="utf-8").splitlines():
+        match = service_type_re.match(line)
+        if match:
+            service_type = match.group(1).strip()
+            break
+    if service_type and service_type.lower() != "clusterip":
+        raise RuntimeError(
+            f"Kubernetes backend service must be ClusterIP; found service type {service_type!r}."
+        )
+
+    deployment_lines = deployment_file.read_text(encoding="utf-8").splitlines()
+    container_re = re.compile(r"^\s*-\s+name:\s*backend-api\s*$")
+    env_header_re = re.compile(r"^\s*env:\s*$")
+    env_name_re = re.compile(r"^\s*-\s+name:\s*([A-Za-z_][A-Za-z0-9_]*)\s*$")
+    env_value_re = re.compile(r"^\s*value:\s*(.+?)\s*$")
+    env_valuefrom_re = re.compile(r"^\s*valueFrom:\s*$")
+    container_indent: int | None = None
+
+    container_start = None
+    for index, line in enumerate(deployment_lines):
+        if container_re.match(line):
+            container_start = index
+            container_indent = len(line) - len(line.lstrip())
+            break
+    if container_start is None:
+        raise RuntimeError("Kubernetes backend-api container block is missing in deployment manifest.")
+    if container_indent is None:
+        raise RuntimeError("Kubernetes backend-api container block is malformed.")
+
+    backend_container_lines: list[str] = []
+    for follow in deployment_lines[container_start + 1 :]:
+        if not follow.strip():
+            continue
+        follow_indent = len(follow) - len(follow.lstrip())
+        if follow.lstrip().startswith("- name:") and follow_indent <= container_indent:
+            break
+        if follow_indent > container_indent:
+            backend_container_lines.append(follow)
+
+    in_env = False
+    env_values: dict[str, str] = {}
+    env_refs: set[str] = set()
+    required_boolean = {
+        "OKR_BACKEND_ENFORCE_TOKEN": "true",
+        "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "true",
+    }
+    required_present = {
+        "OKR_BACKEND_SERVICE_TOKEN",
+        "OKR_BACKEND_SIGNING_SECRET",
+        "OKR_BACKEND_SECURITY_STATE_BACKEND",
+    }
+    current_env: str | None = None
+    for line in backend_container_lines:
+        if env_header_re.match(line):
+            in_env = True
+            current_env = None
+            continue
+
+        if in_env:
+            name_match = env_name_re.match(line)
+            if name_match:
+                current_env = name_match.group(1)
+                continue
+            if current_env:
+                value_match = env_value_re.match(line)
+                if value_match:
+                    env_values[current_env] = value_match.group(1).strip().strip('"').strip("'")
+                    current_env = None
+                    continue
+                if env_valuefrom_re.match(line):
+                    env_refs.add(current_env)
+                    current_env = None
+                    continue
+
+    for key, expected in required_boolean.items():
+        value = env_values.get(key, "").strip().lower()
+        if value != expected:
+            raise RuntimeError(
+                f"Kubernetes backend deployment missing secure runtime bool: {key} must be {expected!r}, got {value!r}."
+            )
+
+    for key in required_present:
+        if key not in env_values and key not in env_refs:
+            raise RuntimeError(
+                f"Kubernetes backend deployment does not expose {key} in container env."
+            )
+
+    state_backend = env_values.get("OKR_BACKEND_SECURITY_STATE_BACKEND", "database").lower().strip()
+    if state_backend not in {"database", "redis"}:
+        raise RuntimeError(
+            "Kubernetes backend deployment requires OKR_BACKEND_SECURITY_STATE_BACKEND "
+            "to be database or redis."
+        )
+
+
 def _require_compose_env_value(
     services_env: dict[str, dict[str, str]],
     scenario: str,
@@ -349,6 +596,14 @@ def run_matrix(*, require_docker: bool) -> None:
                     "BFF_SESSION_SECRET",
                     bff_secret,
                 )
+                backend_port_bindings = _parse_compose_ports(rendered)
+                _require_loopback_backend_api_bind(
+                    scenario.name,
+                    services_env,
+                    backend_port_bindings,
+                )
+
+        _validate_k8s_backend_runtime_ingress()
 
 
 def main(argv: list[str] | None = None) -> int:
