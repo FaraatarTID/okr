@@ -2,6 +2,7 @@ import importlib
 import sys
 
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 
 
 def _import_main_with_dev_profile(monkeypatch):
