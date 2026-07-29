@@ -109,6 +109,7 @@ def _normalize_license_expression(expr: str, aliases: dict[str, str] | None = No
 
 
 def _split_license_terms(license_name: str) -> Iterable[str]:
+    terms: list[str]
     if " OR " in license_name:
         terms = license_name.split(" OR ")
     elif " AND " in license_name:
@@ -116,7 +117,7 @@ def _split_license_terms(license_name: str) -> Iterable[str]:
     elif ";" in license_name:
         terms = license_name.split(";")
     else:
-        terms = (license_name,)
+        terms = [license_name]
 
     for term in terms:
         normalized = _normalize_license_expression(term)

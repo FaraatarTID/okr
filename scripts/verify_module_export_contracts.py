@@ -8,6 +8,7 @@ import inspect
 import textwrap
 import sys
 from pathlib import Path
+from typing import Any, Callable
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -208,7 +209,7 @@ def _check_all_dunder_exports(module_obj: object, module_name: str, issues: list
     issues.extend(_find_duplicate_entries(normalized, module_name, "export"))
 
 
-def _snapshot_signature_matches(func_obj: object, expected_fragments: list[str]) -> bool:
+def _snapshot_signature_matches(func_obj: Callable[..., Any], expected_fragments: list[str]) -> bool:
     source = inspect.getsource(func_obj)
     compact_source = textwrap.dedent(source).replace(" ", "")
     compact_source = compact_source.replace("\n", "")

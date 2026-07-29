@@ -78,6 +78,8 @@ def _scan_keywords(node: ast.AST, findings: list[SecretFinding], path: Path) -> 
         ]
         if len(sensitive_pairs) >= 1:
             for kw in sensitive_pairs:
+                if not isinstance(kw.value, ast.Constant) or not isinstance(kw.value.value, str):
+                    continue
                 findings.append(
                     SecretFinding(
                         file=path,
