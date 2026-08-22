@@ -1,6 +1,7 @@
 """
 Database connection and session management for OKR Application.
-Supabase/PostgreSQL only.
+Supabase/PostgreSQL is the supported production backend. SQLite
+(`sqlite:///`) is accepted for local development/alpha testing only.
 """
 
 from __future__ import annotations

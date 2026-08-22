@@ -22,7 +22,9 @@ def get_node_from_crud(
                 .options(
                     crud_module.selectinload(crud_module.Goal.objectives).selectinload(
                         crud_module.Objective.key_results
-                    )
+                    ),
+                    # Eager-load parent cycle for detached access after close.
+                    crud_module.selectinload(crud_module.Goal.cycle),
                 )
             )
             node = session.exec(statement).first()
@@ -33,7 +35,11 @@ def get_node_from_crud(
                 .options(
                     crud_module.selectinload(
                         crud_module.Objective.key_results
-                    ).selectinload(crud_module.KeyResult.tasks)
+                    ).selectinload(crud_module.KeyResult.tasks),
+                    # Eager-load parent chain for detached access after close.
+                    crud_module.selectinload(crud_module.Objective.goal).selectinload(
+                        crud_module.Goal.cycle
+                    ),
                 )
             )
             node = session.exec(statement).first()
@@ -44,6 +50,12 @@ def get_node_from_crud(
                 .options(
                     crud_module.selectinload(crud_module.KeyResult.tasks),
                     crud_module.selectinload(crud_module.KeyResult.check_ins),
+                    # Eager-load the full parent chain so analysis code can
+                    # traverse node.objective.goal.cycle after the session
+                    # closes (avoids DetachedInstanceError).
+                    crud_module.selectinload(crud_module.KeyResult.objective).selectinload(
+                        crud_module.Objective.goal
+                    ).selectinload(crud_module.Goal.cycle),
                 )
             )
             node = session.exec(statement).first()

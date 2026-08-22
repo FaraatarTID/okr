@@ -119,10 +119,14 @@ def get_backend_settings() -> BackendSettings:
     )
     is_production = runtime_env in {"prod", "production"}
     security_state_backend_default = "database" if is_production else "memory"
+    # Secure-by-default: bind to loopback unless explicitly configured or running
+    # in production (where a container/orchestrator sets OKR_BACKEND_HOST itself).
+    host_default = "0.0.0.0" if is_production else "127.0.0.1"
 
     settings = BackendSettings(
         runtime_env=runtime_env,
-        host=str(get_config_value("OKR_BACKEND_HOST", "0.0.0.0")).strip() or "0.0.0.0",
+        host=str(get_config_value("OKR_BACKEND_HOST", host_default)).strip()
+        or host_default,
         port=_as_int(get_config_value("OKR_BACKEND_PORT", ""), default=8100, minimum=1),
         service_token=str(get_config_value("OKR_BACKEND_SERVICE_TOKEN", "")).strip(),
         enforce_service_token=_as_bool(

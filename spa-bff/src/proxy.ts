@@ -60,6 +60,11 @@ function resolveTimeoutMs(path: string, defaultTimeoutMs: number): number {
   ) {
     return Math.max(defaultTimeoutMs, 90_000);
   }
+  // AI analysis calls the external provider synchronously; free-tier providers
+  // can take well over 30s per node.
+  if (normalized.startsWith("/v1/ai/")) {
+    return Math.max(defaultTimeoutMs, 120_000);
+  }
   if (normalized.startsWith("/v1/jobs")) {
     return Math.max(defaultTimeoutMs, 120_000);
   }

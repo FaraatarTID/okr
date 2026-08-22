@@ -135,7 +135,15 @@ def get_gemini_api_key() -> Optional[str]:
     return str(value).strip() if value is not None else None
 
 
-get_ai_api_key = get_gemini_api_key
+def get_ai_api_key() -> Optional[str]:
+    """Provider-neutral API key resolution.
+
+    Returns the key for whichever provider is configured: Gemini's key when
+    AI_PROVIDER=gemini, otherwise the OpenAI-compatible key (Jan, OpenAI, etc.).
+    """
+    if get_ai_provider() == "gemini":
+        return get_gemini_api_key()
+    return get_openai_api_key()
 
 
 def get_ai_provider() -> str:
@@ -150,7 +158,11 @@ def get_gemini_model() -> str:
     return model or "gemini-flash-latest"
 
 
-get_ai_model = get_gemini_model
+def get_ai_model() -> str:
+    """Provider-neutral model resolution for the configured provider."""
+    if get_ai_provider() == "gemini":
+        return get_gemini_model()
+    return str(get_openai_model() or "").strip()
 
 
 def get_openai_base_url() -> Optional[str]:

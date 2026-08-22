@@ -283,6 +283,7 @@ All templates in this section are external governance documents, not app data-en
 - Troubleshooting (FA): [docs/TROUBLESHOOTING_FA.md](docs/TROUBLESHOOTING_FA.md)
 - Config reference (EN): [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
 - Config reference (FA): [docs/CONFIG_REFERENCE_FA.md](docs/CONFIG_REFERENCE_FA.md)
+- Alpha test profiles (local-relaxed vs enterprise-parity): [docs/ALPHA_TEST_PROFILES.md](docs/ALPHA_TEST_PROFILES.md)
 - Compatibility redirect: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
 - Compatibility redirect: [docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md](docs/DEPLOYMENT_OPERATIONS_GUIDE_FA.md)
 - Compatibility redirect: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)

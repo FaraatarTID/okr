@@ -79,7 +79,7 @@ Documentation HQ: [README](../README.md)
 
 ### Runtime Backend
 
-- `OKR_BACKEND_HOST` (پیش‌فرض `0.0.0.0`)
+- `OKR_BACKEND_HOST` (پیش‌فرض non-production: `127.0.0.1`، production: `0.0.0.0`)
 - `OKR_BACKEND_PORT` (پیش‌فرض `8100`)
 - `OKR_BACKEND_ENFORCE_TOKEN` (پیش‌فرض `true`)
 - `OKR_BACKEND_ENFORCE_REQUEST_SIGNING`

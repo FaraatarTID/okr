@@ -28,7 +28,7 @@ echo  OKR Tracker - Hybrid Local Launcher
 echo ==========================================
 echo.
 
-echo [1/7] Checking Python...
+echo [1/9] Checking Python...
 where python >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Python is not found in PATH.
@@ -36,7 +36,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [2/7] Checking Node.js + npm...
+echo [2/9] Checking Node.js + npm...
 where node >nul 2>&1
 if errorlevel 1 (
     echo [ERROR] Node.js is not found in PATH.
@@ -68,7 +68,7 @@ if %NODE_MAJOR% lss 20 (
     exit /b 1
 )
 
-echo [3/7] Resolving database URL...
+echo [3/9] Resolving database URL...
 set "DB_URL_CANDIDATE=%OKR_DATABASE_URL%"
 set "OKR_DATABASE_URL="
 
@@ -137,7 +137,7 @@ if errorlevel 1 (
 )
 :after_db_resolution
 
-echo [4/7] Preparing Python environment...
+echo [4/9] Preparing Python environment...
 if not exist "%PYEXE%" (
     echo [INFO] Creating virtual environment in %VENV_DIR%...
     python -m venv "%VENV_DIR%"
@@ -170,7 +170,7 @@ if defined AI_BASE_URL if defined AI_MODEL (
     echo [INFO] Jan AI context: base_url=%AI_BASE_URL% ^| model=%AI_MODEL%
 )
 
-echo [5/7] Preparing Node dependencies...
+echo [5/9] Preparing Node dependencies...
 if not exist "%ROOT%spa-bff\package.json" (
     echo [ERROR] Missing spa-bff\package.json.
     pause
@@ -213,7 +213,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [6/7] Setting runtime environment...
+echo [6/9] Setting runtime environment...
 set "PYTHONPATH=%ROOT%;%PYTHONPATH%"
 set "OKR_ENV=development"
 set "OKR_ALLOW_NON_SUPABASE_DB=true"
@@ -245,15 +245,7 @@ set "NEXT_PUBLIC_OKR_DATA_ACCESS_MODE=%OKR_DATA_ACCESS_MODE%"
 
 echo [7/9] Launching backend + worker + BFF + SPA...
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
-if exist "%PID_FILE%" del /q "%PID_FILE%" >nul 2>&1
-if exist "%BACKEND_OUT_LOG%" del /q "%BACKEND_OUT_LOG%" >nul 2>&1
-if exist "%BACKEND_ERR_LOG%" del /q "%BACKEND_ERR_LOG%" >nul 2>&1
-if exist "%WORKER_OUT_LOG%" del /q "%WORKER_OUT_LOG%" >nul 2>&1
-if exist "%WORKER_ERR_LOG%" del /q "%WORKER_ERR_LOG%" >nul 2>&1
-if exist "%BFF_OUT_LOG%" del /q "%BFF_OUT_LOG%" >nul 2>&1
-if exist "%BFF_ERR_LOG%" del /q "%BFF_ERR_LOG%" >nul 2>&1
-if exist "%SPA_OUT_LOG%" del /q "%SPA_OUT_LOG%" >nul 2>&1
-if exist "%SPA_ERR_LOG%" del /q "%SPA_ERR_LOG%" >nul 2>&1
+for %%L in ("%BACKEND_OUT_LOG%" "%BACKEND_ERR_LOG%" "%WORKER_OUT_LOG%" "%WORKER_ERR_LOG%" "%BFF_OUT_LOG%" "%BFF_ERR_LOG%" "%SPA_OUT_LOG%" "%SPA_ERR_LOG%") do if exist %%L del /q %%L >nul 2>&1
 if exist "%PID_FILE%" del /q "%PID_FILE%" >nul 2>&1
 if exist "%LAST_PID_FILE%" del /q "%LAST_PID_FILE%" >nul 2>&1
 
@@ -277,11 +269,7 @@ echo [INFO] Waiting for Backend API warm-up before launching other services...
 call :wait_for_http "Backend API" "http://127.0.0.1:8100/healthz" 120
 if errorlevel 1 goto :startup_failed
 
-echo [8/9] Waiting for service readiness...
-call :wait_for_http "Backend API" "http://127.0.0.1:8100/healthz" 90
-if errorlevel 1 goto :startup_failed
-
-echo [INFO] Launching Backend Worker process...
+echo [8/9] Launching Backend Worker process...
 set "SPAWN_CWD=%ROOT_CLEAN%"
 set "SPAWN_EXE=%PYEXE%"
 set "SPAWN_ARGS=-m backend_app.worker"
@@ -318,15 +306,13 @@ set "SPAWN_LAST_PID_FILE=%LAST_PID_FILE%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_spa_failed
 
-echo [8/9] Waiting for service readiness...
-call :wait_for_worker "Backend Worker" "backend_app.worker" 60
-if errorlevel 1 goto :startup_failed
+echo [9/9] Waiting for service readiness...
 call :wait_for_http "SPA BFF" "http://127.0.0.1:3001/healthz" 60
 if errorlevel 1 goto :startup_failed
 call :wait_for_http "SPA Web" "http://127.0.0.1:3000" 120
 if errorlevel 1 goto :startup_failed
 
-echo [9/9] Checking async job pipeline readiness...
+echo [INFO] Checking async job pipeline readiness...
 call :wait_for_worker "Backend Worker" "backend_app.worker" 20
 if errorlevel 1 goto :startup_failed
 

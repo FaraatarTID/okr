@@ -9,6 +9,8 @@ $root = Resolve-Path (Join-Path $scriptDir "..")
 $composeFile = Join-Path $root "deploy\docker\docker-compose.yml"
 $envFile = Join-Path $root "deploy\docker\.env"
 $dockerComposeUrl = "http://127.0.0.1:3000"
+$hybridRunScript = Join-Path $root "run_hybrid_app_local.bat"
+$hybridStopScript = Join-Path $root "stop_hybrid_app_local.bat"
 
 $uiPrimary = [System.Drawing.Color]::FromArgb(112, 41, 99) # #702963
 $uiCanvas = [System.Drawing.Color]::FromArgb(248, 243, 249)
@@ -47,10 +49,24 @@ function Hide-LauncherConsole {
 }
 Hide-LauncherConsole
 
+$launcherLogFile = Join-Path $root "tmp\launcher.log"
+
+function Write-LauncherLog {
+    param([string]$Message)
+    try {
+        $dir = Split-Path -Parent $launcherLogFile
+        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        $line = "[{0:yyyy-MM-dd HH:mm:ss}] {1}" -f (Get-Date), $Message
+        Add-Content -Path $launcherLogFile -Value $line -Encoding UTF8
+    } catch {
+    }
+}
+
 function Write-Log {
     param([string]$Message)
     if (-not $Message) { return }
     $line = "[{0:HH:mm:ss}] {1}`r`n" -f (Get-Date), $Message
+    Write-LauncherLog -Message $Message
     if ($script:lblStatus) {
         $script:statusLines = @($line.Trim()) + $script:statusLines
         if ($script:statusLines.Count -gt 5) {
@@ -60,6 +76,14 @@ function Write-Log {
         return
     }
     Write-Verbose $line.Trim()
+}
+
+function Update-Ui {
+    # Keeps the window responsive during long operations by pumping the
+    # WinForms message queue.
+    if ($script:lblStatus) {
+        [System.Windows.Forms.Application]::DoEvents()
+    }
 }
 
 function Open-AppInBrowser {
@@ -74,7 +98,9 @@ function Open-AppInBrowser {
 function Wait-AppReady {
     param([int]$TimeoutSeconds = 90)
 
+    Write-Log "Waiting for app to respond (up to $TimeoutSeconds s)..."
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastProgressSecond = -10
     do {
         try {
             $response = Invoke-WebRequest -Uri "$dockerComposeUrl/" -Method Head -UseBasicParsing -TimeoutSec 2
@@ -84,7 +110,14 @@ function Wait-AppReady {
             }
         } catch {
         }
+        Update-Ui
         Start-Sleep -Milliseconds 1200
+        Update-Ui
+        $elapsed = [int]((Get-Date) - $deadline).TotalSeconds + $TimeoutSeconds
+        if (($elapsed - $lastProgressSecond) -ge 10) {
+            $lastProgressSecond = $elapsed
+            Write-Log ("Still waiting for app... {0}s / {1}s" -f $elapsed, $TimeoutSeconds)
+        }
     } while ((Get-Date) -lt $deadline)
 
     Write-Log "App not reachable after $TimeoutSeconds seconds; opening browser anyway."
@@ -115,6 +148,7 @@ function Run-CommandCapture {
         $proc = New-Object System.Diagnostics.Process
         $proc.StartInfo = $psi
         $null = $proc.Start()
+        while (-not $proc.HasExited) { Start-Sleep -Milliseconds 200; Update-Ui }
         $stdout = $proc.StandardOutput.ReadToEnd()
         $stderr = $proc.StandardError.ReadToEnd()
         $proc.WaitForExit()
@@ -156,6 +190,7 @@ function Invoke-HiddenProcess {
         if ($NoWait) {
             return @{ ExitCode = 0; StdOut = ""; StdErr = "" }
         }
+        while (-not $proc.HasExited) { Start-Sleep -Milliseconds 200; Update-Ui }
         $proc.WaitForExit()
         return @{ ExitCode = $proc.ExitCode; StdOut = ""; StdErr = "" }
     } catch {
@@ -588,6 +623,11 @@ function Show-NotConfigured {
     ) | Out-Null
 }
 
+function Test-DockerDaemon {
+    $result = Run-CommandCapture -Executable "docker" -Arguments @("version", "--format", "{{.Server.Version}}")
+    return ($result.ExitCode -eq 0)
+}
+
 function Start-DockerServices {
     param()
     if (-not (Test-Path $composeFile)) {
@@ -596,6 +636,11 @@ function Start-DockerServices {
     }
     if (-not (Test-Path $envFile)) {
         Show-NotConfigured $envFile
+        return
+    }
+    if (-not (Test-DockerDaemon)) {
+        Write-Log "ERROR: Docker engine is not running."
+        Write-Log "Start Docker Desktop first, or use 'Start Local' (no Docker) instead."
         return
     }
 
@@ -616,6 +661,7 @@ function Start-DockerServices {
 
     $services = @("backend-api","backend-worker","spa-bff","spa-web")
     Write-Log "Starting docker services: $($services -join ', ')"
+    Write-Log "This can take a few minutes (image build, container start, health checks)..."
     $startArgs = @("compose","-f",$composeFile,"--env-file",$envFile,"up","-d")
     $startArgs += $services
     $result = Invoke-HiddenProcess -Executable "docker" -Arguments $startArgs -NoWait
@@ -625,12 +671,17 @@ function Start-DockerServices {
     }
     Wait-AppReady -TimeoutSeconds 90 | Out-Null
     Open-AppInBrowser
+    Write-Log "Start sequence complete. You can close this launcher; the app keeps running."
 }
 
 function Stop-DockerServices {
     param()
     if (-not (Test-Path $composeFile)) {
         Show-NotConfigured $composeFile
+        return
+    }
+    if (-not (Test-DockerDaemon)) {
+        Write-Log "Docker engine is not running; nothing to stop."
         return
     }
     Write-Log "Stopping docker services."
@@ -640,9 +691,81 @@ function Stop-DockerServices {
     }
 }
 
+function Start-LocalHybridServices {
+    param()
+    if (-not (Test-Path $hybridRunScript)) {
+        Show-NotConfigured $hybridRunScript
+        return
+    }
+    Write-Log "Starting local hybrid stack (backend + worker + BFF + SPA, no Docker)..."
+    Start-Process -FilePath "cmd.exe" -ArgumentList "/d", "/c", "`"$hybridRunScript`"" -WorkingDirectory $root | Out-Null
+    Write-Log "Local hybrid launcher started in its own window; watch it for progress."
+}
+
+function Stop-LocalHybridServices {
+    param()
+    if (-not (Test-Path $hybridStopScript)) {
+        Show-NotConfigured $hybridStopScript
+        return
+    }
+    Write-Log "Stopping local hybrid services..."
+    $result = Invoke-HiddenProcess -Executable "cmd.exe" -Arguments "/d", "/c", "`"$hybridStopScript`""
+    if ($result.ExitCode -eq 0) {
+        Write-Log "Local hybrid services stopped."
+    } else {
+        Write-Log "Stop script exited with code $($result.ExitCode)."
+    }
+}
+
+function Test-HttpEndpoint {
+    param([string]$Url)
+    try {
+        $response = Invoke-WebRequest -Uri $Url -Method Get -UseBasicParsing -TimeoutSec 2
+        return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500)
+    } catch {
+        if ($_.Exception.Response) {
+            $code = [int]$_.Exception.Response.StatusCode
+            return ($code -ge 200 -and $code -lt 500)
+        }
+        return $false
+    }
+}
+
+function Show-ServiceStatus {
+    $checks = @(
+        @{ Name = "Backend API"; Url = "http://127.0.0.1:8100/healthz" },
+        @{ Name = "SPA BFF";     Url = "http://127.0.0.1:3001/healthz" },
+        @{ Name = "SPA Web";     Url = "http://127.0.0.1:3000/" }
+    )
+    $dockerUp = $false
+    if (-not (Test-DockerDaemon)) {
+        Write-Log "Docker engine is not running (Docker Desktop stopped)."
+    } else {
+        try {
+            $psResult = Run-CommandCapture -Executable "docker" -Arguments @("compose","-f",$composeFile,"--env-file",$envFile,"ps","--services","--filter","status=running")
+            if ($psResult.ExitCode -eq 0 -and $psResult.StdOut.Trim()) {
+                $dockerUp = $true
+                Write-Log ("Docker services running: " + (($psResult.StdOut.Trim() -split "\r?\n") -join ", "))
+            }
+        } catch {
+        }
+    }
+
+    foreach ($check in $checks) {
+        if (Test-HttpEndpoint -Url $check.Url) {
+            Write-Log "[UP]   $($check.Name) ($($check.Url))"
+        } else {
+            Write-Log "[DOWN] $($check.Name) ($($check.Url))"
+        }
+    }
+    if (-not $dockerUp) {
+        Write-Log "No Docker compose services detected (local mode or stopped)."
+    }
+}
+
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "OKR App Launcher"
-$form.Size = New-Object System.Drawing.Size(640, 250)
+$form.Size = New-Object System.Drawing.Size(640, 330)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedSingle
 $form.MaximizeBox = $false
@@ -664,33 +787,62 @@ $lblSubtitle.ForeColor = $uiSubText
 $form.Controls.Add($lblSubtitle)
 
 $groupActions = New-Object System.Windows.Forms.GroupBox
-$groupActions.Text = "Actions"
-$groupActions.SetBounds(18, 72, 604, 190)
+$groupActions.Text = "Docker mode"
+$groupActions.SetBounds(18, 72, 604, 150)
 $groupActions.BackColor = $uiPanel
 $groupActions.ForeColor = $uiText
 $groupActions.Font = $uiSectionFont
+
+function Set-BusyState {
+    param([bool]$Busy)
+    foreach ($btn in @($btnStart, $btnStop, $btnRestart, $btnOpenWeb, $btnLocalStart, $btnLocalStop, $btnStatus)) {
+        if ($btn) { $btn.Enabled = (-not $Busy) }
+    }
+    if ($Busy) { $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor }
+    else { $form.Cursor = [System.Windows.Forms.Cursors]::Default }
+}
 
 $btnStart = New-Object System.Windows.Forms.Button
 $btnStart.Text = "Start"
 $btnStart.SetBounds(18, 28, 130, 34)
 $btnStart.Add_Click({
-    Start-DockerServices
+    Set-BusyState -Busy $true
+    Write-Log "Starting Docker stack..."
+    try   { Start-DockerServices }
+    finally { Set-BusyState -Busy $false }
 })
 
 $btnStop = New-Object System.Windows.Forms.Button
 $btnStop.Text = "Stop"
 $btnStop.SetBounds(160, 28, 130, 34)
 $btnStop.Add_Click({
-    Stop-DockerServices
+    $confirm = [System.Windows.Forms.MessageBox]::Show(
+        "Stopping removes the containers completely (docker compose down).`n`nData in Postgres/Supabase is not deleted, but containers will disappear from Docker Desktop until you Start again.`n`nContinue?",
+        "Confirm Stop",
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Question
+    )
+    if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) {
+        Write-Log "Stop cancelled."
+        return
+    }
+    Set-BusyState -Busy $true
+    Write-Log "Stopping Docker stack..."
+    try   { Stop-DockerServices }
+    finally { Set-BusyState -Busy $false }
 })
 
 $btnRestart = New-Object System.Windows.Forms.Button
 $btnRestart.Text = "Restart"
 $btnRestart.SetBounds(302, 28, 130, 34)
 $btnRestart.Add_Click({
-    Stop-DockerServices
-    Start-Sleep -Milliseconds 700
-    Start-DockerServices
+    Set-BusyState -Busy $true
+    Write-Log "Restarting Docker stack..."
+    try {
+        Stop-DockerServices
+        Start-Sleep -Milliseconds 700
+        Start-DockerServices
+    } finally { Set-BusyState -Busy $false }
 })
 
 $btnOpenWeb = New-Object System.Windows.Forms.Button
@@ -703,7 +855,7 @@ $btnOpenWeb.Add_Click({
 $groupActions.Controls.AddRange(@($btnStart, $btnStop, $btnRestart, $btnOpenWeb))
 $lblStatus = New-Object System.Windows.Forms.Label
 $lblStatus.Text = "Ready."
-$lblStatus.SetBounds(18, 148, 570, 30)
+$lblStatus.SetBounds(18, 112, 570, 26)
 $lblStatus.Font = New-Object System.Drawing.Font("Segoe UI", [float]9.25)
 $lblStatus.ForeColor = $uiSubText
 $lblStatus.AutoSize = $false
@@ -724,9 +876,61 @@ foreach ($btn in $actionButtons) {
 $groupActions.Controls.Add($lblStatus)
 $form.Controls.Add($groupActions)
 
+$groupLocal = New-Object System.Windows.Forms.GroupBox
+$groupLocal.Text = "Local mode (no Docker)"
+$groupLocal.SetBounds(18, 228, 604, 64)
+$groupLocal.BackColor = $uiPanel
+$groupLocal.ForeColor = $uiText
+$groupLocal.Font = $uiSectionFont
+
+$btnLocalStart = New-Object System.Windows.Forms.Button
+$btnLocalStart.Text = "Start Local"
+$btnLocalStart.SetBounds(18, 22, 130, 32)
+$btnLocalStart.Add_Click({
+    Start-LocalHybridServices
+})
+
+$btnLocalStop = New-Object System.Windows.Forms.Button
+$btnLocalStop.Text = "Stop Local"
+$btnLocalStop.SetBounds(160, 22, 130, 32)
+$btnLocalStop.Add_Click({
+    Set-BusyState -Busy $true
+    Write-Log "Stopping local hybrid services..."
+    try   { Stop-LocalHybridServices }
+    finally { Set-BusyState -Busy $false }
+})
+
+$btnStatus = New-Object System.Windows.Forms.Button
+$btnStatus.Text = "Status"
+$btnStatus.SetBounds(302, 22, 130, 32)
+$btnStatus.Add_Click({
+    Set-BusyState -Busy $true
+    Write-Log "Checking service status..."
+    try   { Show-ServiceStatus }
+    finally { Set-BusyState -Busy $false }
+})
+
+$lblLocalNote = New-Object System.Windows.Forms.Label
+$lblLocalNote.Text = "Runs backend + worker + BFF + SPA directly on this PC."
+$lblLocalNote.SetBounds(444, 26, 150, 28)
+$lblLocalNote.Font = New-Object System.Drawing.Font("Segoe UI", [float]8)
+$lblLocalNote.ForeColor = $uiSubText
+
+foreach ($btn in @($btnLocalStart, $btnLocalStop, $btnStatus)) {
+    $btn.Font = $uiButtonFont
+    $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btn.FlatAppearance.BorderColor = $uiAccent
+    $btn.FlatAppearance.BorderSize = 1
+    $btn.BackColor = $uiButtonBg
+    $btn.ForeColor = [System.Drawing.Color]::White
+    $btn.UseVisualStyleBackColor = $false
+}
+$groupLocal.Controls.AddRange(@($btnLocalStart, $btnLocalStop, $btnStatus, $lblLocalNote))
+$form.Controls.Add($groupLocal)
+
 $lblAiMode = New-Object System.Windows.Forms.Label
 $lblAiMode.Text = "AI mode:"
-$lblAiMode.SetBounds(18, 98, 70, 24)
+$lblAiMode.SetBounds(18, 74, 70, 24)
 $lblAiMode.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
 $lblAiMode.ForeColor = $uiText
 $groupActions.Controls.Add($lblAiMode)
@@ -740,7 +944,7 @@ if ($aiModeIndex -ge 0) {
 } else {
     $aiMode.SelectedIndex = 0
 }
-$aiMode.SetBounds(90, 94, 220, 28)
+$aiMode.SetBounds(90, 70, 220, 28)
 $aiMode.ForeColor = [System.Drawing.Color]::White
 $aiMode.BackColor = $uiButtonBg
 $aiMode.Font = $uiFont
@@ -755,15 +959,18 @@ $script:aiModeCombo = $aiMode
 
 $lblAiModeNote = New-Object System.Windows.Forms.Label
 $lblAiModeNote.Text = "Restart or Start to apply mode choice."
-$lblAiModeNote.SetBounds(320, 94, 250, 28)
+$lblAiModeNote.SetBounds(320, 70, 250, 28)
 $lblAiModeNote.Font = New-Object System.Drawing.Font("Segoe UI", 8.75)
 $lblAiModeNote.ForeColor = $uiSubText
 $groupActions.Controls.Add($lblAiModeNote)
 
 $script:lblStatus = $lblStatus
 
-Write-Log "Launcher ready. Click Start to run the full Docker stack."
+Write-LauncherLog -Message "=== Launcher session started (PID $PID) ==="
+Write-Log "Launcher ready. Use Docker mode or Local mode (no Docker) to start."
+Write-Log "Activity log: $launcherLogFile"
 Write-Log "Docker mode uses: $composeFile"
+Write-Log "Local mode uses: $hybridRunScript"
 if (Test-Path $envFile) {
     Write-Log "Using env: $envFile"
 } else {
