@@ -131,7 +131,10 @@ export default function AtlasModeControlsPanel({
   const pollSeconds = Math.max(1, Math.floor(snapshotPollIntervalMs / 1000));
 
   return (
-    <section className="panel" style={{ marginBottom: "0.9rem", padding: "0.75rem 0.9rem" }}>
+    <section
+      className="panel"
+      style={{ marginBottom: "0.9rem", padding: "0.75rem 0.9rem" }}
+    >
       <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
         Cycle: <strong>{cycleLabel}</strong>
         {snapshotPending ? " * Loading..." : ` * Auto-sync every ${pollSeconds}s`}

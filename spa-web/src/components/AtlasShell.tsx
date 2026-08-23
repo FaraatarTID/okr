@@ -1444,7 +1444,7 @@ export default function AtlasShell() {
             </button>
           </div>
         </aside>
-        <div>
+        <div style={{ paddingTop: "0.4rem" }}>
 
       {mode === "atlas" ? (
       <>

@@ -85,7 +85,7 @@ h4 {
 
 .page-shell {
   width: min(1320px, calc(100% - 2.2rem));
-  margin: 1.1rem auto 2.2rem;
+  margin: 1.6rem auto 2.2rem;
 }
 
 .login-shell-hero {
@@ -154,7 +154,9 @@ h4 {
   position: relative;
 }
 
-.spa-route-shell > * {
+/* Collapse top margins between stacked route siblings, but leave the first
+   child's own margin intact so .page-shell keeps its top spacing. */
+.spa-route-shell > * + * {
   margin-top: 0;
 }
 
