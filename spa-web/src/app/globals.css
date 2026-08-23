@@ -341,9 +341,7 @@ input.input {
 .atlas-inspector-pane {
   border: 1px solid var(--line);
   border-radius: 14px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--surface-strong) 92%, var(--accent-deep) 8%), var(--surface-strong)),
-    repeating-linear-gradient(90deg, rgba(25, 53, 64, 0.03) 0 1px, transparent 1px 78px);
+  background: var(--surface-alt);
   padding: 0.78rem;
   min-height: 20rem;
 }
@@ -380,7 +378,7 @@ input.input {
 .atlas-node-item {
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: linear-gradient(180deg, #fffdf9, #f8efe0);
+  background: var(--surface);
   color: var(--ink);
   cursor: pointer;
   text-align: left;
@@ -565,21 +563,22 @@ input.input {
   position: relative;
   border: 1px solid var(--line);
   border-radius: 13px;
-  background: linear-gradient(170deg, rgba(255, 255, 255, 0.95), rgba(245, 236, 224, 0.9));
+  background: var(--surface);
   padding: 0.6rem 0.64rem;
   display: grid;
   gap: 0.2rem;
-  box-shadow: 0 14px 30px -30px rgba(25, 42, 52, 0.85);
+  box-shadow: 0 1px 2px rgba(25, 42, 52, 0.05);
   transition: transform 170ms ease, box-shadow 170ms ease, border-color 170ms ease;
 }
 
 .report-metric-card::before {
   content: "";
   position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  border-radius: 13px 13px 0 0;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 80%, var(--accent-strong) 20%), var(--gold));
+  inset: 0 auto 0 0;
+  width: 3px;
+  border-radius: 13px 0 0 13px;
+  background: var(--accent);
+  opacity: 0.55;
 }
 
 .report-metric-card:hover {
@@ -631,15 +630,13 @@ input.input {
 .report-panel {
   border: 1px solid var(--line);
   border-radius: 13px;
-  background: linear-gradient(178deg, rgba(255, 255, 255, 0.95), rgba(246, 238, 226, 0.9));
+  background: var(--surface);
   padding: 0.68rem;
-  box-shadow: 0 14px 26px -28px rgba(20, 33, 42, 0.8);
+  box-shadow: 0 1px 2px rgba(20, 33, 42, 0.04);
 }
 
 .report-panel.accent {
-  background:
-    linear-gradient(155deg, rgba(245, 237, 250, 0.82), rgba(251, 247, 255, 0.9)),
-    linear-gradient(120deg, transparent, rgba(112, 41, 99, 0.06));
+  background: color-mix(in srgb, var(--accent) 3%, var(--surface));
 }
 
 .report-panel-head {
@@ -683,7 +680,7 @@ input.input {
 .status-chip {
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(244, 235, 221, 0.86));
+  background: var(--surface);
   padding: 0.3rem 0.46rem;
   font-size: 0.75rem;
   font-weight: 600;
@@ -715,9 +712,9 @@ input.input {
 }
 
 .report-list-row {
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 236, 224, 0.84));
+  background: color-mix(in srgb, var(--surface-alt) 55%, var(--surface));
   padding: 0.44rem 0.5rem;
   display: grid;
   gap: 0.12rem;
@@ -918,7 +915,7 @@ input.input {
 
 .timeline-meta {
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(243, 235, 221, 0.86));
+  background: var(--surface);
   border-radius: 10px;
   padding: 0.4rem 0.45rem;
 }
@@ -928,7 +925,7 @@ input.input {
   height: 1.9rem;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(236, 226, 209, 0.8));
+  background: color-mix(in srgb, var(--surface-alt) 60%, var(--surface));
   overflow: hidden;
 }
 
