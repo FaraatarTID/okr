@@ -80,9 +80,28 @@ function Write-Log {
 
 function Update-Ui {
     # Keeps the window responsive during long operations by pumping the
-    # WinForms message queue.
-    if ($script:lblStatus) {
+    # WinForms message queue. Guards against DoEvents reentrancy: while an
+    # operation is running, close/user-close messages are deferred instead of
+    # tearing down the process mid-work.
+    if (-not $script:lblStatus) { return }
+    try {
         [System.Windows.Forms.Application]::DoEvents()
+    } catch {
+    }
+}
+
+$script:isBusy = $false
+
+function Set-BusyState {
+    param([bool]$Busy)
+    $script:isBusy = $Busy
+    # Buttons may not exist yet when this is called early in startup.
+    foreach ($btn in @($btnStart, $btnStop, $btnRestart, $btnOpenWeb, $btnLocalStart, $btnLocalStop, $btnStatus)) {
+        if ($btn -and -not $btn.IsDisposed) { $btn.Enabled = (-not $Busy) }
+    }
+    if ($form -and -not $form.IsDisposed) {
+        if ($Busy) { $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor }
+        else { $form.Cursor = [System.Windows.Forms.Cursors]::Default }
     }
 }
 
@@ -102,13 +121,27 @@ function Wait-AppReady {
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $lastProgressSecond = -10
     do {
+        $spaOk = $false
+        $apiOk = $false
         try {
             $response = Invoke-WebRequest -Uri "$dockerComposeUrl/" -Method Head -UseBasicParsing -TimeoutSec 2
             if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
-                Write-Log "App responded on startup. Opening browser."
-                return $true
+                $spaOk = $true
             }
         } catch {
+        }
+        # The SPA can serve pages without a working backend; require the API
+        # health endpoint too so partial starts are not reported as ready.
+        try {
+            $apiResponse = Invoke-WebRequest -Uri "http://127.0.0.1:8100/healthz" -Method Get -UseBasicParsing -TimeoutSec 2
+            if ($apiResponse.StatusCode -ge 200 -and $apiResponse.StatusCode -lt 500) {
+                $apiOk = $true
+            }
+        } catch {
+        }
+        if ($spaOk -and $apiOk) {
+            Write-Log "App and backend API responded on startup. Opening browser."
+            return $true
         }
         Update-Ui
         Start-Sleep -Milliseconds 1200
@@ -116,11 +149,14 @@ function Wait-AppReady {
         $elapsed = [int]((Get-Date) - $deadline).TotalSeconds + $TimeoutSeconds
         if (($elapsed - $lastProgressSecond) -ge 10) {
             $lastProgressSecond = $elapsed
-            Write-Log ("Still waiting for app... {0}s / {1}s" -f $elapsed, $TimeoutSeconds)
+            $waiting = @()
+            if (-not $spaOk) { $waiting += "SPA" }
+            if (-not $apiOk) { $waiting += "backend API" }
+            Write-Log ("Still waiting for {0}... {1}s / {2}s" -f ($waiting -join " + "), $elapsed, $TimeoutSeconds)
         }
     } while ((Get-Date) -lt $deadline)
 
-    Write-Log "App not reachable after $TimeoutSeconds seconds; opening browser anyway."
+    Write-Log "App not fully reachable after $TimeoutSeconds seconds; opening browser anyway."
     return $false
 }
 
@@ -128,7 +164,11 @@ function Run-CommandCapture {
     param(
         [Parameter(Mandatory=$true)]
         [string]$Executable,
-        [string[]]$Arguments
+        [string[]]$Arguments,
+        # Hard wall-clock limit. Network probes (e.g. jan_context.py) can stall
+        # far beyond their internal timeouts on proxy/DNS issues; kill and move
+        # on instead of freezing Start/Restart indefinitely.
+        [int]$TimeoutSeconds = 60
     )
     try {
         $escaped = $Arguments | ForEach-Object {
@@ -148,7 +188,16 @@ function Run-CommandCapture {
         $proc = New-Object System.Diagnostics.Process
         $proc.StartInfo = $psi
         $null = $proc.Start()
-        while (-not $proc.HasExited) { Start-Sleep -Milliseconds 200; Update-Ui }
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while (-not $proc.HasExited) {
+            if ($sw.Elapsed.TotalSeconds -ge $TimeoutSeconds) {
+                try { $proc.Kill($true) } catch { try { $proc.Kill() } catch {} }
+                Write-LauncherLog -Message ("TIMEOUT after ${TimeoutSeconds}s: $Executable " + ($Arguments -join ' '))
+                return @{ ExitCode = 124; StdOut = ""; StdErr = "Timed out after ${TimeoutSeconds}s." }
+            }
+            Start-Sleep -Milliseconds 200
+            Update-Ui
+        }
         $stdout = $proc.StandardOutput.ReadToEnd()
         $stderr = $proc.StandardError.ReadToEnd()
         $proc.WaitForExit()
@@ -163,7 +212,9 @@ function Invoke-HiddenProcess {
         [Parameter(Mandatory=$true)]
         [string]$Executable,
         [string[]]$Arguments = @(),
-        [switch]$NoWait
+        [switch]$NoWait,
+        # Hard wall-clock limit when waiting (ignored with -NoWait).
+        [int]$TimeoutSeconds = 300
     )
     try {
         $escaped = $Arguments | ForEach-Object {
@@ -190,7 +241,16 @@ function Invoke-HiddenProcess {
         if ($NoWait) {
             return @{ ExitCode = 0; StdOut = ""; StdErr = "" }
         }
-        while (-not $proc.HasExited) { Start-Sleep -Milliseconds 200; Update-Ui }
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        while (-not $proc.HasExited) {
+            if ($sw.Elapsed.TotalSeconds -ge $TimeoutSeconds) {
+                try { $proc.Kill($true) } catch { try { $proc.Kill() } catch {} }
+                Write-LauncherLog -Message ("TIMEOUT after ${TimeoutSeconds}s: $Executable " + ($Arguments -join ' '))
+                return @{ ExitCode = 124; StdOut = ""; StdErr = "Timed out after ${TimeoutSeconds}s." }
+            }
+            Start-Sleep -Milliseconds 200
+            Update-Ui
+        }
         $proc.WaitForExit()
         return @{ ExitCode = $proc.ExitCode; StdOut = ""; StdErr = "" }
     } catch {
@@ -371,7 +431,11 @@ function Refresh-JanContext {
         return $false
     }
 
-    $result = Run-CommandCapture -Executable $python -Arguments @((Join-Path $root "scripts\jan_context.py"), "--json")
+    $result = Run-CommandCapture -Executable $python -Arguments @((Join-Path $root "scripts\jan_context.py"), "--json") -TimeoutSeconds 15
+    if ($result.ExitCode -eq 124) {
+        Write-Log "Jan probe timed out after 15s; skipping Jan auto-refresh."
+        return $false
+    }
     if ($result.ExitCode -ne 0) {
         Write-Log "Jan context refresh command failed: $($result.StdErr.Trim())"
         return $false
@@ -490,7 +554,7 @@ function Get-JanAvailability {
         if (-not (Test-Path $python)) { return $false }
         if (-not (Test-Path (Join-Path $root "scripts\jan_context.py"))) { return $false }
 
-        $result = Run-CommandCapture -Executable $python -Arguments @((Join-Path $root "scripts\jan_context.py"), "--json")
+        $result = Run-CommandCapture -Executable $python -Arguments @((Join-Path $root "scripts\jan_context.py"), "--json") -TimeoutSeconds 15
         if ($result.ExitCode -ne 0) { return $false }
         $payload = $result.StdOut.Trim()
         if (-not $payload) { return $false }
@@ -664,10 +728,19 @@ function Start-DockerServices {
     Write-Log "This can take a few minutes (image build, container start, health checks)..."
     $startArgs = @("compose","-f",$composeFile,"--env-file",$envFile,"up","-d")
     $startArgs += $services
-    $result = Invoke-HiddenProcess -Executable "docker" -Arguments $startArgs -NoWait
+    # Wait for compose to fully finish. The previous fire-and-forget (-NoWait)
+    # approach could return while compose was still creating containers,
+    # producing partial starts (some services missing) that the readiness
+    # check then mistook for success.
+    $result = Invoke-HiddenProcess -Executable "docker" -Arguments $startArgs -TimeoutSeconds 300
     if ($result.ExitCode -ne 0) {
         Write-Log "docker up failed: $($result.StdErr)"
         return
+    }
+    if ($result.StdOut.Trim()) {
+        foreach ($line in ($result.StdOut.Trim() -split "\r?\n" | Select-Object -Last 4)) {
+            Write-Log "docker: $line"
+        }
     }
     Wait-AppReady -TimeoutSeconds 90 | Out-Null
     Open-AppInBrowser
@@ -793,14 +866,7 @@ $groupActions.BackColor = $uiPanel
 $groupActions.ForeColor = $uiText
 $groupActions.Font = $uiSectionFont
 
-function Set-BusyState {
-    param([bool]$Busy)
-    foreach ($btn in @($btnStart, $btnStop, $btnRestart, $btnOpenWeb, $btnLocalStart, $btnLocalStop, $btnStatus)) {
-        if ($btn) { $btn.Enabled = (-not $Busy) }
-    }
-    if ($Busy) { $form.Cursor = [System.Windows.Forms.Cursors]::WaitCursor }
-    else { $form.Cursor = [System.Windows.Forms.Cursors]::Default }
-}
+# Set-BusyState is defined earlier (top of script) with reentrancy guard.
 
 $btnStart = New-Object System.Windows.Forms.Button
 $btnStart.Text = "Start"
@@ -985,4 +1051,32 @@ if (Test-Path $envFile) {
     }
 }
 
+# Global crash handler: any unhandled exception is written to the activity log
+# before the process exits, so silent deaths leave a trace.
+try {
+    [System.Windows.Forms.Application]::add_ThreadException({
+        param($sender, $e)
+        Write-LauncherLog -Message ("CRASH (UI thread): " + $e.Exception.GetType().Name + ": " + $e.Exception.Message + " @ " + ($e.Exception.StackTrace | Select-Object -First 1))
+    })
+    [AppDomain]::CurrentDomain.add_UnhandledException({
+        param($sender, $e)
+        $ex = $e.ExceptionObject
+        Write-LauncherLog -Message ("CRASH (appdomain): " + $ex.GetType().Name + ": " + $ex.Message)
+    })
+} catch {
+    # Handler registration is best-effort; never block startup on it.
+}
+
+# Prevent closing the form while an operation is running: deferring the close
+# avoids DoEvents reentrancy tearing down the process mid-work.
+$form.Add_FormClosing({
+    param($sender, $e)
+    if ($script:isBusy) {
+        $e.Cancel = $true
+        Write-Log "Operation in progress - close will be allowed when it finishes."
+    }
+})
+
+Write-LauncherLog -Message "Launcher UI shown."
 [void]$form.ShowDialog()
+Write-LauncherLog -Message "=== Launcher session ended ==="
