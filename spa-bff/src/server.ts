@@ -6,6 +6,7 @@ import { isAllowlistedRoute, normalizeBackendPath, requiresActorHeader } from ".
 import type { BffConfig } from "./config.js";
 import { readConfig } from "./config.js";
 import { proxyToBackend } from "./proxy.js";
+import { buildBackendSecurityHeaders } from "./signing.js";
 import {
   clearSessionCookie,
   clearCsrfCookie,
@@ -174,10 +175,24 @@ async function fetchFreshSessionUser(
   if (sessionUser.token_version != null) {
     headers["x-okr-token-version"] = String(sessionUser.token_version);
   }
+  // The backend enforces HMAC request signing in production; this direct call
+  // bypasses proxyToBackend, so sign it here as well.
+  Object.assign(
+    headers,
+    buildBackendSecurityHeaders({
+      method: "GET",
+      path: "/v1/auth/me",
+      serviceToken: config.backendServiceToken,
+      signingSecret: config.backendSigningSecret,
+      bodyBytes: null,
+    }),
+  );
   const response = await fetchFn(`${config.backendApiUrl}/v1/auth/me`, {
     method: "GET",
     headers,
-    signal: AbortSignal.timeout(Math.min(config.requestTimeoutMs, 5_000)),
+    // Session validation hits Supabase (multi-round-trip scope resolution);
+    // give it the full proxy budget rather than a tight 5s cap.
+    signal: AbortSignal.timeout(config.requestTimeoutMs),
   });
   if (!response.ok) {
     throw new Error(`Backend session validation failed: ${response.status}`);
@@ -405,10 +420,43 @@ export function createServer(
         deps?.fetchFn,
       );
       return reply.send({ user: freshUser });
-    } catch {
-      // Backend unavailable or validation failed — serve cookie data as fallback
-      // so the SPA can still render; freshness is enforced on every actor-scoped request.
-      return reply.send({ user: sessionUser });
+    } catch (error) {
+      // Fail closed: if the backend cannot confirm the session (unavailable or
+      // validation/revocation failure), do NOT serve stale cookie data. A
+      // revoked session must not keep rendering an authenticated UI.
+      const isAuthRejection =
+        error instanceof Error && error.message.includes("validation failed");
+      app.log.warn(
+        buildBffLogPayload("bff_session_validation_failed", request, 401, {
+          request_id: requestId,
+          error_code: isAuthRejection ? "SESSION_REVOKED" : "BACKEND_UNAVAILABLE",
+          error_type: error instanceof Error ? error.name : "Error",
+        }),
+      );
+      if (isAuthRejection) {
+        // Session was explicitly rejected by the backend: clear cookies so the
+        // revoked session disappears from the browser.
+        reply.header("set-cookie", [
+          clearSessionCookie({ secure: config.cookieSecure }),
+          clearCsrfCookie({ secure: config.cookieSecure }),
+        ]);
+        return reply.code(401).send({
+          ...buildErrorEnvelope(
+            "SESSION_REVOKED",
+            "Session is no longer valid. Please sign in again.",
+            requestId,
+          ),
+        });
+      }
+      // Backend unreachable (not a rejection): fail closed as well, but keep
+      // cookies so the user can resume when the backend returns.
+      return reply.code(503).send({
+        ...buildErrorEnvelope(
+          "BACKEND_UNAVAILABLE",
+          "Cannot verify session right now. Try again shortly.",
+          requestId,
+        ),
+      });
     }
   });
 

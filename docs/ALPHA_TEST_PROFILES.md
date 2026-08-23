@@ -41,6 +41,8 @@ set OKR_ALLOW_SUPABASE_SESSION_POOLER=true
 set ALLOW_EXTERNAL_AI=true
 set AI_PROVIDER=gemini
 set GEMINI_API_KEY=<key>
+rem REQUIRED in production: session cookies are only sent over HTTPS when true.
+set BFF_COOKIE_SECURE=true
 ```
 
 ## Alpha Test Checklist
