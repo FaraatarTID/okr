@@ -165,8 +165,17 @@ export default function RitualModePanel({
   endOfWeekIso,
 }: RitualModePanelProps) {
   return (
-          <div style={{ marginTop: "0.5rem" }}>
-            <div className="checkin-stepper">
+          <div className="checkin-workspace">
+            <div className="checkin-header">
+              <div>
+                <p className="kicker">Weekly ritual</p>
+                <h2>Check-In</h2>
+                <p>Capture measurable movement, explain the signal, and choose the next focused action.</p>
+              </div>
+              <div className="checkin-cycle-badge">{cycleLabel}</div>
+            </div>
+
+            <div className="checkin-stepper" role="tablist" aria-label="Check-In steps">
               <button
                 type="button"
                 className="primary-button"
@@ -193,8 +202,7 @@ export default function RitualModePanel({
               </button>
             </div>
 
-            <div className="atlas-rollup" style={{ marginTop: "0.45rem" }}>
-              <span>Cycle: {cycleLabel}</span>
+            <div className="checkin-summary" aria-label="Check-In progress">
               <span>KRs needing check-in: {ritualKrs.length}</span>
               <span>
                 Submitted: {ritualSubmittedCount}/{ritualKrs.length}
@@ -272,7 +280,7 @@ export default function RitualModePanel({
 
             {ritualStep === 2 ? (
               <>
-                <div style={{ marginTop: "0.45rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.45rem", background: "var(--surface)" }}>
+                <div className="checkin-guide">
                   <p className="kicker" style={{ margin: 0 }}>Check-In Guide</p>
                   <p style={{ margin: "0.2rem 0 0", fontSize: "0.78rem", color: "var(--ink-soft)" }}>
                     For each KR: enter the current metric value and classify the change.
@@ -285,7 +293,7 @@ export default function RitualModePanel({
                   </p>
                 </div>
 
-                <div className="atlas-node-list" style={{ marginTop: "0.45rem", maxHeight: "52vh" }}>
+                <div className="checkin-queue">
                   {ritualKrs.length ? (
                     ritualKrs.map((kr) => {
                     const draft = ritualCheckInDrafts[kr.id];
@@ -305,18 +313,19 @@ export default function RitualModePanel({
                       <div
                         key={kr.id}
                         className={`checkin-kr-card${isSaved ? " is-saved" : ""}`}
-                        style={{ padding: "0.5rem 0", borderBottom: "1px solid var(--line)" }}
+                        style={{}}
                       >
-                        <div style={{ display: "flex", gap: "0.45rem", alignItems: "center", flexWrap: "wrap" }}>
-                          <strong>{kr.title || `KR #${kr.id}`}</strong>
-                          {isSaved ? (
-                            <span style={{ fontSize: "0.74rem", color: "var(--accent)" }}>Saved</span>
-                          ) : null}
+                        <div className="checkin-kr-heading">
+                          <div>
+                            <span className="checkin-kr-number">KR {kr.id}</span>
+                            <strong>{kr.title || `KR #${kr.id}`}</strong>
+                          </div>
+                          {isSaved ? <span className="checkin-saved">Saved</span> : null}
                         </div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)" }}>
+                        <div className="checkin-kr-context">
                           Progress {Math.round(Number(kr.progress || 0))}% • {kr.objective?.title || "No objective"}
                         </div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: "0.15rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                        <div className="checkin-metric-strip">
                           <span>Current: {formatOptionalNumber(kr.current_value)}</span>
                           <span>Start: {formatOptionalNumber(kr.start_value)}</span>
                           <span>Target: {formatOptionalNumber(kr.target_value)}</span>
@@ -328,7 +337,7 @@ export default function RitualModePanel({
                           {kr.unit ? <span>({kr.unit})</span> : null}
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.35rem", marginTop: "0.4rem" }}>
+                        <div className="checkin-primary-fields">
                           <div>
                             <label style={{ display: "block", fontSize: "0.72rem", color: "var(--ink-soft)", marginBottom: "0.15rem" }}>
                               Metric Value
@@ -364,7 +373,9 @@ export default function RitualModePanel({
                           style={{ marginTop: "0.35rem" }}
                         />
 
+                        <label className="checkin-field-label" htmlFor={`variation-${kr.id}`}>Variation signal</label>
                         <select
+                          id={`variation-${kr.id}`}
                           className="input"
                           value={variationType}
                           onChange={(event) =>

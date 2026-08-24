@@ -22,6 +22,7 @@ def get_read_query_allowed_kinds() -> set[str]:
         "experiments.for_kr",
         "experiments.active_for_kr",
         "experiments.for_retro_window",
+        "ritual.snapshot",
         "retros.user",
         "retros.team",
         "tasks.by_cycle",
@@ -48,6 +49,51 @@ def read_query_payload(
             status_code=400,
             detail=f"Unsupported read query kind: {kind}",
         )
+
+    if kind == "ritual.snapshot":
+        cycle_id = main._coerce_int(params.get("cycle_id"), field_name="cycle_id")
+        user_id = params.get("user_id")
+        review_params = {
+            "cycle_id": cycle_id,
+            "window_start": params.get("window_start"),
+            "window_end": params.get("window_end"),
+        }
+        query_params = {
+            # krs.needing_checkin uses the actor username as user_id for its
+            # existing authorization and query contract.
+            "user_id": actor,
+            "cycle_id": cycle_id,
+            "days_threshold": params.get("days_threshold", 7),
+        }
+        return {
+            "key_results": read_query_payload(
+                kind="krs.needing_checkin", params=query_params, actor=actor,
+                main=main, allowed_kinds=allowed,
+            ).get("key_results", []),
+            "weekly_plan": read_query_payload(
+                kind="weekly_plan.active",
+                params={"user_id": user_id, "date": params.get("date")},
+                actor=actor, main=main, allowed_kinds=allowed,
+            ).get("weekly_plan"),
+            "retros": read_query_payload(
+                kind="retros.user",
+                params={"user_id": user_id, "cycle_id": cycle_id},
+                actor=actor, main=main, allowed_kinds=allowed,
+            ).get("retros", []),
+            "work_logs": read_query_payload(
+                kind="work_logs.by_range",
+                params={
+                    "user_id": user_id,
+                    "start_date": params.get("window_start"),
+                    "end_date": params.get("window_end"),
+                },
+                actor=actor, main=main, allowed_kinds=allowed,
+            ).get("work_logs", []),
+            "experiments": read_query_payload(
+                kind="experiments.for_retro_window", params=review_params,
+                actor=actor, main=main, allowed_kinds=allowed,
+            ).get("experiments", []),
+        }
 
     if main.is_supabase_api_mode_enabled():
         try:

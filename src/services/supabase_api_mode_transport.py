@@ -11,6 +11,7 @@ import logging
 import ssl
 import time
 from datetime import datetime, timezone
+import httpx
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,6 +21,8 @@ from src.config_runtime import get_config_value
 
 logger = logging.getLogger(__name__)
 _CYCLE_OWNER_COLUMN_SUPPORTED: Optional[bool] = None
+_HTTP_CLIENT: Optional[httpx.Client] = None
+_HTTP_CLIENT_CONFIG: Optional[tuple[str, str]] = None
 
 
 def is_supabase_api_mode_enabled() -> bool:
@@ -61,6 +64,24 @@ def _get_ssl_context() -> ssl.SSLContext:
     return ctx
 
 
+def _get_http_client() -> httpx.Client:
+    """Return a process-local client so Supabase connections are reused."""
+    global _HTTP_CLIENT, _HTTP_CLIENT_CONFIG
+
+    ca_bundle = str(get_config_value("OKR_SSL_CA_BUNDLE", "")).strip()
+    config = (_base_url(), ca_bundle)
+    if _HTTP_CLIENT is None or _HTTP_CLIENT_CONFIG != config:
+        if _HTTP_CLIENT is not None:
+            _HTTP_CLIENT.close()
+        _HTTP_CLIENT = httpx.Client(
+            verify=_get_ssl_context(),
+            timeout=httpx.Timeout(10.0),
+            trust_env=True,
+        )
+        _HTTP_CLIENT_CONFIG = config
+    return _HTTP_CLIENT
+
+
 def _request_json(
     path: str, *, query: Optional[dict[str, str]] = None
 ) -> tuple[int, Any]:
@@ -91,26 +112,28 @@ def _request_json_with_method(
         request_payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
     if prefer_representation:
         headers["Prefer"] = "return=representation"
-    req = urllib.request.Request(
-        url,
-        method=str(method or "GET").upper(),
-        headers=headers,
-        data=request_payload,
-    )
-    ssl_ctx = _get_ssl_context()
+    request_method = str(method or "GET").upper()
     response_payload: Any
     try:
-        with urllib.request.urlopen(req, timeout=10, context=ssl_ctx) as resp:
-            raw_body = resp.read().decode("utf-8", errors="replace")
-            response_payload = json.loads(raw_body) if raw_body.strip() else None
-            return int(resp.status), response_payload
-    except urllib.error.HTTPError as exc:
-        raw = exc.read().decode("utf-8", errors="replace")
+        response = _get_http_client().request(
+            request_method,
+            url,
+            headers=headers,
+            content=request_payload,
+        )
+        raw_body = response.content.decode("utf-8", errors="replace")
+        response_payload = json.loads(raw_body) if raw_body.strip() else None
+        if response.status_code >= 400:
+            if not isinstance(response_payload, dict):
+                response_payload = {"raw": raw_body}
+        return int(response.status_code), response_payload
+    except httpx.HTTPStatusError as exc:
+        raw = exc.response.content.decode("utf-8", errors="replace")
         try:
             response_payload = json.loads(raw) if raw.strip() else {}
         except Exception:
             response_payload = {"raw": raw}
-        return int(exc.code), response_payload
+        return int(exc.response.status_code), response_payload
 
 
 def _rest_select(

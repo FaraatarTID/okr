@@ -72,8 +72,8 @@ export default function TimelineModePanel({
   onOpenTaskInAtlas,
 }: TimelineModePanelProps) {
   return (
-    <div style={{ marginTop: "0.5rem" }}>
-      <div className="atlas-rollup">
+    <div className="timeline-workspace">
+      <div className="timeline-summary" aria-label="Timeline summary">
         <span>Tasks in cycle: {timelineRows.length}</span>
         <span>Visible: {timelineRowsFiltered.length}</span>
         <span>Done: {timelineStatusCounts.done}</span>
@@ -107,10 +107,14 @@ export default function TimelineModePanel({
       {timelineWindow ? (
         <div className="timeline-board" style={{ marginTop: "0.45rem" }}>
           <div className="timeline-board-header">
-            <strong>Project Gantt</strong>
-            <span>
-              {toDateShortLabel(timelineWindow.start)} to {toDateShortLabel(timelineWindow.end)}
-            </span>
+            <div>
+              <p className="kicker">Schedule</p>
+              <strong>Project Gantt</strong>
+            </div>
+            <div className="timeline-board-range">
+              <span>{toDateShortLabel(timelineWindow.start)} to {toDateShortLabel(timelineWindow.end)}</span>
+              <span className="timeline-today-key"><i aria-hidden="true" /> Today</span>
+            </div>
           </div>
           <div className="timeline-rows">
             {timelineRowsFiltered.map((row) => {
@@ -168,10 +172,18 @@ export default function TimelineModePanel({
         </p>
       )}
 
-      <div className="atlas-node-list" style={{ marginTop: "0.55rem", maxHeight: "24vh" }}>
+      <section className="timeline-worklog-section" aria-labelledby="timeline-worklog-title">
+        <div className="timeline-section-heading">
+          <div>
+            <p className="kicker">Evidence</p>
+            <h3 id="timeline-worklog-title">Recent work logs</h3>
+          </div>
+          <span>{timelineLogs.length} entries</span>
+        </div>
+        <div className="timeline-worklog-list">
         {timelineLogs.length ? (
           timelineLogs.slice(0, 40).map((log) => (
-            <div key={log.id} style={{ padding: "0.35rem 0", borderBottom: "1px solid var(--line)" }}>
+            <div key={log.id} className="timeline-worklog-row">
               <strong>{String(log.task?.title || `Task #${log.task_id || "-"}`)}</strong>
               <div style={{ fontSize: "0.78rem", color: "var(--ink-soft)" }}>
                 {formatOptionalDate(log.start_time)} • {Math.round(Number(log.duration_minutes || 0))} min
@@ -181,7 +193,8 @@ export default function TimelineModePanel({
         ) : (
           <p style={{ margin: 0, color: "var(--ink-soft)" }}>No recent work logs for current actor.</p>
         )}
-      </div>
+        </div>
+      </section>
     </div>
   );
 }
