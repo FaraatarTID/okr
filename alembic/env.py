@@ -19,8 +19,11 @@ if APP_DIR not in sys.path:
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
+# disable_existing_loggers=False so an in-process run (e.g. tests calling
+# run_migrations, or backend startup) does not sever existing loggers'
+# propagation and break downstream log capture.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # add your model's MetaData object here
 # for 'autogenerate' support

@@ -15,27 +15,57 @@ from backend_app.schemas import (
 def register_platform_routes(router: APIRouter, main: Any) -> None:
     """Register platform-facing /auth, read-only, admin, and system routes."""
 
+    def _effective_read_mode() -> str:
+        from backend_app.data_access_mode import resolve_read_mode
+
+        return resolve_read_mode()
+
     @router.post(
         "/v1/auth/login",
         dependencies=[Depends(main.require_service_access)],
     )
     def api_auth_login(payload: LoginRequest) -> dict:
-        if main.is_supabase_api_mode_enabled():
-            auth = main.authenticate_user_detailed_via_supabase_api(
-                username=str(payload.username or "").strip(),
-                password=payload.password,
-                client_ip=(
-                    str(payload.client_ip).strip() if payload.client_ip else None
-                ),
-            )
-        else:
-            auth = main.authenticate_user_detailed(
-                username=str(payload.username or "").strip(),
-                password=payload.password,
-                client_ip=(
-                    str(payload.client_ip).strip() if payload.client_ip else None
-                ),
-            )
+        from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
+
+        use_https = main.is_supabase_api_mode_enabled()
+        try:
+            if not use_https and resolve_read_mode() == "supabase_api":
+                # TCP unreachable but HTTPS available: probe scope resolution
+                # will have already failed over; auth follows the same path.
+                use_https = True
+            if use_https:
+                auth = main.authenticate_user_detailed_via_supabase_api(
+                    username=str(payload.username or "").strip(),
+                    password=payload.password,
+                    client_ip=(
+                        str(payload.client_ip).strip() if payload.client_ip else None
+                    ),
+                )
+            else:
+                auth = main.authenticate_user_detailed(
+                    username=str(payload.username or "").strip(),
+                    password=payload.password,
+                    client_ip=(
+                        str(payload.client_ip).strip() if payload.client_ip else None
+                    ),
+                )
+        except Exception as exc:
+            if not use_https:
+                notify_tcp_db_failure()
+                if resolve_read_mode() == "supabase_api":
+                    auth = main.authenticate_user_detailed_via_supabase_api(
+                        username=str(payload.username or "").strip(),
+                        password=payload.password,
+                        client_ip=(
+                            str(payload.client_ip).strip()
+                            if payload.client_ip
+                            else None
+                        ),
+                    )
+                else:
+                    raise
+            else:
+                raise
         output = dict(auth or {})
         output["user"] = main._serialize_user((auth or {}).get("user"))
         return output
@@ -122,8 +152,15 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
 
     @router.get("/healthz")
     def healthz() -> dict:
-        mode = "supabase_api" if main.is_supabase_api_mode_enabled() else "database"
-        return {"status": "ok", "data_access_mode": mode}
+        from backend_app.data_access_mode import effective_mode_report
+
+        return {
+            "status": "ok",
+            "data_access_mode": effective_mode_report(),
+            "configured_mode": (
+                "supabase_api" if main.is_supabase_api_mode_enabled() else "database"
+            ),
+        }
 
     @router.get(
         "/v1/admin/ai-health",
@@ -304,7 +341,9 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                 )
             else:
                 owner_ids = sorted(allowed_owner_ids)
-        if main.is_supabase_api_mode_enabled():
+        if main.is_supabase_api_mode_enabled() or (
+            _effective_read_mode() == "supabase_api"
+        ):
             return main.build_atlas_scope_snapshot_via_supabase_api(
                 cycle_id=int(cycle_id),
                 owner_ids=owner_ids,
@@ -355,7 +394,9 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
             )
         if not usernames:
             return {}
-        if main.is_supabase_api_mode_enabled():
+        if main.is_supabase_api_mode_enabled() or (
+            _effective_read_mode() == "supabase_api"
+        ):
             return main.get_leadership_metrics_via_supabase_api(
                 usernames=list(usernames),
                 cycle_id=int(cycle_id),

@@ -3,6 +3,8 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
+
 _RPC_FALLBACK_WARNED = False
 
 
@@ -97,7 +99,8 @@ def read_query_payload(
     if kind == "ritual.snapshot":
         cycle_id = main._coerce_int(params.get("cycle_id"), field_name="cycle_id")
         user_id = params.get("user_id")
-        if main.is_supabase_api_mode_enabled():
+        use_https = resolve_read_mode() == "supabase_api"
+        if use_https:
             _validate_supabase_read_scope(
                 kind="weekly_plan.active",
                 params={"user_id": user_id},
@@ -116,7 +119,7 @@ def read_query_payload(
             "cycle_id": cycle_id,
             "days_threshold": params.get("days_threshold", 7),
         }
-        if main.is_supabase_api_mode_enabled():
+        if use_https:
             # Preferred path: single authorized RPC (one round trip).
             rpc_params = {
                 "actor_username": actor,
@@ -225,7 +228,7 @@ def read_query_payload(
             ).get("experiments", []),
         }
 
-    if main.is_supabase_api_mode_enabled():
+    if resolve_read_mode() == "supabase_api":
         _validate_supabase_read_scope(
             kind=kind,
             params=params,
@@ -240,8 +243,30 @@ def read_query_payload(
             )
         except NotImplementedError as exc:
             raise main.HTTPException(status_code=501, detail=str(exc)) from exc
+        except Exception as exc:
+            # HTTPS fallback itself failing is a real upstream outage.
+            if str(type(exc).__name__) in {
+                "SupabaseTransportError",
+                "CircuitOpenError",
+            }:
+                raise main.HTTPException(
+                    status_code=503,
+                    detail="Upstream data service temporarily unavailable.",
+                ) from exc
+            raise
 
-    scope = main._resolve_scope_for_actor(actor)
+    try:
+        scope = main._resolve_scope_for_actor(actor)
+    except Exception as exc:
+        # TCP scope resolution failed (e.g. connection refused); if HTTPS
+        # fallback is available, retry the whole read over HTTPS.
+        notify_tcp_db_failure()
+        if resolve_read_mode() == "supabase_api":
+            return read_query_payload(
+                kind=kind, params=params, actor=actor,
+                main=main, allowed_kinds=allowed,
+            )
+        raise
 
     if kind == "audit.summary":
         if not bool(scope.get("is_admin", False)):
