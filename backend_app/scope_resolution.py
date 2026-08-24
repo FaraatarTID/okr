@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from backend_app.security import resolve_actor_username
+from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
 from src.crud import get_active_cycles, get_all_cycles
 from src.database import get_session_context
 from src.models import User, UserRole
@@ -211,7 +212,7 @@ def _scope_cycle_is_active(cycle: Any) -> bool:
 def _list_cycles_for_scope(
     *, scope: dict[str, Any], active_only: bool = False
 ) -> list[Any]:
-    if is_supabase_api_mode_enabled():
+    if resolve_read_mode() == "supabase_api":
         kind = "cycles.active" if active_only else "cycles.all"
         payload = read_query_via_supabase_api(
             kind=kind,
@@ -219,9 +220,23 @@ def _list_cycles_for_scope(
             actor=str(scope.get("actor_username") or ""),
         )
         return list((payload or {}).get("cycles") or [])
-    return (
-        list(get_active_cycles() or []) if active_only else list(get_all_cycles() or [])
-    )
+    try:
+        return (
+            list(get_active_cycles() or [])
+            if active_only
+            else list(get_all_cycles() or [])
+        )
+    except Exception as exc:
+        notify_tcp_db_failure()
+        if resolve_read_mode() == "supabase_api":
+            kind = "cycles.active" if active_only else "cycles.all"
+            payload = read_query_via_supabase_api(
+                kind=kind,
+                params={},
+                actor=str(scope.get("actor_username") or ""),
+            )
+            return list((payload or {}).get("cycles") or [])
+        raise
 
 
 def _scope_role(scope: dict[str, Any]) -> str:
@@ -237,10 +252,19 @@ def _is_scope_admin_or_manager(scope: dict[str, Any]) -> bool:
 def _resolve_scope_for_actor(
     actor: str, token_version: Optional[int] = None
 ) -> dict[str, Any]:
-    if is_supabase_api_mode_enabled():
+    if resolve_read_mode() == "supabase_api":
         return _resolve_actor_scope_via_supabase_api(actor)
-    with get_session_context() as session:
-        return _resolve_actor_scope(session, actor, token_version=token_version)
+    try:
+        with get_session_context() as session:
+            return _resolve_actor_scope(session, actor, token_version=token_version)
+    except HTTPException:
+        # Authorization outcomes are real answers, not transport failures.
+        raise
+    except Exception as exc:
+        notify_tcp_db_failure()
+        if resolve_read_mode() == "supabase_api":
+            return _resolve_actor_scope_via_supabase_api(actor)
+        raise
 
 
 def _require_admin_actor_scope(actor: str) -> None:

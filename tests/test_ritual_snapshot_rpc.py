@@ -36,6 +36,16 @@ def _make_main(
     # _coerce_int passthrough for ints
     main._coerce_int = lambda value, field_name="value": int(value)
 
+    # _coerce_datetime passthrough for ISO strings
+    from datetime import datetime as _dt
+
+    def _coerce_datetime(value: Any, field_name: str = "value") -> Any:
+        if value in (None, ""):
+            return None
+        return _dt.fromisoformat(str(value).replace("Z", "+00:00"))
+
+    main._coerce_datetime = _coerce_datetime
+
     # Scope resolution returns a member scope by default.
     resolved = scope or {
         "is_admin": False,
@@ -62,6 +72,16 @@ def _make_main(
 
     main.is_supabase_api_mode_enabled = lambda: supabase_mode
     main.logger = MagicMock()
+
+    # read_query_helpers now consults the effective-mode resolver; align it
+    # with the configured mode for these tests. Patch both the source module
+    # and the imported binding in read_query_helpers.
+    import backend_app.data_access_mode as dam
+    import backend_app.read_query_helpers as rqh_mod
+
+    mode_lambda = lambda: "supabase_api" if supabase_mode else "database"  # noqa: E731
+    dam.resolve_read_mode = mode_lambda  # type: ignore[assignment]
+    rqh_mod.resolve_read_mode = mode_lambda  # type: ignore[assignment]
     return main
 
 
