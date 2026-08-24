@@ -23,6 +23,7 @@ import os
 from typing import Sequence, Union
 
 from alembic import op
+from sqlalchemy import text as sa_text
 
 # revision identifiers, used by Alembic.
 revision: str = "y2d3e4f5a6b7"
@@ -167,14 +168,37 @@ def upgrade() -> None:
     op.execute(_FN_BODY)
 
     # Grants: revoke broad access, grant only to the configured runtime role.
+    # Supabase-specific roles (anon, authenticated) do not exist on plain
+    # Postgres (e.g. compose smoke / self-hosted), so each role is checked for
+    # existence before revoking/granting instead of failing the migration.
     runtime_role = os.environ.get("RUNTIME_DB_ROLE", "service_role").strip()
     if not runtime_role:
         runtime_role = "service_role"
-    op.execute(
-        f"revoke execute on function {_FUNCTION_SIGNATURE} "
-        "from public, anon, authenticated"
-    )
-    op.execute(f"grant execute on function {_FUNCTION_SIGNATURE} to {runtime_role}")
+
+    def _role_exists(role_name: str) -> bool:
+        return bool(
+            bind.execute(
+                sa_text("select 1 from pg_roles where rolname = :role"),
+                {"role": role_name},
+            ).scalar()
+        )
+
+    for revoke_role in ("public", "anon", "authenticated"):
+        if revoke_role == "public" or _role_exists(revoke_role):
+            op.execute(
+                f"revoke execute on function {_FUNCTION_SIGNATURE} "
+                f"from {revoke_role}"
+            )
+        else:
+            print(f"Role '{revoke_role}' not found; skipping revoke.")
+
+    if _role_exists(runtime_role):
+        op.execute(f"grant execute on function {_FUNCTION_SIGNATURE} to {runtime_role}")
+    else:
+        print(
+            f"Runtime DB role '{runtime_role}' not found; skipping EXECUTE grant "
+            "(function remains revoked from public)."
+        )
 
     # Supporting index for the latest-check-in lateral lookup. Created only if
     # missing; retained on downgrade (benefits other queries too).
