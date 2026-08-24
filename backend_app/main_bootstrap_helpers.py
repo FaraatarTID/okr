@@ -29,7 +29,15 @@ def make_main_lifespan(
             init_database()
             # Hybrid SPA startup relies on bootstrap admin seed for fresh local DB.
             ensure_admin_exists()
-        yield
+        try:
+            yield
+        finally:
+            # Release pooled Supabase HTTP connections on shutdown.
+            from src.services.supabase_api_mode_transport import (
+                shutdown_close_transport,
+            )
+
+            shutdown_close_transport()
 
     return _lifespan
 

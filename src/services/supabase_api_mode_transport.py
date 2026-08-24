@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import ssl
+import threading
 import time
 from datetime import datetime, timezone
 import httpx
@@ -23,6 +24,133 @@ logger = logging.getLogger(__name__)
 _CYCLE_OWNER_COLUMN_SUPPORTED: Optional[bool] = None
 _HTTP_CLIENT: Optional[httpx.Client] = None
 _HTTP_CLIENT_CONFIG: Optional[tuple[str, str]] = None
+_HTTP_CLIENT_LOCK = threading.Lock()
+
+# --- Concurrency limiting -------------------------------------------------
+# Supabase free tier (and the transaction pooler) degrades badly under bursty
+# concurrent requests. Cap in-flight upstream calls process-wide.
+_DEFAULT_MAX_CONCURRENCY = 4
+_CONCURRENCY_SEMAPHORE: Optional[threading.BoundedSemaphore] = None
+_CONCURRENCY_LOCK = threading.Lock()
+
+
+def _get_concurrency_semaphore() -> threading.BoundedSemaphore:
+    global _CONCURRENCY_SEMAPHORE
+    if _CONCURRENCY_SEMAPHORE is None:
+        with _CONCURRENCY_LOCK:
+            if _CONCURRENCY_SEMAPHORE is None:
+                try:
+                    limit = int(
+                        str(get_config_value("OKR_SUPABASE_MAX_CONCURRENCY", "")).strip()
+                        or _DEFAULT_MAX_CONCURRENCY
+                    )
+                except ValueError:
+                    limit = _DEFAULT_MAX_CONCURRENCY
+                limit = max(1, limit)
+                _CONCURRENCY_SEMAPHORE = threading.BoundedSemaphore(limit)
+    return _CONCURRENCY_SEMAPHORE
+
+
+# --- Circuit breaker -------------------------------------------------------
+# After repeated consecutive transport failures, fail fast for a cooldown
+# window instead of letting every request burn a full timeout against a dead
+# upstream. Half-open probing resumes automatically after the window.
+_DEFAULT_BREAKER_THRESHOLD = 5  # consecutive failures before opening
+_DEFAULT_BREAKER_COOLDOWN_S = 30.0  # seconds before half-open probe
+_BREAKER_STATE_LOCK = threading.Lock()
+_BREAKER_FAILURES = 0
+_BREAKER_OPENED_AT: Optional[float] = None
+
+
+def _breaker_threshold() -> int:
+    try:
+        return max(
+            1,
+            int(
+                str(get_config_value("OKR_SUPABASE_BREAKER_THRESHOLD", "")).strip()
+                or _DEFAULT_BREAKER_THRESHOLD
+            ),
+        )
+    except ValueError:
+        return _DEFAULT_BREAKER_THRESHOLD
+
+
+def _breaker_cooldown_s() -> float:
+    try:
+        return max(
+            1.0,
+            float(
+                str(get_config_value("OKR_SUPABASE_BREAKER_COOLDOWN_S", "")).strip()
+                or _DEFAULT_BREAKER_COOLDOWN_S
+            ),
+        )
+    except ValueError:
+        return _DEFAULT_BREAKER_COOLDOWN_S
+
+
+def _check_breaker_before_request() -> None:
+    """Raise CircuitOpenError if the breaker is open and cooldown not elapsed."""
+    global _BREAKER_OPENED_AT
+    with _BREAKER_STATE_LOCK:
+        if _BREAKER_OPENED_AT is None:
+            return
+        elapsed = time.monotonic() - _BREAKER_OPENED_AT
+        if elapsed < _breaker_cooldown_s():
+            raise CircuitOpenError(
+                "Supabase circuit breaker open: upstream failing repeatedly; "
+                f"retry in {max(0.0, _breaker_cooldown_s() - elapsed):.1f}s"
+            )
+        # Cooldown elapsed -> half-open: allow one probe through by clearing
+        # the opened marker. Failures re-open immediately; success closes.
+        _BREAKER_OPENED_AT = None
+
+
+def _record_breaker_success() -> None:
+    global _BREAKER_FAILURES, _BREAKER_OPENED_AT
+    with _BREAKER_STATE_LOCK:
+        _BREAKER_FAILURES = 0
+        _BREAKER_OPENED_AT = None
+
+
+def _record_breaker_failure() -> None:
+    global _BREAKER_FAILURES, _BREAKER_OPENED_AT
+    with _BREAKER_STATE_LOCK:
+        _BREAKER_FAILURES += 1
+        if _BREAKER_FAILURES >= _breaker_threshold():
+            _BREAKER_OPENED_AT = time.monotonic()
+            logger.warning(
+                "Supabase circuit breaker OPEN after %d consecutive transport "
+                "failures; failing fast for %.0fs",
+                _BREAKER_FAILURES,
+                _breaker_cooldown_s(),
+            )
+
+
+def reset_circuit_breaker() -> None:
+    """Reset breaker state (used by tests and manual recovery)."""
+    global _BREAKER_FAILURES, _BREAKER_OPENED_AT
+    with _BREAKER_STATE_LOCK:
+        _BREAKER_FAILURES = 0
+        _BREAKER_OPENED_AT = None
+
+
+def shutdown_close_transport() -> None:
+    """Close the cached HTTP client and release transport resources.
+
+    Called from application lifespan shutdown so pooled sockets do not leak
+    warnings at interpreter exit. Safe to call multiple times; the next
+    request transparently rebuilds a fresh client.
+    """
+    global _HTTP_CLIENT, _HTTP_CLIENT_CONFIG
+    with _HTTP_CLIENT_LOCK:
+        if _HTTP_CLIENT is not None:
+            try:
+                _HTTP_CLIENT.close()
+            except Exception:  # pragma: no cover - best-effort cleanup
+                logger.debug("Supabase HTTP client close failed", exc_info=True)
+            _HTTP_CLIENT = None
+            _HTTP_CLIENT_CONFIG = None
+            logger.info("Supabase HTTP transport closed")
 
 
 class SupabaseTransportError(RuntimeError):
@@ -38,6 +166,16 @@ class SupabaseTransportError(RuntimeError):
         super().__init__(message)
         self.kind = kind
         self.retryable = retryable
+
+
+class CircuitOpenError(SupabaseTransportError):
+    """Raised when the circuit breaker is open (upstream recently failing).
+
+    Always retryable: the caller may retry after the cooldown elapses.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, kind="circuit_open", retryable=True)
 
 
 def is_supabase_api_mode_enabled() -> bool:
@@ -129,6 +267,15 @@ def _request_json_with_method(
         headers["Prefer"] = "return=representation"
     request_method = str(method or "GET").upper()
     response_payload: Any
+    _check_breaker_before_request()
+    semaphore = _get_concurrency_semaphore()
+    acquired = semaphore.acquire(timeout=15.0)
+    if not acquired:
+        raise SupabaseTransportError(
+            f"Supabase concurrency limit reached: {request_method} {path}",
+            kind="concurrency",
+            retryable=True,
+        )
     try:
         response = _get_http_client().request(
             request_method,
@@ -137,6 +284,7 @@ def _request_json_with_method(
             content=request_payload,
         )
     except httpx.TimeoutException as exc:
+        _record_breaker_failure()
         raise SupabaseTransportError(
             f"Supabase request timed out: {request_method} {path}",
             kind="timeout",
@@ -145,6 +293,7 @@ def _request_json_with_method(
     except httpx.TransportError as exc:
         # ConnectError, ReadError, RemoteProtocolError, etc. Connection-level
         # failures are generally transient; protocol violations are not.
+        _record_breaker_failure()
         raise SupabaseTransportError(
             f"Supabase connection failed ({type(exc).__name__}): "
             f"{request_method} {path}",
@@ -152,12 +301,16 @@ def _request_json_with_method(
             retryable=not isinstance(exc, httpx.RemoteProtocolError),
         ) from exc
     except httpx.HTTPError as exc:
+        _record_breaker_failure()
         raise SupabaseTransportError(
             f"Supabase request failed ({type(exc).__name__}): "
             f"{request_method} {path}",
             kind="http",
             retryable=False,
         ) from exc
+    finally:
+        semaphore.release()
+    _record_breaker_success()
 
     raw_body = response.content.decode("utf-8", errors="replace")
     try:
