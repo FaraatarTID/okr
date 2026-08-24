@@ -25,6 +25,21 @@ _HTTP_CLIENT: Optional[httpx.Client] = None
 _HTTP_CLIENT_CONFIG: Optional[tuple[str, str]] = None
 
 
+class SupabaseTransportError(RuntimeError):
+    """Raised when a Supabase REST call fails at the network/transport layer.
+
+    HTTP error responses (4xx/5xx) are NOT this; callers receive their status
+    code and payload as usual. This distinguishes connectivity, timeout, and
+    protocol failures so upstream code can decide between retrying and
+    failing fast without parsing exception strings.
+    """
+
+    def __init__(self, message: str, *, kind: str, retryable: bool) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.retryable = retryable
+
+
 def is_supabase_api_mode_enabled() -> bool:
     raw = str(get_config_value("OKR_DATA_ACCESS_MODE", "")).strip().lower()
     return raw in {"supabase_api", "supabase-http", "supabase_https"}
@@ -121,19 +136,37 @@ def _request_json_with_method(
             headers=headers,
             content=request_payload,
         )
-        raw_body = response.content.decode("utf-8", errors="replace")
+    except httpx.TimeoutException as exc:
+        raise SupabaseTransportError(
+            f"Supabase request timed out: {request_method} {path}",
+            kind="timeout",
+            retryable=True,
+        ) from exc
+    except httpx.TransportError as exc:
+        # ConnectError, ReadError, RemoteProtocolError, etc. Connection-level
+        # failures are generally transient; protocol violations are not.
+        raise SupabaseTransportError(
+            f"Supabase connection failed ({type(exc).__name__}): "
+            f"{request_method} {path}",
+            kind="connect",
+            retryable=not isinstance(exc, httpx.RemoteProtocolError),
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise SupabaseTransportError(
+            f"Supabase request failed ({type(exc).__name__}): "
+            f"{request_method} {path}",
+            kind="http",
+            retryable=False,
+        ) from exc
+
+    raw_body = response.content.decode("utf-8", errors="replace")
+    try:
         response_payload = json.loads(raw_body) if raw_body.strip() else None
-        if response.status_code >= 400:
-            if not isinstance(response_payload, dict):
-                response_payload = {"raw": raw_body}
-        return int(response.status_code), response_payload
-    except httpx.HTTPStatusError as exc:
-        raw = exc.response.content.decode("utf-8", errors="replace")
-        try:
-            response_payload = json.loads(raw) if raw.strip() else {}
-        except Exception:
-            response_payload = {"raw": raw}
-        return int(exc.response.status_code), response_payload
+    except ValueError:
+        response_payload = {"raw": raw_body} if raw_body.strip() else None
+    if response.status_code >= 400 and not isinstance(response_payload, dict):
+        response_payload = {"raw": raw_body}
+    return int(response.status_code), response_payload
 
 
 def _rest_select(

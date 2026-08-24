@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 
@@ -34,6 +35,47 @@ def get_read_query_allowed_kinds() -> set[str]:
     }
 
 
+def _validate_supabase_read_scope(
+    *, kind: str, params: dict, actor: str, main: Any
+) -> None:
+    """Apply actor scope before service-role REST reads are dispatched."""
+    scope = main._resolve_scope_for_actor(actor)
+    user_id_kinds = {
+        "users.by_id",
+        "weekly_plan.active",
+        "retros.user",
+        "work_logs.by_range",
+    }
+    if kind in user_id_kinds:
+        main._require_allowed_user_id(
+            scope, main._coerce_int(params.get("user_id"), field_name="user_id")
+        )
+    elif kind == "users.by_username":
+        main._require_allowed_username(
+            scope, str(params.get("username") or "").strip()
+        )
+    elif kind in {"node.get"}:
+        owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
+            node_type=str(params.get("node_type") or "").strip(),
+            node_id=main._coerce_int(params.get("node_id"), field_name="node_id"),
+            actor=actor,
+        )
+        if owner_id is None:
+            raise main.HTTPException(status_code=404, detail="Node not found.")
+        main._require_allowed_user_id(scope, owner_id)
+    elif kind in {"experiments.for_kr", "experiments.active_for_kr"}:
+        owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
+            node_type="KEY_RESULT",
+            node_id=main._coerce_int(
+                params.get("key_result_id"), field_name="key_result_id"
+            ),
+            actor=actor,
+        )
+        if owner_id is None:
+            raise main.HTTPException(status_code=404, detail="Key result not found.")
+        main._require_allowed_user_id(scope, owner_id)
+
+
 def read_query_payload(
     *,
     kind: str,
@@ -53,6 +95,13 @@ def read_query_payload(
     if kind == "ritual.snapshot":
         cycle_id = main._coerce_int(params.get("cycle_id"), field_name="cycle_id")
         user_id = params.get("user_id")
+        if main.is_supabase_api_mode_enabled():
+            _validate_supabase_read_scope(
+                kind="weekly_plan.active",
+                params={"user_id": user_id},
+                actor=actor,
+                main=main,
+            )
         review_params = {
             "cycle_id": cycle_id,
             "window_start": params.get("window_start"),
@@ -65,6 +114,44 @@ def read_query_payload(
             "cycle_id": cycle_id,
             "days_threshold": params.get("days_threshold", 7),
         }
+        if main.is_supabase_api_mode_enabled():
+            queries = [
+                ("krs.needing_checkin", query_params),
+                (
+                    "weekly_plan.active",
+                    {"user_id": user_id, "date": params.get("date")},
+                ),
+                ("retros.user", {"user_id": user_id, "cycle_id": cycle_id}),
+                (
+                    "work_logs.by_range",
+                    {
+                        "user_id": user_id,
+                        "start_date": params.get("window_start"),
+                        "end_date": params.get("window_end"),
+                    },
+                ),
+                ("experiments.for_retro_window", review_params),
+            ]
+
+            def _run_query(item: tuple[str, dict]) -> dict:
+                query_kind, query_values = item
+                return main.read_query_via_supabase_api(
+                    kind=query_kind,
+                    params=query_values,
+                    actor=actor,
+                )
+
+            # Bound concurrency: one snapshot creates at most five upstream
+            # requests, but avoids serially paying each Supabase RTT.
+            with ThreadPoolExecutor(max_workers=len(queries)) as executor:
+                results = list(executor.map(_run_query, queries))
+            return {
+                "key_results": results[0].get("key_results", []),
+                "weekly_plan": results[1].get("weekly_plan"),
+                "retros": results[2].get("retros", []),
+                "work_logs": results[3].get("work_logs", []),
+                "experiments": results[4].get("experiments", []),
+            }
         return {
             "key_results": read_query_payload(
                 kind="krs.needing_checkin", params=query_params, actor=actor,
@@ -96,6 +183,12 @@ def read_query_payload(
         }
 
     if main.is_supabase_api_mode_enabled():
+        _validate_supabase_read_scope(
+            kind=kind,
+            params=params,
+            actor=actor,
+            main=main,
+        )
         try:
             return main.read_query_via_supabase_api(
                 kind=str(kind or "").strip(),
