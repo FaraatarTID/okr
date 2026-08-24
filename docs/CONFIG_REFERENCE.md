@@ -146,7 +146,7 @@ Backend API (recommended for scale)
   - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy key): keep `false`; runtime local fallback is not used.
   - `OKR_ENABLE_DIRECT_DB_RESTORE` (default: `false`): Direct DB restore is disabled by default and blocked in production.
 - Backend API runtime:
-  - `OKR_BACKEND_HOST` (default: `0.0.0.0`)
+  - `OKR_BACKEND_HOST` (default: `127.0.0.1` in non-production, `0.0.0.0` in production; set explicitly for LAN/container access)
   - `OKR_BACKEND_PORT` (default: `8100`)
   - `OKR_BACKEND_ENFORCE_TOKEN` (default: `true`)
   - `OKR_BACKEND_ENFORCE_REQUEST_SIGNING` (default: `true` in production envs, otherwise `false`)

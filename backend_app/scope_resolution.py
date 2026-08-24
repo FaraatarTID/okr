@@ -89,6 +89,7 @@ def _resolve_actor_scope(
         "role": str(role.value if hasattr(role, "value") else role),
         "actor_id": actor_id_int,
         "actor_username": str(actor.username),
+        "display_name": str(getattr(actor, "display_name", None) or ""),
         "manager_id": (
             int(getattr(actor, "manager_id"))
             if getattr(actor, "manager_id", None) is not None
@@ -171,6 +172,7 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
         "role": role,
         "actor_id": actor_id_int,
         "actor_username": str(actor.get("username") or actor_username),
+        "display_name": str(actor.get("display_name") or ""),
         "manager_id": manager_id,
         "owner_ids": owner_ids,
         "usernames": usernames,

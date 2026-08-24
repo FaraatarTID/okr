@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
+
+_RPC_FALLBACK_WARNED = False
 
 
 def get_read_query_allowed_kinds() -> set[str]:
@@ -22,6 +25,7 @@ def get_read_query_allowed_kinds() -> set[str]:
         "experiments.for_kr",
         "experiments.active_for_kr",
         "experiments.for_retro_window",
+        "ritual.snapshot",
         "retros.user",
         "retros.team",
         "tasks.by_cycle",
@@ -31,6 +35,47 @@ def get_read_query_allowed_kinds() -> set[str]:
         "mindmap.root",
         "mindmap.children",
     }
+
+
+def _validate_supabase_read_scope(
+    *, kind: str, params: dict, actor: str, main: Any
+) -> None:
+    """Apply actor scope before service-role REST reads are dispatched."""
+    scope = main._resolve_scope_for_actor(actor)
+    user_id_kinds = {
+        "users.by_id",
+        "weekly_plan.active",
+        "retros.user",
+        "work_logs.by_range",
+    }
+    if kind in user_id_kinds:
+        main._require_allowed_user_id(
+            scope, main._coerce_int(params.get("user_id"), field_name="user_id")
+        )
+    elif kind == "users.by_username":
+        main._require_allowed_username(
+            scope, str(params.get("username") or "").strip()
+        )
+    elif kind in {"node.get"}:
+        owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
+            node_type=str(params.get("node_type") or "").strip(),
+            node_id=main._coerce_int(params.get("node_id"), field_name="node_id"),
+            actor=actor,
+        )
+        if owner_id is None:
+            raise main.HTTPException(status_code=404, detail="Node not found.")
+        main._require_allowed_user_id(scope, owner_id)
+    elif kind in {"experiments.for_kr", "experiments.active_for_kr"}:
+        owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
+            node_type="KEY_RESULT",
+            node_id=main._coerce_int(
+                params.get("key_result_id"), field_name="key_result_id"
+            ),
+            actor=actor,
+        )
+        if owner_id is None:
+            raise main.HTTPException(status_code=404, detail="Key result not found.")
+        main._require_allowed_user_id(scope, owner_id)
 
 
 def read_query_payload(
@@ -49,7 +94,144 @@ def read_query_payload(
             detail=f"Unsupported read query kind: {kind}",
         )
 
+    if kind == "ritual.snapshot":
+        cycle_id = main._coerce_int(params.get("cycle_id"), field_name="cycle_id")
+        user_id = params.get("user_id")
+        if main.is_supabase_api_mode_enabled():
+            _validate_supabase_read_scope(
+                kind="weekly_plan.active",
+                params={"user_id": user_id},
+                actor=actor,
+                main=main,
+            )
+        review_params = {
+            "cycle_id": cycle_id,
+            "window_start": params.get("window_start"),
+            "window_end": params.get("window_end"),
+        }
+        query_params = {
+            # krs.needing_checkin uses the actor username as user_id for its
+            # existing authorization and query contract.
+            "user_id": actor,
+            "cycle_id": cycle_id,
+            "days_threshold": params.get("days_threshold", 7),
+        }
+        if main.is_supabase_api_mode_enabled():
+            # Preferred path: single authorized RPC (one round trip).
+            rpc_params = {
+                "actor_username": actor,
+                "cycle_id": cycle_id,
+                "days_threshold": params.get("days_threshold", 7),
+                "date": params.get("date"),
+                "window_start": params.get("window_start"),
+                "window_end": params.get("window_end"),
+            }
+            try:
+                snapshot_payload = main.read_query_via_supabase_api(
+                    kind="ritual.snapshot",
+                    params=rpc_params,
+                    actor=actor,
+                )
+                snapshot = snapshot_payload.get("snapshot") or {}
+                return {
+                    "key_results": snapshot.get("key_results", []),
+                    "weekly_plan": snapshot.get("weekly_plan"),
+                    "retros": snapshot.get("retros", []),
+                    "work_logs": snapshot.get("work_logs", []),
+                    "experiments": snapshot.get("experiments", []),
+                }
+            except ValueError as exc:
+                detail = str(exc)
+                # Missing function (migration not applied): fall back to the
+                # bounded concurrent fan-out below. Latched per process via a
+                # module flag so the warning logs only once.
+                if "42883" in detail or "fn_ritual_snapshot" in detail:
+                    global _RPC_FALLBACK_WARNED
+                    if not _RPC_FALLBACK_WARNED:
+                        _RPC_FALLBACK_WARNED = True
+                        main._LOGGER.warning(
+                            "ritual.snapshot RPC missing (42883); using concurrent "
+                            "fan-out fallback until migration y2d3e4f5a6b7 runs."
+                        )
+                    # Fall through to the fan-out path below.
+                else:
+                    # Validation errors from the RPC parameter contract
+                    # propagate as client errors.
+                    raise main.HTTPException(status_code=400, detail=detail) from exc
+            queries = [
+                ("krs.needing_checkin", query_params),
+                (
+                    "weekly_plan.active",
+                    {"user_id": user_id, "date": params.get("date")},
+                ),
+                ("retros.user", {"user_id": user_id, "cycle_id": cycle_id}),
+                (
+                    "work_logs.by_range",
+                    {
+                        "user_id": user_id,
+                        "start_date": params.get("window_start"),
+                        "end_date": params.get("window_end"),
+                    },
+                ),
+                ("experiments.for_retro_window", review_params),
+            ]
+
+            def _run_query(item: tuple[str, dict]) -> dict:
+                query_kind, query_values = item
+                return main.read_query_via_supabase_api(
+                    kind=query_kind,
+                    params=query_values,
+                    actor=actor,
+                )
+
+            # Bound concurrency: one snapshot creates at most five upstream
+            # requests, but avoids serially paying each Supabase RTT.
+            with ThreadPoolExecutor(max_workers=len(queries)) as executor:
+                results = list(executor.map(_run_query, queries))
+            return {
+                "key_results": results[0].get("key_results", []),
+                "weekly_plan": results[1].get("weekly_plan"),
+                "retros": results[2].get("retros", []),
+                "work_logs": results[3].get("work_logs", []),
+                "experiments": results[4].get("experiments", []),
+            }
+        return {
+            "key_results": read_query_payload(
+                kind="krs.needing_checkin", params=query_params, actor=actor,
+                main=main, allowed_kinds=allowed,
+            ).get("key_results", []),
+            "weekly_plan": read_query_payload(
+                kind="weekly_plan.active",
+                params={"user_id": user_id, "date": params.get("date")},
+                actor=actor, main=main, allowed_kinds=allowed,
+            ).get("weekly_plan"),
+            "retros": read_query_payload(
+                kind="retros.user",
+                params={"user_id": user_id, "cycle_id": cycle_id},
+                actor=actor, main=main, allowed_kinds=allowed,
+            ).get("retros", []),
+            "work_logs": read_query_payload(
+                kind="work_logs.by_range",
+                params={
+                    "user_id": user_id,
+                    "start_date": params.get("window_start"),
+                    "end_date": params.get("window_end"),
+                },
+                actor=actor, main=main, allowed_kinds=allowed,
+            ).get("work_logs", []),
+            "experiments": read_query_payload(
+                kind="experiments.for_retro_window", params=review_params,
+                actor=actor, main=main, allowed_kinds=allowed,
+            ).get("experiments", []),
+        }
+
     if main.is_supabase_api_mode_enabled():
+        _validate_supabase_read_scope(
+            kind=kind,
+            params=params,
+            actor=actor,
+            main=main,
+        )
         try:
             return main.read_query_via_supabase_api(
                 kind=str(kind or "").strip(),

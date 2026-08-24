@@ -60,6 +60,16 @@ function resolveTimeoutMs(path: string, defaultTimeoutMs: number): number {
   ) {
     return Math.max(defaultTimeoutMs, 90_000);
   }
+  // Check-In and other workspace views fan out into several Supabase-backed
+  // read queries; free-tier wake-up and pooler latency can exceed 20 seconds.
+  if (normalized.startsWith("/v1/read/query")) {
+    return Math.max(defaultTimeoutMs, 120_000);
+  }
+  // AI analysis calls the external provider synchronously; free-tier providers
+  // can take well over 30s per node.
+  if (normalized.startsWith("/v1/ai/")) {
+    return Math.max(defaultTimeoutMs, 120_000);
+  }
   if (normalized.startsWith("/v1/jobs")) {
     return Math.max(defaultTimeoutMs, 120_000);
   }

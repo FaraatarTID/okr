@@ -46,6 +46,7 @@ Primary data/control flow:
 
 - `spa-bff` -> `backend-api` read endpoints -> CRUD (`src/crud.py`) -> Supabase PostgreSQL.
 - Atlas snapshot/runtime reads and leadership read paths are backend-served.
+- In Supabase API mode, the Check-In ritual read uses the consolidated `ritual.snapshot` kind: a single `fn_ritual_snapshot` RPC (migration `y2d3e4f5a6b7`) returns key results, weekly plan, retrospectives, work logs, and experiments in one round trip, with automatic fallback to the legacy concurrent fan-out only when the RPC is missing (SQLSTATE 42883).
 
 4. Async heavy workflows:
 
@@ -187,6 +188,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - UI weekly check-in submits `create_check_in`.
 - CRUD creates `check_in`, updates KR value/progress, commits transaction.
 - `get_krs_needing_checkin` identifies stale/missing KR updates for the selected cycle.
+- The Check-In page loads its data via the consolidated `ritual.snapshot` read kind (`fn_ritual_snapshot` RPC in Supabase API mode), reducing latency versus per-section queries.
 
 3. Progress and scoring flow
 

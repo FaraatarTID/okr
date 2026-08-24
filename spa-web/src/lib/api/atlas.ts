@@ -176,7 +176,9 @@ export async function readCyclesQuery(input: {
             actor_username: input.actor_username,
           }),
         },
-        8_000,
+        // Supabase free-tier wake-up and pooler latency can exceed 8 seconds
+        // for Check-In's multi-query workspace load.
+        120_000,
       ),
     async (response) => {
       const payload = (await response.json()) as { cycles?: CycleSummary[] };
@@ -272,7 +274,8 @@ export async function readBackendQuery(input: {
             actor_username: input.actor_username,
           }),
         },
-        8_000,
+        // Keep the browser timeout aligned with the BFF's read-query budget.
+        120_000,
       ),
     async (response) => (await response.json()) as Record<string, unknown>,
     { label: "Read query" },

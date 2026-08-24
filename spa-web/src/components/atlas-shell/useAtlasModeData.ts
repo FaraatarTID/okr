@@ -213,46 +213,23 @@ export default function useAtlasModeData({
             setRitualReviewLogs([]);
           } else {
             const review = reviewWindow();
-            const [krPayload, weeklyPayload, retroPayload, logsPayload, experimentReviewPayload] =
-              await Promise.all([
-                readBackendQuery({
-                  actor_username: activeUser.username,
-                  kind: "krs.needing_checkin",
-                  params: {
-                    user_id: activeUser.username,
-                    cycle_id: parsedCycleId,
-                    days_threshold: 7,
-                  },
-                }),
-                readBackendQuery({
-                  actor_username: activeUser.username,
-                  kind: "weekly_plan.active",
-                  params: { user_id: activeUser.id, date: new Date().toISOString() },
-                }),
-                readBackendQuery({
-                  actor_username: activeUser.username,
-                  kind: "retros.user",
-                  params: { user_id: activeUser.id, cycle_id: parsedCycleId },
-                }),
-                readBackendQuery({
-                  actor_username: activeUser.username,
-                  kind: "work_logs.by_range",
-                  params: {
-                    user_id: activeUser.id,
-                    start_date: review.start.toISOString(),
-                    end_date: review.end.toISOString(),
-                  },
-                }),
-                readBackendQuery({
-                  actor_username: activeUser.username,
-                  kind: "experiments.for_retro_window",
-                  params: {
-                    cycle_id: parsedCycleId,
-                    window_start: review.start.toISOString(),
-                    window_end: review.end.toISOString(),
-                  },
-                }),
-              ]);
+            const ritualPayload = await readBackendQuery({
+              actor_username: activeUser.username,
+              kind: "ritual.snapshot",
+              params: {
+                user_id: activeUser.id,
+                cycle_id: parsedCycleId,
+                days_threshold: 7,
+                date: new Date().toISOString(),
+                window_start: review.start.toISOString(),
+                window_end: review.end.toISOString(),
+              },
+            });
+            const krPayload = { key_results: ritualPayload.key_results };
+            const weeklyPayload = { weekly_plan: ritualPayload.weekly_plan };
+            const retroPayload = { retros: ritualPayload.retros };
+            const logsPayload = { work_logs: ritualPayload.work_logs };
+            const experimentReviewPayload = { experiments: ritualPayload.experiments };
             const krs = ((krPayload.key_results as KeyResultRead[]) || []).slice(0, 100);
             setRitualKrs(krs);
 

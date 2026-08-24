@@ -139,7 +139,13 @@ def _fetch_node_for_analysis(
 def _fetch_node_via_rest(
     node_id: int, node_type: str, actor_username: Optional[str] = None
 ):
-    """Fetch a node via Supabase REST API and return a lightweight namespace object."""
+    """Fetch a node via Supabase REST API and return a lightweight namespace object.
+
+    The returned namespace must satisfy every attribute access that
+    ``_analyze_node_inner`` performs on ORM instances, including the parent
+    chain (objective -> goal -> cycle) and check_ins, because the analysis
+    code traverses those relations after the fetch session has closed.
+    """
     from src.services.supabase_api_mode import _rest_select
 
     table_map = {
@@ -191,7 +197,67 @@ def _fetch_node_via_rest(
     setattr(ns, child_attr, [_simple_namespace_from_row(c) for c in children])
     ns.__tablename__ = table.upper()
 
+    # Populate relations the analysis code expects but REST rows don't carry.
+    _populate_rest_relations(ns, node_type)
+
     return ns
+
+
+def _populate_rest_relations(ns, node_type: str) -> None:
+    """Fill in parent-chain and check_ins attributes on a REST namespace.
+
+    Mirrors what eager loading provides on the direct-DB path so detached
+    attribute traversal in the analysis code never raises.
+    """
+    normalized = str(node_type or "").upper()
+
+    def _fetch_one(table: str, row_id):
+        if row_id is None:
+            return None
+        try:
+            from src.services.supabase_api_mode import _rest_select
+
+            status, rows = _rest_select(
+                table, query={"id": f"eq.{row_id}", "select": "*"}
+            )
+            if status < 400 and rows:
+                return types.SimpleNamespace(**rows[0])
+        except Exception as exc:
+            logger.debug("REST relation fetch failed for %s #%s: %s", table, row_id, exc)
+        return None
+
+    if normalized in ("KEY_RESULT", "KEYRESULT"):
+        objective = _fetch_one("objective", getattr(ns, "objective_id", None))
+        ns.objective = objective
+        if objective is not None:
+            goal = _fetch_one("goal", getattr(objective, "goal_id", None))
+            objective.goal = goal
+            if goal is not None:
+                goal.cycle = _fetch_one("cycle", getattr(goal, "cycle_id", None))
+        # Check-ins used for prompt history; tolerate missing tables.
+        try:
+            from src.services.supabase_api_mode import _rest_select
+
+            _, ci_rows = _rest_select(
+                "check_in",
+                query={
+                    "key_result_id": f"eq.{getattr(ns, 'id', '')}",
+                    "select": "*",
+                },
+            )
+            ns.check_ins = [
+                _simple_namespace_from_row(c) for c in (ci_rows or [])
+            ]
+        except Exception as exc:
+            logger.debug("REST check_ins fetch failed: %s", exc)
+            ns.check_ins = []
+    elif normalized == "OBJECTIVE":
+        goal = _fetch_one("goal", getattr(ns, "goal_id", None))
+        ns.goal = goal
+        if goal is not None:
+            goal.cycle = _fetch_one("cycle", getattr(goal, "cycle_id", None))
+    elif normalized == "GOAL":
+        ns.cycle = _fetch_one("cycle", getattr(ns, "cycle_id", None))
 
 
 def _simple_namespace_from_row(row: dict):
@@ -307,20 +373,35 @@ def _get_cycle_date_range(node, node_type: str):
     return s, e
 
 
+def _safe_rel(obj, attr):
+    """Read a relation attribute without raising on detached ORM instances.
+
+    Lazy loads on detached instances raise DetachedInstanceError; treat that
+    (and any other traversal failure) as 'relation unavailable'.
+    """
+    if obj is None:
+        return None
+    try:
+        return getattr(obj, attr, None)
+    except Exception as exc:
+        logger.debug("Relation '%s' unavailable on %s: %s", attr, type(obj).__name__, exc)
+        return None
+
+
 def _get_cycle(node, node_type: str):
     """Traverse parent chain to find the Cycle object."""
     if node_type in ("KEY_RESULT", "KEYRESULT"):
-        obj = getattr(node, "objective", None)
+        obj = _safe_rel(node, "objective")
         if obj:
-            goal = getattr(obj, "goal", None)
+            goal = _safe_rel(obj, "goal")
             if goal:
-                return getattr(goal, "cycle", None)
+                return _safe_rel(goal, "cycle")
     elif node_type == "OBJECTIVE":
-        goal = getattr(node, "goal", None)
+        goal = _safe_rel(node, "goal")
         if goal:
-            return getattr(goal, "cycle", None)
+            return _safe_rel(goal, "cycle")
     elif node_type == "GOAL":
-        return getattr(node, "cycle", None)
+        return _safe_rel(node, "cycle")
     return None
 
 
@@ -328,20 +409,20 @@ def _build_parent_context(node, node_type: str) -> str:
     """Build parent Objective and Goal context for the prompt."""
     parts = []
     if node_type in ("KEY_RESULT", "KEYRESULT"):
-        obj = getattr(node, "objective", None)
+        obj = _safe_rel(node, "objective")
         if obj:
             parts.append(
                 f'Objective: "{_sanitize_for_prompt(getattr(obj, "title", "N/A"))}" '
                 f"(progress: {getattr(obj, 'progress', 0)}%)"
             )
-            goal = getattr(obj, "goal", None)
+            goal = _safe_rel(obj, "goal")
             if goal:
                 parts.append(
                     f'Goal: "{_sanitize_for_prompt(getattr(goal, "title", "N/A"))}" '
                     f"(progress: {getattr(goal, 'progress', 0)}%)"
                 )
     elif node_type == "OBJECTIVE":
-        goal = getattr(node, "goal", None)
+        goal = _safe_rel(node, "goal")
         if goal:
             parts.append(
                 f'Goal: "{getattr(goal, "title", "N/A")}" '

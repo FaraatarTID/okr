@@ -60,7 +60,9 @@ def _load_actor_map(connection) -> dict[str, dict]:
     if "user" not in _table_names():
         return {}
     rows = (
-        connection.execute(sa.text("SELECT id, username, role, team_id FROM user"))
+        connection.execute(
+            sa.text('SELECT id, username, role, team_id FROM "user"')
+        )
         .mappings()
         .all()
     )
@@ -127,7 +129,7 @@ def _resolve_target_context(
             return {"target_owner_id": user_id}
         user_row = (
             connection.execute(
-                sa.text("SELECT team_id FROM user WHERE id = :id LIMIT 1"),
+                sa.text('SELECT team_id FROM "user" WHERE id = :id LIMIT 1'),
                 {"id": user_id},
             )
             .mappings()
