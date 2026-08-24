@@ -3,6 +3,8 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+_RPC_FALLBACK_WARNED = False
+
 
 def get_read_query_allowed_kinds() -> set[str]:
     return {
@@ -115,6 +117,47 @@ def read_query_payload(
             "days_threshold": params.get("days_threshold", 7),
         }
         if main.is_supabase_api_mode_enabled():
+            # Preferred path: single authorized RPC (one round trip).
+            rpc_params = {
+                "actor_username": actor,
+                "cycle_id": cycle_id,
+                "days_threshold": params.get("days_threshold", 7),
+                "date": params.get("date"),
+                "window_start": params.get("window_start"),
+                "window_end": params.get("window_end"),
+            }
+            try:
+                snapshot_payload = main.read_query_via_supabase_api(
+                    kind="ritual.snapshot",
+                    params=rpc_params,
+                    actor=actor,
+                )
+                snapshot = snapshot_payload.get("snapshot") or {}
+                return {
+                    "key_results": snapshot.get("key_results", []),
+                    "weekly_plan": snapshot.get("weekly_plan"),
+                    "retros": snapshot.get("retros", []),
+                    "work_logs": snapshot.get("work_logs", []),
+                    "experiments": snapshot.get("experiments", []),
+                }
+            except ValueError as exc:
+                detail = str(exc)
+                # Missing function (migration not applied): fall back to the
+                # bounded concurrent fan-out below. Latched per process via a
+                # module flag so the warning logs only once.
+                if "42883" in detail or "fn_ritual_snapshot" in detail:
+                    global _RPC_FALLBACK_WARNED
+                    if not _RPC_FALLBACK_WARNED:
+                        _RPC_FALLBACK_WARNED = True
+                        main._LOGGER.warning(
+                            "ritual.snapshot RPC missing (42883); using concurrent "
+                            "fan-out fallback until migration y2d3e4f5a6b7 runs."
+                        )
+                    # Fall through to the fan-out path below.
+                else:
+                    # Validation errors from the RPC parameter contract
+                    # propagate as client errors.
+                    raise main.HTTPException(status_code=400, detail=detail) from exc
             queries = [
                 ("krs.needing_checkin", query_params),
                 (

@@ -15,11 +15,80 @@ from src.services.supabase_api_mode_transport import (
     _parse_dt,
     _rest_select,
 )
+from src.services.supabase_api_mode_transport import (
+    SupabaseTransportError,
+    _request_json_with_method,
+)
+
+
+def _rest_rpc(function_name: str, args: dict[str, Any]) -> tuple[int, Any]:
+    """Call a Postgres function via PostgREST RPC.
+
+    Returns (status, payload) like other transport helpers. Raises
+    SupabaseTransportError on network/timeout failures; HTTP errors are
+    surfaced as status codes for the caller to interpret.
+    """
+    return _request_json_with_method(
+        "POST",
+        f"/rest/v1/rpc/{function_name}",
+        body=args,
+    )
 
 
 def read_query_via_supabase_api(
     *, kind: str, params: dict[str, Any], actor: str
 ) -> dict[str, Any]:
+    normalized = str(kind or "").strip()
+
+    if normalized == "ritual.snapshot":
+        from datetime import timedelta
+
+        days_threshold = int(params.get("days_threshold") or 7)
+        stale_before = datetime.now(timezone.utc) - timedelta(days=days_threshold)
+        window_start = str(params.get("window_start") or "").strip()
+        window_end = str(params.get("window_end") or "").strip()
+        if not window_start or not window_end:
+            raise ValueError("window_start and window_end are required.")
+        username = str(params.get("actor_username") or actor or "").strip()
+        cycle_id = int(params.get("cycle_id") or 0)
+        if not username or cycle_id <= 0:
+            raise ValueError("actor_username and cycle_id are required.")
+        try:
+            status, snapshot = _rest_rpc(
+                "fn_ritual_snapshot",
+                {
+                    "p_username": username,
+                    "p_cycle_id": cycle_id,
+                    "p_stale_before": stale_before.isoformat(),
+                    "p_window_start": window_start,
+                    "p_window_end": window_end,
+                },
+            )
+        except SupabaseTransportError:
+            # Network-level failures propagate as typed errors; only the
+            # missing-function case (42883) is handled by the caller's
+            # fallback logic in read_query_helpers.py.
+            raise
+        if status < 400 and isinstance(snapshot, dict):
+            return {"snapshot": snapshot}
+        # HTTP error: distinguish missing function (42883/PGRST202) from other
+        # failures so read_query_helpers can fall back only for 42883.
+        detail = ""
+        if isinstance(snapshot, dict):
+            detail = str(snapshot.get("message") or snapshot.get("error") or "")
+        code = ""
+        if isinstance(snapshot, dict):
+            code = str(snapshot.get("code") or "")
+        if status == 404 and (code in {"42883", "PGRST202"} or "does not exist" in detail):
+            exc = ValueError(
+                f"Supabase API error (ritual.snapshot): function missing "
+                f"(SQLSTATE 42883): {detail}"
+            )
+            raise exc
+        raise ValueError(
+            f"Supabase API error (ritual.snapshot): HTTP {status}: {detail}"
+        )
+
     _ = actor
     normalized = str(kind or "").strip()
 
