@@ -15,6 +15,7 @@ import bcrypt
 from src.domain.scoring import calculate_kr_score
 from src.crud import _ALLOWED_EXPERIMENT_UPDATE_FIELDS
 from src.services.supabase_api_mode_transport import (
+    SupabaseTransportError,
     _coerce_payload_value,
     _coerce_float,
     _parse_dt,
@@ -28,9 +29,11 @@ from src.services.supabase_api_mode_transport import (
     _date_only_iso,
     _utc_now_iso,
     _cycle_owner_column_supported,
+    _cycle_select_fields,
     _role_for_storage,
     _normalize_user_row_role,
 )
+from src.services.supabase_api_mode_read import _rest_rpc
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +71,9 @@ def start_timer_via_supabase_api(*, task_id: int, actor_username: str):
         payload={
             "task_id": int(task_id),
             "start_time": _utc_now_iso(),
+            # duration_minutes is NOT NULL with no DB default; the ORM applies
+            # a Python-side 0.0 default that PostgREST does not see.
+            "duration_minutes": 0,
             "summary": None,
             "note": None,
         },
@@ -102,13 +108,15 @@ def stop_timer_via_supabase_api(*, task_id: int, summary: Optional[str], user_id
     work_log_id = _as_int(row.get("id"), 0)
     start_dt = _parse_dt(row.get("start_time")) or datetime.now(timezone.utc)
     end_dt = datetime.now(timezone.utc)
-    duration = max(0.0, (end_dt - start_dt).total_seconds() / 60.0)
+    # Round to whole minutes for parity with the ORM timer path
+    # (crud_timer_helpers stores int minutes, not fractional durations).
+    duration = max(0, int((end_dt - start_dt).total_seconds() / 60.0))
     status, updated = _rest_update(
         "work_log",
         match_query={"id": f"eq.{work_log_id}"},
         payload={
             "end_time": end_dt.isoformat(),
-            "duration_minutes": float(duration),
+            "duration_minutes": duration,
             "summary": (str(summary).strip() if summary is not None else None),
         },
     )
@@ -553,6 +561,9 @@ def create_user_via_supabase_api(
         "team_id": int(team_id) if team_id is not None else None,
         "must_change_password": bool(must_change_password),
         "is_active": True,
+        # The live DB has no server default for created_at (ORM default is
+        # invisible to PostgREST), so it must be supplied explicitly.
+        "created_at": _utc_now_iso(),
     }
     status, rows = _rest_insert("user", payload=payload)
     if status >= 400 or not rows:
@@ -638,6 +649,10 @@ def create_cycle_via_supabase_api(
         payload["owner_manager_id"] = (
             int(owner_manager_id) if owner_manager_id is not None else None
         )
+    # Invariant: at most one active cycle. Activating a new cycle deactivates
+    # all others in the same transactional sequence.
+    if payload["is_active"]:
+        _rest_update("cycle", match_query={"is_active": "eq.true"}, payload={"is_active": False})
     status, response = _request_json_with_method(
         "POST",
         "/rest/v1/cycle",
@@ -667,6 +682,89 @@ def update_cycle_via_supabase_api(
     actor_username: Optional[str] = None,
 ):
     _ = actor_username
+    # Guard: deactivating the only active cycle would leave the workspace
+    # without a current period. Require activating another cycle instead.
+    if not is_active:
+        status, active_rows = _rest_select(
+            "cycle",
+            query={
+                "is_active": "eq.true",
+                "id": f"neq.{int(cycle_id)}",
+                "select": "id",
+                "limit": "1",
+            },
+        )
+        if status < 400 and not active_rows:
+            status2, own_rows = _rest_select(
+                "cycle",
+                query={
+                    "id": f"eq.{int(cycle_id)}",
+                    "select": "is_active",
+                    "limit": "1",
+                },
+            )
+            if (
+                status2 < 400
+                and own_rows
+                and bool(own_rows[0].get("is_active"))
+            ):
+                raise ValueError(
+                    "Cannot deactivate the only active cycle. "
+                    "Activate another cycle first."
+                )
+
+    # Atomic activation path (preferred): fn_activate_cycle RPC deactivates all
+    # other cycles and activates the target inside one DB transaction. Falls
+    # back to two REST calls only when the RPC is missing (migration not yet
+    # applied) — same 42883-only fallback contract as ritual.snapshot.
+    if is_active:
+        rpc_done = False
+        try:
+            status, payload = _rest_rpc(
+                "fn_activate_cycle", {"p_cycle_id": int(cycle_id)}
+            )
+            if status < 400:
+                rpc_done = True
+            else:
+                detail = ""
+                code = ""
+                if isinstance(payload, dict):
+                    detail = str(payload.get("message") or payload.get("details") or "")
+                    code = str(payload.get("code") or "")
+                rpc_missing = status == 404 and (
+                    code in {"42883", "PGRST202"} or "does not exist" in detail
+                )
+                if not rpc_missing:
+                    raise ValueError(
+                        f"Supabase API error (cycle/activate_rpc): {status} {detail}"
+                    )
+                # RPC missing -> fall through to the legacy two-call path.
+        except SupabaseTransportError:
+            raise
+
+        if rpc_done:
+            # Refresh full row after activation so callers get current fields.
+            status, rows = _rest_select(
+                "cycle",
+                query={
+                    "id": f"eq.{int(cycle_id)}",
+                    "select": _cycle_select_fields(),
+                    "limit": "1",
+                },
+            )
+            if status >= 400 or not rows:
+                raise ValueError(
+                    f"Supabase API error (cycle/update refresh): {status}"
+                )
+            return types.SimpleNamespace(**rows[0])
+
+        # Legacy fallback: deactivate others, then activate target.
+        _rest_update(
+            "cycle",
+            match_query={"is_active": "eq.true"},
+            payload={"is_active": False},
+        )
+
     status, rows = _rest_update(
         "cycle",
         match_query={"id": f"eq.{int(cycle_id)}"},

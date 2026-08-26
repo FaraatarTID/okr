@@ -168,4 +168,20 @@ Related runbook and ops docs:
   - Rollback drill dry-run in non-production.
   - Manual auth/key rotation exercise with scoped token refresh and recovery test.
 
-Last updated: 2026-07-27
+## Service Level Objectives (SLOs)
+
+Targets for the production deployment (personal-PC server, Supabase free tier).
+Measure with `python scripts/slo_probe.py` against the running stack.
+
+| # | SLO | Target | Measurement | Breach action |
+|---|---|---|---|---|
+| SLO-1 | Login p95 latency | ≤ 3.0 s | 20 sequential `POST /api/session/login` via BFF; p95 of durations | Check Supabase auth latency (`scripts/supabase_https_probe.py`); check scope-resolution query time |
+| SLO-2 | Read/query p95 latency | ≤ 1.5 s | 20 `POST /v1/read/query` (kind=`krs.by_cycle`) through BFF; p95 | Verify TCP-primary mode active in `/healthz`; check circuit-breaker state |
+| SLO-3 | Mutation error rate | ≤ 2% of requests | Error responses / total across a probe run (≥20 mutations) | Inspect backend logs for 5xx vs 4xx; check DB connectivity |
+| SLO-4 | Job queue lag | ≤ 60 s queued→started | Submit marker job; poll until RUNNING | Check worker container health; check `dead_jobs` count in `/healthz` |
+| SLO-5 | Check-In snapshot latency | ≤ 1.0 s warm | 10× `ritual.snapshot` read; median | Confirm RPC path active (not fan-out fallback); check migration `y2d3e4f5a6b7` applied |
+
+Error-budget policy: any SLO breached twice in one week triggers a remediation
+task in the architecture backlog ledger before new feature work.
+
+Last updated: 2026-08-25

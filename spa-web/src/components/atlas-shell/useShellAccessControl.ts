@@ -9,13 +9,16 @@ import {
   type AdminPdfHealthResponse,
   type AuthUser,
 } from "@/lib/api";
+import type { AdminTab } from "@/components/atlas-shell/AdminModePanel";
 
 type UseShellAccessControlInput = {
   authHydrated: boolean;
   user: AuthUser | null;
   isAdmin: boolean;
+  isManager: boolean;
   mode: string;
   adminTab: string;
+  setAdminTab: Dispatch<SetStateAction<AdminTab>>;
   adminAiHealth: AdminAiHealthResponse | null;
   adminPdfHealth: AdminPdfHealthResponse | null;
   adminAuditSummary: AuditSummaryResponse | null;
@@ -32,8 +35,10 @@ export default function useShellAccessControl({
   authHydrated,
   user,
   isAdmin,
+  isManager,
   mode,
   adminTab,
+  setAdminTab,
   adminAiHealth,
   adminPdfHealth,
   adminAuditSummary,
@@ -58,17 +63,27 @@ export default function useShellAccessControl({
     if (!user) {
       return;
     }
-    if (!isAdmin && mode === "admin") {
+    // Managers may enter admin mode but are restricted to the cycles tab
+    // (per-manager active cycles). Members are redirected out entirely.
+    const canManageCycles = isAdmin || isManager;
+    if (!canManageCycles && mode === "admin") {
       handleSidebarModeSelect("atlas");
+      return;
     }
-  }, [handleSidebarModeSelect, isAdmin, mode, user]);
+    if (!isAdmin && mode === "admin" && adminTab !== "cycles") {
+      setAdminTab("cycles");
+    }
+  }, [adminTab, handleSidebarModeSelect, isAdmin, mode, setAdminTab, user]);
 
   useEffect(() => {
-    if (!user || !isAdmin || mode !== "admin") {
+    // Managers also need admin resources (users list feeds the cycle-owner
+    // dropdown on their Cycles panel), so gate on canManageCycles, not isAdmin.
+    const canManageCycles = isAdmin || isManager;
+    if (!user || !canManageCycles || mode !== "admin") {
       return;
     }
     void loadAdminResources(user);
-  }, [isAdmin, loadAdminResources, mode, user]);
+  }, [isAdmin, isManager, loadAdminResources, mode, user]);
 
   useEffect(() => {
     if (!user || !isAdmin || mode !== "admin" || adminTab !== "ai") {

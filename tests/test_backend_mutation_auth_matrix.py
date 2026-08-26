@@ -242,6 +242,7 @@ _MUTATION_ROUTE_ALLOWLIST = {
     ("POST", "/v1/ai/strategy-pulse"),
     ("POST", "/v1/jobs"),
     ("POST", "/v1/jobs/{job_id}/cancel"),
+    ("POST", "/v1/jobs/{job_id}/retry"),
     ("DELETE", "/v1/jobs/{job_id}"),
     ("POST", "/v1/timer/start"),
     ("POST", "/v1/timer/stop"),

@@ -1,7 +1,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import type { Dispatch, SetStateAction } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import useShellAccessControl from "@/components/atlas-shell/useShellAccessControl";
+import type { AdminTab } from "@/components/atlas-shell/AdminModePanel";
 import { logoutSession, type AuditSummaryResponse, type AuthUser } from "@/lib/api";
 
 vi.mock("@/lib/api", async () => {
@@ -16,8 +18,10 @@ type HarnessProps = {
   authHydrated: boolean;
   user: AuthUser | null;
   isAdmin: boolean;
+  isManager: boolean;
   mode: string;
   adminTab: string;
+  setAdminTab: Dispatch<SetStateAction<AdminTab>>;
   adminAiHealth: Record<string, unknown> | null;
   adminPdfHealth: Record<string, unknown> | null;
   adminAuditSummary: AuditSummaryResponse | null;
@@ -47,8 +51,10 @@ function renderAccessHook(initialProps: HarnessProps) {
         authHydrated: props.authHydrated,
         user: props.user,
         isAdmin: props.isAdmin,
+        isManager: props.isManager,
         mode: props.mode,
         adminTab: props.adminTab,
+        setAdminTab: props.setAdminTab,
         adminAiHealth: props.adminAiHealth,
         adminPdfHealth: props.adminPdfHealth,
         adminAuditSummary: props.adminAuditSummary,
@@ -81,11 +87,13 @@ describe("useShellAccessControl", () => {
       authHydrated: true,
       user: null,
       isAdmin: false,
+      isManager: false,
       mode: "atlas",
       adminTab: "cycles",
       adminAiHealth: null,
       adminPdfHealth: null,
       adminAuditSummary: null,
+      setAdminTab: vi.fn(),
     });
 
     await waitFor(() => {
@@ -100,11 +108,13 @@ describe("useShellAccessControl", () => {
       authHydrated: true,
       user: { ...ACTIVE_USER, role: "member" },
       isAdmin: false,
+      isManager: false,
       mode: "admin",
       adminTab: "cycles",
       adminAiHealth: null,
       adminPdfHealth: null,
       adminAuditSummary: null,
+      setAdminTab: vi.fn(),
     });
 
     await waitFor(() => {
@@ -117,11 +127,13 @@ describe("useShellAccessControl", () => {
       authHydrated: true,
       user: ACTIVE_USER,
       isAdmin: true,
+      isManager: false,
       mode: "admin",
       adminTab: "cycles",
       adminAiHealth: null,
       adminPdfHealth: null,
       adminAuditSummary: null,
+      setAdminTab: vi.fn(),
     });
 
     await waitFor(() => {
@@ -134,11 +146,13 @@ describe("useShellAccessControl", () => {
       authHydrated: true,
       user: ACTIVE_USER,
       isAdmin: true,
+      isManager: false,
       mode: "admin",
       adminTab: "ai",
       adminAiHealth: null,
       adminPdfHealth: { status: "ok" },
       adminAuditSummary: null,
+      setAdminTab: vi.fn(),
     });
 
     await waitFor(() => {
@@ -151,11 +165,13 @@ describe("useShellAccessControl", () => {
       authHydrated: true,
       user: ACTIVE_USER,
       isAdmin: true,
+      isManager: false,
       mode: "admin",
       adminTab: "ai",
       adminAiHealth: { status: "ok" },
       adminPdfHealth: { status: "ok" },
       adminAuditSummary: null,
+      setAdminTab: vi.fn(),
     });
 
     await waitFor(() => {
@@ -169,11 +185,13 @@ describe("useShellAccessControl", () => {
       authHydrated: true,
       user: ACTIVE_USER,
       isAdmin: true,
+      isManager: false,
       mode: "atlas",
       adminTab: "cycles",
       adminAiHealth: null,
       adminPdfHealth: null,
       adminAuditSummary: null,
+      setAdminTab: vi.fn(),
     });
 
     act(() => {
@@ -192,11 +210,13 @@ describe("useShellAccessControl", () => {
       authHydrated: true,
       user: ACTIVE_USER,
       isAdmin: true,
+      isManager: false,
       mode: "admin",
       adminTab: "audit",
       adminAiHealth: null,
       adminPdfHealth: null,
       adminAuditSummary: null,
+      setAdminTab: vi.fn(),
     });
 
     await waitFor(() => {
@@ -204,3 +224,4 @@ describe("useShellAccessControl", () => {
     });
   });
 });
+

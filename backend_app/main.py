@@ -11,7 +11,15 @@ from fastapi import FastAPI, HTTPException, Response, status  # noqa: F401
 from sqlmodel import select  # noqa: F401
 
 from backend_app.job_limits import enforce_job_submit_limits  # noqa: F401
-from backend_app.jobs import enqueue_job, get_job, request_job_cancel, serialize_job  # noqa: F401
+from backend_app.jobs import (  # noqa: F401
+    count_dead_jobs,
+    enqueue_job,
+    get_job,
+    list_dead_jobs,
+    request_job_cancel,
+    retry_dead_job,
+    serialize_job,
+)
 from backend_app.path_setup import ensure_shared_src_on_path
 from backend_app.security_state import get_app_state, set_app_state  # noqa: F401
 from backend_app.schemas import (
@@ -212,6 +220,7 @@ from src.services.supabase_api_mode import (
     create_key_result_via_supabase_api,  # noqa: F401
     create_task_via_supabase_api,  # noqa: F401
     create_check_in_via_supabase_api,  # noqa: F401
+    create_user_via_supabase_api,  # noqa: F401
     read_query_via_supabase_api,  # noqa: F401
     start_timer_via_supabase_api,  # noqa: F401
     stop_timer_via_supabase_api,  # noqa: F401

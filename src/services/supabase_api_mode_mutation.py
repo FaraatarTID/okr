@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import types
@@ -23,7 +24,13 @@ def create_team_via_supabase_api(
     _ = actor_username
     status, rows = _rest_insert(
         "team",
-        payload={"name": str(name or "").strip(), "description": description},
+        payload={
+            "name": str(name or "").strip(),
+            "description": description,
+            # The live DB has no server default for created_at (ORM default is
+            # invisible to PostgREST), so it must be supplied explicitly.
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        },
     )
     if status >= 400 or not rows:
         raise ValueError(f"Supabase API error (team/create): {status}")

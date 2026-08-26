@@ -71,6 +71,8 @@ Documentation HQ: [README](../README.md)
   - مثال: `http://backend-api:8100`
 - `OKR_BACKEND_SERVICE_TOKEN`
 - `OKR_BACKEND_SIGNING_SECRET`
+- `OKR_BACKEND_SIGNING_SECRET_PREVIOUS` (اختیاری): رمز قبلی برای بازه هم‌پوشانی چرخش کلید
+- `OKR_BACKEND_SIGNING_KEY_ID` (اختیاری): شناسه کلید تبلیغ‌شده؛ در صورت تنظیم، فراخوان باید `x-okr-key-id` بفرستد
 - `OKR_BACKEND_DEFAULT_ACTOR`
 - `OKR_BACKEND_PROXY_MUTATIONS` (توصیه: `true`)
 - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (production: `false`)

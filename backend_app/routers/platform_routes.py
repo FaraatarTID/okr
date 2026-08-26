@@ -154,12 +154,17 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
     def healthz() -> dict:
         from backend_app.data_access_mode import effective_mode_report
 
+        try:
+            dead_jobs = main.count_dead_jobs()
+        except Exception:
+            dead_jobs = None
         return {
             "status": "ok",
             "data_access_mode": effective_mode_report(),
             "configured_mode": (
                 "supabase_api" if main.is_supabase_api_mode_enabled() else "database"
             ),
+            "dead_jobs": dead_jobs,
         }
 
     @router.get(

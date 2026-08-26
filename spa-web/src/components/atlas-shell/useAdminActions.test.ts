@@ -32,8 +32,10 @@ function makeEphemeralTestCredential(): string {
 
 function renderAdminHook() {
   const loadAdminCycles = vi.fn().mockResolvedValue(undefined);
+  const adminCycles: CycleSummary[] = [];
   const loadAdminUsersAndTeams = vi.fn().mockResolvedValue(undefined);
   const loadAdminResources = vi.fn().mockResolvedValue(undefined);
+  const refreshSessionCycles = vi.fn().mockResolvedValue(undefined);
   const onCycleActivated = vi.fn();
   const setAdminCycleError = vi.fn();
   const setAdminDataError = vi.fn();
@@ -42,6 +44,7 @@ function renderAdminHook() {
     useAdminActions({
       user: baseUser,
       isAdmin: true,
+      isManager: false,
       adminUsers: [
         {
           id: 1,
@@ -55,8 +58,10 @@ function renderAdminHook() {
       setAdminCycleError,
       setAdminDataError,
       loadAdminCycles,
+      adminCycles,
       loadAdminUsersAndTeams,
       loadAdminResources,
+      refreshSessionCycles,
       onCycleActivated,
       toIsoStart: (value) => `${value}T00:00:00Z`,
       toIsoEnd: (value) => `${value}T23:59:59Z`,
@@ -66,12 +71,45 @@ function renderAdminHook() {
   return {
     ...hook,
     loadAdminCycles,
+    adminCycles,
     loadAdminUsersAndTeams,
     loadAdminResources,
+    refreshSessionCycles,
     onCycleActivated,
     setAdminCycleError,
     setAdminDataError,
   };
+}
+
+function renderManagerAdminHook() {
+  const loadAdminCycles = vi.fn().mockResolvedValue(undefined);
+  const loadAdminUsersAndTeams = vi.fn().mockResolvedValue(undefined);
+  const loadAdminResources = vi.fn().mockResolvedValue(undefined);
+  const refreshSessionCycles = vi.fn().mockResolvedValue(undefined);
+  const onCycleActivated = vi.fn();
+  const setAdminCycleError = vi.fn();
+  const setAdminDataError = vi.fn();
+
+  const hook = renderHook(() =>
+    useAdminActions({
+      user: { ...baseUser, id: 20, username: "manager", role: "manager" },
+      isAdmin: false,
+      isManager: true,
+      adminUsers: [],
+      setAdminCycleError,
+      setAdminDataError,
+      loadAdminCycles,
+      adminCycles: [],
+      loadAdminUsersAndTeams,
+      loadAdminResources,
+      refreshSessionCycles,
+      onCycleActivated,
+      toIsoStart: (value) => `${value}T00:00:00Z`,
+      toIsoEnd: (value) => `${value}T23:59:59Z`,
+    }),
+  );
+
+  return { ...hook, loadAdminCycles, refreshSessionCycles, setAdminCycleError };
 }
 
 describe("useAdminActions", () => {
@@ -176,6 +214,33 @@ describe("useAdminActions", () => {
     );
     expect(loadAdminCycles).toHaveBeenCalledWith(baseUser);
     expect(onCycleActivated).toHaveBeenCalledWith(cycle);
+  });
+
+  it("creates a manager cycle without requiring an owner selection", async () => {
+    const createCycleMutationMock = vi.mocked(api.createCycleMutation);
+    createCycleMutationMock.mockResolvedValue({ id: 9 } as never);
+    const { result, loadAdminCycles, refreshSessionCycles, setAdminCycleError } = renderManagerAdminHook();
+
+    act(() => {
+      result.current.setAdminCreateCycleDraft({
+        title: "Manager cycle",
+        startDate: "2026-08-01",
+        endDate: "2026-08-31",
+        isActive: true,
+        ownerManagerId: "",
+      });
+    });
+
+    await act(async () => {
+      await result.current.handleAdminCreateCycle();
+    });
+
+    expect(setAdminCycleError).not.toHaveBeenCalledWith("Select a cycle owner (manager/admin).");
+    expect(createCycleMutationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ actor_username: "manager", owner_manager_id: 20 }),
+    );
+    expect(loadAdminCycles).toHaveBeenCalled();
+    expect(refreshSessionCycles).toHaveBeenCalled();
   });
 
   it("validates password reset requires selected user and new password", async () => {

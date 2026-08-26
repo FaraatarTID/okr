@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
@@ -23,12 +24,27 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class _CachedCallable:
-    """Simple memoized callable with a public .clear() method."""
+    """Memoized callable with TTL, distributed-invalidation awareness, and a
+    public .clear() method.
 
-    def __init__(self, fn: Callable) -> None:
+    Entries older than ``ttl_seconds`` are refetched. Additionally, each call
+    consults the distributed cache-invalidation signal so a mutation on another
+    node (or process) drops stale entries promptly.
+    """
+
+    def __init__(
+        self,
+        fn: Callable,
+        *,
+        ttl_seconds: float = 5.0,
+        distributed_invalidation: bool = True,
+    ) -> None:
         functools.update_wrapper(self, fn)
         self._fn = fn
-        self._cache: dict[str, Any] = {}
+        self._ttl_seconds = ttl_seconds
+        self._distributed_invalidation = distributed_invalidation
+        self._cache: dict[str, tuple[float, Any]] = {}
+        self._last_seen_invalidation_ts = 0
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         key = json.dumps(
@@ -36,12 +52,53 @@ class _CachedCallable:
             default=str,
             sort_keys=True,
         )
-        if key not in self._cache:
-            self._cache[key] = self._fn(*args, **kwargs)
-        return self._cache[key]
+        now = time.monotonic()
+        if self._distributed_invalidation:
+            try:
+                from src.utils.cache_utils import check_distributed_cache_staleness
+
+                check_distributed_cache_staleness()
+            except Exception:
+                pass
+        entry = self._cache.get(key)
+        if entry is not None:
+            cached_at, value = entry
+            expired = (now - cached_at) >= self._ttl_seconds
+            invalidated = (
+                self._distributed_invalidation
+                and _last_invalidation_ts() > 0
+                and _last_invalidation_ts() != self._last_seen_invalidation_ts
+            )
+            if not expired and not invalidated:
+                return value
+        value = self._fn(*args, **kwargs)
+        self._cache[key] = (now, value)
+        return value
 
     def clear(self) -> None:
         self._cache.clear()
+        # Record that we've consumed the current invalidation signal.
+        try:
+            from src.services.distributed_state_service import (
+                get_last_invalidation_timestamp,
+            )
+
+            ts = get_last_invalidation_timestamp()
+            if ts:
+                self._last_seen_invalidation_ts = ts
+        except Exception:
+            pass
+
+
+def _last_invalidation_ts() -> int:
+    try:
+        from src.services.distributed_state_service import (
+            get_last_invalidation_timestamp,
+        )
+
+        return get_last_invalidation_timestamp()
+    except Exception:
+        return 0
 
 
 def _serialize_cycle(cycle: Any) -> dict[str, Any] | None:

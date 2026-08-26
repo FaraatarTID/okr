@@ -6,6 +6,7 @@ export interface BackendSecurityHeaderInput {
   bodyBytes: Uint8Array | null;
   serviceToken: string;
   signingSecret: string;
+  signingKeyId?: string;
   nowEpochSeconds?: number;
   nonce?: string;
 }
@@ -85,6 +86,10 @@ export function buildBackendSecurityHeaders(
   headers["x-okr-timestamp"] = timestamp;
   headers["x-okr-nonce"] = nonce;
   headers["x-okr-signature"] = signature;
+  const keyId = String(input.signingKeyId || "").trim();
+  if (keyId) {
+    headers["x-okr-key-id"] = keyId;
+  }
   return headers;
 }
 

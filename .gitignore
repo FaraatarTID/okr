@@ -47,6 +47,7 @@ log/
 # Optional loop docs (generated operational notes)
 docs/BACKLOG.md
 docs/WORKLOG.md
+.mimocode/
 
 # OS/editor
 .DS_Store

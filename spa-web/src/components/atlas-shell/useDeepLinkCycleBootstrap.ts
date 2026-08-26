@@ -9,7 +9,10 @@ import {
   cyclePeriodLabel,
 } from "@/components/atlas-shell/shellUiUtils";
 
-type ResolvedCycleState = Pick<CycleSummary, "id" | "title" | "start_date" | "end_date">;
+type ResolvedCycleState = Pick<
+  CycleSummary,
+  "id" | "title" | "start_date" | "end_date"
+> & { is_active?: boolean };
 
 type UseDeepLinkCycleBootstrapInput = {
   user: AuthUser | null;
@@ -78,6 +81,7 @@ export default function useDeepLinkCycleBootstrap({
         title: cachedMatch.title,
         start_date: cachedMatch.start_date || null,
         end_date: cachedMatch.end_date || null,
+        is_active: Boolean(cachedMatch.is_active),
       });
       return;
     }
@@ -102,6 +106,7 @@ export default function useDeepLinkCycleBootstrap({
           title: matched.title,
           start_date: matched.start_date || null,
           end_date: matched.end_date || null,
+          is_active: Boolean(matched.is_active),
         });
       } catch {
         // keep current resolved cycle fallback
@@ -154,7 +159,10 @@ export default function useDeepLinkCycleBootstrap({
   ]);
 
   useEffect(() => {
-    if (!user || !deepLinkReady || parsedCycleId) {
+    // Run when we have a logged‑in user. We deliberately ignore `deepLinkReady` here because we also need
+    // to hydrate a parsed cycle ID even before the deep‑link state is marked ready (as exercised by the
+    // hydration test).
+    if (!user) {
       return;
     }
     let active = true;
@@ -165,7 +173,11 @@ export default function useDeepLinkCycleBootstrap({
       if (!cycles.length) {
         return null;
       }
-      const explicitActive = cycles.find((cycle) => Boolean(cycle.is_active));
+      const activeCycles = cycles.filter((cycle) => Boolean(cycle.is_active));
+      const ownActiveCycle = activeCycles.find(
+        (cycle) => cycle.owner_manager_id === user.id,
+      );
+      const explicitActive = ownActiveCycle || activeCycles[0];
       if (explicitActive) {
         return explicitActive;
       }
@@ -174,63 +186,79 @@ export default function useDeepLinkCycleBootstrap({
 
     void (async () => {
       try {
-        const activeCycles = await readCyclesQuery({
-          actor_username: user.username,
-          kind: "cycles.active",
-        });
+        // Fetch the complete list of cycles for the dropdown AND the active
+        // cycle(s) in parallel. The business rule is: exactly one cycle is
+        // active at a time (activated by an admin), and that cycle must
+        // always be present and selectable in the top-bar dropdown.
+        const [allCycles, activeCycles] = await Promise.all([
+          readCyclesQuery({
+            actor_username: user.username,
+            kind: "cycles.all",
+          }),
+          readCyclesQuery({
+            actor_username: user.username,
+            kind: "cycles.active",
+          }).catch(() => [] as CycleSummary[]),
+        ]);
         if (!active) {
           return;
         }
-        const sortedActive = [...activeCycles].sort((left, right) => right.id - left.id);
-        const selectedActive = pickCycle(sortedActive);
-        if (selectedActive) {
-          setSessionCycles(sortedActive);
-          setResolvedCycle({
-            id: selectedActive.id,
-            title: selectedActive.title,
-            start_date: selectedActive.start_date || null,
-            end_date: selectedActive.end_date || null,
-          });
-          setCycleId(String(selectedActive.id));
-          void (async () => {
-            try {
-              const allCycles = await readCyclesQuery({
-                actor_username: user.username,
-                kind: "cycles.all",
-              });
-              if (!active) {
-                return;
-              }
-              setSessionCycles([...allCycles].sort((left, right) => right.id - left.id));
-            } catch {
-              // keep active-cycle bootstrap state if full list hydration fails
-            }
-          })();
-          return;
+        const sortedAll = [...allCycles].sort((left, right) => right.id - left.id);
+        // Merge: guarantee every active cycle is present in the dropdown even
+        // if `cycles.all` was stale or scope-filtered it out.
+        const mergedById = new Map<number, CycleSummary>();
+        for (const cycle of sortedAll) {
+          mergedById.set(cycle.id, cycle);
+        }
+        for (const activeCycle of activeCycles) {
+          if (!mergedById.has(activeCycle.id)) {
+            mergedById.set(activeCycle.id, activeCycle);
+          }
+        }
+        const merged = [...mergedById.values()].sort((left, right) => right.id - left.id);
+        setSessionCycles(merged);
+
+        // The authoritative active cycle (if any).
+        const authoritativeActive = pickCycle(activeCycles.length ? activeCycles : merged);
+
+        // If a specific cycle ID was parsed from the deep-link, hydrate its details from the full list.
+        if (parsedCycleId) {
+          const matched = merged.find((c) => c.id === parsedCycleId);
+          if (matched) {
+            setResolvedCycle({
+              id: matched.id,
+              title: matched.title,
+              start_date: matched.start_date || null,
+              end_date: matched.end_date || null,
+              is_active: Boolean(matched.is_active),
+            });
+            setCycleId(String(matched.id));
+            return;
+          }
         }
 
-        const cycles = await readCyclesQuery({
-          actor_username: user.username,
-          kind: "cycles.all",
-        });
-        if (!active) {
-          return;
-        }
-        const sorted = [...cycles].sort((left, right) => right.id - left.id);
-        setSessionCycles(sorted);
-        const selected = pickCycle(sorted);
-        if (!selected) {
+        // When no explicit cycle ID is present *and* the deep-link processing is ready, select the
+        // single active cycle.
+        if (!parsedCycleId && deepLinkReady) {
+          const selectedActive = authoritativeActive;
+          if (selectedActive) {
+            setResolvedCycle({
+              id: selectedActive.id,
+              title: selectedActive.title,
+              start_date: selectedActive.start_date || null,
+              end_date: selectedActive.end_date || null,
+              is_active: true,
+            });
+            setCycleId(String(selectedActive.id));
+            return;
+          }
           setCycleResolveError("No cycle found. Create or activate a cycle to load Atlas snapshot.");
           setResolvedCycle(null);
           return;
         }
-        setResolvedCycle({
-          id: selected.id,
-          title: selected.title,
-          start_date: selected.start_date || null,
-          end_date: selected.end_date || null,
-        });
-        setCycleId(String(selected.id));
+
+        // If we have a parsedCycleId we already handled it above, and if deepLinkReady is false we don't
+        // need to do anything further yet.
       } catch (error) {
         if (!active) {
           return;

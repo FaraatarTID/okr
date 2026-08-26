@@ -12,6 +12,7 @@ from typing import Any, List, Optional
 from uuid import uuid4
 
 from sqlalchemy import CheckConstraint, Index, event, text
+from sqlalchemy import TextClause
 from sqlalchemy.orm import relationship
 from sqlmodel import SQLModel, Field, Relationship
 from sqlmodel.main import default_registry
@@ -305,6 +306,17 @@ class Cycle(SQLModelTable, table=True):
     __table_args__ = (
         Index("ix_cycle_is_active", "is_active"),
         Index("ix_cycle_owner_manager_active", "owner_manager_id", "is_active"),
+        # Per-manager active-cycle invariant: at most one ACTIVE cycle per
+        # owner (owner_manager_id). Admin-owned cycles are global; manager-
+        # owned cycles are department-scoped. NULL owner is not allowed in
+        # practice (backfilled to admin).
+        Index(
+            "ux_cycle_owner_active",
+            "owner_manager_id",
+            unique=True,
+            sqlite_where=text("is_active"),
+            postgresql_where=text("is_active"),
+        ),
         {"extend_existing": True},
     )
 

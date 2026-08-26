@@ -10,6 +10,8 @@ type OwnerFilterOption = {
 type CycleOption = {
   id: number;
   label: string;
+  /** True when this is the single admin-activated cycle. */
+  isActive?: boolean;
 };
 
 type AtlasModeControlsPanelProps = {
@@ -53,6 +55,21 @@ export default function AtlasModeControlsPanel({
 }: AtlasModeControlsPanelProps) {
   const [ownerSearchInput, setOwnerSearchInput] = useState("");
   const [ownerPickerError, setOwnerPickerError] = useState("");
+
+  // Only cycles that are actually selectable (the active one, or unknown-flag
+  // cycles) count toward "is there a real choice to make?".
+  const selectableCycleOptions = useMemo(
+    () => cycleOptions.filter((option) => option.isActive !== false),
+    [cycleOptions],
+  );
+  const activeCycleLabel = useMemo(() => {
+    const active = cycleOptions.find((option) => option.isActive === true);
+    if (active) {
+      return active.label;
+    }
+    // Fall back to the currently resolved/selected cycle label.
+    return cycleOptions.find((option) => String(option.id) === String(cycleId))?.label || "";
+  }, [cycleId, cycleOptions]);
 
   const ownerSuggestions = useMemo(() => {
     const query = ownerSearchInput.trim().toLowerCase();
@@ -151,21 +168,44 @@ export default function AtlasModeControlsPanel({
           <label htmlFor="cycle-id" style={{ display: "block", fontSize: "0.76rem", color: "var(--ink-soft)" }}>
             Cycle
           </label>
-          <select
-            id="cycle-id"
-            className="input"
-            value={cycleId}
-            onChange={(event) => onCycleIdChange(event.target.value)}
-            disabled={!canManageCycleSelection}
-            style={{ marginTop: "0.2rem" }}
-          >
-            <option value="">Select cycle</option>
-            {cycleOptions.map((option) => (
-              <option key={`cycle-option-${option.id}`} value={String(option.id)}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          {selectableCycleOptions.length > 1 ? (
+            /* Defensive fallback only: the business rule is a single active
+               cycle, so this dropdown should rarely (if ever) render. */
+            <select
+              id="cycle-id"
+              className="input"
+              value={cycleId}
+              onChange={(event) => onCycleIdChange(event.target.value)}
+              disabled={!canManageCycleSelection}
+              style={{ marginTop: "0.2rem" }}
+            >
+              <option value="">Select cycle</option>
+              {selectableCycleOptions.map((option) => (
+                <option
+                  key={`cycle-option-${option.id}`}
+                  value={String(option.id)}
+                  disabled={canManageCycleSelection && option.isActive === false}
+                >
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            /* Single active cycle: no choice to make — display it read-only. */
+            <div
+              id="cycle-id"
+              className="input"
+              aria-label="Cycle"
+              style={{
+                marginTop: "0.2rem",
+                padding: "0.45rem 0.6rem",
+                background: "var(--surface-muted, transparent)",
+                cursor: "default",
+              }}
+            >
+              {activeCycleLabel || "No active cycle"}
+            </div>
+          )}
           {!canManageCycleSelection ? (
             <p style={{ margin: "0.22rem 0 0", fontSize: "0.74rem", color: "var(--ink-soft)" }}>
               Cycle is managed by your manager/admin.

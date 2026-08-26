@@ -9,6 +9,50 @@ on:
       - Pure-SPA-BFF
 
 jobs:
+  rls-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: okr
+          POSTGRES_PASSWORD: okr
+          POSTGRES_DB: okr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U okr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      OKR_DATABASE_URL: postgresql+psycopg2://okr:okr@localhost:5432/okr
+      OKR_ALLOW_NON_SUPABASE_DB: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            backend_app/requirements.txt
+
+      - name: Install Python dependencies
+        run: pip install -r backend_app/requirements.txt
+
+      - name: Apply migrations
+        run: python -m alembic upgrade head
+
+      - name: RLS Coverage Gate
+        run: python scripts/check_rls_enabled.py
+
   backend-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -42,6 +86,12 @@ jobs:
       - name: Docs HQ Link Check
         run: python scripts/check_docs_hq_links.py
 
+      - name: OpenAPI Drift Gate
+        run: python scripts/check_openapi_drift.py
+
+      - name: BFF Allowlist Drift Gate
+        run: python scripts/generate_bff_allowlist.py --check
+
       - name: Deploy Config Template Gate
         run: python scripts/check_deploy_config.py --mode template
 
@@ -50,6 +100,9 @@ jobs:
 
       - name: Quality Baseline Expiry Gate
         run: python scripts/check_quality_gate_baseline.py
+
+      - name: Insert Payload Schema Contract Gate (offline)
+        run: python scripts/check_insert_contract.py --from-baseline
 
       - name: Dependency Vulnerability Scan
         run: python scripts/verify_dependency_scans.py
@@ -147,6 +200,9 @@ jobs:
 
       - name: Install SPA BFF dependencies
         run: npm ci --prefix spa-bff
+
+      - name: SPA BFF allowlist drift gate
+        run: npm --prefix spa-bff run check:allowlist
 
       - name: Install SPA Web dependencies
         run: npm ci --prefix spa-web

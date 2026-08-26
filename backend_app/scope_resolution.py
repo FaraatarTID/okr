@@ -85,6 +85,22 @@ def _resolve_actor_scope(
         owner_ids.add(actor_id_int)
         usernames.add(str(actor.username))
 
+    # Admin-owned cycles are GLOBAL (visible to every scope), so scopes need
+    # to know which users are admins to evaluate cycle visibility.
+    admin_id_rows = list(
+        session.exec(
+            select(User.id)
+            .where(User.is_active == True)  # noqa: E712
+            .where(User.role == UserRole.ADMIN)
+        ).all()
+    )
+    admin_ids: set[int] = set()
+    for row in admin_id_rows:
+        try:
+            admin_ids.add(int(row))
+        except (TypeError, ValueError):
+            continue
+
     return {
         "is_admin": role == UserRole.ADMIN,
         "role": str(role.value if hasattr(role, "value") else role),
@@ -98,6 +114,7 @@ def _resolve_actor_scope(
         ),
         "owner_ids": owner_ids,
         "usernames": usernames,
+        "admin_ids": admin_ids,
     }
 
 
@@ -166,6 +183,32 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
         owner_ids.add(actor_id_int)
         usernames.add(str(actor.get("username") or actor_username))
 
+    # Admin-owned cycles are GLOBAL (visible to every scope), so scopes need
+    # to know which users are admins to evaluate cycle visibility.
+    admin_ids: set[int] = set()
+    all_users_rows = list(
+        (
+            read_query_via_supabase_api(
+                kind="users.all",
+                params={},
+                actor=str(actor_username or "").strip(),
+            )
+            or {}
+        ).get("users")
+        or []
+    )
+    for row in all_users_rows:
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("role") or "").strip().lower() != "admin":
+            continue
+        try:
+            admin_id_int = int(row.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if admin_id_int > 0:
+            admin_ids.add(admin_id_int)
+
     manager_id_raw = actor.get("manager_id")
     manager_id = int(manager_id_raw) if manager_id_raw is not None else None
     return {
@@ -177,6 +220,7 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
         "manager_id": manager_id,
         "owner_ids": owner_ids,
         "usernames": usernames,
+        "admin_ids": admin_ids,
     }
 
 
@@ -291,11 +335,29 @@ def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
     )[0]
 
 
+def _scope_admin_ids(scope: dict[str, Any]) -> set[int]:
+    """IDs of active admin users, per the approved per-manager cycle design:
+    admin-owned cycles are GLOBAL and visible to every scope."""
+    raw = scope.get("admin_ids")
+    if not isinstance(raw, (set, frozenset, list, tuple)):
+        return set()
+    output: set[int] = set()
+    for value in raw:
+        try:
+            output.add(int(value))
+        except (TypeError, ValueError):
+            continue
+    return output
+
+
 def _cycle_owner_match(scope: dict[str, Any], cycle: Any) -> bool:
     if bool(scope.get("is_admin", False)):
         return True
     cycle_owner = _scope_cycle_owner_id(cycle)
     if cycle_owner is None:
+        return True
+    # Admin-owned cycles are global: visible to managers and members alike.
+    if cycle_owner in _scope_admin_ids(scope):
         return True
     role = _scope_role(scope)
     actor_id = scope.get("actor_id")
@@ -408,6 +470,7 @@ __all__ = [
     "_scope_cycle_id",
     "_scope_cycle_is_active",
     "_scope_cycle_owner_id",
+    "_scope_admin_ids",
     "_scope_role",
     "_resolve_actor",
     "_resolve_actor_scope",

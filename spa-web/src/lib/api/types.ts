@@ -169,13 +169,8 @@ export interface AdminDbRestoreResponse {
   unknown_tables?: string[];
 }
 
-export interface AsyncJobView {
-  id: string;
-  kind: string;
-  status: string;
-  result?: Record<string, unknown> | null;
-  error_text?: string | null;
-}
+// AsyncJobView moved to generated types: see lib/api/jobs.ts
+// (type alias to components["schemas"]["JobView"] from the OpenAPI artifact).
 
 export interface AlignmentMutationResponse {
   id: number;

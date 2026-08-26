@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
 import type {
   AdminAiHealthResponse,
@@ -15,6 +15,16 @@ import type {
 } from "@/lib/api";
 
 export type AdminTab = "cycles" | "users" | "teams" | "security" | "backup" | "audit" | "ai";
+
+const ADMIN_TABS: ReadonlyArray<{ id: AdminTab; label: string }> = [
+  { id: "cycles", label: "Cycles" },
+  { id: "users", label: "Users" },
+  { id: "teams", label: "Teams" },
+  { id: "security", label: "Security" },
+  { id: "backup", label: "Backup" },
+  { id: "audit", label: "Audit" },
+  { id: "ai", label: "AI/PDF Health" },
+];
 
 export type AdminUserDraft = {
   username: string;
@@ -47,6 +57,7 @@ export type AdminCreateCycleDraft = {
 
 type AdminModePanelProps = {
   isAdmin: boolean;
+  isManager: boolean;
   adminTab: AdminTab;
   setAdminTab: (value: AdminTab) => void;
   adminCreateCycleDraft: AdminCreateCycleDraft;
@@ -84,6 +95,7 @@ type AdminModePanelProps = {
   adminCycleError: string;
   adminDataError: string;
   adminCycleMessage: string;
+  setAdminCycleMessage: Dispatch<SetStateAction<string>>;
   adminCycles: CycleSummary[];
   onAdminSetCycleActive: (cycle: CycleSummary, isActive: boolean) => void;
   onAdminUpdateCycleOwner: (cycle: CycleSummary, ownerManagerId: number | null) => void;
@@ -100,6 +112,7 @@ type AdminModePanelProps = {
 
 export default function AdminModePanel({
   isAdmin,
+  isManager,
   adminTab,
   setAdminTab,
   adminCreateCycleDraft,
@@ -137,6 +150,7 @@ export default function AdminModePanel({
   adminCycleError,
   adminDataError,
   adminCycleMessage,
+  setAdminCycleMessage,
   adminCycles,
   onAdminSetCycleActive,
   onAdminUpdateCycleOwner,
@@ -151,6 +165,14 @@ export default function AdminModePanel({
   onAdminDeleteTeam,
 }: AdminModePanelProps) {
   const [cycleOwnerDraftById, setCycleOwnerDraftById] = useState<Record<number, string>>({});
+
+  // Status/error banners belong to the tab that produced them. Clear them when
+  // the admin switches tabs so e.g. "Cycle activated." does not linger on the
+  // Users/Teams/Backup tabs.
+  useEffect(() => {
+    setAdminCycleMessage("");
+  }, [adminTab, setAdminCycleMessage]);
+
   const managerOptions = useMemo(
     () =>
       adminUsers
@@ -201,35 +223,39 @@ export default function AdminModePanel({
   );
   return (
     <section className="panel" style={{ marginTop: "0.9rem", padding: "0.9rem" }}>
-      <p className="kicker">Admin</p>
-      <h2 style={{ margin: "0.1rem 0 0.45rem", fontSize: "1.05rem" }}>Platform Controls</h2>
-      {!isAdmin ? (
-        <p style={{ margin: 0, color: "var(--error)" }}>Admin role required.</p>
+      <p className="kicker">{isAdmin ? "Admin" : "Cycle Management"}</p>
+      <h2 style={{ margin: "0.1rem 0 0.45rem", fontSize: "1.05rem" }}>
+        {isAdmin ? "Platform Controls" : "Cycles"}
+      </h2>
+      {!isAdmin && !isManager ? (
+        <p style={{ margin: 0, color: "var(--error)", fontSize: "0.86rem" }}>
+          Admin or manager role required.
+        </p>
       ) : (
         <>
-          <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
-            <button className="primary-button" type="button" onClick={() => setAdminTab("cycles")}>
-              Cycles
-            </button>
-            <button className="primary-button" type="button" onClick={() => setAdminTab("users")}>
-              Users
-            </button>
-            <button className="primary-button" type="button" onClick={() => setAdminTab("teams")}>
-              Teams
-            </button>
-            <button className="primary-button" type="button" onClick={() => setAdminTab("security")}>
-              Security
-            </button>
-            <button className="primary-button" type="button" onClick={() => setAdminTab("backup")}>
-              Backup
-            </button>
-            <button className="primary-button" type="button" onClick={() => setAdminTab("audit")}>
-              Audit
-            </button>
-            <button className="primary-button" type="button" onClick={() => setAdminTab("ai")}>
-              AI/PDF Health
-            </button>
-          </div>
+          {isAdmin ? (
+            <div style={{ display: "flex", gap: "0.45rem", flexWrap: "wrap", marginBottom: "0.6rem" }}>
+              {(ADMIN_TABS as Array<{ id: AdminTab; label: string }>).map((tab) => {
+                const isActive = adminTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    className="primary-button"
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => setAdminTab(tab.id)}
+                    style={
+                      isActive
+                        ? { boxShadow: "0 0 0 2px var(--accent)", fontWeight: 700 }
+                        : { opacity: 0.55 }
+                    }
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
           <div
             style={{
               border: "1px solid var(--line)",
@@ -285,8 +311,14 @@ export default function AdminModePanel({
                     onChange={(event) =>
                       setAdminCreateCycleDraft((prev) => ({ ...prev, ownerManagerId: event.target.value }))
                     }
+                    disabled={!isAdmin}
+                    title={isAdmin ? undefined : "Cycles created by managers are anchored on the manager."}
                   >
-                    <option value="">Select cycle owner (manager/admin)</option>
+                    <option value="">
+                      {isAdmin
+                        ? "Select cycle owner (manager/admin)"
+                        : "You will be set as the cycle owner"}
+                    </option>
                     {managerOptions.map((row) => (
                       <option key={`cycle-owner-${row.id}`} value={String(row.id)}>
                         {String(row.display_name || row.username || "").trim() || row.username}

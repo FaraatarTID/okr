@@ -130,6 +130,11 @@ def test_postgres_rls_flags_for_security_hardened_tables(monkeypatch) -> None:
             "async_job",
             "team",
             "key_result",
+            "objective_alignment_link",
+            "backend_request_nonce",
+            "backend_rate_limit_counter",
+            "backend_idempotency_record",
+            "backend_distributed_state",
         ],
     )
 
