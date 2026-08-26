@@ -790,7 +790,9 @@ CREATE UNIQUE INDEX ux_work_log_task_open ON work_log (task_id) WHERE end_time I
     # Enable RLS on all user-data tables (Supabase hardening), matching the
     # behavior of the previously squashed enable_rls migration.
     for table in sorted(_all_tables() - _RLS_EXCLUDED):
-        op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+        # Quote the identifier so reserved words like "user" are accepted
+        # by PostgreSQL.
+        op.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
 
 
 def downgrade() -> None:
