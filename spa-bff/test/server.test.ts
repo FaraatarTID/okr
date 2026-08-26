@@ -10,6 +10,7 @@ const baseConfig: BffConfig = {
   backendApiUrl: "http://backend-api:8100",
   backendServiceToken: "test-token",
   backendSigningSecret: "test-signing-secret",
+  backendSigningKeyId: "test-key-id",
   requestTimeoutMs: 5_000,
   sessionSecret: "test-session-secret",
   sessionTtlSeconds: 28_800,

@@ -1,6 +1,6 @@
 # Per-Manager Active Cycles — Comprehensive Plan
 
-Documentation HQ: [README](README.md)
+Documentation HQ: [README](../README.md)
 
 Status: **CLOSED (implemented, deployed, and verified)**
 Date: 2026-08-26

@@ -1,6 +1,8 @@
 # Enterprise Hardening Plan (Large-Scale First Design)  
 ## Single Document: 12-week roadmap + reference architecture + gap matrix  
 
+Documentation HQ: [README](README.md)
+
 Date: 2026-08-26 (Asia/Tehran)  
 Scope: Current OKR platform codebase after the transport/contracts reliability sprint and BFF policy-generation work.
 

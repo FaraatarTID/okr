@@ -73,6 +73,15 @@ def upgrade() -> None:
         _create_all_fallback()
         return
     op.execute("""\
+CREATE TYPE asyncjobstatus AS ENUM (
+    'pending',
+    'running',
+    'succeeded',
+    'failed',
+    'cancelled'
+)
+""")
+    op.execute("""\
 CREATE TABLE audit_event (
 	id SERIAL NOT NULL, 
 	actor VARCHAR, 

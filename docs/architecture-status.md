@@ -1,6 +1,6 @@
 # Architecture Backlog — Status Ledger
 
-Documentation HQ: [README](README.md)
+Documentation HQ: [README](../README.md)
 
 Tracking ledger for [ARCHITECTURE_BACKLOG.md](../ARCHITECTURE_BACKLOG.md).
 Process definition: [ARCHITECTURE_DELIVERY_SYSTEM.md](ARCHITECTURE_DELIVERY_SYSTEM.md).

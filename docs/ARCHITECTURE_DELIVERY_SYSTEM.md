@@ -1,6 +1,6 @@
 # Architecture Delivery System — Operating Guide
 
-Documentation HQ: [README](README.md)
+Documentation HQ: [README](../README.md)
 
 This document defines the system used to track execution of
 [ARCHITECTURE_BACKLOG.md](../ARCHITECTURE_BACKLOG.md) — not just marking items

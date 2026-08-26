@@ -19,6 +19,12 @@ from typing import Any
 import pytest
 
 
+# Synthetic placeholder used only by this regression test. Not a real
+# credential; matches the convention used elsewhere in the test suite
+# (e.g. tests/test_e2e_playwright_spa_login_to_atlas.py).
+_TEST_USER_PASSWORD = "test-only-placeholder-password"
+
+
 class _CaptureInsert:
     """Fake _rest_insert that records the last payload per table."""
 
@@ -82,7 +88,7 @@ def test_user_create_payload_includes_required_columns(capture_insert):
 
     create_user_via_supabase_api(
         username="regression-user",
-        password="Not-A-Real-Pw-123",
+        password=_TEST_USER_PASSWORD,
         role="manager",
         display_name="Regression User",
         manager_id=None,
