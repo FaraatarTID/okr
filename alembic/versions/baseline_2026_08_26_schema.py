@@ -145,6 +145,12 @@ CREATE TYPE experimentdecision AS ENUM (
 )
 """)
     op.execute("""\
+CREATE TYPE expectedeffectdirection AS ENUM (
+    'UP',
+    'DOWN'
+)
+""")
+    op.execute("""\
 CREATE TABLE audit_event (
 	id SERIAL NOT NULL, 
 	actor VARCHAR, 
