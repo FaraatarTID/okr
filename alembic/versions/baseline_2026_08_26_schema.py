@@ -89,6 +89,42 @@ CREATE TYPE userrole AS ENUM (
 )
 """)
     op.execute("""\
+CREATE TYPE taskstatus AS ENUM (
+    'todo',
+    'in_progress',
+    'done',
+    'blocked'
+)
+""")
+    op.execute("""\
+CREATE TYPE metrictype AS ENUM (
+    'BOOLEAN',
+    'NUMERIC',
+    'PERCENT'
+)
+""")
+    op.execute("""\
+CREATE TYPE scoremode AS ENUM (
+    'UNWEIGHTED',
+    'WEIGHTED'
+)
+""")
+    op.execute("""\
+CREATE TYPE lifecyclestate AS ENUM (
+    'DRAFT',
+    'ACTIVE',
+    'GRADING',
+    'ARCHIVED'
+)
+""")
+    op.execute("""\
+CREATE TYPE experimentstatus AS ENUM (
+    'PLANNED',
+    'RUNNING',
+    'DECIDED'
+)
+""")
+    op.execute("""\
 CREATE TABLE audit_event (
 	id SERIAL NOT NULL, 
 	actor VARCHAR, 

@@ -299,6 +299,16 @@ def _normalize_mutation_route(
 def _normalize_allowlist_path(path_template: str) -> str:
     normalized = _ALLOWLIST_PATH_WITH_TYPE_RE.sub("{param}", path_template)
     normalized = _ALLOWLIST_PATH_PARAM_RE.sub("{param}", normalized)
+    # The BFF route policy enumerates node-create types as a single
+    # `/v1/nodes/{create_type}` template with a constrained regex. Collapse
+    # the policy's literal child paths (goal/objective/key_result/task) so
+    # they compare equal to the backend's generic `/v1/nodes/{...}` route.
+    if normalized.startswith("/v1/nodes/") and not normalized.startswith(
+        "/v1/nodes/{param}"
+    ):
+        suffix = normalized[len("/v1/nodes/"):]
+        if "/" not in suffix and suffix:
+            normalized = "/v1/nodes/{param}"
     return normalized
 
 
