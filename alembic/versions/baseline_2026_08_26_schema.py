@@ -125,6 +125,26 @@ CREATE TYPE experimentstatus AS ENUM (
 )
 """)
     op.execute("""\
+CREATE TYPE alignmenttype AS ENUM (
+    'SUPPORTS',
+    'CONTRIBUTES'
+)
+""")
+    op.execute("""\
+CREATE TYPE variationtype AS ENUM (
+    'COMMON_CAUSE',
+    'SPECIAL_CAUSE'
+)
+""")
+    op.execute("""\
+CREATE TYPE experimentdecision AS ENUM (
+    'ADOPT',
+    'REVERT',
+    'ITERATE',
+    'UNKNOWN'
+)
+""")
+    op.execute("""\
 CREATE TABLE audit_event (
 	id SERIAL NOT NULL, 
 	actor VARCHAR, 
