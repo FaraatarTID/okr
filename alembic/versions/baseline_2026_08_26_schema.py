@@ -82,6 +82,13 @@ CREATE TYPE asyncjobstatus AS ENUM (
 )
 """)
     op.execute("""\
+CREATE TYPE userrole AS ENUM (
+    'admin',
+    'manager',
+    'member'
+)
+""")
+    op.execute("""\
 CREATE TABLE audit_event (
 	id SERIAL NOT NULL, 
 	actor VARCHAR, 
