@@ -169,6 +169,44 @@ describe("useDeepLinkCycleBootstrap", () => {
     });
   });
 
+  it("prefers the global active cycle for admins while retaining manager cycles", async () => {
+    const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
+    readCyclesQueryMock.mockImplementation(async ({ kind }: { kind: string }) =>
+      kind === "cycles.active"
+        ? ([
+            { id: 9, title: "Manager Q3", is_active: true, owner_manager_id: 2 },
+            { id: 3, title: "Global Q1", is_active: true, owner_manager_id: null },
+          ] as CycleSummary[])
+        : ([] as CycleSummary[]),
+    );
+    const setters = createSetters();
+
+    renderHook(() =>
+      useDeepLinkCycleBootstrap({
+        user: { ...baseUser, role: "admin" },
+        parsedCycleId: null,
+        resolvedCycle: null,
+        sessionCycles: [],
+        deepLinkReady: true,
+        deepLinkQuery: "",
+        ...setters,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(setters.setCycleId).toHaveBeenCalledWith("3");
+      expect(setters.setResolvedCycle).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 3, title: "Global Q1" }),
+      );
+      expect(setters.setSessionCycles).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({ id: 9, owner_manager_id: 2 }),
+          expect.objectContaining({ id: 3, owner_manager_id: null }),
+        ]),
+      );
+    });
+  });
+
   it("hydrates parsed cycle details from cycles.all when needed", async () => {
     const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
     readCyclesQueryMock.mockImplementation(async ({ kind }: { kind: string }) =>

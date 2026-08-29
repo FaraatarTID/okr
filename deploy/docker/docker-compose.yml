@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: okr-postgres
     environment:
       - POSTGRES_USER=${OKR_POSTGRES_USER:-okr}
       - POSTGRES_PASSWORD=${OKR_POSTGRES_PASSWORD:-okr_dev_password}
@@ -20,7 +19,6 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    container_name: okr-backend-api
     image: ${IMAGE:-okr-backend:local}
     environment:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
@@ -71,7 +69,6 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    container_name: okr-backend-worker
     image: ${IMAGE:-okr-backend:local}
     environment:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
@@ -105,7 +102,6 @@ services:
     build:
       context: ../../spa-bff
       dockerfile: Dockerfile
-    container_name: okr-spa-bff
     image: ${SPA_BFF_IMAGE:-okr-spa-bff:local}
     environment:
       - NODE_ENV=${NODE_ENV:-production}
@@ -130,7 +126,6 @@ services:
     build:
       context: ../../spa-web
       dockerfile: Dockerfile
-    container_name: okr-spa-web
     image: ${SPA_WEB_IMAGE:-okr-spa-web:local}
     environment:
       - PORT=3000

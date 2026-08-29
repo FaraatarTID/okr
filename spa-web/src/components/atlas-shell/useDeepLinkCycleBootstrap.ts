@@ -177,7 +177,11 @@ export default function useDeepLinkCycleBootstrap({
       const ownActiveCycle = activeCycles.find(
         (cycle) => cycle.owner_manager_id === user.id,
       );
-      const explicitActive = ownActiveCycle || activeCycles[0];
+      const globalActiveCycle = activeCycles.find(
+        (cycle) => cycle.owner_manager_id == null,
+      );
+      const explicitActive =
+        ownActiveCycle || (user.role === "admin" ? globalActiveCycle : null) || activeCycles[0];
       if (explicitActive) {
         return explicitActive;
       }
@@ -186,10 +190,9 @@ export default function useDeepLinkCycleBootstrap({
 
     void (async () => {
       try {
-        // Fetch the complete list of cycles for the dropdown AND the active
-        // cycle(s) in parallel. The business rule is: exactly one cycle is
-        // active at a time (activated by an admin), and that cycle must
-        // always be present and selectable in the top-bar dropdown.
+        // Fetch the complete list of cycles for the dropdown AND all visible
+        // active cycles in parallel. Each owner may have one active cycle;
+        // admins prefer their global cycle for automatic selection.
         const [allCycles, activeCycles] = await Promise.all([
           readCyclesQuery({
             actor_username: user.username,
@@ -237,8 +240,8 @@ export default function useDeepLinkCycleBootstrap({
           }
         }
 
-        // When no explicit cycle ID is present *and* the deep-link processing is ready, select the
-        // single active cycle.
+        // When no explicit cycle ID is present *and* deep-link processing is
+        // ready, select the scoped preferred active cycle.
         if (!parsedCycleId && deepLinkReady) {
           const selectedActive = authoritativeActive;
           if (selectedActive) {

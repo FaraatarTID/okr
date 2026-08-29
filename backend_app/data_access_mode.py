@@ -17,7 +17,10 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Any, Optional
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass
+from typing import Any, Iterator, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +29,59 @@ _MODE_TCP = "database"
 
 _FALLBACK_WARN_LOCK = threading.Lock()
 _FALLBACK_WARNED = False
+
+
+@dataclass(frozen=True)
+class DataAccessContext:
+    """Request-local strategy preference and fallback policy."""
+
+    actor: Optional[str] = None
+    request_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+    preferred_mode: Optional[str] = None
+    allow_read_fallback: bool = True
+    allow_mutation_fallback: bool = False
+
+
+_ACCESS_CONTEXT: ContextVar[Optional[DataAccessContext]] = ContextVar(
+    "okr_data_access_context", default=None
+)
+
+
+def current_data_access_context() -> Optional[DataAccessContext]:
+    return _ACCESS_CONTEXT.get()
+
+
+@contextmanager
+def data_access_context(
+    *,
+    actor: Optional[str] = None,
+    request_id: Optional[str] = None,
+    correlation_id: Optional[str] = None,
+    preferred_mode: Optional[str] = None,
+    allow_read_fallback: bool = True,
+    allow_mutation_fallback: bool = False,
+) -> Iterator[DataAccessContext]:
+    """Bind a strategy preference to the current request/task context."""
+    context = DataAccessContext(
+        actor=(str(actor).strip() or None) if actor is not None else None,
+        request_id=(str(request_id).strip() or None)
+        if request_id is not None
+        else None,
+        correlation_id=(str(correlation_id).strip() or None)
+        if correlation_id is not None
+        else None,
+        preferred_mode=(str(preferred_mode).strip() or None)
+        if preferred_mode is not None
+        else None,
+        allow_read_fallback=bool(allow_read_fallback),
+        allow_mutation_fallback=bool(allow_mutation_fallback),
+    )
+    token = _ACCESS_CONTEXT.set(context)
+    try:
+        yield context
+    finally:
+        _ACCESS_CONTEXT.reset(token)
 
 
 def _env_explicit_api_mode() -> bool:
@@ -68,6 +124,12 @@ def resolve_read_mode() -> str:
        (warned once per outage).
     4. Otherwise -> TCP (will fail closed with the usual transport error).
     """
+    context = current_data_access_context()
+    if context is not None and context.preferred_mode:
+        if context.preferred_mode == _MODE_HTTPS:
+            return _MODE_HTTPS
+        if context.preferred_mode == _MODE_TCP:
+            return _MODE_TCP
     if _env_explicit_api_mode():
         return _MODE_HTTPS
 

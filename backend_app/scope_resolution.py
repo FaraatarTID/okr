@@ -325,12 +325,27 @@ def _require_admin_or_manager_actor_scope(actor: str) -> None:
         )
 
 
-def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
+def _pick_primary_active_cycle(
+    cycles: list[Any], scope: dict[str, Any] | None = None
+) -> Any | None:
     if not cycles:
         return None
+    preferred_owner_ids: set[int] = set()
+    if scope:
+        if _scope_role(scope) == "member" and scope.get("manager_id") is not None:
+            preferred_owner_ids.add(int(scope["manager_id"]))
+        elif _scope_role(scope) == "manager" and scope.get("actor_id") is not None:
+            preferred_owner_ids.add(int(scope["actor_id"]))
+        elif bool(scope.get("is_admin", False)):
+            preferred_owner_ids = _scope_admin_ids(scope)
+
+    def sort_key(cycle: Any) -> tuple[int, int]:
+        owner_id = _scope_cycle_owner_id(cycle)
+        return (int(owner_id in preferred_owner_ids), _scope_cycle_id(cycle))
+
     return sorted(
         cycles,
-        key=lambda cycle: _scope_cycle_id(cycle),
+        key=sort_key,
         reverse=True,
     )[0]
 

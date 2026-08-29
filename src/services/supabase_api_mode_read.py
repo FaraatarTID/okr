@@ -41,8 +41,6 @@ def read_query_via_supabase_api(
     normalized = str(kind or "").strip()
 
     if normalized == "ritual.snapshot":
-        from datetime import timedelta
-
         days_threshold = int(params.get("days_threshold") or 7)
         stale_before = datetime.now(timezone.utc) - timedelta(days=days_threshold)
         window_start = str(params.get("window_start") or "").strip()

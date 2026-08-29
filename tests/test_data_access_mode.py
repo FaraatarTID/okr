@@ -15,6 +15,24 @@ def _reset_state(monkeypatch):
 
 
 class TestResolveReadMode:
+    def test_request_context_preference_does_not_leak(self, monkeypatch):
+        monkeypatch.setattr(dam, "_env_explicit_api_mode", lambda: False)
+        import src.database as database
+
+        monkeypatch.setattr(database, "is_direct_db_available", lambda: True)
+        assert dam.resolve_read_mode() == "database"
+        with dam.data_access_context(preferred_mode="supabase_api"):
+            assert dam.resolve_read_mode() == "supabase_api"
+        assert dam.resolve_read_mode() == "database"
+
+    def test_invalid_request_context_preference_uses_legacy_resolution(self, monkeypatch):
+        monkeypatch.setattr(dam, "_env_explicit_api_mode", lambda: False)
+        import src.database as database
+
+        monkeypatch.setattr(database, "is_direct_db_available", lambda: True)
+        with dam.data_access_context(preferred_mode="invalid"):
+            assert dam.resolve_read_mode() == "database"
+
     def test_explicit_api_mode_pins_https(self, monkeypatch):
         monkeypatch.setattr(
             dam, "_env_explicit_api_mode", lambda: True, raising=True
