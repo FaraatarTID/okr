@@ -296,8 +296,10 @@ def _resolve_effective_cycle_id_for_scope(
     )
 
 
-def _pick_primary_active_cycle(cycles: list[Any]) -> Any | None:
-    return _pick_primary_active_cycle_impl(cycles=cycles)
+def _pick_primary_active_cycle(
+    cycles: list[Any], scope: dict[str, Any] | None = None
+) -> Any | None:
+    return _pick_primary_active_cycle_impl(cycles=cycles, scope=scope)
 
 
 def _require_admin_actor_scope(actor: str) -> None:

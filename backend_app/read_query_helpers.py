@@ -385,7 +385,8 @@ def read_query_payload(
                     scope, list(main.get_active_cycles() or [])
                 )
             primary = main._pick_primary_active_cycle(
-                [c for c in cycles if bool(getattr(c, "is_active", False))]
+                [c for c in cycles if bool(getattr(c, "is_active", False))],
+                scope,
             )
             cycles = [primary] if primary is not None else []
         return {
@@ -399,7 +400,7 @@ def read_query_payload(
     if kind == "cycles.active":
         cycles = main._visible_cycles_for_scope(scope, list(main.get_active_cycles() or []))
         if main._scope_role(scope) == "member":
-            primary = main._pick_primary_active_cycle(cycles)
+            primary = main._pick_primary_active_cycle(cycles, scope)
             cycles = [primary] if primary is not None else []
         return {
             "cycles": [

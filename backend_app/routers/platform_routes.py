@@ -346,9 +346,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                 )
             else:
                 owner_ids = sorted(allowed_owner_ids)
-        if main.is_supabase_api_mode_enabled() or (
-            _effective_read_mode() == "supabase_api"
-        ):
+        if _effective_read_mode() == "supabase_api":
             return main.build_atlas_scope_snapshot_via_supabase_api(
                 cycle_id=int(cycle_id),
                 owner_ids=owner_ids,
@@ -399,9 +397,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
             )
         if not usernames:
             return {}
-        if main.is_supabase_api_mode_enabled() or (
-            _effective_read_mode() == "supabase_api"
-        ):
+        if _effective_read_mode() == "supabase_api":
             return main.get_leadership_metrics_via_supabase_api(
                 usernames=list(usernames),
                 cycle_id=int(cycle_id),

@@ -10,6 +10,7 @@ import time
 import uuid
 
 from src.observability import observability_context
+from backend_app.data_access_mode import current_data_access_context
 from src.observability_metrics import (
     log_payload as build_observability_log_payload,
     record_api_request,
@@ -104,10 +105,16 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
 
         actor = request.headers.get("x-okr-actor")
         status_code = 500
-        with observability_context(
-            correlation_id=correlation_id,
+        from backend_app.data_access_mode import data_access_context
+
+        with data_access_context(
+            actor=actor,
             request_id=request_id,
+            correlation_id=correlation_id,
+        ), observability_context(
+            correlation_id=correlation_id, request_id=request_id
         ):
+            access_context = current_data_access_context()
             try:
                 response = await call_next(request)
                 status_code = int(getattr(response, "status_code", 500) or 500)
@@ -121,6 +128,7 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                     status_code=500,
                     duration_ms=duration_ms,
                     actor=actor,
+                    strategy=(access_context.preferred_mode if access_context else None),
                 )
                 logger.exception(
                     build_observability_log_payload(

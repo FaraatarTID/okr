@@ -14,6 +14,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _restore_mode_resolver_bindings():
+    import backend_app.data_access_mode as data_access_mode
+    import backend_app.read_query_helpers as read_query_helpers
+
+    original_data_access_resolver = data_access_mode.resolve_read_mode
+    original_query_resolver = read_query_helpers.resolve_read_mode
+    try:
+        yield
+    finally:
+        data_access_mode.resolve_read_mode = original_data_access_resolver
+        read_query_helpers.resolve_read_mode = original_query_resolver
+
+
 def _make_main(
     *,
     supabase_mode: bool = True,

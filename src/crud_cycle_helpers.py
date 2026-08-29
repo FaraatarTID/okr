@@ -38,13 +38,14 @@ def _validate_cycle_owner(
 
 
 def _is_last_active_cycle(
-    *, crud_module, session, exclude_cycle_id: int
+    *, crud_module, session, exclude_cycle_id: int, owner_manager_id: Optional[int] = None
 ) -> bool:
-    """True when no OTHER cycle is active (i.e. this one is the last)."""
+    """True when no OTHER cycle for the same owner is active."""
     others = session.exec(
         crud_module.select(crud_module.Cycle).where(
             crud_module.Cycle.is_active,
             crud_module.Cycle.id != exclude_cycle_id,
+            crud_module.Cycle.owner_manager_id == owner_manager_id,
         )
     ).all()
     return not list(others)
@@ -98,11 +99,12 @@ def create_cycle_from_crud(
             elif resolved_owner_manager_id is None:
                 resolved_owner_manager_id = actor_id
 
-        # Invariant: at most one active cycle. Activating a new cycle
-        # deactivates all others first.
+        # Invariant: at most one active cycle per owner. Global cycles use a
+        # NULL owner and therefore do not affect manager-owned cycles.
         if is_active:
             session.query(crud_module.Cycle).filter(
-                crud_module.Cycle.is_active
+                crud_module.Cycle.is_active,
+                crud_module.Cycle.owner_manager_id == resolved_owner_manager_id,
             ).update({"is_active": False}, synchronize_session=False)
 
         cycle = crud_module.Cycle(
@@ -197,11 +199,15 @@ def update_cycle_from_crud(
         cycle.title = title
         cycle.start_date = start_date
         cycle.end_date = end_date
-        # Invariant: at most one active cycle. Activating this cycle
-        # deactivates all others first.
+        target_owner_manager_id = owner_manager_id
+        if actor is not None and getattr(actor, "role", None) == crud_module.UserRole.MANAGER:
+            target_owner_manager_id = int(getattr(actor, "id", 0) or 0)
+        elif target_owner_manager_id is None:
+            target_owner_manager_id = getattr(cycle, "owner_manager_id", None)
         if is_active and not bool(getattr(cycle, "is_active", False)):
             session.query(crud_module.Cycle).filter(
-                crud_module.Cycle.is_active
+                crud_module.Cycle.is_active,
+                crud_module.Cycle.owner_manager_id == target_owner_manager_id,
             ).update({"is_active": False}, synchronize_session=False)
         # Guard: deactivating the only active cycle would leave the workspace
         # without a current period. Require activating another cycle instead.
@@ -209,7 +215,8 @@ def update_cycle_from_crud(
             not is_active
             and bool(getattr(cycle, "is_active", False))
             and _is_last_active_cycle(crud_module=crud_module, session=session,
-                                      exclude_cycle_id=cycle_id)
+                                      exclude_cycle_id=cycle_id,
+                                      owner_manager_id=getattr(cycle, "owner_manager_id", None))
         ):
             raise ValueError(
                 "Cannot deactivate the only active cycle. "

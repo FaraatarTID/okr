@@ -100,6 +100,8 @@ class _RouteMetrics:
     errors: int = 0
     latencies: _LatencyTracker = field(default_factory=_LatencyTracker)
     status: Counter[str] = field(default_factory=lambda: Counter())
+    strategies: Counter[str] = field(default_factory=lambda: Counter())
+    fallback_reasons: Counter[str] = field(default_factory=lambda: Counter())
     last_seen_unix_ts: float = 0.0
 
 
@@ -141,6 +143,8 @@ def record_api_request(
     status_code: int,
     duration_ms: float,
     actor: str | None = None,
+    strategy: str | None = None,
+    fallback_reason: str | None = None,
 ) -> None:
     metric_key = _route_key(method, route)
     status_key = _status_group(status_code)
@@ -152,6 +156,10 @@ def record_api_request(
         bucket.status[str(status_key)] += 1
         if actor:
             bucket.status[f"actor:{_safe_text(actor, max_length=24)}"] += 1
+        if strategy:
+            bucket.strategies[_safe_text(strategy, max_length=32)] += 1
+        if fallback_reason:
+            bucket.fallback_reasons[_safe_text(fallback_reason, max_length=64)] += 1
         if int(status_code) >= 400:
             bucket.errors += 1
 
@@ -236,6 +244,8 @@ def snapshot() -> dict[str, Any]:
                         route_bucket.last_seen_unix_ts, tz=timezone.utc
                     ).isoformat(),
                     "status_counts": dict(route_bucket.status),
+                    "strategy_counts": dict(route_bucket.strategies),
+                    "fallback_reason_counts": dict(route_bucket.fallback_reasons),
                     **value_snapshot,
                 }
             )
