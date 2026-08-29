@@ -203,6 +203,10 @@ class AsyncJobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+def _enum_values(enum_type: type[Enum]) -> list[str]:
+    return [item.value for item in enum_type]
+
+
 class AsyncJob(SQLModelTable, table=True):
     """Durable async job record for backend worker execution."""
 
@@ -226,7 +230,17 @@ class AsyncJob(SQLModelTable, table=True):
 
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True, index=True)
     kind: str = Field(index=True)
-    status: AsyncJobStatus = Field(default=AsyncJobStatus.PENDING, index=True)
+    status: AsyncJobStatus = Field(
+        default=AsyncJobStatus.PENDING,
+        sa_column=Column(
+            SAEnum(
+                AsyncJobStatus,
+                name="asyncjobstatus",
+                values_callable=_enum_values,
+            ),
+            nullable=False,
+        ),
+    )
     actor_username: Optional[str] = Field(default=None, index=True)
     team_id: Optional[int] = Field(default=None, foreign_key="team.id", index=True)
     idempotency_key: Optional[str] = Field(default=None, index=True)
@@ -507,7 +521,17 @@ class Task(NodeBase, SQLModelTable, table=True):
     key_result_id: int = Field(foreign_key="key_result.id", index=True)
 
     # Task-specific fields
-    status: TaskStatus = Field(default=TaskStatus.TODO)
+    status: TaskStatus = Field(
+        default=TaskStatus.TODO,
+        sa_column=Column(
+            SAEnum(
+                TaskStatus,
+                name="taskstatus",
+                values_callable=_enum_values,
+            ),
+            nullable=False,
+        ),
+    )
     start_date: Optional[datetime] = None
     estimated_minutes: int = Field(default=0)
     total_time_spent: int = Field(default=0)  # Cached sum of work logs (minutes)
