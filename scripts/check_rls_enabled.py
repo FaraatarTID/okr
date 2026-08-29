@@ -19,12 +19,16 @@ from __future__ import annotations
 import os
 import sys
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import bindparam, create_engine, text
 
 
-# Tables intentionally excluded from the check (none currently; kept for
-# future exceptions such as third-party extension tables).
-EXCLUDED_TABLES: frozenset[str] = frozenset()
+# Tables intentionally excluded from the check (metadata / non-user data).
+EXCLUDED_TABLES: frozenset[str] = frozenset(
+    {
+        # Alembic migration metadata — not user data, RLS is meaningless.
+        "alembic_version",
+    }
+)
 
 # PostgREST roles that must hold no grants on backend-internal tables.
 # Verified only when the roles exist (Supabase); skipped on plain Postgres.
@@ -71,11 +75,11 @@ def _tables_missing_rls(engine) -> list[tuple[str, bool]]:
           AND c.relname NOT IN :excluded
         ORDER BY c.relname
         """
-    )
+    ).bindparams(bindparam("excluded", expanding=True))
     with engine.connect() as conn:
         rows = conn.execute(
             query,
-            {"excluded": tuple(EXCLUDED_TABLES) or ("__none__",)},
+            {"excluded": tuple(EXCLUDED_TABLES)},
         ).fetchall()
     return [(row.table_name, row.rls_enabled) for row in rows]
 
@@ -166,52 +170,51 @@ def main() -> int:
     engine = create_engine(url)
     try:
         results = _tables_missing_rls(engine)
+        missing = [name for name, rls in results if not rls]
+        if missing:
+            print("check_rls_enabled: FAIL — tables without RLS:")
+            for name in missing:
+                print(f"  - public.{name}")
+            return 1
+
+        try:
+            violations = _role_grant_violations(engine)
+        except Exception as exc:  # noqa: BLE001
+            print(f"check_rls_enabled: WARN — grant check failed: {exc}")
+            violations = None
+
+        if violations:
+            print("check_rls_enabled: FAIL — PostgREST role grants on owner-only tables:")
+            for item in violations:
+                print(f"  - {item}")
+            return 1
+
+        try:
+            policy_violations = _permissive_policy_violations(engine)
+        except Exception as exc:  # noqa: BLE001
+            print(f"check_rls_enabled: WARN — policy check failed: {exc}")
+            policy_violations = []
+
+        if policy_violations:
+            print("check_rls_enabled: FAIL — permissive policies exposed to anon/authenticated:")
+            for item in policy_violations:
+                print(f"  - {item}")
+            return 1
+
+        checks = [f"{len(results)} tables checked, all have RLS"]
+        checks.append(
+            "grant check skipped (no PostgREST roles)"
+            if violations is None
+            else "grant check passed"
+        )
+        checks.append("policy check passed")
+        print(f"check_rls_enabled: OK — {'; '.join(checks)}.")
+        return 0
     except Exception as exc:  # noqa: BLE001
         print(f"check_rls_enabled: FAILED to inspect database: {exc}")
         return 1
     finally:
         engine.dispose()
-
-    missing = [name for name, rls in results if not rls]
-    if missing:
-        print("check_rls_enabled: FAIL — tables without RLS:")
-        for name in missing:
-            print(f"  - public.{name}")
-        return 1
-
-    try:
-        violations = _role_grant_violations(engine)
-    except Exception as exc:  # noqa: BLE001
-        print(f"check_rls_enabled: WARN — grant check failed: {exc}")
-        violations = None
-
-    if violations:
-        print("check_rls_enabled: FAIL — PostgREST role grants on owner-only tables:")
-        for item in violations:
-            print(f"  - {item}")
-        return 1
-
-    try:
-        policy_violations = _permissive_policy_violations(engine)
-    except Exception as exc:  # noqa: BLE001
-        print(f"check_rls_enabled: WARN — policy check failed: {exc}")
-        policy_violations = []
-
-    if policy_violations:
-        print("check_rls_enabled: FAIL — permissive policies exposed to anon/authenticated:")
-        for item in policy_violations:
-            print(f"  - {item}")
-        return 1
-
-    checks = [f"{len(results)} tables checked, all have RLS"]
-    checks.append(
-        "grant check skipped (no PostgREST roles)"
-        if violations is None
-        else "grant check passed"
-    )
-    checks.append("policy check passed")
-    print(f"check_rls_enabled: OK — {'; '.join(checks)}.")
-    return 0
 
 
 if __name__ == "__main__":

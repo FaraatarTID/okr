@@ -100,8 +100,8 @@ def test_user_create_payload_includes_required_columns(capture_insert):
     payload = capture_insert.payloads.get("user")
     assert payload is not None
     _assert_required_columns("user", payload)
-    # Role must be stored uppercase to match the live 'userrole' enum values.
-    assert payload["role"] == "MANAGER"
+    # Role uses the lowercase labels declared by the canonical schema enum.
+    assert payload["role"] == "manager"
 
 
 def test_team_create_payload_includes_required_columns(capture_insert):

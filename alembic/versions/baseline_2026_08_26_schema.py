@@ -794,6 +794,14 @@ CREATE UNIQUE INDEX ux_work_log_task_open ON work_log (task_id) WHERE end_time I
         # by PostgreSQL.
         op.execute(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
 
+    op.execute(
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM pg_roles "
+        "WHERE rolname IN ('anon', 'authenticated')) "
+        'THEN REVOKE ALL ON TABLE "objective_alignment_link" '
+        "FROM anon, authenticated; END IF; END $$"
+    )
+
 
 def downgrade() -> None:
     if not _is_postgres():

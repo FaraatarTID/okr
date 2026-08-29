@@ -7,6 +7,7 @@ on:
       - main
       - master
       - Pure-SPA-BFF
+      - SPA-BFF-clean
 
 jobs:
   rls-gate:

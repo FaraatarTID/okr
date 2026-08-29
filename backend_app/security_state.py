@@ -367,6 +367,15 @@ class DatabaseSecurityStateStore:
                                     "ENABLE ROW LEVEL SECURITY"
                                 )
                             )
+                            conn.execute(
+                                text(
+                                    "DO $$ BEGIN "
+                                    "IF EXISTS (SELECT 1 FROM pg_roles "
+                                    "WHERE rolname IN ('anon', 'authenticated')) "
+                                    f'THEN REVOKE ALL ON TABLE "{_table}" '
+                                    "FROM anon, authenticated; END IF; END $$"
+                                )
+                            )
                     self._warn_if_migrations_pending(conn)
             except SQLAlchemyError as exc:
                 raise SecurityStateUnavailableError(

@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Any, List, Optional
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, Index, event, text
+from sqlalchemy import CheckConstraint, Column, Enum as SAEnum, Index, event, text
 from sqlalchemy import TextClause
 from sqlalchemy.orm import relationship
 from sqlmodel import SQLModel, Field, Relationship
@@ -144,7 +144,17 @@ class User(SQLModelTable, table=True):
     must_change_password: bool = Field(default=False, index=True)
     password_changed_at: Optional[datetime] = None
     display_name: Optional[str] = None
-    role: UserRole = Field(default=UserRole.MEMBER)
+    role: UserRole = Field(
+        default=UserRole.MEMBER,
+        sa_column=Column(
+            SAEnum(
+                UserRole,
+                name="userrole",
+                values_callable=lambda enum_type: [item.value for item in enum_type],
+            ),
+            nullable=False,
+        ),
+    )
     manager_id: Optional[int] = Field(default=None, foreign_key="user.id")
     team_id: Optional[int] = Field(default=None, foreign_key="team.id", index=True)
     created_at: datetime = Field(default_factory=utc_now_naive)
