@@ -14,8 +14,10 @@ import {
   type AtlasTaskSnapshot,
 } from "@/lib/atlas";
 import {
+  type AuthUser,
   type CycleSummary,
 } from "@/lib/api";
+import useCyclesSource from "@/components/atlas-shell/useCyclesSource";
 import {
   DEFAULT_LENS,
   DEFAULT_MODE,
@@ -105,7 +107,10 @@ import {
   timelineStatusLabel,
 } from "@/components/atlas-shell/shellUiUtils";
 
-type ResolvedCycle = Pick<CycleSummary, "id" | "title" | "start_date" | "end_date">;
+type ResolvedCycle = Pick<
+  CycleSummary,
+  "id" | "title" | "start_date" | "end_date"
+> & { is_active?: boolean };
 type WeeklyPlanRead = {
   id: number;
   user_id: number;
@@ -347,6 +352,10 @@ export default function AtlasShell() {
     loadAdminHealth,
     loadAdminAuditSummary,
   } = useAdminResources();
+  const { refreshCycles: refreshSessionCycles } = useCyclesSource({
+    user,
+    setSessionCycles,
+  });
   const ownerFilterOptions = useMemo(() => {
     const deduped = new Map<number, string>();
     if (user?.id && user.id > 0) {
@@ -385,7 +394,7 @@ export default function AtlasShell() {
             return Number.isFinite(ownerId) && ownerId > 0 && selectedOwnerIds.includes(ownerId);
           })
         : sessionCycles;
-    const deduped = new Map<number, string>();
+    const deduped = new Map<number, { label: string; isActive: boolean }>();
     for (const cycle of ownerScopedCycles) {
       const cycleIdValue = Number(cycle.id);
       if (!Number.isFinite(cycleIdValue) || cycleIdValue <= 0) {
@@ -393,15 +402,23 @@ export default function AtlasShell() {
       }
       const period = cyclePeriodLabel(cycle);
       const title = String(cycle.title || "").trim() || `Cycle ${cycleIdValue}`;
-      deduped.set(cycleIdValue, period ? `${title} (${period})` : title);
+      deduped.set(cycleIdValue, {
+        label: period ? `${title} (${period})` : title,
+        isActive: Boolean(cycle.is_active),
+      });
     }
     if (selectedOwnerIds.length === 0 && resolvedCycle?.id && !deduped.has(resolvedCycle.id)) {
       const period = cyclePeriodLabel(resolvedCycle);
       const title = String(resolvedCycle.title || "").trim() || `Cycle ${resolvedCycle.id}`;
-      deduped.set(resolvedCycle.id, period ? `${title} (${period})` : title);
+      deduped.set(resolvedCycle.id, {
+        label: period ? `${title} (${period})` : title,
+        // The resolved cycle is what the workspace is actually showing; treat
+        // it as selectable even when its active flag is unknown.
+        isActive: true,
+      });
     }
     return Array.from(deduped.entries())
-      .map(([id, label]) => ({ id, label }))
+      .map(([id, value]) => ({ id, label: value.label, isActive: value.isActive }))
       .sort((left, right) => right.id - left.id);
   }, [resolvedCycle, selectedOwnerIds, sessionCycles]);
   const {
@@ -437,10 +454,12 @@ export default function AtlasShell() {
   } = useAdminActions({
     user,
     isAdmin,
+    isManager,
     adminUsers,
     setAdminCycleError,
     setAdminDataError,
     loadAdminCycles,
+    adminCycles,
     loadAdminUsersAndTeams,
     loadAdminResources,
     onCycleActivated: (cycle) => {
@@ -452,6 +471,7 @@ export default function AtlasShell() {
       });
       setCycleId(String(cycle.id));
     },
+    refreshSessionCycles,
     toIsoStart,
     toIsoEnd,
   });
@@ -1033,10 +1053,19 @@ export default function AtlasShell() {
     };
   }, [atlasRuntime, selectedMeta]);
 
-  const sidebarItems = useMemo(
-    () => (isAdmin ? SIDEBAR_ITEMS : SIDEBAR_ITEMS.filter((item) => item.mode !== "admin")),
-    [isAdmin],
-  );
+  const sidebarItems = useMemo(() => {
+    if (isAdmin) {
+      return SIDEBAR_ITEMS;
+    }
+    if (isManager) {
+      // Managers get a dedicated Cycles panel (per-manager active cycles).
+      return [
+        ...SIDEBAR_ITEMS.filter((item) => item.mode !== "admin"),
+        { id: "admin", label: "Cycles", mode: "admin", path: "/admin" },
+      ];
+    }
+    return SIDEBAR_ITEMS.filter((item) => item.mode !== "admin");
+  }, [isAdmin, isManager]);
   const {
     aiSyncPending,
     aiSyncError,
@@ -1226,8 +1255,10 @@ export default function AtlasShell() {
     authHydrated,
     user,
     isAdmin,
+    isManager,
     mode,
     adminTab,
+    setAdminTab,
     adminAiHealth,
     adminPdfHealth,
     adminAuditSummary,
@@ -1448,6 +1479,22 @@ export default function AtlasShell() {
 
       {mode === "atlas" ? (
       <>
+      {(isAdmin || isManager) && resolvedCycle && resolvedCycle.is_active === false ? (
+        <div
+          role="status"
+          style={{
+            marginBottom: "0.6rem",
+            padding: "0.5rem 0.75rem",
+            border: "1px solid var(--warning, #b58900)",
+            borderRadius: "0.4rem",
+            background: "rgba(181, 137, 0, 0.12)",
+            fontSize: "0.82rem",
+          }}
+        >
+          ⚠ Viewing inactive cycle “{resolvedCycle.title || `#${resolvedCycle.id}`}”.
+          This is historical data — it is not the current active period.
+        </div>
+      ) : null}
       <AtlasModeControlsPanel
         cycleLabel={cycleDisplayLabel(resolvedCycle)}
         snapshotPending={snapshotPending}
@@ -1520,6 +1567,7 @@ export default function AtlasShell() {
       ) : mode === "admin" ? (
       <AdminModePanel
         isAdmin={isAdmin}
+        isManager={isManager}
         adminTab={adminTab}
         setAdminTab={setAdminTab}
         adminCreateCycleDraft={adminCreateCycleDraft}
@@ -1572,6 +1620,7 @@ export default function AtlasShell() {
         adminCycleError={adminCycleError}
         adminDataError={adminDataError}
         adminCycleMessage={adminCycleMessage}
+        setAdminCycleMessage={setAdminCycleMessage}
         adminCycles={adminCycles}
         onAdminSetCycleActive={handleAdminSetCycleActive}
         onAdminUpdateCycleOwner={handleAdminUpdateCycleOwner}

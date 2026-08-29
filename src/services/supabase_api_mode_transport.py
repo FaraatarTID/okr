@@ -609,8 +609,8 @@ def _coerce_payload_value(value: Any) -> Any:
 
 
 def _role_for_storage(value: Any) -> str:
-    raw = str(_coerce_payload_value(value) or "MEMBER").strip()
-    return raw.upper()
+    raw = str(_coerce_payload_value(value) or "member").strip()
+    return raw.lower()
 
 
 def _normalize_user_row_role(row: dict[str, Any]) -> dict[str, Any]:

@@ -1,0 +1,363 @@
+{
+  "routes": [
+    {
+      "actorRequired": true,
+      "methods": [
+        "GET"
+      ],
+      "pathPattern": "^/v1/admin/ai-health$",
+      "pathTemplate": "/v1/admin/ai-health"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "GET"
+      ],
+      "pathPattern": "^/v1/admin/db-backup$",
+      "pathTemplate": "/v1/admin/db-backup"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/admin/db-restore$",
+      "pathTemplate": "/v1/admin/db-restore"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "GET"
+      ],
+      "pathPattern": "^/v1/admin/pdf-health$",
+      "pathTemplate": "/v1/admin/pdf-health"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/ai/analyze-node$",
+      "pathTemplate": "/v1/ai/analyze-node"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/ai/strategy-pulse$",
+      "pathTemplate": "/v1/ai/strategy-pulse"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/ai/team-coach$",
+      "pathTemplate": "/v1/ai/team-coach"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/alignments$",
+      "pathTemplate": "/v1/alignments"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "DELETE"
+      ],
+      "pathPattern": "^/v1/alignments/[^/]+$",
+      "pathTemplate": "/v1/alignments/{edge_id}"
+    },
+    {
+      "actorRequired": false,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/auth/login$",
+      "pathTemplate": "/v1/auth/login"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "GET"
+      ],
+      "pathPattern": "^/v1/auth/me$",
+      "pathTemplate": "/v1/auth/me"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/check-ins$",
+      "pathTemplate": "/v1/check-ins"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/cycles$",
+      "pathTemplate": "/v1/cycles"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "pathPattern": "^/v1/cycles/[^/]+$",
+      "pathTemplate": "/v1/cycles/{cycle_id}"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/experiments$",
+      "pathTemplate": "/v1/experiments"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "PATCH"
+      ],
+      "pathPattern": "^/v1/experiments/[^/]+$",
+      "pathTemplate": "/v1/experiments/{experiment_id}"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/experiments/[^/]+/close$",
+      "pathTemplate": "/v1/experiments/{experiment_id}/close"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/jobs$",
+      "pathTemplate": "/v1/jobs"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "GET"
+      ],
+      "pathPattern": "^/v1/jobs/dead$",
+      "pathTemplate": "/v1/jobs/dead"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "GET",
+        "DELETE"
+      ],
+      "pathPattern": "^/v1/jobs/[^/]+$",
+      "pathTemplate": "/v1/jobs/{job_id}"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/jobs/[^/]+/cancel$",
+      "pathTemplate": "/v1/jobs/{job_id}/cancel"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/jobs/[^/]+/retry$",
+      "pathTemplate": "/v1/jobs/{job_id}/retry"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/nodes/goal$",
+      "pathTemplate": "/v1/nodes/goal"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/nodes/key_result$",
+      "pathTemplate": "/v1/nodes/key_result"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/nodes/objective$",
+      "pathTemplate": "/v1/nodes/objective"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/nodes/task$",
+      "pathTemplate": "/v1/nodes/task"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "pathPattern": "^/v1/nodes/[^/]+/[^/]+$",
+      "pathTemplate": "/v1/nodes/{node_type}/{node_id}"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/objective-alignment-links$",
+      "pathTemplate": "/v1/objective-alignment-links"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "DELETE"
+      ],
+      "pathPattern": "^/v1/objective-alignment-links/[^/]+$",
+      "pathTemplate": "/v1/objective-alignment-links/{link_id}"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/read/atlas/snapshot$",
+      "pathTemplate": "/v1/read/atlas/snapshot"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/read/leadership/metrics$",
+      "pathTemplate": "/v1/read/leadership/metrics"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/read/query$",
+      "pathTemplate": "/v1/read/query"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/retrospectives$",
+      "pathTemplate": "/v1/retrospectives"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "PUT"
+      ],
+      "pathPattern": "^/v1/retrospectives/[^/]+/experiment-outcomes$",
+      "pathTemplate": "/v1/retrospectives/{retrospective_id}/experiment-outcomes"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "pathPattern": "^/v1/state/[^/]+$",
+      "pathTemplate": "/v1/state/{key}"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/teams$",
+      "pathTemplate": "/v1/teams"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "PATCH",
+        "DELETE"
+      ],
+      "pathPattern": "^/v1/teams/[^/]+$",
+      "pathTemplate": "/v1/teams/{team_id}"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/timer/start$",
+      "pathTemplate": "/v1/timer/start"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/timer/stop$",
+      "pathTemplate": "/v1/timer/stop"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/users$",
+      "pathTemplate": "/v1/users"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "PATCH"
+      ],
+      "pathPattern": "^/v1/users/[^/]+$",
+      "pathTemplate": "/v1/users/{user_id}"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/users/[^/]+/reset-password$",
+      "pathTemplate": "/v1/users/{user_id}/reset-password"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/weekly-plans$",
+      "pathTemplate": "/v1/weekly-plans"
+    },
+    {
+      "actorRequired": true,
+      "methods": [
+        "DELETE"
+      ],
+      "pathPattern": "^/v1/work-logs/[^/]+$",
+      "pathTemplate": "/v1/work-logs/{work_log_id}"
+    }
+  ],
+  "source": "spa-web/src/lib/api/openapi.json",
+  "version": 1
+}

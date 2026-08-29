@@ -524,6 +524,50 @@ Security note:
 
 ---
 
+## Signing Key Rotation Runbook
+
+Request signing between `spa-bff` and `backend-api` uses HMAC-SHA256 over a
+canonical payload. Rotation is config-only — no code deploy required.
+
+### Configuration keys
+
+| Key | Meaning |
+|---|---|
+| `OKR_BACKEND_SIGNING_SECRET` | Current (signing) secret |
+| `OKR_BACKEND_SIGNING_SECRET_PREVIOUS` | Previous secret, still accepted during overlap |
+| `OKR_BACKEND_SIGNING_KEY_ID` | Advertised key ID (e.g. `key-2026-08`); when set, callers must send `x-okr-key-id` |
+
+The BFF sends its key ID via `OKR_BACKEND_SIGNING_KEY_ID` in `deploy/docker/.env`.
+
+### Rotation steps
+
+1. **Generate** a new secret (≥32 chars): e.g. `openssl rand -hex 32`.
+2. **Verify-only deploy**: set
+   - `OKR_BACKEND_SIGNING_SECRET_PREVIOUS=<old secret>`
+   - `OKR_BACKEND_SIGNING_SECRET=<new secret>`
+   - keep `OKR_BACKEND_SIGNING_KEY_ID` unchanged for now.
+
+   During this window both secrets verify. The BFF still signs with the old
+   secret and is accepted.
+3. **Cutover**: update the BFF's `OKR_BACKEND_SIGNING_SECRET` to the new
+   secret and restart `spa-bff`. Watch backend logs — there should be zero
+   `Invalid request signature` entries from the BFF.
+4. **Retire**: after the overlap window (recommend ≥24h), remove
+   `OKR_BACKEND_SIGNING_SECRET_PREVIOUS`. Old-secret signatures are now
+   rejected.
+
+### Verification
+
+```powershell
+# During overlap: sign with OLD secret -> must be accepted
+# After retirement: sign with OLD secret -> must be 401 "Invalid request signature"
+```
+
+Automated coverage: `tests/test_signing_key_rotation.py` (overlap acceptance,
+unknown-ID rejection, forced-previous verification).
+
+---
+
 Related docs
 
 - `docs/CONFIG_REFERENCE.md`

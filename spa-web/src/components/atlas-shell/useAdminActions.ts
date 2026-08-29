@@ -30,13 +30,17 @@ import type {
 type UseAdminActionsInput = {
   user: AuthUser | null;
   isAdmin: boolean;
+  isManager: boolean;
   adminUsers: UserMutationResponse[];
   setAdminCycleError: (value: string) => void;
   setAdminDataError: (value: string) => void;
   loadAdminCycles: (activeUser: AuthUser) => Promise<void>;
+  adminCycles: CycleSummary[];
   loadAdminUsersAndTeams: (activeUser: AuthUser) => Promise<void>;
   loadAdminResources: (activeUser: AuthUser) => Promise<void>;
   onCycleActivated: (cycle: CycleSummary) => void;
+  /** Refresh the Atlas top-bar cycle list (all cycles, not just active). */
+  refreshSessionCycles: (activeUser: AuthUser) => Promise<unknown>;
   toIsoStart: (dateValue: string) => string;
   toIsoEnd: (dateValue: string) => string;
 };
@@ -47,13 +51,16 @@ type AdminTeamRead = TeamMutationResponse;
 export default function useAdminActions({
   user,
   isAdmin,
+  isManager,
   adminUsers,
   setAdminCycleError,
   setAdminDataError,
   loadAdminCycles,
+  adminCycles,
   loadAdminUsersAndTeams,
   loadAdminResources,
   onCycleActivated,
+  refreshSessionCycles,
   toIsoStart,
   toIsoEnd,
 }: UseAdminActionsInput) {
@@ -89,6 +96,25 @@ export default function useAdminActions({
     isActive: false,
     ownerManagerId: "",
   });
+
+  // Managers may create and manage their OWN cycles. Admin-owned cycles are
+  // global and strictly read-only for managers; other managers' cycles are
+  // not visible to them at all (server-side scope filtering).
+  const canManageCycles = Boolean(user && (isAdmin || isManager));
+  const ownsCycle = useCallback(
+    (cycle: CycleSummary): boolean =>
+      Boolean(
+        user &&
+        Number(cycle.owner_manager_id) > 0 &&
+        Number(cycle.owner_manager_id) === Number(user.id),
+      ),
+    [user],
+  );
+  /** Managers may mutate only their own cycles; admins may mutate any. */
+  const canMutateCycle = useCallback(
+    (cycle: CycleSummary): boolean => isAdmin || ownsCycle(cycle),
+    [isAdmin, ownsCycle],
+  );
 
   const handleAdminBackupExport = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {
@@ -301,7 +327,7 @@ export default function useAdminActions({
   }, [adminResetDraft, adminUsers, isAdmin, user]);
 
   const handleAdminCreateCycle = useCallback(async (): Promise<void> => {
-    if (!user || !isAdmin) {
+    if (!user || !canManageCycles) {
       return;
     }
     const title = adminCreateCycleDraft.title.trim();
@@ -311,7 +337,7 @@ export default function useAdminActions({
       return;
     }
     const ownerManagerCandidate = Number.parseInt(adminCreateCycleDraft.ownerManagerId.trim(), 10);
-    if (!Number.isFinite(ownerManagerCandidate) || ownerManagerCandidate <= 0) {
+    if (isAdmin && (!Number.isFinite(ownerManagerCandidate) || ownerManagerCandidate <= 0)) {
       setAdminCycleError("Select a cycle owner (manager/admin).");
       setAdminCycleMessage("");
       return;
@@ -325,7 +351,7 @@ export default function useAdminActions({
         start_date: toIsoStart(adminCreateCycleDraft.startDate),
         end_date: toIsoEnd(adminCreateCycleDraft.endDate),
         is_active: adminCreateCycleDraft.isActive,
-        owner_manager_id: ownerManagerCandidate,
+        owner_manager_id: isAdmin ? ownerManagerCandidate : Number(user.id),
       });
       setAdminCycleMessage("Cycle created.");
       setAdminCreateCycleDraft({
@@ -336,20 +362,43 @@ export default function useAdminActions({
         ownerManagerId: "",
       });
       await loadAdminCycles(user);
+      await refreshSessionCycles(user);
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminCreateCycleDraft, isAdmin, loadAdminCycles, toIsoEnd, toIsoStart, user]);
+  }, [adminCreateCycleDraft, canManageCycles, isAdmin, loadAdminCycles, refreshSessionCycles, toIsoEnd, toIsoStart, user]);
 
   const handleAdminSetCycleActive = useCallback(async (
     cycle: CycleSummary,
     isActive: boolean,
   ): Promise<void> => {
-    if (!user || !isAdmin) {
+    if (!user || !canManageCycles) {
+      return;
+    }
+    // Managers may only activate/deactivate their OWN cycles. Admin-owned
+    // (global) cycles are read-only for them.
+    if (!isAdmin && !ownsCycle(cycle)) {
+      setAdminCycleError("This global cycle is managed by an administrator.");
       return;
     }
     setAdminCycleError("");
     setAdminCycleMessage("");
+    // Guard: deactivating the owner's only active cycle would leave their
+    // scope without a current period.
+    if (!isActive && Boolean(cycle.is_active)) {
+      const otherActiveInScope = adminCycles.some(
+        (row) =>
+          row.id !== cycle.id &&
+          Boolean(row.is_active) &&
+          Number(row.owner_manager_id) === Number(cycle.owner_manager_id),
+      );
+      if (!otherActiveInScope) {
+        setAdminCycleError(
+          "Cannot deactivate your only active cycle. Create and activate another first.",
+        );
+        return;
+      }
+    }
     try {
       await updateCycleMutation({
         actor_username: user.username,
@@ -365,16 +414,22 @@ export default function useAdminActions({
       });
       setAdminCycleMessage(isActive ? "Cycle activated." : "Cycle deactivated.");
       await loadAdminCycles(user);
+      await refreshSessionCycles(user);
       if (isActive) {
         onCycleActivated(cycle);
       }
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminCycles, onCycleActivated, user]);
+  }, [adminCycles, isAdmin, loadAdminCycles, onCycleActivated, refreshSessionCycles, user]);
 
   const handleAdminDeleteCycle = useCallback(async (cycle: CycleSummary): Promise<void> => {
-    if (!user || !isAdmin) {
+    if (!user || !canManageCycles) {
+      return;
+    }
+    // Managers may delete only their own cycles; admin-owned are read-only.
+    if (!isAdmin && !ownsCycle(cycle)) {
+      setAdminCycleError("This global cycle is managed by an administrator.");
       return;
     }
     if (typeof window !== "undefined") {
@@ -392,10 +447,11 @@ export default function useAdminActions({
       });
       setAdminCycleMessage("Cycle deleted.");
       await loadAdminCycles(user);
+      await refreshSessionCycles(user);
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminCycles, user]);
+  }, [isAdmin, loadAdminCycles, refreshSessionCycles, user]);
 
   const handleAdminUpdateCycleOwner = useCallback(async (
     cycle: CycleSummary,

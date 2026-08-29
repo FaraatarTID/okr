@@ -26,6 +26,7 @@ function makeProps(overrides: Record<string, unknown> = {}) {
 
   return {
     isAdmin: true,
+    isManager: false,
     adminTab: "cycles" as const,
     setAdminTab: vi.fn(),
     adminCreateCycleDraft: { title: "", startDate: "", endDate: "", isActive: false, ownerManagerId: "" },
@@ -71,6 +72,7 @@ function makeProps(overrides: Record<string, unknown> = {}) {
     adminCycleError: "",
     adminDataError: "",
     adminCycleMessage: "",
+    setAdminCycleMessage: vi.fn(),
     adminCycles: [cycle],
     onAdminSetCycleActive: vi.fn(),
     onAdminUpdateCycleOwner: vi.fn(),
@@ -89,9 +91,9 @@ function makeProps(overrides: Record<string, unknown> = {}) {
 
 describe("AdminModePanel", () => {
   it("blocks non-admin users", () => {
-    render(<AdminModePanel {...makeProps({ isAdmin: false })} />);
+    render(<AdminModePanel {...makeProps({ isAdmin: false, isManager: false })} />);
 
-    expect(screen.getByText("Admin role required.")).toBeInTheDocument();
+    expect(screen.getByText("Admin or manager role required.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cycles" })).not.toBeInTheDocument();
   });
 

@@ -6,6 +6,7 @@ export interface BffConfig {
   backendApiUrl: string;
   backendServiceToken: string;
   backendSigningSecret: string;
+  backendSigningKeyId: string;
   requestTimeoutMs: number;
   sessionSecret: string;
   sessionTtlSeconds: number;
@@ -276,6 +277,7 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): BffConfig {
     backendApiUrl,
     backendServiceToken,
     backendSigningSecret: String(env.OKR_BACKEND_SIGNING_SECRET ?? "").trim(),
+    backendSigningKeyId: String(env.OKR_BACKEND_SIGNING_KEY_ID ?? "").trim(),
     requestTimeoutMs: parsePositiveInt(env.BFF_REQUEST_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, "BFF_REQUEST_TIMEOUT_MS"),
     sessionSecret,
     sessionTtlSeconds,

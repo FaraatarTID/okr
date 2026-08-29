@@ -563,6 +563,15 @@ def api_create_cycle(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
     _require_admin_or_manager_actor_scope(actor)
+    # Per-manager cycle model: when a manager creates a cycle, ownership is
+    # anchored on the manager themselves regardless of the form value sent
+    # (mirrors the SQL path's behavior in crud_cycle_helpers). Admins may
+    # still pick an explicit owner.
+    scope = _resolve_scope_for_actor(actor)
+    actor_id_int = int(scope.get("actor_id") or 0)
+    is_admin_actor = bool(scope.get("is_admin", False))
+    requested_owner = payload.owner_manager_id
+    effective_owner = requested_owner if is_admin_actor else actor_id_int
     try:
         if is_supabase_api_mode_enabled():
             cycle = create_cycle_via_supabase_api(
@@ -570,7 +579,7 @@ def api_create_cycle(
                 start_date=payload.start_date,
                 end_date=payload.end_date,
                 is_active=payload.is_active,
-                owner_manager_id=payload.owner_manager_id,
+                owner_manager_id=effective_owner,
                 actor_username=actor,
             )
         else:
@@ -579,7 +588,7 @@ def api_create_cycle(
                 start_date=payload.start_date,
                 end_date=payload.end_date,
                 is_active=payload.is_active,
-                owner_manager_id=payload.owner_manager_id,
+                owner_manager_id=effective_owner,
                 actor_username=actor,
             )
     except PermissionError as exc:

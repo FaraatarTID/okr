@@ -37,6 +37,19 @@ def _validate_cycle_owner(
     return int(owner_manager_id)
 
 
+def _is_last_active_cycle(
+    *, crud_module, session, exclude_cycle_id: int
+) -> bool:
+    """True when no OTHER cycle is active (i.e. this one is the last)."""
+    others = session.exec(
+        crud_module.select(crud_module.Cycle).where(
+            crud_module.Cycle.is_active,
+            crud_module.Cycle.id != exclude_cycle_id,
+        )
+    ).all()
+    return not list(others)
+
+
 def create_cycle_from_crud(
     *,
     crud_module,
@@ -84,6 +97,13 @@ def create_cycle_from_crud(
                 resolved_owner_manager_id = actor_id
             elif resolved_owner_manager_id is None:
                 resolved_owner_manager_id = actor_id
+
+        # Invariant: at most one active cycle. Activating a new cycle
+        # deactivates all others first.
+        if is_active:
+            session.query(crud_module.Cycle).filter(
+                crud_module.Cycle.is_active
+            ).update({"is_active": False}, synchronize_session=False)
 
         cycle = crud_module.Cycle(
             title=title,
@@ -177,6 +197,24 @@ def update_cycle_from_crud(
         cycle.title = title
         cycle.start_date = start_date
         cycle.end_date = end_date
+        # Invariant: at most one active cycle. Activating this cycle
+        # deactivates all others first.
+        if is_active and not bool(getattr(cycle, "is_active", False)):
+            session.query(crud_module.Cycle).filter(
+                crud_module.Cycle.is_active
+            ).update({"is_active": False}, synchronize_session=False)
+        # Guard: deactivating the only active cycle would leave the workspace
+        # without a current period. Require activating another cycle instead.
+        if (
+            not is_active
+            and bool(getattr(cycle, "is_active", False))
+            and _is_last_active_cycle(crud_module=crud_module, session=session,
+                                      exclude_cycle_id=cycle_id)
+        ):
+            raise ValueError(
+                "Cannot deactivate the only active cycle. "
+                "Activate another cycle first."
+            )
         cycle.is_active = is_active
         if (
             actor is not None

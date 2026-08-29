@@ -160,6 +160,70 @@ def get_job(job_id: str) -> Optional[AsyncJob]:
         return session.get(AsyncJob, job_id)
 
 
+def list_dead_jobs(*, limit: int = 50) -> list[Dict[str, Any]]:
+    """Return terminal-FAILED jobs that exhausted their attempt budget.
+
+    These are jobs no worker will pick up again; they need operator action
+    (retry after fixing the cause, or deletion).
+    """
+    capped_limit = max(1, min(int(limit or 50), 200))
+    with get_session_context() as session:
+        rows = session.exec(
+            select(AsyncJob)
+            .where(AsyncJob.status == AsyncJobStatus.FAILED)
+            .where(col(AsyncJob.attempts) >= col(AsyncJob.max_attempts))
+            .order_by(col(AsyncJob.updated_at).desc())
+            .limit(capped_limit)
+        ).all()
+        return [serialize_job(job) for job in rows]
+
+
+def count_dead_jobs() -> int:
+    """Count terminal-FAILED jobs that exhausted their attempts."""
+    with get_session_context() as session:
+        count = session.exec(
+            select(func.count())
+            .select_from(AsyncJob)
+            .where(AsyncJob.status == AsyncJobStatus.FAILED)
+            .where(col(AsyncJob.attempts) >= col(AsyncJob.max_attempts))
+        ).first()
+    return int(count or 0)
+
+
+def retry_dead_job(
+    job_id: str, *, actor_username: str
+) -> Optional[AsyncJob]:
+    """Reset an exhausted FAILED job back to PENDING for re-execution.
+
+    Only the job's owner (or an admin via caller check upstream) may retry.
+    Returns None when the job doesn't exist or isn't retryable.
+    """
+    now = utc_now_naive()
+    with get_session_context() as session:
+        job = session.get(AsyncJob, job_id)
+        if not job:
+            return None
+        if job.actor_username and job.actor_username != actor_username:
+            return None
+        if job.status != AsyncJobStatus.FAILED:
+            return None
+        if int(job.attempts or 0) < int(job.max_attempts or 0):
+            return None  # not exhausted; nothing to dead-letter-retry
+
+        job.status = AsyncJobStatus.PENDING
+        job.attempts = 0
+        job.error_text = None
+        job.result_json = None
+        job.finished_at = None
+        job.started_at = None
+        job.cancel_requested = False
+        job.updated_at = now
+        session.add(job)
+        session.commit()
+        session.refresh(job)
+        return job
+
+
 def request_job_cancel(job_id: str, actor_username: str) -> Optional[AsyncJob]:
     with get_session_context() as session:
         job = session.get(AsyncJob, job_id)

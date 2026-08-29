@@ -9,6 +9,7 @@ import sqlite3
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from threading import Lock
 from typing import Optional, Protocol
 
@@ -349,11 +350,68 @@ class DatabaseSecurityStateStore:
                             """
                         )
                     )
+                    if self._engine.dialect.name == "postgresql":
+                        # Enable RLS with no policies so PostgREST anon /
+                        # authenticated roles cannot read these internal
+                        # tables; the backend connects as table owner and
+                        # is unaffected.
+                        for _table in (
+                            "backend_request_nonce",
+                            "backend_rate_limit_counter",
+                            "backend_distributed_state",
+                            "backend_idempotency_record",
+                        ):
+                            conn.execute(
+                                text(
+                                    f'ALTER TABLE IF EXISTS "{_table}" '
+                                    "ENABLE ROW LEVEL SECURITY"
+                                )
+                            )
+                            conn.execute(
+                                text(
+                                    "DO $$ BEGIN "
+                                    "IF EXISTS (SELECT 1 FROM pg_roles "
+                                    "WHERE rolname IN ('anon', 'authenticated')) "
+                                    f'THEN REVOKE ALL ON TABLE "{_table}" '
+                                    "FROM anon, authenticated; END IF; END $$"
+                                )
+                            )
+                    self._warn_if_migrations_pending(conn)
             except SQLAlchemyError as exc:
                 raise SecurityStateUnavailableError(
                     "Distributed security state storage is unavailable."
                 ) from exc
             self._schema_ready = True
+
+    def _warn_if_migrations_pending(self, conn) -> None:
+        """Log a warning when the bootstrap runs on a DB behind Alembic head.
+
+        The bootstrap creates its tables outside Alembic so the backend can
+        start even before migrations run. That is safe for these tables
+        (RLS is enabled above), but a DB not at head means the deploy skipped
+        migrations — surface it loudly instead of failing startup.
+        """
+        try:
+            from alembic.config import Config
+            from alembic.script import ScriptDirectory
+            from alembic.runtime.migration import MigrationContext
+
+            project_root = Path(__file__).resolve().parents[1]
+            cfg = Config(str(project_root / "alembic.ini"))
+            cfg.set_main_option("script_location", str(project_root / "alembic"))
+            heads = ScriptDirectory.from_config(cfg).get_heads()
+            current = MigrationContext.configure(conn).get_current_revision()
+            if current not in set(heads):
+                _LOGGER.warning(
+                    "Database security state bootstrap ran while database is "
+                    "not at Alembic head (current=%s, head=%s). Run "
+                    "`alembic upgrade head` — Alembic remains the source of "
+                    "truth for schema.",
+                    current,
+                    ",".join(heads),
+                )
+        except Exception as exc:  # noqa: BLE001 — advisory check only
+            _LOGGER.debug("Alembic head advisory check skipped: %s", exc)
 
     def _cleanup_if_due(self, now_dt: datetime, now_ts: float) -> None:
         if (now_ts - float(self._last_cleanup_at)) < float(

@@ -71,6 +71,8 @@ class BackendSettings:
     service_token: str
     enforce_service_token: bool
     signing_secret: str
+    signing_secret_previous: str
+    signing_key_id: str
     enforce_request_signing: bool
     request_signing_window_seconds: int
     rate_limit_window_seconds: int
@@ -134,6 +136,10 @@ def get_backend_settings() -> BackendSettings:
             default=True,
         ),
         signing_secret=str(get_config_value("OKR_BACKEND_SIGNING_SECRET", "")).strip(),
+        signing_secret_previous=str(
+            get_config_value("OKR_BACKEND_SIGNING_SECRET_PREVIOUS", "")
+        ).strip(),
+        signing_key_id=str(get_config_value("OKR_BACKEND_SIGNING_KEY_ID", "")).strip(),
         enforce_request_signing=_as_bool(
             get_config_value("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", ""),
             default=is_production,

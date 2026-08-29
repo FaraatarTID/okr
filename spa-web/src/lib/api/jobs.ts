@@ -1,5 +1,11 @@
 import { jsonHeaders, responseDetail } from "@/lib/api/http";
-import type { AsyncJobView } from "@/lib/api/types";
+import type { BackendJobView } from "@/lib/api/backend-schema";
+
+/**
+ * Job view backed by the generated OpenAPI schema (components["schemas"]
+ * ["JobView"]). Regenerate via `npm run gen:api` after backend schema changes.
+ */
+export type AsyncJobView = BackendJobView;
 
 export async function submitBackendJob(input: {
   actor_username: string;

@@ -210,6 +210,37 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
             cancel_requested=bool(job.cancel_requested),
         )
 
+    @router.get(
+        "/v1/jobs/dead",
+        dependencies=[Depends(main.require_service_access)],
+    )
+    def api_list_dead_jobs(
+        x_okr_actor: Optional[str] = Header(default=None),
+        limit: int = 50,
+    ) -> dict:
+        actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+        main._require_admin_actor_scope(actor)
+        jobs = main.list_dead_jobs(limit=limit)
+        return {"jobs": jobs, "count": len(jobs)}
+
+    @router.post(
+        "/v1/jobs/{job_id}/retry",
+        response_model=JobView,
+        dependencies=[Depends(main.require_service_access)],
+    )
+    def api_retry_dead_job(
+        job_id: str,
+        x_okr_actor: Optional[str] = Header(default=None),
+    ) -> JobView:
+        actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+        job = main.retry_dead_job(job_id, actor_username=actor)
+        if not job:
+            raise HTTPException(
+                status_code=404,
+                detail="Job not found or not retryable (must be FAILED and exhausted).",
+            )
+        return JobView(**main.serialize_job(job))
+
     @router.delete(
         "/v1/jobs/{job_id}",
         status_code=status.HTTP_204_NO_CONTENT,

@@ -23,6 +23,7 @@ ALLOWED_LICENSES = {
     "BSD-3-Clause",
     "BSD-3-Clause-Clear",
     "BSD License",
+    "CC0-1.0",
     "GNU Library or Lesser General Public License (LGPL)",
     "ISC",
     "LGPL",
@@ -61,12 +62,18 @@ LICENSE_EXCEPTIONS = {
 def _is_allowed_license_expr(license_name: str) -> bool:
     if license_name in ALLOWED_LICENSES:
         return True
-    if " OR " in license_name:
-        return all(part.strip() in ALLOWED_LICENSES for part in license_name.split(" OR "))
-    if " AND " in license_name:
-        return all(part.strip() in ALLOWED_LICENSES for part in license_name.split(" AND "))
-    if ";" in license_name:
-        return all(part.strip() in ALLOWED_LICENSES for part in license_name.split(";"))
+    # SPDX-style expressions can wrap the whole expression in parentheses
+    # (e.g. "(MIT OR CC0-1.0)"). Strip outer parentheses before splitting so
+    # each branch is matched against ALLOWED_LICENSES.
+    expr = license_name.strip()
+    while expr.startswith("(") and expr.endswith(")"):
+        expr = expr[1:-1].strip()
+    if " OR " in expr:
+        return all(part.strip() in ALLOWED_LICENSES for part in expr.split(" OR "))
+    if " AND " in expr:
+        return all(part.strip() in ALLOWED_LICENSES for part in expr.split(" AND "))
+    if ";" in expr:
+        return all(part.strip() in ALLOWED_LICENSES for part in expr.split(";"))
     return False
 
 

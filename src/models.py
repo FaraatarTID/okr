@@ -11,7 +11,8 @@ from enum import Enum
 from typing import Any, List, Optional
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, Index, event, text
+from sqlalchemy import CheckConstraint, Column, Enum as SAEnum, Index, event, text
+from sqlalchemy import TextClause
 from sqlalchemy.orm import relationship
 from sqlmodel import SQLModel, Field, Relationship
 from sqlmodel.main import default_registry
@@ -143,7 +144,17 @@ class User(SQLModelTable, table=True):
     must_change_password: bool = Field(default=False, index=True)
     password_changed_at: Optional[datetime] = None
     display_name: Optional[str] = None
-    role: UserRole = Field(default=UserRole.MEMBER)
+    role: UserRole = Field(
+        default=UserRole.MEMBER,
+        sa_column=Column(
+            SAEnum(
+                UserRole,
+                name="userrole",
+                values_callable=lambda enum_type: [item.value for item in enum_type],
+            ),
+            nullable=False,
+        ),
+    )
     manager_id: Optional[int] = Field(default=None, foreign_key="user.id")
     team_id: Optional[int] = Field(default=None, foreign_key="team.id", index=True)
     created_at: datetime = Field(default_factory=utc_now_naive)
@@ -192,6 +203,10 @@ class AsyncJobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+def _enum_values(enum_type: type[Enum]) -> list[str]:
+    return [item.value for item in enum_type]
+
+
 class AsyncJob(SQLModelTable, table=True):
     """Durable async job record for backend worker execution."""
 
@@ -215,7 +230,17 @@ class AsyncJob(SQLModelTable, table=True):
 
     id: str = Field(default_factory=lambda: str(uuid4()), primary_key=True, index=True)
     kind: str = Field(index=True)
-    status: AsyncJobStatus = Field(default=AsyncJobStatus.PENDING, index=True)
+    status: AsyncJobStatus = Field(
+        default=AsyncJobStatus.PENDING,
+        sa_column=Column(
+            SAEnum(
+                AsyncJobStatus,
+                name="asyncjobstatus",
+                values_callable=_enum_values,
+            ),
+            nullable=False,
+        ),
+    )
     actor_username: Optional[str] = Field(default=None, index=True)
     team_id: Optional[int] = Field(default=None, foreign_key="team.id", index=True)
     idempotency_key: Optional[str] = Field(default=None, index=True)
@@ -305,6 +330,17 @@ class Cycle(SQLModelTable, table=True):
     __table_args__ = (
         Index("ix_cycle_is_active", "is_active"),
         Index("ix_cycle_owner_manager_active", "owner_manager_id", "is_active"),
+        # Per-manager active-cycle invariant: at most one ACTIVE cycle per
+        # owner (owner_manager_id). Admin-owned cycles are global; manager-
+        # owned cycles are department-scoped. NULL owner is not allowed in
+        # practice (backfilled to admin).
+        Index(
+            "ux_cycle_owner_active",
+            "owner_manager_id",
+            unique=True,
+            sqlite_where=text("is_active"),
+            postgresql_where=text("is_active"),
+        ),
         {"extend_existing": True},
     )
 
@@ -485,7 +521,17 @@ class Task(NodeBase, SQLModelTable, table=True):
     key_result_id: int = Field(foreign_key="key_result.id", index=True)
 
     # Task-specific fields
-    status: TaskStatus = Field(default=TaskStatus.TODO)
+    status: TaskStatus = Field(
+        default=TaskStatus.TODO,
+        sa_column=Column(
+            SAEnum(
+                TaskStatus,
+                name="taskstatus",
+                values_callable=_enum_values,
+            ),
+            nullable=False,
+        ),
+    )
     start_date: Optional[datetime] = None
     estimated_minutes: int = Field(default=0)
     total_time_spent: int = Field(default=0)  # Cached sum of work logs (minutes)

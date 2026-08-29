@@ -62,6 +62,8 @@ def main() -> int:
 
     migration = Path("alembic/versions/bc1d2e3f4a5b_ops01_growth_table_indexes.py")
     if migration.exists():
+        # Legacy per-migration artifact (pre-baseline-squash). If present,
+        # verify its contract markers.
         migration_checks = [
             "bc1d2e3f4a5b",
             "async_job",
@@ -72,10 +74,22 @@ def main() -> int:
             _validate_file(migration, migration_checks, migration.as_posix())
         )
     else:
-        errors.append(
-            "Missing OPS-01 migration artifact: "
-            "alembic/versions/bc1d2e3f4a5b_ops01_growth_table_indexes.py"
-        )
+        # Post-squash: the growth indexes live in the baseline schema. Verify
+        # the baseline exists and carries the index contract instead.
+        baseline = Path("alembic/versions/baseline_2026_08_26_schema.py")
+        if not baseline.exists():
+            errors.append(
+                "Missing OPS-01 growth-index source: neither the legacy "
+                "migration nor the baseline schema was found."
+            )
+        else:
+            errors.extend(
+                _validate_file(
+                    baseline,
+                    ["ix_async_job_status_created", "ix_audit_event_actor_created"],
+                    baseline.as_posix(),
+                )
+            )
 
     if errors:
         for issue in errors:

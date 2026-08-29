@@ -63,6 +63,7 @@ async def _verify_request_signature(
     supplied_signature: str | None,
     supplied_timestamp: str | None,
     supplied_nonce: str | None,
+    supplied_key_id: str | None = None,
 ) -> None:
     settings = get_backend_settings()
     secret = settings.signing_secret
@@ -78,8 +79,25 @@ async def _verify_request_signature(
     signature = str(supplied_signature or "").strip().lower()
     timestamp_raw = str(supplied_timestamp or "").strip()
     nonce = str(supplied_nonce or "").strip()
+    key_id = str(supplied_key_id or "").strip()
     if not signature or not timestamp_raw or not nonce:
         raise HTTPException(status_code=401, detail="Missing signed request headers.")
+
+    # Key rotation: when the deployment advertises a key ID, callers must send
+    # a matching x-okr-key-id. Unknown IDs are rejected; omitted ID is accepted
+    # only while no key ID is advertised (pre-rotation deployments).
+    advertised_key_id = str(settings.signing_key_id or "").strip()
+    if advertised_key_id:
+        if not key_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing signing key ID header.",
+            )
+        if key_id != advertised_key_id and key_id != "previous":
+            raise HTTPException(
+                status_code=401,
+                detail="Unknown signing key ID.",
+            )
 
     try:
         timestamp_int = int(timestamp_raw)
@@ -93,15 +111,36 @@ async def _verify_request_signature(
         raise HTTPException(status_code=401, detail="Request signature expired.")
 
     body = await request.body()
-    expected = _expected_signature(
-        method=request.method,
-        path=str(request.url.path or "/"),
-        timestamp=timestamp_raw,
-        nonce=nonce,
-        body=body,
-        secret=secret,
-    )
-    if not secrets.compare_digest(signature, expected):
+
+    def _try_signature(candidate_secret: str) -> bool:
+        expected = _expected_signature(
+            method=request.method,
+            path=str(request.url.path or "/"),
+            timestamp=timestamp_raw,
+            nonce=nonce,
+            body=body,
+            secret=candidate_secret,
+        )
+        return secrets.compare_digest(signature, expected)
+
+    # Overlap window: accept signatures made with either the current secret or
+    # the previous one (rotation transition). The literal ID "previous" forces
+    # verification against the previous secret only.
+    previous_secret = str(settings.signing_secret_previous or "").strip()
+    signature_valid = False
+    if key_id == "previous":
+        if not previous_secret:
+            raise HTTPException(
+                status_code=401,
+                detail="No previous signing key configured.",
+            )
+        signature_valid = _try_signature(previous_secret)
+    else:
+        signature_valid = _try_signature(secret)
+        if not signature_valid and previous_secret:
+            signature_valid = _try_signature(previous_secret)
+
+    if not signature_valid:
         raise HTTPException(status_code=401, detail="Invalid request signature.")
 
     _register_nonce_or_reject(
@@ -117,6 +156,7 @@ async def require_service_access(
     x_okr_signature: str | None = Header(default=None),
     x_okr_timestamp: str | None = Header(default=None),
     x_okr_nonce: str | None = Header(default=None),
+    x_okr_key_id: str | None = Header(default=None),
     x_forwarded_for: str | None = Header(default=None),
 ) -> None:
     settings = get_backend_settings()
@@ -143,6 +183,7 @@ async def require_service_access(
             supplied_signature=x_okr_signature,
             supplied_timestamp=x_okr_timestamp,
             supplied_nonce=x_okr_nonce,
+            supplied_key_id=x_okr_key_id,
         )
         service_token_valid = True
 

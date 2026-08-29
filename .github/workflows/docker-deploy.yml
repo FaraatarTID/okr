@@ -17,6 +17,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Insert Payload Schema Contract Gate (offline)
+        run: python scripts/check_insert_contract.py --from-baseline
+
       - name: Compute image tag (lowercase)
         id: meta
         run: |

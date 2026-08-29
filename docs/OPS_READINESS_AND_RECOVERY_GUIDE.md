@@ -4,7 +4,7 @@ Documentation HQ: [README](../README.md)
 
 ## Scope
 
-- Closure item: `OPS-01` from `PRODUCTIONIZATION_EXECUTION_BACKLOG.md`.
+- Closure item: `OPS-01`, tracked in [the architecture status ledger](architecture-status.md).
 - Goal: make growth-risk table management and recovery operations auditable, bounded, and repeatable without ad-hoc procedures.
 
 ## Retention and Table-Growth Control Policy

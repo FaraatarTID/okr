@@ -74,9 +74,19 @@ Primary data/control flow:
   - Connection policy expects transaction pooler endpoint (`:6543`).
   - Runtime DSN should use a least-privilege app user (not `postgres`) except explicit break-glass overrides.
   - Postgres engine defaults to `NullPool` in app runtimes to align with Supabase PgBouncer transaction pooling.
+- Data-access mode resolution (`backend_app/data_access_mode.py`):
+  - Explicit `OKR_DATA_ACCESS_MODE=supabase_api` pins HTTPS for all operations (legacy behavior).
+  - Otherwise TCP is primary; a cached probe re-checks connectivity every ~5 minutes.
+  - TCP unreachable + Supabase credentials present → reads fall back to the HTTPS API automatically (warn-once per outage); mutations never silently fail over (double-write risk) and fail closed.
+  - `notify_tcp_db_failure()` invalidates the probe cache so traffic returns to TCP quickly after recovery.
+- Transport resilience (`src/services/supabase_api_mode_transport.py`, HTTPS path):
+  - Process-wide concurrency semaphore (default 4; `OKR_SUPABASE_MAX_CONCURRENCY`) caps in-flight upstream calls.
+  - Circuit breaker opens after consecutive transport failures (default 5; `OKR_SUPABASE_BREAKER_THRESHOLD`) and fails fast for a cooldown (default 30s; `OKR_SUPABASE_BREAKER_COOLDOWN_S`), then half-open probes.
+  - Cached process-local HTTP client is closed on app shutdown via the FastAPI lifespan.
 - Service boundary:
   - `backend-api` authenticates service calls using `OKR_BACKEND_SERVICE_TOKEN`.
   - Optional cryptographic request signing (`OKR_BACKEND_SIGNING_SECRET`) enforces signed/replay-protected internal calls.
+  - Key rotation: when `OKR_BACKEND_SIGNING_KEY_ID` is advertised, callers must send `x-okr-key-id`; unknown IDs are rejected. During rotation, `OKR_BACKEND_SIGNING_SECRET_PREVIOUS` keeps old-secret signatures valid (overlap window). See runbook in `DEPLOYMENT.md`; tests in `tests/test_signing_key_rotation.py`.
   - IP-based rate limiting protects API endpoints. When `spa-bff` proxies requests with a valid service token, the backend uses `x-forwarded-for` for per-user rate limiting instead of the proxy IP.
 - Network boundary:
   - Public ingress should expose only reverse proxy/app paths.
@@ -204,7 +214,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Owner, manager-of-owner, and admin paths are enforced before changes are committed.
 - Read-sensitive node retrieval can be actor-scoped via `get_node(..., actor_username=...)`.
 - AI node analysis (`analyze_node`) uses actor-scoped read path and includes alignment context (edges + cross-hierarchy links) in the prompt.
-- DB fallback: `analyze_node` tries direct PostgreSQL (port 6543) first, falls back to Supabase REST API (HTTPS 443) on failure.
+- DB access follows the centralized mode resolver (see Security section): TCP primary with automatic HTTPS fallback for reads.
 
 5. Alignment flow
 
@@ -223,6 +233,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Job submission is guarded by per-user/per-team quotas and idempotency keys in backend API.
 - In PostgreSQL runtimes, worker claim path uses `FOR UPDATE SKIP LOCKED` semantics to reduce queue-head contention across concurrent workers.
 - Worker resiliency guardrails include capped attempts, terminal handling for non-retryable payload failures, and bounded error-text persistence.
+- Dead-letter visibility: exhausted FAILED jobs are listed by `GET /v1/jobs/dead` (admin) and retryable via `POST /v1/jobs/{id}/retry`; `/healthz` reports a `dead_jobs` count.
 
 ## Invariants and Guardrails
 
@@ -239,6 +250,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Goal ownership is anchored on `goal.owner_id`.
 - Mutations require `actor_username` for goal-scoped entities.
 - DB constraints enforce non-negative progress and durations, and single open work log per task. Task progress can exceed 100% (auto-computed from time tracking).
+- Cycles are per-owner: partial unique index `ux_cycle_owner_active` enforces at most one active cycle per `owner_manager_id` (admin-owned cycles act as global cycles visible to everyone). Managers see only their own + admin-owned cycles; members resolve to their manager's active cycle, falling back to an active global cycle. Managers cannot mutate admin-owned cycles (activate/deactivate/delete/ownership changes are admin-only).
 - Hot-path query budgets are tested in `tests/test_performance_hotpaths.py` to prevent N+1 regressions.
 - Runtime preflight defaults to strict (`OKR_STRICT_RUNTIME_PREFLIGHT=true`) for fail-fast misconfiguration detection.
 - Runtime preflight validates backend production wiring (API URL/token/signing secret/distributed security backend) when backend mode is enabled.
@@ -252,15 +264,45 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 These paths now have explicit query-count budgets and a reproducible benchmark script.
 
+## Contract Governance
+
+- The backend OpenAPI schema (46 paths, OpenAPI 3.1) is exported to `spa-web/src/lib/api/openapi.json` via `scripts/export_openapi.py`.
+- CI runs an OpenAPI drift gate (`scripts/check_openapi_drift.py`): any backend schema change without regenerated frontend types fails the build.
+- TypeScript types are generated from the artifact via `npm --prefix spa-web run gen:api` into `spa-web/src/lib/api/generated/schema.d.ts`; adopt them incrementally (see `spa-web/src/lib/api/backend-schema.ts` for the pattern).
+- Mutation-route coverage is enforced by `tests/test_backend_mutation_auth_matrix.py`: every backend mutation route must appear in both the test matrix and the BFF allowlist.
+
+## Contributor Decision Guide
+
+**Choosing a data path:**
+1. Default: use CRUD/SQLAlchemy (TCP). Do not set `OKR_DATA_ACCESS_MODE` unless HTTPS-only operation is required.
+2. Reads work identically in both modes — dispatch is centralized in `backend_app/data_access_mode.py::resolve_read_mode()`; do not branch on mode ad hoc.
+3. Mutations always run on the active primary path and fail closed; never add silent fallbacks.
+
+**Adding a read kind (checklist):**
+1. Implement dispatch in `backend_app/read_query_helpers.py` (+ scope validation via `_validate_supabase_read_scope`).
+2. Add the HTTPS-mode query in `src/services/supabase_api_mode_read.py`.
+3. Register the kind in the allowed-kinds list and README's kinds enumeration.
+4. Add tests covering scope rejection + payload mapping (see `tests/test_ritual_snapshot_rpc.py` for the pattern).
+5. Regenerate types: `python scripts/export_openapi.py && npm --prefix spa-web run gen:api`.
+
+**Adding a mutation route (checklist):**
+1. Add handler + route in `backend_app/routers/*_routes.py` behind `require_service_access`.
+2. Add the route to `spa-bff/src/allowlist.ts` (path template + regex).
+3. Add it to the matrix in `tests/test_backend_mutation_auth_matrix.py` — CI fails if either allowlist or matrix misses it.
+4. Add negative tests (non-owner/member denial paths).
+5. Regenerate OpenAPI types as above.
+
 ## Current Architectural Limits
 
 - Backend API availability is a hard runtime dependency for frontend reads/writes.
 - Direct DB restore is disabled by default and blocked in production; enable only for controlled non-production operations via `OKR_ENABLE_DIRECT_DB_RESTORE=true`.
 - Backend-assisted Kubernetes manifests are available in `deploy/k8s/` for `okr-backend-api` and `okr-backend-worker`.
 
-## Recommended Next Refactor Boundary
+## Forward-Looking Work
 
-To move toward higher-concurrency internal production:
-
-- Keep all frontend read/write contracts backend-owned (implemented) and continue tightening backend API contract/version governance.
-- Preserve SQLModel domain logic while expanding backend-side query composition.
+Active production-readiness work is tracked in
+[ARCHITECTURE_BACKLOG.md](ARCHITECTURE_BACKLOG.md) with per-item status,
+evidence, and verification drills in
+[docs/architecture-status.md](docs/architecture-status.md) (process:
+[docs/ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTURE_DELIVERY_SYSTEM.md)).
+Session journal: `docs/WORKLOG.md`.

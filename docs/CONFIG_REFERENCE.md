@@ -138,6 +138,8 @@ Backend API (recommended for scale)
     - Example: `http://backend-api:8100`
   - `OKR_BACKEND_SERVICE_TOKEN`: Shared token for service-to-service auth.
   - `OKR_BACKEND_SIGNING_SECRET`: Shared HMAC signing secret for signed internal requests.
+  - `OKR_BACKEND_SIGNING_SECRET_PREVIOUS` (optional): previous signing secret, accepted during a rotation overlap window; remove after retirement.
+  - `OKR_BACKEND_SIGNING_KEY_ID` (optional): advertised key ID; when set, callers must send `x-okr-key-id` and unknown IDs are rejected. Rotation runbook: `DEPLOYMENT.md`.
   - `OKR_BACKEND_DEFAULT_ACTOR`: Fallback actor for system-initiated AI requests; default: `system`.
   - `OKR_BACKEND_PROXY_MUTATIONS` (required secure value: `true`): frontend write operations are backend-owned in runtime.
   - `OKR_BACKEND_PROXY_READS` (required secure value: `true`): frontend read operations are backend-owned in runtime.
@@ -184,6 +186,7 @@ Backend API (recommended for scale)
   - Quota/backoff rejections return deterministic `429` payloads with `detail.error_code`, `detail.retry_after_seconds`, and `Retry-After` header.
   - Job submit accepted/rejected events are written to DB-backed `audit_event` (with file fallback) for usage reporting and incident review.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
+  - Database security convention: every table in the `public` schema must enable row level security (RLS) in its Alembic migration. The backend-internal tables (`backend_request_nonce`, `backend_rate_limit_counter`, `backend_distributed_state`, `backend_idempotency_record`, `objective_alignment_link`) are intentionally policy-less with `anon`/`authenticated` access revoked — they are owner-access-only and never exposed via PostgREST. Do not add permissive policies to them. CI enforces this via the `rls-gate` job (`scripts/check_rls_enabled.py`).
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
   - If proxied backend transport fails, runtime behavior is fail-closed (local read/mutation fallback execution is disabled).
   - Direct DB restore is opt-in (`OKR_ENABLE_DIRECT_DB_RESTORE=true`) and intended for controlled non-production scenarios only.

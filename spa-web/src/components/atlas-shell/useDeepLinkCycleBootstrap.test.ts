@@ -42,7 +42,10 @@ function createSetters() {
 
 describe("useDeepLinkCycleBootstrap", () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
+    // NOTE: do NOT call vi.restoreAllMocks() here — it would strip the
+    // implementation from the parseDeepLink wrapper below, making it return
+    // undefined in tests that rely on the real parser. clearAllMocks only
+    // clears call history and keeps implementations intact.
     vi.clearAllMocks();
     window.history.replaceState(null, "", "/");
   });
@@ -90,18 +93,18 @@ describe("useDeepLinkCycleBootstrap", () => {
 
   it("auto-selects active cycle when no cycle is present in deep link", async () => {
     const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-    readCyclesQueryMock
-      .mockResolvedValueOnce(
-        [
-          { id: 12, title: "Q2", is_active: true, start_date: "2026-04-01", end_date: "2026-06-30" },
-          { id: 11, title: "Q1", is_active: false, start_date: "2026-01-01", end_date: "2026-03-31" },
-        ] as CycleSummary[],
-      )
-      .mockResolvedValueOnce(
-        [
-          { id: 12, title: "Q2", is_active: true, start_date: "2026-04-01", end_date: "2026-06-30" },
-        ] as CycleSummary[],
-      );
+    // New behavior: cycles.all (dropdown list) and cycles.active are fetched
+    // in parallel; the active cycle is authoritative for auto-selection.
+    readCyclesQueryMock.mockImplementation(async ({ kind }: { kind: string }) =>
+      kind === "cycles.active"
+        ? ([
+            { id: 12, title: "Q2", is_active: true, start_date: "2026-04-01", end_date: "2026-06-30" },
+          ] as CycleSummary[])
+        : ([
+            { id: 12, title: "Q2", is_active: true, start_date: "2026-04-01", end_date: "2026-06-30" },
+            { id: 11, title: "Q1", is_active: false, start_date: "2026-01-01", end_date: "2026-03-31" },
+          ] as CycleSummary[]),
+    );
     const setters = createSetters();
 
     renderHook(() =>
@@ -119,6 +122,10 @@ describe("useDeepLinkCycleBootstrap", () => {
     await waitFor(() => {
       expect(readCyclesQueryMock).toHaveBeenCalledWith({
         actor_username: "alice",
+        kind: "cycles.all",
+      });
+      expect(readCyclesQueryMock).toHaveBeenCalledWith({
+        actor_username: "alice",
         kind: "cycles.active",
       });
       expect(setters.setCycleId).toHaveBeenCalledWith("12");
@@ -130,12 +137,50 @@ describe("useDeepLinkCycleBootstrap", () => {
     });
   });
 
+  it("prefers the manager-owned active cycle over the global active cycle", async () => {
+    const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
+    readCyclesQueryMock.mockImplementation(async ({ kind }: { kind: string }) =>
+      kind === "cycles.active"
+        ? ([
+            { id: 1, title: "Global Q1", is_active: true, owner_manager_id: null },
+            { id: 9, title: "Manager Q3", is_active: true, owner_manager_id: 1 },
+          ] as CycleSummary[])
+        : ([] as CycleSummary[]),
+    );
+    const setters = createSetters();
+
+    renderHook(() =>
+      useDeepLinkCycleBootstrap({
+        user: { ...baseUser, role: "manager" },
+        parsedCycleId: null,
+        resolvedCycle: null,
+        sessionCycles: [],
+        deepLinkReady: true,
+        deepLinkQuery: "",
+        ...setters,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(setters.setCycleId).toHaveBeenCalledWith("9");
+      expect(setters.setResolvedCycle).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 9, title: "Manager Q3" }),
+      );
+    });
+  });
+
   it("hydrates parsed cycle details from cycles.all when needed", async () => {
     const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-    readCyclesQueryMock.mockResolvedValue([
-      { id: 5, title: "Q3", is_active: false, start_date: "2026-07-01", end_date: "2026-09-30" },
-      { id: 4, title: "Q2", is_active: true, start_date: "2026-04-01", end_date: "2026-06-30" },
-    ] as CycleSummary[]);
+    readCyclesQueryMock.mockImplementation(async ({ kind }: { kind: string }) =>
+      kind === "cycles.active"
+        ? ([
+            { id: 4, title: "Q2", is_active: true, start_date: "2026-04-01", end_date: "2026-06-30" },
+          ] as CycleSummary[])
+        : ([
+            { id: 5, title: "Q3", is_active: false, start_date: "2026-07-01", end_date: "2026-09-30" },
+            { id: 4, title: "Q2", is_active: true, start_date: "2026-04-01", end_date: "2026-06-30" },
+          ] as CycleSummary[]),
+    );
     const setters = createSetters();
 
     renderHook(() =>

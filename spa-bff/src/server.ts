@@ -184,6 +184,7 @@ async function fetchFreshSessionUser(
       path: "/v1/auth/me",
       serviceToken: config.backendServiceToken,
       signingSecret: config.backendSigningSecret,
+      signingKeyId: config.backendSigningKeyId,
       bodyBytes: null,
     }),
   );

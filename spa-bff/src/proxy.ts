@@ -130,6 +130,7 @@ export async function proxyToBackend(
     bodyBytes,
     serviceToken: config.backendServiceToken,
     signingSecret: config.backendSigningSecret,
+    signingKeyId: config.backendSigningKeyId,
   });
   Object.assign(outboundHeaders, securityHeaders);
 
