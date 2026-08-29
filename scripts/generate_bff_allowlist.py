@@ -28,6 +28,7 @@ EXCLUDED_PATHS = {
 PATH_PATTERN_OVERRIDES = {
     "/v1/nodes/{create_type}": r"^/v1/nodes/(goal|objective|key_result|task)$",
     "/v1/nodes/{node_type}/{node_id}": r"^/v1/nodes/[a-zA-Z_]+/\d+$",
+    "/v1/jobs/{job_id}": r"^/v1/jobs/[^/]+$",
 }
 
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE")

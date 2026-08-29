@@ -31,7 +31,7 @@ export const ALLOWLIST_POLICY_ROUTES: readonly AllowlistRule[] = [
   { pathTemplate: "/v1/experiments/{experiment_id}/close", methods: ["POST"], pathRegex: new RegExp("^/v1/experiments/\\d+/close$"), actorRequired: true },
   { pathTemplate: "/v1/jobs", methods: ["POST"], pathRegex: new RegExp("^/v1/jobs$"), actorRequired: true },
   { pathTemplate: "/v1/jobs/dead", methods: ["GET"], pathRegex: new RegExp("^/v1/jobs/dead$"), actorRequired: true },
-  { pathTemplate: "/v1/jobs/{job_id}", methods: ["GET", "DELETE"], pathRegex: new RegExp("^/v1/jobs/\\d+$"), actorRequired: true },
+  { pathTemplate: "/v1/jobs/{job_id}", methods: ["GET", "DELETE"], pathRegex: new RegExp("^/v1/jobs/[^/]+$"), actorRequired: true },
   { pathTemplate: "/v1/jobs/{job_id}/cancel", methods: ["POST"], pathRegex: new RegExp("^/v1/jobs/\\d+/cancel$"), actorRequired: true },
   { pathTemplate: "/v1/jobs/{job_id}/retry", methods: ["POST"], pathRegex: new RegExp("^/v1/jobs/\\d+/retry$"), actorRequired: true },
   { pathTemplate: "/v1/nodes/goal", methods: ["POST"], pathRegex: new RegExp("^/v1/nodes/goal$"), actorRequired: true },
