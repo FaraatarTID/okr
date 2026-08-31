@@ -107,17 +107,18 @@ Scoring model:
 
 ## 4. Weekly Operating Routine (Admin)
 
-1. Confirm correct active cycle and user assignments.
-2. Open Strategic Dashboard and review:
+1. Confirm each manager's correct active owned cycle, any intended admin-owned global fallback, and user assignments.
+2. Confirm manager-owned Goals have the intended `cycle_id`; cycle activation changes active flags and does not migrate existing Goals.
+3. Open Strategic Dashboard and review:
    - `Data Hygiene`
    - `Avg Confidence`
    - `At-Risk KRs`
    - `Overdue Tasks`
    - `At Risk Tasks`
-3. Review `At-Risk Key Results` and `Overdue Tasks` lists.
-4. Use Atlas scope + branch lens to identify exact correction points.
-5. Run `AI Progress Sync` only when analysis refresh is needed, preferably in preview first.
-6. In `Leadership Insights -> Strategy Pulse`, review burnout/gap signals and drive manager coaching or workload rebalance actions.
+4. Review `At-Risk Key Results` and `Overdue Tasks` lists.
+5. Use Atlas scope + branch lens to identify exact correction points.
+6. Run `AI Progress Sync` only when analysis refresh is needed, preferably in preview first.
+7. In `Leadership Insights -> Strategy Pulse`, review burnout/gap signals and drive manager coaching or workload rebalance actions.
 
 ### Dummy Manager Team-Monitoring Runbook (Step-by-Step)
 
@@ -131,7 +132,7 @@ Setup prerequisites (admin):
 
 1. Create a dummy manager user with role `manager` and an assigned `team_id`.
 2. Create 3-5 dummy members and set each `manager_id` to that dummy manager.
-3. Ensure an active cycle exists and each dummy member has at least one Goal -> Objective -> KR.
+3. Ensure the dummy manager has an active owned cycle (or an active admin-owned global fallback) and each dummy member has at least one Goal -> Objective -> KR in the intended cycle.
 4. Move Objectives/KRs from `DRAFT` to `ACTIVE` so they are visible in monitoring rollups.
 
 Weekly monitoring procedure (dummy manager):
@@ -249,7 +250,7 @@ Timing note:
 | Tool / Feature                           | Primary Owner   | Process                                                                                                                     | Recommended Timing                                     | Frequency                   | Expected Output                                             |
 | ---------------------------------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | --------------------------- | ----------------------------------------------------------- |
 | Admin Panel                              | Admin           | Manage users, reset passwords, perform admin controls.                                                                      | Onboarding/offboarding and incident response windows.  | Ad hoc.                     | Access hygiene and operational continuity.                  |
-| Manage Cycles                            | Admin           | Create/activate/deactivate cycles and confirm active period.                                                                | Pre-quarter setup and quarter close transition.        | Quarterly (or when needed). | Correct cycle boundaries and active scope.                  |
+| Manage Cycles                            | Admin           | Create/activate/deactivate cycles, confirm each owner's active period, and verify Goal `cycle_id` assignments.              | Pre-quarter setup and quarter close transition.        | Quarterly (or when needed). | Correct cycle boundaries and active scope.                  |
 | Strategic Dashboard                      | Admin / Manager | Review KPI cards, at-risk KR list, overdue tasks, team distribution.                                                        | Weekly governance review; mid-week on risk spikes.     | Weekly + event-driven.      | Ranked intervention plan.                                   |
 | Strategy Pulse (Leadership Insights tab) | Admin / Manager | Review burnout risk, strategy gaps, predictive outlook, and achievement portfolio artifacts to guide intervention/coaching. | After reviewing Strategic Dashboard execution metrics. | Weekly + on risk spikes.    | Proactive capacity decisions and leadership coaching plan.  |
 | Team Filter (Dashboard)                  | Admin / Manager | Isolate members/teams to identify root-cause patterns.                                                                      | During dashboard review.                               | Every review session.       | Targeted coaching and accountability.                       |

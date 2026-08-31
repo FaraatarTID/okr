@@ -46,7 +46,7 @@ Manager role is expected to own three responsibilities:
 A manager can monitor and act only when all are true:
 1. User role is `manager`.
 2. Team members are linked by `manager_id = <manager user id>`.
-3. Team has active Goals/Objectives/KRs in the active cycle.
+3. Team has active Goals/Objectives/KRs in the manager-owned active cycle (or the authorized global fallback cycle).
 4. Objectives/KRs are moved from `DRAFT` to `ACTIVE` when execution starts.
 
 ## 3. How Managers See Team OKRs and Tasks
@@ -64,7 +64,7 @@ Leadership Insights (`Strategic Dashboard`):
 
 Project Timeline:
 1. Open timeline dialog.
-2. It is role-filtered, so manager sees team-visible tasks for active cycle.
+2. It is role-filtered, so manager sees team-visible tasks for the selected owned cycle or authorized global cycle.
 3. Use for deadline clustering and capacity pressure review.
 
 Inspector:
@@ -215,9 +215,10 @@ Scale recommendation package (what managers should hand upward after pilot):
 
 If manager cannot see team nodes:
 1. Verify `manager_id` links on users.
-2. Verify there is an active cycle.
-3. Verify objectives/KRs are not left in `DRAFT`.
-4. Verify manager selected `My Team` (not `My OKRs`) in Atlas scope selector.
+2. Verify the manager has an active owned cycle, or that an active admin-owned global cycle exists as fallback.
+3. Verify each manager-owned Goal has the intended `cycle_id`; activating a cycle does not move existing Goals.
+4. Verify objectives/KRs are not left in `DRAFT`.
+5. Verify manager selected `My Team` (not `My OKRs`) in Atlas scope selector.
 
 If manager can see but cannot edit:
 1. Confirm node owner is direct report (manager-of-owner edit rule).

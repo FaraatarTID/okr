@@ -55,7 +55,7 @@ Use this checklist before pilot start and before each scale wave.
 |---|---|---|
 | Roles are configured correctly (`admin/manager/member`) |  |  |
 | Manager links are configured (`manager_id`) |  |  |
-| Active cycle is selected and visible |  |  |
+| Each owner's active cycle is selected and visible; global fallback is confirmed where needed |  |  |
 | Teams can access Weekly Check-In and submit KR check-ins |  |  |
 | Dashboard and report views are available for governance |  |  |
 | Lifecycle states are used consistently (`DRAFT/ACTIVE/GRADING/ARCHIVED`) |  |  |

@@ -125,6 +125,10 @@ E3. Verification drill: create two managers with members, activate distinct
   cycles, confirm each member sees only their department's data. **Completed
   2026-08-26.** Manager AI analysis was also verified to retain the selected
   manager-owned cycle context rather than the admin global cycle.
+E4. Activation changes the active flag for the target owner only; it does not
+  migrate existing goals or their descendants. After creating or assigning a
+  manager-owned cycle, verify each manager-owned goal has the intended
+  `cycle_id` before validating the Atlas tree.
 
 ## 4) Risk register
 
