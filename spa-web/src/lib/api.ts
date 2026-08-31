@@ -4,3 +4,4 @@ export * from "@/lib/api/atlas";
 export * from "@/lib/api/admin";
 export * from "@/lib/api/ritual";
 export * from "@/lib/api/jobs";
+export * from "@/lib/api/backend-schema";

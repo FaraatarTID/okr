@@ -38,7 +38,7 @@ export async function readAtlasSnapshot(input: {
     actor_username: input.actor_username,
     cycle_id: input.cycle_id,
     ...(input.owner_ids ? { owner_ids: input.owner_ids } : {}),
-    ...(input.include_analysis !== undefined ? { include_analysis: input.include_analysis } : {}),
+    include_analysis: Boolean(input.include_analysis),
   };
   const response = await fetch("/api/backend/v1/read/atlas/snapshot", {
     method: "POST",
