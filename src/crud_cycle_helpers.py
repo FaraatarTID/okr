@@ -102,10 +102,14 @@ def create_cycle_from_crud(
         # Invariant: at most one active cycle per owner. Global cycles use a
         # NULL owner and therefore do not affect manager-owned cycles.
         if is_active:
-            session.query(crud_module.Cycle).filter(
-                crud_module.Cycle.is_active,
-                crud_module.Cycle.owner_manager_id == resolved_owner_manager_id,
-            ).update({"is_active": False}, synchronize_session=False)
+            active_cycles = session.exec(
+                crud_module.select(crud_module.Cycle).where(
+                    crud_module.Cycle.is_active,
+                    crud_module.Cycle.owner_manager_id == resolved_owner_manager_id,
+                )
+            ).all()
+            for active_cycle in active_cycles:
+                active_cycle.is_active = False
 
         cycle = crud_module.Cycle(
             title=title,
@@ -205,10 +209,14 @@ def update_cycle_from_crud(
         elif target_owner_manager_id is None:
             target_owner_manager_id = getattr(cycle, "owner_manager_id", None)
         if is_active and not bool(getattr(cycle, "is_active", False)):
-            session.query(crud_module.Cycle).filter(
-                crud_module.Cycle.is_active,
-                crud_module.Cycle.owner_manager_id == target_owner_manager_id,
-            ).update({"is_active": False}, synchronize_session=False)
+            active_cycles = session.exec(
+                crud_module.select(crud_module.Cycle).where(
+                    crud_module.Cycle.is_active,
+                    crud_module.Cycle.owner_manager_id == target_owner_manager_id,
+                )
+            ).all()
+            for active_cycle in active_cycles:
+                active_cycle.is_active = False
         # Guard: deactivating the only active cycle would leave the workspace
         # without a current period. Require activating another cycle instead.
         if (

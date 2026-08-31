@@ -19,7 +19,7 @@ import logging
 import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Iterator, Optional
 
 logger = logging.getLogger(__name__)
@@ -41,6 +41,9 @@ class DataAccessContext:
     preferred_mode: Optional[str] = None
     allow_read_fallback: bool = True
     allow_mutation_fallback: bool = False
+    effective_mode: Optional[str] = None
+    resolver_state: Optional[str] = None
+    fallback_reason: Optional[str] = None
 
 
 _ACCESS_CONTEXT: ContextVar[Optional[DataAccessContext]] = ContextVar(
@@ -50,6 +53,28 @@ _ACCESS_CONTEXT: ContextVar[Optional[DataAccessContext]] = ContextVar(
 
 def current_data_access_context() -> Optional[DataAccessContext]:
     return _ACCESS_CONTEXT.get()
+
+
+def record_data_access_resolution(
+    *,
+    effective_mode: str,
+    resolver_state: str,
+    fallback_reason: Optional[str] = None,
+) -> None:
+    """Store the latest resolver outcome in the current request context."""
+    context = current_data_access_context()
+    if context is None:
+        return
+    _ACCESS_CONTEXT.set(
+        replace(
+            context,
+            effective_mode=str(effective_mode).strip() or None,
+            resolver_state=str(resolver_state).strip() or None,
+            fallback_reason=(str(fallback_reason).strip() or None)
+            if fallback_reason is not None
+            else None,
+        )
+    )
 
 
 @contextmanager
@@ -127,10 +152,19 @@ def resolve_read_mode() -> str:
     context = current_data_access_context()
     if context is not None and context.preferred_mode:
         if context.preferred_mode == _MODE_HTTPS:
+            record_data_access_resolution(
+                effective_mode=_MODE_HTTPS, resolver_state="explicit_request_preference"
+            )
             return _MODE_HTTPS
         if context.preferred_mode == _MODE_TCP:
+            record_data_access_resolution(
+                effective_mode=_MODE_TCP, resolver_state="explicit_request_preference"
+            )
             return _MODE_TCP
     if _env_explicit_api_mode():
+        record_data_access_resolution(
+            effective_mode=_MODE_HTTPS, resolver_state="explicit_environment_mode"
+        )
         return _MODE_HTTPS
 
     global _FALLBACK_WARNED
@@ -138,6 +172,9 @@ def resolve_read_mode() -> str:
         from src.database import is_direct_db_available
 
         if is_direct_db_available():
+            record_data_access_resolution(
+                effective_mode=_MODE_TCP, resolver_state="primary_available"
+            )
             return _MODE_TCP
     except Exception:  # pragma: no cover - defensive
         # Probe unavailable (e.g. database module broken): do NOT assume TCP.
@@ -153,7 +190,17 @@ def resolve_read_mode() -> str:
                     "Direct PostgreSQL unreachable; falling back to Supabase "
                     "HTTPS API for reads until connectivity recovers."
                 )
+        record_data_access_resolution(
+            effective_mode=_MODE_HTTPS,
+            resolver_state="fallback_available",
+            fallback_reason="direct_database_unavailable",
+        )
         return _MODE_HTTPS
+    record_data_access_resolution(
+        effective_mode=_MODE_TCP,
+        resolver_state="primary_unavailable_no_fallback",
+        fallback_reason="https_credentials_unavailable",
+    )
     return _MODE_TCP
 
 

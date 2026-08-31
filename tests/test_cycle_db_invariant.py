@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from src.models import Cycle, User, UserRole
 
@@ -69,7 +69,7 @@ def test_active_cycles_different_owners_allowed(isolated_db):
         session.add(_cycle(1, "Q1", True, owner=10))
         session.add(_cycle(2, "Q2", True, owner=20))
         session.commit()  # must not raise
-        active = session.query(Cycle).filter(Cycle.is_active).all()
+        active = session.exec(select(Cycle).where(Cycle.is_active)).all()
         assert sorted(c.owner_manager_id for c in active) == [10, 20]
 
 
@@ -104,7 +104,7 @@ def test_deactivate_then_activate_succeeds(isolated_db):
         session.add(_cycle(2, "Q2", True, owner=10))
         session.commit()
 
-        active = session.query(Cycle).filter(Cycle.is_active).all()
+        active = session.exec(select(Cycle).where(Cycle.is_active)).all()
         assert [c.id for c in active] == [2]
 
 

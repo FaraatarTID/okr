@@ -104,6 +104,7 @@ def test_audit_log_persists_event_to_database(monkeypatch, tmp_path):
             target_team_id=team.id,
             details={"success": True, "goal_id": 7},
         )
+    database.get_engine().dispose()
 
     with database.get_session_context() as session:
         event = session.exec(

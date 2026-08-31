@@ -121,4 +121,40 @@ describe("AtlasModeControlsPanel", () => {
     expect(screen.queryByText("Owner Filter")).not.toBeInTheDocument();
     expect(screen.queryByText("owner parse error")).not.toBeInTheDocument();
   });
+
+  it("lets admins select an inactive visible manager cycle", async () => {
+    const onCycleIdChange = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <AtlasModeControlsPanel
+        cycleLabel="Q1-2026"
+        snapshotPending={false}
+        snapshotPollIntervalMs={45000}
+        cycleId="8"
+        cycleOptions={[
+          { id: 7, label: "Cycle Manager#1", isActive: false },
+          { id: 8, label: "Q3-2026", isActive: true },
+        ]}
+        canManageCycleSelection
+        canInspectAllCycles
+        onCycleIdChange={onCycleIdChange}
+        ownerIdsInput=""
+        onOwnerIdsInputChange={vi.fn()}
+        canManageOwnerFilter
+        ownerFilterOptions={[]}
+        selectedOwnerIds={[]}
+        lens="focus"
+        onLensChange={vi.fn()}
+        parsedOwnerIdsError=""
+        cycleResolveError=""
+        snapshotError=""
+      />,
+    );
+
+    await user.selectOptions(screen.getByLabelText("Cycle"), "7");
+
+    expect(onCycleIdChange).toHaveBeenCalledWith("7");
+    expect(screen.getByRole("option", { name: "Cycle Manager#1" })).not.toBeDisabled();
+  });
 });

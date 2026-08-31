@@ -9,6 +9,9 @@ from sqlalchemy import inspect, text
 from sqlalchemy.exc import IntegrityError
 
 
+pytestmark = [pytest.mark.integration, pytest.mark.postgres]
+
+
 def _require_postgres_url() -> str:
     value = (os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL") or "").strip()
     if not value.lower().startswith("postgresql+psycopg2://"):

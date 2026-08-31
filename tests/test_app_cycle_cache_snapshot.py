@@ -44,6 +44,7 @@ def test_cached_cycles_are_plain_snapshots(monkeypatch, tmp_path):
     assert "start_date" in first
     assert "end_date" in first
     assert "is_active" in first
+    engine.dispose()
 
 
 def test_cycle_selector_payload_is_id_based_with_stable_labels():
