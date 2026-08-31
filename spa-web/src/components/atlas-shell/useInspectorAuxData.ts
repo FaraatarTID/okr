@@ -12,15 +12,9 @@ import {
   readBackendQuery,
   type AuthUser,
 } from "@/lib/api";
+import type { ReadQueryWorkLog } from "@/lib/api/backend-schema";
 
-type WorkLogRead = {
-  id: number;
-  task_id?: number | null;
-  duration_minutes?: number | null;
-  start_time?: string | null;
-  end_time?: string | null;
-  summary?: string | null;
-};
+type WorkLogRead = ReadQueryWorkLog;
 
 type AlignmentContextPayload = {
   parents?: Array<{ id: number; title?: string }>;
@@ -118,7 +112,7 @@ export default function useInspectorAuxData({
         kind: "work_logs.by_task",
         params: { task_id: taskId },
       });
-      setInspectTaskWorkLogs(((payload.work_logs as WorkLogRead[]) || []).slice(0, 200));
+      setInspectTaskWorkLogs((payload.work_logs || []).slice(0, 200));
     } catch (error) {
       setInspectTaskWorkLogsError(String(error instanceof Error ? error.message : error));
       setInspectTaskWorkLogs([]);

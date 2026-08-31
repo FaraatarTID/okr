@@ -10,8 +10,8 @@ import type {
   AuditSummaryBucket,
   AuditSummaryResponse,
   CycleSummary,
-  TeamMutationResponse,
-  UserMutationResponse,
+  ReadQueryTeam,
+  ReadQueryUser,
 } from "@/lib/api";
 
 export type AdminTab = "cycles" | "users" | "teams" | "security" | "backup" | "audit" | "ai";
@@ -102,12 +102,12 @@ type AdminModePanelProps = {
   onAdminDeleteCycle: (cycle: CycleSummary) => void;
   cyclePeriodLabel: (cycle: Pick<CycleSummary, "start_date" | "end_date"> | null) => string;
   toDateInputValue: (value: unknown) => string;
-  adminUsers: UserMutationResponse[];
-  onAdminToggleUserActive: (user: UserMutationResponse) => void;
-  adminTeams: TeamMutationResponse[];
-  setAdminTeams: Dispatch<SetStateAction<TeamMutationResponse[]>>;
-  onAdminUpdateTeam: (team: TeamMutationResponse) => void;
-  onAdminDeleteTeam: (team: TeamMutationResponse) => void;
+  adminUsers: ReadQueryUser[];
+  onAdminToggleUserActive: (user: ReadQueryUser) => void;
+  adminTeams: ReadQueryTeam[];
+  setAdminTeams: Dispatch<SetStateAction<ReadQueryTeam[]>>;
+  onAdminUpdateTeam: (team: ReadQueryTeam) => void;
+  onAdminDeleteTeam: (team: ReadQueryTeam) => void;
 };
 
 export default function AdminModePanel({

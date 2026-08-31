@@ -517,6 +517,145 @@ class ReadQueryRequest(BaseModel):
     actor_username: Optional[str] = None
 
 
+class ReadQueryKeyResultView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    title: Optional[str] = None
+    progress: Optional[float] = None
+    current_value: Optional[float] = None
+    target_value: Optional[float] = None
+    start_value: Optional[float] = None
+    unit: Optional[str] = None
+    metric_type: Optional[str] = None
+    objective: Optional[Dict[str, Any]] = None
+
+
+class ReadQueryWeeklyPlanView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    user_id: int
+    week_start_date: Optional[datetime] = None
+    week_end_date: Optional[datetime] = None
+    priority_1: str
+    priority_2: Optional[str] = None
+    priority_3: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class ReadQueryWorkLogView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    task_id: Optional[int] = None
+    duration_minutes: Optional[float] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    summary: Optional[str] = None
+    task: Optional[Dict[str, Any]] = None
+
+
+class ReadQueryRetroView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    user_id: Optional[int] = None
+    cycle_id: Optional[int] = None
+    week_start_date: Optional[datetime] = None
+    content: Optional[str] = None
+    sentiment: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class ReadQueryExperimentView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    key_result_id: int
+    cycle_id: int
+    created_by: Optional[str] = None
+    hypothesis: Optional[str] = None
+    change_description: Optional[str] = None
+    status: Optional[ExperimentStatusType] = None
+    start_at: Optional[datetime] = None
+    end_at: Optional[datetime] = None
+    decision: Optional[ExperimentDecisionType] = None
+    decision_rationale: Optional[str] = None
+    expected_effect_direction: Optional[ExpectedEffectDirectionType] = None
+    expected_effect_size: Optional[float] = None
+    created_at: Optional[datetime] = None
+
+
+class ReadQueryTaskView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    title: Optional[str] = None
+    description: Optional[str] = None
+    progress: Optional[float] = None
+    status: Optional[str] = None
+    start_date: Optional[datetime] = None
+    deadline: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    assignee_id: Optional[int] = None
+    estimated_minutes: Optional[float] = None
+    key_result: Optional[Dict[str, Any]] = None
+
+
+class ReadQueryCycleView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    title: str
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    is_active: bool
+    owner_manager_id: Optional[int] = None
+
+
+class ReadQueryUserView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    username: str
+    role: RoleType
+    display_name: Optional[str] = None
+    manager_id: Optional[int] = None
+    team_id: Optional[int] = None
+    is_active: Optional[bool] = None
+    must_change_password: Optional[bool] = None
+
+
+class ReadQueryTeamView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    name: str
+    description: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
+class ReadQueryResponse(BaseModel):
+    """Typed common sections returned by the discriminator-based read API.
+
+    The endpoint serves several query kinds, so unrelated sections remain
+    optional and unknown top-level fields are preserved for compatibility.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    key_results: Optional[List[ReadQueryKeyResultView]] = None
+    weekly_plan: Optional[ReadQueryWeeklyPlanView] = None
+    retros: Optional[List[ReadQueryRetroView]] = None
+    work_logs: Optional[List[ReadQueryWorkLogView]] = None
+    experiments: Optional[List[ReadQueryExperimentView]] = None
+    tasks: Optional[List[ReadQueryTaskView]] = None
+    users: Optional[List[ReadQueryUserView]] = None
+    teams: Optional[List[ReadQueryTeamView]] = None
+    cycles: Optional[List[ReadQueryCycleView]] = None
+
+
 class AiAnalyzeNodeRequest(BaseModel):
     node_id: int = Field(..., gt=0)
     node_type: NodeType = "KEY_RESULT"

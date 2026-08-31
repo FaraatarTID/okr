@@ -1324,6 +1324,81 @@ export interface components {
             /** Weight */
             weight?: number | null;
         };
+        /** ReadQueryCycleView */
+        ReadQueryCycleView: {
+            /** End Date */
+            end_date?: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Owner Manager Id */
+            owner_manager_id?: number | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Title */
+            title: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryExperimentView */
+        ReadQueryExperimentView: {
+            /** Change Description */
+            change_description?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Created By */
+            created_by?: string | null;
+            /** Cycle Id */
+            cycle_id: number;
+            /** Decision */
+            decision?: ("ADOPT" | "REVERT" | "ITERATE" | "UNKNOWN") | null;
+            /** Decision Rationale */
+            decision_rationale?: string | null;
+            /** End At */
+            end_at?: string | null;
+            /** Expected Effect Direction */
+            expected_effect_direction?: ("UP" | "DOWN") | null;
+            /** Expected Effect Size */
+            expected_effect_size?: number | null;
+            /** Hypothesis */
+            hypothesis?: string | null;
+            /** Id */
+            id: number;
+            /** Key Result Id */
+            key_result_id: number;
+            /** Start At */
+            start_at?: string | null;
+            /** Status */
+            status?: ("PLANNED" | "RUNNING" | "DECIDED") | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryKeyResultView */
+        ReadQueryKeyResultView: {
+            /** Current Value */
+            current_value?: number | null;
+            /** Id */
+            id: number;
+            /** Metric Type */
+            metric_type?: string | null;
+            /** Objective */
+            objective?: {
+                [key: string]: unknown;
+            } | null;
+            /** Progress */
+            progress?: number | null;
+            /** Start Value */
+            start_value?: number | null;
+            /** Target Value */
+            target_value?: number | null;
+            /** Title */
+            title?: string | null;
+            /** Unit */
+            unit?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** ReadQueryRequest */
         ReadQueryRequest: {
             /** Actor Username */
@@ -1334,6 +1409,161 @@ export interface components {
             params?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ReadQueryResponse
+         * @description Typed common sections returned by the discriminator-based read API.
+         *
+         *     The endpoint serves several query kinds, so unrelated sections remain
+         *     optional and unknown top-level fields are preserved for compatibility.
+         */
+        ReadQueryResponse: {
+            /** Cycles */
+            cycles?: components["schemas"]["ReadQueryCycleView"][] | null;
+            /** Experiments */
+            experiments?: components["schemas"]["ReadQueryExperimentView"][] | null;
+            /** Key Results */
+            key_results?: components["schemas"]["ReadQueryKeyResultView"][] | null;
+            /** Retros */
+            retros?: components["schemas"]["ReadQueryRetroView"][] | null;
+            /** Tasks */
+            tasks?: components["schemas"]["ReadQueryTaskView"][] | null;
+            /** Teams */
+            teams?: components["schemas"]["ReadQueryTeamView"][] | null;
+            /** Users */
+            users?: components["schemas"]["ReadQueryUserView"][] | null;
+            weekly_plan?: components["schemas"]["ReadQueryWeeklyPlanView"] | null;
+            /** Work Logs */
+            work_logs?: components["schemas"]["ReadQueryWorkLogView"][] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryRetroView */
+        ReadQueryRetroView: {
+            /** Content */
+            content?: string | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Cycle Id */
+            cycle_id?: number | null;
+            /** Id */
+            id: number;
+            /** Sentiment */
+            sentiment?: string | null;
+            /** User Id */
+            user_id?: number | null;
+            /** Week Start Date */
+            week_start_date?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryTaskView */
+        ReadQueryTaskView: {
+            /** Assignee Id */
+            assignee_id?: number | null;
+            /** Created At */
+            created_at?: string | null;
+            /** Deadline */
+            deadline?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Estimated Minutes */
+            estimated_minutes?: number | null;
+            /** Id */
+            id: number;
+            /** Key Result */
+            key_result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Progress */
+            progress?: number | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Title */
+            title?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryTeamView */
+        ReadQueryTeamView: {
+            /** Created At */
+            created_at?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryUserView */
+        ReadQueryUserView: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Manager Id */
+            manager_id?: number | null;
+            /** Must Change Password */
+            must_change_password?: boolean | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "manager" | "member";
+            /** Team Id */
+            team_id?: number | null;
+            /** Username */
+            username: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryWeeklyPlanView */
+        ReadQueryWeeklyPlanView: {
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Priority 1 */
+            priority_1: string;
+            /** Priority 2 */
+            priority_2?: string | null;
+            /** Priority 3 */
+            priority_3?: string | null;
+            /** User Id */
+            user_id: number;
+            /** Week End Date */
+            week_end_date?: string | null;
+            /** Week Start Date */
+            week_start_date?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryWorkLogView */
+        ReadQueryWorkLogView: {
+            /** Duration Minutes */
+            duration_minutes?: number | null;
+            /** End Time */
+            end_time?: string | null;
+            /** Id */
+            id: number;
+            /** Start Time */
+            start_time?: string | null;
+            /** Summary */
+            summary?: string | null;
+            /** Task */
+            task?: {
+                [key: string]: unknown;
+            } | null;
+            /** Task Id */
+            task_id?: number | null;
+        } & {
+            [key: string]: unknown;
         };
         /** RetroExperimentOutcomeUpsertRequest */
         RetroExperimentOutcomeUpsertRequest: {
@@ -1569,10 +1799,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -3132,9 +3358,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["ReadQueryResponse"];
                 };
             };
             /** @description Validation Error */

@@ -1,4 +1,9 @@
 import type { AtlasSnapshotResponse } from "@/lib/atlas";
+import type {
+  AtlasSnapshotRequest,
+  ReadQueryRequest,
+  ReadQueryResponse,
+} from "@/lib/api/backend-schema";
 
 import {
   fetchWithTimeout,
@@ -29,11 +34,17 @@ export async function readAtlasSnapshot(input: {
   owner_ids?: number[];
   include_analysis?: boolean;
 }): Promise<AtlasSnapshotResponse> {
+  const requestBody: AtlasSnapshotRequest = {
+    actor_username: input.actor_username,
+    cycle_id: input.cycle_id,
+    ...(input.owner_ids ? { owner_ids: input.owner_ids } : {}),
+    include_analysis: Boolean(input.include_analysis),
+  };
   const response = await fetch("/api/backend/v1/read/atlas/snapshot", {
     method: "POST",
     cache: "no-store",
     headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify(input),
+    body: JSON.stringify(requestBody),
   });
   if (!response.ok) {
     throw new Error(`Atlas snapshot failed: ${await responseDetail(response)}`);
@@ -181,7 +192,7 @@ export async function readCyclesQuery(input: {
         120_000,
       ),
     async (response) => {
-      const payload = (await response.json()) as { cycles?: CycleSummary[] };
+      const payload = (await response.json()) as ReadQueryResponse;
       return Array.isArray(payload.cycles) ? payload.cycles : [];
     },
     { label: "Cycle query" },
@@ -259,7 +270,12 @@ export async function readBackendQuery(input: {
   actor_username: string;
   kind: string;
   params?: Record<string, unknown>;
-}): Promise<Record<string, unknown>> {
+}): Promise<ReadQueryResponse> {
+  const requestBody: ReadQueryRequest = {
+    actor_username: input.actor_username,
+    kind: input.kind,
+    params: input.params || {},
+  };
   return retryWithFetch(
     () =>
       fetchWithTimeout(
@@ -268,11 +284,7 @@ export async function readBackendQuery(input: {
           method: "POST",
           cache: "no-store",
           headers: jsonHeaders(input.actor_username),
-          body: JSON.stringify({
-            kind: input.kind,
-            params: input.params || {},
-            actor_username: input.actor_username,
-          }),
+          body: JSON.stringify(requestBody),
         },
         // Keep the browser timeout aligned with the BFF's read-query budget.
         120_000,
