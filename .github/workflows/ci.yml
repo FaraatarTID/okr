@@ -89,10 +89,10 @@ jobs:
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Install Python security tooling
-        run: python -m pip install pip-audit
+        run: uv pip install --python "$GITHUB_WORKSPACE/.venv/bin/python" pip-audit
 
       - name: Install Python license tooling
-        run: python -m pip install pip-licenses
+        run: uv pip install --python "$GITHUB_WORKSPACE/.venv/bin/python" pip-licenses
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -217,7 +217,7 @@ jobs:
             package-lock.json
 
       - name: Install JavaScript workspace dependencies
-        run: npm ci
+        run: npm ci --include=optional
 
       - name: Restore JavaScript build caches
         id: spa-build-cache
@@ -292,7 +292,7 @@ jobs:
             package-lock.json
 
       - name: Install SPA dependencies
-        run: npm ci
+        run: npm ci --include=optional
 
       - name: Install Playwright Browser (Chromium)
         run: |
