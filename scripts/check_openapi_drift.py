@@ -15,6 +15,24 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
+# OpenAPI treats these collections as sets. Their order can vary between
+# supported Python/Pydantic versions without changing the contract.
+_ORDER_INSENSITIVE_KEYS = frozenset({"allOf", "anyOf", "enum", "oneOf", "required"})
+
+
+def _canonicalize(value, *, key: str | None = None):
+    if isinstance(value, dict):
+        return {
+            name: _canonicalize(child, key=name)
+            for name, child in sorted(value.items())
+        }
+    if isinstance(value, list):
+        normalized = [_canonicalize(child, key=key) for child in value]
+        if key in _ORDER_INSENSITIVE_KEYS:
+            return sorted(normalized, key=lambda child: json.dumps(child, sort_keys=True))
+        return normalized
+    return value
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check OpenAPI artifact drift.")
@@ -42,18 +60,21 @@ def main() -> int:
     import backend_app.main as backend_main
     import json as json_mod
 
-    fresh = json_mod.dumps(
-        backend_main.app.openapi(), indent=2, sort_keys=True, ensure_ascii=False
-    ) + "\n"
+    fresh_obj = backend_main.app.openapi()
+    fresh = json_mod.dumps(fresh_obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     committed = artifact.read_text(encoding="utf-8")
 
-    if fresh == committed:
+    try:
+        committed_obj = json_mod.loads(committed)
+    except json_mod.JSONDecodeError:
+        committed_obj = None
+
+    if committed_obj is not None and _canonicalize(fresh_obj) == _canonicalize(committed_obj):
         print("[PASS] OpenAPI artifact is up to date.")
         return 0
 
     # Show which paths changed for actionable output.
     try:
-        fresh_obj = json_mod.loads(fresh)
         committed_obj = json_mod.loads(committed)
         fresh_paths = set(fresh_obj.get("paths", {}).keys())
         committed_paths = set(committed_obj.get("paths", {}).keys())
@@ -72,6 +93,16 @@ def main() -> int:
         ]
         if changed:
             print("Paths changed:", ", ".join(changed[:20]))
+        fresh_components = set(fresh_obj.get("components", {}).get("schemas", {}).keys())
+        committed_components = set(committed_obj.get("components", {}).get("schemas", {}).keys())
+        changed_components = [
+            name
+            for name in sorted(fresh_components & committed_components)
+            if _canonicalize(fresh_obj["components"]["schemas"][name])
+            != _canonicalize(committed_obj["components"]["schemas"][name])
+        ]
+        if changed_components:
+            print("Components changed:", ", ".join(changed_components[:20]))
     except Exception:
         pass
 
