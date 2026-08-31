@@ -23,6 +23,7 @@ never by test-suite green alone.
 | 10. Verify failure-mode and recovery behavior | VERIFIED | `tests/test_data_access_failure_recovery.py`: concurrent read isolation with mixed DB health, probe reset + fallback recovery, and fail-closed mutation assertion | 2026-08-31: deterministic failure-mode recovery harness added; 2026-08-31: dedicated drift test passed | Added request-scope isolation proof for concurrent mode decisions and explicit assertions that fail-unhealthy DB reads/mutations do not leak across requests or accidentally fail over to Supabase mutation handlers. |
 | 11. Explicit readiness gates | IMPLEMENTED | `scripts/verify_deploy_readiness.py`: compose service-running checks + backend/BFF `/healthz` and SPA root endpoint probes | 2026-08-31: deploy workflow gate added | Added release-boundary readiness control in `docker-deploy.yml` to fail fast when services are not fully ready after compose-up. |
 | 12. Migration lint/review policy | IMPLEMENTED | `scripts/verify_migration_lint.py`: single-head/linear-history lint, dangling down-revision detection, and cycle scan, with baseline-root enforcement for this policy (`--require-baseline`) | 2026-08-31: migration lint gate added | CI now blocks malformed migration topology before database bootstrap in `ci.yml` |
+| 13. Model import side effects | IMPLEMENTED | `src/models.py`; `tests/test_model_import_side_effects.py` | 2026-08-31: import-time global resets removed | Model imports no longer dispose the process-wide SQLModel registry or clear shared metadata. |
 
 ## Deferred (P2) watchlist
 
@@ -31,7 +32,6 @@ Promotion triggers are defined in the backlog. Re-check biweekly.
 | Item | Last reviewed | Trigger proximity |
 |---|---|---|
 | Data-access adapter abstraction | — | None observed |
-| Model import side effects | — | None observed |
 
 ## Drill log
 

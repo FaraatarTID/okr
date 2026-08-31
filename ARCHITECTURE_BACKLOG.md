@@ -458,7 +458,6 @@ timeouts, circuit-breaking, mutation fail-closed rules, or fallback telemetry.
 
 | Item | Gap | Why deferred | Trigger condition to promote |
 |---|---|---|---|
-| Model import side effects | `src/models.py:23-24` clears global registry at import | Known workaround in single-process deployment and documented in code conventions | Any move to multi-process/parallel workers or plugin loading |
 | Multi-tenant foundation | Zero tenant code exists (no `tenant_id` in schema/middleware) | Greenfield architecture, not reliability hardening; no multi-tenant requirement exists | An actual multi-tenant requirement appears (see enterprise roadmap deferred section) |
 | UI feature-shell refactor | Some state boundaries mixed across flows | Frontend already decomposed (~75 files under `atlas-shell/`); refactor is churn without a team-scale payoff | Multiple contributors working the same frontend concurrently |
 

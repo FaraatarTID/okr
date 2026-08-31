@@ -57,7 +57,7 @@ def _parse_migration_file(path: Path) -> _RevisionRecord | None:
         raise RuntimeError(f"{path}: cannot parse as Python source: {exc}") from exc
 
     revision = None
-    down_revision = ()
+    down_revision: tuple[str, ...] = ()
     for node in tree.body:
         targets: list[ast.Name] = []
         expr: ast.AST | None = None
