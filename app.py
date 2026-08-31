@@ -7,6 +7,16 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
+from src.services.app_shell_runtime import (
+    KeyedSnapshotCache,
+    SnapshotCache,
+    bootstrap_default_cycle_for_facade,
+    build_cycle_selector_mapping,
+    serialize_cycle,
+    serialize_user,
+    serialize_weekly_plan,
+    weekly_plan_cache_bucket,
+)
 
 from src.crud import (
     create_cycle,
@@ -101,16 +111,24 @@ def _last_invalidation_ts() -> int:
         return 0
 
 
-def _serialize_cycle(cycle: Any) -> dict[str, Any] | None:
-    return serialize_cycle_snapshot(cycle)
+def _make_distributed_stale_check() -> Callable[[], bool]:
+    seen_invalidation_ts = 0
 
+    def is_stale() -> bool:
+        nonlocal seen_invalidation_ts
+        try:
+            from src.utils.cache_utils import check_distributed_cache_staleness
 
-def _serialize_user(user: Any) -> dict[str, Any] | None:
-    return serialize_user_snapshot(user)
+            check_distributed_cache_staleness()
+        except Exception:
+            pass
+        current_ts = _last_invalidation_ts()
+        if current_ts and current_ts != seen_invalidation_ts:
+            seen_invalidation_ts = current_ts
+            return True
+        return False
 
-
-def _serialize_weekly_plan(plan: Any) -> dict[str, Any] | None:
-    return serialize_weekly_plan_snapshot(plan)
+    return is_stale
 
 
 def _fetch_all_cycles_raw() -> list[dict[str, Any]]:
@@ -122,78 +140,37 @@ def _fetch_all_cycles_raw() -> list[dict[str, Any]]:
     ]
 
 
-_cached_get_all_cycles = _CachedCallable(_fetch_all_cycles_raw)
-
-
-def _build_cycle_selector_payload(
-    cycles: list[dict[str, Any]],
-) -> tuple[list[int], dict[int, str]]:
-    cycle_ids: list[int] = []
-    labels: dict[int, str] = {}
-    for cycle in cycles:
-        cid = int(cycle.get("id", 0))
-        title = str(cycle.get("title", "") or "")
-        cycle_ids.append(cid)
-        labels[cid] = f"{title} #{cid}"
-    return cycle_ids, labels
-
-
-def _bootstrap_default_cycle_if_needed(
-    cycles: list[dict[str, Any]],
-    *,
-    username: str,
-    user_role: str,
-) -> tuple[list[dict[str, Any]], Optional[str]]:
-    if cycles:
-        return cycles, None
-
-    role = str(user_role or "").strip().lower()
-    if role != "admin":
-        return [], "No cycles found. Ask an admin to create the first cycle."
-
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
-    try:
-        created = create_cycle(
-            title="Default Cycle",
-            start_date=now - timedelta(days=7),
-            end_date=now + timedelta(days=83),
-            is_active=True,
-            actor_username=username,
-        )
-    except PermissionError:
-        return [], "No cycles found. Ask an admin to create the first cycle."
-
-    serialized_created = _serialize_cycle(created)
-    if serialized_created is None:
-        return [], "Unable to build default cycle payload."
-
-    _cached_get_all_cycles.clear()
-    return [serialized_created], None
-
-
-def _weekly_plan_cache_bucket(dt: datetime) -> str:
-    if dt.weekday() == 0:
-        return dt.strftime("%Y-%m-%d")
-    monday = dt - timedelta(days=dt.weekday())
-    return monday.strftime("%Y-%m-%d")
+_cached_get_all_cycles = SnapshotCache(
+    _fetch_all_cycles_raw,
+    ttl_seconds=5.0,
+    stale_check=_make_distributed_stale_check(),
+)
 
 
 def _get_weekly_plan_snapshot(user_id: int) -> Optional[dict[str, Any]]:
     plan = get_active_weekly_plan(user_id)
     if plan is None:
         return None
-    return _serialize_weekly_plan(plan)
+    return serialize_weekly_plan_snapshot(plan)
 
 
 def _get_user_snapshot(user_id: int) -> Optional[dict[str, Any]]:
     user = get_user_by_id(user_id)
     if user is None:
         return None
-    return _serialize_user(user)
+    return serialize_user_snapshot(user)
 
 
-_cached_get_active_weekly_plan_snapshot = _CachedCallable(_get_weekly_plan_snapshot)
-_cached_get_user_runtime_snapshot = _CachedCallable(_get_user_snapshot)
+_cached_get_active_weekly_plan_snapshot = KeyedSnapshotCache(
+    _get_weekly_plan_snapshot,
+    ttl_seconds=5.0,
+    stale_check=_make_distributed_stale_check(),
+)
+_cached_get_user_runtime_snapshot = KeyedSnapshotCache(
+    _get_user_snapshot,
+    ttl_seconds=5.0,
+    stale_check=_make_distributed_stale_check(),
+)
 
 
 def _resolve_app_shell_runtime(user_id: int) -> dict[str, Any]:
@@ -209,3 +186,27 @@ def _resolve_app_shell_runtime(user_id: int) -> dict[str, Any]:
         "weekly_plan": weekly_plan,
         "show_admin_default_password_warning": show_admin_default_password_warning,
     }
+
+
+# Compatibility names remain available while callers migrate to the canonical
+# service boundary.
+_serialize_cycle = serialize_cycle
+_serialize_user = serialize_user
+_serialize_weekly_plan = serialize_weekly_plan
+_weekly_plan_cache_bucket = weekly_plan_cache_bucket
+_build_cycle_selector_payload = build_cycle_selector_mapping
+
+
+def _bootstrap_default_cycle_if_needed(
+    cycles: list[dict[str, Any]],
+    *,
+    username: str,
+    user_role: str,
+) -> tuple[list[dict[str, Any]], Optional[str]]:
+    return bootstrap_default_cycle_for_facade(
+        cycles,
+        username=username,
+        user_role=user_role,
+        create_cycle=create_cycle,
+        clear_cache=_cached_get_all_cycles.clear,
+    )

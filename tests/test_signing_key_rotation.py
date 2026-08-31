@@ -16,7 +16,6 @@ import json
 import time
 from types import SimpleNamespace
 
-import pytest
 from fastapi.testclient import TestClient
 
 _CURRENT_SECRET = "current-signing-secret-0123456789abcdef"

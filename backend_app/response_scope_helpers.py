@@ -9,9 +9,11 @@ from fastapi import HTTPException
 from backend_app.input_normalization import _normalize_node_type
 from src.serialization_helpers import (
     _enum_value,
-    serialize_cycle_snapshot,
-    serialize_user_snapshot,
-    serialize_weekly_plan_snapshot,
+)
+from src.services.app_shell_runtime import (
+    serialize_cycle,
+    serialize_user,
+    serialize_weekly_plan,
 )
 from src.services.supabase_api_mode import read_query_via_supabase_api
 
@@ -19,11 +21,11 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def _serialize_user(user) -> dict | None:
-    return serialize_user_snapshot(user, role_value_fn=_enum_value)
+    return serialize_user(user)
 
 
 def _serialize_cycle(cycle) -> dict | None:
-    return serialize_cycle_snapshot(cycle)
+    return serialize_cycle(cycle)
 
 
 def _serialize_team(team) -> dict | None:
@@ -301,7 +303,7 @@ def _serialize_experiment(experiment) -> dict | None:
 
 
 def _serialize_weekly_plan(plan) -> dict | None:
-    return serialize_weekly_plan_snapshot(plan)
+    return serialize_weekly_plan(plan)
 
 
 def _serialize_retro(retro, *, include_user: bool = False) -> dict | None:

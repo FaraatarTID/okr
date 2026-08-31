@@ -249,6 +249,7 @@ If you are a first-time reader, skip this section until after `Start Here`.
 - Documentation lifecycle registry: [docs/DOCUMENTATION_LIFECYCLE.md](docs/DOCUMENTATION_LIFECYCLE.md)
 - Task-graph evaluation: [docs/TASK_GRAPH_EVALUATION.md](docs/TASK_GRAPH_EVALUATION.md)
 - Enterprise SaaS roadmap: [ENTERPRISE_SAAS_ROADMAP.md](ENTERPRISE_SAAS_ROADMAP.md)
+- Pre-SaaS architecture simplification: [PRE_SAAS_ARCHITECTURE_BACKLOG.md](PRE_SAAS_ARCHITECTURE_BACKLOG.md)
 - Multi-tenant data access ADR: [docs/ADR-001-multitenant-data-access-boundary.md](docs/ADR-001-multitenant-data-access-boundary.md)
 - Archived reliability roadmap: [ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md](ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md)
 - Production readiness runbooks and dashboards: [docs/OBSERVABILITY_AND_RUNBOOKS.md](docs/OBSERVABILITY_AND_RUNBOOKS.md)

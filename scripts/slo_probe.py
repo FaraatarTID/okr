@@ -45,11 +45,9 @@ def _post_json(
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read()
             status_code = int(response.status)
-            set_cookie = response.headers.get("Set-Cookie", "")
     except urllib.error.HTTPError as exc:
         body = exc.read()
         status_code = int(exc.code)
-        set_cookie = exc.headers.get("Set-Cookie", "") if exc.headers else ""
     elapsed = time.monotonic() - start
     parsed: dict[str, Any] = {}
     try:
@@ -91,7 +89,6 @@ def probe(base_url: str, username: str, password: str) -> list[dict[str, Any]]:
 
     # --- SLO-1: Login p95 ---
     durations: list[float] = []
-    cookie: str | None = None
     ok_count = 0
     for i in range(PROBE_ITERATIONS):
         status_code, body, elapsed = _post_json(
@@ -100,7 +97,6 @@ def probe(base_url: str, username: str, password: str) -> list[dict[str, Any]]:
         )
         if status_code == 200:
             ok_count += 1
-            cookie_header = ""
             if i == 0 and isinstance(body, dict):
                 # Session cookie comes via Set-Cookie; capture from handler.
                 pass

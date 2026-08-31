@@ -191,7 +191,6 @@ def main() -> int:
     schema = json.loads(OPENAPI_PATH.read_text(encoding="utf-8"))
     policy_metadata = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
     policy = build_policy(schema, policy_metadata)
-    expected_policy = _serialized(policy)
     expected_allowlist = render_allowlist(policy)
 
     stale = []

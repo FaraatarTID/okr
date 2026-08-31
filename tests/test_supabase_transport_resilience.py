@@ -132,7 +132,6 @@ class TestCircuitBreaker:
         assert status == 200
 
     def test_success_resets_failure_count(self, monkeypatch):
-        responses = iter([None])
 
         def failing(request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError("x", request=request)
