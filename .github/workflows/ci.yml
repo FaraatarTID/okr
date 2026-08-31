@@ -55,6 +55,9 @@ jobs:
         with:
           requirements-path: backend_app/requirements.txt
 
+      - name: Migration Lint Gate
+        run: python scripts/verify_migration_lint.py --require-baseline
+
       - name: Apply migrations
         run: python -m alembic upgrade head
 
