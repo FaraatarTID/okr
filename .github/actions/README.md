@@ -1,5 +1,10 @@
 # GitHub Action: Setup Python dependencies
 
+Documentation HQ: [README](../../README.md)
+
+> For new markdown files, copy the required backlink from:
+> `.github/documentation-hq-template.md`
+
 Reusable local composite action that installs Python dependencies from a requirements file.
 
 ## Location
