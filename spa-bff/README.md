@@ -4,6 +4,13 @@ Documentation HQ: [README](../README.md)
 
 Public Backend-for-Frontend service for browser SPA clients.
 
+Boundary ownership:
+- Owns browser-facing sessions, route allowlisting, request signing, and proxy
+  transport.
+- Calls `backend_app` over its internal HTTP contract.
+- Does not access the database or contain OKR business rules.
+- Must not depend on `spa-web` implementation details.
+
 Purpose:
 - Expose a controlled public API surface for SPA traffic.
 - Keep `backend-api` private/internal.

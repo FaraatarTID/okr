@@ -1,5 +1,7 @@
 Documentation HQ: [README](README.md)
 
+Lifecycle: Operational | Owner: Platform/Operations | Last reviewed: 2026-08-31
+
 Enterprise Deployment Guide (Step-by-Step, Beginner Friendly)
 
 Last updated: 2026-02-20

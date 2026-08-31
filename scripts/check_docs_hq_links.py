@@ -57,6 +57,32 @@ def _expected_readme_link(doc_path: Path) -> str:
     return os.path.relpath(ROOT_README, doc_path.parent).replace("\\", "/")
 
 
+def _validate_hq_targets(readme_text: str) -> list[str]:
+    """Validate local links listed inside the README Documentation HQ section."""
+    start_marker = "## Documentation HQ"
+    end_marker = "## Deployment Intent"
+    start = readme_text.find(start_marker)
+    if start < 0:
+        return []
+    end = readme_text.find(end_marker, start + len(start_marker))
+    section = readme_text[start:] if end < 0 else readme_text[start:end]
+
+    errors: list[str] = []
+    link_re = re.compile(r"\[[^\]]+\]\((?P<link>[^)]+)\)")
+    for match in link_re.finditer(section):
+        link = match.group("link").strip()
+        target = _clean_link_target(link)
+        if not target or target.startswith(("http://", "https://", "#")):
+            continue
+        resolved = (ROOT_README.parent / target).resolve()
+        if not resolved.exists():
+            errors.append(
+                f"README.md Documentation HQ link '{link}' does not resolve "
+                f"to an existing path ({_display_path(resolved)})."
+            )
+    return errors
+
+
 def validate() -> int:
     errors: list[str] = []
     files = _tracked_markdown_files()
@@ -68,6 +94,7 @@ def validate() -> int:
     readme_text = ROOT_README.read_text(encoding="utf-8")
     if "## Documentation HQ" not in readme_text:
         errors.append("README.md is missing the '## Documentation HQ' section.")
+    errors.extend(_validate_hq_targets(readme_text))
 
     for doc in files:
         if doc == ROOT_README:

@@ -4,6 +4,14 @@ Documentation HQ: [README](../README.md)
 
 Next.js frontend shell for Atlas migration.
 
+Boundary ownership:
+- Owns rendering, browser state, feature workflows, and generated API client
+  consumption.
+- Calls `spa-bff` through browser-facing session and backend proxy routes.
+- Does not hold backend credentials, access the database, or implement backend
+  authorization rules.
+- Backend/domain changes belong in `backend_app/` or shared `src/` modules.
+
 Current phase:
 - Read-first migration probe through `spa-bff`.
 - Login and Atlas snapshot checks via Next.js API route proxy (`/api/backend/*` -> `spa-bff`).
