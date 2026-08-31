@@ -614,6 +614,28 @@ class ReadQueryCycleView(BaseModel):
     owner_manager_id: Optional[int] = None
 
 
+class ReadQueryUserView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    username: str
+    role: RoleType
+    display_name: Optional[str] = None
+    manager_id: Optional[int] = None
+    team_id: Optional[int] = None
+    is_active: Optional[bool] = None
+    must_change_password: Optional[bool] = None
+
+
+class ReadQueryTeamView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    name: str
+    description: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+
 class ReadQueryResponse(BaseModel):
     """Typed common sections returned by the discriminator-based read API.
 
@@ -629,8 +651,8 @@ class ReadQueryResponse(BaseModel):
     work_logs: Optional[List[ReadQueryWorkLogView]] = None
     experiments: Optional[List[ReadQueryExperimentView]] = None
     tasks: Optional[List[ReadQueryTaskView]] = None
-    users: Optional[List[UserMutationView]] = None
-    teams: Optional[List[TeamMutationView]] = None
+    users: Optional[List[ReadQueryUserView]] = None
+    teams: Optional[List[ReadQueryTeamView]] = None
     cycles: Optional[List[ReadQueryCycleView]] = None
 
 

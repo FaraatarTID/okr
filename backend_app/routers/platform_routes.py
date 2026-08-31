@@ -121,6 +121,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         "/v1/read/query",
         dependencies=[Depends(main.require_service_access)],
         response_model=ReadQueryResponse,
+        response_model_exclude_none=True,
     )
     def api_read_query(
         payload: ReadQueryRequest,

@@ -17,8 +17,8 @@ import {
   type AdminDbRestoreResponse,
   type AuthUser,
   type CycleSummary,
-  type TeamMutationResponse,
-  type UserMutationResponse,
+  type ReadQueryTeam,
+  type ReadQueryUser,
 } from "@/lib/api";
 import type {
   AdminCreateCycleDraft,
@@ -31,7 +31,7 @@ type UseAdminActionsInput = {
   user: AuthUser | null;
   isAdmin: boolean;
   isManager: boolean;
-  adminUsers: UserMutationResponse[];
+  adminUsers: ReadQueryUser[];
   setAdminCycleError: (value: string) => void;
   setAdminDataError: (value: string) => void;
   loadAdminCycles: (activeUser: AuthUser) => Promise<void>;
@@ -45,8 +45,8 @@ type UseAdminActionsInput = {
   toIsoEnd: (dateValue: string) => string;
 };
 
-type AdminUserRead = UserMutationResponse;
-type AdminTeamRead = TeamMutationResponse;
+type AdminUserRead = ReadQueryUser;
+type AdminTeamRead = ReadQueryTeam;
 
 export default function useAdminActions({
   user,

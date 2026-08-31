@@ -2038,7 +2038,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/TeamMutationView"
+                  "$ref": "#/components/schemas/ReadQueryTeamView"
                 },
                 "type": "array"
               },
@@ -2052,7 +2052,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/UserMutationView"
+                  "$ref": "#/components/schemas/ReadQueryUserView"
                 },
                 "type": "array"
               },
@@ -2298,6 +2298,132 @@
           "id"
         ],
         "title": "ReadQueryTaskView",
+        "type": "object"
+      },
+      "ReadQueryTeamView": {
+        "additionalProperties": true,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "ReadQueryTeamView",
+        "type": "object"
+      },
+      "ReadQueryUserView": {
+        "additionalProperties": true,
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "manager_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manager Id"
+          },
+          "must_change_password": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Must Change Password"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "manager",
+              "member"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "team_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Team Id"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "role"
+        ],
+        "title": "ReadQueryUserView",
         "type": "object"
       },
       "ReadQueryWeeklyPlanView": {

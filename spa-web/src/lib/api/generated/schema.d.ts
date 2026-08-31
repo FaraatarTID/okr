@@ -1429,9 +1429,9 @@ export interface components {
             /** Tasks */
             tasks?: components["schemas"]["ReadQueryTaskView"][] | null;
             /** Teams */
-            teams?: components["schemas"]["TeamMutationView"][] | null;
+            teams?: components["schemas"]["ReadQueryTeamView"][] | null;
             /** Users */
-            users?: components["schemas"]["UserMutationView"][] | null;
+            users?: components["schemas"]["ReadQueryUserView"][] | null;
             weekly_plan?: components["schemas"]["ReadQueryWeeklyPlanView"] | null;
             /** Work Logs */
             work_logs?: components["schemas"]["ReadQueryWorkLogView"][] | null;
@@ -1483,6 +1483,43 @@ export interface components {
             status?: string | null;
             /** Title */
             title?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryTeamView */
+        ReadQueryTeamView: {
+            /** Created At */
+            created_at?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** ReadQueryUserView */
+        ReadQueryUserView: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active?: boolean | null;
+            /** Manager Id */
+            manager_id?: number | null;
+            /** Must Change Password */
+            must_change_password?: boolean | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "admin" | "manager" | "member";
+            /** Team Id */
+            team_id?: number | null;
+            /** Username */
+            username: string;
         } & {
             [key: string]: unknown;
         };
