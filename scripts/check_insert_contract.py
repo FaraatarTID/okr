@@ -30,8 +30,11 @@ from scripts.required_insert_columns import REQUIRED_INSERT_COLUMNS
 
 BASELINE_PATH = PROJECT_ROOT / "alembic" / "versions" / "baseline_2026_08_26_schema.py"
 
+# Backward-compatible export expected by tests and existing callers.
+_REQUIRED_INSERT_COLUMNS = REQUIRED_INSERT_COLUMNS
+
 # Tables the API-mode helpers insert into and that we track in the contract.
-TRACKED_TABLES = sorted(REQUIRED_INSERT_COLUMNS.keys())
+TRACKED_TABLES = sorted(_REQUIRED_INSERT_COLUMNS.keys())
 
 
 def _schema_from_live_db() -> dict[str, dict[str, tuple[bool, bool]]]:
@@ -126,7 +129,7 @@ def check(schema: dict[str, dict[str, tuple[bool, bool]]]) -> list[str]:
     errors: list[str] = []
     for table in TRACKED_TABLES:
         cols = schema.get(table, {})
-        required = REQUIRED_INSERT_COLUMNS.get(table, set())
+        required = _REQUIRED_INSERT_COLUMNS.get(table, set())
 
         for col in sorted(required):
             info = cols.get(col)
