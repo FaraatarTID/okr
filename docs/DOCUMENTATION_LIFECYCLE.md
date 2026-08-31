@@ -21,6 +21,7 @@ historical or compatibility material as current operational guidance.
 | --- | --- | --- |
 | System architecture and code ownership | Canonical | `ARCHITECTURE.md`, `CODEBASE_MAP.md` |
 | Architecture execution and evidence | Canonical | `ARCHITECTURE_BACKLOG.md`, `docs/architecture-status.md`, `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` |
+| Enterprise SaaS strategy | Canonical | `ENTERPRISE_SAAS_ROADMAP.md` |
 | Enterprise deployment | Operational | `DEPLOYMENT.md` |
 | Runtime configuration | Operational | `docs/CONFIG_REFERENCE.md` |
 | Incident troubleshooting | Operational | `docs/TROUBLESHOOTING.md` |
@@ -30,6 +31,7 @@ historical or compatibility material as current operational guidance.
 | Strategy and rollout governance | Canonical | `docs/OKR_ROLLOUT_GUIDE.md`, `docs/OKR_BAU_BOUNDARY_GUIDE.md` |
 | Consolidated deployment redirects | Compatibility | `docs/DEPLOYMENT_OPERATIONS_GUIDE.md`, `docs/DOCKER_COMPOSE.md`, `docs/KUBERNETES.md`, `docs/REVERSE_PROXY.md` |
 | Completed implementation record | Historical | `docs/PLAN_PER_MANAGER_ACTIVE_CYCLES.md` |
+| Previous reliability strategy | Historical | `docs/archive/ENTERPRISE_RELIABILITY_ROADMAP_2026-08-31.md` |
 | Reusable rollout artifacts | Template | `docs/templates/` |
 
 The Persian documents mirror the relevant English canonical or operational
