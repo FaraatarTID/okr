@@ -22,8 +22,8 @@ The main execution workspace is Atlas (`render_atlas_workspace`), composed of:
 ### Focus Map tab
 - Quick Jump search for any goal/objective/KR/task.
 - Cycle selector is role-aware:
-  - Admin/manager can select from their visible owned cycles.
-  - Member is pinned to the manager/admin active cycle.
+  - Admin can select any visible cycle; managers can select their owned cycles and admin-owned global cycles.
+  - Members resolve to their manager's active cycle, with an active admin-owned global cycle as fallback.
 - Owner filter is available for admin users to narrow Atlas reads.
 - Map Lens supports `Focus`, `Health`, and `Owner` views.
 - Map key includes:
@@ -229,9 +229,9 @@ Project Timeline dialog:
 
 Current implementation note:
 - Timeline is strictly scoped to an authorized cycle and role visibility:
-  - Member: manager/admin active cycle only.
-  - Manager: owned cycles only.
-  - Admin: any cycle.
+  - Member: their manager's active cycle, with an active admin-owned global cycle as fallback.
+  - Manager: selected owned cycle or an admin-owned global cycle.
+  - Admin: any visible cycle.
 
 Other useful tools:
 - Weekly Focus card in sidebar for top 3 priorities.
@@ -272,7 +272,7 @@ Timing note:
 | Tool / Feature | Primary Owner | Process | Recommended Timing | Frequency | Expected Output |
 |---|---|---|---|---|---|
 | Focus Task (Atlas) | Member / Manager / Admin | Pick one task, run sprint timer, stop with summary. | Start of each focused work block. | Multiple times per day. | Work logs with clear execution evidence. |
-| Focus Map + Map Lens | Member / Manager / Admin | Select cycle (if role allows), optionally filter owners (admin), switch `Focus`/`Health`/`Owner`, identify `Needs care`. | At session start and when priorities shift. | Daily. | Clear next branch/task decision. |
+| Focus Map + Map Lens | Member / Manager / Admin | Select an authorized cycle when applicable, optionally filter owners (admin), switch `Focus`/`Health`/`Owner`, identify `Needs care`. | At session start and when priorities shift. | Daily. | Clear next branch/task decision. |
 | Inspector | Role-authorized user | Edit node fields (KR metrics, lifecycle, assignments, dates). | Immediately when data quality gaps are found. | Ad hoc (usually daily/weekly). | Correct and auditable OKR data. |
 | Lifecycle & Closing (Inspector) | Objective/KR owner, Manager, Admin | Move state (`DRAFT/ACTIVE/GRADING/ARCHIVED`) and capture reflection. | At phase boundaries of the quarter. | Few times per quarter. | Valid state transitions and closure notes. |
 | Organizational Alignment (Objective Inspector) | Manager / Admin (or authorized owner) | Add/remove objective alignment edges with cycle-safe validation. | During planning and mid-quarter replanning. | Weekly or milestone-based. | Traceable cross-objective dependencies. |
@@ -291,7 +291,7 @@ Timing note:
 How managers see team OKRs/tasks:
 1. In Atlas Focus Map, choose a cycle where you are assigned as cycle owner.
 2. In Strategic Dashboard, use team/member filter.
-3. In Project Timeline, manager sees role-filtered team-visible tasks for the selected owned cycle.
+3. In Project Timeline, manager sees role-filtered team-visible tasks for the selected owned cycle or global cycle.
 
 Read/Edit/None rules (current behavior):
 1. Manager read: own nodes + direct-report nodes + same-team visibility.

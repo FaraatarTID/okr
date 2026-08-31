@@ -1,5 +1,9 @@
 name: Build and deploy OKR
 
+# Changelog note:
+# - Uses .github/actions/setup-python-dependencies to keep CI contract/check gates aligned with runtime/test dependencies.
+#   to keep offline contract gates aligned with CI/runtime dependency expectations.
+
 on:
   push:
     branches: [ main, master ]
@@ -21,6 +25,12 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
+      - name: Install Python dependencies
+        # Uses .github/actions/setup-python-dependencies to keep CI contract/check gates aligned with runtime/test dependencies.
+        uses: ./.github/actions/setup-python-dependencies
+        with:
+          requirements-path: backend_app/requirements.txt
 
       - name: Insert Payload Schema Contract Gate (offline)
         run: python scripts/check_insert_contract.py --from-baseline

@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from scripts.required_insert_columns import REQUIRED_INSERT_COLUMNS
 
 
 # Synthetic placeholder used only by this regression test. Not a real
@@ -40,18 +41,7 @@ class _CaptureInsert:
 # An API-mode INSERT missing any of these will fail with 23502 at runtime.
 # (token_version has a DB default of 1, so it is not required. `role` is
 # always sent by create_user_via_supabase_api via _role_for_storage.)
-_REQUIRED_INSERT_COLUMNS: dict[str, set[str]] = {
-    "user": {
-        "username",
-        "password_hash",
-        "role",
-        "must_change_password",
-        "created_at",
-        "is_active",
-    },
-    "team": {"name", "created_at"},
-    "work_log": {"task_id", "start_time", "duration_minutes"},
-}
+_REQUIRED_INSERT_COLUMNS = REQUIRED_INSERT_COLUMNS
 
 
 @pytest.fixture()
