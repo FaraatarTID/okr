@@ -3,7 +3,7 @@
 Use this pattern at the top of new markdown files so the Documentation HQ check passes:
 
 ```
-Documentation HQ: [README](<relative-path-to-README>)
+Documentation HQ: [README](../README.md)
 ```
 
 Examples:
