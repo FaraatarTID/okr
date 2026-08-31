@@ -104,6 +104,13 @@ def test_backend_admin_observability_metrics_endpoint(monkeypatch):
     assert "GET /v1/admin/observability/metrics" in by_route
     assert "GET /healthz" in by_route
 
+    health_route = next(
+        item
+        for item in after["requests"]["by_route"]
+        if item.get("route") == "GET /healthz"
+    )
+    assert isinstance(health_route.get("resolver_state_counts"), dict)
+
 
 def test_backend_request_log_events_are_structured(monkeypatch):
     client, backend_main = _make_client(monkeypatch)

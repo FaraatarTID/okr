@@ -894,6 +894,13 @@ export default function AtlasShell() {
     const params = new URLSearchParams(baseQuery);
     return params.toString();
   }, [effectiveCycleId, mode, selectedRef, focusTaskRef, lens]);
+  const handleCycleIdChange = (nextCycleId: string): void => {
+    setCycleId(nextCycleId);
+    setResolvedCycle(null);
+    clearSnapshot();
+    setSelectedRef("");
+    setFocusTaskRef("");
+  };
   useDeepLinkCycleBootstrap({
     user,
     canManageCycleSelection,
@@ -1502,7 +1509,8 @@ export default function AtlasShell() {
         cycleId={effectiveCycleId}
         cycleOptions={cycleOptions}
         canManageCycleSelection={canManageCycleSelection}
-        onCycleIdChange={setCycleId}
+        canInspectAllCycles={isAdmin}
+        onCycleIdChange={handleCycleIdChange}
         ownerIdsInput={ownerIdsInput}
         onOwnerIdsInputChange={setOwnerIdsInput}
         canManageOwnerFilter={isAdmin}

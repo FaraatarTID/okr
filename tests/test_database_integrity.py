@@ -200,7 +200,6 @@ def test_alembic_cli_upgrade_head_succeeds_on_fresh_sqlite(monkeypatch, tmp_path
     goal_columns = {col["name"] for col in inspector.get_columns("goal")}
     assert "user_id" not in goal_columns
     assert "owner_id" in goal_columns
-    engine.dispose()
 
 
 def test_alembic_revisions_do_not_embed_sqlite_only_pragma():
@@ -245,6 +244,7 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(
     assert "auth_throttle_state" in tables
     assert "audit_event" in tables
     assert "sync_retry_event" not in tables
+    engine.dispose()
 
 
 

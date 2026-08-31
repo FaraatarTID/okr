@@ -11,6 +11,9 @@ from urllib.request import HTTPCookieProcessor, OpenerDirector, Request, build_o
 import pytest
 
 
+pytestmark = [pytest.mark.e2e, pytest.mark.integration, pytest.mark.smoke]
+
+
 def _truthy(raw: str | None) -> bool:
     return str(raw or "").strip().lower() in {"1", "true", "yes", "on"}
 

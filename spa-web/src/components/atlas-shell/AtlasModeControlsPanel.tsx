@@ -21,6 +21,7 @@ type AtlasModeControlsPanelProps = {
   cycleId: string;
   cycleOptions: CycleOption[];
   canManageCycleSelection: boolean;
+  canInspectAllCycles?: boolean;
   onCycleIdChange: (value: string) => void;
   ownerIdsInput: string;
   onOwnerIdsInputChange: (value: string) => void;
@@ -41,6 +42,7 @@ export default function AtlasModeControlsPanel({
   cycleId,
   cycleOptions,
   canManageCycleSelection,
+  canInspectAllCycles = false,
   onCycleIdChange,
   ownerIdsInput,
   onOwnerIdsInputChange,
@@ -56,12 +58,13 @@ export default function AtlasModeControlsPanel({
   const [ownerSearchInput, setOwnerSearchInput] = useState("");
   const [ownerPickerError, setOwnerPickerError] = useState("");
 
-  // Only cycles that are actually selectable (the active one, or unknown-flag
-  // cycles) count toward "is there a real choice to make?".
-  const selectableCycleOptions = useMemo(
-    () => cycleOptions.filter((option) => option.isActive !== false),
-    [cycleOptions],
-  );
+  const selectableCycleOptions = useMemo(() => {
+    if (canInspectAllCycles) {
+      return cycleOptions;
+    }
+    // Managers can select active cycles; admins can inspect every visible cycle.
+    return cycleOptions.filter((option) => option.isActive !== false);
+  }, [canInspectAllCycles, cycleOptions]);
   const activeCycleLabel = useMemo(() => {
     const active = cycleOptions.find((option) => option.isActive === true);
     if (active) {
@@ -184,7 +187,7 @@ export default function AtlasModeControlsPanel({
                 <option
                   key={`cycle-option-${option.id}`}
                   value={String(option.id)}
-                  disabled={canManageCycleSelection && option.isActive === false}
+                  disabled={!canInspectAllCycles && canManageCycleSelection && option.isActive === false}
                 >
                   {option.label}
                 </option>

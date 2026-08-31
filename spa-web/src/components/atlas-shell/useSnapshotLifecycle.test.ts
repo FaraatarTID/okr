@@ -99,4 +99,56 @@ describe("useSnapshotLifecycle", () => {
     expect(readAtlasSnapshotMock).not.toHaveBeenCalled();
     expect(result.current.snapshotPayload).toBeNull();
   });
+
+  it("ignores a stale snapshot response after switching cycles", async () => {
+    const readAtlasSnapshotMock = vi.mocked(api.readAtlasSnapshot);
+    let resolveFirst: ((value: never) => void) | undefined;
+    let resolveSecond: ((value: never) => void) | undefined;
+    readAtlasSnapshotMock
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveFirst = resolve;
+        }),
+      )
+      .mockImplementationOnce(
+        () => new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+      );
+
+    const { result } = renderHook(() =>
+      useSnapshotLifecycle({
+        user: baseUser,
+        mode: "atlas",
+        parsedCycleId: 1,
+        ownerIds: undefined,
+        ownerIdsError: "",
+      }),
+    );
+
+    let firstLoad: Promise<void>;
+    await act(async () => {
+      firstLoad = result.current.loadSnapshotForUser(baseUser);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      result.current.loadSnapshotForUser(baseUser);
+      await Promise.resolve();
+    });
+
+    const managerSnapshot = { goals: [{ id: 2 }], users_map: {} } as never;
+    const oldSnapshot = { goals: [{ id: 1 }], users_map: {} } as never;
+    await act(async () => {
+      resolveSecond?.(managerSnapshot);
+      await Promise.resolve();
+    });
+    expect(result.current.snapshotPayload).toEqual(managerSnapshot);
+
+    await act(async () => {
+      resolveFirst?.(oldSnapshot);
+      await Promise.resolve();
+    });
+    expect(result.current.snapshotPayload).toEqual(managerSnapshot);
+    await firstLoad!;
+  });
 });

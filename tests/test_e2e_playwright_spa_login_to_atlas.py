@@ -17,6 +17,9 @@ import time
 import pytest
 
 
+pytestmark = [pytest.mark.e2e, pytest.mark.integration]
+
+
 _RUN_E2E_ENV = "OKR_RUN_PLAYWRIGHT_SPA_E2E"
 
 _TEST_PASSWORD = "E2E-Atlas-Password-123"

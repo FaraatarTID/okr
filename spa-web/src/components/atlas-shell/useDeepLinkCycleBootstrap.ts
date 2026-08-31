@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 
 import { readCyclesQuery, type AuthUser, type CycleSummary } from "@/lib/api";
 import { DEFAULT_LENS, DEFAULT_MODE, normalizeFocusTaskRef, parseDeepLink } from "@/lib/deeplink";
@@ -53,6 +53,14 @@ export default function useDeepLinkCycleBootstrap({
   setFocusTaskRef,
   setDeepLinkReady,
 }: UseDeepLinkCycleBootstrapInput) {
+  const explicitCycleSelectionRef = useRef(false);
+
+  useEffect(() => {
+    if (parsedCycleId) {
+      explicitCycleSelectionRef.current = true;
+    }
+  }, [parsedCycleId]);
+
   useEffect(() => {
     if (parsedCycleId) {
       setCycleResolveError("");
@@ -243,6 +251,9 @@ export default function useDeepLinkCycleBootstrap({
         // When no explicit cycle ID is present *and* deep-link processing is
         // ready, select the scoped preferred active cycle.
         if (!parsedCycleId && deepLinkReady) {
+          if (explicitCycleSelectionRef.current) {
+            return;
+          }
           const selectedActive = authoritativeActive;
           if (selectedActive) {
             setResolvedCycle({

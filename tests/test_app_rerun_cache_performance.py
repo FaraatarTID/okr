@@ -88,6 +88,7 @@ def test_app_shell_runtime_cache_hit_zero_queries(monkeypatch, tmp_path):
     assert second_qc["count"] == 0
     assert second["user"]["id"] == user_id
     assert second["weekly_plan"]["priority_1"] == "Latency"
+    engine.dispose()
 
 
 def test_weekly_plan_cache_bucket_is_week_stable():

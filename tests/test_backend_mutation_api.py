@@ -1048,6 +1048,53 @@ def test_read_atlas_snapshot_uses_session_actor_for_scope(monkeypatch):
     assert captured["owner_ids"] == [1]
 
 
+def test_read_atlas_snapshot_admin_without_owner_filter_reads_manager_cycle(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    captured = {}
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _fake_session_context():
+        yield object()
+
+    monkeypatch.setattr(backend_main, "get_session_context", _fake_session_context)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_actor_scope",
+        lambda _session, actor, token_version=None: {
+            "is_admin": True,
+            "role": "admin",
+            "actor_id": 1,
+            "owner_ids": {1},
+            "usernames": {actor},
+        },
+    )
+
+    def _fake_snapshot(_session, *, cycle_id, owner_ids, include_analysis):
+        captured.update(
+            cycle_id=cycle_id,
+            owner_ids=owner_ids,
+            include_analysis=include_analysis,
+        )
+        return {"goals": [{"id": 42, "owner_id": 20}], "users_map": {20: "Manager"}}
+
+    monkeypatch.setattr(backend_main, "build_atlas_scope_snapshot", _fake_snapshot)
+
+    response = client.post(
+        "/v1/read/atlas/snapshot",
+        headers={"X-OKR-Actor": "admin"},
+        json={"cycle_id": 42, "include_analysis": True},
+    )
+
+    assert response.status_code == 200
+    assert captured == {
+        "cycle_id": 42,
+        "owner_ids": None,
+        "include_analysis": True,
+    }
+    assert response.json()["goals"][0]["owner_id"] == 20
+
+
 def test_read_atlas_snapshot_rejects_mismatched_header_and_payload_actor(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
 

@@ -114,7 +114,6 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
         ), observability_context(
             correlation_id=correlation_id, request_id=request_id
         ):
-            access_context = current_data_access_context()
             try:
                 response = await call_next(request)
                 status_code = int(getattr(response, "status_code", 500) or 500)
@@ -128,7 +127,21 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                     status_code=500,
                     duration_ms=duration_ms,
                     actor=actor,
-                    strategy=(access_context.preferred_mode if access_context else None),
+                    strategy=(
+                        current_data_access_context().effective_mode
+                        if current_data_access_context()
+                        else None
+                    ),
+                    fallback_reason=(
+                        current_data_access_context().fallback_reason
+                        if current_data_access_context()
+                        else None
+                    ),
+                    resolver_state=(
+                        current_data_access_context().resolver_state
+                        if current_data_access_context()
+                        else None
+                    ),
                 )
                 logger.exception(
                     build_observability_log_payload(
@@ -162,6 +175,21 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
             status_code=status_code,
             duration_ms=duration_ms,
             actor=actor,
+            strategy=(
+                current_data_access_context().effective_mode
+                if current_data_access_context()
+                else None
+            ),
+            fallback_reason=(
+                current_data_access_context().fallback_reason
+                if current_data_access_context()
+                else None
+            ),
+            resolver_state=(
+                current_data_access_context().resolver_state
+                if current_data_access_context()
+                else None
+            ),
         )
         logger.info(
             build_observability_log_payload(

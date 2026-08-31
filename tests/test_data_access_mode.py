@@ -46,13 +46,29 @@ class TestResolveReadMode:
         monkeypatch.setattr(database, "is_direct_db_available", lambda: True)
         assert dam.resolve_read_mode() == "database"
 
+        context = dam.current_data_access_context()
+        assert context is None
+        with dam.data_access_context(actor="alice"):
+            assert dam.resolve_read_mode() == "database"
+            context = dam.current_data_access_context()
+            assert context is not None
+            assert context.effective_mode == "database"
+            assert context.resolver_state == "primary_available"
+            assert context.fallback_reason is None
+
     def test_tcp_down_with_credentials_falls_back(self, monkeypatch):
         monkeypatch.setattr(dam, "_env_explicit_api_mode", lambda: False)
         monkeypatch.setattr(dam, "_https_credentials_configured", lambda: True)
         import src.database as database
 
         monkeypatch.setattr(database, "is_direct_db_available", lambda: False)
-        assert dam.resolve_read_mode() == "supabase_api"
+        with dam.data_access_context(actor="alice"):
+            assert dam.resolve_read_mode() == "supabase_api"
+            context = dam.current_data_access_context()
+            assert context is not None
+            assert context.effective_mode == "supabase_api"
+            assert context.resolver_state == "fallback_available"
+            assert context.fallback_reason == "direct_database_unavailable"
 
     def test_tcp_down_without_credentials_stays_tcp(self, monkeypatch):
         monkeypatch.setattr(dam, "_env_explicit_api_mode", lambda: False)

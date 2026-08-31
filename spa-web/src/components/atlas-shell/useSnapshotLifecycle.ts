@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { AtlasSnapshotResponse } from "@/lib/atlas";
 import { readAtlasSnapshot, type AuthUser } from "@/lib/api";
@@ -32,6 +32,7 @@ export default function useSnapshotLifecycle({
   const [snapshotPending, setSnapshotPending] = useState(false);
   const [snapshotError, setSnapshotError] = useState("");
   const [snapshotPayload, setSnapshotPayload] = useState<AtlasSnapshotResponse | null>(null);
+  const snapshotRequestIdRef = useRef(0);
 
   const clearSnapshot = useCallback(() => {
     setSnapshotPayload(null);
@@ -42,13 +43,17 @@ export default function useSnapshotLifecycle({
       if (!parsedCycleId || ownerIdsError) {
         return;
       }
+      const requestId = snapshotRequestIdRef.current + 1;
+      snapshotRequestIdRef.current = requestId;
       const payload = await readAtlasSnapshot({
         actor_username: activeUser.username,
         cycle_id: parsedCycleId,
         include_analysis: true,
         owner_ids: ownerIds,
       });
-      setSnapshotPayload(payload);
+      if (snapshotRequestIdRef.current === requestId) {
+        setSnapshotPayload(payload);
+      }
     },
     [ownerIds, ownerIdsError, parsedCycleId],
   );
@@ -63,6 +68,7 @@ export default function useSnapshotLifecycle({
     }
 
     let active = true;
+    snapshotRequestIdRef.current += 1;
     setSnapshotPending(true);
     setSnapshotError("");
 
@@ -86,6 +92,7 @@ export default function useSnapshotLifecycle({
 
     return () => {
       active = false;
+      snapshotRequestIdRef.current += 1;
       window.clearTimeout(timer);
     };
   }, [loadSnapshotForUser, ownerIds, ownerIdsError, parsedCycleId, user]);
