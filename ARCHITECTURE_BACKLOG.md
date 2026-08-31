@@ -1,4 +1,4 @@
-# Architecture Backlog — Alpha → Production (Revised + Enriched)
+# Architecture Backlog — Production Hardening (Revised + Enriched)
 
 Documentation HQ: [README](README.md)
 
@@ -29,12 +29,16 @@ verification drills) and [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTUR
 > ledger. Items 1 through 6 are now CLOSED. The next active work is the P1
 > data-access strategy hardening stage.
 
+> **Revision note (2026-08-31):** The enterprise architecture review identified
+> maintainability improvements that are real but not production blockers. They
+> are tracked below as P2 work; no broad repository rewrite is approved.
+
 ## 1) Context and operating assumptions
 
-This is a single-developer production plan for an enterprise-style OKR app
-running on a personal PC server with Supabase free tier and Docker Compose.
-The objective is to improve reliability and operations without unnecessary
-architecture churn.
+This is a single-maintainer production plan for an enterprise OKR app. The
+current validation environment is a local workstation with Supabase free tier
+and Docker Compose. The objective is to improve reliability and operations
+without unnecessary architecture churn.
 
 Assumptions:
 1. No external platform migration in the next quarter.
@@ -468,6 +472,10 @@ timeouts, circuit-breaking, mutation fail-closed rules, or fallback telemetry.
 | Cross-service import boundaries | No automated check prevents unintended imports between Python and JavaScript service areas | A lightweight Python/Node boundary gate now runs in backend quality CI | A boundary exception is needed or a cross-service dependency incident occurs |
 | Incremental build caching | No Turborepo/Nx orchestration is configured | CI now caches Next.js and BFF TypeScript build state with source-aware keys and reports cache hits in the job summary; full orchestration remains deferred | Hosted CI data shows insufficient cache benefit or CI build duration/service count materially increases enough to justify task-graph tooling |
 | Frontend dependency security | Root npm audit retains one low development-only esbuild advisory beneath Vitest/Vite; service-local audits are clean | Critical/high findings were remediated, Next.js 16.3.3 is build-compatible, and the BFF has a scoped esbuild override; the remaining root advisory cannot be fixed globally without conflicting with SPA web's Vite 8 dependency | A production path is affected, the advisory severity changes, or a compatible Vitest/Vite upgrade is available |
+| Cross-platform developer task runner | Common local orchestration depends on Windows `.bat` launchers | Root `justfile` now provides canonical `install`, `test`, `lint`, `typecheck`, `build`, `check`, container `start`/`stop`, and `health` commands; batch wrappers remain supported during migration | Contributors need macOS, Linux, or WSL support, or duplicated launcher behavior causes onboarding failures |
+| Explicit repository boundary map | `src/`, `backend_app/`, `spa-bff/`, and `spa-web/` are valid boundaries but ownership and dependency direction are not obvious to new contributors | Document transport, domain, persistence, worker, BFF, and frontend ownership in `CODEBASE_MAP.md`, with a diagram matching the import-boundary gate | Boundary violations recur, or multiple contributors work across service areas |
+| Documentation lifecycle and canonical-index hygiene | Enterprise documentation mixes canonical guides, compatibility redirects, historical plans, and active operational controls | `docs/DOCUMENTATION_LIFECYCLE.md` classifies Documentation HQ entries; primary operational guides record owner/review metadata; obsolete alpha guidance was removed; `scripts/check_docs_hq_links.py` now validates README HQ targets as well as backlinks. | Stale guidance is found, ownership changes, or the documentation set expands materially |
+| Measured service-aware task graph | Workspace manifests and source-aware caches exist, but Turborepo/Nx adoption has not been justified by evidence | `docs/TASK_GRAPH_EVALUATION.md` records the current task graph, five-run measurement protocol, and promotion criteria; `scripts/measure_task_graph.py` and `just measure` collect comparable local timings. Repeated hosted-run measurements and external deployment observations remain outstanding | Service count, CI duration, or cache data demonstrates a material incremental-build benefit |
 | Multi-tenant foundation | Zero tenant code exists (no `tenant_id` in schema/middleware) | Greenfield architecture, not reliability hardening; no multi-tenant requirement exists | An actual multi-tenant requirement appears (see enterprise roadmap deferred section) |
 | UI feature-shell refactor | Some state boundaries mixed across flows | Frontend already decomposed (~75 files under `atlas-shell/`); refactor is churn without a team-scale payoff | Multiple contributors working the same frontend concurrently |
 

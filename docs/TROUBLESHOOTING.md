@@ -1,5 +1,7 @@
 Documentation HQ: [README](../README.md)
 
+Lifecycle: Operational | Owner: Platform/Operations | Last reviewed: 2026-08-31
+
 Troubleshooting
 
 ### Runtime scope (important)

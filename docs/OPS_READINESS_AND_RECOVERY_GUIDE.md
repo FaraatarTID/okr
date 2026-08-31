@@ -1,5 +1,7 @@
 Documentation HQ: [README](../README.md)
 
+Lifecycle: Operational | Owner: Operations/SRE | Last reviewed: 2026-08-31
+
 # Operations Readiness: Retention, Partitioning, Backup, and Restore Drills
 
 ## Scope
@@ -91,4 +93,3 @@ Completion evidence expected:
 - Restore attempts emit `restore_attempt` audit event with payload/version metadata.
 - Partition/retention SQL contract exists in migrations or approved ADR-like migration plan.
 - No direct restore attempts are possible in production without controlled override policy.
-

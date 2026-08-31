@@ -246,12 +246,15 @@ If you are a first-time reader, skip this section until after `Start Here`.
 - Architecture backlog: [ARCHITECTURE_BACKLOG.md](ARCHITECTURE_BACKLOG.md)
 - Architecture status ledger: [docs/architecture-status.md](docs/architecture-status.md)
 - Architecture delivery system: [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTURE_DELIVERY_SYSTEM.md)
+- Documentation lifecycle registry: [docs/DOCUMENTATION_LIFECYCLE.md](docs/DOCUMENTATION_LIFECYCLE.md)
+- Task-graph evaluation: [docs/TASK_GRAPH_EVALUATION.md](docs/TASK_GRAPH_EVALUATION.md)
 - Enterprise reliability roadmap: [ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md](ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md)
 - Production readiness runbooks and dashboards: [docs/OBSERVABILITY_AND_RUNBOOKS.md](docs/OBSERVABILITY_AND_RUNBOOKS.md)
 - Operations readiness and recovery: [docs/OPS_READINESS_AND_RECOVERY_GUIDE.md](docs/OPS_READINESS_AND_RECOVERY_GUIDE.md)
 - Quality gate baseline: [docs/QUALITY_GATE_BASELINE.md](docs/QUALITY_GATE_BASELINE.md)
 - Manager active-cycle plan: [docs/PLAN_PER_MANAGER_ACTIVE_CYCLES.md](docs/PLAN_PER_MANAGER_ACTIVE_CYCLES.md)
 - SPA BFF service guide: [spa-bff/README.md](spa-bff/README.md)
+- Backend API and worker guide: [backend_app/README.md](backend_app/README.md)
 - SPA web service guide: [spa-web/README.md](spa-web/README.md)
 - User Guide (EN): [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
 - User Guide (FA): [docs/USER_GUIDE_FA.md](docs/USER_GUIDE_FA.md)
@@ -319,6 +322,30 @@ This repository uses workspace manifests to make its service boundaries explicit
 - `spa-bff/` and `spa-web/` retain their own lockfiles and can still be installed independently.
 
 From the repository root, use `uv sync --group dev` for Python tooling and `npm install` for both JavaScript services. The existing `backend_app/requirements.txt` remains a compatibility input for deployment environments while the workspace migration is phased in.
+
+### Cross-platform task runner
+
+The root `justfile` is the canonical cross-platform developer command surface.
+Install [just](https://github.com/casey/just), then run commands from the
+repository root:
+
+```bash
+just install
+just test
+just typecheck
+just build
+just check
+```
+
+For the containerized local stack:
+
+```bash
+just start
+just health
+just stop
+```
+
+The existing Windows `.bat` launchers remain supported compatibility wrappers.
 
 ## SPA BFF
 

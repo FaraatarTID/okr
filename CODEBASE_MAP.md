@@ -16,6 +16,32 @@ Maintainer-focused map for the primary files and helper boundaries.
 2. `spa-bff/` handles browser-facing API boundary, auth, and proxying.
 3. `backend_app/main.py` (API) -> `backend_app/jobs.py` -> `backend_app/worker.py` own mutations, reads, and async work.
 
+## Service and Package Boundaries
+
+| Area | Owns | May depend on | Must not own |
+| --- | --- | --- | --- |
+| `spa-web/` | Next.js rendering, browser state, feature UX, generated API client usage | `spa-bff` through browser-facing routes | Backend credentials, direct database access, business authorization |
+| `spa-bff/` | Session handling, browser API mediation, route allowlisting, request signing | `backend_app` through the internal HTTP contract | UI state, database access, domain rules |
+| `backend_app/` | FastAPI transport, request validation, authorization orchestration, worker lifecycle | `src` domain/services and persistence facades | Frontend concerns, browser session state, ad-hoc cross-service calls |
+| `src/domain/` | Pure OKR rules, lifecycle, permissions, alignment, progress decisions | Standard-library/domain types | HTTP, framework request objects, frontend code |
+| `src/services/` | Application use cases and external integration adapters | `src/domain`, persistence helpers, provider clients | Route registration and UI state |
+| `src/models.py`, `src/database.py`, `alembic/` | Persistence models, sessions, migrations, schema evolution | SQLModel/SQLAlchemy and migration tooling | Authorization decisions that belong at the application boundary |
+| `backend_app/worker.py`, `backend_app/jobs.py` | Async job execution and durable job state transitions | Application services and persistence | Browser-facing request handling |
+
+Allowed runtime direction:
+
+```text
+spa-web -> spa-bff -> backend_app -> src/services -> src/domain
+                                      |             |
+                                      v             v
+                                persistence     external providers
+```
+
+The `src` package is shared backend runtime code, not a second application
+entrypoint. New business behavior belongs in `src/domain` or `src/services`;
+`backend_app` should wire it to HTTP, auth, and jobs. Cross-boundary exceptions
+must be documented and covered by `scripts/check_import_boundaries.py`.
+
 ## Primary File Ownership Map
 
 | File                                             | Responsibility                                       | Keep Here                                               | Move To                         | Key Dependencies                                             | Key Tests                                                                                                                                                                               |
