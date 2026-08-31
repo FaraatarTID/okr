@@ -1324,6 +1324,23 @@ export interface components {
             /** Weight */
             weight?: number | null;
         };
+        /** ReadQueryCycleView */
+        ReadQueryCycleView: {
+            /** End Date */
+            end_date?: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Owner Manager Id */
+            owner_manager_id?: number | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** Title */
+            title: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** ReadQueryExperimentView */
         ReadQueryExperimentView: {
             /** Change Description */
@@ -1402,7 +1419,7 @@ export interface components {
          */
         ReadQueryResponse: {
             /** Cycles */
-            cycles?: components["schemas"]["CycleMutationView"][] | null;
+            cycles?: components["schemas"]["ReadQueryCycleView"][] | null;
             /** Experiments */
             experiments?: components["schemas"]["ReadQueryExperimentView"][] | null;
             /** Key Results */

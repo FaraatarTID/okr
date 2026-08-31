@@ -1604,6 +1604,65 @@
         "title": "ObjectiveCreateRequest",
         "type": "object"
       },
+      "ReadQueryCycleView": {
+        "additionalProperties": true,
+        "properties": {
+          "end_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_active": {
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "owner_manager_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Manager Id"
+          },
+          "start_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Date"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "is_active"
+        ],
+        "title": "ReadQueryCycleView",
+        "type": "object"
+      },
       "ReadQueryExperimentView": {
         "additionalProperties": true,
         "properties": {
@@ -1909,7 +1968,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/CycleMutationView"
+                  "$ref": "#/components/schemas/ReadQueryCycleView"
                 },
                 "type": "array"
               },

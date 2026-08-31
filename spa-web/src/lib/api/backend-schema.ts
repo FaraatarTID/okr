@@ -26,7 +26,7 @@ export type ReadQueryExperiment = BackendSchemas["ReadQueryExperimentView"];
 export type ReadQueryTask = BackendSchemas["ReadQueryTaskView"];
 export type ReadQueryUser = BackendSchemas["UserMutationView"];
 export type ReadQueryTeam = BackendSchemas["TeamMutationView"];
-export type ReadQueryCycle = BackendSchemas["CycleMutationView"];
+export type ReadQueryCycle = BackendSchemas["ReadQueryCycleView"];
 
 /** Serialized async job returned by /v1/jobs endpoints. */
 export type BackendJobView = BackendSchemas["JobView"];

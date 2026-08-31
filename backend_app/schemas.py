@@ -603,6 +603,17 @@ class ReadQueryTaskView(BaseModel):
     key_result: Optional[Dict[str, Any]] = None
 
 
+class ReadQueryCycleView(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    title: str
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    is_active: bool
+    owner_manager_id: Optional[int] = None
+
+
 class ReadQueryResponse(BaseModel):
     """Typed common sections returned by the discriminator-based read API.
 
@@ -620,7 +631,7 @@ class ReadQueryResponse(BaseModel):
     tasks: Optional[List[ReadQueryTaskView]] = None
     users: Optional[List[UserMutationView]] = None
     teams: Optional[List[TeamMutationView]] = None
-    cycles: Optional[List[CycleMutationView]] = None
+    cycles: Optional[List[ReadQueryCycleView]] = None
 
 
 class AiAnalyzeNodeRequest(BaseModel):
