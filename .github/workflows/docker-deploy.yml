@@ -27,10 +27,12 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python dependencies
-        # Uses .github/actions/setup-python-dependencies to keep CI contract/check gates aligned with runtime/test dependencies.
-        uses: ./.github/actions/setup-python-dependencies
-        with:
-          requirements-path: backend_app/requirements.txt
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync Python workspace
+        run: |
+          uv sync --locked --group dev
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Insert Payload Schema Contract Gate (offline)
         run: python scripts/check_insert_contract.py --from-baseline

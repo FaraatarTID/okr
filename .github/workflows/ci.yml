@@ -81,16 +81,18 @@ jobs:
             backend_app/requirements.txt
 
       - name: Install Python dependencies
-        # Uses .github/actions/setup-python-dependencies to keep CI contract/check gates aligned with runtime/test dependencies.
-        uses: ./.github/actions/setup-python-dependencies
-        with:
-          requirements-path: backend_app/requirements.txt
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync Python workspace
+        run: |
+          uv sync --locked --group dev
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Install Python security tooling
-        run: python -m pip install pip-audit
+        run: uv pip install --python "$GITHUB_WORKSPACE/.venv/bin/python" pip-audit
 
       - name: Install Python license tooling
-        run: python -m pip install pip-licenses
+        run: uv pip install --python "$GITHUB_WORKSPACE/.venv/bin/python" pip-licenses
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -99,6 +101,9 @@ jobs:
 
       - name: Docs HQ Link Check
         run: python scripts/check_docs_hq_links.py
+
+      - name: Import Boundary Gate
+        run: python scripts/check_import_boundaries.py
 
       - name: OpenAPI Drift Gate
         run: python scripts/check_openapi_drift.py
@@ -209,17 +214,24 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: |
-            spa-bff/package-lock.json
-            spa-web/package-lock.json
+            package-lock.json
 
-      - name: Install SPA BFF dependencies
-        run: npm ci --prefix spa-bff
+      - name: Install JavaScript workspace dependencies
+        run: npm ci --include=optional
+
+      - name: Restore JavaScript build caches
+        id: spa-build-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            spa-web/.next/cache
+            spa-bff/.cache
+          key: ${{ runner.os }}-spa-build-${{ hashFiles('package-lock.json', 'spa-bff/**/*.ts', 'spa-bff/tsconfig.json', 'spa-web/**/*.ts', 'spa-web/**/*.tsx', 'spa-web/next.config.*') }}
+          restore-keys: |
+            ${{ runner.os }}-spa-build-
 
       - name: SPA BFF allowlist drift gate
         run: npm --prefix spa-bff run check:allowlist
-
-      - name: Install SPA Web dependencies
-        run: npm ci --prefix spa-web
 
       - name: SPA BFF tests
         run: npm --prefix spa-bff test
@@ -228,16 +240,22 @@ jobs:
         run: npm --prefix spa-bff run build
 
       - name: SPA Web build
-        run: npm --prefix spa-web run build
+        run: npm run build --workspace spa-web
 
       - name: SPA Web typecheck
-        run: npm --prefix spa-web run typecheck
+        run: npm run typecheck --workspace spa-web
 
       - name: SPA Web tests
-        run: npm --prefix spa-web test
+        run: npm run test --workspace spa-web
 
       - name: SPA Web coverage gate
-        run: npm --prefix spa-web run test:coverage
+        run: npm run test:coverage --workspace spa-web
+
+      - name: Report JavaScript cache result
+        if: always()
+        run: |
+          echo "### JavaScript build cache" >> "$GITHUB_STEP_SUMMARY"
+          echo "Cache hit: `${{ steps.spa-build-cache.outputs.cache-hit || 'false' }}`" >> "$GITHUB_STEP_SUMMARY"
 
   spa-e2e:
     runs-on: ubuntu-latest
@@ -258,10 +276,12 @@ jobs:
             backend_app/requirements.txt
 
       - name: Install Python dependencies
-        # Uses .github/actions/setup-python-dependencies to keep CI contract/check gates aligned with runtime/test dependencies.
-        uses: ./.github/actions/setup-python-dependencies
-        with:
-          requirements-path: backend_app/requirements.txt
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync Python workspace
+        run: |
+          uv sync --locked --group dev
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -269,13 +289,10 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: |
-            spa-bff/package-lock.json
-            spa-web/package-lock.json
+            package-lock.json
 
       - name: Install SPA dependencies
-        run: |
-          npm ci --prefix spa-bff
-          npm ci --prefix spa-web
+        run: npm ci --include=optional
 
       - name: Install Playwright Browser (Chromium)
         run: |

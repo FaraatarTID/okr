@@ -208,6 +208,32 @@ Assumptions:
    - Full drill runbook passes without emergency intervention.
 5. **Risk**: process overhead; mitigate by automating evidence capture.
 
+### Workspace and package-management foundation — P2
+1. **Goal**: make the polyglot repository's dependency and service boundaries
+   explicit without requiring an immediate service relocation.
+2. **Status**: Phase 1 is IMPLEMENTED. Root `pyproject.toml` provides the uv
+   dependency anchor, and root `package.json` declares `spa-bff` and `spa-web`
+   as npm workspaces.
+3. **Follow-up phases**:
+   - Phase 2: IMPLEMENTED. Generated `uv.lock` and the root npm workspace lockfile;
+     review compatibility with CI and deployment environments.
+   - Phase 3: IMPLEMENTED for quality and SPA e2e jobs. CI installs from the
+     committed workspace lockfiles; deployment-specific compatibility installs
+     remain available only as a compatibility fallback for external deployment
+     environments.
+   - Phase 4: IMPLEMENTED. `scripts/check_import_boundaries.py` rejects forbidden
+     Python and JavaScript workspace dependencies in CI.
+   - Phase 5: PARTIAL. Added source-aware GitHub Actions caches for the Next.js
+     build cache and BFF TypeScript incremental state, with cache-hit reporting in
+     the job summary. Evaluate Turborepo/Nx-style task-graph caching using measured
+     CI duration and service-growth data.
+4. **Acceptance**: dependency installation is reproducible, CI and deployment
+   environments resolve the same dependency graph, and service boundaries are
+   checked automatically.
+5. **Risk**: lockfile or installer migration can introduce deployment drift;
+   mitigate by retaining `backend_app/requirements.txt` until equivalence is
+   demonstrated.
+
 ### Deferred: multi-tenant foundation — P2 (greenfield, not hardening)
 Zero tenant code exists today (no `tenant_id` anywhere in schema or middleware).
 This is new architecture, not reliability hardening, and is deferred until there
@@ -244,6 +270,7 @@ This bridges “what exists now” and “what enterprise scale demands,” usin
 | Async jobs | DLQ visibility + retry endpoint implemented | Queue policy and blast radius controls need stronger ops guardrails | Full job management UI/API with reason-aware filtering and retry quotas | Add reason taxonomy and operator controls |
 | Observability | SLO definitions + probe script implemented | SLO enforcement and synthetic checks still partially manual | Automatic threshold checks, alerts, and incident escalation automation | Add scheduler-driven checks with fail/notify bindings |
 | Deployment/Migrations | Migration blocker fixed, compose smoke stable | Policy layer for migrations and readiness still lightweight | Multi-stage deployment gates with rollback proofs and migration compatibility matrix | Add migration dependency graph checks + migration smoke matrix |
+| Package management | Root uv and npm workspace manifests, lockfiles, CI adoption, boundary gate, source-aware build caches, and Next.js/Vitest security remediation are implemented | One low development-only esbuild advisory remains in the root audit; full task-graph orchestration and external deployment equivalence review are outstanding | Reproducible and security-maintained polyglot dependency graph with incremental service-aware builds | Monitor the nested esbuild advisory, measure cache effectiveness, and adopt Turborepo/Nx only if justified |
 | Readiness/health | `/healthz` exists and useful signals available | No granular subsystem readiness gates at each layer | Multi-domain readiness contract and progressive boot checks | Add startup dependency gates by subsystem |
 | Testing strategy | >500 tests across API/UI/security paths | Scaling tests to parallel and chaos coverage is still growing | Contract fuzzing + chaos + perf regression suite in CI/CD | Add automated fault-injection and load baseline |
 
@@ -253,7 +280,7 @@ This bridges “what exists now” and “what enterprise scale demands,” usin
 - **Completed P0**: SLO probe coverage, generated-type adoption, policy-driven BFF allowlist generation, and the recorded reliability drills.
 - **High strategic**: async reliability controls + secret lifecycle integration + deployment/migration policy hardening.
 - **Medium strategic**: data-access DI refactor (works and is tested today; single-instance deployment lowers urgency) and advanced chaos automation.
-- **Deferred**: multi-tenant guardrails (greenfield; no requirement exists yet).
+- **Deferred**: multi-tenant guardrails (greenfield; no requirement exists yet) and advanced package-build caching until service growth justifies it.
 
 ---
 

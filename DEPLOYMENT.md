@@ -55,6 +55,19 @@ Key files used by this guide
 - `deploy/nginx.okr.mycompany.com.conf`
 - `.github/workflows/docker-deploy.yml`
 
+Workspace dependency contract
+
+- The repository Docker runtime installs Python dependencies from the committed
+  `pyproject.toml` and `uv.lock` with `uv sync --frozen --no-dev`.
+- CI validates the same locked graph with `uv sync --locked`; deployment workflows
+  should not replace this with an unconstrained install.
+- External non-Docker environments may continue using
+  `backend_app/requirements.txt` as a compatibility fallback, but must verify
+  equivalence against the root manifest and lockfile first.
+- Deployment review acceptance is: `uv lock --check` passes, the Docker image
+  builds successfully, and the target environment records its installer and
+  lockfile revision.
+
 ---
 
 Quick decision matrix

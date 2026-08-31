@@ -8,12 +8,13 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "gen:api": "openapi-typescript src/lib/api/openapi.json -o src/lib/api/generated/schema.d.ts",
-    "test": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs run",
-    "test:watch": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs",
-    "test:coverage": "node --max-old-space-size=4096 ./node_modules/vitest/vitest.mjs run --coverage"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "next": "^15.4.6",
+    "next": "^16.3.3",
+    "okr-platform-workspace": "file:..",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
@@ -24,10 +25,10 @@
     "@types/node": "^24.3.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.1.9",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/coverage-v8": "^4.1.0",
     "happy-dom": "^20.7.0",
     "openapi-typescript": "^7.13.0",
     "typescript": "^5.9.2",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.0"
   }
 }
