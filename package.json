@@ -11,6 +11,9 @@
     "test": "npm run test --workspaces",
     "typecheck": "npm run typecheck --workspace spa-web && npm run build --workspace spa-bff"
   },
+  "devDependencies": {
+    "happy-dom": "^20.11.0"
+  },
   "overrides": {
     "okr-spa-bff": {
       "esbuild": "^0.28.1"

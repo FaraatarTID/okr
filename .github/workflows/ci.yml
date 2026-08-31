@@ -240,16 +240,16 @@ jobs:
         run: npm --prefix spa-bff run build
 
       - name: SPA Web build
-        run: npm --prefix spa-web run build
+        run: npm run build --workspace spa-web
 
       - name: SPA Web typecheck
-        run: npm --prefix spa-web run typecheck
+        run: npm run typecheck --workspace spa-web
 
       - name: SPA Web tests
-        run: npm --prefix spa-web test
+        run: npm run test --workspace spa-web
 
       - name: SPA Web coverage gate
-        run: npm --prefix spa-web run test:coverage
+        run: npm run test:coverage --workspace spa-web
 
       - name: Report JavaScript cache result
         if: always()
