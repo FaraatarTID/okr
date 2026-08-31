@@ -122,9 +122,13 @@ manifest as broken dashboards, failed queries, and degraded fallback handling.
 1. Initial two read kinds (`krs.by_cycle`, `ritual.snapshot`) moved to generated
    types with no manual overrides.
 
-**Status update (2026-08-25)**: Infrastructure complete — export script, CI
-drift gate, and generated types exist. Remaining: app-code adoption (moved to
-item 0 above) and BFF allowlist generation (new item 5 below).
+**Status update (2026-08-31)**: Infrastructure and the first app-code adoption
+slice are complete — Atlas snapshot and discriminator-based read-query request
+bodies now use generated OpenAPI contracts. The common read-query response
+envelope now publishes typed sections for the ritual and KR workflows while
+preserving unknown fields; timeline task/work-log and shared resource sections
+are now typed as well. BFF allowlist generation is tracked separately as item
+5.
 
 **Regression control**:
 1. Run existing mutation matrix tests to confirm endpoint gating remains valid.

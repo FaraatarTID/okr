@@ -13,12 +13,12 @@ import {
   type AuditSummaryResponse,
   type AuthUser,
   type CycleSummary,
-  type TeamMutationResponse,
-  type UserMutationResponse,
+  type ReadQueryTeam,
+  type ReadQueryUser,
 } from "@/lib/api";
 
-type AdminUserRead = UserMutationResponse;
-type AdminTeamRead = TeamMutationResponse;
+type AdminUserRead = ReadQueryUser;
+type AdminTeamRead = ReadQueryTeam;
 
 export default function useAdminResources() {
   const [adminCycles, setAdminCycles] = useState<CycleSummary[]>([]);
@@ -67,10 +67,10 @@ export default function useAdminResources() {
           kind: "teams.all",
         }),
       ]);
-      const users = ((usersPayload.users as AdminUserRead[]) || []).sort((a, b) =>
+      const users = (usersPayload.users || []).sort((a, b) =>
         String(a.username || "").localeCompare(String(b.username || "")),
       );
-      const teams = ((teamsPayload.teams as AdminTeamRead[]) || []).sort((a, b) =>
+      const teams = (teamsPayload.teams || []).sort((a, b) =>
         String(a.name || "").localeCompare(String(b.name || "")),
       );
       setAdminUsers(users);

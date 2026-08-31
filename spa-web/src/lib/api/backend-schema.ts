@@ -9,6 +9,25 @@ import type { components } from "./generated/schema";
 
 export type BackendSchemas = components["schemas"];
 
+/** Request contract for the typed Atlas snapshot endpoint. */
+export type AtlasSnapshotRequest = BackendSchemas["AtlasSnapshotRequest"];
+
+/** Request contract for the discriminator-based read query endpoint. */
+export type ReadQueryRequest = BackendSchemas["ReadQueryRequest"];
+
+/** Typed common response sections for the discriminator-based read endpoint. */
+export type ReadQueryResponse = BackendSchemas["ReadQueryResponse"];
+
+export type ReadQueryKeyResult = BackendSchemas["ReadQueryKeyResultView"];
+export type ReadQueryWeeklyPlan = BackendSchemas["ReadQueryWeeklyPlanView"];
+export type ReadQueryWorkLog = BackendSchemas["ReadQueryWorkLogView"];
+export type ReadQueryRetro = BackendSchemas["ReadQueryRetroView"];
+export type ReadQueryExperiment = BackendSchemas["ReadQueryExperimentView"];
+export type ReadQueryTask = BackendSchemas["ReadQueryTaskView"];
+export type ReadQueryUser = BackendSchemas["UserMutationView"];
+export type ReadQueryTeam = BackendSchemas["TeamMutationView"];
+export type ReadQueryCycle = BackendSchemas["CycleMutationView"];
+
 /** Serialized async job returned by /v1/jobs endpoints. */
 export type BackendJobView = BackendSchemas["JobView"];
 

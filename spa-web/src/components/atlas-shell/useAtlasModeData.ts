@@ -3,65 +3,25 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import { readBackendQuery, type AuthUser } from "@/lib/api";
+import type {
+  ReadQueryExperiment,
+  ReadQueryKeyResult,
+  ReadQueryRetro,
+  ReadQueryWeeklyPlan,
+  ReadQueryWorkLog,
+  ReadQueryResponse,
+} from "@/lib/api/backend-schema";
 import { endOfWeekIso, reviewWindow, startOfWeekIso, toDateInputValue } from "@/components/atlas-shell/shellDateUtils";
 
-export type WeeklyPlanRead = {
-  id: number;
-  user_id: number;
-  week_start_date: string;
-  week_end_date: string;
-  priority_1: string;
-  priority_2?: string | null;
-  priority_3?: string | null;
-  is_active: boolean;
-};
+export type WeeklyPlanRead = ReadQueryWeeklyPlan;
 
-export type WorkLogRead = {
-  id: number;
-  task_id?: number | null;
-  duration_minutes?: number | null;
-  start_time?: string | null;
-  end_time?: string | null;
-  summary?: string | null;
-  task?: { title?: string | null } | null;
-};
+export type WorkLogRead = ReadQueryWorkLog;
 
-export type KeyResultRead = {
-  id: number;
-  title?: string | null;
-  progress?: number | null;
-  current_value?: number | null;
-  target_value?: number | null;
-  start_value?: number | null;
-  unit?: string | null;
-  metric_type?: string | null;
-  objective?: { title?: string | null } | null;
-};
+export type KeyResultRead = ReadQueryKeyResult;
 
-export type ExperimentRead = {
-  id: number;
-  key_result_id: number;
-  cycle_id: number;
-  created_by?: string | null;
-  hypothesis?: string | null;
-  change_description?: string | null;
-  status?: "PLANNED" | "RUNNING" | "DECIDED" | null;
-  start_at?: string | null;
-  end_at?: string | null;
-  created_at?: string | null;
-  decision?: "ADOPT" | "ITERATE" | "REVERT" | "UNKNOWN" | null;
-  decision_rationale?: string | null;
-  expected_effect_direction?: "UP" | "DOWN" | null;
-  expected_effect_size?: number | null;
-};
+export type ExperimentRead = ReadQueryExperiment;
 
-export type RetroRead = {
-  id: number;
-  week_start_date?: string | null;
-  content?: string | null;
-  sentiment?: string | null;
-  created_at?: string | null;
-};
+export type RetroRead = ReadQueryRetro;
 
 export type TimelineTaskRead = {
   id: number;
@@ -132,7 +92,7 @@ export default function useAtlasModeData({
         if (nextMode === "weekly") {
           const weekStart = `${startOfWeekIso()}T00:00:00`;
           const weekEnd = `${endOfWeekIso()}T23:59:59`;
-          const tasks: Array<Promise<Record<string, unknown>>> = [
+          const tasks: Array<Promise<ReadQueryResponse>> = [
             readBackendQuery({
               actor_username: activeUser.username,
               kind: "weekly_plan.active",
@@ -178,17 +138,17 @@ export default function useAtlasModeData({
           const logsPayload = responses[1] || {};
           const krsPayload = responses[2] || {};
           const experimentsPayload = responses[3] || {};
-          const plan = (planPayload.weekly_plan as WeeklyPlanRead | null) || null;
+          const plan = planPayload.weekly_plan || null;
           setWeeklyPlanData(plan);
           setWeeklyDraft({
             p1: String(plan?.priority_1 || ""),
             p2: String(plan?.priority_2 || ""),
             p3: String(plan?.priority_3 || ""),
           });
-          setWeeklyLogs(((logsPayload.work_logs as WorkLogRead[]) || []).slice(0, 300));
-          setWeeklyKrsNeedingCheckIn(((krsPayload.key_results as KeyResultRead[]) || []).slice(0, 120));
+          setWeeklyLogs((logsPayload.work_logs || []).slice(0, 300));
+          setWeeklyKrsNeedingCheckIn((krsPayload.key_results || []).slice(0, 120));
           setWeeklyReviewExperiments(
-            ((experimentsPayload.experiments as ExperimentRead[]) || []).slice(0, 120),
+            (experimentsPayload.experiments || []).slice(0, 120),
           );
         } else if (nextMode === "daily") {
           const start = new Date();
@@ -204,7 +164,7 @@ export default function useAtlasModeData({
               end_date: end.toISOString(),
             },
           });
-          setDailyLogs(((payload.work_logs as WorkLogRead[]) || []).slice(0, 100));
+          setDailyLogs((payload.work_logs || []).slice(0, 100));
         } else if (nextMode === "ritual") {
           if (!parsedCycleId) {
             setRitualKrs([]);
@@ -225,15 +185,10 @@ export default function useAtlasModeData({
                 window_end: review.end.toISOString(),
               },
             });
-            const krPayload = { key_results: ritualPayload.key_results };
-            const weeklyPayload = { weekly_plan: ritualPayload.weekly_plan };
-            const retroPayload = { retros: ritualPayload.retros };
-            const logsPayload = { work_logs: ritualPayload.work_logs };
-            const experimentReviewPayload = { experiments: ritualPayload.experiments };
-            const krs = ((krPayload.key_results as KeyResultRead[]) || []).slice(0, 100);
+            const krs = (ritualPayload.key_results || []).slice(0, 100);
             setRitualKrs(krs);
 
-            const plan = (weeklyPayload.weekly_plan as WeeklyPlanRead | null) || null;
+            const plan = ritualPayload.weekly_plan || null;
             setWeeklyPlanData(plan);
             setWeeklyDraft({
               p1: String(plan?.priority_1 || ""),
@@ -241,7 +196,7 @@ export default function useAtlasModeData({
               p3: String(plan?.priority_3 || ""),
             });
 
-            const retros = ((retroPayload.retros as RetroRead[]) || []).slice(0, 50);
+            const retros = (ritualPayload.retros || []).slice(0, 50);
             setRetroItems(retros);
             const activeWeekStart = startOfWeekIso();
             const activeWeekRetro = retros.find(
@@ -255,9 +210,9 @@ export default function useAtlasModeData({
               }));
             }
 
-            setRitualReviewLogs(((logsPayload.work_logs as WorkLogRead[]) || []).slice(0, 200));
+            setRitualReviewLogs((ritualPayload.work_logs || []).slice(0, 200));
             setRitualReviewExperiments(
-              ((experimentReviewPayload.experiments as ExperimentRead[]) || []).slice(0, 100),
+              (ritualPayload.experiments || []).slice(0, 100),
             );
 
             const experimentResults = await Promise.allSettled(
@@ -310,7 +265,7 @@ export default function useAtlasModeData({
                   kind: "tasks.by_cycle",
                   params: { cycle_id: parsedCycleId, limit: 500, offset: 0 },
                 })
-              : Promise.resolve({ tasks: [] as Record<string, unknown>[] }),
+              : Promise.resolve({ tasks: [] }),
             readBackendQuery({
               actor_username: activeUser.username,
               kind: "work_logs.by_range",
@@ -321,8 +276,8 @@ export default function useAtlasModeData({
               },
             }),
           ]);
-          setTimelineTasks((tasksPayload.tasks as TimelineTaskRead[]) || []);
-          setTimelineLogs((logsPayload.work_logs as WorkLogRead[]) || []);
+          setTimelineTasks(tasksPayload.tasks || []);
+          setTimelineLogs(logsPayload.work_logs || []);
           if (nextMode === "dashboard") {
             await loadLeadershipMetricsSnapshot(activeUser);
           }

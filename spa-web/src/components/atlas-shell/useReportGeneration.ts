@@ -12,15 +12,9 @@ import {
   type ReportAiSummaryView,
 } from "@/components/atlas-shell/shellAnalyticsUtils";
 import { waitForBackendJobResult } from "@/components/atlas-shell/jobPolling";
+import type { ReadQueryWorkLog } from "@/lib/api/backend-schema";
 
-type WorkLogRead = {
-  id: number;
-  task_id?: number | null;
-  duration_minutes?: number | null;
-  start_time?: string | null;
-  summary?: string | null;
-  task?: { title?: string | null } | null;
-};
+type WorkLogRead = ReadQueryWorkLog;
 
 type UseReportGenerationInput = {
   user: AuthUser | null;
@@ -118,7 +112,7 @@ export default function useReportGeneration({
             end_date: end.toISOString(),
           },
         });
-        const logs = ((logPayload.work_logs as WorkLogRead[]) || []).slice(0, 500);
+        const logs = (logPayload.work_logs || []).slice(0, 500);
         const reportItems = logs.map((log) => ({
           Task: String(log.task?.title || `Task #${log.task_id || "-"}`),
           "Duration (m)": Math.round(Number(log.duration_minutes || 0)),
@@ -211,7 +205,7 @@ export default function useReportGeneration({
           end_date: end.toISOString(),
         },
       });
-      const logs = ((logPayload.work_logs as WorkLogRead[]) || []).slice(0, 300);
+      const logs = (logPayload.work_logs || []).slice(0, 300);
       const normalizedLogs = logs.map((log) => ({
         task: String(log.task?.title || `Task #${log.task_id || "-"}`),
         duration_minutes: Math.round(Number(log.duration_minutes || 0)),
