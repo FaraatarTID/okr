@@ -74,26 +74,36 @@ export default function useSnapshotLifecycle({
     snapshotRequestIdRef.current += 1;
     setSnapshotPending(true);
     setSnapshotError("");
+    const bootstrapGeneration = snapshotRequestIdRef.current;
 
-    void (async () => {
-      try {
-        await loadSnapshotForUser(user);
-      } catch (error) {
-        if (!active) {
-          return;
-        }
-        setSnapshotError(String(error instanceof Error ? error.message : error));
-        setSnapshotPayload(null);
-      } finally {
-        if (active) {
-          setSnapshotPending(false);
-        }
+    // Yield one event-loop turn so callers can explicitly trigger a load
+    // during the same render cycle without racing the automatic bootstrap.
+    // This replaces the former 200 ms delay without adding user-visible wait.
+    const bootstrapTimer = window.setTimeout(() => {
+      if (!active || snapshotRequestIdRef.current !== bootstrapGeneration) {
+        return;
       }
-    })();
+      void (async () => {
+        try {
+          await loadSnapshotForUser(user);
+        } catch (error) {
+          if (!active) {
+            return;
+          }
+          setSnapshotError(String(error instanceof Error ? error.message : error));
+          setSnapshotPayload(null);
+        } finally {
+          if (active) {
+            setSnapshotPending(false);
+          }
+        }
+      })();
+    }, 0);
 
     return () => {
       active = false;
       snapshotRequestIdRef.current += 1;
+      window.clearTimeout(bootstrapTimer);
     };
   }, [loadSnapshotForUser, ownerIds, ownerIdsError, parsedCycleId, user]);
 
