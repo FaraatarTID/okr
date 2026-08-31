@@ -1,0 +1,19 @@
+{
+  "name": "okr-platform-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "spa-bff",
+    "spa-web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "typecheck": "npm run typecheck --workspace spa-web && npm run build --workspace spa-bff"
+  },
+  "overrides": {
+    "okr-spa-bff": {
+      "esbuild": "^0.28.1"
+    }
+  }
+}

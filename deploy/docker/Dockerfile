@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 
+COPY --from=ghcr.io/astral-sh/uv:0.12.7 /uv /uvx /bin/
+
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -16,9 +18,9 @@ RUN set -eux; \
 
 WORKDIR /app
 
-COPY backend_app/requirements.txt /app/backend_app/requirements.txt
-RUN python -m pip install --upgrade pip \
-    && pip install -r /app/backend_app/requirements.txt
+COPY pyproject.toml uv.lock /app/
+RUN uv sync --frozen --no-dev --no-install-project
+ENV PATH="/app/.venv/bin:$PATH"
 
 COPY src/ /app/src/
 COPY backend_app/ /app/backend_app/

@@ -311,6 +311,16 @@ All templates in this section are external governance documents, not app data-en
 - Runtime behavior is backend-segregated: frontend reads/writes and heavy jobs are backend-owned (fail-closed on backend transport failure).
 - Corporate deployments (AWS/ECS/Kubernetes/VM) should follow [DEPLOYMENT.md](DEPLOYMENT.md), not embedded mode.
 
+## Workspace tooling
+
+This repository uses workspace manifests to make its service boundaries explicit:
+
+- Python dependencies are declared in the root `pyproject.toml` and resolved with `uv`.
+- JavaScript services are declared as npm workspaces in the root `package.json`.
+- `spa-bff/` and `spa-web/` retain their own lockfiles and can still be installed independently.
+
+From the repository root, use `uv sync --group dev` for Python tooling and `npm install` for both JavaScript services. The existing `backend_app/requirements.txt` remains a compatibility input for deployment environments while the workspace migration is phased in.
+
 ## SPA BFF
 
 This repository includes a Node.js BFF service for browser-facing API mediation:
