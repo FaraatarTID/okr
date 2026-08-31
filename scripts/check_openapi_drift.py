@@ -18,6 +18,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 # OpenAPI treats these collections as sets. Their order can vary between
 # supported Python/Pydantic versions without changing the contract.
 _ORDER_INSENSITIVE_KEYS = frozenset({"allOf", "anyOf", "enum", "oneOf", "required"})
+_NON_CONTRACT_SCHEMAS = frozenset({"ValidationError"})
 
 
 def _canonicalize(value, *, key: str | None = None):
@@ -32,6 +33,18 @@ def _canonicalize(value, *, key: str | None = None):
             return sorted(normalized, key=lambda child: json.dumps(child, sort_keys=True))
         return normalized
     return value
+
+
+def _contract_document(document: dict) -> dict:
+    """Remove framework-owned schemas whose shape varies across FastAPI versions."""
+    result = dict(document)
+    components = dict(result.get("components", {}))
+    schemas = dict(components.get("schemas", {}))
+    for name in _NON_CONTRACT_SCHEMAS:
+        schemas.pop(name, None)
+    components["schemas"] = schemas
+    result["components"] = components
+    return result
 
 
 def main() -> int:
@@ -69,7 +82,11 @@ def main() -> int:
     except json_mod.JSONDecodeError:
         committed_obj = None
 
-    if committed_obj is not None and _canonicalize(fresh_obj) == _canonicalize(committed_obj):
+    if (
+        committed_obj is not None
+        and _canonicalize(_contract_document(fresh_obj))
+        == _canonicalize(_contract_document(committed_obj))
+    ):
         print("[PASS] OpenAPI artifact is up to date.")
         return 0
 
@@ -93,8 +110,8 @@ def main() -> int:
         ]
         if changed:
             print("Paths changed:", ", ".join(changed[:20]))
-        fresh_components = set(fresh_obj.get("components", {}).get("schemas", {}).keys())
-        committed_components = set(committed_obj.get("components", {}).get("schemas", {}).keys())
+        fresh_components = set(fresh_obj.get("components", {}).get("schemas", {}).keys()) - _NON_CONTRACT_SCHEMAS
+        committed_components = set(committed_obj.get("components", {}).get("schemas", {}).keys()) - _NON_CONTRACT_SCHEMAS
         changed_components = [
             name
             for name in sorted(fresh_components & committed_components)
