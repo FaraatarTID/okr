@@ -186,7 +186,7 @@ from src.database import (
     import_database_backup,
     init_database,
 )
-from src.config_runtime import get_config_value
+from src.config_runtime import get_bool_config
 from src.domain.password_policy import is_production_runtime
 from src.domain.read_queries import build_atlas_scope_snapshot
 from src.domain import analysis as analysis_domain
