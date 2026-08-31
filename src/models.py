@@ -15,15 +15,8 @@ from sqlalchemy import CheckConstraint, Column, Enum as SAEnum, Index, event, te
 from sqlalchemy import TextClause
 from sqlalchemy.orm import relationship
 from sqlmodel import SQLModel, Field, Relationship
-from sqlmodel.main import default_registry
 
 from src.utils.time_utils import utc_now_naive
-
-# This module can be imported multiple times in one process.
-# Reset mapper registry/metadata to avoid duplicate-class ambiguity (e.g. "User").
-default_registry.dispose()
-SQLModel.metadata.clear()
-
 
 class TaskStatus(str, Enum):
     """Status options for tasks."""

@@ -101,6 +101,20 @@ jobs:
             IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml pull
             IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml up -d --build
 
+            BACKEND_HOST_PORT="$(python3 scripts/read_env_value.py deploy/docker/.env OKR_BACKEND_HOST_PORT)"
+            BFF_HOST_PORT="$(python3 scripts/read_env_value.py deploy/docker/.env SPA_BFF_HOST_PORT)"
+            SPA_WEB_HOST_PORT="$(python3 scripts/read_env_value.py deploy/docker/.env SPA_WEB_HOST_PORT)"
+            BACKEND_HOST_PORT="${BACKEND_HOST_PORT:-8100}"
+            BFF_HOST_PORT="${BFF_HOST_PORT:-3001}"
+            SPA_WEB_HOST_PORT="${SPA_WEB_HOST_PORT:-3000}"
+
+            python3 scripts/verify_deploy_readiness.py \
+              --backend-health-url "http://127.0.0.1:${BACKEND_HOST_PORT}/healthz" \
+              --bff-health-url "http://127.0.0.1:${BFF_HOST_PORT}/healthz" \
+              --web-url "http://127.0.0.1:${SPA_WEB_HOST_PORT}/" \
+              --compose-file deploy/docker/docker-compose.yml \
+              --timeout-seconds 300
+
       - name: Deploy skipped
         if: steps.validate.outputs.ready != 'true'
         run: echo "SSH deploy skipped; set ENABLE_SSH_DEPLOY=true and required deploy secrets to enable it."
