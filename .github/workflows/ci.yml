@@ -1,5 +1,9 @@
 name: ci
 
+# Changelog note:
+# - Uses .github/actions/setup-python-dependencies to keep CI contract/check gates aligned with runtime/test dependencies.
+#   to keep contract/check jobs aligned with shared runtime/test requirements.
+
 on:
   pull_request:
   push:
@@ -46,7 +50,10 @@ jobs:
             backend_app/requirements.txt
 
       - name: Install Python dependencies
-        run: pip install -r backend_app/requirements.txt
+        # Uses .github/actions/setup-python-dependencies to keep CI contract/check gates aligned with runtime/test dependencies.
+        uses: ./.github/actions/setup-python-dependencies
+        with:
+          requirements-path: backend_app/requirements.txt
 
       - name: Apply migrations
         run: python -m alembic upgrade head
@@ -71,7 +78,10 @@ jobs:
             backend_app/requirements.txt
 
       - name: Install Python dependencies
-        run: pip install -r backend_app/requirements.txt
+        # Uses .github/actions/setup-python-dependencies to keep CI contract/check gates aligned with runtime/test dependencies.
+        uses: ./.github/actions/setup-python-dependencies
+        with:
+          requirements-path: backend_app/requirements.txt
 
       - name: Install Python security tooling
         run: python -m pip install pip-audit
@@ -245,7 +255,10 @@ jobs:
             backend_app/requirements.txt
 
       - name: Install Python dependencies
-        run: pip install -r backend_app/requirements.txt
+        # Uses .github/actions/setup-python-dependencies to keep CI contract/check gates aligned with runtime/test dependencies.
+        uses: ./.github/actions/setup-python-dependencies
+        with:
+          requirements-path: backend_app/requirements.txt
 
       - name: Setup Node
         uses: actions/setup-node@v6

@@ -1,0 +1,20 @@
+name: "Setup Python dependencies"
+description: "Install Python dependencies from a configurable requirements file."
+
+inputs:
+  requirements-path:
+    description: "Path to the requirements file used for dependency installation."
+    required: false
+    default: "backend_app/requirements.txt"
+  pip-command:
+    description: "Pip command to run; allows opting into python -m pip or pip."
+    required: false
+    default: "python -m pip"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Python dependencies
+      shell: bash
+      run: |
+        ${{ inputs.pip-command }} install -r "${{ inputs.requirements-path }}"
