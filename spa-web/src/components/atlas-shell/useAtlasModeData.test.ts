@@ -120,6 +120,50 @@ describe("useAtlasModeData", () => {
     expect(loadLeadershipMetricsSnapshot).toHaveBeenCalledWith(baseUser);
   });
 
+  it("uses experiments from the ritual snapshot without per-KR fan-out", async () => {
+    const readBackendQueryMock = vi.mocked(api.readBackendQuery);
+    const setWeeklyDraft = vi.fn();
+    const setRetroDraft = vi.fn();
+    const loadLeadershipMetricsSnapshot = vi.fn().mockResolvedValue(null);
+
+    readBackendQueryMock.mockResolvedValueOnce({
+      key_results: [
+        { id: 5, title: "KR 5" },
+        { id: 6, title: "KR 6" },
+      ],
+      weekly_plan: null,
+      retros: [],
+      work_logs: [],
+      experiments: [
+        { id: 3, key_result_id: 5, cycle_id: 7 },
+        { id: 4, key_result_id: 5, cycle_id: 7 },
+        { id: 8, key_result_id: 6, cycle_id: 7 },
+      ],
+    } as never);
+
+    const { result } = renderHook(() =>
+      useAtlasModeData({
+        mode: "atlas",
+        user: baseUser,
+        parsedCycleId: 7,
+        setWeeklyDraft,
+        setRetroDraft,
+        loadLeadershipMetricsSnapshot,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.loadModeData(baseUser, "ritual");
+    });
+
+    expect(readBackendQueryMock).toHaveBeenCalledTimes(1);
+    expect(readBackendQueryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "ritual.snapshot" }),
+    );
+    expect(result.current.ritualExperimentsByKr[5]).toHaveLength(2);
+    expect(result.current.ritualExperimentsByKr[6]).toHaveLength(1);
+  });
+
   it("guards dashboard/timeline refresh from overlapping in-flight calls", async () => {
     const readBackendQueryMock = vi.mocked(api.readBackendQuery);
     const setWeeklyDraft = vi.fn();

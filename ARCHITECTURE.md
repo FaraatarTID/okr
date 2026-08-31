@@ -75,7 +75,8 @@ Primary data/control flow:
   - Runtime DSN should use a least-privilege app user (not `postgres`) except explicit break-glass overrides.
   - Postgres engine defaults to `NullPool` in app runtimes to align with Supabase PgBouncer transaction pooling.
 - Data-access mode resolution (`backend_app/data_access_mode.py`):
-  - Explicit `OKR_DATA_ACCESS_MODE=supabase_api` pins HTTPS for all operations (legacy behavior).
+  - In the `saas` deployment profile, only `OKR_DATA_ACCESS_MODE=database` is valid; startup rejects every other value.
+  - `OKR_DATA_ACCESS_MODE=supabase_api` is an alpha/self-hosted compatibility mode, not a SaaS architecture option.
   - Otherwise TCP is primary; a cached probe re-checks connectivity every ~5 minutes.
   - TCP unreachable + Supabase credentials present → reads fall back to the HTTPS API automatically (warn-once per outage); mutations never silently fail over (double-write risk) and fail closed.
   - `notify_tcp_db_failure()` invalidates the probe cache so traffic returns to TCP quickly after recovery.
@@ -214,7 +215,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Owner, manager-of-owner, and admin paths are enforced before changes are committed.
 - Read-sensitive node retrieval can be actor-scoped via `get_node(..., actor_username=...)`.
 - AI node analysis (`analyze_node`) uses actor-scoped read path and includes alignment context (edges + cross-hierarchy links) in the prompt.
-- DB access follows the centralized mode resolver (see Security section): TCP primary with automatic HTTPS fallback for reads.
+- SaaS DB access uses direct Postgres through the transaction pooler with transaction-local RLS context. Alpha/self-hosted compatibility deployments may use the centralized HTTPS mode resolver for reads, but that path is excluded from SaaS tenant traffic.
 
 5. Alignment flow
 
@@ -252,6 +253,14 @@ Interaction model is intentionally split into control-plane and work-plane:
 - DB constraints enforce non-negative progress and durations, and single open work log per task. Task progress can exceed 100% (auto-computed from time tracking).
 - Cycles are per-owner: partial unique index `ux_cycle_owner_active` enforces at most one active cycle per `owner_manager_id` (admin-owned cycles act as global cycles visible to everyone). Managers see only their own + admin-owned cycles; members resolve to their manager's active cycle, falling back to an active global cycle. Managers cannot mutate admin-owned cycles (activate/deactivate/delete/ownership changes are admin-only).
 - Hot-path query budgets are tested in `tests/test_performance_hotpaths.py` to prevent N+1 regressions.
+- The Atlas hierarchy read is set-based across goals, objectives, key results,
+  and tasks; do not introduce lazy ORM traversal without a query-count test.
+- Ritual mode consumes experiments from the consolidated snapshot instead of
+  issuing one follow-up request per key result.
+- The Atlas snapshot starts immediately without an artificial 200 ms delay and
+  excludes raw AI analysis from non-inspector views to limit payload size.
+- These code-level safeguards do not replace browser waterfall and backend
+  tracing; the remaining performance gate is measured end-to-end latency.
 - Runtime preflight defaults to strict (`OKR_STRICT_RUNTIME_PREFLIGHT=true`) for fail-fast misconfiguration detection.
 - Runtime preflight validates backend production wiring (API URL/token/signing secret/distributed security backend) when backend mode is enabled.
 - Supported secure-runtime PDF engines: `pdfshift`, `chromium`.
@@ -274,7 +283,7 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 ## Contributor Decision Guide
 
 **Choosing a data path:**
-1. Default: use CRUD/SQLAlchemy (TCP). Do not set `OKR_DATA_ACCESS_MODE` unless HTTPS-only operation is required.
+1. SaaS default: use CRUD/SQLAlchemy (TCP) through the transaction pooler. Do not set `OKR_DATA_ACCESS_MODE` to an HTTPS mode for SaaS.
 2. Reads work identically in both modes — dispatch is centralized in `backend_app/data_access_mode.py::resolve_read_mode()`; do not branch on mode ad hoc.
 3. Mutations always run on the active primary path and fail closed; never add silent fallbacks.
 
@@ -300,9 +309,8 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 
 ## Forward-Looking Work
 
-Active production-readiness work is tracked in
-[ARCHITECTURE_BACKLOG.md](ARCHITECTURE_BACKLOG.md) with per-item status,
-evidence, and verification drills in
-[docs/architecture-status.md](docs/architecture-status.md) (process:
-[docs/ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTURE_DELIVERY_SYSTEM.md)).
-Session journal: `docs/WORKLOG.md`.
+Active Phase 0 production-readiness work is tracked in
+[ARCHITECTURE_BACKLOG.md](ARCHITECTURE_BACKLOG.md). Superseded status and worklog
+records are preserved in
+[docs/archive/architecture-2026-08-31/](docs/archive/architecture-2026-08-31/).
+Process definition: [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTURE_DELIVERY_SYSTEM.md).

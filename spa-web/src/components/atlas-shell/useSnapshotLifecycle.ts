@@ -48,7 +48,10 @@ export default function useSnapshotLifecycle({
       const payload = await readAtlasSnapshot({
         actor_username: activeUser.username,
         cycle_id: parsedCycleId,
-        include_analysis: true,
+        // Raw AI analysis is only needed by the Atlas inspector. Keeping it
+        // out of dashboard/timeline/weekly payloads avoids serializing and
+        // transferring large JSON blobs on every navigation.
+        include_analysis: mode === "atlas",
         owner_ids: ownerIds,
       });
       if (snapshotRequestIdRef.current === requestId) {
@@ -71,8 +74,15 @@ export default function useSnapshotLifecycle({
     snapshotRequestIdRef.current += 1;
     setSnapshotPending(true);
     setSnapshotError("");
+    const bootstrapGeneration = snapshotRequestIdRef.current;
 
-    const timer = window.setTimeout(() => {
+    // Yield one event-loop turn so callers can explicitly trigger a load
+    // during the same render cycle without racing the automatic bootstrap.
+    // This replaces the former 200 ms delay without adding user-visible wait.
+    const bootstrapTimer = window.setTimeout(() => {
+      if (!active || snapshotRequestIdRef.current !== bootstrapGeneration) {
+        return;
+      }
       void (async () => {
         try {
           await loadSnapshotForUser(user);
@@ -88,12 +98,12 @@ export default function useSnapshotLifecycle({
           }
         }
       })();
-    }, 200);
+    }, 0);
 
     return () => {
       active = false;
       snapshotRequestIdRef.current += 1;
-      window.clearTimeout(timer);
+      window.clearTimeout(bootstrapTimer);
     };
   }, [loadSnapshotForUser, ownerIds, ownerIdsError, parsedCycleId, user]);
 

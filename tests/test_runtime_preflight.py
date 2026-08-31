@@ -72,6 +72,32 @@ def test_valid_cloud_profile_is_clean():
     assert report.ok
 
 
+def test_saas_profile_allows_only_database_access():
+    report = evaluate_runtime_preflight(
+        pdf_method="chromium",
+        has_pdfshift_key=True,
+        has_chromium_runtime=True,
+        external_ai_allowed=False,
+        backend_api_url="auto",
+        deployment_profile="saas",
+        data_access_mode="supabase_api",
+    )
+    assert any("only OKR_DATA_ACCESS_MODE=database" in msg for msg in report.errors)
+
+
+def test_saas_profile_accepts_database_access():
+    report = evaluate_runtime_preflight(
+        pdf_method="chromium",
+        has_pdfshift_key=True,
+        has_chromium_runtime=True,
+        external_ai_allowed=False,
+        backend_api_url="auto",
+        deployment_profile="saas",
+        data_access_mode="database",
+    )
+    assert report.ok
+
+
 def test_production_rejects_public_backend_api_host():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",

@@ -56,6 +56,7 @@ EXPECTED_CALLABLE_SIGNATURES: dict[Path, dict[str, list[str]]] = {
             "ensure_supabase_api_ready",
             "init_database",
             "ensure_admin_exists",
+            "validate_runtime_preflight",
         ],
         "register_main_routers": ["app", "main_module"],
     },

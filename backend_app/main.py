@@ -227,6 +227,7 @@ from src.services.supabase_api_mode import (
 )
 from src.services.pdf_service import get_pdf_runtime_diagnostics
 from backend_app.main_app_bootstrap import build_main_app
+from backend_app.main_bootstrap_helpers import validate_runtime_preflight
 from backend_app.main_workflow_handlers import (
     api_close_experiment,  # noqa: F401
     api_create_alignment,  # noqa: F401
@@ -376,6 +377,7 @@ def create_app() -> FastAPI:
         ensure_supabase_api_ready=ensure_supabase_api_ready,
         init_database=_bootstrap_init_database,
         ensure_admin_exists=_bootstrap_ensure_admin_exists,
+        validate_runtime_preflight=validate_runtime_preflight,
     )
 
 

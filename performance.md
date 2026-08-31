@@ -4,6 +4,26 @@ Documentation HQ: [README](README.md)
 
 This document tracks performance baselines and query-budget guardrails for critical hot paths.
 
+## Atlas Load-Time Recovery Status
+
+The reported multi-second page load remains an investigation item until an
+end-to-end browser/backend trace identifies its dominant source. The following
+code-level causes have been checked or fixed:
+
+- Atlas hierarchy reads are set-based rather than ORM lazy-loading traversal.
+- Ritual mode no longer performs one experiment request per key result.
+- The BFF is already a backend payload pass-through for this path.
+- Independent bootstrap reads are already parallelized where their inputs are
+  independent.
+- Initial Atlas snapshot loading no longer waits 200 ms before starting.
+- Raw AI analysis is limited to Atlas inspector mode; other views use derived
+  fields only.
+
+The next evidence required is a browser waterfall correlated with backend
+timings, database query count, data-access strategy, fallback queueing, circuit
+state, serialization time, and client rendering time. No additional broad
+optimization should be accepted without that correlation.
+
 ## Current Baselines (Measured February 16, 2026)
 
 | Path | Median Time | P95 Time | Observed Queries | Query Budget |

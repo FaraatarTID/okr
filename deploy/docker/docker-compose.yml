@@ -23,6 +23,7 @@ services:
     environment:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
       - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE:-database}
+      - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE:-self_hosted}
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
@@ -73,6 +74,7 @@ services:
     environment:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
       - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE:-database}
+      - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE:-self_hosted}
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
@@ -140,4 +142,3 @@ services:
 
 volumes:
   okr-postgres-data:
-

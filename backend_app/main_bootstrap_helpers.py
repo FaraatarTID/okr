@@ -8,10 +8,37 @@ from typing import Callable
 from fastapi import APIRouter, FastAPI
 from fastapi.routing import APIRoute
 
+from src.config_runtime import get_bool_config, get_config_value
+from src.runtime_preflight import evaluate_runtime_preflight
+
 
 _REQUIRED_MUTATION_ROUTES = {
     ("POST", "/v1/nodes/goal"),
 }
+
+
+def validate_runtime_preflight() -> None:
+    """Fail fast on deployment settings that violate the runtime contract."""
+    strict = get_bool_config("OKR_STRICT_RUNTIME_PREFLIGHT", default=True)
+    profile = get_config_value("OKR_DEPLOYMENT_PROFILE", "")
+    mode = get_config_value("OKR_DATA_ACCESS_MODE", "database")
+    if not strict and str(profile).strip().lower() != "saas":
+        return
+
+    report = evaluate_runtime_preflight(
+        pdf_method="chromium",
+        has_pdfshift_key=True,
+        has_chromium_runtime=True,
+        external_ai_allowed=False,
+        backend_api_url="auto",
+        deployment_profile=profile,
+        data_access_mode=mode,
+    )
+    if report.errors:
+        raise RuntimeError(
+            "Runtime preflight failed:\n"
+            + "\n".join(f"- {error}" for error in report.errors)
+        )
 
 
 def make_main_lifespan(
@@ -20,9 +47,12 @@ def make_main_lifespan(
     ensure_supabase_api_ready: Callable[[], None],
     init_database: Callable[[], None],
     ensure_admin_exists: Callable[[], None],
+    validate_runtime_preflight: Callable[[], None] | None = None,
 ):
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
+        if validate_runtime_preflight is not None:
+            validate_runtime_preflight()
         if is_supabase_api_mode_enabled():
             ensure_supabase_api_ready()
         else:

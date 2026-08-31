@@ -18,6 +18,7 @@ def build_main_app(
     ensure_supabase_api_ready,
     init_database,
     ensure_admin_exists,
+    validate_runtime_preflight=None,
 ) -> FastAPI:
     """Create and configure the application instance used by the entry module."""
 
@@ -26,6 +27,7 @@ def build_main_app(
         ensure_supabase_api_ready=ensure_supabase_api_ready,
         init_database=init_database,
         ensure_admin_exists=ensure_admin_exists,
+        validate_runtime_preflight=validate_runtime_preflight,
     )
 
     app = FastAPI(
