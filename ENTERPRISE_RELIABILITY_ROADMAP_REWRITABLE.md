@@ -1,5 +1,7 @@
 # Archived Roadmap Redirect
 
+Documentation HQ: [README](README.md)
+
 This roadmap has been archived as a historical record:
 
 - [Archived enterprise reliability roadmap](docs/archive/ENTERPRISE_RELIABILITY_ROADMAP_2026-08-31.md)
