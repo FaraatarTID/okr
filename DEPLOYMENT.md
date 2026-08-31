@@ -20,6 +20,20 @@ If you are not sure what to choose, use this default stack:
 
 This is the safest and easiest enterprise path for this repo.
 
+### SaaS versus compatibility data access
+
+Cloud SaaS multi-tenancy requires direct PostgreSQL access through the approved
+transaction-mode pooler (`:6543`). Tenant context is set with `SET LOCAL` in
+the same transaction as the queries, allowing PostgreSQL RLS to remain the
+authoritative database backstop.
+
+The Supabase HTTPS data-access mode exists for alpha testing and selected
+self-hosted environments where direct database connectivity is unavailable.
+It is not a SaaS fallback. Do not enable it for a multi-tenant SaaS deployment;
+the API adapter cannot provide the same session-local RLS context. If this
+boundary is ever changed, require a new threat model, filtering-parity tests,
+and an approved architecture decision first.
+
 ---
 
 Architecture status and deployment intent (2026-02-24)

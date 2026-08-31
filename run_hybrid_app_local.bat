@@ -86,7 +86,7 @@ if not defined OKR_DATA_ACCESS_MODE set "OKR_DATA_ACCESS_MODE=database"
 set "SUPABASE_MODE_CANDIDATE=false"
 if defined SUPABASE_URL if defined SUPABASE_SERVICE_ROLE_KEY set "SUPABASE_MODE_CANDIDATE=true"
 if not defined OKR_FORCE_DATABASE_MODE if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" OKR_FORCE_DATABASE_MODE 2^>nul`) do set "OKR_FORCE_DATABASE_MODE=%%V"
-if /I "%SUPABASE_MODE_CANDIDATE%"=="true" if /I "%OKR_FORCE_DATABASE_MODE%" NEQ "true" if /I "%OKR_DATA_ACCESS_MODE%"=="database" set "OKR_DATA_ACCESS_MODE=supabase_api"
+if /I "%OKR_DEPLOYMENT_PROFILE%" NEQ "saas" if /I "%SUPABASE_MODE_CANDIDATE%"=="true" if /I "%OKR_FORCE_DATABASE_MODE%" NEQ "true" if /I "%OKR_DATA_ACCESS_MODE%"=="database" set "OKR_DATA_ACCESS_MODE=supabase_api"
 if not defined OKR_LOCAL_DB_FALLBACK set "OKR_LOCAL_DB_FALLBACK=false"
 if not defined OKR_BACKEND_SERVICE_TOKEN for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" OKR_BACKEND_SERVICE_TOKEN 2^>nul`) do set "OKR_BACKEND_SERVICE_TOKEN=%%V"
 set "SUPABASE_HTTPS_CREDENTIALS=missing"
@@ -455,7 +455,7 @@ if not defined OKR_DATA_ACCESS_MODE set "OKR_DATA_ACCESS_MODE=database"
 set "SUPABASE_MODE_CANDIDATE=false"
 if defined SUPABASE_URL if defined SUPABASE_SERVICE_ROLE_KEY set "SUPABASE_MODE_CANDIDATE=true"
 if not defined OKR_FORCE_DATABASE_MODE if exist "%DOCKER_ENV_FILE%" for /f "usebackq delims=" %%V in (`python scripts\read_env_value.py "%DOCKER_ENV_FILE%" OKR_FORCE_DATABASE_MODE 2^>nul`) do set "OKR_FORCE_DATABASE_MODE=%%V"
-if /I "%SUPABASE_MODE_CANDIDATE%"=="true" if /I "%OKR_FORCE_DATABASE_MODE%" NEQ "true" if /I "%OKR_DATA_ACCESS_MODE%"=="database" set "OKR_DATA_ACCESS_MODE=supabase_api"
+if /I "%OKR_DEPLOYMENT_PROFILE%" NEQ "saas" if /I "%SUPABASE_MODE_CANDIDATE%"=="true" if /I "%OKR_FORCE_DATABASE_MODE%" NEQ "true" if /I "%OKR_DATA_ACCESS_MODE%"=="database" set "OKR_DATA_ACCESS_MODE=supabase_api"
 exit /b 0
 
 :maybe_probe_supabase_https

@@ -48,7 +48,10 @@ export default function useSnapshotLifecycle({
       const payload = await readAtlasSnapshot({
         actor_username: activeUser.username,
         cycle_id: parsedCycleId,
-        include_analysis: true,
+        // Raw AI analysis is only needed by the Atlas inspector. Keeping it
+        // out of dashboard/timeline/weekly payloads avoids serializing and
+        // transferring large JSON blobs on every navigation.
+        include_analysis: mode === "atlas",
         owner_ids: ownerIds,
       });
       if (snapshotRequestIdRef.current === requestId) {
@@ -72,28 +75,25 @@ export default function useSnapshotLifecycle({
     setSnapshotPending(true);
     setSnapshotError("");
 
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        try {
-          await loadSnapshotForUser(user);
-        } catch (error) {
-          if (!active) {
-            return;
-          }
-          setSnapshotError(String(error instanceof Error ? error.message : error));
-          setSnapshotPayload(null);
-        } finally {
-          if (active) {
-            setSnapshotPending(false);
-          }
+    void (async () => {
+      try {
+        await loadSnapshotForUser(user);
+      } catch (error) {
+        if (!active) {
+          return;
         }
-      })();
-    }, 200);
+        setSnapshotError(String(error instanceof Error ? error.message : error));
+        setSnapshotPayload(null);
+      } finally {
+        if (active) {
+          setSnapshotPending(false);
+        }
+      }
+    })();
 
     return () => {
       active = false;
       snapshotRequestIdRef.current += 1;
-      window.clearTimeout(timer);
     };
   }, [loadSnapshotForUser, ownerIds, ownerIdsError, parsedCycleId, user]);
 

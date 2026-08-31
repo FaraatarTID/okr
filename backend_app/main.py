@@ -186,7 +186,8 @@ from src.database import (
     import_database_backup,
     init_database,
 )
-from src.config_runtime import get_bool_config
+from src.config_runtime import get_bool_config, get_config_value
+from src.runtime_preflight import evaluate_runtime_preflight
 from src.domain.password_policy import is_production_runtime
 from src.domain.read_queries import build_atlas_scope_snapshot
 from src.domain import analysis as analysis_domain
@@ -368,6 +369,29 @@ def _bootstrap_ensure_admin_exists() -> bool:
     return ensure_admin_exists()
 
 
+def _bootstrap_validate_runtime_preflight() -> None:
+    strict = get_bool_config("OKR_STRICT_RUNTIME_PREFLIGHT", default=True)
+    profile = get_config_value("OKR_DEPLOYMENT_PROFILE", "")
+    mode = get_config_value("OKR_DATA_ACCESS_MODE", "database")
+    if not strict and str(profile).strip().lower() != "saas":
+        return
+
+    report = evaluate_runtime_preflight(
+        pdf_method="chromium",
+        has_pdfshift_key=True,
+        has_chromium_runtime=True,
+        external_ai_allowed=False,
+        backend_api_url="auto",
+        deployment_profile=profile,
+        data_access_mode=mode,
+    )
+    if report.errors:
+        raise RuntimeError(
+            "Runtime preflight failed:\n"
+            + "\n".join(f"- {error}" for error in report.errors)
+        )
+
+
 def create_app() -> FastAPI:
     return build_main_app(
         logger=_LOGGER,
@@ -376,6 +400,7 @@ def create_app() -> FastAPI:
         ensure_supabase_api_ready=ensure_supabase_api_ready,
         init_database=_bootstrap_init_database,
         ensure_admin_exists=_bootstrap_ensure_admin_exists,
+        validate_runtime_preflight=_bootstrap_validate_runtime_preflight,
     )
 
 

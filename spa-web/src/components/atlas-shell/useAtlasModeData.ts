@@ -215,30 +215,17 @@ export default function useAtlasModeData({
               (ritualPayload.experiments || []).slice(0, 100),
             );
 
-            const experimentResults = await Promise.allSettled(
-              krs.map(async (kr) => {
-                const krId = Number(kr.id);
-                if (!Number.isFinite(krId) || krId <= 0) {
-                  return [0, [] as ExperimentRead[]] as const;
-                }
-                const payload = await readBackendQuery({
-                  actor_username: activeUser.username,
-                  kind: "experiments.for_kr",
-                  params: { key_result_id: krId },
-                });
-                return [krId, ((payload.experiments as ExperimentRead[]) || []).slice(0, 50)] as const;
-              }),
-            );
             const experimentsByKr: Record<number, ExperimentRead[]> = {};
-            for (const result of experimentResults) {
-              if (result.status !== "fulfilled") {
+            for (const experiment of (ritualPayload.experiments as ExperimentRead[]) || []) {
+              const krId = Number(experiment.key_result_id);
+              if (!Number.isFinite(krId) || krId <= 0) {
                 continue;
               }
-              const [krId, experiments] = result.value;
-              if (!krId) {
-                continue;
+              const experiments = experimentsByKr[krId] || [];
+              if (experiments.length < 50) {
+                experiments.push(experiment);
+                experimentsByKr[krId] = experiments;
               }
-              experimentsByKr[krId] = experiments;
             }
             setRitualExperimentsByKr(experimentsByKr);
           }

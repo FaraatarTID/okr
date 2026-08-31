@@ -137,9 +137,23 @@ def evaluate_runtime_preflight(
     backend_security_state_backend: str = "memory",
     backend_security_state_redis_url: Optional[str] = None,
     runtime_env: str = "development",
+    deployment_profile: str = "",
+    data_access_mode: str = "database",
 ) -> RuntimePreflightReport:
     """Evaluate runtime safety constraints for PDF and AI integrations."""
     report = RuntimePreflightReport()
+    profile = str(deployment_profile or "").strip().lower().replace("-", "_")
+    access_mode = str(data_access_mode or "database").strip().lower()
+    if profile == "saas":
+        if access_mode != "database":
+            report.errors.append(
+                "SaaS deployment profile permits only OKR_DATA_ACCESS_MODE=database; "
+                f"received '{data_access_mode}'."
+            )
+        else:
+            report.infos.append(
+                "SaaS deployment profile is restricted to direct database access."
+            )
     method = _normalize_pdf_method(pdf_method)
     if method in {"chrome", "playwright"}:
         method = "chromium"

@@ -20,9 +20,12 @@ def make_main_lifespan(
     ensure_supabase_api_ready: Callable[[], None],
     init_database: Callable[[], None],
     ensure_admin_exists: Callable[[], None],
+    validate_runtime_preflight: Callable[[], None] | None = None,
 ):
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
+        if validate_runtime_preflight is not None:
+            validate_runtime_preflight()
         if is_supabase_api_mode_enabled():
             ensure_supabase_api_ready()
         else:
