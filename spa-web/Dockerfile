@@ -8,6 +8,8 @@ RUN npm ci --include-workspace-root --include=dev
 FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/spa-web/node_modules ./spa-web/node_modules
+COPY --from=deps /app/package.json ./package.json
 COPY spa-web/ ./spa-web/
 WORKDIR /app/spa-web
 RUN npm run build -- --webpack
@@ -22,6 +24,7 @@ COPY --from=build /app/spa-web/package*.json ./
 COPY --from=build /app/spa-web/.next ./.next
 COPY --from=build /app/spa-web/public ./public
 COPY --from=build /app/node_modules /app/node_modules
+COPY --from=build /app/spa-web/node_modules ./node_modules
 
 EXPOSE 3000
 
