@@ -167,21 +167,125 @@ assuming the deployment is healthy.
 4. Destroy and recreate the disposable database, then rerun the approved head
    migration after the branch is corrected.
 
-## Previous-version redeployment rehearsal
+## Application rollback rehearsal: paired BFF/backend artifacts
 
-The rollback target is the previous known-good Darkube build/version or its
-exact Git commit, selected in the provider console. It is not a mutable tag.
+**Current status: NOT PERFORMED.** This section defines the rehearsal; it is
+not evidence that a rehearsal has occurred. Do not mark it `PASS` until the
+operator has executed every step and attached sanitized provider evidence.
 
-1. Freeze the branch and identify old and current commit/build IDs.
-2. Use only the Darkube console action documented by the provider to redeploy
-   the previous version for web, BFF, API, and worker.
-3. Keep all four components aligned to the same previous release identity.
-4. Verify health, synthetic login, smoke, and worker status.
-5. Record operator, reason, old/new identities, result, and verification.
+This is an **application-artifact rollback only**. The rollback unit is the
+previous known-good release identity shared by `okr-prerelease-bff`,
+`okr-prerelease-api`, and `okr-prerelease-worker`, with the web artifact kept
+on the same release identity. Do not change, downgrade, restore, or otherwise
+recover the database during this rehearsal. Database backup and recovery are
+a separate operational capability and remain governed by their own approved
+procedure and owner decision.
 
-If Darkube does not expose a previous-build redeploy action, mark the rehearsal
-BLOCKED and request provider confirmation. Do not invent an API, SSH path, or
-host-level rollback mechanism.
+### Preconditions
+
+1. Use the disposable `okr-pre-release` target only; never use a customer or
+   production target.
+2. Freeze deployments and record the current release identity (`new`): Git
+   SHA, image references, image digests, Darkube build/deployment IDs, and
+   migration head.
+3. Select the previous immutable known-good release identity (`old`) in the
+   Darkube console. Do not use a mutable tag or an unverified image.
+4. Confirm that the old BFF, API, worker, and web artifacts are available and
+   were built from the same release identity.
+5. Confirm synthetic credentials are available without writing them to shell
+   history, logs, or this record.
+6. Capture a baseline for all health checks below while `new` is serving.
+
+If Darkube cannot identify and redeploy an immutable previous build, mark the
+rehearsal `BLOCKED` and request provider confirmation. Do not invent an API,
+SSH path, host-level rollback, or database operation.
+
+### Execution
+
+1. Announce the rehearsal start to the responsible operator and record the UTC
+   start time.
+2. Use only the documented Darkube redeploy action to deploy `old` to web,
+   BFF, API, and worker. Keep the four artifacts aligned; do not roll back
+   only the BFF or only the backend.
+3. Wait for provider rollout completion and record the resulting artifact
+   identities and deployment events.
+4. Run the health gates in order:
+   - web public HTTPS responds successfully and renders the shell;
+   - BFF `/healthz` responds successfully through the approved route;
+   - API `/healthz` responds successfully through a private or approved probe;
+   - worker reports running and emits its startup/healthy signal;
+   - BFF-to-API connectivity succeeds without public database exposure;
+   - synthetic login succeeds and the login-to-Atlas smoke journey passes;
+   - a representative read and mutation succeed through the BFF path;
+   - runtime logs contain no credentials, tokens, cookies, or signing secrets.
+5. Confirm the database resource, schema, and data were not modified by the
+   rehearsal. Record the observed migration head only; do not run Alembic
+   downgrade, restore a dump, or alter database data.
+6. Record the rehearsal result and UTC end time. If any gate fails, mark the
+   rehearsal `FAIL`, stop announcing the URL, preserve sanitized evidence,
+   and escalate before attempting another deployment.
+7. If the exercise requires returning to `new`, perform a separate documented
+   redeployment of the same immutable `new` identity and repeat the health
+   gates. Record that restoration independently from the rollback result.
+
+### Required rehearsal evidence
+
+Copy this record into the approved evidence location and replace every
+placeholder. Leave the status as `NOT PERFORMED` when no live rehearsal has
+been run.
+
+```text
+Application rollback rehearsal status: NOT PERFORMED | PASS | FAIL | BLOCKED
+Target: okr-pre-release
+Operator:
+UTC start:
+UTC end:
+Reason/change reference:
+
+New release identity (serving before rehearsal):
+  Git SHA:
+  web image@digest:
+  BFF image@digest:
+  API image@digest:
+  worker image@digest:
+  Darkube build/deployment IDs:
+
+Old release identity (rollback target):
+  Git SHA:
+  web image@digest:
+  BFF image@digest:
+  API image@digest:
+  worker image@digest:
+  Darkube build/deployment IDs:
+
+Health gates:
+  web HTTPS shell: NOT RUN | PASS | FAIL
+  BFF /healthz: NOT RUN | PASS | FAIL
+  API /healthz: NOT RUN | PASS | FAIL
+  worker running/healthy signal: NOT RUN | PASS | FAIL
+  BFF-to-API connectivity: NOT RUN | PASS | FAIL
+  synthetic login and smoke: NOT RUN | PASS | FAIL
+  representative read/mutation through BFF: NOT RUN | PASS | FAIL
+  secret-free logs: NOT RUN | PASS | FAIL
+
+Database separation:
+  database changed: NO | YES | UNKNOWN
+  migration head before/after:
+  backup/restore/downgrade attempted: NO | YES
+  database recovery evidence reference (if separately approved):
+
+Restoration to new release (if performed):
+  result: NOT RUN | PASS | FAIL
+  resulting identities/digests:
+
+Evidence references (sanitized logs, events, probes, screenshots):
+Failure/blocker and follow-up owner:
+```
+
+The evidence must not contain environment pages, database URLs, passwords,
+tokens, session cookies, kubeconfig content, or unredacted logs. A successful
+application rollback rehearsal does not close the database backup/recovery,
+RPO/RTO, or provider-recovery gates.
 
 ## Reset and destroy
 
