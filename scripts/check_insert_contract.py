@@ -26,7 +26,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from scripts.required_insert_columns import REQUIRED_INSERT_COLUMNS
+from scripts.required_insert_columns import REQUIRED_INSERT_COLUMNS  # noqa: E402
 
 BASELINE_PATH = PROJECT_ROOT / "alembic" / "versions" / "baseline_2026_08_26_schema.py"
 

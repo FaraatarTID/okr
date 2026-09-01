@@ -21,6 +21,7 @@ historical or compatibility material as current operational guidance.
 | --- | --- | --- |
 | System architecture and code ownership | Canonical | `ARCHITECTURE.md`, `CODEBASE_MAP.md` |
 | Architecture execution and evidence | Canonical | `ARCHITECTURE_BACKLOG.md`, `docs/architecture-status.md`, `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` |
+| Pre-SaaS architecture simplification | Canonical | `PRE_SAAS_ARCHITECTURE_BACKLOG.md` |
 | Enterprise SaaS strategy | Canonical | `ENTERPRISE_SAAS_ROADMAP.md` |
 | Enterprise deployment | Operational | `DEPLOYMENT.md` |
 | Runtime configuration | Operational | `docs/CONFIG_REFERENCE.md` |

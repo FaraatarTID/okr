@@ -11,6 +11,7 @@ from backend_app.schemas import (
     ReadQueryRequest,
     ReadQueryResponse,
 )
+from src.services.app_shell_runtime import serialize_user
 
 
 def register_platform_routes(router: APIRouter, main: Any) -> None:
@@ -50,7 +51,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                         str(payload.client_ip).strip() if payload.client_ip else None
                     ),
                 )
-        except Exception as exc:
+        except Exception:
             if not use_https:
                 notify_tcp_db_failure()
                 if resolve_read_mode() == "supabase_api":
@@ -68,7 +69,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
             else:
                 raise
         output = dict(auth or {})
-        output["user"] = main._serialize_user((auth or {}).get("user"))
+        output["user"] = serialize_user((auth or {}).get("user"))
         return output
 
     @router.get(

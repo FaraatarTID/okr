@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -74,7 +73,6 @@ def main() -> int:
     import json as json_mod
 
     fresh_obj = backend_main.app.openapi()
-    fresh = json_mod.dumps(fresh_obj, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
     committed = artifact.read_text(encoding="utf-8")
 
     try:

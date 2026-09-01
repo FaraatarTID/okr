@@ -8,6 +8,8 @@ set "ENV_FILE=deploy\docker\.env"
 set "ENV_TEMPLATE=deploy\docker\.env.example"
 set "DOCKER_EXE="
 
+if /I "%~1"=="--status" goto :status_only
+
 echo ==========================================
 echo    OKR Tracker - Hybrid SPA Launcher
 echo ==========================================
@@ -113,3 +115,13 @@ echo [INFO] Service status:
 echo.
 pause
 exit /b 0
+
+:status_only
+echo [INFO] Checking Docker Compose service status only...
+where docker >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Docker is not found in PATH.
+    exit /b 1
+)
+docker compose -f "%COMPOSE_FILE%" ps
+exit /b %errorlevel%

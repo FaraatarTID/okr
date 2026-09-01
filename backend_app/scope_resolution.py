@@ -10,7 +10,7 @@ from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mod
 from src.crud import get_active_cycles, get_all_cycles
 from src.database import get_session_context
 from src.models import User, UserRole
-from src.services.supabase_api_mode import is_supabase_api_mode_enabled, read_query_via_supabase_api
+from src.services.supabase_api_mode import read_query_via_supabase_api
 
 
 def _resolve_actor(
@@ -270,7 +270,7 @@ def _list_cycles_for_scope(
             if active_only
             else list(get_all_cycles() or [])
         )
-    except Exception as exc:
+    except Exception:
         notify_tcp_db_failure()
         if resolve_read_mode() == "supabase_api":
             kind = "cycles.active" if active_only else "cycles.all"
@@ -304,7 +304,7 @@ def _resolve_scope_for_actor(
     except HTTPException:
         # Authorization outcomes are real answers, not transport failures.
         raise
-    except Exception as exc:
+    except Exception:
         notify_tcp_db_failure()
         if resolve_read_mode() == "supabase_api":
             return _resolve_actor_scope_via_supabase_api(actor)

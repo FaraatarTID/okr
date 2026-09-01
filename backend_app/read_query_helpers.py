@@ -4,6 +4,11 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
+from src.services.app_shell_runtime import (
+    serialize_cycle,
+    serialize_user,
+    serialize_weekly_plan,
+)
 
 _RPC_FALLBACK_WARNED = False
 
@@ -90,6 +95,7 @@ def read_query_payload(
 ) -> dict:
     kind = str(kind or "").strip()
     allowed = allowed_kinds if allowed_kinds is not None else get_read_query_allowed_kinds()
+    user_serializer = getattr(main, "_serialize_user", serialize_user)
     if kind not in allowed:
         raise main.HTTPException(
             status_code=400,
@@ -257,7 +263,7 @@ def read_query_payload(
 
     try:
         scope = main._resolve_scope_for_actor(actor)
-    except Exception as exc:
+    except Exception:
         # TCP scope resolution failed (e.g. connection refused); if HTTPS
         # fallback is available, retry the whole read over HTTPS.
         notify_tcp_db_failure()
@@ -320,7 +326,7 @@ def read_query_payload(
         if not username:
             return {"user": None}
         user = main.get_user_by_username(username)
-        user_payload = main._serialize_user(user)
+        user_payload = user_serializer(user)
         if user_payload is None:
             return {"user": None}
         main._require_allowed_user_id(scope, int(user_payload["id"]))
@@ -329,7 +335,7 @@ def read_query_payload(
     if kind == "users.by_id":
         user_id = main._coerce_int(params.get("user_id"), field_name="user_id")
         main._require_allowed_user_id(scope, user_id)
-        return {"user": main._serialize_user(main.get_user_by_id(user_id))}
+        return {"user": user_serializer(main.get_user_by_id(user_id))}
 
     if kind == "users.all":
         users = list(main.get_all_users() or [])
@@ -341,7 +347,7 @@ def read_query_payload(
         return {
             "users": [
                 payload
-                for payload in (main._serialize_user(user) for user in users)
+                for payload in (user_serializer(user) for user in users)
                 if payload is not None
             ]
         }
@@ -358,7 +364,7 @@ def read_query_payload(
         return {
             "users": [
                 payload
-                for payload in (main._serialize_user(user) for user in users)
+                for payload in (user_serializer(user) for user in users)
                 if payload is not None
             ]
         }
@@ -392,7 +398,7 @@ def read_query_payload(
         return {
             "cycles": [
                 payload
-                for payload in (main._serialize_cycle(cycle) for cycle in cycles)
+                for payload in (serialize_cycle(cycle) for cycle in cycles)
                 if payload is not None
             ]
         }
@@ -405,7 +411,7 @@ def read_query_payload(
         return {
             "cycles": [
                 payload
-                for payload in (main._serialize_cycle(cycle) for cycle in cycles)
+                for payload in (serialize_cycle(cycle) for cycle in cycles)
                 if payload is not None
             ]
         }
@@ -419,7 +425,7 @@ def read_query_payload(
             else None
         )
         plan = main.get_active_weekly_plan(user_id, date=date_value)
-        return {"weekly_plan": main._serialize_weekly_plan(plan)}
+        return {"weekly_plan": serialize_weekly_plan(plan)}
 
     if kind == "node.get":
         node_id = main._coerce_int(params.get("node_id"), field_name="node_id")
@@ -748,7 +754,7 @@ def read_query_payload(
             payload = main._serialize_retro(retro, include_user=False)
             if payload is None:
                 continue
-            user_payload = main._serialize_user(users_by_id.get(int(payload.get("user_id") or 0)))
+            user_payload = user_serializer(users_by_id.get(int(payload.get("user_id") or 0)))
             payload["user"] = user_payload
             serialized_retros.append(payload)
         return {"retros": serialized_retros}

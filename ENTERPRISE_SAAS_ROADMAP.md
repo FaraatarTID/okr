@@ -5,6 +5,11 @@ Documentation HQ: [README](README.md)
 Current roadmap for delivering OKR as a cloud SaaS while preserving a
 supported enterprise self-hosted deployment option.
 
+The [Pre-SaaS Architecture Simplification Backlog](PRE_SAAS_ARCHITECTURE_BACKLOG.md)
+is a mandatory prerequisite. It resolves canonical package ownership, runtime
+entrypoints, BFF responsibilities, compatibility surfaces, and documentation
+drift before tenant and RLS work begins.
+
 ## Product direction
 
 OKR is an enterprise, multi-user platform. The SaaS offering adds managed
@@ -50,6 +55,7 @@ and cloud-provider lead time.
 
 | Phase | Estimate | Capacity envelope | Commitment |
 | --- | ---: | ---: | --- |
+| Pre-SaaS: architecture simplification | 7-14 sessions / 52-92 hours | 4-7 weeks | Mandatory prerequisite |
 | Phase 0: SaaS architecture foundation | 8-12 sessions / 64-96 hours | 5-8 weeks | Committed prerequisite |
 | Phase 1: Cloud runtime and control plane | 10-16 sessions / 80-128 hours | 6-10 weeks | Conditional on Phase 0 |
 | Phase 2: Enterprise identity and commercial lifecycle | 12-20 sessions / 96-160 hours | 8-13 weeks | Conditional on evidence |
@@ -63,6 +69,7 @@ of silently expanding the phase.
 
 | Promotion | Required evidence | Decision owner |
 | --- | --- | --- |
+| Pre-SaaS -> Phase 0 | Approved target topology; canonical backend startup; explicit BFF decision; compatibility and documentation cleanup; structural quality gates passing | Engineering owner and architecture reviewer |
 | Phase 0 -> Phase 1 | Server-derived tenant identity; application and database cross-tenant denial tests; tenant context preserved in jobs, retries, exports, and audit events; no open critical/high isolation findings | Engineering owner and security reviewer |
 | Phase 1 -> Phase 2 | Tenant lifecycle works without manual SQL; load baseline identifies a real scaling constraint; two release cycles of usable SLO/error-budget data; rollback and backup/restore drills recorded | Engineering owner and operations owner |
 | Phase 2 -> Phase 3 | Signed enterprise requirement for residency, regional placement, or contractual isolation; quantified tenant/traffic demand; approved ADR, threat model, and cost model | Product owner plus security, legal, and operations reviewers |
@@ -226,5 +233,6 @@ The following work should be promoted from deferred architecture planning:
 4. SaaS control-plane provisioning lifecycle
 5. Managed infrastructure adapters and cloud deployment target
 
-Do not begin broad package relocation or Turborepo/Nx adoption before Phase 0
-tenant boundaries are designed and tested.
+Do not begin Phase 0 tenant work until the [Pre-SaaS Architecture Simplification
+Backlog](PRE_SAAS_ARCHITECTURE_BACKLOG.md) promotion gate is approved. Do not
+begin broad package relocation or Turborepo/Nx adoption outside that backlog.

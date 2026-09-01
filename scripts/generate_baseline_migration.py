@@ -98,7 +98,7 @@ def main() -> int:
     ddl_blocks: list[str] = []
     pg = postgresql.dialect()
 
-    rls_excluded = {
+    rls_excluded = {  # noqa: F841
         "alembic_version", "spa_users", "audit_log_entries", "identities",
         "sessions", "mfa_factors", "mfa_challenges", "mfa_amr_claims",
         "refresh_tokens", "schema_migrations", "flow_state", "sso_providers",

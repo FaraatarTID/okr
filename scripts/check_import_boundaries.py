@@ -12,6 +12,13 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 WORKSPACES = {"spa-bff": "okr-spa-bff", "spa-web": "okr-spa-web"}
 
 
+def _production_python_paths() -> list[Path]:
+    paths = [path for path in ROOT_DIR.glob("*.py") if path.name != "app.py"]
+    for directory in ("src", "backend_app", "scripts"):
+        paths.extend((ROOT_DIR / directory).rglob("*.py"))
+    return paths
+
+
 def _python_imports(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imports: set[str] = set()
@@ -25,14 +32,19 @@ def _python_imports(path: Path) -> set[str]:
 
 def main() -> int:
     errors: list[str] = []
-    for path in (ROOT_DIR / "src").rglob("*.py"):
+    for path in _production_python_paths():
         try:
             imports = _python_imports(path)
         except SyntaxError as exc:
             errors.append(f"{path}: cannot parse Python source: {exc}")
             continue
         if "backend_app" in imports:
-            errors.append(f"{path.relative_to(ROOT_DIR)}: src must not import backend_app")
+            if path.is_relative_to(ROOT_DIR / "src"):
+                errors.append(f"{path.relative_to(ROOT_DIR)}: src must not import backend_app")
+        if "app" in imports:
+            errors.append(
+                f"{path.relative_to(ROOT_DIR)}: production code must not import root app.py facade"
+            )
 
     workspace_names = set(WORKSPACES.values())
     for directory, package_name in WORKSPACES.items():
