@@ -80,16 +80,19 @@ def test_smoke_result_requires_web_bff_api_worker_and_migration_success(smoke_se
 
 
 def test_smoke_failure_does_not_include_response_body(smoke_server: tuple[str, ThreadingHTTPServer]) -> None:
+    from tests._test_credentials import test_password
+
+    fixture_password = test_password("prerelease_smoke")
     _SmokeHandler.responses["/bff/healthz"] = (
         503,
-        b'{"status":"down","password":"do-not-print"}',
+        f'{{"status":"down","password":"{test_password("prerelease_smoke")}"}}'.encode(),
         "application/json",
     )
     base_url, _server = smoke_server
     result = verify_prerelease_smoke(**_kwargs(base_url), timeout_seconds=2.0)
     assert not result.ok
     assert "password" not in result.summary.lower()
-    assert "do-not-print" not in json.dumps(result.to_dict())
+    assert fixture_password not in json.dumps(result.to_dict())
     assert next(check for check in result.checks if check.name == "bff").detail == "HTTP 503"
 
 
