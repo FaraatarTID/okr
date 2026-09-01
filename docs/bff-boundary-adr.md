@@ -24,6 +24,44 @@ Business rules, persistence access, migrations, and cross-client application use
 
 This is a working decision, not a final closure. The separation is retained because the repository already deploys the BFF independently and because it provides a controlled boundary for browser-specific concerns while the SaaS topology is still being defined.
 
+## BFF value test
+
+The BFF is justified by security and browser-boundary responsibilities, not by
+the mere fact that the repository has a frontend. Each BFF capability must map
+to a concrete value and must not duplicate backend business rules:
+
+| Capability | Value provided by `spa-bff` | Evidence to preserve |
+|---|---|---|
+| HTTP-only session cookies | Keeps browser session material out of frontend JavaScript | Session tests and secure-cookie configuration |
+| Authentication bridging | Converts browser login/session state into authenticated internal API calls | Session and backend-auth contract tests |
+| Actor binding | Prevents clients from selecting another actor through request payloads or headers | Actor-rewrite rejection tests |
+| Request signing and service token | Authenticates the BFF-to-backend hop and detects tampering | Signing and replay-protection tests |
+| Route allowlisting | Exposes only approved browser routes while keeping operator/internal APIs private | Generated allowlist drift gate |
+| CSRF and origin controls | Protects state-changing browser requests at the edge | BFF security review and request tests |
+| Rate limiting and error shaping | Controls browser-facing abuse and prevents internal error leakage | BFF policy tests and sanitized error contracts |
+
+The BFF must not become a redundant pass-through layer. New BFF code requires
+an entry in this matrix or an approved architecture decision explaining its
+browser-edge value. Domain rules, persistence, migrations, and cross-client
+use cases remain backend responsibilities.
+
+## Topology review checkpoint
+
+Before removing, merging, or thinning the BFF, capture comparable evidence for
+the separate-service and proposed simplified topologies:
+
+- p95 BFF-to-backend latency and representative error rate;
+- CPU and memory overhead under representative single-tenant traffic;
+- failure isolation when the BFF, API, worker, or database is restarted;
+- security parity for sessions, actor binding, signing, CSRF, allowlisting, and
+  rate limiting;
+- independent deployment and rollback behavior for the web, BFF, API, and
+  worker.
+
+No simplification is a supported deployment profile until the replacement
+passes those checks and receives a new ADR decision. Co-location on one host
+with separate service processes remains the lower-risk optimization.
+
 ## Deployment decision and small-installation runbook
 
 Separate `spa-bff`, backend API, worker, and web deployments are the production

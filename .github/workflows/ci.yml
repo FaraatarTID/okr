@@ -22,6 +22,7 @@ jobs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
       shared: ${{ steps.filter.outputs.shared }}
+      docs: ${{ steps.filter.outputs.docs }}
       unclassified: ${{ steps.filter.outputs.unclassified }}
     steps:
       - uses: actions/checkout@v6
@@ -43,12 +44,14 @@ jobs:
               - 'spa-bff/**'
               - 'package.json'
               - 'package-lock.json'
+            docs:
+              - 'docs/**'
+              - '**/*.md'
+              - 'README.md'
+              - 'DEPLOYMENT.md'
             shared:
               - '.github/**'
               - 'deploy/**'
-              - 'docs/**'
-              - 'README.md'
-              - 'DEPLOYMENT.md'
               - 'justfile'
               - 'pyproject.toml'
               - 'uv.lock'
@@ -65,11 +68,12 @@ jobs:
               - '!spa-bff/**'
               - '!package.json'
               - '!package-lock.json'
-              - '!.github/**'
-              - '!deploy/**'
               - '!docs/**'
+              - '!**/*.md'
               - '!README.md'
               - '!DEPLOYMENT.md'
+              - '!.github/**'
+              - '!deploy/**'
               - '!justfile'
               - '!pyproject.toml'
               - '!uv.lock'
@@ -421,6 +425,19 @@ jobs:
             playwright-install.log
           if-no-files-found: ignore
 
+  docs-quality:
+    name: Documentation quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: changes
+    if: ${{ needs.changes.outputs.docs == 'true' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Documentation HQ Link Check
+        run: python scripts/check_docs_hq_links.py
+
   ci-result:
     name: CI result
     runs-on: ubuntu-latest
@@ -431,6 +448,7 @@ jobs:
       - backend-quality
       - spa-quality
       - spa-e2e
+      - docs-quality
     steps:
       - name: Require all executed checks to pass
         shell: bash
@@ -440,9 +458,10 @@ jobs:
           BACKEND_RESULT: ${{ needs.backend-quality.result }}
           SPA_RESULT: ${{ needs.spa-quality.result }}
           E2E_RESULT: ${{ needs.spa-e2e.result }}
+          DOCS_RESULT: ${{ needs.docs-quality.result }}
         run: |
           set -euo pipefail
-          for result in "$CHANGES_RESULT" "$RLS_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT"; do
+          for result in "$CHANGES_RESULT" "$RLS_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT" "$DOCS_RESULT"; do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               echo "CI result failed because a required job returned: $result"
               exit 1
