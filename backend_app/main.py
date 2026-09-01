@@ -11,6 +11,10 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, status
 from sqlmodel import select  # noqa: F401
 
 from backend_app.job_limits import enforce_job_submit_limits  # noqa: F401
+from backend_app.authentication import (
+    require_authenticated_principal,  # noqa: F401
+    require_control_plane_operator,  # noqa: F401
+)
 from backend_app.jobs import (  # noqa: F401
     count_dead_jobs,
     enqueue_job,
@@ -305,40 +309,6 @@ def _pick_primary_active_cycle(
 
 def _require_admin_actor_scope(actor: str) -> None:
     return _require_admin_actor_scope_impl(actor=actor)
-
-
-def require_control_plane_operator(actor: str) -> None:
-    """Authorize operators; production requires an explicit allowlist."""
-    import os
-
-    configured = {
-        item.strip()
-        for item in os.getenv("OKR_CONTROL_PLANE_OPERATORS", "").split(",")
-        if item.strip()
-    }
-    if configured:
-        if actor not in configured:
-            raise HTTPException(status_code=403, detail="Control-plane operator required.")
-        return
-    if is_production_runtime():
-        raise HTTPException(
-            status_code=503,
-            detail="Control-plane operator allowlist is required in production.",
-        )
-    _require_admin_actor_scope(actor)
-
-
-async def require_authenticated_principal(request: Request) -> dict[str, str]:
-    """Return the principal established by authentication middleware.
-
-    Control-plane routes never treat a client-supplied actor-name header as
-    authentication. Deployments must populate request.state.authenticated_principal
-    from their authenticated session or operator credential.
-    """
-    principal = getattr(request.state, "authenticated_principal", None)
-    if not isinstance(principal, dict) or not str(principal.get("username") or "").strip():
-        raise HTTPException(status_code=401, detail="Authenticated principal is required.")
-    return principal
 
 
 def _require_admin_or_manager_actor_scope(actor: str) -> None:
