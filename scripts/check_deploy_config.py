@@ -12,10 +12,14 @@ from pathlib import Path
 from typing import Mapping
 from urllib.parse import urlparse
 
+# Make direct `python scripts/check_deploy_config.py` execution behave like
+# module execution in CI and local shells.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from src.saas.environment_config import ConfigError, SaaSEnvironmentConfig
 
-
-ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED_ENV_KEYS = (
     "OKR_DATABASE_URL",
