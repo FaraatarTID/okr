@@ -129,8 +129,8 @@ services:
 
   spa-bff:
     build:
-      context: ../../spa-bff
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: spa-bff/Dockerfile
     image: *release-bff-image
     environment:
       - NODE_ENV=${NODE_ENV:-production}
@@ -159,8 +159,8 @@ services:
 
   spa-web:
     build:
-      context: ../../spa-web
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: spa-web/Dockerfile
     image: *release-web-image
     environment:
       - PORT=3000

@@ -184,6 +184,21 @@ jobs:
             exit 1
           }
 
+      - name: Container Image Build Gate
+        run: |
+          docker build \
+            --file spa-web/Dockerfile \
+            --tag okr-ci-web:${GITHUB_SHA} \
+            .
+          docker build \
+            --file spa-bff/Dockerfile \
+            --tag okr-ci-bff:${GITHUB_SHA} \
+            .
+          docker build \
+            --file deploy/docker/Dockerfile \
+            --tag okr-ci-backend:${GITHUB_SHA} \
+            .
+
       - name: Full-stack Compose Smoke
         run: |
           python scripts/verify_resilience.py --compose-smoke
@@ -218,6 +233,12 @@ jobs:
 
       - name: Install JavaScript workspace dependencies
         run: npm ci --include=optional
+
+      - name: OpenAPI generated types freshness gate
+        run: npm --prefix spa-web run check:gen:api
+
+      - name: BFF OpenAPI generated types freshness gate
+        run: npm --prefix spa-bff run check:gen:api
 
       - name: Restore JavaScript build caches
         id: spa-build-cache

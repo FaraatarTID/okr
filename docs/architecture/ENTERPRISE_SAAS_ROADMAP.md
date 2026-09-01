@@ -186,6 +186,24 @@ canonical deployment vocabulary is `on_premise`, `single_tenant_saas`, and
 external `control_plane`; `self_hosted` and `saas` are compatibility aliases
 only at explicitly tested legacy boundaries.
 
+## Production persistence gate
+
+No customer-data onboarding, tenant/RLS work, or production SaaS persistence
+may begin until the `just saas-evidence` contract passes. A passing bundle must
+prove, for the target environment and customer, a provider-supported verified
+backup, a successful isolated restore with provider-issued identity and
+integrity evidence, numeric measured RPO/RTO results, and named decision and
+platform/operations owners. It must also include immutable application
+rollback evidence and explicit real-data approval.
+
+The current Phase 1 evidence is intentionally blocked because the provider,
+provider-issued backup/restore records, measured production recovery results,
+and platform/operations owner are not selected. Local adapters and synthetic
+pre-release evidence are implementation tests only; they cannot satisfy this
+production gate. The disposable pre-SaaS environment remains unchanged and
+may continue without customer-data backup claims until the SaaS transition is
+approved.
+
 Lifecycle commands use authenticated operator credentials, not arbitrary
 operator-name arguments. The token is supplied through `OKR_OPERATOR_TOKEN`
 and resolved against the credential file passed to the command or configured

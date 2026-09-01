@@ -1,0 +1,17 @@
+.git
+.github
+.codex
+.pytest_cache
+.test-artifacts
+.venv
+**/__pycache__
+**/node_modules
+**/.next
+**/dist
+**/coverage
+*.log
+*.env
+*.env.*
+*.pem
+*.key
+*.crt

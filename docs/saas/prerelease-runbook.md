@@ -49,7 +49,12 @@ alembic upgrade head
 ```
 
 8. Verify the API, BFF, web, and worker using the checklist below.
-9. Record sanitized evidence before announcing the pre-release URL.
+9. Copy the four observed image references and digests from the Darkube
+   console into the workflow's `darkube_deployment_evidence_json` input. Use
+   the JSON contract in [`deploy/darkube/prerelease/README.md`](../../deploy/darkube/prerelease/README.md#41-capture-deployment-evidence-for-digest-verification).
+10. Confirm the workflow's `deployment-verification.json` artifact reports
+    `"verified": true` before announcing the pre-release URL.
+11. Record sanitized evidence before announcing the pre-release URL.
 
 ## Configuration checklist
 

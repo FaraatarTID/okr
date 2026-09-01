@@ -6,6 +6,8 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from backend_app.schemas import (
     AtlasSnapshotRequest,
+    AuthLoginResponse,
+    AuthSessionResponse,
     LeadershipMetricsRequest,
     LoginRequest,
     ReadQueryRequest,
@@ -25,6 +27,8 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
     @router.post(
         "/v1/auth/login",
         dependencies=[Depends(main.require_service_access)],
+        response_model=AuthLoginResponse,
+        response_model_exclude_unset=True,
     )
     def api_auth_login(payload: LoginRequest) -> dict:
         from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
@@ -75,6 +79,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
     @router.get(
         "/v1/auth/me",
         dependencies=[Depends(main.require_service_access)],
+        response_model=AuthSessionResponse,
     )
     def api_get_current_user(
         x_okr_actor: Optional[str] = Header(default=None),

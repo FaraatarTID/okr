@@ -93,7 +93,7 @@ Before any real customer data is stored, each environment must have:
 - A named operational owner.
 - An audit record for backup and restore outcomes.
 
-The disposable pre-SaaS database is exempt by explicit owner risk acceptance. That exemption expires when the first real customer environment or persistent customer data is introduced.
+The disposable pre-SaaS database was exempt by explicit owner risk acceptance while it contained mock data; that data has been purged. The exemption is phase-limited and expires before the first real customer environment or persistent customer data is introduced. Production SaaS requires the backup/recovery controls listed above.
 
 ## Security boundary
 

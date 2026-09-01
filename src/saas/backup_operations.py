@@ -24,9 +24,52 @@ class BackupVerificationError(ValueError):
     """Raised when provider verification payload hashing fails."""
 
 
+class ProviderContractError(ValueError):
+    """Raised when a provider response violates the backup contract."""
+
+
 def checksum_for_payload(payload: dict[str, Any]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _validate_provider_response(
+    raw: dict[str, Any],
+    *,
+    provider_name: str,
+    expected_backup_id: str | None = None,
+    expected_environment_id: str | None = None,
+) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise ProviderContractError("provider response must be an object")
+    if raw.get("provider") != provider_name:
+        raise ProviderContractError("provider identity mismatch")
+    if expected_backup_id is not None and raw.get("backup_id") != expected_backup_id:
+        raise ProviderContractError("backup identity mismatch")
+    if expected_environment_id is not None and raw.get("environment_id") != expected_environment_id:
+        raise ProviderContractError("provider response belongs to a different environment")
+    required = ("backup_id", "environment_id", "created_at", "checksum")
+    if any(not isinstance(raw.get(key), str) or not raw[key].strip() for key in required):
+        raise ProviderContractError("provider response is missing manifest identity")
+    manifest = {
+        "backup_id": raw["backup_id"],
+        "environment_id": raw["environment_id"],
+        "created_at": raw["created_at"],
+    }
+    supplied_manifest = raw.get("manifest")
+    if supplied_manifest is not None and supplied_manifest != manifest:
+        raise ProviderContractError("manifest identity mismatch")
+    if raw["checksum"] != checksum_for_payload(manifest):
+        raise BackupVerificationError(f"backup {raw['backup_id']!r} checksum mismatch")
+    return manifest
+
+
+def _validate_provider_for_environment(provider: Any, *, production: bool) -> None:
+    provider_name = getattr(provider, "provider_name", "")
+    if not isinstance(provider_name, str) or not provider_name.strip():
+        raise ProviderContractError("provider identity is required")
+    if production and provider_name == LocalBackupProvider.provider_name:
+        raise ProviderContractError("a production provider is required; local adapter is test-only")
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,7 +256,8 @@ def _require_operator(operator: OperatorCredential | None) -> OperatorCredential
 
 
 class BackupManager:
-    def __init__(self, provider: BackupProvider, *, operator: str | None = None, retention_class: str = "standard", rpo_seconds: int = 86400, rto_seconds: int = 86400, max_age: timedelta | None = None, clock: Callable[[], datetime] | None = None, control_plane: Any | None = None) -> None:
+    def __init__(self, provider: BackupProvider, *, operator: str | None = None, retention_class: str = "standard", rpo_seconds: int = 86400, rto_seconds: int = 86400, max_age: timedelta | None = None, clock: Callable[[], datetime] | None = None, control_plane: Any | None = None, production: bool = False) -> None:
+        _validate_provider_for_environment(provider, production=production)
         self.provider = provider
         self.operator = _require_operator(operator).principal
         self.retention_class = retention_class
@@ -236,11 +280,14 @@ class BackupManager:
             self.provider.record_status(f"create-failure:{environment_id}", {"provider": self.provider.provider_name, "environment_id": environment_id, "backup_id": None, "created_at": None, "checksum": None, "operator": self.operator, "last_success_at": None, "last_failure_at": now, "failure_reason": str(failure), "freshness_seconds": None, "retention_class": self.retention_class, "rpo_seconds": self.rpo_seconds, "rto_seconds": self.rto_seconds, "restore_test_status": "NOT_TESTED"})
             self._reconcile_failure(environment_id, "backup", str(failure))
             raise
-        if raw.get("environment_id") != environment_id:
-            raise ValueError("backup provider returned a different environment")
+        _validate_provider_response(
+            raw,
+            provider_name=self.provider.provider_name,
+            expected_environment_id=environment_id,
+        )
         record = BackupRecord(environment_id=raw["environment_id"], provider=raw["provider"], backup_id=raw["backup_id"], checksum=raw["checksum"], created_at=raw["created_at"], retention_class=raw["retention_class"], rpo_seconds=self.rpo_seconds, rto_seconds=self.rto_seconds, operator=self.operator)
         self._records[record.backup_id] = record
-        self.provider.record_status(record.backup_id, {"provider": record.provider, "backup_id": record.backup_id, "created_at": record.created_at, "checksum": record.checksum, "operator": record.operator, "last_success_at": record.created_at, "last_failure_at": None, "failure_reason": None, "freshness_seconds": 0, "retention_class": record.retention_class, "rpo_seconds": record.rpo_seconds, "rto_seconds": record.rto_seconds, "restore_test_status": "NOT_TESTED"})
+        self.provider.record_status(record.backup_id, {"provider": record.provider, "backup_id": record.backup_id, "environment_id": record.environment_id, "created_at": record.created_at, "checksum": record.checksum, "operator": record.operator, "last_success_at": record.created_at, "last_failure_at": None, "failure_reason": None, "freshness_seconds": 0, "retention_class": record.retention_class, "rpo_seconds": record.rpo_seconds, "rto_seconds": record.rto_seconds, "restore_test_status": "NOT_TESTED"})
         if self.control_plane is not None:
             self.control_plane.update_environment_metadata(
                 record.environment_id,
@@ -260,15 +307,24 @@ class BackupManager:
             self.provider.record_status(backup_id, {"provider": original.provider, "backup_id": original.backup_id, "environment_id": original.environment_id, "created_at": original.created_at, "checked_at": now, "checksum": original.checksum, "operator": original.operator, "last_success_at": prior_status.get("last_success_at"), "last_failure_at": now, "failure_reason": str(failure), "freshness_seconds": self._age(original.created_at, now), "retention_class": original.retention_class, "rpo_seconds": original.rpo_seconds, "rto_seconds": original.rto_seconds, "restore_test_status": prior_status.get("restore_test_status", "NOT_TESTED")})
             self._reconcile_failure(original.environment_id, "backup", str(failure))
             raise
-        payload = {key: raw[key] for key in ("backup_id", "environment_id", "created_at")}
-        expected = checksum_for_payload(payload)
+        known_record = self._records.get(backup_id)
+        try:
+            _validate_provider_response(
+                raw,
+                provider_name=self.provider.provider_name,
+                expected_backup_id=backup_id,
+                expected_environment_id=(known_record.environment_id if known_record else prior_status.get("environment_id")),
+            )
+        except BackupVerificationError as failure:
+            now = self._clock()
+            created = datetime.fromisoformat(raw["created_at"])
+            age = max(0, int((now - created).total_seconds()))
+            self.provider.record_status(backup_id, {**prior_status, "provider": raw.get("provider", self.provider.provider_name), "backup_id": backup_id, "environment_id": raw.get("environment_id"), "created_at": raw.get("created_at"), "checksum": raw.get("checksum"), "operator": prior_status.get("operator", self.operator), "last_failure_at": now.isoformat(), "failure_reason": "checksum mismatch", "freshness_seconds": age})
+            self._reconcile_failure(raw.get("environment_id", ""), "backup", "checksum mismatch")
+            raise failure
         now = self._clock()
         created = datetime.fromisoformat(raw["created_at"])
         age = max(0, int((now - created).total_seconds()))
-        if raw.get("checksum") != expected:
-            self.provider.record_status(backup_id, {**prior_status, "provider": raw["provider"], "backup_id": backup_id, "created_at": raw["created_at"], "checksum": raw["checksum"], "operator": prior_status.get("operator", self.operator), "last_failure_at": now.isoformat(), "failure_reason": "checksum mismatch", "freshness_seconds": age})
-            self._reconcile_failure(raw["environment_id"], "backup", "checksum mismatch")
-            raise BackupVerificationError(f"backup {backup_id!r} checksum mismatch")
         if self.max_age is not None and now - created > self.max_age:
             self.provider.record_status(backup_id, {**prior_status, "provider": raw["provider"], "backup_id": backup_id, "created_at": raw["created_at"], "checksum": raw["checksum"], "operator": prior_status.get("operator", self.operator), "last_failure_at": now.isoformat(), "failure_reason": "backup is stale", "freshness_seconds": age})
             self._reconcile_failure(raw["environment_id"], "backup", "backup is stale")
@@ -302,7 +358,9 @@ class BackupManager:
 
 
 class RestoreManager:
-    def __init__(self, backup_provider: BackupProvider, restore_provider: RestoreProvider | None = None, *, operator: str | None = None, control_plane: Any | None = None) -> None:
+    def __init__(self, backup_provider: BackupProvider, restore_provider: RestoreProvider | None = None, *, operator: str | None = None, control_plane: Any | None = None, production: bool = False) -> None:
+        _validate_provider_for_environment(backup_provider, production=production)
+        _validate_provider_for_environment(restore_provider or backup_provider, production=production)
         self.backup_provider = backup_provider
         self.restore_provider = restore_provider or backup_provider
         self.operator = _require_operator(operator).principal
@@ -315,12 +373,19 @@ class RestoreManager:
         started = time.monotonic()
         try:
             raw = self.backup_provider.verify_backup(backup_id)
-            payload = {key: raw[key] for key in ("backup_id", "environment_id", "created_at")}
-            if raw.get("checksum") != checksum_for_payload(payload):
-                raise BackupVerificationError(f"backup {backup_id!r} checksum mismatch")
-            if raw["environment_id"] != isolated_target.environment_id:
-                raise UnsafeRestoreTarget("restore target belongs to a different environment")
+            _validate_provider_response(
+                raw,
+                provider_name=self.backup_provider.provider_name,
+                expected_backup_id=backup_id,
+                expected_environment_id=isolated_target.environment_id,
+            )
             result = self.restore_provider.restore_backup(backup_id, isolated_target)
+            _validate_provider_response(
+                result,
+                provider_name=self.restore_provider.provider_name,
+                expected_backup_id=backup_id,
+                expected_environment_id=isolated_target.environment_id,
+            )
         except Exception as failure:
             status = getattr(self.backup_provider, "status", {}).get(backup_id, {})
             self.backup_provider.record_status(backup_id, {**status, "restore_test_status": "FAILED", "restore_test_error": str(failure), "restore_test_elapsed_seconds": max(0.0, time.monotonic() - started), "last_restore_test_at": datetime.now(UTC).isoformat()})

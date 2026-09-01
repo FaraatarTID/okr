@@ -1,0 +1,78 @@
+name: Verify GHCR release signatures
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Full commit SHA represented by the release manifest
+        required: true
+        type: string
+      manifest_run_id:
+        description: GitHub Actions run ID that published the release manifest
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+jobs:
+  verify:
+    name: Verify keyless signatures before production
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - name: Checkout release policy
+        uses: actions/checkout@v6
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Download release manifest
+        uses: actions/download-artifact@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.manifest_run_id }}
+          name: ghcr-release-manifest-${{ inputs.release_sha }}
+          path: release-manifest
+
+      - name: Verify manifest identity
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          test -f release-manifest/release-manifest.json
+          jq -e --arg sha "$RELEASE_SHA" '.schema_version == 1 and .commit_sha == $sha and (.images | keys | sort == ["backend", "bff", "web"])' release-manifest/release-manifest.json >/dev/null
+
+      - name: Verify every production image signature
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          issuer="https://token.actions.githubusercontent.com"
+          identity="^https://github.com/${REPOSITORY}/.github/workflows/publish-ghcr.yml@refs/heads/(main|master)$"
+          jq -r '.images[] | [.image, .digest] | @tsv' release-manifest/release-manifest.json | while IFS=$'\t' read -r image digest; do
+            test "$image" = "${image%:*}:${RELEASE_SHA}"
+            test "$digest" = sha256:*
+            cosign verify \
+              --certificate-oidc-issuer "$issuer" \
+              --certificate-identity-regexp "$identity" \
+              "${image}@${digest}"
+          done
+
+      - name: Write verification summary
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          MANIFEST_RUN_ID: ${{ inputs.manifest_run_id }}
+        run: |
+          {
+            echo "## GHCR signature policy"
+            echo "- Release: `$RELEASE_SHA`"
+            echo "- Manifest run: `$MANIFEST_RUN_ID`"
+            echo "- Signing: keyless GitHub Actions OIDC"
+            echo "- Result: all production images verified"
+          } >> "$GITHUB_STEP_SUMMARY"

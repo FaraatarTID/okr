@@ -10,7 +10,7 @@ Documentation HQ: [README](../README.md)
 | P0-03 - BFF responsibility and topology ADR | IN-PROGRESS | [bff-boundary-adr.md](bff-boundary-adr.md); [bff-security-review.md](bff-security-review.md); allowlist passed for 44 routes; BFF suite passed 65 tests; consolidated gate passed | partial | Repository security controls reviewed; production secret, rate-limit, tenant-context, and rollback evidence remain. |
 | P0-04 - Root script and compatibility surface cleanup | IN-PROGRESS | [compatibility-surface-cleanup.md](compatibility-surface-cleanup.md); [compatibility-callers.md](compatibility-callers.md); [launcher-command-matrix.md](launcher-command-matrix.md); canonical cache migration, platform/login/response-scope migration, cycle/weekly-plan caller migration, explicit user serializer dependency seam, no-root-facade-import guard, and read-only Docker wrapper status path completed; 14 parity/ritual tests and 2 launcher contract tests passed; bounded Compose health captured | partial | Full wrapper start/stop rehearsal, launcher cleanup, and retirement of the parity override remain. |
 | P0-05 - Documentation consolidation and lifecycle control | VERIFIED | [documentation-lifecycle-control.md](documentation-lifecycle-control.md); `python scripts/check_docs_hq_links.py` passed across 76 Markdown files after the signed-review regression repair | 2026-09-01 | Documentation control re-verified after REV-002; future ADRs must preserve the same ledger and link discipline. |
-| P0-06 - Governance, migration safety, and exit review | IN-PROGRESS | [governance-migration-exit-review.md](governance-migration-exit-review.md); [migration-rollback-runbook.md](migration-rollback-runbook.md); separate provider backup/restore contracts, computed SHA-256 verification, complete persisted success/failure status, pre-registered restore-target enforcement, measured isolated restore drill, and focused backup test passed | partial | Local adapter is test-only; production provider selection, production restore evidence, and application rollback remain gated by explicit owner risk acceptance for disposable pre-SaaS. |
+| P0-06 - Governance, migration safety, and exit review | IN-PROGRESS | [governance-migration-exit-review.md](governance-migration-exit-review.md); [migration-rollback-runbook.md](migration-rollback-runbook.md); separate provider backup/restore contracts, computed SHA-256 verification, complete persisted success/failure status, pre-registered restore-target enforcement, measured isolated restore drill, and focused backup test passed | partial | Local adapter is test-only; production provider selection, production restore evidence, documented RPO/RTO, and accountable operational ownership remain required before SaaS persistence. |
 | SaaS Phase 0 - Environment contract | IN-PROGRESS | [customer-environment-contract.md](saas/customer-environment-contract.md); typed `EnvironmentManifest`, explicit lifecycle transition table, isolated database-target validation, and retired-state rejection tests | 2026-09-01 | Contract frozen for the single-tenant SaaS path; provisioning, control plane, tenancy, RLS, and migrations remain out of scope. |
 ## Signed review follow-up: 2026-09-01
 
@@ -27,9 +27,9 @@ The project is ready for pre-SaaS product work on the promoted mainline. The run
 ## Decision: architecture initiative handoff - 2026-09-01
 
 The pre-SaaS architecture work is complete for its current scope and is handed off to product implementation. Further architecture changes require a concrete product requirement or an explicitly scheduled SaaS transition; speculative tenant, RLS, migration, and persistence work is out of scope.
-## P0-06 disposition: deferred by explicit owner risk acceptance - 2026-09-01
+## P0-06 disposition: deferred for disposable pre-SaaS only - 2026-09-01
 
-P0-06 is deferred for the disposable pre-SaaS phase by explicit owner risk acceptance. This is not a claim that production rollback controls are complete. The SaaS persistence entry gate must require provider-supported backup/recovery, isolated restore evidence, application rollback rehearsal, documented RPO/RTO, and an accountable operational owner before real tenant data is introduced.
+The historical owner risk acceptance applied only while the database contained disposable mock data. That data has since been purged. P0-06 remains an open future SaaS feature, not a production control: the SaaS persistence entry gate must require provider-supported backup/recovery, isolated restore evidence, application rollback rehearsal, documented RPO/RTO, and an accountable operational owner before real tenant data is introduced. The `deferred` backup configuration is permitted only for disposable synthetic environments.
 
 ## Task 5 evidence: provider-backed backup and restore operations - 2026-09-01
 
@@ -109,3 +109,30 @@ are rejected. The credential-file/token resolver constructs this object for
 CLIs, and audit records preserve only its authenticated principal. Control-plane
 initialization writes execute inside the shared crash-safe guard. No live
 provider was invoked and tenant/RLS/customer-domain behavior is unchanged.
+
+## Production persistence entry gate - active control
+
+Customer-data onboarding is **BLOCKED** until the production persistence
+evidence bundle passes `just saas-evidence`. The bundle must contain all of the
+following, tied to the same environment and customer identity:
+
+- A provider-supported backup with a provider-issued backup identifier and
+  successful verification.
+- A restore from that backup into a registered isolated target, with a
+  provider-issued restore identifier, integrity result, cleanup record, and
+  measured duration.
+- Documented RPO and RTO targets with numeric measured backup freshness and
+  restore timing from the provider-backed drill.
+- A named decision owner and a named platform/operations owner, plus the
+  authenticated operator for each recovery action.
+
+The release evidence must also include immutable application release and
+rollback evidence, and explicit real-data approval. Headings, local/test
+adapter output, empty databases, or owner risk acceptance do not satisfy this
+gate. The gate is intentionally fail-closed while provider evidence or an
+operations owner is absent.
+
+This control does not alter disposable pre-release behavior. The empty,
+synthetic pre-SaaS database may continue to use the documented test-only
+adapters and requires no customer-data recovery claim. That exception ends
+before the first real customer record is stored.

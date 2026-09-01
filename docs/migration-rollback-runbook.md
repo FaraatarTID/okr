@@ -106,10 +106,10 @@ rollback evidence here.
 - The database backup/recovery condition is now evidenced. P0-06 remains `IN-PROGRESS` only for the application release rollback rehearsal and release-artifact selection.
 ## Owner decision: disposable pre-SaaS database - 2026-09-01
 
-For the current pre-SaaS phase, the owner has explicitly waived database dump, migration, and database rollback work because the runtime database contains disposable mock data. The application schema remains in place, all application data has been purged, and database recovery rehearsal is deferred until persistent SaaS data exists. This section supersedes the earlier backup-oriented execution notes for this phase only.
+For the disposable pre-SaaS phase, the owner explicitly waived database dump, migration, and database rollback work while the runtime database contained disposable mock data. The application schema remains in place and all application data has been purged. This exemption applies only to the disposable phase and does not waive the future SaaS backup/recovery requirement.
 ## Phase disposition: disposable pre-SaaS - 2026-09-01
 
-The owner has explicitly accepted the risk of deferring production-grade backup/recovery and application rollback rehearsal while the database contains only disposable mock data. This runbook remains the required starting point for the SaaS persistence phase; it must be completed with provider-supported backups, isolated restore evidence, application release rollback rehearsal, RPO/RTO targets, and an operational owner before real tenant data is stored.
+The owner’s explicit risk acceptance was limited to disposable mock data and is not a production approval. This runbook remains the required starting point for the SaaS persistence phase; it must be completed with provider-supported backups, isolated restore evidence, application release rollback rehearsal, RPO/RTO targets, and an operational owner before real tenant data is stored.
 
 ## Isolated two-artifact rollback rehearsal - 2026-09-01
 
@@ -177,7 +177,30 @@ The owner has explicitly accepted the risk of deferring production-grade backup/
 - Production SaaS remains gated on selecting a real provider, configuring
   retention/RPO/RTO, proving provider-supported restore, and assigning an
   accountable operator. This local drill is implementation evidence, not
-  production disaster-recovery evidence.
+production disaster-recovery evidence.
+
+## Production persistence onboarding gate
+
+Before the first real customer record is stored, the release owner must attach
+the passing `just saas-evidence` result to this runbook. The evidence bundle
+must identify the target environment and customer and must include:
+
+1. A provider-supported backup, provider-issued backup ID, retention policy,
+   checksum/integrity verification, and freshness result.
+2. A restore from that backup into a registered isolated target, provider-issued
+   restore ID, integrity result, measured restore duration, and cleanup record.
+3. Approved RPO/RTO targets and numeric measured recovery results from the
+   provider-backed drill.
+4. Named decision and platform/operations owners, with authenticated operators
+   recorded for the backup and restore actions.
+5. Immutable application release rollback evidence and explicit approval to
+   onboard real data.
+
+The gate is fail-closed: local/test adapters, synthetic release fixtures,
+empty databases, prose-only claims, or the historical disposable pre-SaaS risk
+acceptance are not production evidence. This does not change disposable
+pre-release behavior; it only prevents that environment from being mistaken
+for a production recovery control.
 
 ## Task 7 entry-gate handoff (2026-09-01)
 

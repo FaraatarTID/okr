@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "signature_type": "keyless",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "identity_workflow_regexp": "^https://github.com/${repository}/.github/workflows/publish-ghcr.yml@refs/heads/(main|master)$",
+  "allowed_images": ["web", "bff", "backend"],
+  "required_for_production": true
+}

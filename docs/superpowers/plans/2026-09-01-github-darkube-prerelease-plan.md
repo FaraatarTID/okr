@@ -4,9 +4,9 @@ Documentation HQ: [README](../../../README.md)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a disposable, synthetic-data pre-release environment that gates a protected GitHub `pre-release` branch with GitHub Actions and deploys four separate application apps plus private PostgreSQL through Darkube GitHub integration.
+**Goal:** Build a disposable, synthetic-data pre-release environment that gates a protected GitHub `pre-release` branch with GitHub Actions, publishes immutable images to private GHCR, and deploys four separate application apps plus private PostgreSQL through Darkube image deployment.
 
-**Architecture:** GitHub is the source of truth and quality gate. Darkube’s GitHub integration watches the protected `pre-release` branch and hosts `spa-web`, `spa-bff`, `backend-api`, and `backend-worker` in namespace `okr-pre-release`; a disposable private PostgreSQL database supplies the schema. Provider-specific setup is documented and manually verified because no public Hamravesh provisioning/deployment API is established.
+**Architecture:** GitHub is the source of truth and quality gate. GitHub Actions publishes commit-SHA images to private GHCR; Darkube pulls and hosts `spa-web`, `spa-bff`, `backend-api`, and `backend-worker` in namespace `okr-pre-release`; a disposable private PostgreSQL database supplies the schema. Provider-specific setup is documented and manually verified because no public Hamravesh provisioning/deployment API is established.
 
 **Tech Stack:** GitHub Actions, Python 3.11, Node.js 22, Docker, existing FastAPI backend, existing Fastify BFF, existing Next.js web, PostgreSQL 16 baseline, Alembic, Darkube GitHub integration, Hamravesh managed PostgreSQL where available, existing readiness/SLO/Playwright tooling.
 
@@ -34,7 +34,7 @@ Documentation HQ: [README](../../../README.md)
 
 ### Files to create
 
-- `.github/workflows/darkube-prerelease.yml`: protected-branch quality, four-image build, and post-deployment verification workflow.
+- `.github/workflows/darkube-prerelease.yml`: protected-branch quality, immutable GHCR publication, and post-deployment verification workflow.
 - `deploy/darkube/prerelease/README.md`: exact Darkube console setup, component values, networking checks, reset, and rollback procedure.
 - `deploy/darkube/prerelease/.env.example`: non-secret runtime key contract with synthetic examples and no usable credentials.
 - `scripts/verify_prerelease_config.py`: pre-release-specific validation layered on the existing deployment config validator.
@@ -226,11 +226,11 @@ Expected: FAIL because the build contract module does not exist.
 
 - [ ] **Step 3: Implement build-contract validation**
 
-Validate that web, BFF, API, and worker entries point to the expected Dockerfiles/commands and that the release identity is the 40-character Git SHA. Do not add registry publication or provider deployment logic.
+Validate that web, BFF, API, and worker entries point to the expected Dockerfiles/commands and that the release identity is the 40-character Git SHA. Publish the resulting images to private GHCR; provider deployment remains a manual Darkube console operation.
 
 - [ ] **Step 4: Add workflow build checks**
 
-Build `spa-web`, `spa-bff`, and backend images with Docker using commit-scoped local tags such as `okr-prerelease-backend:${GITHUB_SHA}`. Run a second backend container-contract check for the worker command. Do not use `docker compose up --build` as a proxy for four independent Darkube apps.
+Build `spa-web`, `spa-bff`, and backend images with Docker using commit-scoped local tags such as `okr-prerelease-backend:${GITHUB_SHA}`, then publish commit-scoped GHCR tags for Darkube. Run a second backend container-contract check for the worker command. Do not use `docker compose up --build` as a proxy for four independent Darkube apps.
 
 - [ ] **Step 5: Run tests**
 

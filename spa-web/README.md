@@ -34,8 +34,12 @@ Current phase:
   - `src/lib/api/atlas.ts`
   - `src/lib/api/admin.ts`
   - `src/lib/api/ritual.ts`
-  - `src/lib/api/jobs.ts`
-  - shared helpers in `src/lib/api/http.ts`
+- `src/lib/api/jobs.ts`
+- shared helpers in `src/lib/api/http.ts`
+
+Generated contract types are refreshed at repository scope with
+`just generate-api`. The generated declarations are consumed as type-only
+aliases; runtime requests still go through the BFF boundary.
 
 ## Runtime expectations
 
