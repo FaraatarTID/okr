@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY spa-bff/package*.json ./spa-bff/
 COPY spa-web/package*.json ./spa-web/
-RUN npm ci --include-workspace-root
+RUN npm ci --include-workspace-root --include=dev
 
 FROM node:22-alpine AS build
 WORKDIR /app

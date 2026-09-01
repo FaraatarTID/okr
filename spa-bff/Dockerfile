@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY spa-bff/package*.json ./spa-bff/
 COPY spa-web/package*.json ./spa-web/
-RUN npm ci --include-workspace-root
+RUN npm ci --include-workspace-root --include=dev
 
 COPY spa-bff/tsconfig.json ./spa-bff/tsconfig.json
 COPY spa-bff/src ./spa-bff/src
