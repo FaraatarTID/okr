@@ -29,6 +29,9 @@ contracts:
     uv run python scripts/check_openapi_drift.py
     uv run python scripts/check_import_boundaries.py
 
+saas-evidence:
+    uv run python scripts/check_saas_phase1_evidence.py
+
 measure:
     uv run python scripts/measure_task_graph.py
 
@@ -42,3 +45,12 @@ stop:
 
 health:
     docker compose -f deploy/docker/docker-compose.yml ps
+
+saas-provision MANIFEST CREDENTIAL_FILE STATE_FILE="tmp/saas-environments.json":
+    uv run python scripts/provision_saas_environment.py provision --manifest "{{MANIFEST}}" --credential-file "{{CREDENTIAL_FILE}}" --state-file "{{STATE_FILE}}"
+
+saas-suspend ENVIRONMENT_ID CREDENTIAL_FILE STATE_FILE="tmp/saas-environments.json":
+    uv run python scripts/provision_saas_environment.py suspend --environment-id "{{ENVIRONMENT_ID}}" --credential-file "{{CREDENTIAL_FILE}}" --state-file "{{STATE_FILE}}"
+
+saas-retire ENVIRONMENT_ID CREDENTIAL_FILE STATE_FILE="tmp/saas-environments.json":
+    uv run python scripts/provision_saas_environment.py retire --environment-id "{{ENVIRONMENT_ID}}" --credential-file "{{CREDENTIAL_FILE}}" --state-file "{{STATE_FILE}}"

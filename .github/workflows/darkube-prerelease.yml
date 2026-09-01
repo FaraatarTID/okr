@@ -1,0 +1,456 @@
+name: Darkube pre-release quality gate
+
+on:
+  pull_request:
+    branches: [pre-release]
+  push:
+    branches: [pre-release]
+  workflow_dispatch:
+    inputs:
+      darkube_namespace:
+        description: Expected disposable Darkube namespace
+        required: true
+        default: okr-pre-release
+        type: string
+      worker_evidence:
+        description: Sanitized worker status from the Darkube/operator console
+        required: true
+        type: string
+      migration_head:
+        description: Alembic head observed from the private Darkube API terminal
+        required: true
+        type: string
+      expected_migration_head:
+        description: Expected Alembic head, if this release has one
+        required: false
+        type: string
+      rollback_result:
+        description: Previous-version redeployment result
+        required: true
+        type: choice
+        options: [PASS, FAIL, NOT_RUN]
+      operator:
+        description: Named operator recording the verification
+        required: true
+        type: string
+      web_build_id:
+        description: Darkube build ID for web
+        required: true
+        type: string
+      bff_build_id:
+        description: Darkube build ID for BFF
+        required: true
+        type: string
+      api_build_id:
+        description: Darkube build ID for API
+        required: true
+        type: string
+      worker_build_id:
+        description: Darkube build ID for worker
+        required: true
+        type: string
+      database_resource_id:
+        description: Opaque disposable database resource ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: darkube-prerelease-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RELEASE_SHA: ${{ github.sha }}
+
+jobs:
+  validate:
+    name: Validate pre-release contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify immutable commit identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${GITHUB_REF}" != "refs/heads/pre-release" ]]; then
+            echo "workflow_dispatch must run from the protected pre-release branch"
+            exit 1
+          fi
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend_app/requirements.txt
+      - uses: astral-sh/setup-uv@v6
+      - name: Sync Python workspace
+        run: |
+          uv sync --locked --group dev
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+      - run: python -m scripts.check_deploy_config --mode template
+      - run: python -m scripts.check_deploy_config --mode template --saas-only --env-file deploy/docker/.env.saas.example
+      - run: python -m scripts.verify_prerelease_config --mode template
+      - run: python -m scripts.verify_migration_lint --require-baseline
+      - run: python -m scripts.check_import_boundaries
+
+  quality-python:
+    name: Python quality and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend_app/requirements.txt
+      - uses: astral-sh/setup-uv@v6
+      - run: |
+          uv sync --locked --group dev
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+      - run: python -m ruff check backend_app scripts tests --select E9,F63,F7,F82
+      - run: python -m pytest -q --junitxml=prerelease-python-results.xml
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: darkube-prerelease-python-results
+          path: prerelease-python-results.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  quality-spa:
+    name: SPA and BFF quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --include=optional
+      - run: npm --prefix spa-bff run check:allowlist
+      - run: |
+          npm --prefix spa-bff test
+          npm --prefix spa-bff run build
+      - run: |
+          npm run typecheck --workspace spa-web
+          npm run test --workspace spa-web
+          npm run build --workspace spa-web
+
+  security:
+    name: Secret and dependency hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.11"}
+      - uses: astral-sh/setup-uv@v6
+      - run: |
+          uv sync --locked --group dev
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+      - name: Install security command-line tools explicitly
+        run: |
+          "$GITHUB_WORKSPACE/.venv/bin/python" -m pip install --disable-pip-version-check pip-licenses pip-audit
+      - run: python -m scripts.verify_secret_hygiene
+      - run: python -m scripts.verify_dependency_scans
+      - run: python -m scripts.verify_dependency_licenses
+
+  build:
+    name: Build all pre-release components
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [validate, quality-python, quality-spa, security]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build web image with immutable local tag
+        run: docker build --file spa-web/Dockerfile --tag "okr-prerelease-web:${RELEASE_SHA}" --label "org.opencontainers.image.revision=${RELEASE_SHA}" spa-web
+      - name: Build BFF image with immutable local tag
+        run: docker build --file spa-bff/Dockerfile --tag "okr-prerelease-bff:${RELEASE_SHA}" --label "org.opencontainers.image.revision=${RELEASE_SHA}" spa-bff
+      - name: Build shared backend image for API and worker
+        run: docker build --file deploy/docker/Dockerfile --tag "okr-prerelease-backend:${RELEASE_SHA}" --label "org.opencontainers.image.revision=${RELEASE_SHA}" .
+      - name: Verify API and worker process modules
+        run: |
+          docker run --rm --entrypoint python "okr-prerelease-backend:${RELEASE_SHA}" -c "import backend_app.run_api"
+          docker run --rm --entrypoint python "okr-prerelease-backend:${RELEASE_SHA}" -c "import backend_app.worker"
+      - run: python -m pytest -q tests/test_prerelease_build.py tests/test_prerelease_workflow_contract.py
+
+  verify_public:
+    name: Verify public web and BFF surfaces
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    environment: darkube-prerelease
+    timeout-minutes: 20
+    needs: build
+    env:
+      WEB_URL: ${{ vars.DARKUBE_WEB_URL }}
+      BFF_HEALTH_URL: ${{ vars.DARKUBE_BFF_HEALTH_URL }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.11"}
+      - uses: astral-sh/setup-uv@v6
+      - run: |
+          uv sync --locked --group dev
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+      - name: Run reusable public smoke verifier
+        run: python -m scripts.verify_prerelease_smoke --scope public --web-url "$WEB_URL" --bff-health-url "$BFF_HEALTH_URL" --format json | tee public-smoke.json
+      - name: Run public Playwright shell check
+        run: |
+          python -m playwright install chromium
+          WEB_URL="$WEB_URL" python - <<'PY'
+          import os
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as playwright:
+              browser = playwright.chromium.launch()
+              page = browser.new_page()
+              response = page.goto(os.environ["WEB_URL"], wait_until="domcontentloaded", timeout=30000)
+              if response is None or not 200 <= response.status < 300:
+                  raise SystemExit("public web Playwright check failed")
+              browser.close()
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: darkube-prerelease-public-smoke
+          path: public-smoke.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  verify_private:
+    name: Verify private API, worker, migration, and SLO
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: [self-hosted, darkube-private]
+    environment: darkube-prerelease
+    timeout-minutes: 25
+    needs: build
+    env:
+      WEB_URL: ${{ vars.DARKUBE_WEB_URL }}
+      API_HEALTH_URL: ${{ vars.DARKUBE_API_HEALTH_URL }}
+      WORKER_EVIDENCE: ${{ inputs.worker_evidence }}
+      MIGRATION_HEAD: ${{ inputs.migration_head }}
+      EXPECTED_MIGRATION_HEAD: ${{ inputs.expected_migration_head }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.11"}
+      - uses: astral-sh/setup-uv@v6
+      - run: |
+          uv sync --locked --group dev
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+      - name: Validate protected runtime configuration
+        env:
+          PRERELEASE_RUNTIME_ENV: ${{ secrets.PRERELEASE_RUNTIME_ENV }}
+        run: |
+          set -euo pipefail
+          test -n "$PRERELEASE_RUNTIME_ENV"
+          runtime_file="$RUNNER_TEMP/prerelease-runtime.env"
+          trap 'rm -f "$runtime_file"' EXIT
+          umask 077
+          printf '%s' "$PRERELEASE_RUNTIME_ENV" > "$runtime_file"
+          python -m scripts.verify_prerelease_config --mode runtime --env-file "$runtime_file"
+      - name: Run reusable private smoke verifier
+        run: |
+          args=(--scope private --api-health-url "$API_HEALTH_URL" --worker-evidence "$WORKER_EVIDENCE" --migration-head "$MIGRATION_HEAD" --format json)
+          if [[ -n "$EXPECTED_MIGRATION_HEAD" ]]; then args+=(--expected-migration-head "$EXPECTED_MIGRATION_HEAD"); fi
+          python -m scripts.verify_prerelease_smoke "${args[@]}" | tee private-smoke.json
+      - name: Run SLO probe with synthetic protected credentials
+        env:
+          PRERELEASE_SMOKE_USERNAME: ${{ secrets.PRERELEASE_SMOKE_USERNAME }}
+          PRERELEASE_SMOKE_PASSWORD: ${{ secrets.PRERELEASE_SMOKE_PASSWORD }}
+        run: |
+          test -n "$PRERELEASE_SMOKE_USERNAME"
+          test -n "$PRERELEASE_SMOKE_PASSWORD"
+          python -m scripts.slo_probe --base-url "$WEB_URL" --username "$PRERELEASE_SMOKE_USERNAME" --password "$PRERELEASE_SMOKE_PASSWORD"
+      - name: Run existing login-to-Atlas journey on the trusted private runner
+        env:
+          PRERELEASE_WEB_URL: ${{ vars.DARKUBE_WEB_URL }}
+          PRERELEASE_SMOKE_USERNAME: ${{ secrets.PRERELEASE_SMOKE_USERNAME }}
+          PRERELEASE_SMOKE_PASSWORD: ${{ secrets.PRERELEASE_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$PRERELEASE_WEB_URL"
+          test -n "$PRERELEASE_SMOKE_USERNAME"
+          test -n "$PRERELEASE_SMOKE_PASSWORD"
+          python -m playwright install chromium
+          python - <<'PY'
+          import importlib.util
+          import os
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+
+          spec = importlib.util.spec_from_file_location(
+              "prerelease_atlas_journey",
+              Path("tests/test_e2e_playwright_spa_login_to_atlas.py"),
+          )
+          if spec is None or spec.loader is None:
+              raise SystemExit("unable to load the existing Atlas journey")
+          journey = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(journey)
+
+          with sync_playwright() as playwright:
+              browser = playwright.chromium.launch(headless=True)
+              page = browser.new_page(viewport={"width": 1600, "height": 1000})
+              page.goto(
+                  os.environ["PRERELEASE_WEB_URL"].rstrip("/") + "/login",
+                  wait_until="domcontentloaded",
+                  timeout=90_000,
+              )
+              journey._login(
+                  page,
+                  username=os.environ["PRERELEASE_SMOKE_USERNAME"],
+                  password=os.environ["PRERELEASE_SMOKE_PASSWORD"],
+              )
+              journey._run_timer_path(page)
+              journey._run_check_in_path(page)
+              journey._run_weekly_job_path(page)
+              page.get_by_role("button", name="Sign out", exact=True).click()
+              from playwright.sync_api import expect
+              expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(timeout=90_000)
+              browser.close()
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: darkube-prerelease-private-smoke
+          path: private-smoke.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  evidence:
+    name: Write sanitized pre-release evidence
+    if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    needs: [validate, quality-python, quality-spa, security, build, verify_public, verify_private]
+    env:
+      RELEASE_SHA: ${{ github.sha }}
+      DARKUBE_NAMESPACE: ${{ inputs.darkube_namespace }}
+      ROLLBACK_RESULT: ${{ inputs.rollback_result }}
+      OPERATOR: ${{ inputs.operator }}
+      WEB_BUILD_ID: ${{ inputs.web_build_id }}
+      BFF_BUILD_ID: ${{ inputs.bff_build_id }}
+      API_BUILD_ID: ${{ inputs.api_build_id }}
+      WORKER_BUILD_ID: ${{ inputs.worker_build_id }}
+      DATABASE_RESOURCE_ID: ${{ inputs.database_resource_id }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.11"}
+      - name: Download public and private verification artifacts
+        if: always()
+        uses: actions/download-artifact@v7
+        with:
+          pattern: darkube-prerelease-*-smoke
+          path: verification
+          merge-multiple: true
+      - name: Create exact sanitized evidence input
+        env:
+          MIGRATION_HEAD: ${{ inputs.migration_head }}
+          PUBLIC_JOB_RESULT: ${{ needs.verify_public.result }}
+          PRIVATE_JOB_RESULT: ${{ needs.verify_private.result }}
+          ROLLBACK_INPUT: ${{ inputs.rollback_result }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from datetime import datetime, timezone
+
+          def read_result(name):
+              path = Path("verification") / name
+              try:
+                  payload = json.loads(path.read_text(encoding="utf-8"))
+              except (FileNotFoundError, OSError, json.JSONDecodeError):
+                  return None
+              if not isinstance(payload, dict) or not isinstance(payload.get("checks"), list):
+                  return None
+              return payload
+
+          public = read_result("public-smoke.json")
+          private = read_result("private-smoke.json")
+          checks = []
+          for result in (public, private):
+              if result is not None:
+                  checks.extend(result["checks"])
+
+          def passed(names):
+              selected = [check for check in checks if check.get("name") in names]
+              return bool(selected) and all(check.get("ok") is True for check in selected)
+
+          public_valid = public is not None and public.get("ok") is True
+          private_valid = private is not None and private.get("ok") is True
+          health_passed = (
+              os.environ["PUBLIC_JOB_RESULT"] == "success"
+              and os.environ["PRIVATE_JOB_RESULT"] == "success"
+              and passed({"web", "bff", "api"})
+          )
+          smoke_passed = public_valid and private_valid
+          rollback_values = {
+              "pass": "passed",
+              "passed": "passed",
+              "fail": "failed",
+              "failed": "failed",
+              "not_run": "not_run",
+              "not-run": "not_run",
+          }
+          rollback_input = os.environ["ROLLBACK_INPUT"].strip().lower()
+          try:
+              rollback_result = rollback_values[rollback_input]
+          except KeyError:
+              raise SystemExit("rollback_result must be PASS, FAIL, or NOT_RUN")
+          payload = {
+              "commit": os.environ["RELEASE_SHA"],
+              "namespace": os.environ["DARKUBE_NAMESPACE"],
+              "darkube_build_ids": {"web": os.environ["WEB_BUILD_ID"], "bff": os.environ["BFF_BUILD_ID"], "api": os.environ["API_BUILD_ID"], "worker": os.environ["WORKER_BUILD_ID"]},
+              "database_resource_id": os.environ["DATABASE_RESOURCE_ID"],
+              "migration_head": os.environ["MIGRATION_HEAD"],
+              "health_result": "passed" if health_passed else "failed",
+              "smoke_result": "passed" if smoke_passed else "failed",
+              "rollback_result": rollback_result,
+              "operator": os.environ["OPERATOR"],
+              "timestamp": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+          }
+          with open("evidence-input.json", "w", encoding="utf-8", newline="\n") as handle:
+              json.dump(payload, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          PY
+      - name: Record manual attestations without promoting them to independent evidence
+        env:
+          WORKER_ATTESTATION: ${{ inputs.worker_evidence }}
+          MIGRATION_ATTESTATION: ${{ inputs.migration_head }}
+          ROLLBACK_ATTESTATION: ${{ inputs.rollback_result }}
+        run: |
+          cat > manual-attestations.md <<'EOF'
+          # Pre-release manual attestations
+
+          Worker status, migration head, and previous-version redeployment are `MANUAL_ATTESTATION` inputs. They were not independently verified by a provider API or immutable deployment evidence in this workflow.
+
+          - Worker observation supplied: recorded and sanitized by the smoke verifier.
+          - Migration head supplied: recorded and sanitized by the smoke verifier.
+          - Rollback observation supplied: recorded as operator input only; canonical evidence reflects the supplied `PASS`, `FAIL`, or `NOT_RUN` value.
+          EOF
+      - name: Write canonical sanitized evidence
+        run: python -m scripts.write_prerelease_evidence evidence-input.json prerelease-evidence.md
+      - name: Fail without claiming a complete rehearsal
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          payload = json.loads(Path("evidence-input.json").read_text(encoding="utf-8"))
+          if any(payload[field] != "passed" for field in ("health_result", "smoke_result", "rollback_result")):
+              raise SystemExit("pre-release evidence is not fully passed; no approval is claimed")
+          PY
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: darkube-prerelease-evidence
+          path: |
+            prerelease-evidence.md
+            manual-attestations.md
+          if-no-files-found: ignore
+          retention-days: 7

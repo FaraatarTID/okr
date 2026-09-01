@@ -2,12 +2,19 @@
 
 Documentation HQ: [README](README.md)
 
-Status: READY TO START  
-Scope: architecture clarity, runtime canonicalization, and complexity control  
-Position: mandatory prerequisite to `ENTERPRISE_SAAS_ROADMAP.md` Phase 0  
+Status: ARCHIVED - COMPLETED HANDOFF  
+Scope: historical record of architecture clarity, runtime canonicalization, and complexity control  
+Position: completed prerequisite to `ENTERPRISE_SAAS_ROADMAP.md` Phase 0  
 Planning horizon: 4-7 weeks at 12-16 focused hours per week  
 Estimated effort: 52-92 focused hours  
 Owner model: one primary maintainer, with an independent architecture reviewer at the exit gate
+
+This document is no longer an executable backlog. The promoted mainline and
+owner-approved single-tenant SaaS direction are now governed by
+`ENTERPRISE_SAAS_ROADMAP.md` and
+`docs/superpowers/specs/2026-09-01-single-tenant-saas-design.md`. The detailed
+work packages below are retained as historical evidence of the pre-SaaS
+initiative and must not be restarted without a new architecture decision.
 
 ## Delivery operating model
 
@@ -392,7 +399,31 @@ authorization, RLS, jobs, exports, and audit isolation. This document must not
 duplicate those implementation tasks.
 ## Signed review follow-up: 2026-09-01
 
-P0-06 remains `IN-PROGRESS`. The actual runtime compatibility database is at `drop_global_cycle_index (head)`, and a disposable local restore rehearsal has been completed from a catalog-verified backup. The live Supabase backup/recovery proof and a combined application-plus-database rollback rehearsal are still required before tenant/RLS schema work begins. No live data was changed while attempting to obtain a PostgreSQL 17-compatible provider backup from this environment.
+P0-06 remains `IN-PROGRESS`. The actual runtime compatibility database is at `drop_global_cycle_index (head)`. A PostgreSQL 17-compatible backup of the live runtime database was successfully restored into an isolated rehearsal instance, with no live data change. The remaining condition is an application release rollback rehearsal using a prior deployable artifact before tenant/RLS schema work begins.
 ## Owner decision: disposable pre-SaaS database - 2026-09-01
 
 The owner explicitly chose a disposable pre-SaaS database posture. All application tables in the runtime database were purged with cascading truncation; the schema was retained and no migration or database dump is required for this phase. P0-06 is therefore re-scoped: database backup/recovery and Alembic reconciliation are out of scope until the SaaS persistence phase, while application rollback documentation remains the only relevant rollback follow-up.
+## Owner confirmation: branch promotion - 2026-09-01
+
+The owner confirmed that the reviewed `SPA-BFF-clean` work was promoted to the project mainline. The signed-review scope-integrity condition is resolved for this review. The pre-SaaS baseline is now the promoted branch with an intentionally empty runtime database; tenant/RLS and SaaS persistence work remain deferred.
+## Active handoff: pre-SaaS product baseline
+
+The promoted mainline and empty runtime database are the working baseline. Proceed with pre-SaaS product implementation and integration work without introducing tenant identifiers, RLS policies, tenant-scoped migrations, or SaaS persistence commitments. Reopen the deferred SaaS persistence controls only when real persistent data or a tenant boundary is intentionally scheduled.
+## Decision: architecture initiative handoff - 2026-09-01
+
+The pre-SaaS architecture initiative is handed off to product implementation. No additional architecture backlog items should be invented at this stage. New work should be added only when it has a concrete product requirement, an identified production risk, or an intentional transition into SaaS persistence and tenant isolation.
+
+Handoff baseline:
+
+- Promoted mainline contains the reviewed architecture work.
+- Runtime application data is empty and disposable.
+- Schema is retained for the running services.
+- Automated architectural gates were previously re-run successfully.
+- Tenant/RLS, durable SaaS persistence, and database recovery controls are deferred by decision.
+## P0-06 disposition: deferred by explicit owner risk acceptance - 2026-09-01
+
+The owner explicitly accepts the risk of not rehearsing production-grade application/database rollback during disposable pre-SaaS work. P0-06 is deferred, not technically verified or deleted. Before production SaaS persistence or tenant/RLS work begins, the project must restore the backup/recovery mechanism as a hard gate with a provider-supported backup, isolated restore test, application release rollback rehearsal, documented RPO/RTO, and named operational owner.
+
+## Archive precedence
+
+The active execution source is now `ENTERPRISE_SAAS_ROADMAP.md`. The approved single-tenant model supersedes the older shared-database/RLS starting bias in the historical work packages above. Do not restart this backlog or introduce tenant/RLS schema work until the active roadmap schedules that transition.

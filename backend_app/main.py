@@ -7,10 +7,14 @@ import logging
 import sys
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Response, status  # noqa: F401
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, status  # noqa: F401
 from sqlmodel import select  # noqa: F401
 
 from backend_app.job_limits import enforce_job_submit_limits  # noqa: F401
+from backend_app.authentication import (
+    require_authenticated_principal,  # noqa: F401
+    require_control_plane_operator,  # noqa: F401
+)
 from backend_app.jobs import (  # noqa: F401
     count_dead_jobs,
     enqueue_job,
@@ -382,3 +386,11 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+from backend_app.routers.control_plane_routes import register_control_plane_routes
+from src.saas.control_plane import ControlPlane
+
+control_plane = ControlPlane()
+_control_plane_router = APIRouter()
+register_control_plane_routes(_control_plane_router, sys.modules[__name__])
+app.include_router(_control_plane_router)

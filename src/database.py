@@ -218,7 +218,6 @@ _MODEL_BINDING_NAMES = (
     "VariationType",
     "AsyncJobStatus",
     "AsyncJob",
-    "AuditEvent",
     "ExperimentStatus",
     "ExperimentDecision",
     "ExpectedEffectDirection",

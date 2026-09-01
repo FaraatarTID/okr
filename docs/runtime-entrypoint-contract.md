@@ -61,8 +61,8 @@ Operator wrappers may remain for usability, but they should delegate to these pr
 - Runtime matrix check passed: `python scripts/check_deploy_runtime_matrix.py` exited 0.
 - Bounded readiness gate passed against Compose: all five services were running; backend and BFF health returned `ok`; SPA root returned healthy HTML.
 - Live backend health payload confirmed `configured_mode=supabase_api`, `data_access_mode=supabase_api`, and `dead_jobs=0` for the captured compatibility Compose baseline.
-- SaaS Phase 0 target is explicitly `OKR_DEPLOYMENT_PROFILE=saas` with `OKR_DATA_ACCESS_MODE=database`; `supabase_api` is an alpha/self-hosted compatibility mode and is not the SaaS target.
-- Disposable SaaS review configuration passed `python scripts/check_deploy_config.py --mode runtime` with `OKR_DEPLOYMENT_PROFILE=saas` and `OKR_DATA_ACCESS_MODE=database`; the local Compose URL produced only the expected non-pooler warning.
+- SaaS target is explicitly `OKR_DEPLOYMENT_PROFILE=single_tenant_saas` with `OKR_DATA_ACCESS_MODE=database`; `supabase_api` is an alpha/on-premise compatibility mode and is not the SaaS target.
+- Disposable SaaS review configuration passed `python scripts/check_deploy_config.py --mode runtime` with `OKR_DEPLOYMENT_PROFILE=single_tenant_saas` and `OKR_DATA_ACCESS_MODE=database`; the local Compose URL produced only the expected non-pooler warning.
 - An isolated disposable Postgres database ran the SaaS `database` profile migrations through `drop_global_cycle_index`; the temporary API returned HTTP 200 with `data_access_mode=database`, `configured_mode=database`, and `dead_jobs=0`. The temporary database was removed after the probe.
 - Record the effective Compose profile and data backend for each remaining supported environment.
 - Capture a readiness check for API, worker, BFF, and web processes.
