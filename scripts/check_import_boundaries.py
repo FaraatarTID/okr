@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 WORKSPACES = {"spa-bff": "okr-spa-bff", "spa-web": "okr-spa-web"}
+DELIVERY_FRAMEWORK_MODULES = frozenset({"fastapi", "flask", "starlette", "streamlit"})
 
 
 def _production_python_paths() -> list[Path]:
@@ -30,6 +31,34 @@ def _python_imports(path: Path) -> set[str]:
     return imports
 
 
+def _boundary_errors(path: Path, imports: set[str]) -> list[str]:
+    """Return violations for one Python source file.
+
+    The root app module is a compatibility facade, so the forbidden import is
+    the module named exactly ``app`` rather than an arbitrary package whose
+    name merely contains that token. Delivery frameworks are forbidden only
+    in ``src``; ``backend_app`` is the delivery boundary that owns them.
+    """
+    errors: list[str] = []
+    relative_path = path.relative_to(ROOT_DIR)
+    is_src = path.is_relative_to(ROOT_DIR / "src")
+
+    if is_src and "backend_app" in imports:
+        errors.append(f"{relative_path}: src must not import backend_app")
+
+    if is_src:
+        for module in sorted(imports & DELIVERY_FRAMEWORK_MODULES):
+            errors.append(
+                f"{relative_path}: src must not import delivery framework {module}"
+            )
+
+    if "app" in imports:
+        errors.append(
+            f"{relative_path}: production code must not import root app.py facade"
+        )
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     for path in _production_python_paths():
@@ -38,13 +67,7 @@ def main() -> int:
         except SyntaxError as exc:
             errors.append(f"{path}: cannot parse Python source: {exc}")
             continue
-        if "backend_app" in imports:
-            if path.is_relative_to(ROOT_DIR / "src"):
-                errors.append(f"{path.relative_to(ROOT_DIR)}: src must not import backend_app")
-        if "app" in imports:
-            errors.append(
-                f"{path.relative_to(ROOT_DIR)}: production code must not import root app.py facade"
-            )
+        errors.extend(_boundary_errors(path, imports))
 
     workspace_names = set(WORKSPACES.values())
     for directory, package_name in WORKSPACES.items():

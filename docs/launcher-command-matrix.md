@@ -11,10 +11,10 @@ runtime contracts.
 
 | Journey | Preferred command | Compatibility wrapper | Canonical processes | Stop/recovery |
 |---|---|---|---|---|
-| Self-hosted Docker Compose stack | `just start` | `run_hybrid_app.bat` | `backend_app.run_api`, `backend_app.worker`, `spa-bff`, `spa-web` | `just stop`; inspect `just health` |
-| Read-only Docker wrapper status | `just health` | `run_hybrid_app.bat --status` | Compose service state only; does not build, start, or open a browser | No mutation |
-| Local multi-process development | `run_hybrid_app_local.bat` | Launcher UI local mode | `backend_app.run_api`, `backend_app.worker`, package dev scripts | `stop_hybrid_app_local.bat` |
-| Operator UI for Docker/local selection | `run_okr_ui.bat` | `scripts/okr-launcher-ui.ps1` | Delegates to the Docker or local journey above | Use the UI Stop action or the journey-specific stop command |
+| Self-hosted Docker Compose stack | `just start` | `scripts/windows/run_hybrid_app.bat` | `backend_app.run_api`, `backend_app.worker`, `spa-bff`, `spa-web` | `just stop`; inspect `just health` |
+| Read-only Docker wrapper status | `just health` | `scripts/windows/run_hybrid_app.bat --status` | Compose service state only; does not build, start, or open a browser | No mutation |
+| Local multi-process development | `scripts/windows/run_hybrid_app_local.bat` | Launcher UI local mode | `backend_app.run_api`, `backend_app.worker`, package dev scripts | `scripts/windows/stop_hybrid_app_local.bat` |
+| Operator UI for Docker/local selection | `scripts/windows/run_okr_ui.bat` | `scripts/okr-launcher-ui.ps1` | Delegates to the Docker or local journey above | Use the UI Stop action or the journey-specific stop command |
 | API-only development | `python -m backend_app.run_api` | None | `backend_app.run_api` | Stop the process; review API health/logs |
 | Worker-only development | `python -m backend_app.worker` | None | `backend_app.worker` | Stop the process; review worker logs |
 | Disposable SaaS environment provision | `just saas-provision MANIFEST=... CREDENTIAL_FILE=...` | `OKR_OPERATOR_TOKEN` plus credential file | `scripts/provision_saas_environment.py provision` | Metadata-only local adapter; repeat is idempotent |
@@ -23,10 +23,10 @@ runtime contracts.
 
 ## Boundary rules
 
-- `just start` and `run_hybrid_app.bat` own Docker Compose selection only; they do not assemble the FastAPI application.
-- `run_hybrid_app.bat --status` is a read-only wrapper path for service-state inspection and must not build, start, or open a browser.
-- `run_hybrid_app_local.bat` owns local process orchestration only; application construction remains in `backend_app.main`.
-- `run_okr_ui.bat` and `scripts/okr-launcher-ui.ps1` own operator interaction only.
+- `just start` and `scripts/windows/run_hybrid_app.bat` own Docker Compose selection only; they do not assemble the FastAPI application.
+- `scripts/windows/run_hybrid_app.bat --status` is a read-only wrapper path for service-state inspection and must not build, start, or open a browser.
+- `scripts/windows/run_hybrid_app_local.bat` owns local process orchestration only; application construction remains in `backend_app.main`.
+- `scripts/windows/run_okr_ui.bat` and `scripts/okr-launcher-ui.ps1` own operator interaction only.
 - The root `app.py` facade is not a supported server startup command.
 - Any wrapper removal requires replacement-path evidence, supported-journey confirmation, and a rollback note.
 - SaaS lifecycle commands use a disposable local provider whose state file contains environment metadata only; a control plane and real provider adapter remain deferred.

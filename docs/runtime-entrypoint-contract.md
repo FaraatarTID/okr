@@ -31,8 +31,8 @@ The API and worker are separate processes even when they share the same image an
 
 | Use case | Primary path | Contract status |
 |---|---|---|
-| Self-hosted application start | `just start` or `run_hybrid_app.bat` | Supported candidate; resolves the self-hosted `database` profile unless an explicit compatibility override is selected |
-| Local development | `run_hybrid_app_local.bat` or the launcher UI local mode | Supported candidate; starts the same Python module entrypoints |
+| Self-hosted application start | `just start` or `scripts/windows/run_hybrid_app.bat` | Supported candidate; resolves the self-hosted `database` profile unless an explicit compatibility override is selected |
+| Local development | `scripts/windows/run_hybrid_app_local.bat` or the launcher UI local mode | Supported candidate; starts the same Python module entrypoints |
 | API-only operation | `python -m backend_app.run_api` | Canonical process contract |
 | Worker-only operation | `python -m backend_app.worker` | Canonical process contract |
 | Release deployment | `.github/workflows/docker-deploy.yml` with Compose | Supported candidate; readiness evidence required |

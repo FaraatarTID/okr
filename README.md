@@ -551,7 +551,7 @@ Run:
 Windows PowerShell:
 
 ```powershell
-.\run_hybrid_app_local.bat
+.\scripts\windows\run_hybrid_app_local.bat
 ```
 
 macOS/Linux bash:
