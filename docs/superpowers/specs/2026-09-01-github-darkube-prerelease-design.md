@@ -1,5 +1,7 @@
 # GitHub -> Darkube Disposable Pre-Release Infrastructure Design
 
+Documentation HQ: [README](../../../README.md)
+
 **Status:** APPROVED IMPLEMENTATION SPECIFICATION
 
 **Date:** 2026-09-01

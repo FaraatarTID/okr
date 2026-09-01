@@ -1,5 +1,7 @@
 # SaaS Phase 1 Entry Evidence
 
+Documentation HQ: [README](../../README.md)
+
 **Date:** 2026-09-01  
 **Decision:** Evidence assembled; Phase 1 promotion blocked  
 **Scope:** Task 1-6 completion and handoff

@@ -1,5 +1,7 @@
 # Single-Tenant Enterprise SaaS Implementation Plan
 
+Documentation HQ: [README](../../../README.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the first enterprise SaaS capability as repeatable, isolated customer environments around the existing on-premise application.

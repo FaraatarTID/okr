@@ -1,5 +1,7 @@
 # GitHub -> Darkube Disposable Pre-Release Infrastructure Implementation Plan
 
+Documentation HQ: [README](../../../README.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a disposable, synthetic-data pre-release environment that gates a protected GitHub `pre-release` branch with GitHub Actions and deploys four separate application apps plus private PostgreSQL through Darkube GitHub integration.

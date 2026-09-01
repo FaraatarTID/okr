@@ -1,5 +1,7 @@
 # GitHub to Darkube pre-release operational runbook
 
+Documentation HQ: [README](../../README.md)
+
 **Target:** disposable `okr-pre-release` namespace/project on Hamravesh
 Darkube  
 **Source:** protected GitHub `pre-release` branch  

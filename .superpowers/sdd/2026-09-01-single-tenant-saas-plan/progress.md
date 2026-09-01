@@ -1,5 +1,7 @@
 # SDD ledger - plan: docs/superpowers/plans/2026-09-01-single-tenant-saas-plan.md
 
+Documentation HQ: [README](../../../README.md)
+
 Task 1: complete (focused tests 22 passed; review clean after fix round 1)
 Task 1: fix round 1/5 (4 addressed, 0 open; environment contract, documentation, and tests)
 Ruling: control plane is modeled as an external management boundary, not a customer-environment deployment profile - this preserves the approved control-plane separation; if wrong, a later contract revision is required.

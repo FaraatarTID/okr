@@ -1,5 +1,7 @@
 # Single-Tenant Enterprise SaaS Design
 
+Documentation HQ: [README](../../../README.md)
+
 **Status:** Proposed design approved in principle by the owner on 2026-09-01.
 
 ## Goal

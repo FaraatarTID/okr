@@ -1,6 +1,6 @@
 # Customer Environment Contract
 
-Documentation HQ: [README](../README.md)
+Documentation HQ: [README](../../README.md)
 
 Status: Phase 1 contract, v1
 

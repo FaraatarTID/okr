@@ -1,5 +1,7 @@
 # Darkube pre-release setup
 
+Documentation HQ: [README](../../../README.md)
+
 This directory describes the disposable GitHub-to-Darkube pre-release target.
 It is a manual console procedure, not a provider API client.
 

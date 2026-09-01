@@ -1,5 +1,7 @@
 # GitHub + Darkube Pre-release Evidence Template
 
+Documentation HQ: [README](../../README.md)
+
 **Status:** NOT RECORDED
 
 This checked-in file is a template only. It is not evidence, does not claim that a pre-release passed, and must not be used as production approval. Replace it only with output produced from actual operator observations by:
