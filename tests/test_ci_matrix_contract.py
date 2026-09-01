@@ -26,6 +26,25 @@ def test_ci_classifies_backend_frontend_and_shared_changes() -> None:
     assert "- '!spa-web/**'" in text
 
 
+def test_ci_has_a_documentation_only_lane() -> None:
+    text = _workflow_text()
+
+    assert "docs: ${{ steps.filter.outputs.docs }}" in text
+    assert "              - 'docs/**'" in text
+    assert "              - '**/*.md'" in text
+    assert "  docs-quality:" in text
+    assert "if: ${{ needs.changes.outputs.docs == 'true' }}" in text
+
+
+def test_release_workflows_ignore_documentation_only_pushes() -> None:
+    root = WORKFLOW.parents[1]
+    for name in ("publish-ghcr.yml", "docker-deploy.yml", "darkube-prerelease.yml"):
+        workflow = (root / "workflows" / name).read_text(encoding="utf-8")
+        assert "paths-ignore:" in workflow
+        assert "      - 'docs/**'" in workflow
+        assert "      - '**/*.md'" in workflow
+
+
 def test_heavy_jobs_escalate_shared_changes_and_skip_unrelated_areas() -> None:
     text = _workflow_text()
 

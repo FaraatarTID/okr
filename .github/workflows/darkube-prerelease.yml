@@ -3,8 +3,18 @@ name: Darkube pre-release quality gate
 on:
   pull_request:
     branches: [pre-release]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'README.md'
+      - 'DEPLOYMENT.md'
   push:
     branches: [pre-release]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'README.md'
+      - 'DEPLOYMENT.md'
   workflow_dispatch:
     inputs:
       darkube_namespace:
