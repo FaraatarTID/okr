@@ -62,6 +62,7 @@ def test_web_uses_spa_web_context_and_dockerfile() -> None:
     dockerfile = _dockerfile("spa-web/Dockerfile")
     assert 'ENV PORT=3000' in dockerfile
     assert 'CMD ["npm", "run", "start"]' in dockerfile
+    assert "RUN npm run build -- --webpack" in dockerfile
     assert "COPY --from=build /app/spa-web/.next ./.next" in dockerfile
 
     readme = README_PATH.read_text(encoding="utf-8")

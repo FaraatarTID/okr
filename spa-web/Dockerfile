@@ -10,7 +10,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY spa-web/ ./spa-web/
 WORKDIR /app/spa-web
-RUN npm run build
+RUN npm run build -- --webpack
 
 FROM node:22-alpine AS runtime
 WORKDIR /app/spa-web
