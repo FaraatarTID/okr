@@ -1,8 +1,8 @@
 @echo off
 setlocal EnableExtensions
 
-cd /d "%~dp0"
-set "ROOT=%~dp0"
+cd /d "%~dp0..\.."
+set "ROOT=%~dp0..\..\"
 set "ROOT_CLEAN=%ROOT%"
 if "%ROOT_CLEAN:~-1%"=="\" set "ROOT_CLEAN=%ROOT_CLEAN:~0,-1%"
 set "POWERSHELL_EXE=powershell"

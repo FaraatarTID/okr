@@ -1,6 +1,6 @@
 # Phase 0 Backlog - Multi-Tenant Security and Domain Foundation
 
-Documentation HQ: [README](README.md)
+Documentation HQ: [README](../../README.md)
 
 Status: ACTIVE - P0-00 performance recovery in progress  
 Scope: tenant model, authorization boundary, data isolation, and migration safety  
@@ -429,4 +429,5 @@ gate.
 ## Archived predecessor records
 
 The previous architecture backlog, status ledger, and worklog are preserved in
-the [architecture archive](docs/archive/architecture-2026-08-31/README.md).
+the [architecture archive](../archive/architecture-2026-08-31/README.md).
+

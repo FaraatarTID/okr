@@ -1,10 +1,10 @@
-Documentation HQ: [README](README.md)
+Documentation HQ: [README](../../README.md)
 
 # Enterprise SaaS Roadmap
 
 Status: ACTIVE
 Decision: single-tenant enterprise SaaS first
-Source design: [Single-Tenant Enterprise SaaS Design](docs/superpowers/specs/2026-09-01-single-tenant-saas-design.md)
+Source design: [Single-Tenant Enterprise SaaS Design](../superpowers/specs/2026-09-01-single-tenant-saas-design.md)
 Historical prerequisite: [Pre-SaaS Architecture Simplification Backlog](PRE_SAAS_ARCHITECTURE_BACKLOG.md)
 
 ## Product direction
@@ -149,7 +149,7 @@ On-premise deployments continue to use the existing supported deployment profile
 ## Immediate execution sequence
 
 1. Approve this roadmap and the linked single-tenant design.
-2. Define the customer-environment manifest and lifecycle contract in [Customer Environment Contract](docs/saas/customer-environment-contract.md).
+2. Define the customer-environment manifest and lifecycle contract in [Customer Environment Contract](../saas/customer-environment-contract.md).
 3. Build one repeatable isolated environment from the existing artifacts.
 4. Add versioned deployment, health-gated promotion, and application rollback.
 5. Add provider-backed backup/restore and document RPO/RTO before onboarding real data.
@@ -159,7 +159,7 @@ On-premise deployments continue to use the existing supported deployment profile
 
 **Status: EVIDENCE ASSEMBLED; PHASE 1 PROMOTION BLOCKED**
 
-The Task 1-6 implementation evidence is consolidated in [Phase 1 entry evidence](docs/saas/phase-1-entry-evidence.md). The approved first SaaS model remains single-tenant enterprise SaaS: one dedicated application environment and database per customer.
+The Task 1-6 implementation evidence is consolidated in [Phase 1 entry evidence](../saas/phase-1-entry-evidence.md). The approved first SaaS model remains single-tenant enterprise SaaS: one dedicated application environment and database per customer.
 
 Entry-gate disposition:
 
@@ -180,7 +180,7 @@ Required owners before production entry:
 The pre-SaaS baseline remains supported and may continue product implementation without tenant/RLS or real-data scope.
 
 The executable promotion gate is `just saas-evidence`. It must pass against
-`docs/saas/phase-1-entry-evidence.md` before Phase 1 promotion; the current
+`../saas/phase-1-entry-evidence.md` before Phase 1 promotion; the current
 document is intentionally incomplete and therefore must fail closed. The
 canonical deployment vocabulary is `on_premise`, `single_tenant_saas`, and
 external `control_plane`; `self_hosted` and `saas` are compatibility aliases
@@ -190,3 +190,5 @@ Lifecycle commands use authenticated operator credentials, not arbitrary
 operator-name arguments. The token is supplied through `OKR_OPERATOR_TOKEN`
 and resolved against the credential file passed to the command or configured
 through `OKR_OPERATOR_CREDENTIAL_FILE`.
+
+

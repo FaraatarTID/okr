@@ -19,10 +19,10 @@ historical or compatibility material as current operational guidance.
 
 | Area | Category | Canonical entry |
 | --- | --- | --- |
-| System architecture and code ownership | Canonical | `ARCHITECTURE.md`, `CODEBASE_MAP.md` |
-| Architecture execution and evidence | Canonical | `ARCHITECTURE_BACKLOG.md`, `docs/architecture-status.md`, `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` |
-| Pre-SaaS architecture simplification | Canonical | `PRE_SAAS_ARCHITECTURE_BACKLOG.md` |
-| Enterprise SaaS strategy | Canonical | `ENTERPRISE_SAAS_ROADMAP.md` |
+| System architecture and code ownership | Canonical | `docs/architecture/ARCHITECTURE.md`, `docs/architecture/CODEBASE_MAP.md` |
+| Architecture execution and evidence | Canonical | `docs/architecture/ARCHITECTURE_BACKLOG.md`, `docs/architecture-status.md`, `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` |
+| Pre-SaaS architecture simplification | Canonical | `docs/architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md` |
+| Enterprise SaaS strategy | Canonical | `docs/architecture/ENTERPRISE_SAAS_ROADMAP.md` |
 | Enterprise deployment | Operational | `DEPLOYMENT.md` |
 | Runtime configuration | Operational | `docs/CONFIG_REFERENCE.md` |
 | Incident troubleshooting | Operational | `docs/TROUBLESHOOTING.md` |
@@ -39,3 +39,5 @@ The Persian documents mirror the relevant English canonical or operational
 entry. Compatibility redirects remain only while their links have practical
 value. Obsolete alpha or superseded guidance should be removed or moved out of
 the current index.
+
+

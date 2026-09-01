@@ -12,7 +12,7 @@ This document defines how the architecture backlog, delivery system, status ledg
 
 | Artifact | Role | Update rule | Owner candidate |
 |---|---|---|---|
-| [PRE_SAAS_ARCHITECTURE_BACKLOG.md](../PRE_SAAS_ARCHITECTURE_BACKLOG.md) | Work package scope and sequencing | Update lifecycle status and evidence link when a package changes state | Architecture |
+| [PRE_SAAS_ARCHITECTURE_BACKLOG.md](architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md) | Work package scope and sequencing | Update lifecycle status and evidence link when a package changes state | Architecture |
 | [ARCHITECTURE_DELIVERY_SYSTEM.md](ARCHITECTURE_DELIVERY_SYSTEM.md) | Delivery process and verification model | Change only when the operating model changes | Architecture and delivery |
 | [architecture-status.md](architecture-status.md) | Current status ledger | Keep synchronized with the backlog snapshot | Architecture |
 | [WORKLOG.md](WORKLOG.md) | Append-only execution record | Add a dated entry for every material state change | Delivery owner |
@@ -85,3 +85,4 @@ The initial control pass exposed that architecture work can accumulate valid doc
 - A short retro note records remaining documentation debt and its owner.
 
 P0-05 should move to `VERIFIED` only after the navigation and link evidence is attached to the status ledger.
+

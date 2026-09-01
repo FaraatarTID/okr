@@ -29,7 +29,7 @@ Documentation HQ: [README](../../../README.md)
 **Files:**
 - Create: `docs/superpowers/specs/2026-09-01-single-tenant-saas-design.md` (already approved; use as the contract source)
 - Create: `docs/saas/customer-environment-contract.md`
-- Modify: `ENTERPRISE_SAAS_ROADMAP.md`
+- Modify: `docs/architecture/ENTERPRISE_SAAS_ROADMAP.md`
 - Modify: `docs/architecture-status.md`
 - Test: `tests/test_customer_environment_contract.py`
 
@@ -67,7 +67,7 @@ Create `src/saas/environment_contract.py` with typed manifest validation and an 
 
 - [ ] **Step 4: Document the contract and update the roadmap**
 
-Document field meanings, lifecycle transitions, idempotency keys, and operator-visible failure states in `docs/saas/customer-environment-contract.md`. Link the contract from `ENTERPRISE_SAAS_ROADMAP.md` and move Phase 0 to `IN-PROGRESS` in `docs/architecture-status.md`.
+Document field meanings, lifecycle transitions, idempotency keys, and operator-visible failure states in `docs/saas/customer-environment-contract.md`. Link the contract from `docs/architecture/ENTERPRISE_SAAS_ROADMAP.md` and move Phase 0 to `IN-PROGRESS` in `docs/architecture-status.md`.
 
 - [ ] **Step 5: Run the focused tests and record evidence**
 
@@ -316,7 +316,7 @@ Expected: PASS.
 ### Task 7: Complete SaaS entry-gate evidence and handoff
 
 **Files:**
-- Modify: `ENTERPRISE_SAAS_ROADMAP.md`
+- Modify: `docs/architecture/ENTERPRISE_SAAS_ROADMAP.md`
 - Modify: `docs/architecture-status.md`
 - Modify: `docs/migration-rollback-runbook.md`
 - Modify: `docs/WORKLOG.md`
@@ -353,3 +353,4 @@ are `on_premise`, `single_tenant_saas`, or external `control_plane`; and
 `just saas-evidence` passes with provider-backed evidence and named owners.
 Shared-database RLS, tenant schema, billing, real provider selection, and
 real-data onboarding remain deferred.
+

@@ -72,3 +72,4 @@ Operator wrappers may remain for usability, but they should delegate to these pr
 ## Handoff
 
 P0-03 can now evaluate the BFF as a boundary against a defined process topology. P0-06 can use this contract as the baseline for rollback rehearsal and evidence capture.
+

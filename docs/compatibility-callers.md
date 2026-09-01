@@ -28,7 +28,7 @@ The supported journey mapping is recorded in [launcher-command-matrix.md](launch
 | `run_hybrid_app.bat` | [tests/test_hybrid_app_launcher_script.py](../tests/test_hybrid_app_launcher_script.py), [README.md](../README.md) | Supported Docker operator path and test-covered contract | Keep as a thin wrapper over Compose and document its profile behavior |
 | `run_hybrid_app_local.bat` | [tests/test_hybrid_app_launcher_script.py](../tests/test_hybrid_app_launcher_script.py), [README.md](../README.md), [docs/TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Supported local-development path | Keep while local workflows depend on it; remove duplicated policy incrementally |
 | `run_okr_ui.bat` | [scripts/okr-launcher-ui.ps1](../scripts/okr-launcher-ui.ps1) | UI convenience entrypoint | Confirm every UI action delegates to a documented Docker or local path |
-| `scripts/okr-launcher-ui.ps1` | [run_okr_ui.bat](../run_okr_ui.bat) | Operator orchestration | Keep orchestration separate from application construction |
+| `scripts/okr-launcher-ui.ps1` | [run_okr_ui.bat](../scripts/windows/run_okr_ui.bat) | Operator orchestration | Keep orchestration separate from application construction |
 
 ## Result and limits
 
@@ -45,3 +45,4 @@ The supported journey mapping is recorded in [launcher-command-matrix.md](launch
 3. Add a deprecation and migration note before changing the root facade.
 4. Reconcile launcher profile handling with [runtime-entrypoint-contract.md](runtime-entrypoint-contract.md) and [launcher-command-matrix.md](launcher-command-matrix.md).
 5. Attach targeted check output before moving P0-04 to `VERIFIED`.
+

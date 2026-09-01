@@ -1,6 +1,6 @@
 # Pre-SaaS Architecture Simplification Backlog
 
-Documentation HQ: [README](README.md)
+Documentation HQ: [README](../../README.md)
 
 Status: ARCHIVED - COMPLETED HANDOFF  
 Scope: historical record of architecture clarity, runtime canonicalization, and complexity control  
@@ -12,19 +12,19 @@ Owner model: one primary maintainer, with an independent architecture reviewer a
 This document is no longer an executable backlog. The promoted mainline and
 owner-approved single-tenant SaaS direction are now governed by
 `ENTERPRISE_SAAS_ROADMAP.md` and
-`docs/superpowers/specs/2026-09-01-single-tenant-saas-design.md`. The detailed
+`../superpowers/specs/2026-09-01-single-tenant-saas-design.md`. The detailed
 work packages below are retained as historical evidence of the pre-SaaS
 initiative and must not be restarted without a new architecture decision.
 
 ## Delivery operating model
 
 This backlog is executed through the Architecture Delivery System:
-[ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTURE_DELIVERY_SYSTEM.md).
+[ARCHITECTURE_DELIVERY_SYSTEM.md](../ARCHITECTURE_DELIVERY_SYSTEM.md).
 
 Execution sources:
 
-- Status ledger: [docs/architecture-status.md](docs/architecture-status.md)
-- Working journal: [docs/WORKLOG.md](docs/WORKLOG.md)
+- Status ledger: [../architecture-status.md](../architecture-status.md)
+- Working journal: [../WORKLOG.md](../WORKLOG.md)
 
 All items must follow `PLANNED -> IN-PROGRESS -> IMPLEMENTED -> VERIFIED -> CLOSED`.
 `CLOSED` requires the purpose-drill evidence and a one-line retrospective note.
@@ -33,13 +33,13 @@ All items must follow `PLANNED -> IN-PROGRESS -> IMPLEMENTED -> VERIFIED -> CLOS
 
 | Item | Lifecycle status | Evidence | Verified | Retro note |
 |---|---|---|---|---|
-| P0-00 | IN-PROGRESS | [docs/pre-saas-architecture-inventory.md](docs/pre-saas-architecture-inventory.md) | not yet | not yet |
-| P0-01 | IN-PROGRESS | [docs/architecture-boundaries.md](docs/architecture-boundaries.md); canonical serializers, bucket, selector, bootstrap delegation, keyed/unkeyed snapshot-cache factories, all facade snapshot-cache wiring, and duplicate implementation removal completed; 29 combined boundary/cache tests passed; consolidated gate passed | partial | Snapshot behavior is verified; selector/bootstrap caller inventory, full boundary verification, and package closure remain. |
-| P0-02 | IN-PROGRESS | [docs/runtime-entrypoint-contract.md](docs/runtime-entrypoint-contract.md); runtime matrix, compatibility readiness gate, isolated SaaS `database` readiness smoke, and live compatibility health payload passed | partial | SaaS API profile smoke verified; full SaaS topology and local/Kubernetes reconciliation remain. |
-| P0-03 | IN-PROGRESS | [docs/bff-boundary-adr.md](docs/bff-boundary-adr.md); [docs/bff-security-review.md](docs/bff-security-review.md); allowlist passed for 44 routes; BFF suite passed 65 tests; consolidated gate passed | partial | Repository security controls reviewed; production secret, rate-limit, tenant-context, and rollback evidence remain. |
-| P0-04 | IN-PROGRESS | [docs/compatibility-surface-cleanup.md](docs/compatibility-surface-cleanup.md); [docs/compatibility-callers.md](docs/compatibility-callers.md); [docs/launcher-command-matrix.md](docs/launcher-command-matrix.md); canonical cache migration, platform/login/response-scope migration, cycle/weekly-plan caller migration, explicit user serializer dependency seam, no-root-facade-import guard, and read-only Docker wrapper status path completed; 14 parity/ritual tests and 2 launcher contract tests passed; bounded Compose health captured | partial | Full wrapper start/stop rehearsal, launcher cleanup, and retirement of the parity override remain. |
-| P0-05 | VERIFIED | [docs/documentation-lifecycle-control.md](docs/documentation-lifecycle-control.md); `python scripts/check_docs_hq_links.py` passed across 76 Markdown files after the signed-review regression repair | 2026-09-01 | Documentation control re-verified after REV-002; future ADRs must preserve the same ledger and link discipline. |
-| P0-06 | IN-PROGRESS | [docs/governance-migration-exit-review.md](docs/governance-migration-exit-review.md); [docs/migration-rollback-runbook.md](docs/migration-rollback-runbook.md); migration safety register added; migration lint passed; bounded readiness gate passed; current image and Alembic baseline captured | partial | No-op downgrade is classified explicitly; migration and application rollback rehearsal remain. |
+| P0-00 | IN-PROGRESS | [../pre-saas-architecture-inventory.md](../pre-saas-architecture-inventory.md) | not yet | not yet |
+| P0-01 | IN-PROGRESS | [../architecture-boundaries.md](../architecture-boundaries.md); canonical serializers, bucket, selector, bootstrap delegation, keyed/unkeyed snapshot-cache factories, all facade snapshot-cache wiring, and duplicate implementation removal completed; 29 combined boundary/cache tests passed; consolidated gate passed | partial | Snapshot behavior is verified; selector/bootstrap caller inventory, full boundary verification, and package closure remain. |
+| P0-02 | IN-PROGRESS | [../runtime-entrypoint-contract.md](../runtime-entrypoint-contract.md); runtime matrix, compatibility readiness gate, isolated SaaS `database` readiness smoke, and live compatibility health payload passed | partial | SaaS API profile smoke verified; full SaaS topology and local/Kubernetes reconciliation remain. |
+| P0-03 | IN-PROGRESS | [../bff-boundary-adr.md](../bff-boundary-adr.md); [../bff-security-review.md](../bff-security-review.md); allowlist passed for 44 routes; BFF suite passed 65 tests; consolidated gate passed | partial | Repository security controls reviewed; production secret, rate-limit, tenant-context, and rollback evidence remain. |
+| P0-04 | IN-PROGRESS | [../compatibility-surface-cleanup.md](../compatibility-surface-cleanup.md); [../compatibility-callers.md](../compatibility-callers.md); [../launcher-command-matrix.md](../launcher-command-matrix.md); canonical cache migration, platform/login/response-scope migration, cycle/weekly-plan caller migration, explicit user serializer dependency seam, no-root-facade-import guard, and read-only Docker wrapper status path completed; 14 parity/ritual tests and 2 launcher contract tests passed; bounded Compose health captured | partial | Full wrapper start/stop rehearsal, launcher cleanup, and retirement of the parity override remain. |
+| P0-05 | VERIFIED | [../documentation-lifecycle-control.md](../documentation-lifecycle-control.md); `python scripts/check_docs_hq_links.py` passed across 76 Markdown files after the signed-review regression repair | 2026-09-01 | Documentation control re-verified after REV-002; future ADRs must preserve the same ledger and link discipline. |
+| P0-06 | IN-PROGRESS | [../governance-migration-exit-review.md](../governance-migration-exit-review.md); [../migration-rollback-runbook.md](../migration-rollback-runbook.md); migration safety register added; migration lint passed; bounded readiness gate passed; current image and Alembic baseline captured | partial | No-op downgrade is classified explicitly; migration and application rollback rehearsal remain. |
 
 ## Purpose
 
@@ -347,7 +347,7 @@ for boundary regressions and reviewer findings.
 
 Each item must produce:
 
-- A `PLANNED`-to-`IN-PROGRESS` move in `docs/architecture-status.md` before work starts.
+- A `PLANNED`-to-`IN-PROGRESS` move in `../architecture-status.md` before work starts.
 - An `IMPLEMENTED` entry with PR/commit and test evidence.
 - A verification drill result matching the item objective.
 - A `CLOSED` entry with a one-line retrospective note.
@@ -392,7 +392,7 @@ This backlog is the prerequisite architecture simplification phase. After its
 promotion gate, execution continues in:
 
 - [Enterprise SaaS Roadmap](ENTERPRISE_SAAS_ROADMAP.md)
-- [Phase 0 Multi-Tenant Backlog](ARCHITECTURE_BACKLOG.md)
+- [Phase 0 Multi-Tenant Backlog](../../ARCHITECTURE_BACKLOG.md)
 
 The tenant backlog remains the authority for tenant identity, ownership,
 authorization, RLS, jobs, exports, and audit isolation. This document must not
@@ -427,3 +427,5 @@ The owner explicitly accepts the risk of not rehearsing production-grade applica
 ## Archive precedence
 
 The active execution source is now `ENTERPRISE_SAAS_ROADMAP.md`. The approved single-tenant model supersedes the older shared-database/RLS starting bias in the historical work packages above. Do not restart this backlog or introduce tenant/RLS schema work until the active roadmap schedules that transition.
+
+

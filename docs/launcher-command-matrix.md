@@ -40,3 +40,4 @@ runtime contracts.
 - [test_hybrid_app_launcher_script.py](../tests/test_hybrid_app_launcher_script.py) covers the Windows wrapper contracts.
 - `justfile` provides the canonical Compose `start`, `stop`, `health`, and quality-gate commands.
 - `justfile` also provides the canonical disposable SaaS lifecycle commands: `saas-provision`, `saas-suspend`, and `saas-retire`.
+

@@ -1,6 +1,6 @@
 # Architecture
 
-Documentation HQ: [README](README.md)
+Documentation HQ: [README](../../README.md)
 
 Maintainer file ownership and change map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
 
@@ -312,5 +312,6 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 Active Phase 0 production-readiness work is tracked in
 [ARCHITECTURE_BACKLOG.md](ARCHITECTURE_BACKLOG.md). Superseded status and worklog
 records are preserved in
-[docs/archive/architecture-2026-08-31/](docs/archive/architecture-2026-08-31/).
-Process definition: [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTURE_DELIVERY_SYSTEM.md).
+[docs/archive/architecture-2026-08-31/](../archive/architecture-2026-08-31/).
+Process definition: [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](../ARCHITECTURE_DELIVERY_SYSTEM.md).
+

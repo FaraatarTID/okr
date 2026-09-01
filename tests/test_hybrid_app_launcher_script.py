@@ -4,8 +4,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DOCKER_LAUNCHER = ROOT / "run_hybrid_app.bat"
-LOCAL_LAUNCHER = ROOT / "run_hybrid_app_local.bat"
+DOCKER_LAUNCHER = ROOT / "scripts" / "windows" / "run_hybrid_app.bat"
+LOCAL_LAUNCHER = ROOT / "scripts" / "windows" / "run_hybrid_app_local.bat"
 
 
 def test_hybrid_launcher_exists_and_targets_spa_stack() -> None:

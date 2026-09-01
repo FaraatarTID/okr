@@ -1,6 +1,6 @@
 # OKR Tracker
 
-An OKR system that keeps strategic change work separate from day-to-day operations.
+An enterprise-ready OKR strategy and execution platform that keeps strategic change work separate from day-to-day operations.
 
 This README is the fast starting point. It shows what this product is, what it is not, and where to start.
 
@@ -241,17 +241,17 @@ If you are a first-time reader, skip this section until after `Start Here`.
 
 ### Core Product Guides
 
-- Architecture (system): [ARCHITECTURE.md](ARCHITECTURE.md)
-- Maintainer map: [CODEBASE_MAP.md](CODEBASE_MAP.md)
-- Architecture backlog: [ARCHITECTURE_BACKLOG.md](ARCHITECTURE_BACKLOG.md)
+- Architecture (system): [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)
+- Maintainer map: [CODEBASE_MAP.md](docs/architecture/CODEBASE_MAP.md)
+- Architecture backlog: [ARCHITECTURE_BACKLOG.md](docs/architecture/ARCHITECTURE_BACKLOG.md)
 - Archived architecture status ledger: [docs/archive/architecture-2026-08-31/architecture-status_2026-08-31.md](docs/archive/architecture-2026-08-31/architecture-status_2026-08-31.md)
 - Architecture delivery system: [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTURE_DELIVERY_SYSTEM.md)
 - Documentation lifecycle registry: [docs/DOCUMENTATION_LIFECYCLE.md](docs/DOCUMENTATION_LIFECYCLE.md)
 - Task-graph evaluation: [docs/TASK_GRAPH_EVALUATION.md](docs/TASK_GRAPH_EVALUATION.md)
-- Enterprise SaaS roadmap: [ENTERPRISE_SAAS_ROADMAP.md](ENTERPRISE_SAAS_ROADMAP.md)
-- Pre-SaaS architecture simplification: [PRE_SAAS_ARCHITECTURE_BACKLOG.md](PRE_SAAS_ARCHITECTURE_BACKLOG.md)
+- Enterprise SaaS roadmap: [ENTERPRISE_SAAS_ROADMAP.md](docs/architecture/ENTERPRISE_SAAS_ROADMAP.md)
+- Pre-SaaS architecture simplification: [PRE_SAAS_ARCHITECTURE_BACKLOG.md](docs/architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md)
 - Multi-tenant data access ADR: [docs/ADR-001-multitenant-data-access-boundary.md](docs/ADR-001-multitenant-data-access-boundary.md)
-- Archived reliability roadmap: [ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md](ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md)
+- Archived reliability roadmap: [ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md](docs/architecture/ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md)
 - Production readiness runbooks and dashboards: [docs/OBSERVABILITY_AND_RUNBOOKS.md](docs/OBSERVABILITY_AND_RUNBOOKS.md)
 - Operations readiness and recovery: [docs/OPS_READINESS_AND_RECOVERY_GUIDE.md](docs/OPS_READINESS_AND_RECOVERY_GUIDE.md)
 - Quality gate baseline: [docs/QUALITY_GATE_BASELINE.md](docs/QUALITY_GATE_BASELINE.md)
@@ -307,7 +307,7 @@ All templates in this section are external governance documents, not app data-en
 
 ### Planning and Performance
 
-- Performance baselines: [performance.md](performance.md)
+- Performance baselines: [performance.md](docs/architecture/performance.md)
 
 ## Deployment Intent
 
@@ -348,7 +348,7 @@ just health
 just stop
 ```
 
-The existing Windows `.bat` launchers remain supported compatibility wrappers.
+The cross-platform `just` commands and Docker Compose are the primary operator paths. Windows launchers remain supported under `scripts/windows/` for local compatibility.
 
 ## SPA BFF
 
@@ -401,13 +401,13 @@ This keeps local integration aligned with production PostgreSQL behavior.
 Windows quick launcher (repo root):
 
 ```bat
-run_hybrid_app.bat
+scripts\\windows\\run_hybrid_app.bat
 ```
 
 Windows local launcher (no Docker, backend API + backend worker + BFF + SPA):
 
 ```bat
-run_hybrid_app_local.bat
+scripts\\windows\\run_hybrid_app_local.bat
 ```
 
 Database URL resolution precedence for the local launcher:
@@ -426,7 +426,7 @@ Prerequisites:
 - Database URL set as `OKR_DATABASE_URL` (recommended) or `DATABASE_URL` (alias)
 
 Local launcher fallback behavior:
-- `run_hybrid_app_local.bat` can fall back to local SQLite at `tmp/okr-local-dev.sqlite3` only when explicitly enabled.
+- `scripts/windows/run_hybrid_app_local.bat` can fall back to local SQLite at `tmp/okr-local-dev.sqlite3` only when explicitly enabled.
 - Control fallback with:
   - `OKR_LOCAL_DB_FALLBACK=true|false` (default: `false`)
   - `OKR_LOCAL_DB_RESET=true|false` (default: `false`, set `true` to rebuild local SQLite on launch)
@@ -587,3 +587,6 @@ Install browser runtime once if needed:
 ```bash
 playwright install chromium
 ```
+
+
+
