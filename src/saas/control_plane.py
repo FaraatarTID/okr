@@ -77,6 +77,19 @@ class AuditEvent:
     reason: str | None = None
 
 
+_ControlPlaneAuditEvent = AuditEvent
+_AUDIT_EVENT_FIELDS = tuple(_ControlPlaneAuditEvent.__dataclass_fields__)
+
+
+def _audit_event_values(value: Any) -> dict[str, Any]:
+    """Normalize legacy/model-shaped events to the metadata-only contract."""
+    if isinstance(value, dict):
+        raw = value
+    else:
+        raw = {name: getattr(value, name, None) for name in _AUDIT_EVENT_FIELDS}
+    return {name: raw.get(name) for name in _AUDIT_EVENT_FIELDS}
+
+
 class ControlPlane:
     """Durable metadata registry with no customer-domain access."""
 
@@ -85,7 +98,7 @@ class ControlPlane:
         self._state_path = Path(configured_path)
         self._lock = RLock()
         self._environments: dict[str, EnvironmentSummary] = {}
-        self._audit_events: list[AuditEvent] = []
+        self._audit_events: list[_ControlPlaneAuditEvent] = []
         if environments:
             with self._guard():
                 self._load()
@@ -138,13 +151,14 @@ class ControlPlane:
     def record_lifecycle_event(self, event: AuditEvent) -> AuditEvent:
         with self._guard():
             self._load()
-            self._get_environment(event.environment_id)
+            normalized = _ControlPlaneAuditEvent(**_audit_event_values(event))
+            self._get_environment(normalized.environment_id)
             for name in ("event", "actor", "recorded_at", "result"):
-                if not str(getattr(event, name) or "").strip():
+                if not str(getattr(normalized, name) or "").strip():
                     raise ValueError(f"audit event {name} must not be empty")
-            self._audit_events.append(event)
+            self._audit_events.append(normalized)
             self._save()
-            return event
+            return normalized
 
     def list_lifecycle_events(self, environment_id: str) -> list[AuditEvent]:
         with self._guard():
@@ -169,7 +183,10 @@ class ControlPlane:
             for key, raw in data.get("environments", {}).items()
         }
         self._environments = {**self._environments, **loaded}
-        self._audit_events = [AuditEvent(**raw) for raw in data.get("audit_events", [])]
+        self._audit_events = [
+            _ControlPlaneAuditEvent(**_audit_event_values(raw))
+            for raw in data.get("audit_events", [])
+        ]
 
     def _save(self) -> None:
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -183,7 +200,7 @@ class ControlPlane:
                 }
                 for key, summary in self._environments.items()
             },
-            "audit_events": [asdict(value) for value in self._audit_events],
+            "audit_events": [_audit_event_values(value) for value in self._audit_events],
         }
         temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         temporary.replace(self._state_path)
@@ -197,7 +214,7 @@ def summary_mapping(summary: EnvironmentSummary) -> dict[str, Any]:
 
 
 def audit_event_mapping(event: AuditEvent) -> dict[str, Any]:
-    return asdict(event)
+    return _audit_event_values(event)
 
 
 def now_utc() -> str:
