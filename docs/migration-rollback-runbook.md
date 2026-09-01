@@ -1,6 +1,6 @@
 # Pre-SaaS Migration Rollback Runbook
 
-Back to [Documentation HQ](README.md).
+Documentation HQ: [README](../README.md)
 
 Status: `DOCUMENTED, NOT YET REHEARSED` for P0-06.
 
@@ -45,6 +45,14 @@ commands against a live environment.
 - Current Compose state: backend API and Postgres healthy; worker, BFF, and web running.
 - Snapshot date: 2026-08-31.
 
+### SaaS database profile smoke result
+
+- A disposable database was created and migrated from an empty state through `drop_global_cycle_index`.
+- A temporary API process started with `OKR_DEPLOYMENT_PROFILE=saas` and `OKR_DATA_ACCESS_MODE=database` and returned HTTP 200 from `/healthz`.
+- The health payload reported `data_access_mode=database`, `configured_mode=database`, and `dead_jobs=0`.
+- The disposable database was removed after the probe; this was a forward migration smoke test, not a rollback rehearsal.
+- The persistent local database remains stamped with obsolete `baseline_2026_08_26_schema` metadata and must not be repaired by an unapproved stamp operation.
+
 | Rehearsal | Status | Evidence required |
 |---|---|---|
 | Application/BFF image rollback | Not rehearsed | Previous image digests, readiness output, health output, and logs |
@@ -57,3 +65,14 @@ commands against a live environment.
 - Never treat a healthy process as proof that data compatibility is preserved.
 - Never remove the previous image or migration artifact until the release boundary expires.
 - Update this record after every rehearsal and link the evidence from the P0-06 status ledger.
+## Execution update: 2026-09-01
+
+- The running backend's actual compatibility database is the Supabase PostgreSQL target, not the local Compose `postgres` database.
+- The runtime target was independently queried and reported Alembic revision `drop_global_cycle_index (head)`.
+- A pre-reconciliation custom-format dump of the local Compose database was captured and catalog-verified at `tmp/okr-pre-alembic-reconcile.dump`; it was used for a disposable restore rehearsal only.
+- The disposable restore rehearsal was completed against `okr_rollback_rehearsal` with `pg_restore -U okr`, and the disposable database was removed afterward. This proves restore mechanics for the local PostgreSQL 16-compatible artifact, not recovery of the live Supabase database.
+- A provider-native or PostgreSQL 17-compatible backup of the live runtime database could not be produced from this environment: the available client initially rejected the PostgreSQL 17.6 server as a PostgreSQL 16 client, and the PostgreSQL 17 client path did not complete. No live data was changed by those attempts.
+- P0-06 therefore remains `IN-PROGRESS`. The live backup/recovery proof and combined application-plus-database rollback rehearsal remain prerequisites before tenant/RLS schema work.
+## Owner decision: disposable pre-SaaS database - 2026-09-01
+
+For the current pre-SaaS phase, the owner has explicitly waived database dump, migration, and database rollback work because the runtime database contains disposable mock data. The application schema remains in place, all application data has been purged, and database recovery rehearsal is deferred until persistent SaaS data exists. This section supersedes the earlier backup-oriented execution notes for this phase only.

@@ -1,6 +1,6 @@
 # BFF Security Boundary Review
 
-Back to [Documentation HQ](README.md).
+Documentation HQ: [README](../README.md)
 
 Status: `IMPLEMENTED WITH RESIDUAL REVIEW` for P0-03.
 

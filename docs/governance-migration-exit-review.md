@@ -1,6 +1,6 @@
 # Governance, Migration Safety, and Exit Review
 
-Back to [Documentation HQ](README.md).
+Documentation HQ: [README](../README.md)
 
 Status: `IN-PROGRESS` for P0-06.
 
@@ -34,6 +34,16 @@ For each Alembic migration, the owner must document:
 - whether downgrade is safe, partial, or prohibited;
 - the backup or restore point required before execution;
 - the observation window before contracting or deleting old structures.
+
+## Migration safety register
+
+| Migration | Affected objects | Classification | Compatible versions | Downgrade status | Required backup/restore point | Observation window |
+|---|---|---|---|---|---|---|
+| `drop_global_cycle_index` / `remove_global_cycle_active_constraint.py` | Global `ux_cycle_single_active` index on `cycle` | Destructive policy removal; the index is intentionally not recreated | Versions using per-owner active-cycle behavior after `baseline_2026_08_26` | Prohibited as an automatic downgrade; the migration `downgrade()` is intentionally a no-op because restoring the global constraint conflicts with the per-owner model | Approved database backup immediately before upgrade; restore the backup instead of downgrading if the previous policy is required | Keep the last-known-good application and database restore point through one release cycle and verify cycle activation behavior before release closure |
+
+This migration is not downgrade-safe. Its no-op `downgrade()` is an explicit policy
+decision, not evidence that rollback has been rehearsed. A backup/restore exercise
+is required before any tenant or RLS schema migration is applied on top of it.
 
 Destructive or irreversible changes require an explicit approval record and a recovery alternative. A database downgrade is not assumed to be safe merely because an Alembic downgrade function exists.
 

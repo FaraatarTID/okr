@@ -1,6 +1,6 @@
 # Launcher and Runtime Command Matrix
 
-Back to [Documentation HQ](README.md).
+Documentation HQ: [README](../README.md)
 
 Status: `DESIGN HANDOFF` for P0-04.
 

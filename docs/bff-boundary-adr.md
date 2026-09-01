@@ -1,6 +1,6 @@
 # ADR: BFF Responsibility and Topology
 
-Back to [Documentation HQ](README.md).
+Documentation HQ: [README](../README.md)
 
 Status: `IN-PROGRESS` for P0-03.
 

@@ -1,6 +1,6 @@
 # Legacy Facade Symbol Migration Map
 
-Back to [Documentation HQ](README.md).
+Documentation HQ: [README](../README.md)
 
 Status: `DESIGN HANDOFF` for P0-01 and P0-04.
 

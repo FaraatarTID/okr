@@ -1,6 +1,6 @@
 # Runtime and Deployment Entrypoint Contract
 
-Back to [Documentation HQ](README.md).
+Documentation HQ: [README](../README.md)
 
 Status: `IN-PROGRESS` for P0-02.
 
@@ -31,7 +31,7 @@ The API and worker are separate processes even when they share the same image an
 
 | Use case | Primary path | Contract status |
 |---|---|---|
-| Self-hosted application start | `just start` or `run_hybrid_app.bat` | Supported candidate; must resolve the selected Compose profile explicitly |
+| Self-hosted application start | `just start` or `run_hybrid_app.bat` | Supported candidate; resolves the self-hosted `database` profile unless an explicit compatibility override is selected |
 | Local development | `run_hybrid_app_local.bat` or the launcher UI local mode | Supported candidate; starts the same Python module entrypoints |
 | API-only operation | `python -m backend_app.run_api` | Canonical process contract |
 | Worker-only operation | `python -m backend_app.worker` | Canonical process contract |
@@ -60,11 +60,14 @@ Operator wrappers may remain for usability, but they should delegate to these pr
 
 - Runtime matrix check passed: `python scripts/check_deploy_runtime_matrix.py` exited 0.
 - Bounded readiness gate passed against Compose: all five services were running; backend and BFF health returned `ok`; SPA root returned healthy HTML.
-- Live backend health payload confirmed `configured_mode=supabase_api`, `data_access_mode=supabase_api`, and `dead_jobs=0` for the Compose baseline.
+- Live backend health payload confirmed `configured_mode=supabase_api`, `data_access_mode=supabase_api`, and `dead_jobs=0` for the captured compatibility Compose baseline.
+- SaaS Phase 0 target is explicitly `OKR_DEPLOYMENT_PROFILE=saas` with `OKR_DATA_ACCESS_MODE=database`; `supabase_api` is an alpha/self-hosted compatibility mode and is not the SaaS target.
+- Disposable SaaS review configuration passed `python scripts/check_deploy_config.py --mode runtime` with `OKR_DEPLOYMENT_PROFILE=saas` and `OKR_DATA_ACCESS_MODE=database`; the local Compose URL produced only the expected non-pooler warning.
+- An isolated disposable Postgres database ran the SaaS `database` profile migrations through `drop_global_cycle_index`; the temporary API returned HTTP 200 with `data_access_mode=database`, `configured_mode=database`, and `dead_jobs=0`. The temporary database was removed after the probe.
 - Record the effective Compose profile and data backend for each remaining supported environment.
 - Capture a readiness check for API, worker, BFF, and web processes.
 - Document rollback commands and the last-known-good image or release in P0-06.
-- Mark P0-02 `VERIFIED` only after the runtime matrix and profile enforcement checks pass.
+- Mark P0-02 `VERIFIED` only after the runtime matrix, profile enforcement, and readiness checks pass against the explicit SaaS `database` target, not only the compatibility `supabase_api` baseline.
 
 ## Handoff
 
