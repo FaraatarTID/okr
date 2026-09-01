@@ -48,21 +48,21 @@ def test_backend_api_and_worker_use_root_context_and_shared_dockerfile() -> None
 
 
 def test_bff_uses_spa_bff_context_and_dockerfile() -> None:
-    _assert_context_inputs(ROOT / "spa-bff", "spa-bff/Dockerfile")
+    _assert_context_inputs(ROOT, "spa-bff/Dockerfile")
     dockerfile = _dockerfile("spa-bff/Dockerfile")
     assert 'CMD ["node", "dist/src/server.js"]' in dockerfile
-    assert "COPY --from=build /app/dist ./dist" in dockerfile
+    assert "COPY --from=build /app/spa-bff/dist ./dist" in dockerfile
 
     readme = README_PATH.read_text(encoding="utf-8")
     assert "| BFF | `okr-prerelease-bff` | `ghcr.io/<owner>/<repository>/bff:<commit-sha>`" in readme
 
 
 def test_web_uses_spa_web_context_and_dockerfile() -> None:
-    _assert_context_inputs(ROOT / "spa-web", "spa-web/Dockerfile")
+    _assert_context_inputs(ROOT, "spa-web/Dockerfile")
     dockerfile = _dockerfile("spa-web/Dockerfile")
     assert 'ENV PORT=3000' in dockerfile
     assert 'CMD ["npm", "run", "start"]' in dockerfile
-    assert "COPY --from=build /app/.next ./.next" in dockerfile
+    assert "COPY --from=build /app/spa-web/.next ./.next" in dockerfile
 
     readme = README_PATH.read_text(encoding="utf-8")
     assert "| Web | `okr-prerelease-web` | `ghcr.io/<owner>/<repository>/web:<commit-sha>`" in readme

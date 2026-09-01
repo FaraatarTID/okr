@@ -174,9 +174,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Build web image with immutable local tag
-        run: docker build --file spa-web/Dockerfile --tag "okr-prerelease-web:${RELEASE_SHA}" --label "org.opencontainers.image.revision=${RELEASE_SHA}" spa-web
+        run: docker build --file spa-web/Dockerfile --tag "okr-prerelease-web:${RELEASE_SHA}" --label "org.opencontainers.image.revision=${RELEASE_SHA}" .
       - name: Build BFF image with immutable local tag
-        run: docker build --file spa-bff/Dockerfile --tag "okr-prerelease-bff:${RELEASE_SHA}" --label "org.opencontainers.image.revision=${RELEASE_SHA}" spa-bff
+        run: docker build --file spa-bff/Dockerfile --tag "okr-prerelease-bff:${RELEASE_SHA}" --label "org.opencontainers.image.revision=${RELEASE_SHA}" .
       - name: Build shared backend image for API and worker
         run: docker build --file deploy/docker/Dockerfile --tag "okr-prerelease-backend:${RELEASE_SHA}" --label "org.opencontainers.image.revision=${RELEASE_SHA}" .
       - name: Log in to GitHub Container Registry

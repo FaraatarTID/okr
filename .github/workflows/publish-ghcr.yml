@@ -26,10 +26,10 @@ jobs:
       matrix:
         include:
           - name: web
-            context: spa-web
+            context: .
             dockerfile: spa-web/Dockerfile
           - name: bff
-            context: spa-bff
+            context: .
             dockerfile: spa-bff/Dockerfile
           - name: backend
             context: .
