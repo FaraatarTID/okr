@@ -1,4 +1,4 @@
-Documentation HQ: [README](README.md)
+Documentation HQ: [README](../../README.md)
 
 # Codebase Map
 
@@ -117,3 +117,4 @@ must be documented and covered by `scripts/check_import_boundaries.py`.
   - compatibility surface updates
   - cache boundary changes
 - Feature helper files should change for behavior.
+

@@ -4,7 +4,7 @@ Documentation HQ: [README](../README.md)
 
 Status: `IN-PROGRESS` for P0-01.
 
-This working proposal implements the boundary decision required by [PRE_SAAS_ARCHITECTURE_BACKLOG.md](../PRE_SAAS_ARCHITECTURE_BACKLOG.md), using the runtime evidence in [pre-saas-architecture-inventory.md](pre-saas-architecture-inventory.md). It is intentionally a proposal until import checks and facade call-path evidence are captured.
+This working proposal implements the boundary decision required by [PRE_SAAS_ARCHITECTURE_BACKLOG.md](architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md), using the runtime evidence in [pre-saas-architecture-inventory.md](pre-saas-architecture-inventory.md). It is intentionally a proposal until import checks and facade call-path evidence are captured.
 
 ## Proposed package roles
 
@@ -78,3 +78,4 @@ The tested symbol-level migration map is recorded in [facade-migration-map.md](f
 ## Decision handoff
 
 P0-02 should consume this proposal when defining startup profiles. P0-03 should use the API contract boundary here when deciding whether `spa-bff` remains a separate deployable or becomes a thinner edge layer.
+

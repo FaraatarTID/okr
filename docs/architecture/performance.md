@@ -1,6 +1,6 @@
 # Performance Baselines
 
-Documentation HQ: [README](README.md)
+Documentation HQ: [README](../../README.md)
 
 This document tracks performance baselines and query-budget guardrails for critical hot paths.
 
@@ -51,3 +51,4 @@ The consolidated `ritual.snapshot` read kind (`fn_ritual_snapshot` RPC, migratio
 - Warm RPC round trip: ~0.65-0.72 s (vs ~1.9 s for the legacy concurrent fan-out over the free-tier pooler).
 - Single SQL execution returns key results, weekly plan, retrospectives, work logs, and experiments.
 - Fallback to the legacy fan-out occurs only on missing-function errors (SQLSTATE 42883); all other failures propagate fail-closed.
+

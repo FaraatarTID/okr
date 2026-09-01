@@ -4,7 +4,7 @@ Documentation HQ: [README](../README.md)
 
 Status: `IN-PROGRESS` for P0-00.
 
-This is an evidence-based first-pass inventory for [PRE_SAAS_ARCHITECTURE_BACKLOG.md](../PRE_SAAS_ARCHITECTURE_BACKLOG.md), based on [ARCHITECTURE_DELIVERY_SYSTEM.md](ARCHITECTURE_DELIVERY_SYSTEM.md). It records observed runtime surfaces and proposed classifications; it does not yet establish the final package or deployment boundaries.
+This is an evidence-based first-pass inventory for [PRE_SAAS_ARCHITECTURE_BACKLOG.md](architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md), based on [ARCHITECTURE_DELIVERY_SYSTEM.md](ARCHITECTURE_DELIVERY_SYSTEM.md). It records observed runtime surfaces and proposed classifications; it does not yet establish the final package or deployment boundaries.
 
 ## Observed runtime surfaces
 
@@ -76,4 +76,5 @@ The local launcher also starts the API and worker through the same Python module
 ## Handoff to the next backlog items
 
 P0-00 now has a first-pass inventory and a proposed topology. P0-01 should turn the ownership candidates into explicit package boundaries and import rules. P0-02 should then make the API, worker, BFF, and SPA process contract reproducible across the supported environments.
+
 
