@@ -1,6 +1,6 @@
 # OKR Tracker
 
-An OKR system that keeps strategic change work separate from day-to-day operations.
+An enterprise-ready OKR strategy and execution platform that keeps strategic change work separate from day-to-day operations.
 
 This README is the fast starting point. It shows what this product is, what it is not, and where to start.
 
@@ -348,7 +348,7 @@ just health
 just stop
 ```
 
-The existing Windows `.bat` launchers remain supported compatibility wrappers.
+The cross-platform `just` commands and Docker Compose are the primary operator paths. Windows launchers remain supported under `scripts/windows/` for local compatibility.
 
 ## SPA BFF
 
@@ -401,13 +401,13 @@ This keeps local integration aligned with production PostgreSQL behavior.
 Windows quick launcher (repo root):
 
 ```bat
-run_hybrid_app.bat
+scripts\\windows\\run_hybrid_app.bat
 ```
 
 Windows local launcher (no Docker, backend API + backend worker + BFF + SPA):
 
 ```bat
-run_hybrid_app_local.bat
+scripts\\windows\\run_hybrid_app_local.bat
 ```
 
 Database URL resolution precedence for the local launcher:
@@ -426,7 +426,7 @@ Prerequisites:
 - Database URL set as `OKR_DATABASE_URL` (recommended) or `DATABASE_URL` (alias)
 
 Local launcher fallback behavior:
-- `run_hybrid_app_local.bat` can fall back to local SQLite at `tmp/okr-local-dev.sqlite3` only when explicitly enabled.
+- `scripts/windows/run_hybrid_app_local.bat` can fall back to local SQLite at `tmp/okr-local-dev.sqlite3` only when explicitly enabled.
 - Control fallback with:
   - `OKR_LOCAL_DB_FALLBACK=true|false` (default: `false`)
   - `OKR_LOCAL_DB_RESET=true|false` (default: `false`, set `true` to rebuild local SQLite on launch)
@@ -587,3 +587,4 @@ Install browser runtime once if needed:
 ```bash
 playwright install chromium
 ```
+

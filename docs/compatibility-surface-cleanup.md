@@ -11,9 +11,9 @@ This workstream identifies root-level facades and operator wrappers that could p
 | Surface | Current role | Cleanup disposition | Evidence still required |
 |---|---|---|---|
 | [app.py](../app.py) | Root Python facade with legacy data and serialization helpers | Compatibility surface; keep stable until callers migrate | [compatibility-callers.md](compatibility-callers.md) |
-| [run_hybrid_app.bat](../run_hybrid_app.bat) | Docker-oriented operator wrapper | Retain as a thin supported wrapper | Confirm it delegates to the documented Compose contract |
-| [run_hybrid_app_local.bat](../run_hybrid_app_local.bat) | Local multi-process launcher | Retain for local development during transition | Map supported local journeys and remove duplicated policy |
-| [run_okr_ui.bat](../run_okr_ui.bat) | Launcher UI entrypoint | Retain as an operator convenience wrapper | Confirm UI actions map one-to-one to supported commands |
+| [run_hybrid_app.bat](../scripts/windows/run_hybrid_app.bat) | Docker-oriented operator wrapper | Retain as a thin supported wrapper | Confirm it delegates to the documented Compose contract |
+| [run_hybrid_app_local.bat](../scripts/windows/run_hybrid_app_local.bat) | Local multi-process launcher | Retain for local development during transition | Map supported local journeys and remove duplicated policy |
+| [run_okr_ui.bat](../scripts/windows/run_okr_ui.bat) | Launcher UI entrypoint | Retain as an operator convenience wrapper | Confirm UI actions map one-to-one to supported commands |
 | [scripts/okr-launcher-ui.ps1](../scripts/okr-launcher-ui.ps1) | Launcher UI orchestration | Retain only as orchestration, not application composition | Trace Docker/local branches and configuration handling |
 | [justfile](../justfile) | Task and developer command surface | Canonical task documentation candidate | Reconcile `start`, checks, and runtime profiles |
 | Root ad hoc startup commands | Historical or undocumented process paths | Deprecate when discovered | Search results plus owner confirmation |
@@ -67,3 +67,4 @@ The root `app.py` facade is outside this startup path. If it remains necessary f
 - A focused check preventing new imports of the compatibility facade.
 
 P0-04 should move to `VERIFIED` only after these artifacts are attached to the status ledger and the cleanup is shown to preserve supported operator journeys.
+

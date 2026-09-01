@@ -9,8 +9,8 @@ $root = Resolve-Path (Join-Path $scriptDir "..")
 $composeFile = Join-Path $root "deploy\docker\docker-compose.yml"
 $envFile = Join-Path $root "deploy\docker\.env"
 $dockerComposeUrl = "http://127.0.0.1:3000"
-$hybridRunScript = Join-Path $root "run_hybrid_app_local.bat"
-$hybridStopScript = Join-Path $root "stop_hybrid_app_local.bat"
+$hybridRunScript = Join-Path $root "scripts\windows\run_hybrid_app_local.bat"
+$hybridStopScript = Join-Path $root "scripts\windows\stop_hybrid_app_local.bat"
 
 $uiPrimary = [System.Drawing.Color]::FromArgb(112, 41, 99) # #702963
 $uiCanvas = [System.Drawing.Color]::FromArgb(248, 243, 249)

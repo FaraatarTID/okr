@@ -20,7 +20,7 @@ This is an evidence-based first-pass inventory for [PRE_SAAS_ARCHITECTURE_BACKLO
 | Kubernetes deployment | [deploy/k8s/](../deploy/k8s/) | Secondary deployment surface | P0-02: reconcile supported runtime matrix |
 | Database migrations | [alembic/](../alembic/) | Deployment dependency | P0-04: migration policy and compatibility evidence |
 | Root compatibility facade | [app.py](../app.py) | Legacy or compatibility candidate | P0-00: trace remaining callers before retirement decision |
-| Environment launchers | [run_hybrid_app.bat](../run_hybrid_app.bat), [run_hybrid_app_local.bat](../run_hybrid_app_local.bat), [run_okr_ui.bat](../run_okr_ui.bat), [scripts/okr-launcher-ui.ps1](../scripts/okr-launcher-ui.ps1) | Compatibility and operator wrappers | P0-00/P0-02: map supported user journeys to one contract |
+| Environment launchers | [run_hybrid_app.bat](../scripts/windows/run_hybrid_app.bat), [run_hybrid_app_local.bat](../scripts/windows/run_hybrid_app_local.bat), [run_okr_ui.bat](../scripts/windows/run_okr_ui.bat), [scripts/okr-launcher-ui.ps1](../scripts/okr-launcher-ui.ps1) | Compatibility and operator wrappers | P0-00/P0-02: map supported user journeys to one contract |
 | Delivery and quality gates | [.github/workflows/](../.github/workflows/), [scripts/](../scripts/) | Architectural control plane | P0-05: preserve gates while boundaries change |
 
 ## Observed startup topology
@@ -76,3 +76,4 @@ The local launcher also starts the API and worker through the same Python module
 ## Handoff to the next backlog items
 
 P0-00 now has a first-pass inventory and a proposed topology. P0-01 should turn the ownership candidates into explicit package boundaries and import rules. P0-02 should then make the API, worker, BFF, and SPA process contract reproducible across the supported environments.
+
