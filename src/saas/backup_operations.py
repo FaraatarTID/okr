@@ -47,7 +47,7 @@ def _validate_provider_response(
     if expected_backup_id is not None and raw.get("backup_id") != expected_backup_id:
         raise ProviderContractError("backup identity mismatch")
     if expected_environment_id is not None and raw.get("environment_id") != expected_environment_id:
-        raise ProviderContractError("manifest identity mismatch")
+        raise ProviderContractError("provider response belongs to a different environment")
     required = ("backup_id", "environment_id", "created_at", "checksum")
     if any(not isinstance(raw.get(key), str) or not raw[key].strip() for key in required):
         raise ProviderContractError("provider response is missing manifest identity")
