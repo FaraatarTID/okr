@@ -1,22 +1,25 @@
 FROM node:22-alpine AS build
+WORKDIR /app
+
+COPY package*.json ./
+COPY spa-bff/package*.json ./spa-bff/
+COPY spa-web/package*.json ./spa-web/
+RUN npm ci --include-workspace-root
+
+COPY spa-bff/tsconfig.json ./spa-bff/tsconfig.json
+COPY spa-bff/src ./spa-bff/src
 WORKDIR /app/spa-bff
-
-COPY package.json /app/package.json
-COPY spa-bff/package*.json ./
-RUN npm ci
-
-COPY spa-bff/tsconfig.json ./
-COPY spa-bff/src ./src
 RUN npm run build
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev --workspace spa-bff
 
 FROM node:22-alpine
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY --from=build /app/spa-bff/package*.json ./
-COPY --from=build /app/spa-bff/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/spa-bff/package*.json ./spa-bff/
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/spa-bff/dist ./dist
 
 EXPOSE 3001
