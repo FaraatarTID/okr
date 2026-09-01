@@ -22,11 +22,11 @@ def _query_counter(engine):
 
 
 def test_app_shell_runtime_cache_hit_zero_queries(monkeypatch, tmp_path):
-    import app as app_module
     import src.crud as crud
     import src.database as database
     import src.models  # noqa: F401
     from src.models import Cycle, User, UserRole, WeeklyPlan
+    from src.services.app_shell_runtime import create_keyed_runtime_snapshot_caches
 
     db_path = tmp_path / "okr_app_rerun_cache.db"
     db_url = f"sqlite:///{db_path}"
@@ -71,12 +71,27 @@ def test_app_shell_runtime_cache_hit_zero_queries(monkeypatch, tmp_path):
         session.commit()
         user_id = int(admin.id)
 
-    app_module._cached_get_all_cycles.clear()
-    app_module._cached_get_user_runtime_snapshot.clear()
-    app_module._cached_get_active_weekly_plan_snapshot.clear()
+    caches = create_keyed_runtime_snapshot_caches(
+        load_cycles=crud.get_all_cycles,
+        load_user=crud.get_user_by_id,
+        load_weekly_plan=crud.get_active_weekly_plan,
+    )
+
+    def resolve_app_shell_runtime(current_user_id):
+        user = caches["user"](current_user_id)
+        weekly_plan = caches["weekly_plan"](current_user_id)
+        return {
+            "user": user,
+            "weekly_plan": weekly_plan,
+            "show_admin_default_password_warning": bool(
+                user and user.get("must_change_password")
+            ),
+        }
+
+    caches["registry"].clear()
 
     with _query_counter(engine) as first_qc:
-        first = app_module._resolve_app_shell_runtime(user_id)
+        first = resolve_app_shell_runtime(user_id)
     assert first_qc["count"] > 0
     assert first["user"] is not None
     assert first["weekly_plan"] is not None
@@ -84,7 +99,7 @@ def test_app_shell_runtime_cache_hit_zero_queries(monkeypatch, tmp_path):
     assert "password_hash" not in first["user"]
 
     with _query_counter(engine) as second_qc:
-        second = app_module._resolve_app_shell_runtime(user_id)
+        second = resolve_app_shell_runtime(user_id)
     assert second_qc["count"] == 0
     assert second["user"]["id"] == user_id
     assert second["weekly_plan"]["priority_1"] == "Latency"
@@ -92,20 +107,20 @@ def test_app_shell_runtime_cache_hit_zero_queries(monkeypatch, tmp_path):
 
 
 def test_weekly_plan_cache_bucket_is_week_stable():
-    import app as app_module
+    from src.services.app_shell_runtime import weekly_plan_cache_bucket
 
     monday = datetime(2026, 2, 16, 9, 0, 0)
     wednesday = datetime(2026, 2, 18, 18, 30, 0)
     next_monday = datetime(2026, 2, 23, 8, 0, 0)
 
-    assert app_module._weekly_plan_cache_bucket(monday) == "2026-02-16"
-    assert app_module._weekly_plan_cache_bucket(wednesday) == "2026-02-16"
-    assert app_module._weekly_plan_cache_bucket(next_monday) == "2026-02-23"
+    assert weekly_plan_cache_bucket(monday) == "2026-02-16"
+    assert weekly_plan_cache_bucket(wednesday) == "2026-02-16"
+    assert weekly_plan_cache_bucket(next_monday) == "2026-02-23"
 
 
 def test_app_serializers_handle_missing_objects():
-    import app as app_module
+    from src.services.app_shell_runtime import serialize_cycle, serialize_user, serialize_weekly_plan
 
-    assert app_module._serialize_cycle(None) is None
-    assert app_module._serialize_user(None) is None
-    assert app_module._serialize_weekly_plan(None) is None
+    assert serialize_cycle(None) is None
+    assert serialize_user(None) is None
+    assert serialize_weekly_plan(None) is None

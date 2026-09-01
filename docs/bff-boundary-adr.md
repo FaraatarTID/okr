@@ -24,6 +24,43 @@ Business rules, persistence access, migrations, and cross-client application use
 
 This is a working decision, not a final closure. The separation is retained because the repository already deploys the BFF independently and because it provides a controlled boundary for browser-specific concerns while the SaaS topology is still being defined.
 
+## Deployment decision and small-installation runbook
+
+Separate `spa-bff`, backend API, worker, and web deployments are the production
+default. The BFF remains the only browser-facing application boundary; the API,
+worker, and database stay private. This is the topology represented by the
+Compose and Darkube deployment contracts.
+
+For a small single-tenant installation, services may be **co-located on the
+same approved host or provider node** only when the platform still runs them as
+four independently managed containers or services. Co-location is a placement
+optimization, not a new application mode. It must satisfy every condition
+below before deployment:
+
+- **Network:** web reaches the BFF through the approved HTTPS origin; BFF reaches
+  the API through a private service address; API and worker reach only the
+  private database. The API and database receive no public ingress.
+- **Health:** API and BFF retain independent `/healthz` checks; the worker has
+  an independent startup/status signal; each service has its own restart policy
+  and readiness gate. A healthy BFF must not mask an unhealthy API or worker.
+- **Security:** preserve BFF session, cookie, CSRF, actor-binding, and request-
+  signing controls; keep backend and BFF secrets distinct; enforce backend
+  authorization independently; do not expose a direct browser-to-API escape
+  route or use shared filesystem/database credentials as a shortcut.
+- **Observability:** collect separable logs, deployment identities, health
+  results, resource usage, and correlation identifiers for each service. An
+  incident must be diagnosable as a BFF, API, worker, or database failure.
+- **Operations:** deploy, restart, scale, and roll back the BFF and backend
+  artifacts independently, while keeping API and worker on the same backend
+  image commit. Verify the complete web-to-BFF-to-API path after every change.
+
+Do not merge the BFF into the Python process, let it access persistence directly,
+remove the worker, or replace the four-service contract with an undocumented
+provider-specific topology. If the target platform cannot provide the private
+networking, independent health checks, separate secrets, service-level logs, or
+independent rollback required above, use the standard separate deployment and
+record the co-location option as unavailable.
+
 ## Topology
 
 ```text

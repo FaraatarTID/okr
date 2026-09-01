@@ -53,7 +53,7 @@ Operator wrappers may remain for usability, but they should delegate to these pr
 
 1. New deployment definitions use the Python module entrypoints for the API and worker.
 2. New operator scripts call the documented Compose or local process contract instead of importing `app.py`.
-3. The root `app.py` facade remains outside the canonical server startup chain.
+3. The retired root `app.py` facade is outside the canonical server startup chain.
 4. Any alternate entrypoint requires an explicit status, owner, supported environment, and retirement or reconciliation plan.
 
 ## Evidence still required

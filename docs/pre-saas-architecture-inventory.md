@@ -19,7 +19,7 @@ This is an evidence-based first-pass inventory for [PRE_SAAS_ARCHITECTURE_BACKLO
 | Container deployment | [deploy/docker/docker-compose.yml](../deploy/docker/docker-compose.yml), [deploy/docker/Dockerfile](../deploy/docker/Dockerfile) | Active self-hosted runtime | P0-02 and P0-06: profile and rollback evidence |
 | Kubernetes deployment | [deploy/k8s/](../deploy/k8s/) | Secondary deployment surface | P0-02: reconcile supported runtime matrix |
 | Database migrations | [alembic/](../alembic/) | Deployment dependency | P0-04: migration policy and compatibility evidence |
-| Root compatibility facade | [app.py](../app.py) | Legacy or compatibility candidate | P0-00: trace remaining callers before retirement decision |
+| Retired root compatibility facade | `app.py` (removed) | No supported callers remain; behavior lives in canonical services | P0-00: retirement completed and test-covered |
 | Environment launchers | [run_hybrid_app.bat](../scripts/windows/run_hybrid_app.bat), [run_hybrid_app_local.bat](../scripts/windows/run_hybrid_app_local.bat), [run_okr_ui.bat](../scripts/windows/run_okr_ui.bat), [scripts/okr-launcher-ui.ps1](../scripts/okr-launcher-ui.ps1) | Compatibility and operator wrappers under `scripts/windows/` | P0-00/P0-02: map supported user journeys to one contract |
 | Delivery and quality gates | [.github/workflows/](../.github/workflows/), [scripts/](../scripts/) | Architectural control plane | P0-05: preserve gates while boundaries change |
 
@@ -68,7 +68,7 @@ The local launcher also starts the API and worker through the same Python module
 
 ## P0-00 remaining questions
 
-- Which callers still import or execute `app.py`, and can it be safely labeled compatibility-only?
+- Confirm that no supported callers import or execute the retired `app.py` facade.
 - Which launcher paths are supported for development, self-hosted deployment, and release operations?
 - Is Kubernetes a supported production target or a maintained secondary surface?
 - Which runtime topology is the baseline for the P0-03 BFF decision and P0-06 rollback rehearsal?

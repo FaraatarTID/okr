@@ -7,10 +7,11 @@ from sqlmodel import SQLModel, Session
 
 
 def test_cached_cycles_are_plain_snapshots(monkeypatch, tmp_path):
-    import app as app_module
     import src.database as database
     import src.models  # noqa: F401
+    from src.crud import get_all_cycles
     from src.models import Cycle
+    from src.services.app_shell_runtime import create_cycle_snapshot_cache
 
     db_path = tmp_path / "okr_cycle_cache_snapshot.db"
     db_url = f"sqlite:///{db_path}"
@@ -33,8 +34,7 @@ def test_cached_cycles_are_plain_snapshots(monkeypatch, tmp_path):
         )
         session.commit()
 
-    app_module._cached_get_all_cycles.clear()
-    cycles = app_module._cached_get_all_cycles()
+    cycles = create_cycle_snapshot_cache(get_all_cycles)()
 
     assert cycles
     first = cycles[0]
@@ -48,7 +48,7 @@ def test_cached_cycles_are_plain_snapshots(monkeypatch, tmp_path):
 
 
 def test_cycle_selector_payload_is_id_based_with_stable_labels():
-    import app as app_module
+    from src.services.app_shell_runtime import build_cycle_selector_mapping
 
     cycles = [
         {
@@ -67,7 +67,7 @@ def test_cycle_selector_payload_is_id_based_with_stable_labels():
         },
     ]
 
-    cycle_ids, labels = app_module._build_cycle_selector_payload(cycles)
+    cycle_ids, labels = build_cycle_selector_mapping(cycles)
 
     assert cycle_ids == [101, 202]
     assert labels[101] != labels[202]
@@ -76,7 +76,7 @@ def test_cycle_selector_payload_is_id_based_with_stable_labels():
 
 
 def test_bootstrap_default_cycle_non_admin_does_not_create(monkeypatch):
-    import app as app_module
+    from src.services.app_shell_runtime import bootstrap_default_cycle_for_facade
 
     called = {"create": 0}
 
@@ -84,12 +84,12 @@ def test_bootstrap_default_cycle_non_admin_does_not_create(monkeypatch):
         called["create"] += 1
         raise AssertionError("create_cycle should not run for non-admin users")
 
-    monkeypatch.setattr(app_module, "create_cycle", _unexpected_create)
-
-    cycles, error = app_module._bootstrap_default_cycle_if_needed(
+    cycles, error = bootstrap_default_cycle_for_facade(
         [],
         username="member_user",
         user_role="member",
+        create_cycle=_unexpected_create,
+        clear_cache=lambda: None,
     )
 
     assert cycles == []
@@ -98,17 +98,17 @@ def test_bootstrap_default_cycle_non_admin_does_not_create(monkeypatch):
 
 
 def test_bootstrap_default_cycle_admin_permission_error(monkeypatch):
-    import app as app_module
+    from src.services.app_shell_runtime import bootstrap_default_cycle_for_facade
 
     def _raise_permission(*_args, **_kwargs):
         raise PermissionError("forbidden")
 
-    monkeypatch.setattr(app_module, "create_cycle", _raise_permission)
-
-    cycles, error = app_module._bootstrap_default_cycle_if_needed(
+    cycles, error = bootstrap_default_cycle_for_facade(
         [],
         username="admin",
         user_role="admin",
+        create_cycle=_raise_permission,
+        clear_cache=lambda: None,
     )
 
     assert cycles == []
@@ -116,7 +116,7 @@ def test_bootstrap_default_cycle_admin_permission_error(monkeypatch):
 
 
 def test_bootstrap_default_cycle_admin_success_clears_cache(monkeypatch):
-    import app as app_module
+    from src.services.app_shell_runtime import bootstrap_default_cycle_for_facade
 
     created = SimpleNamespace(
         id=999,
@@ -134,15 +134,12 @@ def test_bootstrap_default_cycle_admin_success_clears_cache(monkeypatch):
     def _clear_cache():
         clear_calls["count"] += 1
 
-    monkeypatch.setattr(app_module, "create_cycle", _create_cycle)
-    monkeypatch.setattr(
-        app_module._cached_get_all_cycles, "clear", _clear_cache, raising=False
-    )
-
-    cycles, error = app_module._bootstrap_default_cycle_if_needed(
+    cycles, error = bootstrap_default_cycle_for_facade(
         [],
         username="admin",
         user_role="admin",
+        create_cycle=_create_cycle,
+        clear_cache=_clear_cache,
     )
 
     assert error is None

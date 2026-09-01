@@ -14,7 +14,7 @@ DELIVERY_FRAMEWORK_MODULES = frozenset({"fastapi", "flask", "starlette", "stream
 
 
 def _production_python_paths() -> list[Path]:
-    paths = [path for path in ROOT_DIR.glob("*.py") if path.name != "app.py"]
+    paths = list(ROOT_DIR.glob("*.py"))
     for directory in ("src", "backend_app", "scripts"):
         paths.extend((ROOT_DIR / directory).rglob("*.py"))
     return paths
@@ -34,10 +34,10 @@ def _python_imports(path: Path) -> set[str]:
 def _boundary_errors(path: Path, imports: set[str]) -> list[str]:
     """Return violations for one Python source file.
 
-    The root app module is a compatibility facade, so the forbidden import is
-    the module named exactly ``app`` rather than an arbitrary package whose
-    name merely contains that token. Delivery frameworks are forbidden only
-    in ``src``; ``backend_app`` is the delivery boundary that owns them.
+    The root app module is retired, so the forbidden import is the module named
+    exactly ``app`` rather than an arbitrary package whose name merely contains
+    that token. Delivery frameworks are forbidden only in ``src``;
+    ``backend_app`` is the delivery boundary that owns them.
     """
     errors: list[str] = []
     relative_path = path.relative_to(ROOT_DIR)

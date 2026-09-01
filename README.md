@@ -4,6 +4,18 @@ An enterprise-ready OKR strategy and execution platform that keeps strategic cha
 
 This README is the fast starting point. It shows what this product is, what it is not, and where to start.
 
+## Product scope
+
+Atlas is an enterprise-oriented OKR platform foundation, not only a personal
+tracking utility. The first SaaS operating model is single-tenant: each
+enterprise receives an isolated application environment and dedicated
+database. The repository can still be run locally or on-premise for individual
+teams, but its architecture, security controls, and deployment contracts are
+designed to support managed enterprise environments.
+
+Suggested GitHub repository description: `Enterprise OKR strategy and
+execution platform with isolated deployment support.`
+
 `Atlas` means the main in-app workspace (Focus Task, Focus Map, and Inspector) after login.
 
 ## Glossary

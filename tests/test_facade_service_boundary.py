@@ -4,8 +4,6 @@ import pytest
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
-import app as app_module
-
 from src.services.app_shell_runtime import (
     serialize_cycle,
     serialize_user,
@@ -375,9 +373,12 @@ def test_keyed_runtime_cache_factory_indexes_user_and_weekly_plan_by_user_id():
     assert calls["user"] == [7, 7]
 
 
-def test_legacy_serializer_and_bucket_symbols_delegate_to_canonical_service():
-    assert app_module._serialize_cycle is serialize_cycle
-    assert app_module._serialize_user is serialize_user
-    assert app_module._serialize_weekly_plan is serialize_weekly_plan
-    assert app_module._weekly_plan_cache_bucket is weekly_plan_cache_bucket
-    assert app_module._build_cycle_selector_payload is build_cycle_selector_mapping
+def test_canonical_runtime_symbols_are_the_single_service_contract():
+    assert serialize_cycle(None) is None
+    assert serialize_user(None) is None
+    assert serialize_weekly_plan(None) is None
+    assert weekly_plan_cache_bucket(datetime(2026, 2, 16)) == "2026-02-16"
+    assert build_cycle_selector_mapping([{"id": 1, "title": "Cycle"}]) == (
+        [1],
+        {1: "Cycle #1"},
+    )
