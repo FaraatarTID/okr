@@ -10,7 +10,7 @@ This workstream identifies root-level facades and operator wrappers that could p
 
 | Surface | Current role | Cleanup disposition | Evidence still required |
 |---|---|---|---|
-| [app.py](../app.py) | Root Python facade with legacy data and serialization helpers | Compatibility surface; keep stable until callers migrate | [compatibility-callers.md](compatibility-callers.md) |
+| Retired `app.py` | Former root Python compatibility facade | Removed after callers migrated to canonical services | [compatibility-callers.md](compatibility-callers.md) |
 | [run_hybrid_app.bat](../scripts/windows/run_hybrid_app.bat) | Docker-oriented operator wrapper | Retain as a thin supported wrapper | Confirm it delegates to the documented Compose contract |
 | [run_hybrid_app_local.bat](../scripts/windows/run_hybrid_app_local.bat) | Local multi-process launcher | Retain for local development during transition | Map supported local journeys and remove duplicated policy |
 | [run_okr_ui.bat](../scripts/windows/run_okr_ui.bat) | Launcher UI entrypoint | Retain as an operator convenience wrapper | Confirm UI actions map one-to-one to supported commands |
@@ -22,13 +22,13 @@ This workstream identifies root-level facades and operator wrappers that could p
 
 - A compatibility surface must have one named owner and one supported purpose.
 - Wrappers may select an environment or invoke a process, but must not duplicate backend application assembly.
-- New code must not import `app.py` when a canonical service or API interface exists.
+- New code must not recreate or import a root-level compatibility facade when a canonical service or API interface exists.
 - A wrapper cannot be deleted until its callers, user journeys, and replacement command are recorded.
 - Deprecation must include a visible warning or release note where users can encounter the old path.
 - Removal requires a rollback or restoration path for the supported environment it served.
 - The cleanup must preserve the canonical entrypoints documented in [runtime-entrypoint-contract.md](runtime-entrypoint-contract.md).
 - The tested facade symbol migration is tracked in [facade-migration-map.md](facade-migration-map.md).
-- `python scripts/check_import_boundaries.py` is the focused guard against new production imports of root `app.py`; tests and the facade itself remain outside its production scan.
+- `python scripts/check_import_boundaries.py` is the focused guard against new production imports of the retired root facade name.
 
 ## Target end state
 
@@ -46,7 +46,7 @@ Canonical process contract
   spa-web package scripts
 ```
 
-The root `app.py` facade is outside this startup path. If it remains necessary for a legacy caller, it should expose only a documented compatibility API and delegate toward canonical services rather than owning a second runtime.
+The retired root facade was outside this startup path. The canonical service and backend entrypoints are now the only supported runtime surfaces.
 
 ## Safe cleanup sequence
 
@@ -59,7 +59,7 @@ The root `app.py` facade is outside this startup path. If it remains necessary f
 
 ## P0-04 acceptance evidence
 
-- [compatibility-callers.md](compatibility-callers.md) covering `app.py` and each root launcher.
+- [compatibility-callers.md](compatibility-callers.md) covering the retired facade and each launcher.
 - A table mapping every supported journey to its replacement command.
 - Proof that wrappers invoke canonical module or package entrypoints.
 - No undocumented duplicate application composition root.

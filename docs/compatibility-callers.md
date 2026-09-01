@@ -2,20 +2,22 @@
 
 Documentation HQ: [README](../README.md)
 
-Status: `IN-PROGRESS` for P0-04.
+Status: `VERIFIED` for the root facade retirement; launcher cleanup remains operationally tracked.
 
 This inventory records the first repository-wide reference sweep for the root facade and launcher surfaces. It distinguishes production startup references from test and documentation references. A reference here is not, by itself, evidence that a surface can be removed.
 
-## Root `app.py`
+## Retired root `app.py`
 
 | Caller group | References found | Interpretation | Migration action |
 |---|---|---|---|
-| Cache snapshot tests | [tests/test_app_cycle_cache_snapshot.py](../tests/test_app_cycle_cache_snapshot.py) | Direct test dependency through `import app as app_module` | Preserve behavior while moving the tested facade contract to a canonical service interface |
-| Cache performance tests | [tests/test_app_rerun_cache_performance.py](../tests/test_app_rerun_cache_performance.py) | Direct test dependency through `import app as app_module` | Keep performance assertions, then retarget them after the replacement interface exists |
+| Cache snapshot tests | [tests/test_app_cycle_cache_snapshot.py](../tests/test_app_cycle_cache_snapshot.py) | Migrated to `src.services.app_shell_runtime` | Preserve the canonical snapshot-cache contract |
+| Cache performance tests | [tests/test_app_rerun_cache_performance.py](../tests/test_app_rerun_cache_performance.py) | Migrated to `src.services.app_shell_runtime` | Preserve zero-query cache-hit assertions |
 | Runtime startup | [backend_app/run_api.py](../backend_app/run_api.py), [deploy/docker/docker-compose.yml](../deploy/docker/docker-compose.yml) | No observed API process reference to root `app.py` | Treat `app.py` as outside the canonical server startup chain |
 | Documentation and archive references | [README.md](../README.md), [docs/archive/architecture-2026-08-31/ARCHITECTURE_BACKLOG_2026-08-31.md](archive/architecture-2026-08-31/ARCHITECTURE_BACKLOG_2026-08-31.md) | User guidance or historical evidence | Update current guidance only when the replacement is documented; preserve archive references |
 
-The current evidence supports the classification `compatibility-only, still test-referenced`. Cycle and weekly-plan read-query callers now use canonical serializers directly. User read-query callers resolve the canonical serializer by default, while retaining one explicit `main._serialize_user` override for parity-sensitive backend tests and scope-specific deployments.
+The current evidence supports retiring the root facade. Cycle, weekly-plan,
+serializer, selector, bootstrap, and cache tests now use canonical service
+contracts directly. No production, CLI, or deployment caller was found.
 
 The facade boundary and app cache suites currently pass 29 combined tests. This confirms that the compatibility surface protects active cache, bootstrap, serialization, and shell-runtime behavior and must be migrated deliberately.
 
@@ -34,15 +36,13 @@ The supported journey mapping is recorded in [launcher-command-matrix.md](launch
 
 - No production startup reference to root `app.py` was found in the searched runtime paths.
 - The import-boundary guard scans root production modules plus `src`, `backend_app`, and `scripts`; it passed with no production import of root `app.py`.
-- `app.py` remains active through test imports, so cleanup must begin with an interface migration rather than deletion.
+- `app.py` was deleted after all test imports were migrated to canonical service contracts.
 - Launcher surfaces are user-facing and test-referenced; their canonical copies live under `scripts/windows/`. The former root duplicates were removed after the replacement-path evidence was established. The Docker wrapper has a read-only status path for low-risk operational checks.
 - This is a text-reference sweep. It does not prove dynamic imports, subprocess construction, or external operator usage.
 
 ## Next actions
 
-1. Identify the specific facade symbols exercised by the two test modules.
-2. Define their canonical replacement in `src/services` or an explicit compatibility adapter.
-3. Add a deprecation and migration note before changing the root facade.
-4. Reconcile launcher profile handling with [runtime-entrypoint-contract.md](runtime-entrypoint-contract.md) and [launcher-command-matrix.md](launcher-command-matrix.md).
-5. Attach targeted check output before moving P0-04 to `VERIFIED`.
+1. Keep the canonical service boundary covered as runtime behavior evolves.
+2. Reject any new root-level compatibility facade without an explicit ADR.
+3. Reconcile launcher profile handling with [runtime-entrypoint-contract.md](runtime-entrypoint-contract.md) and [launcher-command-matrix.md](launcher-command-matrix.md).
 

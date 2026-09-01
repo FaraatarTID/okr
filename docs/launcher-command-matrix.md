@@ -27,7 +27,7 @@ runtime contracts.
 - `scripts/windows/run_hybrid_app.bat --status` is a read-only wrapper path for service-state inspection and must not build, start, or open a browser.
 - `scripts/windows/run_hybrid_app_local.bat` owns local process orchestration only; application construction remains in `backend_app.main`.
 - `scripts/windows/run_okr_ui.bat` and `scripts/okr-launcher-ui.ps1` own operator interaction only.
-- The root `app.py` facade is not a supported server startup command.
+- The retired root `app.py` facade was never a supported server startup command.
 - Any wrapper removal requires replacement-path evidence, supported-journey confirmation, and a rollback note.
 - SaaS lifecycle commands use a disposable local provider whose state file contains environment metadata only; a control plane and real provider adapter remain deferred.
 - Provisioning inputs are immutable: a repeat with changed `application_version` or manifest metadata is rejected as a conflict. Use a later release-operation workflow for version changes.

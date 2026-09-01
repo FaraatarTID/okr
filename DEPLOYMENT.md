@@ -121,6 +121,43 @@ Architecture profile (recommended)
 - This isolates heavy AI/PDF work and improves operational resilience.
 - Keep backend API internal; do not expose it via public reverse proxy.
 
+### BFF deployment decision
+
+The production default is **separate `spa-bff` and `backend-api` services**.
+The BFF is the browser-facing trust boundary and the backend API remains an
+internal service. This separation applies to Compose, Kubernetes, and other
+supported deployment targets; there is no supported mode that bypasses the BFF
+or merges the two applications into one process.
+
+For a small single-tenant installation, the services may be **co-located on the
+same VM or cluster node**, but they must remain separate containers/services
+connected over a private network. Co-location is appropriate only when the
+tenant has modest traffic, a single operational boundary, and no immediate
+need to scale or deploy the tiers independently.
+
+Co-location constraints:
+
+- Publish only the web entrypoint through the reverse proxy; keep BFF and
+  backend ports private and bound to loopback or the internal container
+  network.
+- Keep `OKR_BACKEND_API_URL` pointed at the private backend service name; do
+  not point the browser or public proxy directly at `backend-api`.
+- Keep the internal service token and request-signing secret configured, and
+  keep request-signing and token enforcement enabled.
+- Preserve independent health checks for `spa-bff` and `backend-api`; a
+  deployment is healthy only when both checks pass and the BFF can reach the
+  backend.
+- Emit separate logs and metrics for web, BFF, backend API, and worker, with
+  release version and tenant/environment identity attached where supported.
+- Keep the backend worker separate from the request path even when all
+  services share one host.
+- Reassess the installation and move to independently scalable services when
+  traffic, availability requirements, or operational ownership diverge.
+
+Do not implement co-location by disabling the BFF, exposing the backend API,
+sharing public credentials, or combining the applications into a single
+runtime image/process.
+
 ---
 
 Path A (recommended): Docker Compose + Postgres + Nginx + TLS

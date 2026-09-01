@@ -16,7 +16,24 @@ This working proposal implements the boundary decision required by [PRE_SAAS_ARC
 | `src/crud.py` and `src/database.py` | Current persistence implementation and database connectivity | Transport concerns and UI behavior |
 | `spa-bff` | Browser-facing mediation, session or route concerns assigned by its API contract | Python domain imports, direct database access, duplicated business rules |
 | `spa-web` | Browser UI, client state, and presentation | Backend process startup and database access |
-| `app.py` | Temporary compatibility facade only, if still required by callers | New canonical runtime behavior |
+| `app.py` | Retired legacy facade; no supported callers remain | Any new runtime behavior |
+
+## BFF deployment trade-off
+
+`spa-bff` remains a separate service because it is the browser trust boundary:
+it owns session mediation, route allowlisting, actor binding, request signing,
+and the internal backend service token. The browser must not call
+`backend_app` directly, and the BFF must not access the database or duplicate
+domain rules. This separation is especially valuable when the backend is kept
+private behind an internal network.
+
+For a small single-tenant installation, the BFF and backend may be co-located
+on the same host or provider project to reduce operational overhead. Co-location
+does not permit bypassing the BFF, merging the code ownership boundaries, or
+exposing the backend directly. Any future combined process or gateway mode
+requires an explicit deployment design, health-check contract, and security
+test before it becomes a supported profile; the current supported topology
+continues to deploy `spa-bff` and `backend_app` as separate services.
 
 ## Repository packaging and ownership
 
@@ -30,8 +47,8 @@ introduce another package manager:
 - `backend_app/` is the deployable Python backend package. It owns FastAPI
   assembly, HTTP routers, process configuration, and the asynchronous worker.
   Its README is the service-level onboarding reference.
-- `app.py` is a root-level compatibility facade for legacy callers. It is not
-  a package root or a second runtime composition root.
+- The former root `app.py` compatibility facade has been retired. It was not a
+  package root or a second runtime composition root.
 - `spa-bff/` is the Node.js browser-facing mediation service. It owns the
   browser API allowlist, session mediation, and backend proxy contract.
 - `spa-web/` is the Next.js browser application. It owns presentation, client
@@ -82,9 +99,13 @@ backend_app.run_api
 
 This keeps process startup separate from application construction and makes `backend_app.main` the canonical backend surface for deployment configuration. The worker remains a separate process through `backend_app.worker`.
 
-## Facade migration rule
+## Facade migration record
 
-The root `app.py` surface is classified as compatibility-only until caller tracing proves otherwise. It may delegate to canonical services during migration, but it must not become a second application composition root. Any remaining caller should be documented with:
+The root `app.py` surface was classified as compatibility-only until caller
+tracing proved otherwise. The inventory found no production, CLI, or deployment
+callers; the remaining test callers were migrated to canonical service
+contracts, and the file was removed. Any future compatibility surface must
+document:
 
 - the caller and supported user journey;
 - the facade function or symbol used;
@@ -93,11 +114,9 @@ The root `app.py` surface is classified as compatibility-only until caller traci
 
 New code should import from the canonical package or an explicitly documented interface, not from `app.py`.
 
-Safe migration rule: do not move, delete, or rename `app.py` merely to make the
-tree look cleaner. First inventory all imports, CLI entry points, tests, and
-deployment references; add equivalent coverage through `backend_app` or the
-canonical service boundary; migrate callers; and remove the facade only after
-the inventory is empty and the removal owner and evidence are recorded.
+Removal evidence: no supported imports or execution paths remain for the root
+facade after the test migration. New code must use the canonical service
+boundary or `backend_app`, never recreate a root compatibility facade.
 
 The tested symbol-level migration map is recorded in [facade-migration-map.md](facade-migration-map.md).
 
@@ -108,7 +127,6 @@ The tested symbol-level migration map is recorded in [facade-migration-map.md](f
 - The two legacy facade test modules passed: `python -m pytest tests/test_app_cycle_cache_snapshot.py tests/test_app_rerun_cache_performance.py -q` completed 8 tests successfully.
 - The canonical adapter contract passed 4 focused tests covering snapshot serialization and Monday-stable weekly cache buckets.
 - The consolidated repository gate passed through the installed `just` runner using PowerShell as its shell: Ruff, typecheck, builds, Python tests, workspace tests, OpenAPI drift, and import boundaries completed successfully.
-- Trace remaining imports and execution paths for `app.py`.
 - Identify any `backend_app` imports that bypass the intended service or domain direction.
 - Add or update a focused architectural test if an existing check does not cover the facade rule.
 - Mark this proposal `VERIFIED` only after the evidence is attached to the status ledger.
