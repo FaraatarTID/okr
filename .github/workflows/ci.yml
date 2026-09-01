@@ -219,6 +219,12 @@ jobs:
       - name: Install JavaScript workspace dependencies
         run: npm ci --include=optional
 
+      - name: OpenAPI generated types freshness gate
+        run: npm --prefix spa-web run check:gen:api
+
+      - name: BFF OpenAPI generated types freshness gate
+        run: npm --prefix spa-bff run check:gen:api
+
       - name: Restore JavaScript build caches
         id: spa-build-cache
         uses: actions/cache@v6

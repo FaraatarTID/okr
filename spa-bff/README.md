@@ -43,8 +43,14 @@ Optional:
   - Non-allowlisted routes are rejected with `403`.
   - Actor-scoped routes require a valid BFF session cookie; missing/invalid session is rejected with `401`.
   - Actor identity is derived from session state and forwarded server-side.
-  - Client-supplied `X-OKR-Actor` is ignored for actor-scoped routes.
-  - `POST /v1/auth/login` is the only allowlisted route that does not require actor header.
+- Client-supplied `X-OKR-Actor` is ignored for actor-scoped routes.
+- `POST /v1/auth/login` is the only allowlisted route that does not require actor header.
+
+The BFF consumes type-only declarations generated from the backend OpenAPI
+artifact. Regenerate all repository artifacts with `just generate-api` after
+backend contract changes; `npm run gen:api` remains available for this package
+alone. The generated types do not replace runtime response validation or the
+secure proxy boundary.
 
 ## Local Development
 

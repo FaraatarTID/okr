@@ -7,6 +7,7 @@ import type { BffConfig } from "./config.js";
 import { readConfig } from "./config.js";
 import { proxyToBackend } from "./proxy.js";
 import { buildBackendSecurityHeaders } from "./signing.js";
+import type { BackendLoginResponse, BackendSessionResponse } from "./backend-schema.js";
 import {
   clearSessionCookie,
   clearCsrfCookie,
@@ -198,7 +199,7 @@ async function fetchFreshSessionUser(
   if (!response.ok) {
     throw new Error(`Backend session validation failed: ${response.status}`);
   }
-  const data = (await response.json()) as Record<string, unknown>;
+  const data = (await response.json()) as BackendSessionResponse;
   const user = normalizeSessionUser(data);
   if (!user) {
     throw new Error("Backend returned invalid user data.");
@@ -341,8 +342,8 @@ export function createServer(
 
       const payloadRecord =
         payload && typeof payload === "object"
-          ? (payload as Record<string, unknown>)
-          : {};
+          ? (payload as BackendLoginResponse)
+          : ({} as BackendLoginResponse);
       const loginSuccess = Boolean(payloadRecord.success);
       const user = normalizeSessionUser(payloadRecord.user);
       if (!loginSuccess || !user) {
@@ -382,7 +383,7 @@ export function createServer(
 
       reply.code(200);
       return reply.send({
-        ...(payload as Record<string, unknown>),
+        ...(payload as BackendLoginResponse),
         user,
       });
     } catch (error) {

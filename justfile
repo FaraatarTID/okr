@@ -1,6 +1,8 @@
 # Canonical cross-platform developer commands.
 # Prerequisites: just, uv, Node.js/npm, and Docker for stack commands.
 
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
 default:
     @just --list
 
@@ -27,7 +29,14 @@ lint:
 
 contracts:
     uv run python scripts/check_openapi_drift.py
+    npm --prefix spa-web run check:gen:api
+    npm --prefix spa-bff run check:gen:api
     uv run python scripts/check_import_boundaries.py
+
+generate-api:
+    uv run python scripts/export_openapi.py
+    npm --prefix spa-web run gen:api
+    npm --prefix spa-bff run gen:api
 
 saas-evidence:
     uv run python scripts/check_saas_phase1_evidence.py

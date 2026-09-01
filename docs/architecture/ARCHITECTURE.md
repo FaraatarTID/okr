@@ -275,9 +275,9 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 
 ## Contract Governance
 
-- The backend OpenAPI schema (46 paths, OpenAPI 3.1) is exported to `spa-web/src/lib/api/openapi.json` via `scripts/export_openapi.py`.
+- The backend OpenAPI schema (49 paths, OpenAPI 3.1) is exported to `spa-web/src/lib/api/openapi.json` via `scripts/export_openapi.py`.
 - CI runs an OpenAPI drift gate (`scripts/check_openapi_drift.py`): any backend schema change without regenerated frontend types fails the build.
-- TypeScript types are generated from the artifact via `npm --prefix spa-web run gen:api` into `spa-web/src/lib/api/generated/schema.d.ts`; adopt them incrementally (see `spa-web/src/lib/api/backend-schema.ts` for the pattern).
+- TypeScript types are generated from the artifact via `just generate-api`, which refreshes both `spa-web/src/lib/api/generated/schema.d.ts` and `spa-bff/src/generated/backend-schema.d.ts`; adopt them incrementally (see `spa-web/src/lib/api/backend-schema.ts` for the pattern).
 - Mutation-route coverage is enforced by `tests/test_backend_mutation_auth_matrix.py`: every backend mutation route must appear in both the test matrix and the BFF allowlist.
 
 ## Contributor Decision Guide
@@ -292,14 +292,14 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 2. Add the HTTPS-mode query in `src/services/supabase_api_mode_read.py`.
 3. Register the kind in the allowed-kinds list and README's kinds enumeration.
 4. Add tests covering scope rejection + payload mapping (see `tests/test_ritual_snapshot_rpc.py` for the pattern).
-5. Regenerate types: `python scripts/export_openapi.py && npm --prefix spa-web run gen:api`.
+5. Regenerate all API artifacts: `just generate-api`.
 
 **Adding a mutation route (checklist):**
 1. Add handler + route in `backend_app/routers/*_routes.py` behind `require_service_access`.
 2. Add the route to `spa-bff/src/allowlist.ts` (path template + regex).
 3. Add it to the matrix in `tests/test_backend_mutation_auth_matrix.py` — CI fails if either allowlist or matrix misses it.
 4. Add negative tests (non-owner/member denial paths).
-5. Regenerate OpenAPI types as above.
+5. Regenerate OpenAPI types with `just generate-api`.
 
 ## Current Architectural Limits
 

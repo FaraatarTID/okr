@@ -340,6 +340,27 @@ just build
 just check
 ```
 
+### Release Promotion Path
+
+Use this order for every pre-release and production release:
+
+1. **CI build and test:** GitHub Actions builds the application, runs the test suite, checks API artifacts, and produces the release image.
+2. **Staging deployment:** Deploy that exact immutable image to the Darkube staging environment.
+3. **Staging evidence gate:** Run health, migration-state, authentication, BFF, and smoke checks. Do not promote an image that fails any required check.
+4. **Production approval:** Require an explicit release approval after staging evidence is available.
+5. **Production deployment:** Promote the same image tag to production; rebuilding between staging and production is not allowed.
+6. **Rollback readiness:** Keep the previous known-good image tag and use the documented image-based rollback procedure if production verification fails.
+
+Environment responsibilities:
+
+- `CI`: build and test only.
+- `Staging`: deploy candidates and collect release evidence.
+- `Production`: deploy only an approved image already validated in staging.
+
+For deployment configuration, hardening, and operational procedures, see
+[DEPLOYMENT.md](DEPLOYMENT.md) and
+[docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md).
+
 For the containerized local stack:
 
 ```bash

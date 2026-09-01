@@ -511,6 +511,30 @@ class LoginRequest(BaseModel):
     client_ip: Optional[str] = Field(default=None, max_length=128)
 
 
+class AuthUserView(BaseModel):
+    id: int
+    username: str
+    display_name: str
+    role: RoleType
+    team_id: Optional[int] = None
+    manager_id: Optional[int] = None
+    must_change_password: bool
+    token_version: Optional[int] = None
+
+
+class AuthLoginResponse(BaseModel):
+    success: bool
+    user: Optional[AuthUserView] = None
+    error_code: Optional[str] = None
+    detail: Optional[str] = None
+    retry_after_seconds: Optional[int] = None
+    lock_scope: Optional[Literal["user", "ip", "both"]] = None
+
+
+class AuthSessionResponse(AuthUserView):
+    pass
+
+
 class ReadQueryRequest(BaseModel):
     kind: str = Field(..., min_length=1, max_length=128)
     params: Dict[str, Any] = Field(default_factory=dict)
