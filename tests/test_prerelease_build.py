@@ -42,8 +42,8 @@ def test_backend_api_and_worker_use_root_context_and_shared_dockerfile() -> None
     assert (ROOT / "backend_app").is_dir()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "| API | `okr-prerelease-api` | repository root | `deploy/docker/Dockerfile`" in readme
-    assert "| Worker | `okr-prerelease-worker` | repository root | `deploy/docker/Dockerfile`" in readme
+    assert "| API | `okr-prerelease-api` | `ghcr.io/<owner>/<repository>/backend:<commit-sha>`" in readme
+    assert "| Worker | `okr-prerelease-worker` | `ghcr.io/<owner>/<repository>/backend:<commit-sha>`" in readme
     assert "`python -m backend_app.worker`" in readme
 
 
@@ -54,7 +54,7 @@ def test_bff_uses_spa_bff_context_and_dockerfile() -> None:
     assert "COPY --from=build /app/dist ./dist" in dockerfile
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "| BFF | `okr-prerelease-bff` | `spa-bff` | `spa-bff/Dockerfile`" in readme
+    assert "| BFF | `okr-prerelease-bff` | `ghcr.io/<owner>/<repository>/bff:<commit-sha>`" in readme
 
 
 def test_web_uses_spa_web_context_and_dockerfile() -> None:
@@ -65,7 +65,7 @@ def test_web_uses_spa_web_context_and_dockerfile() -> None:
     assert "COPY --from=build /app/.next ./.next" in dockerfile
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "| Web | `okr-prerelease-web` | `spa-web` | `spa-web/Dockerfile`" in readme
+    assert "| Web | `okr-prerelease-web` | `ghcr.io/<owner>/<repository>/web:<commit-sha>`" in readme
 
 
 def test_backend_commands_are_distinct_and_explicit() -> None:

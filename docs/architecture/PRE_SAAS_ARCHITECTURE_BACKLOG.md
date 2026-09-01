@@ -420,9 +420,9 @@ Handoff baseline:
 - Schema is retained for the running services.
 - Automated architectural gates were previously re-run successfully.
 - Tenant/RLS, durable SaaS persistence, and database recovery controls are deferred by decision.
-## P0-06 disposition: deferred by explicit owner risk acceptance - 2026-09-01
+## P0-06 disposition: deferred for disposable pre-SaaS only - 2026-09-01
 
-The owner explicitly accepts the risk of not rehearsing production-grade application/database rollback during disposable pre-SaaS work. P0-06 is deferred, not technically verified or deleted. Before production SaaS persistence or tenant/RLS work begins, the project must restore the backup/recovery mechanism as a hard gate with a provider-supported backup, isolated restore test, application release rollback rehearsal, documented RPO/RTO, and named operational owner.
+The owner’s explicit risk acceptance applied only to the disposable mock-data phase, which has now been purged. P0-06 is deferred, not technically verified or deleted. Before production SaaS persistence or tenant/RLS work begins, the project must implement and rehearse the backup/recovery mechanism as a hard gate with a provider-supported backup, isolated restore test, application release rollback rehearsal, documented RPO/RTO, and named operational owner.
 
 ## Archive precedence
 

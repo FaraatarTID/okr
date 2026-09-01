@@ -24,7 +24,7 @@ def _on(workflow: dict) -> dict:
 
 def test_prerelease_workflow_is_protected_and_read_only() -> None:
     workflow = _workflow()
-    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["permissions"] == {"contents": "read", "packages": "write"}
 
     triggers = _on(workflow)
     assert "pull_request" in triggers
@@ -50,7 +50,7 @@ def test_workflow_covers_all_four_components_from_expected_build_inputs() -> Non
     assert {"validate", "quality-python", "quality-spa", "security", "build"}.issubset(
         jobs
     )
-    assert {"verify_public", "verify_private"}.issubset(jobs)
+    assert {"verify_public", "verify_private", "verify_deployment"}.issubset(jobs)
     assert jobs["verify_public"]["needs"] == "build"
     assert jobs["verify_private"]["needs"] == "build"
 
@@ -105,6 +105,10 @@ def test_workflow_validates_configuration_and_sanitizes_evidence() -> None:
     assert "ROLLBACK_INPUT" in text
     assert "rollback_values" in text
     assert "test_e2e_playwright_spa_login_to_atlas.py" in text
+    assert "verify_darkube_deployment.py" in text
+    assert "darkube_deployment_evidence_json" in text
+    assert "deployment-verification.json" in text
+    assert "darkube-deployment-verification" in text
 
 
 def test_manual_verification_requires_explicit_non_production_inputs() -> None:
@@ -140,3 +144,4 @@ def test_manual_verification_requires_explicit_non_production_inputs() -> None:
     assert "--scope private" in verify_text
     assert "MANUAL_ATTESTATION" in verify_text
     assert "environment: darkube-prerelease" in verify_text
+    assert "verify_deployment" in workflow["jobs"]

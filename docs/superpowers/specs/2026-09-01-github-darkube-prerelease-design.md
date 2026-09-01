@@ -6,7 +6,7 @@ Documentation HQ: [README](../../../README.md)
 
 **Date:** 2026-09-01
 
-**Decision:** Establish a disposable pre-release environment on Hamravesh Darkube, sourced from a protected GitHub `pre-release` branch. GitHub Actions remains the quality gate; Darkube GitHub integration remains the initial deployment mechanism. No company-server access, production data, production credentials, provider API, or production SaaS promotion is required for this phase.
+**Decision:** Establish a disposable pre-release environment on Hamravesh Darkube. GitHub Actions remains the quality gate and publishes immutable commit-SHA images to private GHCR; Darkube pulls those images. No company-server access, production data, production credentials, provider API, or production SaaS promotion is required for this phase.
 
 ## 1. Purpose and scope
 
@@ -61,7 +61,7 @@ Pull request -> protected pre-release branch
              required branch status
                      |
                      v
-          Darkube GitHub integration
+          GitHub Actions -> private GHCR -> Darkube image deployment
              namespace: okr-pre-release
                      |
       +--------------+---------------+----------------+
@@ -91,10 +91,11 @@ The API and worker must use the same commit and backend image build inputs. The 
 1. A pull request targets the protected `pre-release` branch.
 2. GitHub Actions runs repository quality gates, runtime-config checks, and build checks for all four application processes.
 3. GitHub branch protection permits merge only after required checks pass and the pull request has the required review.
-4. Darkube GitHub integration observes the merged `pre-release` commit and builds/deploys each configured application in the `okr-pre-release` namespace.
+4. GitHub Actions builds and publishes the merged `pre-release` commit images to private GHCR.
+5. Darkube pulls the matching commit-SHA images and deploys each configured application in the `okr-pre-release` namespace.
 5. The operator records the commit SHA, Darkube build IDs, deployed application versions, public URLs, database resource identity, and build/runtime log links.
 6. A post-deployment verification workflow receives the pre-release web/BFF/API URLs as non-production GitHub environment variables and runs health, smoke, and bounded SLO checks.
-7. If verification fails, the operator stops using the environment and redeploys the previous known-good Darkube build or previous Git commit through the Darkube UI. The rollback record includes reason, operator, prior/current identity, result, and verification output.
+8. If verification fails, the operator stops using the environment and redeploys the previous known-good image tag through the Darkube UI. The rollback record includes reason, operator, prior/current identity, result, and verification output.
 
 The initial integration deliberately does not make a provider API call from GitHub Actions. If Hamravesh later supplies a supported API or webhook contract, it can be added behind a provider adapter without changing the release evidence format or application contracts.
 
@@ -214,7 +215,7 @@ The current repository’s provider-neutral release manager remains useful for r
 
 - The `pre-release` branch is protected; direct pushes are disabled.
 - GitHub Actions quality jobs use read-only repository permissions and do not receive production secrets.
-- Darkube credentials, if needed for the GitHub integration, are configured in Darkube and are not exposed to ordinary workflow jobs.
+- Darkube's private GHCR pull credential is configured in Darkube and is not exposed to ordinary workflow jobs. GitHub Actions uses the repository-scoped `GITHUB_TOKEN` only for GHCR publication.
 - The database has no public access. API, worker, and database have no public ingress.
 - Only synthetic identities and synthetic OKR records may be used.
 - Every secret is environment-scoped, masked where GitHub stores it, excluded from artifacts, and rotated by destroying/recreating the disposable environment.

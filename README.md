@@ -345,11 +345,13 @@ just check
 Use this order for every pre-release and production release:
 
 1. **CI build and test:** GitHub Actions builds the application, runs the test suite, checks API artifacts, and produces the release image.
-2. **Staging deployment:** Deploy that exact immutable image to the Darkube staging environment.
+2. **Staging deployment:** Deploy the exact commit-SHA images published to private GHCR to the Darkube staging environment.
 3. **Staging evidence gate:** Run health, migration-state, authentication, BFF, and smoke checks. Do not promote an image that fails any required check.
 4. **Production approval:** Require an explicit release approval after staging evidence is available.
 5. **Production deployment:** Promote the same image tag to production; rebuilding between staging and production is not allowed.
 6. **Rollback readiness:** Keep the previous known-good image tag and use the documented image-based rollback procedure if production verification fails.
+7. **Signature verification:** Run the GitHub Actions GHCR signature verification workflow against the release manifest and require it to pass before production promotion.
+8. **Production promotion:** Run the production promotion workflow with the exact manifest and staging verification run IDs, obtain the protected production approval, and deploy the resulting digest-pinned promotion record through Darkube.
 
 Environment responsibilities:
 
@@ -360,6 +362,56 @@ Environment responsibilities:
 For deployment configuration, hardening, and operational procedures, see
 [DEPLOYMENT.md](DEPLOYMENT.md) and
 [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md).
+For the GHCR image contract and Darkube registry setup, see
+[deploy/ghcr/README.md](deploy/ghcr/README.md).
+For production database backup and restore onboarding, see
+[docs/saas/hamravesh-backup-onboarding.md](docs/saas/hamravesh-backup-onboarding.md).
+
+### Darkube Configuration Checklist
+
+Configure Darkube once for the private pre-release or production target:
+
+1. Create an isolated Darkube project or namespace for the environment.
+2. Add a private GHCR registry connection using a read-only package credential.
+3. Create four image-based applications: `web`, `bff`, `api`, and `worker`.
+4. Configure all applications with the same commit SHA:
+   - Web: `ghcr.io/<owner>/<repository>/web:<commit-sha>` on port `3000`.
+   - BFF: `ghcr.io/<owner>/<repository>/bff:<commit-sha>` on port `3001`.
+   - API: `ghcr.io/<owner>/<repository>/backend:<commit-sha>` on port `8100`.
+   - Worker: `ghcr.io/<owner>/<repository>/backend:<commit-sha>` with no HTTP port.
+5. Set the API and worker commands to `python -m backend_app.run_api` and
+   `python -m backend_app.worker`; keep the web and BFF image defaults.
+6. Set application secrets in Darkube, including the private database URL,
+   service token, signing secret, session secret, and bootstrap password.
+7. Keep the API, worker, and database private; expose only the web and, when
+   required by browser routing, the BFF through HTTPS.
+
+Do not configure Darkube to clone the private GitHub repository or rebuild the
+image. Deploy only commit-SHA images published by GitHub Actions. Validate the
+staging deployment before promoting the same image tag to production.
+
+### Production Database Recovery Prerequisite
+
+Production customer-data onboarding is currently blocked pending the first
+real Hamravesh backup and restore rehearsal. The repository contains the
+provider-neutral contracts and evidence validator, but no provider-backed
+recovery operation has been executed yet.
+
+When the provider account is available:
+
+1. Select the Hamravesh managed PostgreSQL database and configure its backup
+   schedule, retention, encryption, and off-site policy.
+2. Create an isolated, private restore target; never restore over production.
+3. Execute a real restore and record only sanitized provider IDs, statuses,
+   checksums, timestamps, measured RPO/RTO, and the accountable operator.
+4. Run `scripts/verify_recovery_evidence.py` against the sanitized evidence.
+5. Store the verified recovery evidence with the release and environment
+   records before introducing persistent customer data.
+
+The disposable pre-release environment may continue using `deferred` backup
+settings with synthetic data only. Do not carry that setting into a customer
+environment. See [Hamravesh production backup onboarding](docs/saas/hamravesh-backup-onboarding.md)
+for the complete procedure.
 
 For the containerized local stack:
 

@@ -3,7 +3,9 @@
 Documentation HQ: [README](../../../README.md)
 
 This directory describes the disposable GitHub-to-Darkube pre-release target.
-It is a manual console procedure, not a provider API client.
+GitHub Actions builds and publishes immutable images to GHCR; Darkube pulls
+those private images. It is a manual console procedure, not a provider API
+client.
 
 ## Hard boundary
 
@@ -12,7 +14,8 @@ It is not production, customer hosting, disaster recovery, or evidence that
 production SaaS gates are closed.
 
 - Namespace/project: `okr-pre-release`
-- Source branch: protected GitHub `pre-release`
+- Release source: protected GitHub `pre-release`, published as a commit-SHA image
+- Image registry: private GitHub Container Registry (`ghcr.io`)
 - Database: `okr-prerelease-postgres`, private and disposable
 - Applications: `okr-prerelease-web`, `okr-prerelease-bff`, `okr-prerelease-api`, `okr-prerelease-worker`
 - Runtime profile: `single_tenant_saas` with `OKR_SAAS_MODE=true`
@@ -36,9 +39,22 @@ unverified automation path.
 5. Record the merge commit SHA for every Darkube deployment. A Git commit SHA,
    not `latest`, is the release identity.
 
-The Darkube connection must be created from the Darkube console using the
-repository's GitHub authorization flow. Do not place a GitHub personal access
-token in application environment variables or repository files.
+Darkube does not need GitHub repository checkout access for this deployment
+path. Configure a private GHCR registry connection in Darkube using a narrowly
+scoped package-read credential stored by the provider. Do not place a GitHub
+personal access token in application environment variables or repository files.
+
+The GitHub Actions workflow needs the repository-provided `GITHUB_TOKEN` with
+`packages: write`; it publishes these commit-scoped images:
+
+```text
+ghcr.io/<owner>/<repository>/web:<commit-sha>
+ghcr.io/<owner>/<repository>/bff:<commit-sha>
+ghcr.io/<owner>/<repository>/backend:<commit-sha>
+```
+
+Keep the GHCR package visibility private. The API and worker use the same
+`backend:<commit-sha>` image, with different Darkube commands.
 
 ## 2. Create the disposable Darkube target
 
@@ -49,7 +65,7 @@ documentation does not establish a supported provisioning API.
 Before creating applications, confirm all of the following in the console:
 
 - The target is isolated from every production or customer project.
-- The GitHub repository and `pre-release` branch can be selected.
+- A private GHCR registry connection can pull the expected commit-tagged image.
 - Application-to-application private networking is available in the same
   cluster and namespace.
 - A database can be created with public access disabled.
@@ -84,43 +100,69 @@ If the console cannot place the database and apps in a shared private network,
 or cannot provide a private address, this setup is blocked pending Hamravesh
 confirmation. Do not enable public database access.
 
-## 4. Create the four GitHub-connected applications
+## 4. Create the four image-based applications
 
-Create each application through the Darkube console's GitHub repository flow.
-For every app, select the same repository, the `pre-release` branch, and the
-same merged commit. Use the build context and Dockerfile path shown below.
-The Dockerfile paths are repository-relative. The backend API and worker share
-the repository-root context and image; the BFF and web use their own
-directory-scoped contexts.
+Create each application through the Darkube console's container-image flow.
+For every app, select the image tag for the same merged commit. The backend API
+and worker share one image; the BFF and web use their own images.
 
-| App | Name | Build context | Dockerfile | Port | Command | Public ingress |
+| App | Name | Image | Port | Command | Public ingress |
 | --- | --- | --- | --- | --- | --- |
-| Web | `okr-prerelease-web` | `spa-web` | `spa-web/Dockerfile` | `3000` | `npm run start` (image default) | Yes, HTTPS |
-| BFF | `okr-prerelease-bff` | `spa-bff` | `spa-bff/Dockerfile` | `3001` | `node dist/src/server.js` (image default) | Only if the browser needs a public BFF URL |
-| API | `okr-prerelease-api` | repository root | `deploy/docker/Dockerfile` | `8100` | `python -m backend_app.run_api` (image default) | No; use provider-supported internal probing |
-| Worker | `okr-prerelease-worker` | repository root | `deploy/docker/Dockerfile` | None | `python -m backend_app.worker` | No |
+| Web | `okr-prerelease-web` | `ghcr.io/<owner>/<repository>/web:<commit-sha>` | `3000` | image default | Yes, HTTPS |
+| BFF | `okr-prerelease-bff` | `ghcr.io/<owner>/<repository>/bff:<commit-sha>` | `3001` | image default | Only if the browser needs a public BFF URL |
+| API | `okr-prerelease-api` | `ghcr.io/<owner>/<repository>/backend:<commit-sha>` | `8100` | `python -m backend_app.run_api` | No; use provider-supported internal probing |
+| Worker | `okr-prerelease-worker` | `ghcr.io/<owner>/<repository>/backend:<commit-sha>` | None | `python -m backend_app.worker` | No |
 
 For each application, enter these console values:
 
-1. **Source:** the same GitHub repository and `pre-release` branch.
-2. **Build context:** the exact context in the table. Use repository root for
-   API and worker, `spa-bff` for BFF, and `spa-web` for web.
-3. **Dockerfile:** the exact path in the table. For BFF and web, select the
-   Dockerfile relative to that directory if the console asks for a
-   context-relative path.
-4. **Port:** only the port in the table. The worker has no HTTP port.
-5. **Command:** keep the Dockerfile default where shown; use the table only
-   when Darkube requires an explicit command override.
-6. **Resources:** start with the smallest useful non-production plan and
+1. **Image:** the exact GHCR image and 40-character commit SHA from the GitHub
+   Actions run. Never use `latest`.
+2. **Registry:** select the private GHCR connection configured for this target.
+3. **Port:** only the port in the table. The worker has no HTTP port.
+4. **Command:** keep the image default where shown; use the table only when
+   Darkube requires an explicit command override.
+5. **Resources:** start with the smallest useful non-production plan and
    increase only when observed build or runtime behavior requires it.
-7. **Replicas:** one for the first rehearsal. Do not attach a persistent disk
+6. **Replicas:** one for the first rehearsal. Do not attach a persistent disk
    to a multi-replica app unless the provider confirms that combination.
-8. **Deploy trigger:** enable the GitHub-connected branch deployment behavior
-   only after a manual first build succeeds.
+7. **Deploy trigger:** trigger deployment from the approved image publication;
+   do not configure Darkube to rebuild from GitHub.
 
 The API and worker must use the same backend image inputs and commit. All four
 apps must report the same source commit in the deployment record. If Darkube
 builds them from different commits, stop the release.
+
+## 4.1 Capture deployment evidence for digest verification
+
+The GitHub workflow cannot assume a Darkube API. After the four applications
+are deployed, copy only the image reference and registry digest shown by the
+Darkube console into the `darkube_deployment_evidence_json` workflow-dispatch
+input. This is sanitized deployment metadata, not an environment dump. Use
+the exact image reference and `sha256:<64 lowercase hexadecimal characters>`
+digest for each application:
+
+```json
+{
+  "schema_version": 1,
+  "commit_sha": "<40-character-commit-sha>",
+  "namespace": "okr-pre-release",
+  "applications": {
+    "web": {"image": "ghcr.io/<owner>/<repository>/web:<commit-sha>", "digest": "sha256:<64-hex-digest>"},
+    "bff": {"image": "ghcr.io/<owner>/<repository>/bff:<commit-sha>", "digest": "sha256:<64-hex-digest>"},
+    "api": {"image": "ghcr.io/<owner>/<repository>/backend:<commit-sha>", "digest": "sha256:<64-hex-digest>"},
+    "worker": {"image": "ghcr.io/<owner>/<repository>/backend:<commit-sha>", "digest": "sha256:<64-hex-digest>"}
+  }
+}
+```
+
+The workflow downloads the GHCR `release-manifest.json` artifact and runs
+`python scripts/verify_darkube_deployment.py`. The check requires all four
+applications, the same commit SHA, exact image references, and exact digests;
+it also requires API and worker to match the manifest's backend image. A
+successful `deployment-verification.json` artifact is required before the
+sanitized pre-release evidence job can complete. Do not include URLs,
+credentials, environment values, logs, or provider API assumptions in this
+input.
 
 ## 5. Configure networking and TLS
 
@@ -304,3 +346,32 @@ unconfirmed until Hamravesh provides and the operator tests them.
   configuration or logs.
 - This setup does not close production backup, RPO/RTO, rollback, ownership,
   or SaaS evidence gates.
+
+## Production rollback procedure
+
+Rollback is a GitHub-and-Darkube-console procedure. No Darkube API or provider
+rollback endpoint is assumed.
+
+1. In GitHub Actions, run **Roll back production release**.
+2. Enter the previous known-good manifest's full commit SHA and the Actions run
+   ID that produced `ghcr-release-manifest-<sha>`.
+3. Confirm that the workflow verifies all three GHCR digests with Cosign and
+   pauses at the protected `production` environment.
+4. After approval, download the `production-rollback-<sha>` artifact and open
+   `production-rollback.json`.
+5. In the Darkube production console, set all four applications to the exact
+   digest-pinned values in that record. Web and BFF use their own images; API
+   and worker use the shared backend image.
+6. Deploy through the normal Darkube console action. Do not rebuild from
+   GitHub, use `latest`, or substitute a tag without its recorded digest.
+7. Run the production health, authentication, BFF, and smoke checklist. Keep
+   the rollback artifact, approver, timestamps, and smoke result in the
+   incident record.
+
+If manifest validation or signature verification fails, stop. Select another
+previous release with a complete manifest and valid keyless signatures.
+Database recovery is a separate future SaaS operational feature and is not
+performed by this disposable synthetic-data workflow. The `deferred` backup
+settings used here must not be carried into a production customer environment;
+provider-backed backup, isolated restore evidence, RPO/RTO targets, and an
+accountable owner are required before persistent customer data is introduced.

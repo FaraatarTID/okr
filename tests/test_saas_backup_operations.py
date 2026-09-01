@@ -14,6 +14,7 @@ from src.saas.backup_operations import (
     BackupVerificationError,
     BackupManager,
     BackupRecord,
+    ProviderContractError,
     checksum_for_payload,
     LocalBackupProvider,
     RestoreTarget,
@@ -96,6 +97,72 @@ def test_local_provider_requires_explicit_test_selection() -> None:
     with pytest.raises(RuntimeError, match="test-only"):
         select_backup_provider(test_only=False)
     assert isinstance(select_backup_provider(test_only=True), LocalBackupProvider)
+
+
+def test_backup_creation_rejects_provider_identity_mismatch() -> None:
+    provider = LocalBackupProvider()
+    manager = BackupManager(provider, operator=OperatorCredential.for_test("operator-a"))
+
+    original_create = provider.create_backup
+
+    def mismatched_create(environment_id, retention_class):
+        record = original_create(environment_id, retention_class)
+        record["provider"] = "other-provider"
+        return record
+
+    provider.create_backup = mismatched_create
+    with pytest.raises(ProviderContractError, match="provider identity"):
+        manager.create("env-a")
+
+
+def test_backup_verification_rejects_provider_identity_mismatch() -> None:
+    provider = LocalBackupProvider()
+    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    provider._backups[record.backup_id]["provider"] = "other-provider"
+
+    with pytest.raises(ProviderContractError, match="provider identity"):
+        BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).verify(record.backup_id)
+
+
+def test_backup_verification_rejects_manifest_identity_mismatch() -> None:
+    provider = LocalBackupProvider()
+    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    provider._backups[record.backup_id]["manifest"] = {
+        "backup_id": record.backup_id,
+        "environment_id": "env-b",
+        "created_at": record.created_at,
+    }
+
+    with pytest.raises(ProviderContractError, match="manifest identity"):
+        BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).verify(record.backup_id)
+
+
+def test_production_manager_rejects_test_only_provider() -> None:
+    with pytest.raises(ProviderContractError, match="production provider"):
+        BackupManager(
+            LocalBackupProvider(),
+            operator=OperatorCredential.for_test("operator-a"),
+            production=True,
+        )
+
+
+def test_restore_rejects_restore_provider_identity_mismatch() -> None:
+    provider = LocalBackupProvider()
+    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    provider.register_target(RestoreTarget("env-a", "rehearsal-db-1"))
+
+    class WrongProvider:
+        provider_name = "other-provider"
+
+        def restore_backup(self, backup_id, target):
+            return provider.verify_backup(backup_id) | {"elapsed_seconds": 0.0}
+
+    with pytest.raises(ProviderContractError, match="provider identity"):
+        RestoreManager(
+            provider,
+            WrongProvider(),
+            operator=OperatorCredential.for_test("operator-a"),
+        ).restore(record.backup_id, RestoreTarget("env-a", "rehearsal-db-1"))
 
 
 def test_verify_rejects_stale_backup() -> None:
@@ -372,4 +439,3 @@ def test_restore_cli_does_not_register_arbitrary_target(tmp_path) -> None:
     result = subprocess.run(command, capture_output=True, text=True, check=False, env={**os.environ, "OKR_OPERATOR_TOKEN": "token-a"})
     assert result.returncode != 0
     assert "registered" in result.stderr
-

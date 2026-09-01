@@ -1,0 +1,139 @@
+name: Promote verified release to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Full commit SHA represented by the release manifest
+        required: true
+        type: string
+      manifest_run_id:
+        description: GitHub Actions run ID that published the GHCR manifest
+        required: true
+        type: string
+      staging_run_id:
+        description: GitHub Actions run ID that produced staging verification
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+concurrency:
+  group: production-promotion
+  cancel-in-progress: false
+
+env:
+  RELEASE_SHA: ${{ inputs.release_sha }}
+
+jobs:
+  verify-staging:
+    name: Verify staging release evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout verification tools
+        uses: actions/checkout@v6
+
+      - name: Download staging verification
+        uses: actions/download-artifact@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.staging_run_id }}
+          name: darkube-deployment-verification
+          path: staging-verification
+
+      - name: Require exact staging verification
+        run: |
+          set -euo pipefail
+          test -f staging-verification/deployment-verification.json
+          jq -e --arg sha "$RELEASE_SHA" \
+            '.schema_version == 1 and .verified == true and .commit_sha == $sha and (.applications | sort == ["api", "bff", "web", "worker"])' \
+            staging-verification/deployment-verification.json >/dev/null
+
+  verify-signatures:
+    name: Verify release signatures
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: verify-staging
+    steps:
+      - name: Checkout release policy
+        uses: actions/checkout@v6
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Download release manifest
+        uses: actions/download-artifact@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.manifest_run_id }}
+          name: ghcr-release-manifest-${{ inputs.release_sha }}
+          path: release-manifest
+
+      - name: Verify manifest identity
+        run: |
+          set -euo pipefail
+          test -f release-manifest/release-manifest.json
+          jq -e --arg sha "$RELEASE_SHA" \
+            '.schema_version == 1 and .commit_sha == $sha and (.images | keys | sort == ["backend", "bff", "web"])' \
+            release-manifest/release-manifest.json >/dev/null
+
+      - name: Verify every release signature
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          issuer="https://token.actions.githubusercontent.com"
+          identity="^https://github.com/${REPOSITORY}/.github/workflows/publish-ghcr.yml@refs/heads/(main|master)$"
+          jq -r '.images[] | [.image, .digest] | @tsv' release-manifest/release-manifest.json | while IFS=$'\t' read -r image digest; do
+            test "$image" = "${image%:*}:${RELEASE_SHA}"
+            test "$digest" = sha256:*
+            cosign verify \
+              --certificate-oidc-issuer "$issuer" \
+              --certificate-identity-regexp "$identity" \
+              "${image}@${digest}"
+          done
+
+  approve-and-prepare:
+    name: Approve and prepare production promotion
+    runs-on: ubuntu-latest
+    needs: [verify-staging, verify-signatures]
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - name: Download verified release manifest
+        uses: actions/download-artifact@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.manifest_run_id }}
+          name: ghcr-release-manifest-${{ inputs.release_sha }}
+          path: release-manifest
+
+      - name: Write digest-pinned production promotion values
+        run: |
+          set -euo pipefail
+          jq --arg approved_by "${GITHUB_ACTOR}" \
+             --arg approved_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+             '. + {promotion: "approved", approved_by: $approved_by, approved_at: $approved_at}' \
+             release-manifest/release-manifest.json > production-promotion.json
+          {
+            echo "## Production promotion approved"
+            echo "- Release: `$RELEASE_SHA`"
+            echo "- Staging verification: passed"
+            echo "- Cosign verification: passed"
+            echo "- Production environment approval: granted"
+            echo "- Darkube action: deploy the digests in `production-promotion.json`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload production promotion record
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-promotion-${{ inputs.release_sha }}
+          path: production-promotion.json
+          retention-days: 90

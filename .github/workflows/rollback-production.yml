@@ -1,0 +1,151 @@
+name: Roll back production release
+
+on:
+  workflow_dispatch:
+    inputs:
+      previous_release_sha:
+        description: Full commit SHA represented by the previous known-good manifest
+        required: true
+        type: string
+      manifest_run_id:
+        description: GitHub Actions run ID that produced the previous release manifest
+        required: true
+        type: string
+      incident_reference:
+        description: Incident, ticket, or operator reference for this rollback
+        required: false
+        default: not-provided
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+concurrency:
+  group: production-rollback
+  cancel-in-progress: false
+
+env:
+  RELEASE_SHA: ${{ inputs.previous_release_sha }}
+
+jobs:
+  verify-previous-release:
+    name: Verify previous release signatures
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout release policy
+        uses: actions/checkout@v6
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.8.1
+
+      - name: Download previous release manifest
+        uses: actions/download-artifact@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.manifest_run_id }}
+          name: ghcr-release-manifest-${{ inputs.previous_release_sha }}
+          path: release-manifest
+
+      - name: Verify manifest identity
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test -f release-manifest/release-manifest.json
+          jq -e --arg sha "$RELEASE_SHA" --arg repository "$REPOSITORY" \
+            '.schema_version == 1 and .repository == $repository and .commit_sha == $sha and ($sha | test("^[0-9a-f]{40}$")) and (.images | keys | sort == ["backend", "bff", "web"])' \
+            release-manifest/release-manifest.json >/dev/null
+
+      - name: Validate rollback evidence contract
+        run: |
+          python scripts/verify_rollback_evidence.py \
+            --manifest release-manifest/release-manifest.json \
+            --commit-sha "$RELEASE_SHA" \
+            --output rollback-verification.json
+
+      - name: Verify every previous release signature
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          issuer="https://token.actions.githubusercontent.com"
+          identity="^https://github.com/${REPOSITORY}/.github/workflows/publish-ghcr.yml@refs/heads/(main|master)$"
+          jq -r '.images[] | [.image, .digest] | @tsv' release-manifest/release-manifest.json | while IFS=$'\t' read -r image digest; do
+            test "$image" = "${image%:*}:${RELEASE_SHA}"
+            test "$digest" = sha256:*
+            cosign verify \
+              --certificate-oidc-issuer "$issuer" \
+              --certificate-identity-regexp "$identity" \
+              "${image}@${digest}"
+          done
+
+      - name: Write signature verification summary
+        run: |
+          {
+            echo "## Previous release verified for rollback"
+            echo "- Release: \`$RELEASE_SHA\`"
+            echo "- Manifest run: \`${{ inputs.manifest_run_id }}\`"
+            echo "- Cosign verification: passed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  approve-and-prepare:
+    name: Approve and prepare production rollback
+    runs-on: ubuntu-latest
+    needs: verify-previous-release
+    environment: production
+    timeout-minutes: 15
+    steps:
+      - name: Checkout rollback tools
+        uses: actions/checkout@v6
+
+      - name: Download verified previous release manifest
+        uses: actions/download-artifact@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.manifest_run_id }}
+          name: ghcr-release-manifest-${{ inputs.previous_release_sha }}
+          path: release-manifest
+
+      - name: Revalidate rollback evidence contract
+        run: |
+          python scripts/verify_rollback_evidence.py \
+            --manifest release-manifest/release-manifest.json \
+            --commit-sha "$RELEASE_SHA" \
+            --output rollback-verification.json
+
+      - name: Write digest-pinned rollback record
+        env:
+          INCIDENT_REFERENCE: ${{ inputs.incident_reference }}
+        run: |
+          set -euo pipefail
+          jq \
+            --arg action "rollback" \
+            --arg approved_by "${GITHUB_ACTOR}" \
+            --arg approved_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg manifest_run_id "${{ inputs.manifest_run_id }}" \
+            --arg incident_reference "$INCIDENT_REFERENCE" \
+            '. + {rollback: $action, rollback_from_manifest_run_id: $manifest_run_id, incident_reference: $incident_reference, approved_by: $approved_by, approved_at: $approved_at}' \
+            release-manifest/release-manifest.json > production-rollback.json
+          {
+            echo "## Production rollback approved"
+            echo "- Restored release: \`$RELEASE_SHA\`"
+            echo "- Manifest run: \`${{ inputs.manifest_run_id }}\`"
+            echo "- Cosign verification: passed"
+            echo "- Production environment approval: granted"
+            echo "- Darkube action: manually deploy the digests in \`production-rollback.json\`"
+            echo "- Post-deployment action: run the production smoke checklist and record the result"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload production rollback record
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-rollback-${{ inputs.previous_release_sha }}
+          path: |
+            production-rollback.json
+            rollback-verification.json
+          retention-days: 90
