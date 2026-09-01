@@ -15,7 +15,7 @@ Troubleshooting
 
 ### Hybrid local launcher: remote DB unreachable
 
-- `run_hybrid_app_local.bat` now probes DB connectivity before startup.
+- `scripts/windows/run_hybrid_app_local.bat` now probes DB connectivity before startup.
 - If remote DB DNS/TCP checks fail, launcher can auto-fallback to local SQLite:
   - Path: `tmp/okr-local-dev.sqlite3`
   - Toggle fallback: `OKR_LOCAL_DB_FALLBACK=true|false` (default `false`)
@@ -29,7 +29,7 @@ Troubleshooting
 
 - On current SPA builds, `Manage Nodes` should be visible even when no node is selected.
 - If you still do not see `Create Goal`:
-  - Make sure you launched the SPA hybrid stack (`run_hybrid_app_local.bat`) and not a stale browser tab.
+  - Make sure you launched the SPA hybrid stack (`scripts/windows/run_hybrid_app_local.bat`) and not a stale browser tab.
   - Fully reload the browser (`Ctrl+F5`) after pulling code updates.
   - Check `tmp/local-hybrid-logs/spa-web.err.log` for build/runtime errors.
 

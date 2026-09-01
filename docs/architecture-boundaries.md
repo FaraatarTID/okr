@@ -18,6 +18,38 @@ This working proposal implements the boundary decision required by [PRE_SAAS_ARC
 | `spa-web` | Browser UI, client state, and presentation | Backend process startup and database access |
 | `app.py` | Temporary compatibility facade only, if still required by callers | New canonical runtime behavior |
 
+## Repository packaging and ownership
+
+The repository is a deliberate multi-service workspace, not a request to
+introduce another package manager:
+
+- `src/` is the shared Python application layer. `src/domain/` contains
+  framework-independent business rules; `src/services/` contains application
+  use cases and integrations; `src/crud.py`, `src/database.py`, and
+  `src/models.py` contain the current persistence implementation.
+- `backend_app/` is the deployable Python backend package. It owns FastAPI
+  assembly, HTTP routers, process configuration, and the asynchronous worker.
+  Its README is the service-level onboarding reference.
+- `app.py` is a root-level compatibility facade for legacy callers. It is not
+  a package root or a second runtime composition root.
+- `spa-bff/` is the Node.js browser-facing mediation service. It owns the
+  browser API allowlist, session mediation, and backend proxy contract.
+- `spa-web/` is the Next.js browser application. It owns presentation, client
+  state, and browser-facing routes; it must not access Python modules or the
+  database directly.
+
+Python uses the root `pyproject.toml` and `uv.lock` as the authoritative
+dependency and development-tool configuration. The project intentionally sets
+`tool.uv.package = false`: this is an application workspace, not a
+distributable Python package. `backend_app/requirements.txt` remains only as a
+deployment compatibility input while consumers migrate to the root uv
+configuration.
+
+JavaScript uses the existing root `package.json` npm workspaces for
+`spa-bff/` and `spa-web/`. Their service manifests remain service-local, but
+root-level `npm install`, `npm test`, and workspace scripts are the canonical
+monorepo operations. No additional workspace manager is required.
+
 ## Dependency direction
 
 ```text
@@ -60,6 +92,12 @@ The root `app.py` surface is classified as compatibility-only until caller traci
 - a removal condition and owner.
 
 New code should import from the canonical package or an explicitly documented interface, not from `app.py`.
+
+Safe migration rule: do not move, delete, or rename `app.py` merely to make the
+tree look cleaner. First inventory all imports, CLI entry points, tests, and
+deployment references; add equivalent coverage through `backend_app` or the
+canonical service boundary; migrate callers; and remove the facade only after
+the inventory is empty and the removal owner and evidence are recorded.
 
 The tested symbol-level migration map is recorded in [facade-migration-map.md](facade-migration-map.md).
 
