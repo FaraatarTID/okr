@@ -2,237 +2,191 @@ Documentation HQ: [README](README.md)
 
 # Enterprise SaaS Roadmap
 
-Current roadmap for delivering OKR as a cloud SaaS while preserving a
-supported enterprise self-hosted deployment option.
-
-The [Pre-SaaS Architecture Simplification Backlog](PRE_SAAS_ARCHITECTURE_BACKLOG.md)
-is a mandatory prerequisite. It resolves canonical package ownership, runtime
-entrypoints, BFF responsibilities, compatibility surfaces, and documentation
-drift before tenant and RLS work begins.
+Status: ACTIVE
+Decision: single-tenant enterprise SaaS first
+Source design: [Single-Tenant Enterprise SaaS Design](docs/superpowers/specs/2026-09-01-single-tenant-saas-design.md)
+Historical prerequisite: [Pre-SaaS Architecture Simplification Backlog](PRE_SAAS_ARCHITECTURE_BACKLOG.md)
 
 ## Product direction
 
-OKR is an enterprise, multi-user platform. The SaaS offering adds managed
-provisioning, tenant isolation, identity integration, billing, and cloud
-operations to the existing SPA-first runtime:
+Preserve the working on-premise OKR application and add managed SaaS operations around it. Each enterprise receives a dedicated application environment and dedicated database. A separate control plane manages customer environment inventory and lifecycle metadata; it does not proxy ordinary customer-domain traffic.
 
 ```text
-Browser -> CDN/WAF -> spa-web -> spa-bff -> backend-api
-                                             |       |
-                                             v       v
-                                      PostgreSQL  backend-worker
-                                      Redis/queue  object storage
+Control plane -> provision, upgrade, monitor, suspend, retire
+
+Customer environment A: spa-web -> spa-bff -> backend-api -> database
+                                             -> backend-worker -> queue/storage
+
+Customer environment B: spa-web -> spa-bff -> backend-api -> database
+                                             -> backend-worker -> queue/storage
 ```
 
-The same application artifacts should support SaaS and self-hosted delivery.
-Deployment-specific infrastructure belongs behind explicit adapters and
-configuration, not in product behavior or tenant authorization logic.
+The current on-premise deployment remains supported and must not depend on the control plane. Shared-database SaaS and PostgreSQL RLS are deferred until a separate decision proves that dedicated environments are insufficient.
 
-## Non-negotiable SaaS principles
+## Non-negotiable principles
 
-1. Tenant identity is derived from authenticated server-side membership, never
-   trusted from a client-supplied `tenant_id`.
-2. Every tenant-owned read, write, job, file, and audit event is tenant-scoped.
-3. PostgreSQL Row-Level Security is defense in depth, not a replacement for
-   application authorization.
-4. API and worker processes are stateless and horizontally disposable.
-5. Runtime configuration and secrets are externalized from immutable artifacts.
-6. SaaS and self-hosted modes share contracts, tests, migrations, and security
-   invariants wherever possible.
-7. Multi-tenant SaaS uses direct Postgres through the approved transaction
-   pooler; the Supabase HTTPS fallback is restricted to alpha and self-hosted
-   compatibility deployments.
+1. Customer data is isolated by application and database environment.
+2. Cross-environment access is denied by default.
+3. Existing BFF security, actor binding, session revocation, authorization, worker, OpenAPI, and import-boundary controls remain mandatory.
+4. Application artifacts are immutable; configuration and secrets are external.
+5. Provisioning, upgrade, backup, restore, and retirement are repeatable and auditable.
+6. Database backup and application rollback are mandatory before real customer data is introduced.
+7. RLS and shared-database tenancy are future options, not Phase 0 scope.
 
-## Planning controls
-
-### Capacity and effort estimates
-
-Estimates assume one primary maintainer working sequentially, with 12-16
-focused engineering hours per week after support, release operations, and
-incident reserve. Each estimate includes implementation, tests, documentation,
-and one correction loop. It excludes customer decision latency, procurement,
-and cloud-provider lead time.
-
-| Phase | Estimate | Capacity envelope | Commitment |
-| --- | ---: | ---: | --- |
-| Pre-SaaS: architecture simplification | 7-14 sessions / 52-92 hours | 4-7 weeks | Mandatory prerequisite |
-| Phase 0: SaaS architecture foundation | 8-12 sessions / 64-96 hours | 5-8 weeks | Committed prerequisite |
-| Phase 1: Cloud runtime and control plane | 10-16 sessions / 80-128 hours | 6-10 weeks | Conditional on Phase 0 |
-| Phase 2: Enterprise identity and commercial lifecycle | 12-20 sessions / 96-160 hours | 8-13 weeks | Conditional on evidence |
-| Phase 3: Regional, compliance, and advanced scale | 16-28 sessions / 128-224 hours | 10-18 weeks | Contract-triggered only |
-
-These are planning ranges, not delivery promises. Work that exceeds its upper
-bound is split into a smaller slice or returned to architecture review instead
-of silently expanding the phase.
-
-### Phase promotion gates
+## Phase gates
 
 | Promotion | Required evidence | Decision owner |
 | --- | --- | --- |
-| Pre-SaaS -> Phase 0 | Approved target topology; canonical backend startup; explicit BFF decision; compatibility and documentation cleanup; structural quality gates passing | Engineering owner and architecture reviewer |
-| Phase 0 -> Phase 1 | Server-derived tenant identity; application and database cross-tenant denial tests; tenant context preserved in jobs, retries, exports, and audit events; no open critical/high isolation findings | Engineering owner and security reviewer |
-| Phase 1 -> Phase 2 | Tenant lifecycle works without manual SQL; load baseline identifies a real scaling constraint; two release cycles of usable SLO/error-budget data; rollback and backup/restore drills recorded | Engineering owner and operations owner |
-| Phase 2 -> Phase 3 | Signed enterprise requirement for residency, regional placement, or contractual isolation; quantified tenant/traffic demand; approved ADR, threat model, and cost model | Product owner plus security, legal, and operations reviewers |
+| Pre-SaaS -> Phase 0 | Promoted mainline, approved single-tenant topology, canonical startup, BFF decision, documentation cleanup, quality gates | Engineering owner and architecture reviewer |
+| Phase 0 -> Phase 1 | Environment contract, version and health contracts, repeatable provisioning design, backup/rollback entry criteria | Engineering owner and operations reviewer |
+| Phase 1 -> Phase 2 | Provisioning without manual SQL, pilot deployment, two deployable release artifacts, rollback rehearsal, backup/restore drill, RPO/RTO | Engineering owner and operations owner |
+| Phase 2 -> Phase 3 | Signed enterprise requirement for identity, billing, residency, regional placement, or contractual isolation | Product owner plus security and operations reviewers |
 
-Calendar time alone never promotes a phase. If a gate is not met, capacity is
-spent closing the gate or addressing observed production risk.
+Calendar time never promotes a phase. Missing evidence is work, not permission to skip the gate.
 
-### Tenancy ADR starting bias
+## Phase 0: SaaS environment foundation
 
-The shared-database versus database-per-tenant ADR should begin with an
-explicit default leaning: shared PostgreSQL with mandatory tenant-scoped
-application authorization, database constraints/RLS as defense-in-depth, and
-automated cross-tenant denial tests. This is the most supportable starting
-point for a solo maintainer and preserves one coherent SaaS/self-hosted model.
-
-The ADR must overturn that default when contractual isolation, data residency,
-noisy-neighbor limits, backup/restore requirements, or blast-radius analysis
-show that shared infrastructure is insufficient. Database-per-tenant remains a
-valid option, but it must be selected deliberately after comparing migration
-cost, operational burden, failure isolation, restore time, observability, and
-maximum expected tenant count.
-
-The same ADR records the data transport boundary: SaaS tenant traffic uses the
-direct Postgres path so transaction-local RLS context is available. HTTPS
-fallback remains an explicit alpha/self-hosted capability. It is not enabled
-for SaaS by default and cannot be introduced there without a new threat model,
-API-layer filtering parity tests, and architecture approval.
-
-### Commitment vocabulary
-
-- `Committed`: required for the next phase and covered by the current capacity envelope.
-- `Conditional`: begins only after its promotion gate has objective evidence.
-- `Contract-triggered`: begins only after a signed customer or regulatory requirement.
-- `Deferred`: documented for future evaluation and receives no current implementation capacity.
-
-## Phase 0: SaaS architecture foundation
-
-**Goal:** establish the security and domain foundations before exposing shared
-cloud infrastructure to customers.
-
-### Existing foundations to transfer
-
-Phase 0 should extend proven mechanisms rather than replace them:
-
-- The centralized authorization layer, including `_authorize_goal_mutation` and the owner/manager/admin predicates in `src/domain/authorization.py`, should gain tenant-aware predicates and context checks.
-- The mutation authorization matrix in `test_backend_mutation_auth_matrix.py` should be extended so every tenant-sensitive route proves both BFF exposure policy and cross-tenant denial behavior.
-- Fail-closed mutation behavior under transport failure remains a non-negotiable isolation property: uncertain tenant or data state must refuse writes.
-- Durable job state, idempotency keys, and retry classification should be retained; tenant context must be carried through enqueue, retry, execution, and dead-letter handling.
-- OpenAPI export, generated client types, and the CI drift gate should remain the contract enforcement path as tenant-scoped fields and responses are introduced.
-
-### Genuinely greenfield scope
-
-There is currently no tenant concept, membership model, or tenant-specific RLS
-policy. The following work is therefore domain-model construction, not merely
-plumbing:
-
-- Define tenant identity, membership, lifecycle, and server-side context resolution.
-- Build the tenant coverage inventory for every persisted entity, including ownership, foreign keys, uniqueness, indexes, and retention rules.
-- Reconcile current instance-wide semantics for cycles, teams, and users with tenant-local semantics. In particular, “global” cycles and admin-owned records must be classified as tenant-owned, platform-owned, or explicitly shared before migrations are written.
-- Add migration and denial-test fixtures that prove a record from tenant A cannot be read, mutated, exported, or processed by tenant B.
-
-This distinction is a Phase 0 scope guard: existing reliability patterns are
-reused, while the tenant data model receives its own design, migration review,
-and threat-model sign-off before cloud scaling work begins.
+Goal: define the dedicated customer-environment contract without changing the current product domain into a tenant-aware schema.
 
 Deliverables:
 
-- `organization`/tenant and membership model
-- Tenant context middleware for BFF and backend
-- Tenant-aware authorization service and request metadata
-- `tenant_id` coverage inventory for every persisted entity
-- Cross-tenant denial tests for read, mutation, job, and export paths
-- ADR documenting shared-database versus database-per-tenant strategy
+- Customer-environment manifest and lifecycle state machine.
+- Version, health, readiness, and configuration contracts.
+- Dedicated application/database provisioning contract.
+- Operator access and lifecycle audit-event contract.
+- Backup, restore, retention, ownership, RPO, and RTO requirements.
+- ADR recording single-tenant SaaS as the first deployment model.
+- Explicit trigger and comparison criteria for any future shared-database/RLS ADR.
 
 Exit criteria:
 
-- No tenant-owned request can execute without resolved tenant membership.
-- Cross-tenant access is denied in application tests and database policy tests.
-- Background jobs retain tenant context through enqueue, retry, and execution.
+- An environment can be described without manual infrastructure assumptions.
+- Provisioning, health, version, suspension, and retirement states are explicit.
+- The on-premise profile still works independently.
+- Real customer onboarding is blocked until backup and rollback evidence exists.
 
-## Phase 1: Cloud runtime and control plane
+## Phase 1: Repeatable cloud environments
 
-**Goal:** make tenant lifecycle and cloud deployment operationally explicit.
+Goal: make one dedicated enterprise environment repeatable and operable.
 
 Deliverables:
 
-- Managed PostgreSQL, Redis, queue, and object-storage adapters
-- Tenant provisioning, suspension, deletion, and export workflows
-- Platform operator control plane separated from customer administration
-- Per-tenant quotas, feature flags, and usage counters
-- Cloud secret manager integration and signing-key rotation
-- Stateless API/BFF/worker deployment with autoscaling boundaries
+- Managed PostgreSQL, queue, cache, and object-storage adapters.
+- Idempotent environment provisioning and retirement.
+- Customer-specific configuration and secret-manager integration.
+- Environment health and version reporting.
+- Pilot deployment workflow with acceptance smoke tests.
+- Application release rollback using two real deployable artifacts.
+- Provider-supported backup and isolated restore rehearsal.
 
 Exit criteria:
 
-- A tenant can be provisioned and made usable without manual SQL.
-- A suspended tenant cannot authenticate or enqueue work.
-- API and worker replicas can scale independently without local state coupling.
+- An environment can be provisioned without manual SQL.
+- A failed deployment can return to the previous application artifact.
+- Backup freshness and restore-test status are visible to operators.
+- Documented RPO/RTO targets are demonstrated by an operational drill.
 
 ## Phase 2: Enterprise identity and commercial lifecycle
 
-**Goal:** meet enterprise customer onboarding and account-management needs.
+Goal: support enterprise onboarding and account management.
 
 Deliverables:
 
-- OIDC login and tenant-aware session claims
-- SAML SSO for enterprise plans
-- SCIM provisioning and deprovisioning
-- MFA policy integration through the identity provider
-- Subscription plans, billing provider integration, quotas, and entitlements
-- Tenant domain discovery and verified custom domains
+- OIDC login and enterprise SSO integration.
+- SAML SSO for enterprise plans.
+- SCIM provisioning and deprovisioning.
+- MFA policy integration through the identity provider.
+- Subscription plans, billing, quotas, and entitlements.
+- Verified customer domains and environment routing.
+- Customer administrator workflows separated from platform operations.
 
 Exit criteria:
 
-- Customer administrators can manage membership without platform-operator access.
+- Customer administrators manage membership without platform-operator access.
 - Identity lifecycle changes revoke access promptly.
 - Entitlements are enforced consistently in UI, API, and worker paths.
 
-## Phase 3: SaaS reliability, compliance, and scale
+## Phase 3: Reliability, compliance, and scale
 
-**Goal:** operate the service predictably across tenants and regions.
+Goal: operate the service predictably across many dedicated environments.
 
 Deliverables:
 
-- Per-tenant and platform-wide SLOs, dashboards, and alert routing
-- Tenant-aware audit events and security investigation tooling
-- Expand/contract migration process with rolling-version compatibility
-- Backup, restore, tenant export, and tenant deletion drills
-- Rate limits and noisy-neighbor protection by tenant and plan
-- Data residency and regional deployment policy
-- Disaster recovery exercise with documented RPO/RTO evidence
+- Per-environment and platform-wide SLOs and alert routing.
+- Tenant-aware audit and security investigation tooling.
+- Rolling-version compatibility and expand/contract migration process.
+- Backup, restore, export, deletion, and disaster-recovery drills.
+- Rate limits and noisy-neighbor protection.
+- Data residency and regional deployment policy.
+- Cost and capacity model for dedicated environments.
 
 Exit criteria:
 
-- A tenant incident can be isolated without taking down unrelated tenants.
-- Restore and deletion evidence is repeatable and auditable.
-- SLO and capacity signals support capacity planning and customer commitments.
+- An environment incident can be isolated without taking down unrelated customers.
+- Restore, deletion, and disaster-recovery evidence is repeatable and auditable.
+- Capacity and cost signals support customer commitments.
 
-## Self-hosted compatibility track
+## Control-plane boundary
 
-Self-hosted enterprise deployments remain supported through Docker Compose,
-Kubernetes, or VM-based deployment. They must use the same:
+The control plane owns customer and environment identity, desired/current version, health, backup state, lifecycle actions, and operator audit events. It must not own or proxy customer OKR records. Customer traffic is routed to the customer environment after authentication and environment resolution.
 
-- OpenAPI and BFF contracts
-- Tenant and authorization invariants
-- Migration and readiness gates
-- Dependency lockfiles and security checks
-- Backup, audit, and operational runbooks
+Provisioning must be idempotent. Repeating a failed action must converge on one environment rather than create duplicate application runtimes or databases.
 
-Cloud-only capabilities such as hosted billing or managed identity may be
-disabled or replaced by deployment adapters, but must not weaken tenant
-isolation or authorization.
+## Self-hosted compatibility
 
-## Immediate backlog promotion
+On-premise deployments continue to use the existing supported deployment profiles. They share application contracts, authorization invariants, health checks, dependency checks, and operational documentation with SaaS, but they do not require the control plane or hosted billing.
 
-The following work should be promoted from deferred architecture planning:
+## Deferred decisions
 
-1. Tenant/workspace data model and authenticated tenant context
-2. Tenant-aware authorization and PostgreSQL RLS
-3. Tenant propagation through async jobs, exports, and audit events
-4. SaaS control-plane provisioning lifecycle
-5. Managed infrastructure adapters and cloud deployment target
+- Shared-database multi-tenancy and PostgreSQL RLS.
+- Tenant identifiers in the current pre-SaaS domain schema.
+- Database-per-tenant automation beyond the dedicated-environment contract.
+- Regional deployment and data residency.
+- Billing and self-service provisioning.
+- Cross-customer analytics.
+- Removing the BFF without a new ADR and security-parity evidence.
 
-Do not begin Phase 0 tenant work until the [Pre-SaaS Architecture Simplification
-Backlog](PRE_SAAS_ARCHITECTURE_BACKLOG.md) promotion gate is approved. Do not
-begin broad package relocation or Turborepo/Nx adoption outside that backlog.
+## Immediate execution sequence
+
+1. Approve this roadmap and the linked single-tenant design.
+2. Define the customer-environment manifest and lifecycle contract in [Customer Environment Contract](docs/saas/customer-environment-contract.md).
+3. Build one repeatable isolated environment from the existing artifacts.
+4. Add versioned deployment, health-gated promotion, and application rollback.
+5. Add provider-backed backup/restore and document RPO/RTO before onboarding real data.
+6. Add control-plane lifecycle automation only after one environment works manually and repeatably.
+ 
+## Task 7 - Phase 1 entry-gate evidence and handoff (2026-09-01)
+
+**Status: EVIDENCE ASSEMBLED; PHASE 1 PROMOTION BLOCKED**
+
+The Task 1-6 implementation evidence is consolidated in [Phase 1 entry evidence](docs/saas/phase-1-entry-evidence.md). The approved first SaaS model remains single-tenant enterprise SaaS: one dedicated application environment and database per customer.
+
+Entry-gate disposition:
+
+- Environment contract, profile validation, isolated provisioning, release/rollback contracts, backup/restore contracts, and metadata-only control-plane inventory are implemented and locally tested.
+- Local evidence is not production-provider evidence. No production SaaS environment, provider backup, provider restore, or customer-data onboarding is approved by this record.
+- Application release rollback is demonstrated only through the isolated local adapter/test evidence. Provider-backed rollback: **NOT AVAILABLE - provider/artifact not selected**.
+- Provider backup/restore evidence: **NOT AVAILABLE - provider/artifact not selected**. Local metadata-only contract evidence does not substitute for provider evidence.
+- Provider checksum verification, retention enforcement, measured RPO/RTO, and provider restore timing: **NOT AVAILABLE - provider/artifact not selected**.
+- Real-data onboarding is prohibited until the provider-specific backup/restore and application rollback gates are evidenced and owned.
+- Shared-database tenancy, tenant identifiers, RLS, and cross-customer schema remain deferred.
+
+Required owners before production entry:
+
+- Product/architecture owner: repository owner, for gate acceptance and scope decisions.
+- Platform/operations owner: **UNASSIGNED**; must be named before provider integration and production onboarding.
+- Customer-environment operator: must be named for each lifecycle and recovery action.
+
+The pre-SaaS baseline remains supported and may continue product implementation without tenant/RLS or real-data scope.
+
+The executable promotion gate is `just saas-evidence`. It must pass against
+`docs/saas/phase-1-entry-evidence.md` before Phase 1 promotion; the current
+document is intentionally incomplete and therefore must fail closed. The
+canonical deployment vocabulary is `on_premise`, `single_tenant_saas`, and
+external `control_plane`; `self_hosted` and `saas` are compatibility aliases
+only at explicitly tested legacy boundaries.
+
+Lifecycle commands use authenticated operator credentials, not arbitrary
+operator-name arguments. The token is supplied through `OKR_OPERATOR_TOKEN`
+and resolved against the credential file passed to the command or configured
+through `OKR_OPERATOR_CREDENTIAL_FILE`.

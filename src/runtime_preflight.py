@@ -144,7 +144,7 @@ def evaluate_runtime_preflight(
     report = RuntimePreflightReport()
     profile = str(deployment_profile or "").strip().lower().replace("-", "_")
     access_mode = str(data_access_mode or "database").strip().lower()
-    if profile == "saas":
+    if profile in {"single_tenant_saas", "saas"}:
         if access_mode != "database":
             report.errors.append(
                 "SaaS deployment profile permits only OKR_DATA_ACCESS_MODE=database; "

@@ -84,3 +84,11 @@ Rejected because it would encourage business logic duplication and make future c
 - Rollback rehearsal showing the last-known-good BFF and API pair.
 
 P0-03 should move to `VERIFIED` only when this evidence is linked from the architecture status ledger.
+
+## Control-plane boundary
+
+The backend exposes an operator-only `/control-plane/environments` boundary for
+environment inventory and lifecycle audit metadata. It is not a customer-domain
+API and must not proxy, query, or mutate goals, users, teams, or other OKR
+records. Customer traffic continues through the BFF to the canonical backend
+application boundary.

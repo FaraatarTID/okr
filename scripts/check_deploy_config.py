@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import argparse
 import ipaddress
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Mapping
 from urllib.parse import urlparse
+
+from src.saas.environment_config import ConfigError, SaaSEnvironmentConfig
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,6 +107,12 @@ def _display_path(path: Path) -> str:
 
 def _normalize(value: str) -> str:
     return str(value or "").strip().lower()
+
+
+def is_saas_mode_requested(value: str) -> bool:
+    """Return whether a deployment explicitly requests SaaS mode."""
+
+    return _normalize(value) in {"1", "true", "yes", "on"}
 
 
 def _looks_placeholder(value: str) -> bool:
@@ -260,6 +270,32 @@ def _validate_backend_api_url(
         )
 
 
+def validate_saas_environment(
+    env: Mapping[str, str], *, runtime: bool = False, required: bool = False
+) -> ValidationReport:
+    """Validate the dedicated SaaS contract without changing self-hosted rules."""
+
+    report = ValidationReport()
+    profile = _normalize(env.get("OKR_DEPLOYMENT_PROFILE", ""))
+    saas_requested = is_saas_mode_requested(env.get("OKR_SAAS_MODE", ""))
+    if not required and not saas_requested and profile != "single_tenant_saas":
+        return report
+
+    try:
+        SaaSEnvironmentConfig.from_env(env)
+    except ConfigError as exc:
+        report.errors.append(str(exc))
+        return report
+
+    if runtime:
+        for key in ("OKR_ENVIRONMENT_ID", "OKR_CUSTOMER_ID", "OKR_DATABASE_URL"):
+            if _looks_placeholder(env.get(key, "")):
+                report.errors.append(
+                    f"'{key}' appears to be a placeholder in SaaS runtime mode."
+                )
+    return report
+
+
 def validate(
     *,
     env_file: Path,
@@ -340,6 +376,10 @@ def validate(
         strict=(mode == "runtime"),
     )
 
+    report.errors.extend(
+        validate_saas_environment(env, runtime=(mode == "runtime")).errors
+    )
+
     if mode == "runtime":
         required_runtime_keys = (
             "OKR_DATABASE_URL",
@@ -392,15 +432,38 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default="template",
         help="Validation mode: template (for CI) or runtime (for go-live checks).",
     )
+    parser.add_argument(
+        "--environment",
+        action="store_true",
+        help="Validate the current process environment instead of a dotenv file.",
+    )
+    parser.add_argument(
+        "--saas-only",
+        action="store_true",
+        help="Require and validate the SaaS environment contract.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv or sys.argv[1:])
-    report = validate(
-        env_file=args.env_file.resolve(),
-        mode=args.mode,
-    )
+    if args.environment:
+        report = validate_saas_environment(
+            dict(os.environ), runtime=(args.mode == "runtime"), required=args.saas_only
+        )
+    elif args.saas_only:
+        try:
+            env = _parse_dotenv(args.env_file.resolve())
+            report = validate_saas_environment(
+                env, runtime=(args.mode == "runtime"), required=True
+            )
+        except Exception as exc:
+            report = ValidationReport(errors=[f"Failed reading env file: {exc}"])
+    else:
+        report = validate(
+            env_file=args.env_file.resolve(),
+            mode=args.mode,
+        )
 
     if report.warnings:
         for warning in report.warnings:

@@ -1,3 +1,8 @@
+x-release-images:
+  backend: &release-backend-image ${OKR_RELEASE_BACKEND_IMAGE:-${IMAGE:-okr-backend:local}}
+  bff: &release-bff-image ${OKR_RELEASE_BFF_IMAGE:-${SPA_BFF_IMAGE:-okr-spa-bff:local}}
+  web: &release-web-image ${OKR_RELEASE_WEB_IMAGE:-${SPA_WEB_IMAGE:-okr-spa-web:local}}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -19,11 +24,20 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    image: ${IMAGE:-okr-backend:local}
+    image: *release-backend-image
     environment:
-      - OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
-      - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE:-database}
-      - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE:-self_hosted}
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
+      - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE-database}
+      - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE-on_premise}
+      - OKR_CONTROL_PLANE_STATE_PATH=${OKR_CONTROL_PLANE_STATE_PATH-/var/lib/okr/saas-control-plane.json}
+      - OKR_RELEASE_VERSION=${OKR_RELEASE_VERSION:-local}
+      - OKR_RELEASE_ARTIFACT=${OKR_RELEASE_ARTIFACT:-local}
+      - OKR_SAAS_MODE=${OKR_SAAS_MODE-false}
+      - OKR_ENVIRONMENT_ID=${OKR_ENVIRONMENT_ID:-}
+      - OKR_CUSTOMER_ID=${OKR_CUSTOMER_ID:-}
+      - OKR_HEALTH_URL=${OKR_HEALTH_URL:-/healthz}
+      - OKR_BACKUP_PROVIDER=${OKR_BACKUP_PROVIDER:-deferred}
+      - OKR_BACKUP_SCHEDULE=${OKR_BACKUP_SCHEDULE:-deferred}
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
@@ -52,7 +66,7 @@ services:
       - AI_API_KEY=${AI_API_KEY:-}
       - PDF_METHOD=${PDF_METHOD:-pdfshift}
       - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
-    command: ["python", "-m", "backend_app.run_api"]
+    command: ["sh", "-c", "case \"$$(printf '%s' \"$$OKR_SAAS_MODE\" | tr '[:upper:]' '[:lower:]')\" in true|1|yes|on) SaaS=1 ;; *) SaaS=0 ;; esac; if [ \"$$SaaS\" = \"1\" ] || [ \"$$OKR_DEPLOYMENT_PROFILE\" = \"single_tenant_saas\" ]; then python scripts/check_deploy_config.py --mode runtime --saas-only --environment || exit $$?; fi; exec python -m backend_app.run_api"]
     ports:
       - "${OKR_BACKEND_BIND_ADDRESS:-127.0.0.1}:${OKR_BACKEND_HOST_PORT:-8100}:${OKR_BACKEND_PORT:-8100}"
     healthcheck:
@@ -62,6 +76,8 @@ services:
       retries: 40
       start_period: 5s
     restart: unless-stopped
+    volumes:
+      - okr-control-plane-state:/var/lib/okr
     depends_on:
       postgres:
         condition: service_healthy
@@ -70,11 +86,20 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-    image: ${IMAGE:-okr-backend:local}
+    image: *release-backend-image
     environment:
-      - OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
-      - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE:-database}
-      - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE:-self_hosted}
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
+      - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE-database}
+      - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE-on_premise}
+      - OKR_CONTROL_PLANE_STATE_PATH=${OKR_CONTROL_PLANE_STATE_PATH-/var/lib/okr/saas-control-plane.json}
+      - OKR_RELEASE_VERSION=${OKR_RELEASE_VERSION:-local}
+      - OKR_RELEASE_ARTIFACT=${OKR_RELEASE_ARTIFACT:-local}
+      - OKR_SAAS_MODE=${OKR_SAAS_MODE-false}
+      - OKR_ENVIRONMENT_ID=${OKR_ENVIRONMENT_ID:-}
+      - OKR_CUSTOMER_ID=${OKR_CUSTOMER_ID:-}
+      - OKR_HEALTH_URL=${OKR_HEALTH_URL:-/healthz}
+      - OKR_BACKUP_PROVIDER=${OKR_BACKUP_PROVIDER:-deferred}
+      - OKR_BACKUP_SCHEDULE=${OKR_BACKUP_SCHEDULE:-deferred}
       - SUPABASE_URL=${SUPABASE_URL:-}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
@@ -90,10 +115,12 @@ services:
       - AI_API_KEY=${AI_API_KEY:-}
       - PDF_METHOD=${PDF_METHOD:-pdfshift}
       - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
-    command: ["python", "-m", "backend_app.worker"]
+    command: ["sh", "-c", "case \"$$(printf '%s' \"$$OKR_SAAS_MODE\" | tr '[:upper:]' '[:lower:]')\" in true|1|yes|on) SaaS=1 ;; *) SaaS=0 ;; esac; if [ \"$$SaaS\" = \"1\" ] || [ \"$$OKR_DEPLOYMENT_PROFILE\" = \"single_tenant_saas\" ]; then python scripts/check_deploy_config.py --mode runtime --saas-only --environment || exit $$?; fi; exec python -m backend_app.worker"]
     restart: unless-stopped
     healthcheck:
       disable: true
+    volumes:
+      - okr-control-plane-state:/var/lib/okr
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,11 +131,17 @@ services:
     build:
       context: ../../spa-bff
       dockerfile: Dockerfile
-    image: ${SPA_BFF_IMAGE:-okr-spa-bff:local}
+    image: *release-bff-image
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - BFF_HOST=0.0.0.0
       - BFF_PORT=${BFF_PORT:-3001}
+      - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE-on_premise}
+      - OKR_RELEASE_VERSION=${OKR_RELEASE_VERSION:-local}
+      - OKR_RELEASE_ARTIFACT=${OKR_RELEASE_ARTIFACT:-local}
+      - OKR_SAAS_MODE=${OKR_SAAS_MODE-false}
+      - OKR_ENVIRONMENT_ID=${OKR_ENVIRONMENT_ID:-}
+      - OKR_CUSTOMER_ID=${OKR_CUSTOMER_ID:-}
       - BFF_REQUEST_TIMEOUT_MS=${BFF_REQUEST_TIMEOUT_MS:-20000}
       - BFF_SESSION_SECRET=${BFF_SESSION_SECRET:?BFF_SESSION_SECRET must be set}
       - BFF_SESSION_TTL_SECONDS=${BFF_SESSION_TTL_SECONDS:-28800}
@@ -128,9 +161,15 @@ services:
     build:
       context: ../../spa-web
       dockerfile: Dockerfile
-    image: ${SPA_WEB_IMAGE:-okr-spa-web:local}
+    image: *release-web-image
     environment:
       - PORT=3000
+      - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE-on_premise}
+      - OKR_RELEASE_VERSION=${OKR_RELEASE_VERSION:-local}
+      - OKR_RELEASE_ARTIFACT=${OKR_RELEASE_ARTIFACT:-local}
+      - OKR_SAAS_MODE=${OKR_SAAS_MODE-false}
+      - OKR_ENVIRONMENT_ID=${OKR_ENVIRONMENT_ID:-}
+      - OKR_CUSTOMER_ID=${OKR_CUSTOMER_ID:-}
       - BFF_PUBLIC_ORIGIN=${BFF_PUBLIC_ORIGIN:-http://spa-bff:3001}
       - NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA=${NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA:-100}
       - NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE=${NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE:-true}
@@ -142,3 +181,4 @@ services:
 
 volumes:
   okr-postgres-data:
+  okr-control-plane-state:

@@ -2,12 +2,34 @@
 
 Documentation HQ: [README](../README.md)
 
-Status: `DOCUMENTED, NOT YET REHEARSED` for P0-06.
+Status: `DOCUMENTED, BACKUP/RESTORE OPERATIONS IMPLEMENTED; PRODUCTION DRILL DEFERRED` for P0-06.
 
 This runbook defines the release boundary and restoration path for the
 architecture migration slices. It is intentionally bounded to application,
 BFF, and database migration rollback; it does not authorize destructive
 commands against a live environment.
+
+## Versioned release operations
+
+- Register an immutable artifact descriptor containing the backend, BFF, and web
+  image references, release version, and artifact digest.
+- Deploy only through `ReleaseManager.deploy(environment_id, release_artifact)`.
+- The local adapter deploys the candidate, runs its health gate, and restores the
+  previous artifact when the gate fails before reporting the deployment failure.
+- Roll back through `ReleaseManager.rollback(environment_id, previous_artifact)`.
+- Every operation records the previous version, target version, operator, health
+  result, rollback result, digest, and timestamp.
+- Local exercises use `scripts/deploy_saas_release.py` with descriptor files and
+  `tmp/saas-release-state.json`; they do not start, stop, or modify live services.
+- The adapter boundary is explicit: Compose receives pinned release image
+  references through `OKR_RELEASE_BACKEND_IMAGE`, `OKR_RELEASE_BFF_IMAGE`, and
+  `OKR_RELEASE_WEB_IMAGE`, while the local release command only plans and records
+  promotion. It does not invoke Compose.
+- After registration, the read-only command
+  `python scripts/deploy_saas_release.py compose-env --environment-id ...
+  --artifact ... --provisioning-state-file ...` emits the exact three Compose
+  overrides. It requires the persisted provisioning and release state and does
+  not start or modify services.
 
 ## Release boundary
 
@@ -48,7 +70,7 @@ commands against a live environment.
 ### SaaS database profile smoke result
 
 - A disposable database was created and migrated from an empty state through `drop_global_cycle_index`.
-- A temporary API process started with `OKR_DEPLOYMENT_PROFILE=saas` and `OKR_DATA_ACCESS_MODE=database` and returned HTTP 200 from `/healthz`.
+- A temporary API process started with `OKR_DEPLOYMENT_PROFILE=single_tenant_saas` and `OKR_DATA_ACCESS_MODE=database` and returned HTTP 200 from `/healthz`.
 - The health payload reported `data_access_mode=database`, `configured_mode=database`, and `dead_jobs=0`.
 - The disposable database was removed after the probe; this was a forward migration smoke test, not a rollback rehearsal.
 - The persistent local database remains stamped with obsolete `baseline_2026_08_26_schema` metadata and must not be repaired by an unapproved stamp operation.
@@ -65,14 +87,108 @@ commands against a live environment.
 - Never treat a healthy process as proof that data compatibility is preserved.
 - Never remove the previous image or migration artifact until the release boundary expires.
 - Update this record after every rehearsal and link the evidence from the P0-06 status ledger.
+
+## Pre-SaaS release decision
+
+The versioned release mechanism is implemented and can be exercised with two
+deployable artifact descriptors. The owner has explicitly deferred live
+application rollback rehearsal under the disposable pre-SaaS risk acceptance.
+Before production SaaS data is stored, the operator must select retained image
+digests, run a real deployment and rollback rehearsal, and attach health and
+rollback evidence here.
 ## Execution update: 2026-09-01
 
 - The running backend's actual compatibility database is the Supabase PostgreSQL target, not the local Compose `postgres` database.
 - The runtime target was independently queried and reported Alembic revision `drop_global_cycle_index (head)`.
-- A pre-reconciliation custom-format dump of the local Compose database was captured and catalog-verified at `tmp/okr-pre-alembic-reconcile.dump`; it was used for a disposable restore rehearsal only.
-- The disposable restore rehearsal was completed against `okr_rollback_rehearsal` with `pg_restore -U okr`, and the disposable database was removed afterward. This proves restore mechanics for the local PostgreSQL 16-compatible artifact, not recovery of the live Supabase database.
-- A provider-native or PostgreSQL 17-compatible backup of the live runtime database could not be produced from this environment: the available client initially rejected the PostgreSQL 17.6 server as a PostgreSQL 16 client, and the PostgreSQL 17 client path did not complete. No live data was changed by those attempts.
-- P0-06 therefore remains `IN-PROGRESS`. The live backup/recovery proof and combined application-plus-database rollback rehearsal remain prerequisites before tenant/RLS schema work.
+- A PostgreSQL 17-compatible custom-format backup of the live runtime database was captured at `tmp/okr-runtime-pre-rollback-rehearsal.dump`.
+- The backup was restored into an isolated PostgreSQL 17 rehearsal instance with `pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error`; restore exit code was `0`, and the restored public schema contained 23 tables. The rehearsal instance was removed afterward.
+- The live runtime database was not modified by the backup or restore rehearsal.
+- The database backup/recovery condition is now evidenced. P0-06 remains `IN-PROGRESS` only for the application release rollback rehearsal and release-artifact selection.
 ## Owner decision: disposable pre-SaaS database - 2026-09-01
 
 For the current pre-SaaS phase, the owner has explicitly waived database dump, migration, and database rollback work because the runtime database contains disposable mock data. The application schema remains in place, all application data has been purged, and database recovery rehearsal is deferred until persistent SaaS data exists. This section supersedes the earlier backup-oriented execution notes for this phase only.
+## Phase disposition: disposable pre-SaaS - 2026-09-01
+
+The owner has explicitly accepted the risk of deferring production-grade backup/recovery and application rollback rehearsal while the database contains only disposable mock data. This runbook remains the required starting point for the SaaS persistence phase; it must be completed with provider-supported backups, isolated restore evidence, application release rollback rehearsal, RPO/RTO targets, and an operational owner before real tenant data is stored.
+
+## Isolated two-artifact rollback rehearsal - 2026-09-01
+
+- Descriptor A: `env-acme`, version `2026.09.0`, pinned images with digest
+  `sha256:0000000000000000000000000000000000000000000000000000000000000000`.
+- Descriptor B: `env-acme`, version `2026.09.1`, pinned images with digest
+  `sha256:1111111111111111111111111111111111111111111111111111111111111111`.
+- The local adapter promoted B, then rolled back to registered A.
+- Focused tests evidence `DEPLOYED`, rollback to A, persisted records, environment
+  binding, and candidate removal after a failed health gate.
+- Failed candidate artifacts remain registered and persisted for auditability, but
+  they are removed from the active deployment before the `ROLLED_BACK` result is
+  returned.
+- This was an isolated adapter rehearsal only. No Compose command, live service,
+  customer environment, or production deployment was involved.
+
+## Provider-backed backup and isolated restore operations - 2026-09-01
+
+- `BackupManager.create(environment_id)` requires a provider-issued backup
+  identifier, provider name, checksum, retention class, operator identity, and
+  configured RPO/RTO targets.
+- `BackupManager.verify(backup_id)` computes a canonical SHA-256 over the
+  provider verification payload and compares it with the provider checksum;
+  presence-only verification is not accepted. It also records backup freshness,
+  last-success, and last-failure status.
+- Provider `create_backup` failures persist a complete failed backup status,
+  including timestamp, operator, retention, RPO/RTO, and error, even when no
+  provider backup identifier was issued.
+- Provider `verify_backup` failures persist the complete existing backup status
+  with the failure timestamp and error before re-raising.
+- `RestoreManager.restore(backup_id, isolated_target)` rejects false, empty, and
+  `live`/`production`/`prod` targets before calling the provider. Live restore is
+  prohibited by the operation boundary, not merely by CLI convention.
+- `BackupProvider` and `RestoreProvider` are separate production contracts.
+  They require provider-issued identifiers, provider verification, and a
+  provider-reported restore duration. No cloud provider is selected yet.
+- `LocalBackupProvider` is explicitly **TEST-ONLY**. It is metadata-only and
+  isolated: it does not connect to PostgreSQL, invoke `pg_dump`, or modify
+  services. Production CLI execution refuses this adapter unless `--test-only`
+  is explicitly supplied.
+- Lifecycle CLIs require `OKR_OPERATOR_TOKEN` verified against an operator
+  credential file supplied by `--credential-file` or
+  `OKR_OPERATOR_CREDENTIAL_FILE`. A missing, blank, invalid, or unassigned
+  credential is rejected; there is no operator-name or insecure default.
+- Persisted status includes last success, last failure, freshness, retention,
+  RPO/RTO policy, checksum, provider, operator, failure reason, and
+  restore-test status. Checksum and stale failures persist this complete status
+  before raising.
+- Focused evidence: `python -m pytest tests/test_saas_backup_operations.py -q`
+  returned `18 passed in 0.36s`.
+- Isolated restore drill: provider `local-isolated`, explicitly registered
+  target `rehearsal-db-1`, provider backup identifier generated with the
+  `provider-backup-` prefix, SHA-256 verified, measured elapsed duration
+  recorded, restore-test status persisted as `PASSED`, and cleanup is disposal
+  of the isolated adapter state. No live database or application data was
+  touched.
+- Restore rejects unregistered targets, environment-mismatched targets, and
+  broad live/production-like identifiers or URLs before provider invocation.
+- The restore CLI never marks its supplied target as registered. The target must
+  already exist in the supplied backup/target state file through explicit
+  provider registration. Unknown targets fail before backup verification or
+  restore provider invocation.
+- Verification and provider failures persist restore-test status `FAILED`, the
+  error, timestamp, and measured elapsed time before the error is raised.
+- Production SaaS remains gated on selecting a real provider, configuring
+  retention/RPO/RTO, proving provider-supported restore, and assigning an
+  accountable operator. This local drill is implementation evidence, not
+  production disaster-recovery evidence.
+
+## Task 7 entry-gate handoff (2026-09-01)
+
+The Phase 1 evidence record is [docs/saas/phase-1-entry-evidence.md](saas/phase-1-entry-evidence.md). This runbook records the boundary between local contract evidence and production recovery evidence.
+
+Current disposition:
+
+- Application release rollback: local isolated adapter evidence exists for separately registered, immutable synthetic release artifacts `release-0` and `release-1`; failed health returns to the prior artifact and explicit rollback records operator/version data. Provider-backed rollback: **NOT AVAILABLE - provider/artifact not selected**.
+- Synthetic release fixture digests: `release-0` = `sha256:dc653afb00e8d53f9c94ff5f1bbec0de9ad7f76889af79f46efe9356b95c02fd`; `release-1` = `sha256:c2e19570b6aee82937bf4b09640059646a6985f80b1b16b91924f92a751a75a0`. These are generated test values, not registry artifacts.
+- Backup and restore: `LocalBackupProvider` metadata-only evidence creates a `provider-backup-*` record for `env-a`, verifies its SHA-256 checksum, registers isolated target `rehearsal-db-1`, and records a successful verified restore with measured non-negative elapsed/RTO values. Evidence is exercised by `tests/test_saas_backup_operations.py`; the checksum-failure persistence fixture is `.test-artifacts/backup-checksum-failure.json`.
+- Provider backup/restore, retention enforcement, measured provider RPO/RTO, and provider restore timing: **NOT AVAILABLE - provider/artifact not selected**.
+- Owners: repository owner accepts the pre-SaaS deferral; platform/operations owner: **UNASSIGNED**; each local rehearsal uses operator fixture `operator-a`.
+
+The current empty/mock-data pre-SaaS database does not justify production recovery closure. This is an intentional phase boundary, not evidence that production recovery is complete.
