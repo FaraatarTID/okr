@@ -105,6 +105,12 @@ jobs:
       - name: Import Boundary Gate
         run: python scripts/check_import_boundaries.py
 
+      - name: SPA BFF TypeScript Boundary Gate
+        run: python scripts/check_bff_import_boundaries.py
+
+      - name: Deployment Topology Gate
+        run: python scripts/check_deployment_topology.py
+
       - name: OpenAPI Drift Gate
         run: python scripts/check_openapi_drift.py
 

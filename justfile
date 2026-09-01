@@ -32,6 +32,8 @@ contracts:
     npm --prefix spa-web run check:gen:api
     npm --prefix spa-bff run check:gen:api
     uv run python scripts/check_import_boundaries.py
+    uv run python scripts/check_bff_import_boundaries.py
+    uv run python scripts/check_deployment_topology.py
 
 generate-api:
     uv run python scripts/export_openapi.py
