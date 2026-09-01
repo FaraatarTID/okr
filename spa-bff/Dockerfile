@@ -20,6 +20,7 @@ ENV NODE_ENV=production
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/spa-bff/package*.json ./spa-bff/
 COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/spa-bff/node_modules ./node_modules
 COPY --from=build /app/spa-bff/dist ./dist
 
 EXPOSE 3001
