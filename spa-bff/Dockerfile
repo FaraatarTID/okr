@@ -10,7 +10,7 @@ COPY spa-bff/tsconfig.json ./spa-bff/tsconfig.json
 COPY spa-bff/src ./spa-bff/src
 WORKDIR /app/spa-bff
 RUN npm run build
-RUN npm prune --omit=dev --workspace spa-bff
+RUN cd /app && npm prune --omit=dev --workspace spa-bff
 
 FROM node:22-alpine
 WORKDIR /app
