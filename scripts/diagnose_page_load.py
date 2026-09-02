@@ -54,7 +54,7 @@ def analyze_trace(trace: dict[str, Any]) -> dict[str, Any]:
             f"stage durations ({accounted:.2f} ms) exceed total ({float(total):.2f} ms)"
         )
     by_stage["unattributed"] = max(0.0, unexplained)
-    dominant = max(by_stage, key=by_stage.get)
+    dominant = max(by_stage, key=lambda stage: by_stage[stage])
     return {
         "page": trace.get("page", "unknown"),
         "total_duration_ms": round(float(total), 2),
