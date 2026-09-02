@@ -28,6 +28,52 @@ The API and worker use the same backend image inputs. All four apps use one
 merged commit. The database is empty before migration and may be destroyed at
 any time.
 
+## Build, release, and run contract
+
+CI is the only build authority for a release candidate. It builds the web,
+BFF, backend API, and worker from one commit and publishes the resulting
+images to private GHCR. The release manifest binds that commit to the four
+image digests, signatures, and staging verification evidence.
+
+Darkube must run the digests from that approved manifest. Production promotion
+is a promotion of the same artifacts that passed staging, not a rebuild or a
+mutable-tag lookup. Keep the previous complete manifest available so the API,
+worker, BFF, and web can be rolled back as a compatible set.
+
+Runtime secrets and configuration are injected by Darkube. They are not copied
+into images or source, and migrations are run as a separate release operation,
+not implicitly as an application boot side effect. The local Compose
+`--build` workflow is for development only and is not evidence of an immutable
+staging or production release.
+
+## Horizontal scaling procedure
+
+Scale the independently deployable services according to the observed
+bottleneck:
+
+| Service | Scaling purpose | Operational constraint |
+| --- | --- | --- |
+| `okr-prerelease-api` | HTTP request concurrency | Keep replicas stateless and use private service ingress. |
+| `okr-prerelease-worker` | Queue/job throughput | Use multiple consumers only with the database-backed job claim contract. |
+| `okr-prerelease-bff` | Browser request/session capacity | Share the configured session-secret contract across replicas. |
+| `okr-prerelease-web` | Static/document serving capacity | Keep the same immutable web artifact on every replica. |
+
+For a Compose-compatible target, the control is explicit service scaling:
+
+```sh
+docker compose -f deploy/docker/docker-compose.yml up -d \
+  --scale backend-api=2 \
+  --scale backend-worker=2 \
+  --scale spa-bff=2 \
+  --scale spa-web=2
+```
+
+For Kubernetes, use the corresponding Deployment replica count or
+`kubectl scale deployment`. Do not treat `deploy.replicas` as proof that
+ordinary `docker compose up` created replicas. After scaling, record health,
+latency, queue depth, and database connection usage. Darkube ingress routing,
+restart behavior, and resource limits still require provider-side evidence.
+
 ## Start/release procedure
 
 1. Confirm the GitHub `pre-release` branch is protected and the target commit
@@ -79,6 +125,12 @@ OKR_ENFORCE_STRONG_PASSWORD_POLICY=true
 OKR_STRICT_RUNTIME_PREFLIGHT=true
 BFF_COOKIE_SECURE=true
 ```
+
+`OKR_DATA_ACCESS_MODE` is an explicit backing-service adapter selection, not a
+fail-open fallback. `database` uses the environment-provided PostgreSQL URL;
+`supabase_api` uses the environment-provided `SUPABASE_URL` and API key for
+the operations supported by that adapter. Select one mode deliberately for an
+environment and validate its complete operation coverage before release.
 
 Store the private database URL, backend token/signing secret, BFF session
 secret, and synthetic administrator password as Darkube secrets. Keep

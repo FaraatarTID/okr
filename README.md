@@ -371,6 +371,63 @@ Environment responsibilities:
 - `Staging`: deploy candidates and collect release evidence.
 - `Production`: deploy only an approved image already validated in staging.
 
+#### Build -> release -> run contract
+
+The release unit is an immutable, commit-addressable artifact set. CI builds
+the web, BFF, backend API, and worker artifacts from one commit, using the
+repository lockfiles and the workflow's pinned build inputs. Each image is
+published to private GHCR with its commit-SHA identity, and the release
+manifest records the image digests, source commit, signatures, and required
+staging evidence.
+
+Release promotion moves that manifest, not source code or a newly rebuilt
+image. Staging and production must run the same digest-pinned image references;
+production is blocked if the manifest, signature, or staging evidence does not
+match. A rollback selects the previous known-good manifest and redeploys its
+paired API, worker, BFF, and web digests.
+
+Run-time configuration and secrets are injected by the target environment and
+are never baked into an image. Migrations are an explicit release operation,
+separate from application startup. Health checks verify the running release,
+and the release record is retained with the deployment evidence.
+
+The local development command `docker compose up -d --build` is intentionally
+not a production release procedure: it creates local images and may rebuild
+from the working tree. A staging or production run must pull the approved
+release digests and start without rebuilding.
+
+#### Horizontal concurrency and scaling
+
+Horizontal concurrency is a first-class deployment lever and is adjusted per
+service rather than by scaling the entire stack uniformly:
+
+- `backend-api`: add HTTP replicas or process workers for independent request
+  concurrency; keep each replica stateless and behind the service ingress.
+- `backend-worker`: add worker replicas for queue throughput; job claiming is
+  database-coordinated so multiple consumers do not process the same job.
+- `spa-bff`: add replicas for browser-facing session and request handling; its
+  session configuration must remain compatible across replicas.
+- `spa-web`: add replicas when static/document serving is the bottleneck.
+- `postgres`: remains a backing service; app replica counts do not imply
+  database scaling and database capacity must be assessed separately.
+
+For ordinary Docker Compose operations, use explicit service scaling; do not
+assume a `deploy.replicas` value is applied by `docker compose up`:
+
+```sh
+docker compose -f deploy/docker/docker-compose.yml up -d \
+  --scale backend-api=2 \
+  --scale backend-worker=2 \
+  --scale spa-bff=2 \
+  --scale spa-web=2
+```
+
+For Kubernetes, set the corresponding Deployment replica counts or use
+`kubectl scale deployment`. After changing concurrency, record service health,
+queue depth, database connection usage, and latency in the deployment
+evidence. Provider-specific ingress and restart behavior remains a required
+external verification step.
+
 For deployment configuration, hardening, and operational procedures, see
 [DEPLOYMENT.md](DEPLOYMENT.md) and
 [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md).
@@ -520,9 +577,12 @@ Local launcher fallback behavior:
 - If your network blocks Postgres ports (`5432`/`6543`), verify Supabase HTTPS access over port `443`:
   - `python scripts/supabase_https_probe.py --url https://<project-ref>.supabase.co`
   - Optional API key checks use `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_ANON_KEY`.
- - Experimental HTTPS-only data mode:
+- Explicit HTTPS-backed data-access adapter (not a local or database fallback):
    - Set `OKR_DATA_ACCESS_MODE=supabase_api`
    - Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY`)
+   - This selects the Supabase HTTP API for the supported operations below;
+     it changes the access adapter, not the source of configuration.
+   - The default `database` mode uses the environment-provided PostgreSQL URL.
    - Current scope:
      - backend startup health + `/v1/auth/login`
      - read-query kinds: `users.by_username`, `users.by_id`, `users.all`, `users.team_members`, `teams.all`, `teams.by_id`, `cycles.all`, `cycles.active`, `node.detect_type`, `node.get`, `mindmap.root`, `alignments.context`, `krs.by_cycle`, `tasks.by_cycle`, `weekly_plan.active`, `work_logs.by_task`, `work_logs.by_range`, `krs.needing_checkin`, `experiments.active_for_kr`, `experiments.for_kr`, `experiments.for_retro_window`, `retros.user`, `retros.team`, `ritual.snapshot` (consolidated Check-In snapshot via `fn_ritual_snapshot` RPC)
