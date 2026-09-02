@@ -314,7 +314,7 @@ def test_production_fails_closed_when_redis_backend_unavailable(monkeypatch):
         )
 
 
-def test_database_security_state_uses_null_pool_by_default(monkeypatch):
+def test_database_security_state_uses_bounded_pool_by_default(monkeypatch):
     from backend_app.security_state import DatabaseSecurityStateStore
     from sqlalchemy.pool import NullPool
 
@@ -325,9 +325,11 @@ def test_database_security_state_uses_null_pool_by_default(monkeypatch):
     )
     try:
         pool = store._engine.pool
-        assert isinstance(pool, NullPool), (
-            f"Expected NullPool, got {type(pool).__name__}"
+        assert not isinstance(pool, NullPool), (
+            f"Expected bounded pool, got {type(pool).__name__}"
         )
+        assert pool.size() == 5
+        assert getattr(pool, "_max_overflow", None) == 5
     finally:
         store.dispose()
 

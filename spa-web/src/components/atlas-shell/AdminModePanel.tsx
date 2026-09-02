@@ -20,7 +20,6 @@ const ADMIN_TABS: ReadonlyArray<{ id: AdminTab; label: string }> = [
   { id: "cycles", label: "Cycles" },
   { id: "users", label: "Users" },
   { id: "teams", label: "Teams" },
-  { id: "security", label: "Security" },
   { id: "backup", label: "Backup" },
   { id: "audit", label: "Audit" },
   { id: "ai", label: "AI/PDF Health" },
@@ -448,53 +447,6 @@ export default function AdminModePanel({
               </>
             ) : null}
 
-            {adminTab === "security" ? (
-              <>
-                <p className="kicker" style={{ margin: 0 }}>
-                  Reset user password
-                </p>
-                <div className="grid-2" style={{ marginTop: "0.45rem", gap: "0.5rem" }}>
-                  <select
-                    className="input"
-                    value={adminResetDraft.userId}
-                    onChange={(event) => setAdminResetDraft((prev) => ({ ...prev, userId: event.target.value }))}
-                  >
-                    <option value="">Select user</option>
-                    {adminUsers
-                      .slice()
-                      .sort((a, b) =>
-                        String(a.display_name || a.username || "")
-                          .toLowerCase()
-                          .localeCompare(String(b.display_name || b.username || "").toLowerCase()),
-                      )
-                      .map((row) => (
-                        <option key={`security-user-${row.id}`} value={String(row.id)}>
-                          {String(row.display_name || row.username || "").trim() || row.username}
-                        </option>
-                      ))}
-                  </select>
-                  <input
-                    className="input"
-                    type="password"
-                    value={adminResetDraft.newPassword}
-                    onChange={(event) => setAdminResetDraft((prev) => ({ ...prev, newPassword: event.target.value }))}
-                    placeholder="New password"
-                  />
-                </div>
-                <label style={{ marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.86rem" }}>
-                  <input
-                    type="checkbox"
-                    checked={adminResetDraft.requireChange}
-                    onChange={(event) => setAdminResetDraft((prev) => ({ ...prev, requireChange: event.target.checked }))}
-                  />
-                  Require change at next login
-                </label>
-                <button className="primary-button" type="button" onClick={onAdminResetPassword} style={{ marginTop: "0.5rem" }}>
-                  Reset password
-                </button>
-              </>
-            ) : null}
-
             {adminTab === "backup" ? (
               <>
                 <p className="kicker" style={{ margin: 0 }}>
@@ -763,7 +715,7 @@ export default function AdminModePanel({
                       <div>
                         <strong>{row.display_name || row.username}</strong>
                         <div style={{ fontSize: "0.82rem", color: "var(--ink-soft)" }}>
-                          @{row.username} - {row.role}
+                          Username: {row.username} | Role: {row.role}
                         </div>
                         <div style={{ fontSize: "0.8rem", color: "var(--ink-soft)", marginTop: "0.1rem" }}>
                           Manager: {row.manager_id ? (userLabelById.get(row.manager_id) || "Unknown") : "None"} | Team:{" "}
@@ -778,7 +730,49 @@ export default function AdminModePanel({
                       <button className="primary-button" type="button" onClick={() => onAdminToggleUserActive(row)}>
                         {row.is_active ? "Deactivate" : "Activate"}
                       </button>
+                      {isAdmin ? (
+                        <button
+                          className="primary-button"
+                          type="button"
+                          onClick={() => {
+                            setAdminResetDraft((prev) => ({
+                              ...prev,
+                              userId: prev.userId === String(row.id) ? "" : String(row.id),
+                              newPassword: "",
+                            }));
+                          }}
+                        >
+                          {adminResetDraft.userId === String(row.id) ? "Cancel password change" : "Change password"}
+                        </button>
+                      ) : null}
                     </div>
+                    {isAdmin && adminResetDraft.userId === String(row.id) ? (
+                      <div style={{ marginTop: "0.55rem", paddingTop: "0.55rem", borderTop: "1px solid var(--line)" }}>
+                        <p style={{ margin: 0, color: "var(--ink-soft)", fontSize: "0.82rem" }}>
+                          At least 12 characters with uppercase, lowercase, number, and symbol.
+                        </p>
+                        <input
+                          className="input"
+                          type="password"
+                          value={adminResetDraft.newPassword}
+                          onChange={(event) => setAdminResetDraft((prev) => ({ ...prev, newPassword: event.target.value }))}
+                          placeholder="New password"
+                          autoComplete="new-password"
+                          style={{ marginTop: "0.4rem" }}
+                        />
+                        <label style={{ marginTop: "0.4rem", display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.86rem" }}>
+                          <input
+                            type="checkbox"
+                            checked={adminResetDraft.requireChange}
+                            onChange={(event) => setAdminResetDraft((prev) => ({ ...prev, requireChange: event.target.checked }))}
+                          />
+                          Require change at next login
+                        </label>
+                        <button className="primary-button" type="button" onClick={onAdminResetPassword} style={{ marginTop: "0.5rem" }}>
+                          Reset password
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ))
               ) : (

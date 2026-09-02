@@ -527,11 +527,15 @@ def api_create_weekly_plan(
     payload: WeeklyPlanCreateRequest,
     x_okr_actor: Optional[str] = Header(default=None),
 ) -> WeeklyPlanMutationView:
+    backend_main = _resolve_backend_main()
     actor = _resolve_actor(
         header_actor=x_okr_actor, payload_actor=payload.actor_username
     )
+    if backend_main.is_supabase_api_mode_enabled():
+        scope = backend_main._resolve_scope_for_actor(actor)
+        backend_main._require_allowed_user_id(scope, int(payload.user_id))
     try:
-        if is_supabase_api_mode_enabled():
+        if backend_main.is_supabase_api_mode_enabled():
             plan = create_weekly_plan_via_supabase_api(
                 user_id=payload.user_id,
                 start_date=payload.start_date,
@@ -542,7 +546,7 @@ def api_create_weekly_plan(
                 actor_username=actor,
             )
         else:
-            plan = _resolve_backend_main().create_weekly_plan(
+            plan = backend_main.create_weekly_plan(
                 user_id=payload.user_id,
                 start_date=payload.start_date,
                 end_date=payload.end_date,
@@ -682,4 +686,3 @@ def api_delete_work_log(
     if not deleted:
         raise HTTPException(status_code=404, detail="Work log not found.")
     return WorkLogDeleteResponse(id=int(work_log_id), deleted=True)
-

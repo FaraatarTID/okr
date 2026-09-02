@@ -2,7 +2,7 @@
 
 Documentation HQ: [README](../README.md)
 
-Status: `IN-PROGRESS` for P0-03.
+Status: `IN-PROGRESS` for P0-03 (repository controls verified; provider evidence open).
 
 ## Context
 
@@ -22,7 +22,7 @@ Retain `spa-bff` as a separate deployable for the pre-SaaS baseline. Limit it to
 
 Business rules, persistence access, migrations, and cross-client application use cases remain in the backend package and shared service/domain layers.
 
-This is a working decision, not a final closure. The separation is retained because the repository already deploys the BFF independently and because it provides a controlled boundary for browser-specific concerns while the SaaS topology is still being defined.
+The repository decision and controls are verified: the BFF remains a separate deployable because it provides a controlled browser-security boundary. Operational closure remains open only for provider-backed deployment, rollback, and production measurement evidence.
 
 ## BFF value test
 

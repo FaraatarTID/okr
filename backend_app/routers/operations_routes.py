@@ -18,6 +18,17 @@ from backend_app.schemas import (
 def register_operations_routes(router: APIRouter, main: Any) -> None:
     """Register timer and job-operation endpoints."""
 
+    def require_database_job_store() -> None:
+        """Prevent Supabase API mode from silently using a split job store."""
+        if main.is_supabase_api_mode_enabled():
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    "Durable job queue is unavailable in Supabase API mode; "
+                    "configure database mode for async job operations."
+                ),
+            )
+
     @router.post(
         "/v1/timer/start",
         dependencies=[Depends(main.require_service_access)],
@@ -128,6 +139,7 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         x_okr_actor: Optional[str] = Header(default=None),
         x_okr_idempotency_key: Optional[str] = Header(default=None),
     ) -> JobView:
+        require_database_job_store()
         actor = main._resolve_actor(
             header_actor=x_okr_actor,
             payload_actor=payload.actor_username,
@@ -183,6 +195,7 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         job_id: str,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> JobView:
+        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         job = main.get_job(job_id)
         if not job:
@@ -200,6 +213,7 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         job_id: str,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> JobCancelResponse:
+        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         job = main.request_job_cancel(job_id, actor)
         if not job:
@@ -218,6 +232,7 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         x_okr_actor: Optional[str] = Header(default=None),
         limit: int = 50,
     ) -> dict:
+        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         main._require_admin_actor_scope(actor)
         jobs = main.list_dead_jobs(limit=limit)
@@ -232,6 +247,7 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         job_id: str,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> JobView:
+        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         job = main.retry_dead_job(job_id, actor_username=actor)
         if not job:
@@ -250,6 +266,7 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
         job_id: str,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> Response:
+        require_database_job_store()
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         job = main.get_job(job_id)
         if not job or (job.actor_username and job.actor_username != actor):

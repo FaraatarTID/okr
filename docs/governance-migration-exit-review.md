@@ -43,7 +43,7 @@ For each Alembic migration, the owner must document:
 
 This migration is not downgrade-safe. Its no-op `downgrade()` is an explicit policy
 decision, not evidence that rollback has been rehearsed. A backup/restore exercise
-is required before any tenant or RLS schema migration is applied on top of it.
+Shared-database tenant and RLS schema migrations are permanently out of scope for this product and are not a future release prerequisite. Any reconsideration would require a new architecture decision and explicit owner approval.
 
 Destructive or irreversible changes require an explicit approval record and a recovery alternative. A database downgrade is not assumed to be safe merely because an Alembic downgrade function exists.
 
@@ -98,9 +98,9 @@ Written intent can move a package into `IN-PROGRESS`; only acceptance evidence c
 ## Exit review checklist
 
 - [ ] P0-00 inventory has verified ownership and startup topology.
-- [ ] P0-01 import direction and compatibility facade path are evidenced.
+- [x] P0-01 import direction and compatibility facade path are evidenced; the root `app.py` facade has been retired.
 - [ ] P0-02 supported runtime profiles and readiness checks are evidenced.
-- [ ] P0-03 BFF responsibilities, security boundary, and performance impact are evidenced.
+- [ ] P0-03 BFF repository responsibilities and security boundary are evidenced; provider deployment, rollback, and production performance evidence remain open.
 - [ ] P0-04 compatibility callers and removal or deprecation paths are evidenced.
 - [ ] P0-05 Documentation HQ and lifecycle checks are evidenced.
 - [ ] P0-06 rollback rehearsal and migration safety records are attached.

@@ -119,12 +119,34 @@ def _resolve_actor_scope(
 
 
 def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]:
-    actor_resp = read_query_via_supabase_api(
-        kind="users.by_username",
-        params={"username": str(actor_username or "").strip()},
-        actor=str(actor_username or "").strip(),
+    normalized_actor_username = str(actor_username or "").strip()
+    all_users_rows = list(
+        (
+            read_query_via_supabase_api(
+                kind="users.all",
+                params={},
+                actor=normalized_actor_username,
+            )
+            or {}
+        ).get("users")
+        or []
     )
-    actor = dict((actor_resp or {}).get("user") or {})
+    actor = next(
+        (
+            dict(row)
+            for row in all_users_rows
+            if isinstance(row, dict)
+            and str(row.get("username") or "").strip() == normalized_actor_username
+        ),
+        {},
+    )
+    if not actor:
+        actor_resp = read_query_via_supabase_api(
+            kind="users.by_username",
+            params={"username": normalized_actor_username},
+            actor=normalized_actor_username,
+        )
+        actor = dict((actor_resp or {}).get("user") or {})
     if not actor or not bool(actor.get("is_active", True)):
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
 
@@ -135,17 +157,7 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
     role = str(actor.get("role") or "member").strip().lower()
     rows: list[dict[str, Any]] = []
     if role == "admin":
-        rows = list(
-            (
-                read_query_via_supabase_api(
-                    kind="users.all",
-                    params={},
-                    actor=str(actor_username or "").strip(),
-                )
-                or {}
-            ).get("users")
-            or []
-        )
+        rows = all_users_rows
     elif role == "manager":
         manager_rows = list(
             (
@@ -186,17 +198,6 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
     # Admin-owned cycles are GLOBAL (visible to every scope), so scopes need
     # to know which users are admins to evaluate cycle visibility.
     admin_ids: set[int] = set()
-    all_users_rows = list(
-        (
-            read_query_via_supabase_api(
-                kind="users.all",
-                params={},
-                actor=str(actor_username or "").strip(),
-            )
-            or {}
-        ).get("users")
-        or []
-    )
     for row in all_users_rows:
         if not isinstance(row, dict):
             continue

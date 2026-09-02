@@ -5,9 +5,6 @@ import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { readCyclesQuery, type AuthUser, type CycleSummary } from "@/lib/api";
 import { DEFAULT_LENS, DEFAULT_MODE, normalizeFocusTaskRef, parseDeepLink } from "@/lib/deeplink";
 import { modeForPath } from "@/components/atlas-shell/navigation";
-import {
-  cyclePeriodLabel,
-} from "@/components/atlas-shell/shellUiUtils";
 
 type ResolvedCycleState = Pick<
   CycleSummary,
@@ -69,61 +66,6 @@ export default function useDeepLinkCycleBootstrap({
       }
     }
   }, [parsedCycleId, resolvedCycle, setCycleResolveError, setResolvedCycle]);
-
-  useEffect(() => {
-    if (!user || !parsedCycleId) {
-      return;
-    }
-    if (
-      resolvedCycle &&
-      resolvedCycle.id === parsedCycleId &&
-      (Boolean(cyclePeriodLabel(resolvedCycle)) || Boolean(String(resolvedCycle.title || "").trim()))
-    ) {
-      return;
-    }
-
-    const cachedMatch = sessionCycles.find((cycle) => cycle.id === parsedCycleId);
-    if (cachedMatch) {
-      setResolvedCycle({
-        id: cachedMatch.id,
-        title: cachedMatch.title,
-        start_date: cachedMatch.start_date || null,
-        end_date: cachedMatch.end_date || null,
-        is_active: Boolean(cachedMatch.is_active),
-      });
-      return;
-    }
-
-    let active = true;
-    void (async () => {
-      try {
-        const cycles = await readCyclesQuery({
-          actor_username: user.username,
-          kind: "cycles.all",
-        });
-        if (!active) {
-          return;
-        }
-        setSessionCycles([...cycles].sort((left, right) => right.id - left.id));
-        const matched = cycles.find((cycle) => cycle.id === parsedCycleId);
-        if (!matched) {
-          return;
-        }
-        setResolvedCycle({
-          id: matched.id,
-          title: matched.title,
-          start_date: matched.start_date || null,
-          end_date: matched.end_date || null,
-          is_active: Boolean(matched.is_active),
-        });
-      } catch {
-        // keep current resolved cycle fallback
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [parsedCycleId, resolvedCycle, sessionCycles, setResolvedCycle, setSessionCycles, user]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

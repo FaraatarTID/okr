@@ -63,6 +63,42 @@ def test_backend_echoes_supplied_observability_headers(monkeypatch):
     assert response.headers.get("X-Request-ID") == "req-456"
 
 
+def test_backend_read_exposes_safe_server_timing_header(monkeypatch):
+    client, _backend_main = _make_client(monkeypatch)
+
+    response = client.get("/healthz")
+
+    assert response.status_code == 200
+    timing = response.headers.get("Server-Timing", "")
+    assert "app;dur=" in timing
+    assert "password" not in timing.lower()
+    assert "select" not in timing.lower()
+
+
+def test_backend_read_exposes_framework_lifecycle_timing(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    monkeypatch.setattr(backend_main, "_resolve_actor", lambda **_kwargs: "admin")
+    monkeypatch.setattr(
+        backend_main,
+        "_read_query_payload",
+        lambda **_kwargs: {"users": []},
+    )
+
+    response = client.post(
+        "/v1/read/query",
+        json={"kind": "users.all", "params": {}, "actor_username": "admin"},
+    )
+
+    assert response.status_code == 200
+    timing = response.headers.get("Server-Timing", "")
+    assert "dispatch;dur=" in timing
+    assert "handler;dur=" in timing
+    assert "serialization;dur=" in timing
+    assert "completion;dur=" in timing
+    assert "password" not in timing.lower()
+    assert "admin" not in timing.lower()
+
+
 def test_backend_admin_observability_metrics_requires_admin_gate(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
     _with_dbless_admin_gate(monkeypatch, admin_user="admin")
@@ -141,3 +177,40 @@ def test_backend_request_log_events_are_structured(monkeypatch):
     assert latest["correlation_id"] == "corr-test-1"
     assert latest["request_id"] == "req-test-1"
     assert latest["event"] == "http_request"
+
+
+def test_supabase_read_timing_exposes_scope_and_handler_phases(monkeypatch):
+    from backend_app import read_query_helpers
+
+    timings: list[str] = []
+
+    def fake_record_timing(name: str, duration_ms: float) -> None:
+        timings.append(name)
+
+    monkeypatch.setattr(read_query_helpers, "record_timing", fake_record_timing)
+    monkeypatch.setattr(read_query_helpers, "resolve_read_mode", lambda: "supabase_api")
+
+    class Main:
+        HTTPException = HTTPException
+
+        def _resolve_scope_for_actor(self, actor):
+            return {"owner_ids": {1}, "usernames": {actor}, "is_admin": True}
+
+        def read_query_via_supabase_api(self, *, kind, params, actor):
+            return {"users": []}
+
+        def _require_allowed_user_id(self, scope, user_id):
+            assert user_id in scope["owner_ids"]
+
+        def _coerce_int(self, value, field_name):
+            return int(value)
+
+    result = read_query_helpers.read_query_payload(
+        kind="users.all",
+        params={},
+        actor="admin",
+        main=Main(),
+    )
+
+    assert result == {"users": []}
+    assert timings == ["scope", "handler"]

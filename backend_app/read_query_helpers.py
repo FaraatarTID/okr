@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+import time
 from typing import Any
 
 from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
@@ -9,8 +11,18 @@ from src.services.app_shell_runtime import (
     serialize_user,
     serialize_weekly_plan,
 )
+from src.observability import record_timing
 
 _RPC_FALLBACK_WARNED = False
+
+
+@contextmanager
+def _timed_phase(name: str):
+    started_at = time.perf_counter()
+    try:
+        yield
+    finally:
+        record_timing(name, (time.perf_counter() - started_at) * 1000)
 
 
 def get_read_query_allowed_kinds() -> set[str]:
@@ -235,18 +247,20 @@ def read_query_payload(
         }
 
     if resolve_read_mode() == "supabase_api":
-        _validate_supabase_read_scope(
-            kind=kind,
-            params=params,
-            actor=actor,
-            main=main,
-        )
-        try:
-            return main.read_query_via_supabase_api(
-                kind=str(kind or "").strip(),
-                params=dict(params or {}),
-                actor=str(actor or "").strip(),
+        with _timed_phase("scope"):
+            _validate_supabase_read_scope(
+                kind=kind,
+                params=params,
+                actor=actor,
+                main=main,
             )
+        try:
+            with _timed_phase("handler"):
+                return main.read_query_via_supabase_api(
+                    kind=str(kind or "").strip(),
+                    params=dict(params or {}),
+                    actor=str(actor or "").strip(),
+                )
         except NotImplementedError as exc:
             raise main.HTTPException(status_code=501, detail=str(exc)) from exc
         except Exception as exc:

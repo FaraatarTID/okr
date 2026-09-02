@@ -61,10 +61,13 @@ jobs:
             release-manifest/release-manifest.json >/dev/null
 
       - name: Validate rollback evidence contract
+        env:
+          REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/verify_rollback_evidence.py \
             --manifest release-manifest/release-manifest.json \
             --commit-sha "$RELEASE_SHA" \
+            --repository "$REPOSITORY" \
             --output rollback-verification.json
 
       - name: Verify every previous release signature
@@ -112,10 +115,13 @@ jobs:
           path: release-manifest
 
       - name: Revalidate rollback evidence contract
+        env:
+          REPOSITORY: ${{ github.repository }}
         run: |
           python scripts/verify_rollback_evidence.py \
             --manifest release-manifest/release-manifest.json \
             --commit-sha "$RELEASE_SHA" \
+            --repository "$REPOSITORY" \
             --output rollback-verification.json
 
       - name: Write digest-pinned rollback record
@@ -141,6 +147,16 @@ jobs:
             echo "- Post-deployment action: run the production smoke checklist and record the result"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Validate uploaded rollback record contract
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python scripts/verify_rollback_evidence.py \
+            --record production-rollback.json \
+            --commit-sha "$RELEASE_SHA" \
+            --repository "$REPOSITORY" \
+            --output rollback-record-verification.json
+
       - name: Upload production rollback record
         uses: actions/upload-artifact@v7
         with:
@@ -148,4 +164,5 @@ jobs:
           path: |
             production-rollback.json
             rollback-verification.json
+            rollback-record-verification.json
           retention-days: 90

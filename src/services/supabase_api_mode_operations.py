@@ -561,6 +561,7 @@ def create_user_via_supabase_api(
         "team_id": int(team_id) if team_id is not None else None,
         "must_change_password": bool(must_change_password),
         "is_active": True,
+        "token_version": 1,
         # The live DB has no server default for created_at (ORM default is
         # invisible to PostgREST), so it must be supplied explicitly.
         "created_at": _utc_now_iso(),
@@ -808,5 +809,4 @@ def delete_cycle_via_supabase_api(
     if status >= 400:
         raise ValueError(f"Supabase API error (cycle/delete): {status}")
     return True
-
 

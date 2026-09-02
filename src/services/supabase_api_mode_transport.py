@@ -19,6 +19,7 @@ import urllib.request
 from typing import Any, Optional
 
 from src.config_runtime import get_config_value
+from src.observability import record_timing
 
 logger = logging.getLogger(__name__)
 _CYCLE_OWNER_COLUMN_SUPPORTED: Optional[bool] = None
@@ -223,15 +224,16 @@ def _get_http_client() -> httpx.Client:
 
     ca_bundle = str(get_config_value("OKR_SSL_CA_BUNDLE", "")).strip()
     config = (_base_url(), ca_bundle)
-    if _HTTP_CLIENT is None or _HTTP_CLIENT_CONFIG != config:
-        if _HTTP_CLIENT is not None:
-            _HTTP_CLIENT.close()
-        _HTTP_CLIENT = httpx.Client(
-            verify=_get_ssl_context(),
-            timeout=httpx.Timeout(10.0),
-            trust_env=True,
-        )
-        _HTTP_CLIENT_CONFIG = config
+    with _HTTP_CLIENT_LOCK:
+        if _HTTP_CLIENT is None or _HTTP_CLIENT_CONFIG != config:
+            if _HTTP_CLIENT is not None:
+                _HTTP_CLIENT.close()
+            _HTTP_CLIENT = httpx.Client(
+                verify=_get_ssl_context(),
+                timeout=httpx.Timeout(10.0),
+                trust_env=True,
+            )
+            _HTTP_CLIENT_CONFIG = config
     return _HTTP_CLIENT
 
 
@@ -276,6 +278,7 @@ def _request_json_with_method(
             kind="concurrency",
             retryable=True,
         )
+    upstream_started_at = time.perf_counter()
     try:
         response = _get_http_client().request(
             request_method,
@@ -309,6 +312,7 @@ def _request_json_with_method(
             retryable=False,
         ) from exc
     finally:
+        record_timing("data", (time.perf_counter() - upstream_started_at) * 1000)
         semaphore.release()
     _record_breaker_success()
 
@@ -610,7 +614,9 @@ def _coerce_payload_value(value: Any) -> Any:
 
 def _role_for_storage(value: Any) -> str:
     raw = str(_coerce_payload_value(value) or "member").strip()
-    return raw.lower()
+    # PostgreSQL's deployed userrole enum uses uppercase labels. Responses
+    # remain normalized to lowercase for the application domain.
+    return raw.upper()
 
 
 def _normalize_user_row_role(row: dict[str, Any]) -> dict[str, Any]:
@@ -619,6 +625,30 @@ def _normalize_user_row_role(row: dict[str, Any]) -> dict[str, Any]:
     if role_raw is not None:
         normalized["role"] = str(role_raw).strip().lower()
     return normalized
+
+
+def _user_for_authorization(username: str) -> Optional[dict[str, Any]]:
+    """Load one user for authorization without crossing into SQLAlchemy.
+
+    Supabase/PostgREST returns enum labels using the database representation
+    (for example ``ADMIN``), while the application authorization contract uses
+    lowercase role names.  Keep that translation at this transport boundary.
+    """
+    normalized_username = str(username or "").strip()
+    if not normalized_username:
+        return None
+    status, rows = _rest_select(
+        "user",
+        query={
+            "username": f"eq.{normalized_username}",
+            "select": "id,username,display_name,role,manager_id,team_id,is_active,token_version",
+            "limit": "1",
+        },
+    )
+    if status >= 400 or not rows:
+        return None
+    row = rows[0] if isinstance(rows[0], dict) else None
+    return _normalize_user_row_role(row) if row is not None else None
 
 
 def _utc_now_iso() -> str:

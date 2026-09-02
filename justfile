@@ -47,6 +47,9 @@ saas-evidence:
 measure:
     uv run python scripts/measure_task_graph.py
 
+diagnose-page-load TRACE:
+    uv run python scripts/diagnose_page_load.py "{{TRACE}}"
+
 check: lint typecheck test contracts
 
 start:

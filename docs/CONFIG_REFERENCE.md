@@ -32,6 +32,7 @@ Database
     - Only relevant when strict mode is enabled.
     - `1` permits `postgres*` usernames in DSN (not recommended for production).
 - Production requirements (deployment policy, mandatory):
+  - Each customer must receive a dedicated application environment and database. Shared-database multi-tenancy and RLS-based tenant isolation are not supported.
   - Enforce strict runtime DB validation with `OKR_ALLOW_NON_SUPABASE_DB=0`.
   - Use Supabase transaction pooler (`*.pooler.supabase.com:6543`) with `sslmode=require`.
   - Use a dedicated least-privilege runtime DB user (example: `okr_app`, typically `okr_app.<project_ref>` in Supabase pooler DSN).
@@ -148,7 +149,7 @@ Backend API (recommended for scale)
   - `OKR_ALLOW_LOCAL_MUTATION_FALLBACK` (required secure value: `false`): retained as deployment-policy gate; runtime executes fail-closed.
   - `OKR_ALLOW_LOCAL_READ_FALLBACK` (required secure value: `false`): retained as deployment-policy gate; runtime executes fail-closed.
   - `OKR_ALLOW_LOCAL_BACKEND_FALLBACK` (legacy key): keep `false`; runtime local fallback is not used.
-  - `OKR_DATA_ACCESS_MODE=supabase_api`: alpha/self-hosted compatibility mode only. Do not enable for multi-tenant SaaS; SaaS requires direct PostgreSQL through the approved transaction-mode pooler so transaction-local RLS can enforce the tenant boundary.
+  - `OKR_DATA_ACCESS_MODE=supabase_api`: alpha/self-hosted compatibility mode only. Customer production deployments use direct PostgreSQL through the approved transaction-mode pooler and their dedicated database.
   - `OKR_ENABLE_DIRECT_DB_RESTORE` (default: `false`): Direct DB restore is disabled by default and blocked in production.
 - Backend API runtime:
   - `OKR_BACKEND_HOST` (default: `127.0.0.1` in non-production, `0.0.0.0` in production; set explicitly for LAN/container access)
@@ -189,7 +190,7 @@ Backend API (recommended for scale)
   - Quota/backoff rejections return deterministic `429` payloads with `detail.error_code`, `detail.retry_after_seconds`, and `Retry-After` header.
   - Job submit accepted/rejected events are written to DB-backed `audit_event` (with file fallback) for usage reporting and incident review.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=database` stores request-signing nonces and backend API rate-limit counters in shared DB tables (`backend_request_nonce`, `backend_rate_limit_counter`) so controls are consistent across replicas.
-  - Database security convention: every table in the `public` schema must enable row level security (RLS) in its Alembic migration. The backend-internal tables (`backend_request_nonce`, `backend_rate_limit_counter`, `backend_distributed_state`, `backend_idempotency_record`, `objective_alignment_link`) are intentionally policy-less with `anon`/`authenticated` access revoked — they are owner-access-only and never exposed via PostgREST. Do not add permissive policies to them. CI enforces this via the `rls-gate` job (`scripts/check_rls_enabled.py`).
+  - Database security convention: database credentials, private network boundaries, and ordinary application authorization are the primary production controls. Any existing row-level security (RLS) policies are defense-in-depth for the dedicated database, not a shared-database tenant-isolation mechanism; do not introduce tenant-discriminator/RLS architecture.
   - `OKR_BACKEND_SECURITY_STATE_BACKEND=redis` stores nonce/rate-limit counters in shared Redis keys; set `OKR_BACKEND_SECURITY_STATE_REDIS_URL` and optionally `OKR_BACKEND_SECURITY_STATE_REDIS_PREFIX`.
   - If proxied backend transport fails, runtime behavior is fail-closed (local read/mutation fallback execution is disabled).
   - Direct DB restore is opt-in (`OKR_ENABLE_DIRECT_DB_RESTORE=true`) and intended for controlled non-production scenarios only.

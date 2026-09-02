@@ -6,6 +6,7 @@ import argparse
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -82,13 +83,20 @@ def _validate_cosign_references(
 
 
 def verify_rollback_manifest(
-    manifest: dict[str, Any], expected_commit_sha: str, cosign_references: list[str] | None = None
+    manifest: dict[str, Any],
+    expected_commit_sha: str,
+    cosign_references: list[str] | None = None,
+    expected_repository: str | None = None,
 ) -> dict[str, Any]:
     """Return deterministic rollback evidence or raise on any mismatch."""
     manifest = _mapping(manifest, "manifest")
     if manifest.get("schema_version") != 1:
         raise RollbackEvidenceError("manifest.schema_version must be 1")
     expected_commit_sha = _commit(expected_commit_sha, "expected commit SHA")
+    if expected_repository is not None:
+        repository = _required_string(manifest.get("repository"), "manifest.repository")
+        if repository != expected_repository:
+            raise RollbackEvidenceError("manifest repository does not match expected repository")
     manifest_commit_sha = _commit(manifest.get("commit_sha"), "manifest.commit_sha")
     if manifest_commit_sha != expected_commit_sha:
         raise RollbackEvidenceError("manifest commit SHA does not match expected commit SHA")
@@ -110,16 +118,49 @@ def verify_rollback_manifest(
     return result
 
 
+def verify_rollback_record(
+    record: dict[str, Any], expected_commit_sha: str, expected_repository: str | None = None
+) -> dict[str, Any]:
+    """Validate the final approval record uploaded by the rollback workflow."""
+    record = _mapping(record, "rollback record")
+    manifest_result = verify_rollback_manifest(record, expected_commit_sha, expected_repository=expected_repository)
+    if record.get("rollback") != "rollback":
+        raise RollbackEvidenceError("rollback record.rollback must be 'rollback'")
+    run_id = _required_string(record.get("rollback_from_manifest_run_id"), "rollback record manifest run ID")
+    if not run_id.isdigit() or int(run_id) <= 0:
+        raise RollbackEvidenceError("rollback record manifest run ID must be a positive integer")
+    _required_string(record.get("approved_by"), "rollback record approved by")
+    approved_at = _required_string(record.get("approved_at"), "rollback record approved at")
+    try:
+        parsed = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RollbackEvidenceError("rollback record approved at must be an ISO-8601 timestamp") from exc
+    if parsed.tzinfo is None:
+        raise RollbackEvidenceError("rollback record approved at must include a timezone")
+    return {**manifest_result, "rollback": "rollback"}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--manifest", type=Path, required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--manifest", type=Path)
+    source.add_argument("--record", type=Path)
     parser.add_argument("--commit-sha", required=True)
+    parser.add_argument("--repository")
     parser.add_argument("--cosign-reference", action="append", default=[])
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     try:
-        manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-        result = verify_rollback_manifest(manifest, args.commit_sha, args.cosign_reference)
+        source_path = args.record or args.manifest
+        payload = json.loads(source_path.read_text(encoding="utf-8"))
+        if args.record:
+            if args.cosign_reference:
+                raise RollbackEvidenceError("Cosign references are only valid with --manifest")
+            result = verify_rollback_record(payload, args.commit_sha, args.repository)
+        else:
+            result = verify_rollback_manifest(
+                payload, args.commit_sha, args.cosign_reference, args.repository
+            )
     except (RollbackEvidenceError, OSError, json.JSONDecodeError) as exc:
         print(f"[ROLLBACK-EVIDENCE] verification failed: {exc}", file=sys.stderr)
         return 2

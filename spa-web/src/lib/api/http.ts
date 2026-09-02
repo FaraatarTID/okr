@@ -1,3 +1,25 @@
+function readableError(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map(readableError).filter(Boolean).join("; ");
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const message = record.msg || record.message || record.detail || record.error;
+    if (message) {
+      return readableError(message);
+    }
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "Request failed.";
+    }
+  }
+  return String(value ?? "");
+}
+
 export async function responseDetail(response: Response): Promise<string> {
   let detail = `${response.status}`;
   try {
@@ -7,8 +29,8 @@ export async function responseDetail(response: Response): Promise<string> {
       error_code?: string;
       bff_origin?: string;
     };
-    const message = String(payload.error || payload.detail || payload.error_code || detail);
-    const reason = String(payload.detail || "").trim();
+    const message = readableError(payload.error || payload.detail || payload.error_code || detail);
+    const reason = readableError(payload.detail || "").trim();
     const bffOrigin = String(payload.bff_origin || "").trim();
     const extra: string[] = [];
     if (reason && reason !== message) {

@@ -4,7 +4,12 @@ import json
 
 import pytest
 
-from scripts.verify_rollback_evidence import RollbackEvidenceError, main, verify_rollback_manifest
+from scripts.verify_rollback_evidence import (
+    RollbackEvidenceError,
+    main,
+    verify_rollback_manifest,
+    verify_rollback_record,
+)
 
 
 COMMIT = "a" * 40
@@ -71,6 +76,14 @@ def test_rejects_cosign_reference_that_does_not_match_manifest() -> None:
         verify_rollback_manifest(manifest, COMMIT, references)
 
 
+def test_rejects_manifest_from_unexpected_repository() -> None:
+    manifest = valid_manifest()
+    manifest["repository"] = "another-owner/another-repository"
+
+    with pytest.raises(RollbackEvidenceError, match="repository"):
+        verify_rollback_manifest(manifest, COMMIT, expected_repository="FaraatarTID/okr")
+
+
 def test_cli_writes_stable_rollback_evidence(tmp_path) -> None:
     manifest = valid_manifest()
     manifest_path = tmp_path / "release-manifest.json"
@@ -89,3 +102,50 @@ def test_cli_writes_stable_rollback_evidence(tmp_path) -> None:
         ]
     ) == 0
     assert json.loads(output_path.read_text(encoding="utf-8"))["verified"] is True
+
+
+def test_verifies_final_production_rollback_record() -> None:
+    manifest = valid_manifest()
+    record = {
+        **manifest,
+        "rollback": "rollback",
+        "rollback_from_manifest_run_id": "123456789",
+        "incident_reference": "INC-42",
+        "approved_by": "release-operator",
+        "approved_at": "2026-09-02T10:20:30Z",
+    }
+
+    result = verify_rollback_record(record, COMMIT)
+
+    assert result == {
+        "schema_version": 1,
+        "commit_sha": COMMIT,
+        "images": ["backend", "bff", "web"],
+        "rollback": "rollback",
+        "verified": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("rollback", "deploy", "rollback"),
+        ("rollback_from_manifest_run_id", "", "manifest run ID"),
+        ("approved_by", "", "approved by"),
+        ("approved_at", "not-a-timestamp", "approved at"),
+    ],
+)
+def test_rejects_invalid_final_production_rollback_record(field: str, value: str, message: str) -> None:
+    manifest = valid_manifest()
+    record = {
+        **manifest,
+        "rollback": "rollback",
+        "rollback_from_manifest_run_id": "123456789",
+        "incident_reference": "",
+        "approved_by": "release-operator",
+        "approved_at": "2026-09-02T10:20:30Z",
+    }
+    record[field] = value
+
+    with pytest.raises(RollbackEvidenceError, match=message):
+        verify_rollback_record(record, COMMIT)

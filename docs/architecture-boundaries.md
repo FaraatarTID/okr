@@ -2,9 +2,9 @@
 
 Documentation HQ: [README](../README.md)
 
-Status: `IN-PROGRESS` for P0-01.
+Status: `VERIFIED` for P0-01.
 
-This working proposal implements the boundary decision required by [PRE_SAAS_ARCHITECTURE_BACKLOG.md](architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md), using the runtime evidence in [pre-saas-architecture-inventory.md](pre-saas-architecture-inventory.md). It is intentionally a proposal until import checks and facade call-path evidence are captured.
+This boundary record implements the decision required by [PRE_SAAS_ARCHITECTURE_BACKLOG.md](architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md), using the runtime evidence in [pre-saas-architecture-inventory.md](pre-saas-architecture-inventory.md). Repository-side import checks and facade call-path evidence are complete. Provider-backed deployment evidence remains governed by the separate BFF and release records.
 
 ## Proposed package roles
 
@@ -120,7 +120,7 @@ boundary or `backend_app`, never recreate a root compatibility facade.
 
 The tested symbol-level migration map is recorded in [facade-migration-map.md](facade-migration-map.md).
 
-## Enforcement work still required
+## Enforcement evidence
 
 - The repository import-boundary check passed: `python scripts/check_import_boundaries.py`.
 - The module design/efficiency gate passed: `python scripts/verify_module_design_efficiency.py`.
@@ -129,7 +129,7 @@ The tested symbol-level migration map is recorded in [facade-migration-map.md](f
 - The consolidated repository gate passed through the installed `just` runner using PowerShell as its shell: Ruff, typecheck, builds, Python tests, workspace tests, OpenAPI drift, and import boundaries completed successfully.
 - Identify any `backend_app` imports that bypass the intended service or domain direction.
 - Add or update a focused architectural test if an existing check does not cover the facade rule.
-- Mark this proposal `VERIFIED` only after the evidence is attached to the status ledger.
+- The repository-side P0-01 boundary is `VERIFIED`; provider deployment and rollback evidence are not prerequisites for this package and remain tracked by the operational records.
 
 ## Decision handoff
 

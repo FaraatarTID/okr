@@ -79,7 +79,7 @@ Before production SaaS or real customer data, all of the following must have evi
 - Provider-backed application deployment rollback: **NOT AVAILABLE - provider/artifact not selected**.
 - No production customer environment exists in this evidence set.
 - The current database is disposable/mock-data pre-SaaS state; its emptiness is not a recovery control.
-- Shared-database tenancy, tenant identifiers, RLS, and cross-customer schema are explicitly deferred. Single-tenant isolation is the approved first model.
+- Shared-database tenancy, tenant identifiers, RLS, and cross-customer schema are permanently out of scope. Dedicated single-tenant isolation is the only approved SaaS model.
 - Phase 1 promotion and real-data onboarding are explicitly blocked until the provider-specific gates above are closed.
 
 ## Required evidence-field check
