@@ -21,8 +21,9 @@ spec:
         fsGroup: 10001
       containers:
         - name: backend-api
-          image: ghcr.io/your-org/okr-backend-api:latest
-          imagePullPolicy: IfNotPresent
+          # Replace the digest placeholder from the signed release manifest.
+          image: ghcr.io/your-org/okr-backend-api@sha256:REPLACE_WITH_RELEASE_DIGEST
+          imagePullPolicy: Always
           command: ["python", "-m", "backend_app.run_api"]
           ports:
             - containerPort: 8100

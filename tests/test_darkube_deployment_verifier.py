@@ -36,7 +36,7 @@ def valid_evidence(manifest: dict[str, object]) -> dict[str, object]:
         return {"image": identity["image"], "digest": identity["digest"]}
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "commit_sha": COMMIT,
         "namespace": "okr-pre-release",
         "applications": {
@@ -45,6 +45,9 @@ def valid_evidence(manifest: dict[str, object]) -> dict[str, object]:
             "api": copy_identity("backend"),
             "worker": copy_identity("backend"),
         },
+        "health": {application: "passed" for application in ("api", "bff", "web", "worker")},
+        "restart": {"status": "passed", "services": ["api", "bff", "web", "worker"]},
+        "ingress": {"status": "passed", "checks": ["web", "bff-health", "api-health"]},
     }
 
 
@@ -52,10 +55,13 @@ def test_verifies_all_darkube_apps_against_manifest() -> None:
     result = verify_deployment(valid_manifest(), valid_evidence(valid_manifest()))
 
     assert result == {
-        "schema_version": 1,
+        "schema_version": 2,
         "commit_sha": COMMIT,
         "namespace": "okr-pre-release",
         "applications": ["api", "bff", "web", "worker"],
+        "health": "passed",
+        "restart": "passed",
+        "ingress": "passed",
         "verified": True,
     }
 
@@ -88,3 +94,29 @@ def test_cli_writes_deterministic_verification_artifact(tmp_path) -> None:
 
     assert main(["--manifest", str(manifest_path), "--evidence", str(evidence_path), "--output", str(output_path)]) == 0
     assert json.loads(output_path.read_text(encoding="utf-8"))["verified"] is True
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("health", {"api": "passed"}, "health must contain exactly"),
+        ("restart", {"status": "failed", "services": ["api", "bff", "web", "worker"]}, "restart.status"),
+        ("ingress", {"status": "passed", "checks": ["web"]}, "ingress.checks"),
+    ],
+)
+def test_rejects_incomplete_or_failed_provider_observations(field, value, message: str) -> None:
+    manifest = valid_manifest()
+    evidence = valid_evidence(manifest)
+    evidence[field] = value
+
+    with pytest.raises(DeploymentVerificationError, match=message):
+        verify_deployment(manifest, evidence)
+
+
+def test_rejects_legacy_image_only_evidence() -> None:
+    manifest = valid_manifest()
+    evidence = valid_evidence(manifest)
+    evidence["schema_version"] = 1
+
+    with pytest.raises(DeploymentVerificationError, match="schema_version must be 2"):
+        verify_deployment(manifest, evidence)

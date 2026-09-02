@@ -12,6 +12,8 @@ from typing import Any
 
 APPLICATIONS = ("api", "bff", "web", "worker")
 MANIFEST_IMAGES = ("web", "bff", "backend")
+HEALTH_APPLICATIONS = APPLICATIONS
+INGRESS_CHECKS = ("web", "bff-health", "api-health")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
@@ -48,12 +50,32 @@ def _image_identity(value: Any, label: str) -> dict[str, str]:
     return {"image": image_ref, "digest": digest}
 
 
+def _validate_observations(evidence: dict[str, Any]) -> None:
+    health = _mapping(evidence.get("health"), "evidence.health")
+    if set(health) != set(HEALTH_APPLICATIONS):
+        raise DeploymentVerificationError("health must contain exactly api, bff, web, and worker")
+    if any(value != "passed" for value in health.values()):
+        raise DeploymentVerificationError("health observations must all be passed")
+
+    restart = _mapping(evidence.get("restart"), "evidence.restart")
+    if restart.get("status") != "passed":
+        raise DeploymentVerificationError("restart.status must be passed")
+    if restart.get("services") != list(APPLICATIONS):
+        raise DeploymentVerificationError("restart.services must contain exactly api, bff, web, and worker")
+
+    ingress = _mapping(evidence.get("ingress"), "evidence.ingress")
+    if ingress.get("status") != "passed":
+        raise DeploymentVerificationError("ingress.status must be passed")
+    if ingress.get("checks") != list(INGRESS_CHECKS):
+        raise DeploymentVerificationError("ingress.checks must contain web, bff-health, and api-health")
+
+
 def verify_deployment(manifest: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
     """Return stable verification evidence or raise on any contract mismatch."""
     manifest = _mapping(manifest, "manifest")
     evidence = _mapping(evidence, "evidence")
-    if manifest.get("schema_version") != 1 or evidence.get("schema_version") != 1:
-        raise DeploymentVerificationError("manifest and evidence schema_version must be 1")
+    if manifest.get("schema_version") != 1 or evidence.get("schema_version") != 2:
+        raise DeploymentVerificationError("manifest schema_version must be 1 and evidence schema_version must be 2")
 
     manifest_commit = _validate_commit(manifest.get("commit_sha"), "manifest.commit_sha")
     evidence_commit = _validate_commit(evidence.get("commit_sha"), "evidence.commit_sha")
@@ -78,11 +100,15 @@ def verify_deployment(manifest: dict[str, Any], evidence: dict[str, Any]) -> dic
             raise DeploymentVerificationError(f"{application} image or digest does not match manifest backend")
 
     namespace = _required_string(evidence.get("namespace"), "evidence.namespace")
+    _validate_observations(evidence)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "commit_sha": manifest_commit,
         "namespace": namespace,
         "applications": list(APPLICATIONS),
+        "health": "passed",
+        "restart": "passed",
+        "ingress": "passed",
         "verified": True,
     }
 

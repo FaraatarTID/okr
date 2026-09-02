@@ -177,27 +177,14 @@ def ensure_backend_running() -> bool:
 
     cmd = [sys.executable, "-m", "backend_app.run_api"]
 
-    # On Linux/cloud, write backend stderr to a temp file so startup errors
-    # are visible in runtime logs even without SSH access.
-    _log_path = None
-    _log_fh = None
-    if os.name != "nt":  # Linux / cloud
-        import tempfile
-
-        try:
-            _log_path = os.path.join(tempfile.gettempdir(), "okr_backend.log")
-            _log_fh = open(_log_path, "w")  # noqa: WPS515
-        except Exception:
-            _log_path = None
-
     try:
         if os.name == "nt":  # Windows
             subprocess.Popen(
                 cmd,
                 cwd=repo_root,
                 env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=None,
+                stderr=None,
                 creationflags=subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
                 | subprocess.DETACHED_PROCESS,  # type: ignore[attr-defined]
             )
@@ -206,13 +193,11 @@ def ensure_backend_running() -> bool:
                 cmd,
                 cwd=repo_root,
                 env=env,
-                stdout=_log_fh or subprocess.DEVNULL,
-                stderr=_log_fh or subprocess.DEVNULL,
+                stdout=None,
+                stderr=None,
                 start_new_session=True,
             )
     except Exception as exc:
-        if _log_fh:
-            _log_fh.close()
         _LOGGER.error("Failed to spawn embedded backend process: %s", exc)
         return False
 
@@ -227,8 +212,6 @@ def ensure_backend_running() -> bool:
                 port,
                 i + 1,
             )
-            if _log_fh:
-                _log_fh.close()
             return True
         # Log progress every 10 seconds so cloud logs show activity
         if (i + 1) % 10 == 0:
@@ -239,26 +222,9 @@ def ensure_backend_running() -> bool:
                 i + 1,
             )
 
-    if _log_fh:
-        _log_fh.close()
-
     _LOGGER.warning(
-        "Embedded backend was launched but port %d is still closed after 60 s. "
-        "Backend log tail follows:",
+        "Embedded backend was launched but port %d is still closed after 60 s.",
         port,
     )
-
-    # Print the last 30 lines of the backend log to runtime logs
-    if _log_path and os.path.exists(_log_path):
-        try:
-            with open(_log_path) as lf:
-                lines = lf.readlines()
-            tail = lines[-30:] if len(lines) > 30 else lines
-            for line in tail:
-                _LOGGER.warning("  [backend] %s", line.rstrip())
-        except Exception as exc:
-            _LOGGER.warning("  [backend log unreadable: %s]", exc)
-    else:
-        _LOGGER.warning("  [no backend log file found]")
 
     return False

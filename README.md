@@ -374,6 +374,8 @@ Environment responsibilities:
 For deployment configuration, hardening, and operational procedures, see
 [DEPLOYMENT.md](DEPLOYMENT.md) and
 [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md).
+For the factor-by-factor SaaS operations evidence ledger, see
+[docs/saas/twelve-factor-evidence.md](docs/saas/twelve-factor-evidence.md).
 For the GHCR image contract and Darkube registry setup, see
 [deploy/ghcr/README.md](deploy/ghcr/README.md).
 For production database backup and restore onboarding, see

@@ -2,26 +2,23 @@ from __future__ import annotations
 
 import json
 import logging
-import os
+import sys
 from typing import Optional
 
 from src.observability import current_observability_fields
+from src.observability_redaction import redact_observability
 from src.utils.time_utils import utc_now, utc_now_naive
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
-LOG_FILE = os.path.join(LOG_DIR, "audit.log")
-ERROR_LOG_FILE = os.path.join(LOG_DIR, "error.log")
 _MODULE_LOGGER = logging.getLogger(__name__)
 _AUDIT_DB_FAILURE_REPORTED = False
 
 
 def _get_logger() -> logging.Logger:
-    os.makedirs(LOG_DIR, exist_ok=True)
     logger = logging.getLogger("okr_audit")
     if logger.handlers:
         return logger
     logger.setLevel(logging.INFO)
-    handler = logging.FileHandler(LOG_FILE, encoding="utf-8")
+    handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter("%(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
@@ -29,12 +26,11 @@ def _get_logger() -> logging.Logger:
 
 
 def _get_error_logger() -> logging.Logger:
-    os.makedirs(LOG_DIR, exist_ok=True)
     logger = logging.getLogger("okr_error")
     if logger.handlers:
         return logger
     logger.setLevel(logging.ERROR)
-    handler = logging.FileHandler(ERROR_LOG_FILE, encoding="utf-8")
+    handler = logging.StreamHandler(sys.stderr)
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
@@ -42,7 +38,7 @@ def _get_error_logger() -> logging.Logger:
 
 
 def _json_dumps(payload: dict) -> str:
-    return json.dumps(payload, ensure_ascii=False, default=str)
+    return json.dumps(redact_observability(payload), ensure_ascii=False, default=str)
 
 
 def _normalize_optional_text(value: object) -> Optional[str]:
@@ -170,7 +166,7 @@ def _write_audit_event_to_db(payload: dict) -> None:
         from src.database import get_session_context
         from src.models import AuditEvent
 
-        details = payload.get("details")
+        details = redact_observability(payload.get("details"))
         actor_snapshot = _resolve_actor_snapshot(payload.get("actor"))
         target_fields = _derive_target_fields(payload)
         with get_session_context() as session:
@@ -199,7 +195,7 @@ def _write_audit_event_to_db(payload: dict) -> None:
         if not _AUDIT_DB_FAILURE_REPORTED:
             _AUDIT_DB_FAILURE_REPORTED = True
             _MODULE_LOGGER.warning(
-                "Database-backed audit sink unavailable; continuing with file sink only."
+                "Database-backed audit sink unavailable; continuing with stream sink only."
             )
         _MODULE_LOGGER.debug("Audit DB write failure details", exc_info=exc)
 
@@ -240,10 +236,12 @@ def audit_log(
 def error_log(message: str, exc: Optional[Exception] = None):
     logger = _get_error_logger()
     observability = current_observability_fields()
-    scoped_message = str(message)
-    if observability:
-        scoped_message = f"{scoped_message} | ctx={_json_dumps(observability)}"
-    if exc:
-        logger.exception(scoped_message, exc_info=exc)
-    else:
-        logger.error(scoped_message)
+    payload = {
+        "ts": utc_now().isoformat(),
+        "event": "application_error",
+        "level": "error",
+        "message": str(message),
+        "error_type": type(exc).__name__ if exc is not None else None,
+        **observability,
+    }
+    logger.error(_json_dumps(payload))

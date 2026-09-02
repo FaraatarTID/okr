@@ -96,6 +96,7 @@ class BackendSettings:
     job_prune_batch_size: int
     job_timeout_seconds: int
     worker_poll_seconds: int
+    api_workers: int
     security_state_db_use_null_pool: bool
     security_state_db_pool_size: int
     security_state_db_max_overflow: int
@@ -280,6 +281,11 @@ def get_backend_settings() -> BackendSettings:
         worker_poll_seconds=_as_int(
             get_config_value("OKR_BACKEND_WORKER_POLL_SECONDS", ""),
             default=2,
+            minimum=1,
+        ),
+        api_workers=_as_int(
+            get_config_value("OKR_BACKEND_API_WORKERS", ""),
+            default=1,
             minimum=1,
         ),
     )

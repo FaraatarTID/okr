@@ -91,11 +91,16 @@ def _audit_event_values(value: Any) -> dict[str, Any]:
 
 
 class ControlPlane:
-    """Durable metadata registry with no customer-domain access."""
+    """Metadata registry with optional explicit persistence and no domain access.
+
+    Application processes are memory-backed by default. Durable control-plane
+    state must be supplied explicitly by an operator process through
+    ``state_path`` or ``OKR_CONTROL_PLANE_STATE_PATH``.
+    """
 
     def __init__(self, environments: Iterable[EnvironmentSummary] | None = None, *, state_path: str | Path | None = None) -> None:
-        configured_path = state_path or os.getenv("OKR_CONTROL_PLANE_STATE_PATH", "tmp/saas-control-plane.json")
-        self._state_path = Path(configured_path)
+        configured_path = state_path if state_path is not None else os.getenv("OKR_CONTROL_PLANE_STATE_PATH", "")
+        self._state_path = Path(configured_path) if str(configured_path).strip() else None
         self._lock = RLock()
         self._environments: dict[str, EnvironmentSummary] = {}
         self._audit_events: list[_ControlPlaneAuditEvent] = []
@@ -169,12 +174,15 @@ class ControlPlane:
     @contextmanager
     def _guard(self):
         with self._lock:
+            if self._state_path is None:
+                yield
+                return
             lock_path = self._state_path.with_suffix(self._state_path.suffix + ".lock")
             with locked_file(lock_path):
                 yield
 
     def _load(self) -> None:
-        if not self._state_path.exists():
+        if self._state_path is None or not self._state_path.exists():
             return
         data = json.loads(self._state_path.read_text(encoding="utf-8"))
         fields = set(EnvironmentSummary.__dataclass_fields__)
@@ -189,6 +197,8 @@ class ControlPlane:
         ]
 
     def _save(self) -> None:
+        if self._state_path is None:
+            return
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
         payload = {

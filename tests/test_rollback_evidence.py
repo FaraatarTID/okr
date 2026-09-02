@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 
 import pytest
 
@@ -12,12 +13,20 @@ from scripts.verify_rollback_evidence import (
 )
 
 
-COMMIT = "a" * 40
-DIGESTS = {name: f"sha256:{str(index) * 64}" for index, name in enumerate(("web", "bff", "backend"), 1)}
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+DIGESTS = {
+    name: f"sha256:{hashlib.sha256(name.encode()).hexdigest()}"
+    for name in ("web", "bff", "backend")
+}
+
+
+def _payload_digest(payload: dict[str, object]) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
 def valid_manifest() -> dict[str, object]:
-    return {
+    manifest: dict[str, object] = {
         "schema_version": 1,
         "repository": "FaraatarTID/okr",
         "commit_sha": COMMIT,
@@ -29,6 +38,16 @@ def valid_manifest() -> dict[str, object]:
             for name, digest in DIGESTS.items()
         },
     }
+    manifest["attestation"] = {
+        "provider": "github-actions",
+        "evidence_id": "run-20260901-001",
+        "algorithm": "provider-signed",
+        "key_id": "release-key-2026",
+        "signature": "release-signature-value-with-more-than-32-bytes",
+        "issued_at": "2026-09-02T10:00:00Z",
+        "signed_payload_sha256": _payload_digest(manifest),
+    }
+    return manifest
 
 
 def cosign_references(manifest: dict[str, object]) -> list[str]:
@@ -52,7 +71,7 @@ def test_verifies_previous_known_good_manifest() -> None:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (lambda manifest: manifest.update({"commit_sha": "b" * 40}), "commit SHA"),
+        (lambda manifest: manifest.update({"commit_sha": "b" * 40}), "synthetic"),
         (lambda manifest: manifest["images"].pop("backend"), "exactly web, bff, and backend"),
         (lambda manifest: manifest["images"].update({"debug": manifest["images"]["web"]}), "exactly web, bff, and backend"),
         (lambda manifest: manifest["images"]["web"].update({"digest": "sha256:bad"}), "digest"),
@@ -106,13 +125,30 @@ def test_cli_writes_stable_rollback_evidence(tmp_path) -> None:
 
 def test_verifies_final_production_rollback_record() -> None:
     manifest = valid_manifest()
-    record = {
+    record: dict[str, object] = {
         **manifest,
         "rollback": "rollback",
         "rollback_from_manifest_run_id": "123456789",
         "incident_reference": "INC-42",
         "approved_by": "release-operator",
         "approved_at": "2026-09-02T10:20:30Z",
+        "cosign_references": cosign_references(manifest),
+        "execution": {
+            "status": "SUCCESS",
+            "target_environment_id": "env-acme",
+            "provider_operation_id": "darkube-rollback-20260902-001",
+            "healthcheck": "PASSED",
+            "observed_at": "2026-09-02T10:21:00Z",
+        },
+    }
+    record["attestation"] = {
+        "provider": "github-actions",
+        "evidence_id": "run-20260902-002",
+        "algorithm": "provider-signed",
+        "key_id": "release-key-2026",
+        "signature": "rollback-signature-value-with-more-than-32-bytes",
+        "issued_at": "2026-09-02T10:21:30Z",
+        "signed_payload_sha256": _payload_digest({key: value for key, value in record.items() if key != "attestation"}),
     }
 
     result = verify_rollback_record(record, COMMIT)
@@ -121,6 +157,7 @@ def test_verifies_final_production_rollback_record() -> None:
         "schema_version": 1,
         "commit_sha": COMMIT,
         "images": ["backend", "bff", "web"],
+        "cosign_references": cosign_references(manifest),
         "rollback": "rollback",
         "verified": True,
     }
@@ -144,8 +181,54 @@ def test_rejects_invalid_final_production_rollback_record(field: str, value: str
         "incident_reference": "",
         "approved_by": "release-operator",
         "approved_at": "2026-09-02T10:20:30Z",
+        "cosign_references": cosign_references(manifest),
+        "execution": {
+            "status": "SUCCESS",
+            "target_environment_id": "env-acme",
+            "provider_operation_id": "darkube-rollback-20260902-001",
+            "healthcheck": "PASSED",
+            "observed_at": "2026-09-02T10:21:00Z",
+        },
+    }
+    record["attestation"] = {
+        "provider": "github-actions",
+        "evidence_id": "run-20260902-002",
+        "algorithm": "provider-signed",
+        "key_id": "release-key-2026",
+        "signature": "rollback-signature-value-with-more-than-32-bytes",
+        "issued_at": "2026-09-02T10:21:30Z",
+        "signed_payload_sha256": _payload_digest({key: value for key, value in record.items() if key != "attestation"}),
     }
     record[field] = value
 
     with pytest.raises(RollbackEvidenceError, match=message):
         verify_rollback_record(record, COMMIT)
+
+
+def test_rejects_failed_or_unsigned_rollback_execution() -> None:
+    manifest = valid_manifest()
+    record: dict[str, object] = {
+        **manifest,
+        "rollback": "rollback",
+        "rollback_from_manifest_run_id": "123456789",
+        "approved_by": "release-operator",
+        "approved_at": "2026-09-02T10:20:30Z",
+        "cosign_references": cosign_references(manifest),
+        "execution": {
+            "status": "FAILED",
+            "target_environment_id": "env-acme",
+            "provider_operation_id": "darkube-rollback-20260902-001",
+            "healthcheck": "FAILED",
+            "observed_at": "2026-09-02T10:21:00Z",
+        },
+    }
+    with pytest.raises(RollbackEvidenceError, match="SUCCESS"):
+        verify_rollback_record(record, COMMIT)
+
+
+def test_rejects_synthetic_release_manifest() -> None:
+    manifest = valid_manifest()
+    manifest["commit_sha"] = "a" * 40
+
+    with pytest.raises(RollbackEvidenceError, match="synthetic"):
+        verify_rollback_manifest(manifest, "a" * 40, cosign_references(manifest))

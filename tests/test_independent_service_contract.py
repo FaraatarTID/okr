@@ -29,7 +29,7 @@ def test_compose_keeps_api_worker_and_bff_as_independent_processes() -> None:
     assert 'restart: unless-stopped' in worker
     assert 'restart: unless-stopped' in bff
     assert 'healthcheck:' in api
-    assert 'healthcheck:\n      disable: true' in worker
+    assert 'python -m backend_app.worker_healthcheck' in worker
 
 
 def test_readiness_requires_api_worker_bff_and_web(monkeypatch) -> None:

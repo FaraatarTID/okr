@@ -6,6 +6,10 @@ from __future__ import annotations
 import time
 import logging
 import json
+import os
+import signal
+import threading
+from contextvars import copy_context
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 
@@ -20,6 +24,7 @@ from backend_app.jobs import (
     mark_job_failed,
     mark_job_failed_terminal,
     mark_job_succeeded,
+    requeue_job_for_shutdown,
     prune_audit_events,
     prune_terminal_jobs,
 )
@@ -41,15 +46,91 @@ from src.observability_metrics import (
     record_worker_job_started,
     record_worker_queue_depth,
 )
+from backend_app.worker_healthcheck import heartbeat_interval_seconds, write_heartbeat
 from sqlmodel import select
 
 logger = logging.getLogger(__name__)
 _LOOP_ERROR_SLEEP_SECONDS = 2.0
 _MAX_JOB_ATTEMPTS_HARD_CAP = 10
+_SHUTDOWN_EVENT = threading.Event()
+_DEFAULT_SHUTDOWN_GRACE_SECONDS = 30.0
+
+
+def request_shutdown(signum: int | None = None, frame: Any = None) -> None:
+    """Request cooperative shutdown after the current job finishes."""
+    del signum, frame
+    _SHUTDOWN_EVENT.set()
+
+
+def shutdown_requested() -> bool:
+    return _SHUTDOWN_EVENT.is_set()
+
+
+def reset_shutdown_state() -> None:
+    _SHUTDOWN_EVENT.clear()
+
+
+def wait_for_shutdown_or_timeout(timeout_seconds: float) -> bool:
+    return _SHUTDOWN_EVENT.wait(max(0.0, float(timeout_seconds)))
+
+
+def _install_shutdown_handlers() -> None:
+    signal.signal(signal.SIGTERM, request_shutdown)
+    signal.signal(signal.SIGINT, request_shutdown)
 
 
 class NonRetryableJobError(RuntimeError):
     """Raised when a job is malformed and should not be retried."""
+
+
+class ShutdownDeadlineExceeded(RuntimeError):
+    """Raised when a running job outlives the worker shutdown grace period."""
+
+
+def _shutdown_grace_seconds() -> float:
+    try:
+        value = float(
+            os.environ.get(
+                "OKR_WORKER_SHUTDOWN_GRACE_SECONDS",
+                str(_DEFAULT_SHUTDOWN_GRACE_SECONDS),
+            )
+        )
+    except (TypeError, ValueError):
+        value = _DEFAULT_SHUTDOWN_GRACE_SECONDS
+    return max(0.0, value)
+
+
+def _run_job_with_lifecycle(kind: str, payload: dict) -> Any:
+    """Run a job while refreshing liveness and enforcing shutdown bounds."""
+    outcome: dict[str, Any] = {}
+    finished = threading.Event()
+    job_context = copy_context()
+
+    def _target() -> None:
+        try:
+            outcome["result"] = run_job(kind, payload)
+        except BaseException as exc:
+            outcome["error"] = exc
+        finally:
+            finished.set()
+
+    job_thread = threading.Thread(
+        target=lambda: job_context.run(_target), name="okr-job", daemon=True
+    )
+    job_thread.start()
+    shutdown_deadline: float | None = None
+    while not finished.wait(timeout=heartbeat_interval_seconds()):
+        write_heartbeat()
+        if shutdown_requested():
+            if shutdown_deadline is None:
+                shutdown_deadline = time.monotonic() + _shutdown_grace_seconds()
+            elif time.monotonic() >= shutdown_deadline:
+                raise ShutdownDeadlineExceeded(
+                    "Worker shutdown grace period exceeded while running a job."
+                )
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("result")
 
 
 def _log_worker_event(event: str, level: str = "info", **fields: object) -> None:
@@ -211,7 +292,18 @@ def process_next_job(*, worker_id: str) -> bool:
         started_at = time.perf_counter()
         try:
             payload = _parse_job_payload(job)
-            result = run_job(str(job.kind), payload)
+            result = _run_job_with_lifecycle(str(job.kind), payload)
+        except ShutdownDeadlineExceeded:
+            requeued = requeue_job_for_shutdown(str(job.id), worker_id)
+            _log_worker_event(
+                "worker_job_requeued_for_shutdown_deadline",
+                worker_id=worker_id,
+                job_id=str(job.id),
+                kind=worker_job_kind,
+                status="pending" if requeued else "already-finalized",
+                shutdown_grace_seconds=_shutdown_grace_seconds(),
+            )
+            return True
         except Exception as exc:
             msg = f"{type(exc).__name__}: {exc}"
             duration_ms = (time.perf_counter() - started_at) * 1000
@@ -242,7 +334,17 @@ def process_next_job(*, worker_id: str) -> bool:
         try:
             latest = get_job(job.id)
             duration_ms = (time.perf_counter() - started_at) * 1000
-            if latest and bool(latest.cancel_requested):
+            if shutdown_requested():
+                requeue_job_for_shutdown(str(job.id), worker_id)
+                _log_worker_event(
+                    "worker_job_requeued_for_shutdown",
+                    worker_id=worker_id,
+                    job_id=str(job.id),
+                    kind=worker_job_kind,
+                    status="pending",
+                    duration_ms=round(duration_ms, 3),
+                )
+            elif latest and bool(latest.cancel_requested):
                 mark_job_cancelled(job.id, error_text="Cancelled while running.")
                 record_worker_job_result(
                     worker_id=worker_id,
@@ -317,10 +419,13 @@ def run_worker_loop() -> None:
     settings = get_backend_settings()
     worker_id = f"backend-worker-{int(time.time())}"
     last_prune_at = 0.0
+    reset_shutdown_state()
+    _install_shutdown_handlers()
     init_database()
     _log_worker_event("worker_started", worker_id=worker_id)
-    while True:
+    while not shutdown_requested():
         record_worker_heartbeat(worker_id=worker_id)
+        write_heartbeat()
         now_ts = float(time.time())
         if (now_ts - last_prune_at) >= float(settings.job_prune_interval_seconds):
             try:
@@ -393,10 +498,11 @@ def run_worker_loop() -> None:
                 worker_id=worker_id,
                 status="failed",
             )
-            time.sleep(_LOOP_ERROR_SLEEP_SECONDS)
+            wait_for_shutdown_or_timeout(_LOOP_ERROR_SLEEP_SECONDS)
             continue
         if not handled:
-            time.sleep(settings.worker_poll_seconds)
+            wait_for_shutdown_or_timeout(settings.worker_poll_seconds)
+    _log_worker_event("worker_stopped", worker_id=worker_id, status="graceful_shutdown")
 
 
 if __name__ == "__main__":

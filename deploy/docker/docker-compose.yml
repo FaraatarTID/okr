@@ -5,7 +5,7 @@ x-release-images:
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
     environment:
       - POSTGRES_USER=${OKR_POSTGRES_USER:-okr}
       - POSTGRES_PASSWORD=${OKR_POSTGRES_PASSWORD:-okr_dev_password}
@@ -29,7 +29,6 @@ services:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
       - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE-database}
       - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE-on_premise}
-      - OKR_CONTROL_PLANE_STATE_PATH=${OKR_CONTROL_PLANE_STATE_PATH-/var/lib/okr/saas-control-plane.json}
       - OKR_RELEASE_VERSION=${OKR_RELEASE_VERSION:-local}
       - OKR_RELEASE_ARTIFACT=${OKR_RELEASE_ARTIFACT:-local}
       - OKR_SAAS_MODE=${OKR_SAAS_MODE-false}
@@ -43,6 +42,7 @@ services:
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
       - OKR_BACKEND_HOST=0.0.0.0
       - OKR_BACKEND_PORT=${OKR_BACKEND_PORT:-8100}
+      - OKR_BACKEND_API_WORKERS=${OKR_BACKEND_API_WORKERS:-1}
       - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:?OKR_BACKEND_SERVICE_TOKEN must be set}
       - OKR_BOOTSTRAP_ADMIN_PASSWORD=${OKR_BOOTSTRAP_ADMIN_PASSWORD:-}
       - OKR_BACKEND_ENFORCE_TOKEN=${OKR_BACKEND_ENFORCE_TOKEN:-true}
@@ -76,8 +76,8 @@ services:
       retries: 40
       start_period: 5s
     restart: unless-stopped
-    volumes:
-      - okr-control-plane-state:/var/lib/okr
+    deploy:
+      replicas: ${OKR_BACKEND_API_REPLICAS:-1}
     depends_on:
       postgres:
         condition: service_healthy
@@ -91,7 +91,6 @@ services:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
       - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE-database}
       - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE-on_premise}
-      - OKR_CONTROL_PLANE_STATE_PATH=${OKR_CONTROL_PLANE_STATE_PATH-/var/lib/okr/saas-control-plane.json}
       - OKR_RELEASE_VERSION=${OKR_RELEASE_VERSION:-local}
       - OKR_RELEASE_ARTIFACT=${OKR_RELEASE_ARTIFACT:-local}
       - OKR_SAAS_MODE=${OKR_SAAS_MODE-false}
@@ -104,6 +103,10 @@ services:
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-}
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
       - OKR_BACKEND_WORKER_POLL_SECONDS=${OKR_BACKEND_WORKER_POLL_SECONDS:-2}
+      - OKR_WORKER_HEARTBEAT_PATH=${OKR_WORKER_HEARTBEAT_PATH:-/tmp/okr-worker-heartbeat}
+      - OKR_WORKER_HEARTBEAT_INTERVAL_SECONDS=${OKR_WORKER_HEARTBEAT_INTERVAL_SECONDS:-10}
+      - OKR_WORKER_HEARTBEAT_TIMEOUT_SECONDS=${OKR_WORKER_HEARTBEAT_TIMEOUT_SECONDS:-60}
+      - OKR_WORKER_SHUTDOWN_GRACE_SECONDS=${OKR_WORKER_SHUTDOWN_GRACE_SECONDS:-30}
       - OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:?OKR_BACKEND_SERVICE_TOKEN must be set}
       - OKR_BACKEND_ENFORCE_TOKEN=${OKR_BACKEND_ENFORCE_TOKEN:-true}
       - ALLOW_EXTERNAL_AI=${ALLOW_EXTERNAL_AI:-false}
@@ -117,10 +120,17 @@ services:
       - PDFSHIFT_API_KEY=${PDFSHIFT_API_KEY:-}
     command: ["sh", "-c", "case \"$$(printf '%s' \"$$OKR_SAAS_MODE\" | tr '[:upper:]' '[:lower:]')\" in true|1|yes|on) SaaS=1 ;; *) SaaS=0 ;; esac; if [ \"$$SaaS\" = \"1\" ] || [ \"$$OKR_DEPLOYMENT_PROFILE\" = \"single_tenant_saas\" ]; then python scripts/check_deploy_config.py --mode runtime --saas-only --environment || exit $$?; fi; exec python -m backend_app.worker"]
     restart: unless-stopped
+    # Compose does not apply deploy.replicas to ordinary `up`. Scale explicitly:
+    # docker compose -f deploy/docker/docker-compose.yml up -d --scale backend-worker=${OKR_BACKEND_WORKER_REPLICAS:-1} backend-worker
+    stop_grace_period: ${OKR_WORKER_SHUTDOWN_GRACE_SECONDS:-30}s
+    deploy:
+      replicas: ${OKR_BACKEND_WORKER_REPLICAS:-1}
     healthcheck:
-      disable: true
-    volumes:
-      - okr-control-plane-state:/var/lib/okr
+      test: ["CMD-SHELL", "python -m backend_app.worker_healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,6 +166,8 @@ services:
       backend-api:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      replicas: ${SPA_BFF_REPLICAS:-1}
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:${BFF_PORT:-3001}/healthz >/dev/null || exit 1"]
       interval: 3s
@@ -169,7 +181,7 @@ services:
       dockerfile: spa-web/Dockerfile
     image: *release-web-image
     environment:
-      - PORT=3000
+      - PORT=${SPA_WEB_PORT:-3000}
       - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE-on_premise}
       - OKR_RELEASE_VERSION=${OKR_RELEASE_VERSION:-local}
       - OKR_RELEASE_ARTIFACT=${OKR_RELEASE_ARTIFACT:-local}
@@ -180,12 +192,13 @@ services:
       - NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA=${NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA:-100}
       - NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE=${NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE:-true}
     ports:
-      - "${SPA_WEB_BIND_ADDRESS:-127.0.0.1}:${SPA_WEB_HOST_PORT:-3000}:3000"
+      - "${SPA_WEB_BIND_ADDRESS:-127.0.0.1}:${SPA_WEB_HOST_PORT:-3000}:${SPA_WEB_PORT:-3000}"
     depends_on:
       spa-bff:
         condition: service_healthy
     restart: unless-stopped
+    deploy:
+      replicas: ${SPA_WEB_REPLICAS:-1}
 
 volumes:
   okr-postgres-data:
-  okr-control-plane-state:

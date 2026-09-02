@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from src.observability_redaction import redact_observability
+
 
 _SAMPLE_LIMIT = 240
 _STARTED_AT = time.time()
@@ -318,4 +320,4 @@ def log_payload(*, event: str, **fields: Any) -> str:
         "ts": datetime.now(timezone.utc).isoformat(),
         **fields,
     }
-    return json.dumps(payload, ensure_ascii=False, default=str)
+    return json.dumps(redact_observability(payload), ensure_ascii=False, default=str)

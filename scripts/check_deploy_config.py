@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.saas.environment_config import ConfigError, SaaSEnvironmentConfig
+from src.saas.environment_config import ConfigError, SaaSEnvironmentConfig  # noqa: E402
 
 
 REQUIRED_ENV_KEYS = (

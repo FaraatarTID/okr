@@ -1,11 +1,11 @@
-FROM node:22-alpine AS deps
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS deps
 WORKDIR /app
 COPY package*.json ./
 COPY spa-bff/package*.json ./spa-bff/
 COPY spa-web/package*.json ./spa-web/
 RUN npm ci --include-workspace-root --include=dev
 
-FROM node:22-alpine AS build
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/spa-web/node_modules ./spa-web/node_modules
@@ -14,7 +14,7 @@ COPY spa-web/ ./spa-web/
 WORKDIR /app/spa-web
 RUN npm run build -- --webpack
 
-FROM node:22-alpine AS runtime
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runtime
 WORKDIR /app/spa-web
 ENV NODE_ENV=production
 ENV PORT=3000
