@@ -119,19 +119,19 @@ jobs:
         run: uv sync --locked --group dev
 
       - name: Verify dependency compatibility export
-        run: python scripts/export_requirements.py --check
+        run: uv run python scripts/export_requirements.py --check
 
       - name: Verify dependency authority and lock alignment
-        run: python scripts/check_dependency_manifest.py
+        run: uv run python scripts/check_dependency_manifest.py
 
       - name: Migration Lint Gate
-        run: python scripts/verify_migration_lint.py --require-baseline
+        run: uv run python scripts/verify_migration_lint.py --require-baseline
 
       - name: Apply migrations
         run: uv run alembic upgrade head
 
       - name: RLS Coverage Gate
-        run: python scripts/check_rls_enabled.py
+        run: uv run python scripts/check_rls_enabled.py
 
   backend-quality:
     runs-on: ubuntu-latest
@@ -447,7 +447,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Documentation HQ Link Check
-        run: uv run python scripts/check_docs_hq_links.py
+        run: python scripts/check_docs_hq_links.py
 
   ci-result:
     name: CI result
