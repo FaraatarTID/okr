@@ -3,7 +3,6 @@ from pydantic import ValidationError
 
 from src.saas.environment_contract import (
     BackupPolicy,
-    DeploymentProfile,
     EnvironmentEvent,
     EnvironmentManifest,
     EnvironmentState,

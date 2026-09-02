@@ -17,7 +17,9 @@ class RecoveryEvidenceError(ValueError):
 
 
 _CHECKSUM_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-_STATUSES = {"SUCCESS", "FAILED"}
+_STATUSES = {"SUCCESS"}
+_ATTESTATION_ALGORITHMS = {"ed25519", "rsa-pss-sha256", "provider-signed"}
+_SYNTHETIC_MARKERS = ("test", "fixture", "synthetic", "mock", "local", "fake", "example")
 
 
 def _object(value: Any, label: str) -> dict[str, Any]:
@@ -52,15 +54,40 @@ def _seconds(value: Any, label: str) -> int:
 def _status(record: dict[str, Any], label: str) -> str:
     value = _string(record.get("status"), f"{label}.status").upper()
     if value not in _STATUSES:
-        raise RecoveryEvidenceError(f"{label}.status must be SUCCESS or FAILED")
-    if value == "FAILED":
-        _string(record.get("failure_reason"), f"{label}.failure_reason")
+        raise RecoveryEvidenceError(f"{label}.status must be SUCCESS; failed evidence is not verifiable")
     return value
 
 
 def _checksum(payload: dict[str, Any]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _reject_synthetic(value: str, label: str) -> None:
+    lowered = value.casefold()
+    if any(marker in lowered for marker in _SYNTHETIC_MARKERS):
+        raise RecoveryEvidenceError(f"{label} must identify a real provider operation")
+
+
+def _verify_attestation(evidence: dict[str, Any]) -> None:
+    attestation = _object(evidence.get("attestation"), "attestation")
+    provider = _string(attestation.get("provider"), "attestation.provider")
+    evidence_id = _string(attestation.get("evidence_id"), "attestation.evidence_id")
+    algorithm = _string(attestation.get("algorithm"), "attestation.algorithm").lower()
+    _string(attestation.get("key_id"), "attestation.key_id")
+    signature = _string(attestation.get("signature"), "attestation.signature")
+    issued_at = _timestamp(attestation.get("issued_at"), "attestation.issued_at")
+    _reject_synthetic(provider, "attestation.provider")
+    _reject_synthetic(evidence_id, "attestation.evidence_id")
+    if algorithm not in _ATTESTATION_ALGORITHMS:
+        raise RecoveryEvidenceError("attestation.algorithm is unsupported")
+    if len(signature) < 32:
+        raise RecoveryEvidenceError("attestation.signature is incomplete")
+    payload = {key: value for key, value in evidence.items() if key != "attestation"}
+    if attestation.get("signed_payload_sha256") != _checksum(payload):
+        raise RecoveryEvidenceError("attestation signed payload does not match evidence")
+    if issued_at > datetime.now(issued_at.tzinfo):
+        raise RecoveryEvidenceError("attestation.issued_at cannot be in the future")
 
 
 def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
@@ -125,12 +152,10 @@ def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
         raise RecoveryEvidenceError("measured RTO exceeds RTO target")
 
     overall_status = _string(evidence.get("status"), "status").upper()
-    if overall_status not in {"PASSED", "FAILED"}:
-        raise RecoveryEvidenceError("status must be PASSED or FAILED")
-    expected_status = "PASSED" if backup_status == restore_status == "SUCCESS" else "FAILED"
-    if overall_status != expected_status:
-        raise RecoveryEvidenceError("status does not match backup and restore statuses")
+    if overall_status != "PASSED" or backup_status != "SUCCESS" or restore_status != "SUCCESS":
+        raise RecoveryEvidenceError("status must be PASSED and backup/restore must both be SUCCESS")
     _string(evidence.get("operator"), "operator")
+    _verify_attestation(evidence)
 
     return {
         "schema_version": 1,
@@ -146,6 +171,7 @@ def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
         "restore_status": restore_status,
         "status": overall_status,
         "verified": True,
+        "attested": True,
     }
 
 

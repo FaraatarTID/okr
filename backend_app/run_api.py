@@ -18,7 +18,7 @@ def main() -> None:
         host=settings.host,
         port=settings.port,
         reload=False,
-        workers=1,
+        workers=settings.api_workers,
     )
 
 

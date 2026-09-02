@@ -15,15 +15,31 @@ spec:
       labels:
         app: okr-backend-worker
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
         fsGroup: 10001
       containers:
         - name: backend-worker
-          image: ghcr.io/your-org/okr-backend-worker:latest
-          imagePullPolicy: IfNotPresent
+          # Replace the digest placeholder from the signed release manifest.
+          image: ghcr.io/your-org/okr-backend-worker@sha256:REPLACE_WITH_RELEASE_DIGEST
+          imagePullPolicy: Always
           command: ["python", "-m", "backend_app.worker"]
+          livenessProbe:
+            exec:
+              command: ["python", "-m", "backend_app.worker_healthcheck"]
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["python", "-m", "backend_app.worker_healthcheck"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           env:
             - name: OKR_DATABASE_URL
               valueFrom:

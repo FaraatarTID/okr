@@ -1,3 +1,5 @@
+# GENERATED FILE. Do not edit manually; run python scripts/export_requirements.py.
+# Source authority: pyproject.toml and uv.lock.
 alembic==1.18.4
 bcrypt==5.0.0
 fastapi==0.138.0
@@ -7,8 +9,8 @@ mypy==1.15.0
 playwright==1.60.0
 psycopg2-binary==2.9.12
 pydantic==2.13.4
-python-dotenv==1.2.2
 pytest==8.4.0
+python-dotenv==1.2.2
 redis==5.2.1
 requests==2.32.5
 ruff==0.11.13

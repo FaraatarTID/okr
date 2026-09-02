@@ -1,0 +1,30 @@
+# Production release overlay. Pair with docker-compose.yml.
+# It intentionally removes local builds and requires release-time resources.
+services:
+  postgres:
+    environment:
+      - POSTGRES_PASSWORD=${OKR_POSTGRES_PASSWORD:?OKR_POSTGRES_PASSWORD must be set for release}
+
+  backend-api:
+    build: null
+    image: ${OKR_RELEASE_BACKEND_IMAGE:?OKR_RELEASE_BACKEND_IMAGE must be an immutable image}
+    environment:
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL must be set for release}
+
+  backend-worker:
+    build: null
+    image: ${OKR_RELEASE_BACKEND_IMAGE:?OKR_RELEASE_BACKEND_IMAGE must be an immutable image}
+    environment:
+      - OKR_DATABASE_URL=${OKR_DATABASE_URL:?OKR_DATABASE_URL must be set for release}
+
+  spa-bff:
+    build: null
+    image: ${OKR_RELEASE_BFF_IMAGE:?OKR_RELEASE_BFF_IMAGE must be an immutable image}
+
+  spa-web:
+    build: null
+    image: ${OKR_RELEASE_WEB_IMAGE:?OKR_RELEASE_WEB_IMAGE must be an immutable image}
+
+# Image values are validated as ghcr.io references ending in
+# @sha256:<64 hexadecimal characters> by the release workflow before Compose
+# is invoked. This overlay intentionally has no local-build fallback.

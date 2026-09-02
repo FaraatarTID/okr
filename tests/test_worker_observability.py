@@ -2,6 +2,8 @@ from types import SimpleNamespace
 
 
 import json
+import threading
+import time
 
 def test_worker_process_sets_job_observability_context(monkeypatch):
     import backend_app.worker as worker
@@ -145,6 +147,63 @@ def test_worker_process_claim_exception_is_caught(monkeypatch):
     assert handled is False
 
 
+def test_worker_refreshes_heartbeat_while_long_job_runs(monkeypatch):
+    import backend_app.worker as worker
+
+    writes = []
+    release = threading.Event()
+    monkeypatch.setenv("OKR_WORKER_HEARTBEAT_INTERVAL_SECONDS", "0.01")
+    monkeypatch.setattr(worker, "write_heartbeat", lambda: writes.append(time.monotonic()))
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending_job",
+        lambda _worker_id: SimpleNamespace(
+            id="long-job",
+            kind="ai.generate_json",
+            payload_json='{"prompt":"hello"}',
+        ),
+    )
+    monkeypatch.setattr(worker, "get_job", lambda _job_id: None)
+    monkeypatch.setattr(worker, "mark_job_succeeded", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(worker, "run_job", lambda *_args, **_kwargs: (release.wait(0.08), {"ok": True})[1])
+
+    assert worker.process_next_job(worker_id="worker-heartbeat") is True
+    assert len(writes) >= 2
+
+
+def test_worker_requeues_and_returns_after_shutdown_deadline(monkeypatch):
+    import backend_app.worker as worker
+
+    release = threading.Event()
+    requeued = []
+    monkeypatch.setenv("OKR_WORKER_HEARTBEAT_INTERVAL_SECONDS", "0.01")
+    monkeypatch.setenv("OKR_WORKER_SHUTDOWN_GRACE_SECONDS", "0.03")
+    monkeypatch.setattr(worker, "write_heartbeat", lambda: None)
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending_job",
+        lambda _worker_id: SimpleNamespace(
+            id="stuck-job",
+            kind="ai.generate_json",
+            payload_json='{"prompt":"hello"}',
+        ),
+    )
+    monkeypatch.setattr(worker, "requeue_job_for_shutdown", lambda *args: requeued.append(args) or True)
+    monkeypatch.setattr(worker, "run_job", lambda *_args, **_kwargs: (release.wait(), {"ok": True})[1])
+
+    result = []
+    thread = threading.Thread(target=lambda: result.append(worker.process_next_job(worker_id="worker-deadline")))
+    thread.start()
+    time.sleep(0.01)
+    monkeypatch.setattr(worker, "shutdown_requested", lambda: True)
+    thread.join(timeout=0.5)
+    release.set()
+
+    assert not thread.is_alive()
+    assert result == [True]
+    assert requeued == [("stuck-job", "worker-deadline")]
+
+
 def test_worker_process_finalization_failure_marks_failed(monkeypatch):
     import backend_app.worker as worker
 
@@ -190,3 +249,38 @@ def test_worker_process_finalization_failure_marks_failed(monkeypatch):
     assert handled is True
     assert observed["job_id"] == "job-finalize"
     assert "RuntimeError: db down" in observed["error_text"]
+
+
+def test_worker_requeues_claimed_job_when_shutdown_is_requested(monkeypatch):
+    import backend_app.worker as worker
+
+    observed = {}
+    monkeypatch.setattr(
+        worker,
+        "claim_next_pending_job",
+        lambda _worker_id: SimpleNamespace(
+            id="job-shutdown",
+            kind="ai.generate_json",
+            payload_json='{"prompt":"hello"}',
+        ),
+    )
+    monkeypatch.setattr(worker, "run_job", lambda *_args, **_kwargs: {"ok": True})
+    monkeypatch.setattr(worker, "get_job", lambda _job_id: None)
+    monkeypatch.setattr(worker, "shutdown_requested", lambda: True)
+    monkeypatch.setattr(
+        worker,
+        "requeue_job_for_shutdown",
+        lambda job_id, worker_id: observed.update(
+            {"job_id": job_id, "worker_id": worker_id}
+        ),
+    )
+    monkeypatch.setattr(
+        worker,
+        "mark_job_succeeded",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("shutdown must requeue instead of succeeding")
+        ),
+    )
+
+    assert worker.process_next_job(worker_id="worker-shutdown") is True
+    assert observed == {"job_id": "job-shutdown", "worker_id": "worker-shutdown"}

@@ -637,6 +637,21 @@ export function createServer(
 async function start(): Promise<void> {
   const config = readConfig(process.env);
   const app = createServer(config);
+  let shuttingDown = false;
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    app.log.info({ signal }, "spa-bff shutting down");
+    try {
+      await app.close();
+      process.exitCode = 0;
+    } catch (error) {
+      app.log.error({ err: error }, "spa-bff shutdown failure");
+      process.exitCode = 1;
+    }
+  };
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
   try {
     await app.listen({ host: config.host, port: config.port });
     app.log.info({ host: config.host, port: config.port }, "spa-bff started");

@@ -77,6 +77,17 @@ def test_control_plane_default_path_reloads(monkeypatch, tmp_path: Path) -> None
     assert second.get_environment("env-integration").release_digest == "sha256:" + "1" * 64
 
 
+def test_control_plane_without_configured_path_does_not_write_local_state(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("OKR_CONTROL_PLANE_STATE_PATH", raising=False)
+    monkeypatch.chdir(tmp_path)
+    control_plane = ControlPlane()
+
+    control_plane.register_environment(manifest())
+
+    assert control_plane.get_environment("env-integration").environment_id == "env-integration"
+    assert not (tmp_path / "tmp" / "saas-control-plane.json").exists()
+
+
 def test_provision_release_and_backup_reconcile_one_summary(tmp_path: Path) -> None:
     control_plane = ControlPlane(state_path=tmp_path / "control-plane.json")
     provider = LocalDisposableEnvironmentProvider()
@@ -357,4 +368,3 @@ def test_lifecycle_service_apis_reject_forged_operator_strings() -> None:
     with pytest.raises(ValueError, match="credential"):
         from src.saas.backup_operations import RestoreManager
         RestoreManager(LocalBackupProvider(), operator="operator-a")
-

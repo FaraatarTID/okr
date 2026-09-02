@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-
 def test_krs_needing_checkin_batches_latest_checkins(monkeypatch):
     from src.services import supabase_api_mode_read as read
 

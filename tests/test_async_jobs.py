@@ -96,6 +96,32 @@ def test_mark_job_failed_terminal_does_not_requeue(isolated_db):
     assert int(final.attempts or 0) >= int(final.max_attempts or 0)
 
 
+def test_shutdown_requeue_honors_cancellation_request(isolated_db):
+    from src.models import AsyncJobStatus
+    from backend_app.jobs import (
+        claim_next_pending_job,
+        enqueue_job,
+        get_job,
+        request_job_cancel,
+        requeue_job_for_shutdown,
+    )
+
+    job = enqueue_job(
+        kind="ai.generate_json",
+        payload={"prompt": "hello"},
+        actor_username="alice",
+        max_attempts=3,
+    )
+    assert claim_next_pending_job("worker-1") is not None
+    assert request_job_cancel(job.id, "alice") is not None
+
+    assert requeue_job_for_shutdown(job.id, "worker-1") is True
+    final = get_job(job.id)
+    assert final is not None
+    assert final.status == AsyncJobStatus.CANCELLED
+    assert final.finished_at is not None
+
+
 def test_cancel_pending_job_marks_cancelled(isolated_db):
     from backend_app.jobs import enqueue_job, request_job_cancel
 

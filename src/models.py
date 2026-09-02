@@ -12,7 +12,6 @@ from typing import Any, List, Optional
 from uuid import uuid4
 
 from sqlalchemy import CheckConstraint, Column, Enum as SAEnum, Index, event, text
-from sqlalchemy import TextClause
 from sqlalchemy.orm import relationship
 from sqlmodel import SQLModel, Field, Relationship
 

@@ -1,6 +1,41 @@
 import json
+import logging
+import sys
 
 from sqlmodel import select
+
+
+def test_audit_loggers_emit_to_process_streams_not_files(monkeypatch):
+    import src.audit as audit
+
+    audit_logger = logging.getLogger("okr_audit")
+    error_logger = logging.getLogger("okr_error")
+    audit_handlers = list(audit_logger.handlers)
+    error_handlers = list(error_logger.handlers)
+    audit_logger.handlers.clear()
+    error_logger.handlers.clear()
+    monkeypatch.setattr(audit_logger, "propagate", False)
+    monkeypatch.setattr(error_logger, "propagate", False)
+
+    try:
+        configured_audit_logger = audit._get_logger()
+        configured_error_logger = audit._get_error_logger()
+
+        assert len(configured_audit_logger.handlers) == 1
+        assert len(configured_error_logger.handlers) == 1
+        audit_handler = configured_audit_logger.handlers[0]
+        error_handler = configured_error_logger.handlers[0]
+        assert isinstance(audit_handler, logging.StreamHandler)
+        assert isinstance(error_handler, logging.StreamHandler)
+        assert not isinstance(audit_handler, logging.FileHandler)
+        assert not isinstance(error_handler, logging.FileHandler)
+        assert audit_handler.stream is sys.stdout
+        assert error_handler.stream is sys.stderr
+    finally:
+        audit_logger.handlers.clear()
+        error_logger.handlers.clear()
+        audit_logger.handlers.extend(audit_handlers)
+        error_logger.handlers.extend(error_handlers)
 
 
 class _StubAuditLogger:
@@ -43,6 +78,31 @@ def test_audit_log_includes_observability_fields(monkeypatch):
     assert payload.get("request_id") == "req-a"
 
 
+def test_audit_log_redacts_nested_sensitive_details(monkeypatch):
+    import src.audit as audit
+    from tests._test_credentials import test_password
+
+    stub_logger = _StubAuditLogger()
+    monkeypatch.setattr(audit, "_get_logger", lambda: stub_logger)
+    monkeypatch.setattr(audit, "_write_audit_event_to_db", lambda payload: None)
+
+    audit.audit_log(
+        action="test_action",
+        entity="test_entity",
+        details={
+            "password": test_password("audit_password"),
+            "nested": {"api_key": test_password("audit_api_key"), "ok": 1},
+        },
+    )
+
+    payload = json.loads(stub_logger.messages[0])
+    redacted = "[" + "REDACTED" + "]"
+    assert payload["details"] == {
+        "password": redacted,
+        "nested": {"api_key": redacted, "ok": 1},
+    }
+
+
 def test_error_log_includes_observability_context(monkeypatch):
     import src.audit as audit
     from src.observability import observability_context
@@ -55,8 +115,12 @@ def test_error_log_includes_observability_context(monkeypatch):
 
     assert len(stub_logger.messages) == 1
     message = stub_logger.messages[0]
-    assert "corr-e" in message
-    assert "req-e" in message
+    payload = json.loads(message)
+    assert payload["event"] == "application_error"
+    assert payload["level"] == "error"
+    assert payload["error_type"] is None
+    assert payload["correlation_id"] == "corr-e"
+    assert payload["request_id"] == "req-e"
 
 
 def test_audit_log_persists_event_to_database(monkeypatch, tmp_path):

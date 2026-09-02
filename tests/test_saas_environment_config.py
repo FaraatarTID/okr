@@ -171,13 +171,11 @@ def test_compose_runs_saas_preflight_and_propagates_identity():
     assert compose.count("OKR_CUSTOMER_ID=") == 4
 
 
-def test_compose_shares_control_plane_state_path_with_worker():
+def test_compose_does_not_require_process_local_control_plane_state():
     compose = COMPOSE_FILE.read_text(encoding="utf-8")
 
-    assert compose.count(
-        "OKR_CONTROL_PLANE_STATE_PATH=${OKR_CONTROL_PLANE_STATE_PATH-/var/lib/okr/saas-control-plane.json}"
-    ) == 2
-    assert compose.count("- okr-control-plane-state:/var/lib/okr") == 2
+    assert "OKR_CONTROL_PLANE_STATE_PATH" not in compose
+    assert "okr-control-plane-state" not in compose
 
 
 def test_saas_example_is_explicitly_a_template():

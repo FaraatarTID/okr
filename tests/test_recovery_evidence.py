@@ -27,7 +27,7 @@ def valid_evidence() -> dict[str, object]:
         "created_at": BACKUP_CREATED,
     }
     checksum = _checksum(checksum_payload)
-    return {
+    evidence: dict[str, object] = {
         "schema_version": 1,
         "environment_id": "env-a",
         "database": {"identity": "db-env-a-primary", "provider": "provider-a"},
@@ -58,6 +58,16 @@ def valid_evidence() -> dict[str, object]:
         "status": "PASSED",
         "operator": "ops@example.invalid",
     }
+    evidence["attestation"] = {
+        "provider": "provider-a",
+        "evidence_id": "provider-recovery-20260901-001",
+        "algorithm": "provider-signed",
+        "key_id": "provider-key-2026",
+        "signature": "provider-signature-value-with-more-than-32-bytes",
+        "issued_at": NOW,
+        "signed_payload_sha256": _checksum(evidence),
+    }
+    return evidence
 
 
 def test_verifies_sanitized_successful_recovery_evidence() -> None:
@@ -77,6 +87,7 @@ def test_verifies_sanitized_successful_recovery_evidence() -> None:
         "restore_status": "SUCCESS",
         "status": "PASSED",
         "verified": True,
+        "attested": True,
     }
 
 
@@ -100,25 +111,41 @@ def test_rejects_unsafe_or_out_of_policy_evidence(change, message: str) -> None:
         verify_recovery_evidence(evidence)
 
 
-def test_accepts_failed_status_with_failure_reasons_and_complete_timestamps() -> None:
+def test_rejects_failed_status_even_with_failure_reasons_and_complete_timestamps() -> None:
     evidence = valid_evidence()
     evidence["backup"].update({"status": "FAILED", "failure_reason": "provider timeout"})
     evidence["restore"].update({"status": "FAILED", "failure_reason": "restore aborted"})
     evidence.update({"status": "FAILED", "measured_rto_seconds": 0, "measured_rpo_seconds": 0})
 
-    result = verify_recovery_evidence(evidence)
+    with pytest.raises(RecoveryEvidenceError, match="failed evidence"):
+        verify_recovery_evidence(evidence)
 
-    assert result["verified"] is True
-    assert result["status"] == "FAILED"
-    assert result["backup_status"] == "FAILED"
-    assert result["restore_status"] == "FAILED"
+
+@pytest.mark.parametrize("field", ["attestation", "backup", "restore"])
+def test_rejects_unsigned_or_incomplete_evidence(field: str) -> None:
+    evidence = valid_evidence()
+    if field == "attestation":
+        evidence.pop("attestation")
+    else:
+        evidence[field].pop("status")
+
+    with pytest.raises(RecoveryEvidenceError):
+        verify_recovery_evidence(evidence)
+
+
+def test_rejects_synthetic_provider_evidence() -> None:
+    evidence = valid_evidence()
+    evidence["attestation"]["provider"] = "local-test-provider"
+
+    with pytest.raises(RecoveryEvidenceError, match="real provider"):
+        verify_recovery_evidence(evidence)
 
 
 def test_rejects_failed_status_without_reason() -> None:
     evidence = valid_evidence()
     evidence["restore"].update({"status": "FAILED"})
 
-    with pytest.raises(RecoveryEvidenceError, match="failure_reason"):
+    with pytest.raises(RecoveryEvidenceError, match="failed evidence"):
         verify_recovery_evidence(evidence)
 
 

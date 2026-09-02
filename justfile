@@ -52,6 +52,18 @@ diagnose-page-load TRACE:
 
 check: lint typecheck test contracts
 
+ci-preflight:
+    uv run python scripts/export_requirements.py --check
+    uv run python scripts/check_dependency_manifest.py
+    uv run python scripts/check_docs_hq_links.py
+    uv run python scripts/verify_module_design_efficiency.py
+    uv run python scripts/verify_twelve_factor_contract.py
+    uv run python scripts/verify_process_contract.py
+    uv run python scripts/verify_logging_contract.py
+    uv run python scripts/verify_secret_hygiene.py
+    uv run python scripts/verify_environment_parity.py
+    uv run python scripts/verify_admin_process_contract.py
+
 start:
     docker compose -f deploy/docker/docker-compose.yml up -d --build backend-api backend-worker spa-bff spa-web
 

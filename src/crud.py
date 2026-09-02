@@ -189,7 +189,7 @@ _can_manage_owner = _crud_auth_helpers._can_manage_owner
 _resolve_goal_for_node = _crud_auth_helpers._resolve_goal_for_node
 _authorize_node_mutation = _crud_auth_helpers._authorize_node_mutation
 _authorize_node_scoped_access = _crud_auth_helpers._authorize_node_scoped_access
-get_user_goals = lambda username, cycle_id: _crud_auth_helpers.get_user_goals(username=username, cycle_id=cycle_id)
+get_user_goals = _crud_auth_helpers.get_user_goals
 _require_actor_user = _crud_auth_helpers._require_actor_user
 _require_admin_actor = _crud_auth_helpers._require_admin_actor
 _authorize_self_or_admin = _crud_auth_helpers._authorize_self_or_admin

@@ -21,7 +21,7 @@ jobs:
       contents: read
       packages: write
     outputs:
-      image: ${{ steps.meta.outputs.image }}
+      image: ${{ steps.meta.outputs.image }}@${{ steps.push.outputs.digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -42,10 +42,15 @@ jobs:
       - name: Insert Payload Schema Contract Gate (offline)
         run: python scripts/check_insert_contract.py --from-baseline
 
+      - name: Verify dependency authority and compatibility export
+        run: |
+          python scripts/export_requirements.py --check
+          python scripts/check_dependency_manifest.py
+
       - name: Compute image tag (lowercase)
         id: meta
         run: |
-          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:latest" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -55,6 +60,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
+        id: push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -72,6 +78,9 @@ jobs:
       DEPLOY_USER: ${{ secrets.SSH_USER || secrets.DEPLOY_USER || secrets.USERNAME }}
       DEPLOY_KEY: ${{ secrets.SSH_KEY || secrets.DEPLOY_KEY }}
       DEPLOY_DIR: ${{ secrets.REMOTE_DEPLOY_DIR || secrets.DEPLOY_DIR }}
+      RELEASE_BACKEND_IMAGE: ${{ needs.build.outputs.image }}
+      RELEASE_BFF_IMAGE: ${{ secrets.RELEASE_BFF_IMAGE || vars.RELEASE_BFF_IMAGE }}
+      RELEASE_WEB_IMAGE: ${{ secrets.RELEASE_WEB_IMAGE || vars.RELEASE_WEB_IMAGE }}
     steps:
       - name: Validate deploy secrets
         id: validate
@@ -87,11 +96,22 @@ jobs:
           [ -z "${DEPLOY_USER}" ] && missing="${missing} DEPLOY_USER(SSH_USER/DEPLOY_USER/USERNAME)"
           [ -z "${DEPLOY_KEY}" ] && missing="${missing} DEPLOY_KEY(SSH_KEY/DEPLOY_KEY)"
           [ -z "${DEPLOY_DIR}" ] && missing="${missing} DEPLOY_DIR(REMOTE_DEPLOY_DIR/DEPLOY_DIR)"
+          [ -z "${RELEASE_BFF_IMAGE}" ] && missing="${missing} RELEASE_BFF_IMAGE"
+          [ -z "${RELEASE_WEB_IMAGE}" ] && missing="${missing} RELEASE_WEB_IMAGE"
           if [ -n "${missing}" ]; then
             echo "::notice::Skipping SSH deploy. Missing:${missing}"
             echo "ready=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          validate_immutable_image() {
+            if [[ ! "$1" =~ ^[^[:space:]]+@sha256:[0-9a-fA-F]{64}$ ]]; then
+              echo "::error::${2} must be an immutable image reference ending in @sha256:<64-hex-digest>."
+              return 1
+            fi
+          }
+          validate_immutable_image "${RELEASE_BACKEND_IMAGE}" RELEASE_BACKEND_IMAGE
+          validate_immutable_image "${RELEASE_BFF_IMAGE}" RELEASE_BFF_IMAGE
+          validate_immutable_image "${RELEASE_WEB_IMAGE}" RELEASE_WEB_IMAGE
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Deploy to server via SSH (Docker Compose)
@@ -101,12 +121,19 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ env.DEPLOY_KEY }}
+          envs: RELEASE_BACKEND_IMAGE,RELEASE_BFF_IMAGE,RELEASE_WEB_IMAGE
           script: |
             set -e
             cd ${{ env.DEPLOY_DIR }}
             docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
-            IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml pull
-            IMAGE=${{ needs.build.outputs.image }} docker compose -f deploy/docker/docker-compose.yml up -d --build
+            OKR_RELEASE_BACKEND_IMAGE="${RELEASE_BACKEND_IMAGE}" \
+            OKR_RELEASE_BFF_IMAGE="${RELEASE_BFF_IMAGE}" \
+            OKR_RELEASE_WEB_IMAGE="${RELEASE_WEB_IMAGE}" \
+              docker compose -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.release.yml pull
+            OKR_RELEASE_BACKEND_IMAGE="${RELEASE_BACKEND_IMAGE}" \
+            OKR_RELEASE_BFF_IMAGE="${RELEASE_BFF_IMAGE}" \
+            OKR_RELEASE_WEB_IMAGE="${RELEASE_WEB_IMAGE}" \
+              docker compose -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.release.yml up -d --no-build
 
             BACKEND_HOST_PORT="$(python3 scripts/read_env_value.py deploy/docker/.env OKR_BACKEND_HOST_PORT)"
             BFF_HOST_PORT="$(python3 scripts/read_env_value.py deploy/docker/.env SPA_BFF_HOST_PORT)"

@@ -305,6 +305,45 @@ def claim_next_pending_job(worker_id: str) -> Optional[AsyncJob]:
         return session.get(AsyncJob, candidate.id)
 
 
+def requeue_job_for_shutdown(job_id: str, worker_id: str) -> bool:
+    """Return a claimed job safely when its worker is shutting down.
+
+    The operation is idempotent and preserves cancellation requested while the
+    job was running, preventing an unclaimable ``PENDING`` row.
+    """
+    now = utc_now_naive()
+    with get_session_context() as session:
+        job = session.exec(
+            select(AsyncJob)
+            .where(AsyncJob.id == job_id)
+            .where(AsyncJob.status == AsyncJobStatus.RUNNING)
+            .where(AsyncJob.worker_id == worker_id)
+        ).first()
+        if not job:
+            return False
+        status = (
+            AsyncJobStatus.CANCELLED
+            if job.cancel_requested
+            else AsyncJobStatus.PENDING
+        )
+        changed = session.exec(
+            update(AsyncJob)
+            .where(AsyncJob.id == job_id)
+            .where(AsyncJob.status == AsyncJobStatus.RUNNING)
+            .where(AsyncJob.worker_id == worker_id)
+            .values(
+                status=status,
+                started_at=None,
+                worker_id=None,
+                updated_at=now,
+                error_text="Worker shutdown requested before job finalization.",
+                finished_at=now if job.cancel_requested else None,
+            )
+        )
+        session.commit()
+        return int(getattr(changed, "rowcount", 0) or 0) > 0
+
+
 def mark_job_succeeded(job_id: str, result_payload: Dict[str, Any]) -> None:
     now = utc_now_naive()
     with get_session_context() as session:
