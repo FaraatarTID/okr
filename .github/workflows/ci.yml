@@ -128,7 +128,7 @@ jobs:
         run: python scripts/verify_migration_lint.py --require-baseline
 
       - name: Apply migrations
-        run: python -m alembic upgrade head
+        run: alembic upgrade head
 
       - name: RLS Coverage Gate
         run: python scripts/check_rls_enabled.py

@@ -1,5 +1,7 @@
 # Twelve-Factor SaaS Compliance Implementation Plan
 
+Documentation HQ: [README](../../../README.md)
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the dedicated-server-per-customer OKR deployment demonstrably compliant with all twelve factors of the Twelve-Factor App methodology.

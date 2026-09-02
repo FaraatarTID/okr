@@ -43,7 +43,8 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
             "migration-lint-operation",
             bool(migration)
             and all(marker in migration for marker in ("--require-baseline", "main(", "_validate_linear_chain"))
-            and "python -m alembic upgrade head" in ci,
+            and "alembic upgrade head" in ci
+            and "python -m alembic upgrade head" not in ci,
             "Migration graph validation and explicit upgrade execution are separate one-off operations.",
         ),
         _check(

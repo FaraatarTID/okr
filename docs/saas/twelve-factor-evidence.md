@@ -1,5 +1,7 @@
 # Twelve-Factor Evidence Ledger
 
+Documentation HQ: [README](../../README.md)
+
 This ledger applies the [Twelve-Factor App methodology](https://12factor.net/)
 to the dedicated-server-per-customer deployment model. Each customer receives
 an isolated application environment and PostgreSQL database. Shared

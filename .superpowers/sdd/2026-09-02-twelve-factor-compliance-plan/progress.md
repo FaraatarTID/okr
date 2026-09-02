@@ -1,5 +1,7 @@
 # SDD ledger — plan: docs/superpowers/plans/2026-09-02-twelve-factor-compliance-plan.md
 
+Documentation HQ: [README](../../../README.md)
+
 ## Preflight
 
 | Task | Shared files/interfaces | Result |
