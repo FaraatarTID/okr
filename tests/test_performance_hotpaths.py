@@ -432,7 +432,10 @@ def test_job_polling_query_budget_guard(isolated_db, monkeypatch):
     q_poll = _count_queries(engine, lambda: get_job(job.id))
     assert q_poll <= 1
 
-    monkeypatch.setattr(backend_main, "require_service_access", lambda: None)
+    async def _allow_service_access(**kwargs):
+        return None
+
+    monkeypatch.setattr(backend_main, "require_service_access", _allow_service_access)
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor",
@@ -485,7 +488,10 @@ def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
         return "admin"
 
     client = TestClient(backend_main.app)
-    monkeypatch.setattr(backend_main, "require_service_access", lambda: None)
+    async def _allow_service_access(**kwargs):
+        return None
+
+    monkeypatch.setattr(backend_main, "require_service_access", _allow_service_access)
     monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: False)
     monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _admin_scope)
     monkeypatch.setattr(backend_main, "_resolve_actor", _dummy_actor)

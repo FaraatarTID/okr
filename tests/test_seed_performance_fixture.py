@@ -7,6 +7,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 
 from scripts import seed_performance_fixture
 from src.models import Cycle, Goal, KeyResult, LifecycleState, Objective, Task, User
+from tests._test_credentials import test_password as _test_password
 
 
 def test_seed_requires_explicit_opt_in_before_opening_database(monkeypatch) -> None:
@@ -72,7 +73,7 @@ def test_seed_creates_minimal_labeled_graph_without_printing_password(
 ) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'fixture.db'}")
     SQLModel.metadata.create_all(engine)
-    password = "Disposable-Performance-1234!"
+    password = _test_password("performance_fixture")
 
     result = seed_performance_fixture.seed_fixture(engine, password=password)
 
@@ -115,8 +116,12 @@ def test_seed_is_additive_on_rerun(tmp_path: Path) -> None:
     engine = create_engine(f"sqlite:///{tmp_path / 'fixture.db'}")
     SQLModel.metadata.create_all(engine)
 
-    first = seed_performance_fixture.seed_fixture(engine, password="Disposable-Performance-1234!")
-    second = seed_performance_fixture.seed_fixture(engine, password="Different-Password-1234!")
+    first = seed_performance_fixture.seed_fixture(
+        engine, password=_test_password("performance_fixture")
+    )
+    second = seed_performance_fixture.seed_fixture(
+        engine, password=_test_password("performance_fixture_rerun")
+    )
 
     assert first["created"] == {
         "admin": 1,
@@ -145,7 +150,7 @@ def test_seed_refuses_to_repair_legacy_draft_fixture(tmp_path: Path) -> None:
     SQLModel.metadata.create_all(engine)
 
     seed_performance_fixture.seed_fixture(
-        engine, password="Disposable-Performance-1234!"
+        engine, password=_test_password("performance_fixture")
     )
     with Session(engine) as session:
         objective = session.exec(select(Objective)).one()
@@ -155,5 +160,5 @@ def test_seed_refuses_to_repair_legacy_draft_fixture(tmp_path: Path) -> None:
 
     with pytest.raises(seed_performance_fixture.SeedConfigError, match="fresh disposable database"):
         seed_performance_fixture.seed_fixture(
-            engine, password="Different-Password-1234!"
+            engine, password=_test_password("performance_fixture_legacy")
         )

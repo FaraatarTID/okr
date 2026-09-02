@@ -73,7 +73,8 @@ def main() -> int:
     target_files = []
     target_patterns = ("tests", "scripts", ".github")
     for pattern in target_patterns:
-        for path in ROOT.rglob(f"{pattern}/**/*.py"):
+        scan_root = ROOT / pattern
+        for path in scan_root.rglob("*.py"):
             if any(part.startswith(".") for part in path.parts):
                 continue
             if "venv" in path.parts or ".venv" in path.parts or ".git" in path.parts:
