@@ -34,6 +34,23 @@ const RESPONSE_HEADER_BLOCKLIST = new Set([
   "upgrade",
 ]);
 
+function appendUpstreamServerTiming(
+  reply: { header: (name: string, value: string) => unknown },
+  result: { headers: Headers; upstreamDurationMs: number },
+  method: string,
+  path: string,
+): void {
+  if (
+    !new Set(["GET", "HEAD"]).has(method.toUpperCase())
+    && !path.startsWith("/api/backend/v1/read/")
+  ) {
+    return;
+  }
+  const existing = result.headers.get("server-timing");
+  const value = `bff-upstream;dur=${Math.max(0, result.upstreamDurationMs).toFixed(3)}`;
+  reply.header("Server-Timing", existing ? `${existing}, ${value}` : value);
+}
+
 function readRequestId(headers: Record<string, string | string[] | undefined>): string {
   return (
     firstHeaderValue(headers["x-request-id"]) ||
@@ -574,6 +591,7 @@ export function createServer(
           }
           reply.header(headerName, headerValue);
         }
+        appendUpstreamServerTiming(reply, result, request.method, request.url);
 
         reply.code(result.status);
         if (result.body.length === 0) {

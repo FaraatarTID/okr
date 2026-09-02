@@ -9,7 +9,12 @@ from fastapi.responses import JSONResponse
 import time
 import uuid
 
-from src.observability import observability_context
+from src.observability import (
+    current_timings,
+    observability_context,
+    record_timing,
+    timing_context,
+)
 from backend_app.data_access_mode import current_data_access_context
 from src.observability_metrics import (
     log_payload as build_observability_log_payload,
@@ -74,6 +79,33 @@ def _normalize_error_detail(detail: Any) -> Any:
     return str(detail)
 
 
+def _server_timing_header(*, duration_ms: float, timings: dict[str, float]) -> str:
+    """Build safe timing values without payloads, queries, credentials, or IDs."""
+    data_ms = max(0.0, float(timings.get("data", 0.0)))
+    app_ms = max(0.0, float(duration_ms) - data_ms)
+    values = [f"app;dur={app_ms:.3f}"]
+    for name in (
+        "dispatch",
+        "dependency",
+        "actor",
+        "scope",
+        "handler",
+        "serialization",
+        "completion",
+    ):
+        phase_ms = max(0.0, float(timings.get(name, 0.0)))
+        if phase_ms:
+            values.append(f"{name};dur={phase_ms:.3f}")
+    if data_ms:
+        values.insert(0, f"data;dur={data_ms:.3f}")
+    return ", ".join(values)
+
+
+def _is_read_request(request: Request) -> bool:
+    route = str(request.scope.get("path", request.url.path) or "")
+    return request.method.upper() in {"GET", "HEAD"} or route.startswith("/v1/read/")
+
+
 def build_error_envelope(
     status_code: int,
     detail: Any,
@@ -107,7 +139,7 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
         status_code = 500
         from backend_app.data_access_mode import data_access_context
 
-        with data_access_context(
+        with timing_context(), data_access_context(
             actor=actor,
             request_id=request_id,
             correlation_id=correlation_id,
@@ -115,10 +147,31 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
             correlation_id=correlation_id, request_id=request_id
         ):
             try:
+                dispatch_started_at = time.perf_counter()
                 response = await call_next(request)
+                dispatch_ms = (time.perf_counter() - dispatch_started_at) * 1000
+                record_timing("dispatch", dispatch_ms)
+                measured = current_timings()
+                record_timing(
+                    "serialization",
+                    max(
+                        0.0,
+                        dispatch_ms
+                        - measured.get("dependency", 0.0)
+                        - measured.get("handler", 0.0),
+                    ),
+                )
                 status_code = int(getattr(response, "status_code", 500) or 500)
                 response.headers["X-Correlation-ID"] = correlation_id
                 response.headers["X-Request-ID"] = request_id
+                if _is_read_request(request):
+                    record_timing(
+                        "completion", (time.perf_counter() - start_time) * 1000
+                    )
+                    response.headers["Server-Timing"] = _server_timing_header(
+                        duration_ms=(time.perf_counter() - start_time) * 1000,
+                        timings=current_timings(),
+                    )
             except Exception:
                 duration_ms = (time.perf_counter() - start_time) * 1000
                 record_api_request(

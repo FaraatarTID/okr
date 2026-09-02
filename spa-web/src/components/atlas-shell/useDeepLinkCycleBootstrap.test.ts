@@ -243,5 +243,8 @@ describe("useDeepLinkCycleBootstrap", () => {
       );
       expect(setters.setSessionCycles).toHaveBeenCalled();
     });
+    expect(
+      readCyclesQueryMock.mock.calls.filter(([input]) => input.kind === "cycles.all"),
+    ).toHaveLength(1);
   });
 });

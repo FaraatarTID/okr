@@ -70,7 +70,8 @@ Primary data/control flow:
 ## Security and Isolation Boundaries
 
 - DB boundary:
-  - Single source of truth in Supabase PostgreSQL.
+  - Each customer deployment has its own application environment and dedicated Supabase PostgreSQL database.
+  - Customer isolation is provided by the deployment and database boundary; shared-database multi-tenancy is not a supported product model.
   - Connection policy expects transaction pooler endpoint (`:6543`).
   - Runtime DSN should use a least-privilege app user (not `postgres`) except explicit break-glass overrides.
   - Postgres engine defaults to `NullPool` in app runtimes to align with Supabase PgBouncer transaction pooling.
@@ -215,7 +216,7 @@ Interaction model is intentionally split into control-plane and work-plane:
 - Owner, manager-of-owner, and admin paths are enforced before changes are committed.
 - Read-sensitive node retrieval can be actor-scoped via `get_node(..., actor_username=...)`.
 - AI node analysis (`analyze_node`) uses actor-scoped read path and includes alignment context (edges + cross-hierarchy links) in the prompt.
-- SaaS DB access uses direct Postgres through the transaction pooler with transaction-local RLS context. Alpha/self-hosted compatibility deployments may use the centralized HTTPS mode resolver for reads, but that path is excluded from SaaS tenant traffic.
+  - SaaS DB access uses direct Postgres through the transaction pooler. Alpha/self-hosted compatibility deployments may use the centralized HTTPS mode resolver for reads, but that path is excluded from customer production deployments.
 
 5. Alignment flow
 
@@ -309,9 +310,11 @@ These paths now have explicit query-count budgets and a reproducible benchmark s
 
 ## Forward-Looking Work
 
-Active Phase 0 production-readiness work is tracked in
-[ARCHITECTURE_BACKLOG.md](ARCHITECTURE_BACKLOG.md). Superseded status and worklog
-records are preserved in
+Active production-readiness work is tracked in
+[ARCHITECTURE_BACKLOG.md](ARCHITECTURE_BACKLOG.md). Shared-database
+multi-tenancy and RLS-based tenant isolation are permanently out of scope;
+customer isolation is provided by dedicated deployments and databases.
+Superseded status and worklog records are preserved in
 [docs/archive/architecture-2026-08-31/](../archive/architecture-2026-08-31/).
 Process definition: [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](../ARCHITECTURE_DELIVERY_SYSTEM.md).
 

@@ -687,6 +687,43 @@ def test_submit_job_endpoint_audits_rejected_submission(monkeypatch):
     assert captured[0].get("error_code") == "JOB_LIMIT_USER_PENDING"
 
 
+def test_job_endpoints_fail_closed_in_supabase_api_mode(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: True)
+
+    response = client.post(
+        "/v1/jobs",
+        headers={"X-OKR-Actor": "alice"},
+        json={"kind": "pdf.weekly", "payload": {}},
+    )
+
+    assert response.status_code == 503
+    assert "job queue" in response.json()["detail"].lower()
+
+
+def test_weekly_plan_supabase_mode_enforces_target_user_scope(monkeypatch):
+    client, backend_main = _make_client(monkeypatch)
+    monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: True)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_scope_for_actor",
+        lambda _actor: {"is_admin": False, "owner_ids": {7}},
+    )
+
+    response = client.post(
+        "/v1/weekly-plans",
+        headers={"X-OKR-Actor": "alice"},
+        json={
+            "user_id": 99,
+            "start_date": "2026-09-07T00:00:00Z",
+            "end_date": "2026-09-13T23:59:59Z",
+            "p1": "Probe",
+        },
+    )
+
+    assert response.status_code == 403
+
+
 def test_submit_job_endpoint_forwards_idempotency_key(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
     captured = {}

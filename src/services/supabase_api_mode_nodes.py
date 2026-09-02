@@ -23,6 +23,7 @@ from src.services.supabase_api_mode_transport import (
     _rest_insert,
     _rest_select,
     _rest_update,
+    _normalize_user_row_role,
 )
 from src.crud import (
     _ALLOWED_GOAL_UPDATE_FIELDS,
@@ -79,6 +80,7 @@ def authenticate_user_detailed_via_supabase_api(
             "lock_scope": None,
         }
     row = rows[0] if isinstance(rows[0], dict) else {}
+    row = _normalize_user_row_role(row)
 
     password_hash = str(row.get("password_hash") or "")
     if not password_hash:

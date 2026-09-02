@@ -166,6 +166,33 @@ describe("spa-bff server", () => {
     expect(latest["correlation_id"]).toBe("corr-xyz-1");
   });
 
+  it("exposes backend timing and measured upstream timing for read requests", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "ok" }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "server-timing": "data;dur=12.500, app;dur=4.000",
+        },
+      }),
+    );
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/backend/v1/read/query",
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
+      payload: { kind: "atlas_scope", params: {} },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const timing = response.headers["server-timing"] || "";
+    expect(timing).toContain("data;dur=12.500");
+    expect(timing).toContain("app;dur=4.000");
+    expect(timing).toMatch(/bff-upstream;dur=\d+\.\d{3}/);
+    expect(String(timing).toLowerCase()).not.toContain("password");
+  });
+
   it("creates session cookie via /session/login", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response(
@@ -456,6 +483,33 @@ describe("spa-bff server", () => {
     const [, options] = fetchFn.mock.calls[0] as [string, RequestInit];
     const headers = (options.headers ?? {}) as Record<string, string>;
     expect(headers["x-okr-actor"]).toBe("member-1");
+  });
+
+  it("preserves backend timing and appends BFF upstream timing for read routes", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ key_results: [] }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "server-timing": "data;dur=120.500, app;dur=5.250",
+        },
+      }),
+    );
+
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/backend/v1/read/query",
+      headers: { ...csrfHeaders(), cookie: sessionCookie() },
+      payload: { kind: "krs.by_cycle", params: { cycle_id: 3 } },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const timing = response.headers["server-timing"] || "";
+    expect(timing).toContain("data;dur=120.500");
+    expect(timing).toContain("app;dur=5.250");
+    expect(timing).toMatch(/bff-upstream;dur=\d+\.\d{3}/);
   });
 
   it("adds a canonical message field for backend error payloads", async () => {

@@ -16,6 +16,7 @@ export interface ProxyResult {
   status: number;
   headers: Headers;
   body: Buffer;
+  upstreamDurationMs: number;
 }
 
 function firstHeaderValue(raw: string | string[] | undefined): string {
@@ -136,6 +137,7 @@ export async function proxyToBackend(
 
   const backendUrl = new URL(`${path}${queryString}`, `${config.backendApiUrl}/`).toString();
   const timeoutMs = resolveTimeoutMs(path, config.requestTimeoutMs);
+  const upstreamStartedAt = performance.now();
   const response = await fetchFn(backendUrl, {
     method,
     headers: outboundHeaders,
@@ -148,5 +150,6 @@ export async function proxyToBackend(
     status: response.status,
     headers: response.headers,
     body: Buffer.from(arrayBuffer),
+    upstreamDurationMs: Math.max(0, performance.now() - upstreamStartedAt),
   };
 }

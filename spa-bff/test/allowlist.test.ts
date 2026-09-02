@@ -27,6 +27,8 @@ describe("isAllowlistedRoute", () => {
     expect(isAllowlistedRoute("PATCH", "/v1/nodes/task/42")).toBe(true);
     expect(isAllowlistedRoute("DELETE", "/v1/work-logs/77")).toBe(true);
     expect(isAllowlistedRoute("POST", "/v1/state/atlas")).toBe(true);
+    expect(isAllowlistedRoute("POST", "/v1/jobs/job-uuid/cancel")).toBe(true);
+    expect(isAllowlistedRoute("POST", "/v1/jobs/job-uuid/retry")).toBe(true);
   });
 
   it("allows node CRUD routes for all pilot node types", () => {

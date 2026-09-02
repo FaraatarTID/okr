@@ -182,7 +182,10 @@ def get_backend_settings() -> BackendSettings:
         ),
         security_state_db_use_null_pool=_as_bool(
             get_config_value("OKR_BACKEND_SECURITY_STATE_DB_USE_NULL_POOL", ""),
-            default=True,
+            # Reuse database connections by default.  The security-state
+            # operations remain atomic and fail closed; an operator can still
+            # opt into NullPool explicitly for a deployment-specific reason.
+            default=False,
         ),
         security_state_db_pool_size=_as_int(
             get_config_value("OKR_BACKEND_SECURITY_STATE_DB_POOL_SIZE", ""),

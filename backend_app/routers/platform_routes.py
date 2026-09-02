@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
@@ -14,6 +15,7 @@ from backend_app.schemas import (
     ReadQueryResponse,
 )
 from src.services.app_shell_runtime import serialize_user
+from src.observability import record_timing
 
 
 def register_platform_routes(router: APIRouter, main: Any) -> None:
@@ -23,6 +25,31 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         from backend_app.data_access_mode import resolve_read_mode
 
         return resolve_read_mode()
+
+    async def _timed_service_access(
+        request: Request,
+        x_okr_service_token: str | None = Header(default=None),
+        x_okr_signature: str | None = Header(default=None),
+        x_okr_timestamp: str | None = Header(default=None),
+        x_okr_nonce: str | None = Header(default=None),
+        x_okr_key_id: str | None = Header(default=None),
+        x_forwarded_for: str | None = Header(default=None),
+    ) -> None:
+        dependency_started_at = time.perf_counter()
+        try:
+            await main.require_service_access(
+                request=request,
+                x_okr_service_token=x_okr_service_token,
+                x_okr_signature=x_okr_signature,
+                x_okr_timestamp=x_okr_timestamp,
+                x_okr_nonce=x_okr_nonce,
+                x_okr_key_id=x_okr_key_id,
+                x_forwarded_for=x_forwarded_for,
+            )
+        finally:
+            record_timing(
+                "dependency", (time.perf_counter() - dependency_started_at) * 1000
+            )
 
     @router.post(
         "/v1/auth/login",
@@ -125,7 +152,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
 
     @router.post(
         "/v1/read/query",
-        dependencies=[Depends(main.require_service_access)],
+        dependencies=[Depends(_timed_service_access)],
         response_model=ReadQueryResponse,
         response_model_exclude_none=True,
     )
@@ -133,31 +160,43 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         payload: ReadQueryRequest,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> dict:
-        actor = main._resolve_actor(
-            header_actor=x_okr_actor,
-            payload_actor=payload.actor_username,
-        )
         try:
-            return main._read_query_payload(
-                kind=str(payload.kind or "").strip(),
-                params=dict(payload.params or {}),
-                actor=actor,
+            handler_started_at = time.perf_counter()
+            actor_started_at = time.perf_counter()
+            try:
+                actor = main._resolve_actor(
+                    header_actor=x_okr_actor,
+                    payload_actor=payload.actor_username,
+                )
+            finally:
+                record_timing(
+                    "actor", (time.perf_counter() - actor_started_at) * 1000
+                )
+            try:
+                return main._read_query_payload(
+                    kind=str(payload.kind or "").strip(),
+                    params=dict(payload.params or {}),
+                    actor=actor,
+                )
+            except HTTPException:
+                raise
+            except PermissionError as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=main._status_for_value_error(str(exc)),
+                    detail=str(exc),
+                ) from exc
+            except Exception as exc:
+                main.error_log("backend_read_query_unhandled_error", exc)
+                raise HTTPException(
+                    status_code=500,
+                    detail="Unexpected server error while processing read query.",
+                ) from exc
+        finally:
+            record_timing(
+                "handler", (time.perf_counter() - handler_started_at) * 1000
             )
-        except HTTPException:
-            raise
-        except PermissionError as exc:
-            raise HTTPException(status_code=403, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=main._status_for_value_error(str(exc)),
-                detail=str(exc),
-            ) from exc
-        except Exception as exc:
-            main.error_log("backend_read_query_unhandled_error", exc)
-            raise HTTPException(
-                status_code=500,
-                detail="Unexpected server error while processing read query.",
-            ) from exc
 
     @router.get("/healthz")
     def healthz() -> dict:

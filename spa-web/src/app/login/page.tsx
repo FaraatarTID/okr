@@ -4,6 +4,8 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { bffLogin, readSessionUser } from "@/lib/api";
+import type { AuthUser } from "@/lib/api/auth";
+import PasswordChangePanel from "@/components/PasswordChangePanel";
 
 const SAFE_RETURN_PATHS = new Set([
   "/",
@@ -37,6 +39,7 @@ function LoginPageContent() {
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [passwordChangeUser, setPasswordChangeUser] = useState<AuthUser | null>(null);
 
   const returnTo = safeReturnPath(searchParams.get("return_to"));
 
@@ -74,6 +77,10 @@ function LoginPageContent() {
         setError(payload.detail || payload.error_code || "Login failed. Verify credentials.");
         return;
       }
+      if (payload.user.must_change_password) {
+        setPasswordChangeUser(payload.user);
+        return;
+      }
       router.replace(returnTo);
     } catch (loginError) {
       setError(String(loginError instanceof Error ? loginError.message : loginError));
@@ -84,14 +91,19 @@ function LoginPageContent() {
 
   return (
     <main className="page-shell">
+      {passwordChangeUser ? (
+        <PasswordChangePanel user={passwordChangeUser} onComplete={() => router.replace(returnTo)} />
+      ) : null}
+      {!passwordChangeUser ? (
       <section className="panel login-shell-hero">
         <div className="login-brand-row">
           <img src="/okr-logo.webp" alt="OKR logo" width={42} height={74} className="login-logo" />
           <h1 className="login-brand-title">OKR</h1>
         </div>
       </section>
+      ) : null}
 
-      <section className="panel login-shell-card">
+      {!passwordChangeUser ? <section className="panel login-shell-card">
         <label htmlFor="username" className="login-label">
           Username
         </label>
@@ -125,7 +137,7 @@ function LoginPageContent() {
         </button>
 
         {error ? <p className="login-feedback">{error}</p> : null}
-      </section>
+      </section> : null}
     </main>
   );
 }

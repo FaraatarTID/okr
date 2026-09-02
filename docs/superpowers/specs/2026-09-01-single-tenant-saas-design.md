@@ -10,7 +10,7 @@ Evolve the working on-premise OKR application into an enterprise SaaS offering w
 
 ## Decision
 
-Use a single-tenant deployment model for the first SaaS release. Each enterprise receives an isolated runtime, database, backup schedule, and operational boundary. A shared database with row-level security is explicitly deferred and is not required for the first SaaS release.
+Use a dedicated single-tenant deployment model as the only product roadmap. Each enterprise receives an isolated runtime, database, backup schedule, and operational boundary. Shared-database multi-tenancy and row-level security are permanently out of scope, not deferred roadmap work, and must not be added to this product.
 
 ## Why this fits the product
 
@@ -122,7 +122,7 @@ The current on-premise profile remains supported and must not depend on the cont
 
 ### Phase 0: Stable pre-SaaS baseline
 
-Freeze the promoted on-premise behavior, keep the runtime data disposable, retain the existing architectural gates, and prohibit implicit tenant/RLS scope.
+Freeze the promoted on-premise behavior, keep the runtime data disposable, retain the existing architectural gates, and prohibit shared-database tenant/RLS scope permanently.
 
 ### Phase 1: Environment contract
 
@@ -148,14 +148,14 @@ Add environment inventory, routing metadata, lifecycle APIs, health aggregation,
 
 Add customer-specific data residency, support access controls, compliance evidence, usage metering if needed, and commercial lifecycle integration.
 
-## Explicitly deferred
+## Permanently out of scope
 
 - Shared-database multi-tenancy.
 - PostgreSQL RLS for customer-domain isolation.
-- Tenant identifiers in the current pre-SaaS domain schema.
-- Real-customer data onboarding.
-- Billing and self-service provisioning.
+- Tenant identifiers used to separate multiple customers inside one application/database.
 - Cross-customer analytics.
+
+These items are preserved here as an explicit historical boundary decision. They are not future phases of this product. Customer isolation is provided by the dedicated application and database environment defined above.
 
 ## Acceptance criteria for entering SaaS persistence work
 

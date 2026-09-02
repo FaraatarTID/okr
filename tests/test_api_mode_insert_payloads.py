@@ -90,8 +90,9 @@ def test_user_create_payload_includes_required_columns(capture_insert):
     payload = capture_insert.payloads.get("user")
     assert payload is not None
     _assert_required_columns("user", payload)
-    # Role uses the lowercase labels declared by the canonical schema enum.
-    assert payload["role"] == "manager"
+    # PostgREST receives the deployed PostgreSQL enum label; reads normalize it.
+    assert payload["role"] == "MANAGER"
+    assert payload["token_version"] == 1
 
 
 def test_team_create_payload_includes_required_columns(capture_insert):

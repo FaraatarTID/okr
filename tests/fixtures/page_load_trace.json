@@ -1,0 +1,10 @@
+{
+  "page": "atlas",
+  "total_duration_ms": 10000,
+  "spans": [
+    {"stage": "browser", "name": "navigation-and-render", "duration_ms": 900},
+    {"stage": "bff", "name": "page-request", "duration_ms": 120},
+    {"stage": "backend", "name": "atlas-endpoint", "duration_ms": 1980},
+    {"stage": "database", "name": "snapshot-query", "duration_ms": 400}
+  ]
+}

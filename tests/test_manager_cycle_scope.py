@@ -112,6 +112,7 @@ def test_supabase_manager_scope_discovers_admin_ids_for_global_cycles(monkeypatc
             return {
                 "users": [
                     {"id": 1, "username": "admin", "role": "admin", "is_active": True},
+                    {"id": 20, "username": "manager", "role": "manager", "is_active": True},
                     {"id": 30, "username": "other", "role": "manager", "is_active": True},
                 ]
             }
@@ -127,4 +128,4 @@ def test_supabase_manager_scope_discovers_admin_ids_for_global_cycles(monkeypatc
 
     assert scope["admin_ids"] == {1}
     assert [cycle.id for cycle in visible] == [101, 102]
-    assert calls == ["users.by_username", "users.team_members", "users.all"]
+    assert calls == ["users.all", "users.team_members"]

@@ -343,6 +343,29 @@ def read_query_via_supabase_api(
         cycle_id = _as_int(params.get("cycle_id"), 0)
         limit = params.get("limit")
         offset = _as_int(params.get("offset"), 0)
+
+        # Prefer one embedded PostgREST query over walking the goal ->
+        # objective -> key-result hierarchy with three sequential remote
+        # calls. Keep the existing path as a compatibility fallback for
+        # projects whose PostgREST schema cache lacks the relationship.
+        nested_query: dict[str, str] = {
+            "select": "*,objective!inner(goal_id)",
+            "objective.goal_id": f"eq.{cycle_id}",
+            "order": "id.asc",
+        }
+        if limit is not None:
+            nested_query["limit"] = str(_as_int(limit, 0))
+        if offset > 0:
+            nested_query["offset"] = str(offset)
+        status, nested_krs = _rest_select("key_result", query=nested_query)
+        if status < 400:
+            for row in nested_krs:
+                # The embedded relation is only a cycle filter; preserve the
+                # established key-result response shape for callers.
+                row.pop("objective", None)
+                row["__tablename__"] = "keyresult"
+            return {"key_results": nested_krs}
+
         q = {"cycle_id": f"eq.{cycle_id}", "select": "id", "order": "id.asc"}
         status, goals = _rest_select("goal", query=q)
         if status >= 400:
@@ -391,6 +414,27 @@ def read_query_via_supabase_api(
         cycle_id = _as_int(params.get("cycle_id"), 0)
         limit = params.get("limit")
         offset = _as_int(params.get("offset"), 0)
+
+        # Prefer one embedded PostgREST query over walking the hierarchy with
+        # four sequential remote calls. Older projects may not expose these
+        # FK relationships through PostgREST, so retain the fallback below.
+        nested_query: dict[str, str] = {
+            "select": "*,key_result!inner(objective!inner(goal_id))",
+            "key_result.objective.goal_id": f"eq.{cycle_id}",
+            "order": "id.asc",
+        }
+        if limit is not None:
+            nested_query["limit"] = str(_as_int(limit, 0))
+        if offset > 0:
+            nested_query["offset"] = str(offset)
+        status, nested_tasks = _rest_select("task", query=nested_query)
+        if status < 400:
+            for row in nested_tasks:
+                # The embedded relation is only a filter carrier; preserve
+                # the established task response shape for callers.
+                row.pop("key_result", None)
+                row["__tablename__"] = "task"
+            return {"tasks": nested_tasks}
 
         status, goals = _rest_select(
             "goal",
@@ -591,24 +635,38 @@ def read_query_via_supabase_api(
             )
 
         selected: list[dict[str, Any]] = []
-        for kr in krs:
-            kr_id = _as_int(kr.get("id"), 0)
-            if kr_id <= 0:
-                continue
+        kr_ids = [
+            str(_as_int(kr.get("id"), 0))
+            for kr in krs
+            if _as_int(kr.get("id"), 0) > 0
+        ]
+        latest_checkin_by_kr: dict[int, datetime] = {}
+        if kr_ids:
             c_status, checkins = _rest_select(
                 "check_in",
                 query={
-                    "key_result_id": f"eq.{kr_id}",
-                    "select": "created_at",
-                    "order": "created_at.desc",
-                    "limit": "1",
+                    "key_result_id": f"in.({_in_clause_ids(kr_ids)})",
+                    "select": "key_result_id,created_at",
+                    "order": "key_result_id.asc,created_at.desc",
                 },
             )
             if c_status >= 400:
                 raise ValueError(
                     f"Supabase API error (krs.needing_checkin/check_in): {c_status}"
                 )
-            latest = _parse_dt(checkins[0].get("created_at")) if checkins else None
+            for checkin in checkins:
+                checkin_kr_id = _as_int(checkin.get("key_result_id"), 0)
+                if checkin_kr_id <= 0 or checkin_kr_id in latest_checkin_by_kr:
+                    continue
+                latest = _parse_dt(checkin.get("created_at"))
+                if latest is not None:
+                    latest_checkin_by_kr[checkin_kr_id] = latest
+
+        for kr in krs:
+            kr_id = _as_int(kr.get("id"), 0)
+            if kr_id <= 0:
+                continue
+            latest = latest_checkin_by_kr.get(kr_id)
             if latest is None:
                 kr["__tablename__"] = "keyresult"
                 selected.append(kr)

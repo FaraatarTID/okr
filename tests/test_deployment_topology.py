@@ -14,6 +14,15 @@ def test_committed_compose_has_the_required_private_topology() -> None:
     validate_compose_text(COMPOSE.read_text(encoding="utf-8"))
 
 
+def test_compose_fails_closed_for_internal_credentials_and_gates_web_on_bff() -> None:
+    text = COMPOSE.read_text(encoding="utf-8")
+
+    assert "OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:?" in text
+    assert "OKR_BACKEND_SIGNING_SECRET=${OKR_BACKEND_SIGNING_SECRET:?" in text
+    assert "test: [\"CMD-SHELL\", \"wget -q -O - http://127.0.0.1:${BFF_PORT:-3001}/healthz" in text
+    assert "spa-bff:\n        condition: service_healthy" in text
+
+
 @pytest.mark.parametrize(
     ("replacement", "message"),
     [

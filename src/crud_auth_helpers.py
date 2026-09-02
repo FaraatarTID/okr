@@ -11,6 +11,7 @@ from datetime import timedelta
 import os
 import time
 import importlib
+from types import SimpleNamespace
 from typing import Any, Dict, Optional
 import bcrypt
 
@@ -375,6 +376,32 @@ def create_user_from_crud(
     if result is not None:
         return result
 
+    # Supabase API mode has no valid SQLAlchemy fallback: remote enum labels
+    # and the local ORM enum are different representations, and the remote
+    # database is the source of truth for this runtime.
+    from src.services.supabase_api_mode_transport import is_supabase_api_mode_enabled
+
+    if is_supabase_api_mode_enabled():
+        from src.services.supabase_api_mode_operations import (
+            create_user_via_supabase_api,
+        )
+
+        require_admin_actor_from_crud(
+            crud_module=crud_module,
+            session=None,
+            actor_username=actor_username,
+        )
+        return create_user_via_supabase_api(
+            username=username,
+            password=password,
+            role=role,
+            display_name=display_name,
+            manager_id=manager_id,
+            team_id=team_id,
+            must_change_password=must_change_password,
+            actor_username=actor_username,
+        )
+
     with crud_module.get_session_context() as session:
         if actor_username:
             crud_module._require_admin_actor(session, actor_username)
@@ -571,6 +598,19 @@ def require_actor_user_from_crud(
 def require_admin_actor_from_crud(
     *, crud_module, session, actor_username: Optional[str]
 ):
+    from src.services.supabase_api_mode_transport import (
+        _user_for_authorization,
+        is_supabase_api_mode_enabled,
+    )
+
+    if is_supabase_api_mode_enabled():
+        actor_row = _user_for_authorization(str(actor_username or ""))
+        if not actor_row or not bool(actor_row.get("is_active", False)):
+            raise PermissionError("Actor is not authorized")
+        if str(actor_row.get("role") or "").strip().lower() != "admin":
+            raise PermissionError("Admin privileges are required for this operation")
+        return SimpleNamespace(**actor_row)
+
     actor = crud_module._require_actor_user(session, actor_username)
     if actor.role != crud_module.UserRole.ADMIN:
         raise PermissionError("Admin privileges are required for this operation")
@@ -872,6 +912,33 @@ def update_user_from_crud(
     )
     if result is not None:
         return result
+
+    # Supabase API mode must not load the remote user through SQLAlchemy. The
+    # deployed enum labels are uppercase (for example, MEMBER), while the
+    # local ORM expects lowercase labels and can fail during result mapping.
+    # Keep authorization at the same admin boundary as the database path,
+    # then delegate the complete update to the Supabase transport boundary.
+    from src.services.supabase_api_mode_transport import is_supabase_api_mode_enabled
+
+    if is_supabase_api_mode_enabled():
+        from src.services.supabase_api_mode_operations import (
+            update_user_via_supabase_api,
+        )
+
+        require_admin_actor_from_crud(
+            crud_module=crud_module,
+            session=None,
+            actor_username=actor_username,
+        )
+        return update_user_via_supabase_api(
+            user_id=user_id,
+            display_name=display_name,
+            role=role,
+            manager_id=manager_id,
+            team_id=team_id,
+            is_active=is_active,
+            actor_username=actor_username,
+        )
 
     with crud_module.get_session_context() as session:
         if actor_username:
