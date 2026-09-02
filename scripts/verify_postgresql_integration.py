@@ -96,6 +96,14 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
         env["BFF_SESSION_SECRET"] = str(
             os.environ.get("BFF_SESSION_SECRET", "").strip() or secrets.token_hex(32)
         )
+        env["OKR_BACKEND_SERVICE_TOKEN"] = str(
+            os.environ.get("OKR_BACKEND_SERVICE_TOKEN", "").strip()
+            or secrets.token_hex(32)
+        )
+        env["OKR_BACKEND_SIGNING_SECRET"] = str(
+            os.environ.get("OKR_BACKEND_SIGNING_SECRET", "").strip()
+            or secrets.token_hex(32)
+        )
 
         up_code, up_out = _run_compose(
             compose_file=compose_file,
