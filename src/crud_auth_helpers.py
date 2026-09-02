@@ -1243,7 +1243,7 @@ def _authorize_node_scoped_access(
     )
 
 
-def get_user_goals(*, username: str, cycle_id: int):
+def get_user_goals(username: str, cycle_id: int):
     return get_user_goals_from_crud(
         crud_module=_crud_module_context(),
         username=username,
