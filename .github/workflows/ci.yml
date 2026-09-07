@@ -152,7 +152,7 @@ jobs:
             uv.lock
 
       - name: Install Python dependencies
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
 
       - name: Sync Python workspace
         run: |
@@ -389,7 +389,7 @@ jobs:
             uv.lock
 
       - name: Install Python dependencies
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
 
       - name: Sync Python workspace
         run: |
