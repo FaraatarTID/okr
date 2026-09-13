@@ -73,6 +73,18 @@ stop:
 health:
     docker compose -f deploy/docker/docker-compose.yml ps
 
+dev-reset:
+    uv run python scripts/dev_workflow.py reset
+
+dev-seed:
+    uv run python scripts/dev_workflow.py seed
+
+dev-status:
+    uv run python scripts/dev_workflow.py status
+
+dev-clean:
+    uv run python scripts/dev_workflow.py clean
+
 saas-provision MANIFEST CREDENTIAL_FILE STATE_FILE="tmp/saas-environments.json":
     uv run python scripts/provision_saas_environment.py provision --manifest "{{MANIFEST}}" --credential-file "{{CREDENTIAL_FILE}}" --state-file "{{STATE_FILE}}"
 

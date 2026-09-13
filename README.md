@@ -703,6 +703,35 @@ See authoritative config policy in [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERE
 
 ## Developer Fast Loop
 
+### Disposable local development
+
+For the fastest safe first run, use the isolated disposable development
+workflow. It uses the existing PostgreSQL-backed stack, a dedicated Compose
+project named `okr-dev`, and a small synthetic OKR hierarchy:
+
+```bash
+just install
+just dev-reset
+just dev-status
+```
+
+`dev-reset` removes only the `okr-dev` containers and volumes, starts
+PostgreSQL, applies the current schema as an explicit one-off operation, seeds
+the synthetic administrator/team/cycle/goal/objective/key-result/task
+hierarchy, and then starts the API, worker, BFF, and web services. The local
+web URL is `http://127.0.0.1:3000`; API and BFF health URLs are
+`http://127.0.0.1:8100/healthz` and `http://127.0.0.1:3001/healthz`.
+
+The default login username is `admin`. A temporary password is generated for a
+reset and printed only in the invoking terminal. To choose a stable local
+password, set `OKR_DEV_ADMIN_PASSWORD` before running `just dev-reset`.
+`just dev-seed` repairs or adds the synthetic hierarchy without deleting the
+database; `just dev-clean` removes the disposable environment completely.
+
+This workflow is for local synthetic data only. It does not read production
+configuration, does not create customer data, and is not a production release,
+backup, restore, or Darkube deployment procedure.
+
 ```bash
 pre-commit run --all-files
 python scripts/check_docs_hq_links.py

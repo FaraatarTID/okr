@@ -24,6 +24,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 COPY src/ /app/src/
 COPY backend_app/ /app/backend_app/
+COPY scripts/seed_dev_demo.py /app/scripts/seed_dev_demo.py
 COPY alembic.ini /app/alembic.ini
 COPY alembic/ /app/alembic/
 
