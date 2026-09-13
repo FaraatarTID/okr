@@ -57,6 +57,18 @@ docs/superpowers/plans/2026-09-01-single-tenant-saas-plan.md
 .superpowers/sdd/2026-09-01-single-tenant-saas-plan/
 .mimocode/
 
+# Planning/ops artifacts by filename pattern
+**/[Rr][Oo][Aa][Dd][Mm][Aa][Pp]*.md
+**/[Bb][Aa][Cc][Kk][Ll][Oo][Gg]*.md
+**/[Ww][Oo][Rr][Kk][Ll][Oo][Gg]*.md
+**/[Pp][Ll][Aa][Nn]*.md
+**/plans/*.md
+**/worklogs/*.md
+
+# Temporary single-tenant planning folders no longer tracked
+.superpowers/sdd/2026-09-01-single-tenant-saas-plan/**
+docs/superpowers/plans/2026-09-01-single-tenant-saas-plan/**
+
 # OS/editor
 .DS_Store
 .idea/

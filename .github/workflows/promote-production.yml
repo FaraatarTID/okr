@@ -46,10 +46,23 @@ jobs:
           name: darkube-deployment-verification
           path: staging-verification
 
+      - name: Download staging release manifest
+        uses: actions/download-artifact@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.staging_run_id }}
+          name: darkube-ghcr-release-manifest-${{ inputs.release_sha }}
+          path: staging-manifest
+
       - name: Require exact staging verification
         run: |
           set -euo pipefail
           test -f staging-verification/deployment-verification.json
+          test -f staging-manifest/release-manifest.json
+          jq -e --arg sha "$RELEASE_SHA" \
+            '.schema_version == 1 and .commit_sha == $sha and (.images | keys | sort == ["backend", "bff", "web"])' \
+            staging-manifest/release-manifest.json >/dev/null
           jq -e --arg sha "$RELEASE_SHA" \
             '.schema_version == 1 and .verified == true and .commit_sha == $sha and (.applications | sort == ["api", "bff", "web", "worker"])' \
             staging-verification/deployment-verification.json >/dev/null

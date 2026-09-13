@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -21,6 +22,28 @@ def _run_checker(env_file: Path, mode: str) -> subprocess.CompletedProcess[str]:
         check=False,
         capture_output=True,
         text=True,
+    )
+
+
+def _run_checker_with_clean_pythonpath(
+    env_file: Path, mode: str, *, cwd: Path
+) -> subprocess.CompletedProcess[str]:
+    clean_env = os.environ.copy()
+    clean_env.pop("PYTHONPATH", None)
+    return subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--env-file",
+            str(env_file),
+            "--mode",
+            mode,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=str(cwd),
+        env=clean_env,
     )
 
 
@@ -88,6 +111,16 @@ def test_template_mode_accepts_examples_with_secure_defaults(tmp_path: Path):
     _write_env(env_file, placeholder_values=True)
 
     result = _run_checker(env_file, mode="template")
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Deploy config check passed (mode=template)" in result.stdout
+
+
+def test_template_mode_works_with_clean_pythonpath(tmp_path: Path):
+    env_file = tmp_path / ".env.example"
+    _write_env(env_file, placeholder_values=True)
+
+    result = _run_checker_with_clean_pythonpath(env_file, mode="template", cwd=tmp_path)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Deploy config check passed (mode=template)" in result.stdout

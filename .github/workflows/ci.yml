@@ -128,7 +128,7 @@ jobs:
         run: uv run python scripts/verify_migration_lint.py --require-baseline
 
       - name: Apply migrations
-        run: uv run alembic upgrade head
+        run: uv run python scripts/verify_migration_sequence.py
 
       - name: RLS Coverage Gate
         run: uv run python scripts/check_rls_enabled.py
@@ -196,6 +196,15 @@ jobs:
 
       - name: Deploy Runtime Integration Matrix Gate
         run: python scripts/check_deploy_runtime_matrix.py --require-docker
+
+      - name: Immutable Deployment Reference Gate
+        run: python scripts/check_immutable_deploy_config.py
+
+      - name: Versioned Runtime Matrix Gate
+        run: python scripts/verify_runtime_matrix.py
+
+      - name: Staging Configuration Shape Gate
+        run: python scripts/check_environment_config_parity.py
 
       - name: Quality Baseline Expiry Gate
         run: python scripts/check_quality_gate_baseline.py

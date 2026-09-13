@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the legacy pip requirements export from pyproject declarations."""
+"""Generate the compatibility pip requirements export from authoritative pyproject declarations."""
 
 from __future__ import annotations
 

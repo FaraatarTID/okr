@@ -22,6 +22,22 @@ _POSTGRES_DEFAULT_URL = (
 )
 
 
+def _available_port(preferred: int) -> int:
+    """Use the requested port when free, otherwise ask the OS for one."""
+    candidates = [preferred, 0]
+    for candidate in candidates:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(("127.0.0.1", candidate))
+            except OSError:
+                continue
+            return int(sock.getsockname()[1])
+    raise RuntimeError(
+        f"No available localhost port for PostgreSQL verification near {preferred}. "
+        "Stop the conflicting process or pass --postgres-host-port <free-port>."
+    )
+
+
 def _run_command(
     argv: list[str], *, cwd: Path, env: dict[str, str] | None = None
 ) -> tuple[int, str]:
@@ -88,8 +104,11 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
     started_postgres = False
 
     if args.ensure_docker_service:
+        selected_port = _available_port(args.postgres_host_port)
+        if database_url == _POSTGRES_DEFAULT_URL:
+            database_url = database_url.replace(":15432/", f":{selected_port}/")
         env = os.environ.copy()
-        env["OKR_POSTGRES_HOST_PORT"] = str(args.postgres_host_port)
+        env["OKR_POSTGRES_HOST_PORT"] = str(selected_port)
         env["OKR_POSTGRES_USER"] = args.postgres_user
         env["OKR_POSTGRES_PASSWORD"] = args.postgres_password
         env["OKR_POSTGRES_DB"] = args.postgres_db
@@ -119,7 +138,7 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
         started_postgres = True
 
     try:
-        if not _wait_for_tcp("127.0.0.1", args.postgres_host_port, timeout_seconds=80):
+        if not _wait_for_tcp("127.0.0.1", selected_port if args.ensure_docker_service else args.postgres_host_port, timeout_seconds=80):
             raise RuntimeError(
                 "PostgreSQL service did not become reachable on configured host port."
             )
@@ -146,7 +165,7 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
             down_code, down_out = _run_compose(
                 compose_file=compose_file,
                 compose_project=project,
-                command=["down", "--volumes", "--remove-orphans"],
+                command=["rm", "--stop", "--force", "--volumes", "postgres"],
             )
             if down_code != 0:
                 print(f"[WARN] docker compose down returned {down_code}.")

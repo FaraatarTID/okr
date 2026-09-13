@@ -108,6 +108,7 @@ jobs:
       - run: python -m scripts.check_deploy_config --mode template
       - run: python -m scripts.check_deploy_config --mode template --saas-only --env-file deploy/docker/.env.saas.example
       - run: python -m scripts.verify_prerelease_config --mode template
+      - run: python scripts/check_environment_config_parity.py
       - run: python -m scripts.verify_migration_lint --require-baseline
       - run: python -m scripts.check_import_boundaries
 

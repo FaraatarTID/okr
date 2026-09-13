@@ -43,6 +43,9 @@ jobs:
       - name: Checkout release source
         uses: actions/checkout@v6
 
+      - name: Reject mutable deployment references
+        run: python scripts/check_immutable_deploy_config.py
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
