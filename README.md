@@ -336,7 +336,7 @@ This repository uses workspace manifests to make its service boundaries explicit
 - JavaScript services are declared as npm workspaces in the root `package.json`.
 - `spa-bff/` and `spa-web/` retain their own lockfiles and can still be installed independently.
 
-From the repository root, use `uv sync --group dev` for Python tooling and `npm install` for both JavaScript services. The existing `backend_app/requirements.txt` remains a compatibility input for deployment environments while the workspace migration is phased in.
+From the repository root, use `uv sync --group dev` for Python tooling and `npm install` for both JavaScript services. `backend_app/requirements.txt` is now treated as a generated compatibility export (created from `pyproject.toml`/`uv.lock`) for legacy installation surfaces only.
 
 ### Cross-platform task runner
 
@@ -433,6 +433,8 @@ For deployment configuration, hardening, and operational procedures, see
 [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md).
 For the factor-by-factor SaaS operations evidence ledger, see
 [docs/saas/twelve-factor-evidence.md](docs/saas/twelve-factor-evidence.md).
+For the explicit provider evidence runbook (Darkube + Hamravesh), use
+[docs/saas/provider-evidence-checklist.md](docs/saas/provider-evidence-checklist.md).
 For the GHCR image contract and Darkube registry setup, see
 [deploy/ghcr/README.md](deploy/ghcr/README.md).
 For production database backup and restore onboarding, see

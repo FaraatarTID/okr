@@ -44,11 +44,11 @@ Documentation HQ: [README](../../../README.md)
 - Create: `docs/saas/twelve-factor-evidence.md`
 - Modify: `README.md`
 
-- [ ] Define one section for each factor with status, evidence command, artifact location, owner, and remaining provider dependency.
-- [ ] Record the current repository evidence for codebase, dependencies, config, backing services, build/release/run, port binding, and admin processes.
-- [ ] State explicitly that single-tenant-per-customer isolation replaces shared-tenant/RLS requirements for this product model.
-- [ ] Add a rule that a factor is marked `PASS` only after its stated command or provider evidence succeeds.
-- [ ] Add the ledger to the release checklist in `README.md`.
+- [x] Define one section for each factor with status, evidence command, artifact location, owner, and remaining provider dependency.
+- [x] Record the current repository evidence for codebase, dependencies, config, backing services, build/release/run, port binding, and admin processes.
+- [x] State explicitly that single-tenant-per-customer isolation replaces shared-tenant/RLS requirements for this product model.
+- [x] Add a rule that a factor is marked `PASS` only after its stated command or provider evidence succeeds.
+- [x] Add the ledger to the release checklist in `README.md`.
 
 ### Task 2: Enforce explicit dependencies and environment configuration
 
@@ -58,11 +58,12 @@ Documentation HQ: [README](../../../README.md)
 - Modify: `scripts/check_deploy_config.py`
 - Test: `tests/test_check_deploy_config_script.py`
 
-- [ ] Make every runtime dependency explicit in the existing Python and npm manifests and ensure lockfiles are required in CI.
-- [ ] Ensure production configuration rejects missing or placeholder secrets while development templates remain runnable with disposable values.
-- [ ] Ensure configuration validation distinguishes environment variables from checked-in templates and never prints secret values.
-- [ ] Add tests for missing secrets, placeholder secrets, and valid environment-driven configuration.
-- [ ] Run `uv sync --locked --group dev`, `npm ci`, and both dependency-lock checks in CI.
+- [x] Make every runtime dependency explicit in the existing Python and npm manifests and ensure lockfiles are required in CI.
+- [x] Treat `backend_app/requirements.txt` as a generated compatibility export, never as the dependency authority.
+- [x] Ensure production configuration rejects missing or placeholder secrets while development templates remain runnable with disposable values.
+- [x] Ensure configuration validation distinguishes environment variables from checked-in templates and never prints secret values.
+- [x] Add tests for missing secrets, placeholder secrets, and valid environment-driven configuration.
+- [x] Run `uv sync --locked --group dev`, `npm ci`, and both dependency-lock checks in CI.
 
 ### Task 3: Make build, release, and run artifacts immutable
 
@@ -72,11 +73,11 @@ Documentation HQ: [README](../../../README.md)
 - Modify: `deploy/docker/docker-compose.yml`
 - Modify: `deploy/ghcr/README.md`
 
-- [ ] Build web, BFF, and backend images once per commit and publish commit-SHA tags plus digests to private GHCR.
-- [ ] Generate a release manifest containing image names, tags, digests, source commit, and workflow run ID.
-- [ ] Require staging to deploy the exact manifest produced by CI; prohibit provider-side rebuilds.
-- [ ] Require production promotion to reference the verified staging manifest and digest-pinned images.
-- [ ] Add a CI test that fails if deployment configuration uses mutable `latest` tags.
+- [x] Build web, BFF, and backend images once per commit and publish commit-SHA tags plus digests to private GHCR.
+- [x] Generate a release manifest containing image names, tags, digests, source commit, and workflow run ID.
+- [x] Require staging to deploy the exact manifest produced by CI; prohibit provider-side rebuilds.
+- [x] Require production promotion to reference the verified staging manifest and digest-pinned images.
+- [x] Add a CI test that fails if deployment configuration uses mutable `latest` tags.
 - [ ] Verify the release gate, GHCR signature gate, and promotion workflow using a non-production release.
 
 ### Task 4: Complete stateless process, port binding, disposability, and concurrency contracts
@@ -87,12 +88,12 @@ Documentation HQ: [README](../../../README.md)
 - Create: `scripts/verify_process_contract.py`
 - Create: `tests/test_process_contract.py`
 
-- [ ] Ensure API, worker, BFF, and web obtain ports and runtime settings from environment variables.
-- [ ] Keep customer data in PostgreSQL and document every non-database volume as operational metadata with a recovery policy.
-- [ ] Add graceful SIGTERM handling and bounded shutdown time for API, worker, and BFF processes.
-- [ ] Verify health checks distinguish readiness from liveness and do not report healthy before required backing services are usable.
-- [ ] Document independent horizontal scaling for API, BFF, and worker processes, including worker concurrency limits and duplicate-job protection.
-- [ ] Add automated tests for environment-driven ports, shutdown handling, and process contract violations.
+- [x] Ensure API, worker, BFF, and web obtain ports and runtime settings from environment variables.
+- [x] Keep customer data in PostgreSQL and document every non-database volume as operational metadata with a recovery policy.
+- [x] Add graceful SIGTERM handling and bounded shutdown time for API, worker, and BFF processes.
+- [x] Verify health checks distinguish readiness from liveness and do not report healthy before required backing services are usable.
+- [x] Document independent horizontal scaling for API, BFF, and worker processes, including worker concurrency limits and duplicate-job protection.
+- [x] Add automated tests for environment-driven ports, shutdown handling, and process contract violations.
 
 ### Task 5: Standardize logs as event streams
 
@@ -103,11 +104,11 @@ Documentation HQ: [README](../../../README.md)
 - Create: `tests/test_logging_contract.py`
 - Modify: `docs/DEPLOYMENT_OPERATIONS_GUIDE.md`
 
-- [ ] Emit one-line structured JSON events to stdout/stderr with timestamp, service, environment, release, request/correlation ID, level, and event name.
-- [ ] Redact passwords, tokens, cookies, authorization headers, database URLs, and provider credentials before emission.
-- [ ] Remove file-based runtime logging as a required operational path; retain local files only as optional developer diagnostics.
-- [ ] Define provider retention, searchable fields, alert conditions, and correlation-ID troubleshooting steps.
-- [ ] Add tests that verify required fields and secret redaction.
+- [x] Emit one-line structured JSON events to stdout/stderr with timestamp, service, environment, release, request/correlation ID, level, and event name.
+- [x] Redact passwords, tokens, cookies, authorization headers, database URLs, and provider credentials before emission.
+- [x] Remove file-based runtime logging as a required operational path; retain local files only as optional developer diagnostics.
+- [x] Define provider retention, searchable fields, alert conditions, and correlation-ID troubleshooting steps.
+- [x] Add tests that verify required fields and secret redaction.
 
 ### Task 6: Establish development/staging/production parity
 
@@ -118,11 +119,11 @@ Documentation HQ: [README](../../../README.md)
 - Create: `scripts/verify_environment_parity.py`
 - Create: `tests/test_environment_parity.py`
 
-- [ ] Define one versioned runtime matrix for Python, Node, PostgreSQL, image entrypoints, health endpoints, and migration policy.
-- [ ] Make CI and local Compose use the same container entrypoints and release image contracts as staging.
-- [ ] Add a staging-only configuration diff check that compares names/types/default policy without exposing secret values.
-- [ ] Require the same commit-SHA image manifest in staging and production.
-- [ ] Keep provider-specific differences limited to environment variables, networking, secret injection, and resource sizing.
+- [x] Define one versioned runtime matrix for Python, Node, PostgreSQL, image entrypoints, health endpoints, and migration policy.
+- [x] Make CI and local Compose use the same container entrypoints and release image contracts as staging.
+- [x] Add a staging-only configuration diff check that compares names/types/default policy without exposing secret values.
+- [x] Require the same commit-SHA image manifest in staging and production.
+- [x] Keep provider-specific differences limited to environment variables, networking, secret injection, and resource sizing.
 - [ ] Record Darkube parity evidence when the provider is configured; until then keep the ledger `PENDING_PROVIDER_EVIDENCE`.
 
 ### Task 7: Verify attached backing services and admin processes
@@ -133,12 +134,12 @@ Documentation HQ: [README](../../../README.md)
 - Create: `tests/test_admin_process_contract.py`
 - Modify: `docs/saas/hamravesh-backup-onboarding.md`, `docs/DEPLOYMENT_OPERATIONS_GUIDE.md`
 
-- [ ] Keep PostgreSQL, cache, and external providers configurable by URL/name rather than hard-coded service identity.
-- [ ] Make disposable verifier credentials process-local and ensure cleanup in every failure path.
-- [ ] Make the PostgreSQL verifier select an available host port or fail with a clear remediation while preserving unrelated containers.
-- [ ] Ensure migrations, health checks, seed operations, and recovery verification run as explicit one-off commands.
-- [ ] Add a migration smoke sequence: upgrade from empty database, verify head, rerun idempotently, and report skipped tests distinctly from passed tests.
-- [ ] Keep production backup/restore evidence separate from local disposable database verification.
+- [x] Keep PostgreSQL, cache, and external providers configurable by URL/name rather than hard-coded service identity.
+- [x] Make disposable verifier credentials process-local and ensure cleanup in every failure path.
+- [x] Make the PostgreSQL verifier select an available host port or fail with a clear remediation while preserving unrelated containers.
+- [x] Ensure migrations, health checks, seed operations, and recovery verification run as explicit one-off commands.
+- [x] Add a migration smoke sequence: upgrade from empty database, verify head, rerun idempotently, and report skipped tests distinctly from passed tests.
+- [x] Keep production backup/restore evidence separate from local disposable database verification.
 
 ### Task 8: Run provider evidence and close the ledger
 
@@ -156,11 +157,11 @@ Documentation HQ: [README](../../../README.md)
 
 ## Final Acceptance Gate
 
-- [ ] `python scripts/verify_twelve_factor_contract.py` passes.
-- [ ] `python -m pytest -q` passes with no unexpected skips.
+- [x] `python scripts/verify_twelve_factor_contract.py` passes.
+- [x] `python -m pytest -q` passes with no unexpected skips.
 - [ ] Exact CI mypy, Ruff, architecture, secret, OpenAPI, Docker-build, resilience, and PostgreSQL commands pass.
 - [ ] CI publishes and verifies digest-pinned GHCR artifacts.
 - [ ] Darkube staging evidence confirms parity, disposability, logs, scaling, and failure isolation.
 - [ ] Application rollback evidence is sanitized and reproducible.
 - [ ] Production database backup/restore evidence is validated separately.
-- [ ] `docs/saas/twelve-factor-evidence.md` contains no unowned open item.
+- [x] `docs/saas/twelve-factor-evidence.md` contains no unowned open item.

@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 _PINNED = re.compile(r"^([A-Za-z0-9_.-]+)==([^;#\s]+)")
+REQUIREMENTS_PATH = ROOT / "backend_app/requirements.txt"
 
 
 def _name(value: str) -> str:
@@ -32,8 +33,10 @@ def _dependencies_from_pyproject() -> dict[str, str]:
 
 
 def _dependencies_from_requirements() -> dict[str, str]:
+    if not REQUIREMENTS_PATH.is_file():
+        return {}
     result: dict[str, str] = {}
-    lines = (ROOT / "backend_app/requirements.txt").read_text(encoding="utf-8").splitlines()
+    lines = REQUIREMENTS_PATH.read_text(encoding="utf-8").splitlines()
     for raw in lines:
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -56,11 +59,15 @@ def _locked_versions() -> dict[str, str]:
 
 
 def check() -> list[str]:
+    if not (ROOT / "pyproject.toml").is_file():
+        return ["pyproject.toml is missing"]
     if not (ROOT / "uv.lock").is_file():
         return ["uv.lock is missing"]
     try:
         expected = _dependencies_from_pyproject()
         actual = _dependencies_from_requirements()
+        if not actual:
+            return ["backend_app/requirements.txt is missing compatibility export"]
         locked = _locked_versions()
     except (OSError, KeyError, TypeError, ValueError) as exc:
         return [str(exc)]

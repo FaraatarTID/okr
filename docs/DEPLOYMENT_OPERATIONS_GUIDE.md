@@ -34,3 +34,19 @@ python scripts/verify_logging_contract.py
 The process model is disposable: health checks and orchestrator restart behavior
 must be able to replace API, worker, and BFF processes without relying on local
 process state. Durable state belongs in configured backing services.
+
+## Release and runtime contract
+
+The canonical versioned runtime contract is `deploy/runtime-matrix.json`. Run
+`python scripts/verify_runtime_matrix.py` and
+`python scripts/check_immutable_deploy_config.py` before publishing or promoting
+a release. Production and staging must consume the same digest-pinned manifest;
+provider differences are limited to injected configuration, networking, and
+explicit resource sizing.
+
+The PostgreSQL integration verifier selects a free localhost port when its
+preferred port is occupied and removes only its temporary `postgres` service.
+It does not remove unrelated services from the Compose project. Migration
+execution remains an explicit one-off operation (`uv run alembic upgrade head`)
+and production backup/restore evidence is maintained separately from disposable
+local verification.

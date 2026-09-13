@@ -18,7 +18,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.saas.environment_config import ConfigError, SaaSEnvironmentConfig  # noqa: E402
+try:
+    from src.saas.environment_config import ConfigError, SaaSEnvironmentConfig  # noqa: E402
+except ModuleNotFoundError as exc:
+    raise ModuleNotFoundError(
+        "check_deploy_config requires repository root import context. "
+        "Run from the repository root or run this script as `python scripts/check_deploy_config.py`."
+    ) from exc
 
 
 REQUIRED_ENV_KEYS = (

@@ -415,7 +415,9 @@ def _run_smoke_compose(
                 compose_file=compose_file,
                 env_file=env_path,
                 compose_project=compose_project,
-                command=["down", "--volumes", "--remove-orphans"],
+                # The smoke project is disposable, but unrelated containers
+                # must remain untouched if an operator reuses its project name.
+                command=["down", "--volumes"],
             )
             if down_result[0] != 0:
                 print(f"[WARN] docker compose down returned {down_result[0]}.")

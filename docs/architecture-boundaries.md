@@ -58,9 +58,8 @@ introduce another package manager:
 Python uses the root `pyproject.toml` and `uv.lock` as the authoritative
 dependency and development-tool configuration. The project intentionally sets
 `tool.uv.package = false`: this is an application workspace, not a
-distributable Python package. `backend_app/requirements.txt` remains only as a
-deployment compatibility input while consumers migrate to the root uv
-configuration.
+distributable Python package. `backend_app/requirements.txt` is now a generated
+compatibility export while consumers use the root uv configuration as authority.
 
 JavaScript uses the existing root `package.json` npm workspaces for
 `spa-bff/` and `spa-web/`. Their service manifests remain service-local, but

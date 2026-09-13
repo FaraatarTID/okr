@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "python": "3.11",
+  "node": "22",
+  "postgresql": "16",
+  "entrypoints": {
+    "api": "python -m backend_app.run_api",
+    "worker": "python -m backend_app.worker",
+    "bff": "npm run start",
+    "web": "npm run start"
+  },
+  "health": {
+    "api": "/healthz",
+    "bff": "/healthz",
+    "web": "/"
+  },
+  "migration_policy": "explicit-one-off-before-release-start"
+}
