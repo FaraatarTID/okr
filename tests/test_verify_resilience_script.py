@@ -30,6 +30,9 @@ def test_smoke_environment_reaches_pytest_without_losing_activation(
     assert len(smoke_env["OKR_BACKEND_SIGNING_SECRET"]) >= 32
     assert smoke_env["OKR_BACKEND_ENFORCE_REQUEST_SIGNING"] == "true"
     assert smoke_env["NODE_ENV"] == "development"
+    assert smoke_env["OKR_ALLOW_NON_SUPABASE_DB"] == "true"
+    assert smoke_env["OKR_DEPLOYMENT_PROFILE"] == "on_premise"
+    assert smoke_env["OKR_DEV_DISPOSABLE"] == "1"
 
 
 def test_compose_process_environment_is_isolated_from_runner(
