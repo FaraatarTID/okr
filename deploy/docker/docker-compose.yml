@@ -28,6 +28,9 @@ services:
     environment:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
       - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE-database}
+      - OKR_DEV_DISPOSABLE=${OKR_DEV_DISPOSABLE:-}
+      - OKR_ENV=${OKR_ENV:-}
+      - OKR_ALLOW_NON_SUPABASE_DB=${OKR_ALLOW_NON_SUPABASE_DB:-false}
       - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE-on_premise}
       - OKR_RELEASE_VERSION=${OKR_RELEASE_VERSION:-local}
       - OKR_RELEASE_ARTIFACT=${OKR_RELEASE_ARTIFACT:-local}
@@ -90,6 +93,9 @@ services:
     environment:
       - OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}
       - OKR_DATA_ACCESS_MODE=${OKR_DATA_ACCESS_MODE-database}
+      - OKR_DEV_DISPOSABLE=${OKR_DEV_DISPOSABLE:-}
+      - OKR_ENV=${OKR_ENV:-}
+      - OKR_ALLOW_NON_SUPABASE_DB=${OKR_ALLOW_NON_SUPABASE_DB:-false}
       - OKR_DEPLOYMENT_PROFILE=${OKR_DEPLOYMENT_PROFILE-on_premise}
       - OKR_RELEASE_VERSION=${OKR_RELEASE_VERSION:-local}
       - OKR_RELEASE_ARTIFACT=${OKR_RELEASE_ARTIFACT:-local}
@@ -199,6 +205,12 @@ services:
     restart: unless-stopped
     deploy:
       replicas: ${SPA_WEB_REPLICAS:-1}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:${SPA_WEB_PORT:-3000}/api/healthz >/dev/null || exit 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
 
 volumes:
   okr-postgres-data:
