@@ -1,0 +1,24 @@
+name: Cosign toolchain health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
+
+permissions: {}
+
+jobs:
+  installer:
+    name: Verify pinned Cosign installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install Cosign with retries
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          curl-retries: 10
+
+      - name: Verify installed version
+        run: |
+          set -euo pipefail
+          cosign version
