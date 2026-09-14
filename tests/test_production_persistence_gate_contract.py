@@ -10,10 +10,12 @@ def _read(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8").lower()
 
 
-def test_architecture_status_declares_signed_single_tenant_persistence_gate() -> None:
+def test_architecture_status_declares_conditionally_reviewed_single_tenant_gate() -> None:
     content = _read("docs/architecture-status.md")
 
-    assert "signed and pass-compliant" in content.lower()
+    assert "signed and structurally complete evidence package" in content
+    assert "not independent proof" in content
+    assert "does not authorize customer-data onboarding" in content
     for marker in (
         "provider-supported backup",
         "isolated target",

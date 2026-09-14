@@ -1908,10 +1908,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -1989,6 +1985,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2027,6 +2026,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2067,6 +2069,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2138,6 +2143,8 @@ export interface operations {
             };
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2177,6 +2184,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2214,6 +2223,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2253,6 +2264,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2292,6 +2305,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2331,6 +2346,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2375,6 +2392,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-token-version"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2419,6 +2438,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-token-version"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2462,6 +2483,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2503,6 +2526,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2541,6 +2566,9 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2583,6 +2611,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-token-version"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2620,6 +2650,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2661,6 +2693,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2702,6 +2736,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2741,6 +2777,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2785,6 +2823,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-idempotency-key"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2827,6 +2867,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-idempotency-key"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2871,6 +2913,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-idempotency-key"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2915,6 +2959,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-idempotency-key"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2958,6 +3004,8 @@ export interface operations {
             };
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -2997,6 +3045,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3036,6 +3086,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3073,6 +3125,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3112,6 +3166,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3152,6 +3208,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-idempotency-key"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3194,6 +3252,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-idempotency-key"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3236,6 +3296,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-idempotency-key"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3278,6 +3340,8 @@ export interface operations {
             header?: {
                 "x-okr-actor"?: string | null;
                 "x-okr-idempotency-key"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3319,6 +3383,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3359,6 +3425,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3403,6 +3471,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3444,6 +3514,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3483,6 +3555,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3526,6 +3600,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3569,6 +3645,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3610,6 +3688,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3651,6 +3731,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3694,6 +3776,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3735,6 +3819,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3776,6 +3862,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3817,6 +3905,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3856,6 +3946,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3899,6 +3991,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3942,6 +4036,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -3985,6 +4081,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -4026,6 +4124,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -4069,6 +4169,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -4112,6 +4214,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
@@ -4153,6 +4257,8 @@ export interface operations {
             query?: never;
             header?: {
                 "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
                 "x-okr-service-token"?: string | null;
                 "x-okr-signature"?: string | null;
                 "x-okr-timestamp"?: string | null;
