@@ -11,7 +11,8 @@ This boundary record implements the decision required by [PRE_SAAS_ARCHITECTURE_
 | Package or surface | Owns | Must not own |
 |---|---|---|
 | `backend_app` | FastAPI application assembly, HTTP routers, process configuration, health and observability wiring | Domain rules, direct browser presentation, migration policy |
-| `src/domain` | Stable business concepts, invariants, and domain-level operations | FastAPI, Streamlit, Next.js, SQLAlchemy session details, deployment configuration |
+| `src/domain` (pure: `scoring.py`, `lifecycle.py`, `permissions.py`, `crud_contracts.py`, `password_policy.py`) | Stable business concepts, invariants, and domain-level operations with stdlib-only imports | FastAPI, Streamlit, Next.js, SQLAlchemy/SQLModel session details, httpx/redis transport clients, deployment configuration |
+| `src/domain` (persistence-backed helpers: `alignment.py`, `analysis.py`, `analytics.py`, `auth_service.py`, `authorization.py`, `progress.py`, `read_queries.py`, `read_service.py`) | Domain operations currently coupled to `Session`/`select`; refactor target behind ports | New direct web-framework imports; new business logic outside domain/application packages |
 | `src/services` | Application use cases and orchestration of domain operations | HTTP response shaping, browser session state, process startup |
 | `src/crud.py` and `src/database.py` | Current persistence implementation and database connectivity | Transport concerns and UI behavior |
 | `spa-bff` | Browser-facing mediation, session or route concerns assigned by its API contract | Python domain imports, direct database access, duplicated business rules |
@@ -84,6 +85,22 @@ spa-web --> spa-bff --> documented backend API contract
 ```
 
 The arrows describe permitted request flow. Persistence adapters may implement interfaces needed by application services, but domain rules must remain independent of the concrete database and web frameworks. The BFF communicates with the backend through an API contract rather than importing Python modules.
+
+## Enforcement
+
+- `scripts/check_import_boundaries.py` (CI: Import Boundary Gate) forbids:
+  `src` importing `backend_app` or the retired root `app` facade; `src`
+  importing `fastapi`/`flask`/`starlette`/`streamlit`; pure domain modules
+  (`scoring.py`, `lifecycle.py`, `permissions.py`, `crud_contracts.py`,
+  `password_policy.py`) importing `sqlalchemy`/`sqlmodel`/`httpx`/`redis`.
+- `tests/test_import_boundaries.py` pins the same rules with synthetic fixtures.
+- Pure domain modules import without the web application: `tests/test_scoring.py`
+  and `tests/test_rbac_permissions.py` import `src.domain.scoring` and
+  `src.domain.permissions` directly with no FastAPI/SQLAlchemy transport setup.
+- Target structure decision: keep the current `src/domain` + `src/services` +
+  `backend_app` transport split (no `src/okr/` repackage, no module moves) and
+  refactor persistence-backed domain helpers behind ports incrementally. New
+  business logic belongs only under `src/domain/` or `src/services/`.
 
 ## Canonical API assembly path
 

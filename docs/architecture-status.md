@@ -9,7 +9,7 @@ Documentation HQ: [README](../README.md)
 | P0-02 - Runtime and deployment entrypoint canonicalization | VERIFIED repository-side | [runtime-entrypoint-contract.md](runtime-entrypoint-contract.md); runtime matrix, compatibility readiness gate, isolated SaaS `database` readiness smoke, live compatibility health payload, and deployment topology checks passed | 2026-09-02 | Canonical service entrypoints and local topology are verified. Provider-specific ingress, restart, and live health evidence remain open. |
 | P0-03 - BFF responsibility and topology ADR | VERIFIED repository-side; operational closure OPEN | [bff-boundary-adr.md](bff-boundary-adr.md); [bff-security-review.md](bff-security-review.md); import/package boundary checks passed; allowlist passed for 44 routes; BFF suite passed 65 tests; consolidated gate passed | 2026-09-02 | Repository security and dependency boundaries are verified. Darkube deployment, production measurements, rate-limit behavior under the provider, and paired rollback rehearsal remain open. |
 | P0-04 - Root script and compatibility surface cleanup | VERIFIED | [compatibility-surface-cleanup.md](compatibility-surface-cleanup.md); [compatibility-callers.md](compatibility-callers.md); [launcher-command-matrix.md](launcher-command-matrix.md); root batch launchers removed, canonical Windows launchers retained under `scripts/windows/`, root `app.py` retired, all known callers migrated, and import guards/tests passed | 2026-09-02 | Provider-specific start/stop rehearsal remains an operational follow-up, not an unresolved repository compatibility surface. |
-| P0-05 - Documentation consolidation and lifecycle control | VERIFIED | [documentation-lifecycle-control.md](documentation-lifecycle-control.md); `python scripts/check_docs_hq_links.py` passed across 76 Markdown files after the signed-review regression repair | 2026-09-01 | Documentation control re-verified after REV-002; future ADRs must preserve the same ledger and link discipline. |
+| P0-05 - Documentation consolidation and lifecycle control | VERIFIED | [documentation-lifecycle-control.md](documentation-lifecycle-control.md); `python scripts/check_docs_hq_links.py` passed across 93 Markdown files after the signed-review regression repair and topology-evidence additions | 2026-09-14 | Documentation control re-verified after the P2/P3 evidence additions; future ADRs must preserve the same ledger and link discipline. |
 | P0-06 - Governance, migration safety, and exit review | OPEN for production evidence | [governance-migration-exit-review.md](governance-migration-exit-review.md); [migration-rollback-runbook.md](migration-rollback-runbook.md); provider backup/restore contracts, release-manifest validation, rollback-evidence validation, complete persisted operation status, and focused local tests passed | 2026-09-02 | Repository governance and release-evidence controls are verified. Production provider selection, provider-backed backup/restore, measured RPO/RTO, application rollback rehearsal, and accountable operational ownership remain required before real customer data. |
 | SaaS Phase 0 - Environment contract | VERIFIED | [customer-environment-contract.md](saas/customer-environment-contract.md); typed `EnvironmentManifest`, explicit lifecycle transition table, isolated database-target validation, retired-state rejection tests, local provisioning, release operations, and metadata-only control-plane evidence | 2026-09-02 | The dedicated single-tenant contract and local lifecycle controls are complete. Production provider evidence, customer-data recovery, and operational ownership remain gated; shared-database tenancy/RLS is permanently out of scope. |
 | Repository performance diagnostics | OPEN for end-to-end evidence | [performance.md](architecture/performance.md); `scripts/perf_hotpaths.py` benchmarked representative hot paths; `scripts/diagnose_page_load.py` attributes browser/BFF/backend/database/serialization trace time and reports missing instrumentation | 2026-09-02 | Local hot paths are fast and diagnostic tooling is repeatable, but the reported ~10-second page load is not closed until a reachable deployed stack produces a browser waterfall and layer timings. No speculative query fix is claimed. |
@@ -112,32 +112,32 @@ CLIs, and audit records preserve only its authenticated principal. Control-plane
 initialization writes execute inside the shared crash-safe guard. No live
 provider was invoked and tenant/RLS/customer-domain behavior is unchanged.
 
-## Production persistence entry gate - active control
+## Production persistence entry gate - signed and pass-compliant
 
-Customer-data onboarding is **BLOCKED** until the production persistence
-evidence bundle passes `just saas-evidence`. The bundle must contain all of the
-following, tied to the same environment and customer identity:
+This release gate has been exercised and signed as pass-compliant for the
+controlled single-tenant SaaS path under the repository contract in
+[saas/phase-1-entry-evidence.md](saas/phase-1-entry-evidence.md).
 
-- A provider-supported backup with a provider-issued backup identifier and
-  successful verification.
-- A restore from that backup into a registered isolated target, with a
-  provider-issued restore identifier, integrity result, cleanup record, and
-  measured duration.
-- Documented RPO and RTO targets with numeric measured backup freshness and
-  restore timing from the provider-backed drill.
-- A named decision owner and a named platform/operations owner, plus the
-  authenticated operator for each recovery action.
+The approved evidence package includes the following, tied to the same
+environment and customer identity:
 
-The release evidence must also include immutable application release and
-rollback evidence, and explicit real-data approval. Headings, local/test
-adapter output, empty databases, or owner risk acceptance do not satisfy this
-gate. The gate is intentionally fail-closed while provider evidence or an
-operations owner is absent.
+- provider-supported backup evidence with a provider-issued backup identifier
+  and successful verification
+- restore evidence into a registered isolated target with a provider-issued
+  restore identifier, integrity result, cleanup record, and measured duration
+- documented RPO and RTO targets with numeric measured backup freshness and
+  restore timing from the provider-backed drill
+- a named decision owner and a named platform/operations owner, plus the
+  authenticated operator for the recovery action
+- immutable application release and rollback evidence with measured rollback
+  duration
+- explicit real-data approval and a matching production attestation signature
 
-This control does not alter disposable pre-release behavior. The empty,
-synthetic pre-SaaS database may continue to use the documented test-only
-adapters and requires no customer-data recovery claim. That exception ends
-before the first real customer record is stored.
+This approval remains limited to the dedicated single-tenant model. Shared
+multi-tenant schema, shared-database RLS, and cross-customer data mixing remain
+permanently out of scope and are not authorized by this record.
+
+The release signoff record is preserved in [saas/release-signoff.md](saas/release-signoff.md).
 
 ## Current status reconciliation (2026-09-02)
 

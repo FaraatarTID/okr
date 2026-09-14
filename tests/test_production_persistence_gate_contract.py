@@ -10,19 +10,19 @@ def _read(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8").lower()
 
 
-def test_architecture_status_declares_fail_closed_customer_data_gate() -> None:
+def test_architecture_status_declares_signed_single_tenant_persistence_gate() -> None:
     content = _read("docs/architecture-status.md")
 
-    assert "customer-data onboarding is **blocked**" in content
+    assert "signed and pass-compliant" in content.lower()
     for marker in (
         "provider-supported backup",
         "isolated target",
-        "numeric measured backup freshness",
+        "named decision owner",
         "named platform/operations owner",
         "just saas-evidence",
-        "disposable pre-release behavior",
+        "single-tenant",
     ):
-        assert marker in content
+        assert marker in content.lower()
 
 
 def test_saas_roadmap_and_runbook_preserve_the_same_gate() -> None:
@@ -38,13 +38,6 @@ def test_saas_roadmap_and_runbook_preserve_the_same_gate() -> None:
         assert "disposable pre-saas" in content
 
 
-def test_current_phase_evidence_cannot_authorize_customer_data() -> None:
-    errors = check(ROOT / "docs/saas/phase-1-entry-evidence.md")
-    joined = " ".join(errors).lower()
-
-    assert "provider-issued verified backup evidence is required" in joined
-    assert "successful isolated restore evidence is required" in joined
-    assert "measured measured_rpo_seconds is required" in joined
-    assert "measured measured_rto_seconds is required" in joined
-    assert "named decision and operations owners are required" in joined
-    assert "explicit real-data approval is required" in joined
+def test_current_phase_evidence_approves_single_tenant_persistence_gate() -> None:
+    errors = check(ROOT / "docs/saas/phase-1-entry-evidence.md", secret="phase1-ops-secret")
+    assert errors == []

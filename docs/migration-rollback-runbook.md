@@ -55,6 +55,33 @@ commands against a live environment.
 5. Restart the backend and worker, then rerun readiness, import-boundary, contract, and smoke checks.
 6. If downgrade safety is uncertain, restore the approved backup instead of improvising a partial downgrade.
 
+## Multi-tenant migration orchestration
+
+Authoritative tenant inventory: provisioned environments in
+`tmp/saas-environments.json` (via `LocalDisposableEnvironmentProvider`) or the
+control-plane state. Each tenant carries an opaque `database_resource_id`; the
+orchestrator never stores credential-bearing URLs.
+
+- Dry run (lists targets, modifies nothing):
+  `just saas-migrate-dry-run` or
+  `uv run python scripts/migrate_tenant_databases.py --provisioning-state-file tmp/saas-environments.json --dry-run`.
+- Full run: `just saas-migrate`. Options: `--tenant <id>` (repeatable filter),
+  `--timeout-seconds`, `--max-retries`, `--fail-fast`,
+  `--database-urls-file <json>`, `--output <report.json>`.
+- The operator-controlled GitHub Actions workflow
+  `.github/workflows/saas-migrations.yml` runs the same fan-out with
+  `SAAS_PROVISIONING_STATE_JSON` and `SAAS_DATABASE_URLS_JSON` secrets and
+  uploads the report as a workflow artifact. Run it as a release gate before
+  promotion; it fails when either input is missing or any tenant fails.
+- Per-tenant execution runs idempotent `alembic upgrade head` with the tenant
+  database URL injected via `OKR_DATABASE_URL`/`DATABASE_URL`; reruns are safe.
+- The JSON report records per tenant: environment id, database resource,
+  revision, duration seconds, attempts, error. Exit code is nonzero when any
+  required tenant fails; with `--fail-fast` the run stops at the first failure.
+- Failure policy: mark the release failed/incomplete, preserve the report and
+  failed-container logs, and do not promote. Rerun after fixing the tenant.
+- Rollback on migration failure follows the downgrade/backup-restore path above.
+
 ## Rehearsal record
 
 ### Current release-boundary snapshot

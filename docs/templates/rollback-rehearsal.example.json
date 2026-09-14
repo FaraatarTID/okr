@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "release_id": "release-id",
+  "captured_at": "2026-01-01T00:00:00Z",
+  "operator": "operator-id",
+  "topology": "bff",
+  "last_known_good_release": "release-a",
+  "candidate_release": "release-b",
+  "status": "pending",
+  "restoration_duration_seconds": 0,
+  "data_integrity": "pending",
+  "artifact": "evidence/rollback/rehearsal.json"
+}

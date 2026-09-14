@@ -337,7 +337,26 @@ This repository uses workspace manifests to make its service boundaries explicit
 - `spa-bff/` and `spa-web/` retain their own lockfiles and can still be installed independently.
 
 From the repository root, use `uv sync --group dev` for Python tooling and `npm install` for both JavaScript services. `backend_app/requirements.txt` is now treated as a generated compatibility export (created from `pyproject.toml`/`uv.lock`) for legacy installation surfaces only.
+### Package inventory and ownership
 
+| Manifest | Owner | Purpose | Canonical command |
+|---|---|---|---|
+| `pyproject.toml` + `uv.lock` (root) | Python backend (`backend_app/` + shared `src/`) | Authoritative Python dependencies and dev tooling | `uv sync --group dev`, `uv run pytest -q` |
+| `backend_app/requirements.txt` | Generated compatibility export | Legacy pip installs only; do not edit by hand | `uv run python scripts/export_requirements.py` |
+| `package.json` + `package-lock.json` (root) | npm workspaces `spa-bff`, `spa-web` | Canonical JS install/test/build entrypoint | `npm install`, `npm test`, `npm run build` |
+| `spa-web/package.json` (+ service lockfile) | Next.js SPA (`spa-web/`) | Presentation, browser state, generated API client | `npm --prefix spa-web run dev`, `npm --prefix spa-web test --silent` |
+| `spa-bff/package.json` (+ service lockfile) | Browser-facing BFF (`spa-bff/`) | Session mediation, allowlisted proxy, signing | `npm --prefix spa-bff run dev`, `npm --prefix spa-bff test` |
+| `alembic.ini` + `alembic/` | Persistence (`src/models.py`, `src/database.py`) | Schema migrations for provisioned databases | `uv run alembic upgrade head` |
+
+Decision: keep npm workspaces (root `package.json` lists `spa-bff` and
+`spa-web`) with isolated service manifests per sub-application. Root-level
+`npm install`/`npm test` are the canonical monorepo operations; service-local
+`npm install` remains supported for focused work. No pnpm migration is planned.
+
+Generated artifacts (`pytest-results*.xml`, `coverage/`, `.next/`, `dist/`,
+`*.tsbuildinfo`, `.cache/`, Python caches, local `.env` files, `tmp/`,
+`logs/`) are git-ignored and CI fails if they are tracked
+(`scripts/check_generated_artifacts.py`, wired into `just contracts` and CI).
 ### Cross-platform task runner
 
 The root `justfile` is the canonical cross-platform developer command surface.

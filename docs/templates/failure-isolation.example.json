@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "release_id": "release-id",
+  "captured_at": "2026-01-01T00:00:00Z",
+  "operator": "operator-id",
+  "topology": "bff",
+  "scenarios": [
+    {
+      "name": "bff_unavailable_api_reachable",
+      "status": "pending",
+      "artifact": "evidence/failure/bff-unavailable.json",
+      "observed": "Record API health and browser-facing behavior while BFF is stopped."
+    },
+    {
+      "name": "api_unavailable_bff_reports_dependency_failure",
+      "status": "pending",
+      "artifact": "evidence/failure/api-unavailable.json",
+      "observed": "Record that BFF does not report a falsely healthy dependency path."
+    },
+    {
+      "name": "worker_unavailable_api_remains_ready",
+      "status": "pending",
+      "artifact": "evidence/failure/worker-unavailable.json",
+      "observed": "Record API readiness and queue/degraded behavior while worker is stopped."
+    }
+  ]
+}

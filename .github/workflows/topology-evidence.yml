@@ -1,0 +1,72 @@
+name: Capture topology evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      evidence_name:
+        description: Safe filename prefix for the captured topology
+        required: true
+        default: bff
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    name: Capture live SLO evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install Python dependencies
+        run: uv sync --locked --group dev
+
+      - name: Validate probe configuration
+        env:
+          TOPOLOGY_BASE_URL: ${{ secrets.TOPOLOGY_BASE_URL }}
+          TOPOLOGY_USERNAME: ${{ secrets.TOPOLOGY_USERNAME }}
+          TOPOLOGY_PASSWORD: ${{ secrets.TOPOLOGY_PASSWORD }}
+          EVIDENCE_NAME: ${{ inputs.evidence_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EVIDENCE_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$ ]]; then
+            echo "evidence_name must contain only letters, numbers, underscores, and hyphens"
+            exit 1
+          fi
+          for value in TOPOLOGY_BASE_URL TOPOLOGY_USERNAME TOPOLOGY_PASSWORD; do
+            if [ -z "${!value:-}" ]; then
+              echo "Missing required secret: ${value}"
+              exit 1
+            fi
+          done
+
+      - name: Capture sanitized evidence
+        env:
+          TOPOLOGY_BASE_URL: ${{ secrets.TOPOLOGY_BASE_URL }}
+          TOPOLOGY_USERNAME: ${{ secrets.TOPOLOGY_USERNAME }}
+          TOPOLOGY_PASSWORD: ${{ secrets.TOPOLOGY_PASSWORD }}
+          EVIDENCE_NAME: ${{ inputs.evidence_name }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          uv run python scripts/slo_probe.py \
+            --base-url "$TOPOLOGY_BASE_URL" \
+            --username "$TOPOLOGY_USERNAME" \
+            --password-env TOPOLOGY_PASSWORD \
+            --release-id "$GITHUB_SHA" \
+            --operator "$GITHUB_ACTOR" \
+            --topology "$EVIDENCE_NAME" \
+            --output "evidence/${EVIDENCE_NAME}-slo.json"
+
+      - name: Upload sanitized evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: topology-evidence-${{ inputs.evidence_name }}-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn

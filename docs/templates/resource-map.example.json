@@ -1,0 +1,10 @@
+{
+  "api": {
+    "baseline": "okr-backend-api-1",
+    "candidate": "okr-direct-api-1"
+  },
+  "worker": {
+    "baseline": "okr-backend-worker-1",
+    "candidate": "okr-direct-worker-1"
+  }
+}

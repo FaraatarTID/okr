@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "next": "^16.3.3",
-    "okr-platform-workspace": "file:..",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

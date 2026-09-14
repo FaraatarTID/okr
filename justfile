@@ -29,6 +29,7 @@ lint:
 
 contracts:
     uv run python scripts/check_ci_script_references.py
+    uv run python scripts/check_generated_artifacts.py
     uv run python scripts/check_openapi_drift.py
     npm --prefix spa-web run check:gen:api
     npm --prefix spa-bff run check:gen:api
@@ -93,3 +94,9 @@ saas-suspend ENVIRONMENT_ID CREDENTIAL_FILE STATE_FILE="tmp/saas-environments.js
 
 saas-retire ENVIRONMENT_ID CREDENTIAL_FILE STATE_FILE="tmp/saas-environments.json":
     uv run python scripts/provision_saas_environment.py retire --environment-id "{{ENVIRONMENT_ID}}" --credential-file "{{CREDENTIAL_FILE}}" --state-file "{{STATE_FILE}}"
+
+saas-migrate STATE_FILE="tmp/saas-environments.json":
+    uv run python scripts/migrate_tenant_databases.py --provisioning-state-file "{{STATE_FILE}}"
+
+saas-migrate-dry-run STATE_FILE="tmp/saas-environments.json":
+    uv run python scripts/migrate_tenant_databases.py --provisioning-state-file "{{STATE_FILE}}" --dry-run

@@ -24,6 +24,29 @@ node_modules/
 # Generated reports
 .jscpd-report/
 pytest-spa-e2e-results.xml
+pytest-results.xml
+pytest-results-*.xml
+*-pytest-results.xml
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+coverage/
+**/coverage/
+coverage-summary.json
+**/coverage-summary.json
+
+# Build outputs
+dist/
+build/
+.next/
+**/.next/
+*.tsbuildinfo
+**/*.tsbuildinfo
+.cache/
+**/.cache/
+.parcel-cache/
+.turbo/
 
 # Test artifacts
 .test-artifacts/

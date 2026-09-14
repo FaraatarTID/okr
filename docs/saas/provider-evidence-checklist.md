@@ -12,7 +12,7 @@ repository-compliant 12-factor provider gaps.
   - `python scripts/verify_environment_parity.py`
   - `python scripts/verify_logging_contract.py`
   - `python scripts/verify_admin_process_contract.py`
-  - `python -m pytest -q tests/test_twelve_factor_contract.py tests/test_environment_parity.py tests/test_admin_process_contract.py tests/test_admin_process_contract.py tests/test_recovery_evidence.py tests/test_rollback_evidence.py tests/test_prerelease_evidence.py`
+  - `python -m pytest -q tests/test_twelve_factor_contract.py tests/test_environment_parity.py tests/test_admin_process_contract.py tests/test_recovery_evidence.py tests/test_rollback_evidence.py tests/test_prerelease_evidence.py`
 - [ ] Collect required environment metadata:
   - Darkube namespace/project alias (sanitized only).
   - Commit SHA promoted for pre-release.
@@ -59,8 +59,8 @@ repository-compliant 12-factor provider gaps.
   - old/new image digests and Darkube deployment identifiers
   - rollback reason and operator
   - health outcome post-rollback for web/BFF/API/worker
-- [ ] Run the local verifier:
-  - `python scripts/verify_rollback_evidence.py --record <rollback-record>.json`
+- [ ] Run the local verifier, binding the record to the promoted immutable commit:
+  - `python scripts/verify_rollback_evidence.py --record <rollback-record>.json --commit-sha <promoted-commit-sha>`
 - [ ] Mark in `[docs/saas/twelve-factor-evidence.md](../../docs/saas/twelve-factor-evidence.md)`:
   - `factor IX` and `factor V` provider-dependent row to covered with sanitized evidence.
 

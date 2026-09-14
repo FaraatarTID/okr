@@ -16,6 +16,8 @@ accumulate probe data or queued jobs.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import re
 import statistics
 import sys
@@ -764,11 +766,16 @@ def _probe_job_queue_lag(
     ]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run SLO probes against live stack.")
     parser.add_argument("--base-url", default="http://localhost:3000")
     parser.add_argument("--username", required=True)
-    parser.add_argument("--password", required=True)
+    password_group = parser.add_mutually_exclusive_group(required=True)
+    password_group.add_argument("--password")
+    password_group.add_argument(
+        "--password-env",
+        help="Read the password from this environment variable instead of the command line.",
+    )
     parser.add_argument(
         "--prepare-snapshot-fixture",
         action="store_true",
@@ -779,17 +786,49 @@ def main() -> int:
         action="store_true",
         help="Required with --prepare-snapshot-fixture for explicit disposable opt-in.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Write machine-readable evidence JSON without credentials or response bodies.",
+    )
+    parser.add_argument("--release-id", default=os.getenv("GITHUB_SHA", "local"))
+    parser.add_argument("--operator", default=os.getenv("GITHUB_ACTOR", "local"))
+    parser.add_argument("--topology", default="unknown")
+    args = parser.parse_args(argv)
 
     if args.prepare_snapshot_fixture and not args.confirm_disposable:
         parser.error("--prepare-snapshot-fixture requires --confirm-disposable")
 
+    password = args.password
+    if args.password_env:
+        password = __import__("os").environ.get(args.password_env)
+        if not password:
+            parser.error(f"password environment variable is empty: {args.password_env}")
+
     results = probe(
         args.base_url,
         args.username,
-        args.password,
+        password,
         prepare_snapshot_fixture=args.prepare_snapshot_fixture,
     )
+
+    if args.output:
+        output = {
+            "schema_version": 1,
+            "release_id": args.release_id,
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "operator": args.operator,
+            "topology": args.topology,
+            "base_url": args.base_url.rstrip("/"),
+            "results": results,
+            "passed": sum(1 for item in results if item["pass"]),
+            "failed": sum(1 for item in results if not item["pass"]),
+        }
+        output_path = __import__("pathlib").Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"Evidence written to {output_path}")
 
     print(f"{'SLO':<28} {'Target':>8} {'Measured':>10} {'Pass':>6}  Detail")
     print("-" * 90)
