@@ -559,6 +559,13 @@ export function createServer(
               path: backendPath,
             }),
           );
+          return reply.code(403).send({
+            ...buildErrorEnvelope(
+              "INVALID_ACTOR_HEADER",
+              "Client-supplied X-OKR-Actor header does not match the authenticated session actor.",
+              readRequestId(request.headers),
+            ),
+          });
         }
       }
 

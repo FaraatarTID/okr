@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "bff",
+  "control": "route_allowlisting",
+  "status": "passed",
+  "observed": "Only allowlisted browser routes are admitted; unlisted routes return 403 before reaching the backend."
+}

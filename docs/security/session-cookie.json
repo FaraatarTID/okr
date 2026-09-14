@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "bff",
+  "control": "session_cookie_protection",
+  "status": "passed",
+  "observed": "Session cookies are HTTP-only and configured with Secure/SameSite semantics in the BFF session issuance path."
+}

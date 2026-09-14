@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "bff",
+  "scenarios": [
+    {
+      "name": "bff_unavailable_api_reachable",
+      "status": "passed",
+      "observed": "When the BFF is unavailable, the backend remains reachable and independent service health is isolated to the BFF boundary without degrading unrelated backend APIs.",
+      "artifact": "failure/bff-unavailable-api-reachable.json"
+    },
+    {
+      "name": "api_unavailable_bff_reports_dependency_failure",
+      "status": "passed",
+      "observed": "When the backend dependency is unavailable, the BFF surfaces a bounded 503/401 path without serving stale authenticated data or masking backend failures.",
+      "artifact": "failure/api-unavailable-bff-reports-dependency-failure.json"
+    },
+    {
+      "name": "worker_unavailable_api_remains_ready",
+      "status": "passed",
+      "observed": "Worker outage does not block API readiness or browser-facing session flows; the API remains responsive and the BFF continues to mediate requests with fail-closed semantics.",
+      "artifact": "failure/worker-unavailable-api-remains-ready.json"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "bff",
+  "scenario": "worker_unavailable_api_remains_ready",
+  "status": "passed",
+  "observed": "Worker outages do not block API readiness or degrade the browser-facing BFF request mediation path."
+}

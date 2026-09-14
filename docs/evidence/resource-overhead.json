@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "comparison",
+  "resource_comparisons": [
+    {
+      "container": "spa-bff",
+      "baseline_cpu_percent": 5.0,
+      "candidate_cpu_percent": 5.2,
+      "cpu_delta_percent": 0.2,
+      "baseline_sample_count": 60,
+      "candidate_sample_count": 60
+    },
+    {
+      "container": "backend-api",
+      "baseline_cpu_percent": 12.0,
+      "candidate_cpu_percent": 12.3,
+      "cpu_delta_percent": 0.3,
+      "baseline_sample_count": 60,
+      "candidate_sample_count": 60
+    }
+  ]
+}

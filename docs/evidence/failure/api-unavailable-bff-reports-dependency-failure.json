@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "bff",
+  "scenario": "api_unavailable_bff_reports_dependency_failure",
+  "status": "passed",
+  "observed": "When the backend is unavailable, the BFF returns a bounded dependency-failure response and does not serve stale authenticated UI state."
+}
