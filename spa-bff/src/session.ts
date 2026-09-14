@@ -4,6 +4,8 @@ const SESSION_COOKIE_NAME = "okr_spa_session";
 const CSRF_COOKIE_NAME = "okr_csrf_token";
 const SESSION_VERSION = "v1";
 
+const ACTIVE_SESSION_REGISTRY = new Map<string, { revoked: boolean; expiresAt: number }>();
+
 export interface SessionUser {
   id: number;
   username: string;
@@ -19,6 +21,7 @@ interface SessionPayload {
   v: string;
   iat: number;
   exp: number;
+  sid: string;
   user: SessionUser;
 }
 
@@ -51,16 +54,82 @@ export function issueSessionToken(input: {
       ? Math.floor(Number(input.nowEpochSeconds))
       : Math.floor(Date.now() / 1000);
 
+  const sessionId = randomBytes(16).toString("hex");
   const payload: SessionPayload = {
     v: SESSION_VERSION,
     iat: nowEpochSeconds,
     exp: nowEpochSeconds + Math.max(60, Math.floor(input.ttlSeconds)),
+    sid: sessionId,
     user: input.user,
   };
+
+  ACTIVE_SESSION_REGISTRY.set(sessionId, {
+    revoked: false,
+    expiresAt: payload.exp,
+  });
 
   const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload), "utf-8"));
   const signature = signatureForPayload(payloadB64, input.secret);
   return `${payloadB64}.${signature}`;
+}
+
+function extractSessionIdFromToken(token: string): string | null {
+  const rawToken = String(token || "").trim();
+  if (!rawToken) {
+    return null;
+  }
+  const separator = rawToken.indexOf(".");
+  if (separator <= 0 || separator >= rawToken.length - 1) {
+    return null;
+  }
+
+  const payloadB64 = rawToken.slice(0, separator);
+  try {
+    const payload = JSON.parse(base64UrlDecode(payloadB64).toString("utf-8")) as Partial<SessionPayload>;
+    const sid = String(payload.sid ?? "").trim();
+    return sid || null;
+  } catch {
+    return null;
+  }
+}
+
+export function revokeSessionToken(token: string): boolean {
+  const sessionId = extractSessionIdFromToken(token);
+  if (!sessionId) {
+    return false;
+  }
+  const record = ACTIVE_SESSION_REGISTRY.get(sessionId);
+  if (!record) {
+    return false;
+  }
+  record.revoked = true;
+  return true;
+}
+
+export function revokeSessionFromCookieHeader(cookieHeader: string | undefined): boolean {
+  const cookies = parseCookieHeader(cookieHeader);
+  const token = String(cookies[SESSION_COOKIE_NAME] || "").trim();
+  return token ? revokeSessionToken(token) : false;
+}
+
+function isSessionRegistryActive(sessionId: string | null | undefined, nowEpochSeconds?: number): boolean {
+  if (!sessionId) {
+    return true;
+  }
+  const record = ACTIVE_SESSION_REGISTRY.get(sessionId);
+  if (!record) {
+    return true;
+  }
+  if (record.revoked) {
+    ACTIVE_SESSION_REGISTRY.delete(sessionId);
+    return false;
+  }
+  const currentTime = Number.isFinite(nowEpochSeconds) ? Math.floor(Number(nowEpochSeconds)) : Math.floor(Date.now() / 1000);
+  if (record.expiresAt <= currentTime) {
+    ACTIVE_SESSION_REGISTRY.delete(sessionId);
+    return false;
+  }
+  return true;
 }
 
 function normalizeSessionUser(value: unknown): SessionUser | null {
@@ -133,6 +202,11 @@ export function verifySessionToken(input: {
       ? Math.floor(Number(input.nowEpochSeconds))
       : Math.floor(Date.now() / 1000);
   if (!Number.isFinite(exp) || exp < nowEpochSeconds) {
+    return null;
+  }
+
+  const sessionId = String(payload.sid ?? "").trim();
+  if (!isSessionRegistryActive(sessionId, nowEpochSeconds)) {
     return null;
   }
 

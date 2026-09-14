@@ -321,6 +321,62 @@ describe("spa-bff server", () => {
     expect(setCookie).toContain("Max-Age=0");
   });
 
+  it("revokes the session on logout so the old cookie is rejected afterward", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          success: true,
+          user: {
+            id: 2,
+            username: "admin",
+            display_name: "Admin",
+            role: "admin",
+            team_id: 9,
+            manager_id: null,
+            must_change_password: false,
+          },
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    const app = createServer(baseConfig, { fetchFn });
+
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/session/login",
+      payload: {
+        username: "admin",
+        password: "secret",
+      },
+    });
+    const setCookie = String(loginResponse.headers["set-cookie"] ?? "");
+    const sessionCookieValue = /okr_spa_session=([^;]+)/.exec(setCookie)?.[1];
+    const csrfCookieValue = /okr_csrf_token=([^;]+)/.exec(setCookie)?.[1];
+    expect(sessionCookieValue).toBeTruthy();
+    expect(csrfCookieValue).toBeTruthy();
+
+    const cookieHeader = `okr_spa_session=${sessionCookieValue}; okr_csrf_token=${csrfCookieValue}`;
+    const logoutResponse = await app.inject({
+      method: "POST",
+      url: "/session/logout",
+      headers: { cookie: cookieHeader },
+    });
+    expect(logoutResponse.statusCode).toBe(200);
+
+    const meResponse = await app.inject({
+      method: "GET",
+      url: "/session/me",
+      headers: { cookie: cookieHeader },
+    });
+    await app.close();
+
+    expect(meResponse.statusCode).toBe(401);
+    expect(meResponse.json().code).toBe("MISSING_SESSION");
+  });
+
   it("rejects non-allowlisted routes", async () => {
     const app = createServer(baseConfig, {
       fetchFn: vi.fn(),
