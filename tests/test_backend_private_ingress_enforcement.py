@@ -108,3 +108,56 @@ def test_direct_unsigned_backend_call_is_rejected_when_signing_enabled(
 
     assert response.status_code == 401
     assert "signed request" in str(response.json().get("detail", "")).lower()
+
+
+def test_backend_rejects_forwarded_role_claim_that_does_not_match_actor_scope(
+    monkeypatch,
+) -> None:
+    import backend_app.main as backend_main
+
+    client = _make_client(monkeypatch, enforce_signing=False)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_scope_for_actor",
+        lambda actor, token_version=None: {"role": "member", "actor_id": 1, "actor_username": actor},
+    )
+
+    response = client.post(
+        "/v1/timer/start",
+        json=_timer_start_payload(),
+        headers={
+            "X-OKR-Actor": "alice",
+            "X-OKR-Service-Token": "svc-token-123",
+            "X-OKR-Role": "admin",
+        },
+    )
+
+    assert response.status_code == 403
+    assert "role claim" in str(response.json().get("detail", "")).lower()
+
+
+def test_backend_rejects_forwarded_group_claim_that_conflicts_with_actor_scope(
+    monkeypatch,
+) -> None:
+    import backend_app.main as backend_main
+
+    client = _make_client(monkeypatch, enforce_signing=False)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_scope_for_actor",
+        lambda actor, token_version=None: {"role": "manager", "actor_id": 1, "actor_username": actor},
+    )
+
+    response = client.post(
+        "/v1/timer/start",
+        json=_timer_start_payload(),
+        headers={
+            "X-OKR-Actor": "alice",
+            "X-OKR-Service-Token": "svc-token-123",
+            "X-OKR-Role": "member",
+            "X-OKR-Roles": "atlas-admin,atlas-manager",
+        },
+    )
+
+    assert response.status_code == 403
+    assert "role claim" in str(response.json().get("detail", "")).lower()

@@ -15,7 +15,7 @@ is not a penetration test or an independent security audit.
 | Session token integrity and expiry | `spa-bff` | `issueSessionToken` and `readSessionUserFromCookie` use configured secret and TTL | Cookie contents are not trusted without verification |
 | Browser cookie protection | `spa-bff` | Session cookie is HttpOnly; cookies use SameSite policy and configurable Secure flag | Browser scripts cannot read the session cookie |
 | CSRF protection | `spa-bff` | Double-submit token required for state-changing actor-scoped requests | Read-only POST routes are explicitly excluded from CSRF requirement |
-| Actor binding | `spa-bff` and backend API | Session actor replaces mismatched attempted actor; backend receives signed actor headers | Client cannot select a different actor through a conflicting header |
+| Actor binding | `spa-bff` and backend API | Session actor replaces mismatched attempted actor; backend receives signed actor headers and rejects mismatched forwarded `X-OKR-Role` / `X-OKR-Roles` claims | Client cannot select a different actor or role through a conflicting header |
 | Session revocation handling | `spa-bff` | `/session/me` clears cookies and returns 401 on backend validation rejection | Revoked sessions fail closed |
 | Backend outage handling | `spa-bff` | `/session/me` returns bounded 503 and does not serve stale authenticated data | Availability failure is distinct from authorization success |
 | Route exposure | `spa-bff` | Generated allowlist and actor-required metadata | Unlisted browser paths are rejected before proxying |
@@ -25,6 +25,7 @@ is not a penetration test or an independent security audit.
 - `npm run check:allowlist` passed with 44 routes.
 - `npm test` passed with 65 BFF tests.
 - Backend mutation API and dual-mode parity coverage passed with 128 tests.
+- Backend ingress security regression passed with 6 focused tests covering signed requests, replay protection, and forwarded role-claim enforcement.
 - Live Compose baseline showed the BFF and backend processes running independently.
 
 ## Residual risks and required follow-up

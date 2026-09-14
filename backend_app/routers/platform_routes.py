@@ -16,6 +16,7 @@ from backend_app.schemas import (
 )
 from src.services.app_shell_runtime import serialize_user
 from src.observability import record_timing
+from src.saas.identity_contract import enforce_enterprise_login_policy
 
 
 def register_platform_routes(router: APIRouter, main: Any) -> None:
@@ -28,6 +29,9 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
 
     async def _timed_service_access(
         request: Request,
+        x_okr_actor: str | None = Header(default=None),
+        x_okr_role: str | None = Header(default=None),
+        x_okr_roles: str | None = Header(default=None),
         x_okr_service_token: str | None = Header(default=None),
         x_okr_signature: str | None = Header(default=None),
         x_okr_timestamp: str | None = Header(default=None),
@@ -39,6 +43,9 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         try:
             await main.require_service_access(
                 request=request,
+                x_okr_actor=x_okr_actor,
+                x_okr_role=x_okr_role,
+                x_okr_roles=x_okr_roles,
                 x_okr_service_token=x_okr_service_token,
                 x_okr_signature=x_okr_signature,
                 x_okr_timestamp=x_okr_timestamp,
@@ -59,6 +66,12 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
     )
     def api_auth_login(payload: LoginRequest) -> dict:
         from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
+
+        username = str(payload.username or "").strip()
+        try:
+            enforce_enterprise_login_policy(username)
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
 
         use_https = main.is_supabase_api_mode_enabled()
         try:

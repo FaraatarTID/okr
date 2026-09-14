@@ -11,6 +11,7 @@ export interface SessionUser {
   username: string;
   display_name: string;
   role: string;
+  roles?: string[];
   team_id?: number | null;
   manager_id?: number | null;
   must_change_password?: boolean;
@@ -144,11 +145,18 @@ function normalizeSessionUser(value: unknown): SessionUser | null {
   if (!username || !displayName || !role || !Number.isFinite(id) || id <= 0) {
     return null;
   }
+  const roles = Array.isArray(user.roles)
+    ? user.roles
+        .map((entry) => String(entry ?? "").trim())
+        .filter(Boolean)
+    : [];
+
   return {
     id: Math.trunc(id),
     username,
     display_name: displayName,
     role,
+    roles: roles.length > 0 ? roles : undefined,
     team_id: user.team_id == null ? null : Number(user.team_id),
     manager_id: user.manager_id == null ? null : Number(user.manager_id),
     must_change_password: Boolean(user.must_change_password),

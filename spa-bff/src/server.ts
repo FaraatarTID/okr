@@ -160,11 +160,18 @@ function normalizeSessionUser(value: unknown): SessionUser | null {
   if (!Number.isFinite(id) || id <= 0 || !username || !displayName || !role) {
     return null;
   }
+  const roles = Array.isArray(user.roles)
+    ? user.roles
+        .map((entry) => String(entry ?? "").trim())
+        .filter(Boolean)
+    : [];
+
   return {
     id: Math.trunc(id),
     username,
     display_name: displayName,
     role,
+    roles: roles.length > 0 ? roles : undefined,
     team_id: user.team_id == null ? null : Number(user.team_id),
     manager_id: user.manager_id == null ? null : Number(user.manager_id),
     must_change_password: Boolean(user.must_change_password),
@@ -580,6 +587,12 @@ export function createServer(
         const tokenVersionHeader: Record<string, string> = {};
         if (sessionUser?.token_version != null) {
           tokenVersionHeader["x-okr-token-version"] = String(sessionUser.token_version);
+        }
+        if (sessionUser?.role) {
+          tokenVersionHeader["x-okr-role"] = sessionUser.role;
+        }
+        if (sessionUser?.roles && sessionUser.roles.length > 0) {
+          tokenVersionHeader["x-okr-roles"] = sessionUser.roles.join(",");
         }
 
         const result = await proxyToBackend(

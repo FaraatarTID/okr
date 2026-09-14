@@ -152,6 +152,9 @@ async def _verify_request_signature(
 
 async def require_service_access(
     request: Request,
+    x_okr_actor: str | None = Header(default=None),
+    x_okr_role: str | None = Header(default=None),
+    x_okr_roles: str | None = Header(default=None),
     x_okr_service_token: str | None = Header(default=None),
     x_okr_signature: str | None = Header(default=None),
     x_okr_timestamp: str | None = Header(default=None),
@@ -212,6 +215,72 @@ async def require_service_access(
         ) from exc
     if not rl_ok:
         raise HTTPException(status_code=429, detail="Rate limit exceeded.")
+
+    validate_forwarded_role_claims(
+        actor=x_okr_actor,
+        x_okr_role=x_okr_role,
+        x_okr_roles=x_okr_roles,
+    )
+
+
+def _normalize_forwarded_role_claim(value: str | None) -> set[str]:
+    values: set[str] = set()
+    for item in str(value or "").split(","):
+        text = str(item or "").strip().lower()
+        if not text:
+            continue
+        values.add(text)
+        if text.startswith("atlas-"):
+            values.add(text.removeprefix("atlas-"))
+    normalized: set[str] = set()
+    for item in values:
+        if item in {"admin", "manager", "member"}:
+            normalized.add(item)
+        elif item.startswith("atlas-"):
+            normalized.add(item.removeprefix("atlas-"))
+    return normalized
+
+
+def validate_forwarded_role_claims(
+    *,
+    actor: str | None,
+    x_okr_role: str | None,
+    x_okr_roles: str | None,
+) -> None:
+    if not actor:
+        return
+    actor_name = str(actor).strip()
+    if not actor_name:
+        return
+    if not x_okr_role and not x_okr_roles:
+        return
+
+    try:
+        from backend_app import main as backend_main
+
+        scope = backend_main._resolve_scope_for_actor(actor_name)
+    except Exception:
+        return
+
+    expected_role = str(scope.get("role") or "").strip().lower()
+    if not expected_role:
+        return
+
+    if x_okr_role:
+        normalized_role_claim = _normalize_forwarded_role_claim(x_okr_role)
+        if not normalized_role_claim or expected_role not in normalized_role_claim:
+            raise HTTPException(
+                status_code=403,
+                detail="Role claim does not match actor scope.",
+            )
+
+    if x_okr_roles:
+        normalized_roles_claim = _normalize_forwarded_role_claim(x_okr_roles)
+        if not normalized_roles_claim or expected_role not in normalized_roles_claim:
+            raise HTTPException(
+                status_code=403,
+                detail="Role claim does not match actor scope.",
+            )
 
 
 def resolve_actor_username(

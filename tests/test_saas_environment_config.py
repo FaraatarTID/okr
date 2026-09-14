@@ -5,6 +5,7 @@ from pathlib import Path
 
 from scripts.check_deploy_config import is_saas_mode_requested, main, validate_saas_environment
 from src.saas.environment_config import ConfigError, SaaSEnvironmentConfig
+from src.saas.identity_contract import IdentityProviderType, enforce_enterprise_login_policy
 
 
 COMPOSE_FILE = Path(__file__).resolve().parents[1] / "deploy" / "docker" / "docker-compose.yml"
@@ -106,6 +107,44 @@ def test_saas_profile_uses_safe_backup_defaults():
 
     assert config.backup_provider == "deferred"
     assert config.backup_schedule == "deferred"
+
+
+def test_saas_profile_loads_enterprise_identity_policy_when_enabled():
+    env = _saas_env()
+    env["OKR_ENTERPRISE_IDENTITY_ENABLED"] = "true"
+    env["OKR_IDENTITY_PROVIDER"] = "oidc"
+    env["OKR_IDENTITY_ISSUER"] = "https://idp.example.com/realms/acme"
+    env["OKR_IDENTITY_CLIENT_ID"] = "atlas-client"
+    env["OKR_IDENTITY_AUTHORIZATION_ENDPOINT"] = "https://idp.example.com/oauth2/authorize"
+    env["OKR_IDENTITY_TOKEN_ENDPOINT"] = "https://idp.example.com/oauth2/token"
+    env["OKR_IDENTITY_JWKS_URI"] = "https://idp.example.com/oauth2/jwks"
+    env["OKR_ALLOW_LOCAL_PASSWORDS"] = "false"
+    env["OKR_ALLOWED_EMAIL_DOMAINS"] = "example.com, acme.org"
+
+    config = SaaSEnvironmentConfig.from_env(env)
+
+    assert config.identity_config is not None
+    assert config.identity_config.enabled is True
+    assert config.identity_config.provider is IdentityProviderType.OIDC
+    assert config.identity_config.allowed_domains == ["example.com", "acme.org"]
+
+
+def test_enterprise_login_policy_rejects_disallowed_identifiers():
+    env = _saas_env()
+    env["OKR_ENTERPRISE_IDENTITY_ENABLED"] = "true"
+    env["OKR_IDENTITY_PROVIDER"] = "oidc"
+    env["OKR_IDENTITY_ISSUER"] = "https://idp.example.com/realms/acme"
+    env["OKR_IDENTITY_CLIENT_ID"] = "atlas-client"
+    env["OKR_IDENTITY_AUTHORIZATION_ENDPOINT"] = "https://idp.example.com/oauth2/authorize"
+    env["OKR_IDENTITY_TOKEN_ENDPOINT"] = "https://idp.example.com/oauth2/token"
+    env["OKR_IDENTITY_JWKS_URI"] = "https://idp.example.com/oauth2/jwks"
+    env["OKR_ALLOW_LOCAL_PASSWORDS"] = "false"
+    env["OKR_ALLOWED_EMAIL_DOMAINS"] = "example.com"
+
+    enforce_enterprise_login_policy("user@example.com", env=env)
+
+    with pytest.raises(ValueError, match="domain is not allowed"):
+        enforce_enterprise_login_policy("user@other.org", env=env)
 
 
 def test_runtime_checker_requires_profile_when_saas_is_requested():

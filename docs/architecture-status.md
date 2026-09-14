@@ -7,7 +7,7 @@ Documentation HQ: [README](../README.md)
 | P0-00 - Architecture inventory and target topology | VERIFIED | [pre-saas-architecture-inventory.md](pre-saas-architecture-inventory.md); [architecture-boundaries.md](architecture-boundaries.md) | 2026-09-02 | Runtime inventory and target service topology are recorded; the promoted pre-SaaS baseline uses the canonical backend, BFF, SPA, API, and worker boundaries. |
 | P0-01 - Canonical backend package and facade boundary | VERIFIED | [architecture-boundaries.md](architecture-boundaries.md); canonical serializers, bucket, selector, bootstrap delegation, keyed/unkeyed snapshot-cache factories, all facade snapshot-cache wiring, duplicate implementation removal, and root `app.py` retirement completed; repository boundary/design gates passed | 2026-09-02 | No supported root facade callers remain. Provider deployment evidence is tracked separately under P0-02/P0-03/P0-06. |
 | P0-02 - Runtime and deployment entrypoint canonicalization | VERIFIED repository-side | [runtime-entrypoint-contract.md](runtime-entrypoint-contract.md); runtime matrix, compatibility readiness gate, isolated SaaS `database` readiness smoke, live compatibility health payload, and deployment topology checks passed | 2026-09-02 | Canonical service entrypoints and local topology are verified. Provider-specific ingress, restart, and live health evidence remain open. |
-| P0-03 - BFF responsibility and topology ADR | VERIFIED repository-side; operational closure OPEN | [bff-boundary-adr.md](bff-boundary-adr.md); [bff-security-review.md](bff-security-review.md); import/package boundary checks passed; allowlist passed for 44 routes; BFF suite passed 65 tests; consolidated gate passed | 2026-09-02 | Repository security and dependency boundaries are verified. Darkube deployment, production measurements, rate-limit behavior under the provider, and paired rollback rehearsal remain open. |
+| P0-03 - BFF responsibility and topology ADR | VERIFIED repository-side; operational closure OPEN | [bff-boundary-adr.md](bff-boundary-adr.md); [bff-security-review.md](bff-security-review.md); import/package boundary checks passed; allowlist passed for 44 routes; BFF suite passed 65 tests; backend ingress regression covers signed-service-token enforcement and forwarded role-claim validation against the resolved actor scope; consolidated gate passed | 2026-09-14 | Repository security and dependency boundaries are verified. Darkube deployment, production measurements, rate-limit behavior under the provider, and paired rollback rehearsal remain open. |
 | P0-04 - Root script and compatibility surface cleanup | VERIFIED | [compatibility-surface-cleanup.md](compatibility-surface-cleanup.md); [compatibility-callers.md](compatibility-callers.md); [launcher-command-matrix.md](launcher-command-matrix.md); root batch launchers removed, canonical Windows launchers retained under `scripts/windows/`, root `app.py` retired, all known callers migrated, and import guards/tests passed | 2026-09-02 | Provider-specific start/stop rehearsal remains an operational follow-up, not an unresolved repository compatibility surface. |
 | P0-05 - Documentation consolidation and lifecycle control | VERIFIED | [documentation-lifecycle-control.md](documentation-lifecycle-control.md); `python scripts/check_docs_hq_links.py` passed across 93 Markdown files after the signed-review regression repair and topology-evidence additions | 2026-09-14 | Documentation control re-verified after the P2/P3 evidence additions; future ADRs must preserve the same ledger and link discipline. |
 | P0-06 - Governance, migration safety, and exit review | OPEN for production evidence | [governance-migration-exit-review.md](governance-migration-exit-review.md); [migration-rollback-runbook.md](migration-rollback-runbook.md); provider backup/restore contracts, release-manifest validation, rollback-evidence validation, complete persisted operation status, and focused local tests passed | 2026-09-02 | Repository governance and release-evidence controls are verified. Production provider selection, provider-backed backup/restore, measured RPO/RTO, application rollback rehearsal, and accountable operational ownership remain required before real customer data. |
@@ -112,11 +112,13 @@ CLIs, and audit records preserve only its authenticated principal. Control-plane
 initialization writes execute inside the shared crash-safe guard. No live
 provider was invoked and tenant/RLS/customer-domain behavior is unchanged.
 
-## Production persistence entry gate - signed and pass-compliant
+## Production persistence evidence package - conditionally reviewed
 
-This release gate has been exercised and signed as pass-compliant for the
-controlled single-tenant SaaS path under the repository contract in
-[saas/phase-1-entry-evidence.md](saas/phase-1-entry-evidence.md).
+The repository contains a signed and structurally complete evidence package for
+the controlled single-tenant SaaS path under the repository contract in
+[saas/phase-1-entry-evidence.md](saas/phase-1-entry-evidence.md). This is a
+repository-level attestation package, not independent proof that the AWS drill
+occurred or that a production environment is approved.
 
 The approved evidence package includes the following, tied to the same
 environment and customer identity:
@@ -133,11 +135,18 @@ environment and customer identity:
   duration
 - explicit real-data approval and a matching production attestation signature
 
-This approval remains limited to the dedicated single-tenant model. Shared
+Operations must independently verify the provider records and rerun the
+fail-closed checker with the configured attestation secret before production
+promotion. Until then, the approval remains limited to repository evidence and
+does not authorize customer-data onboarding. Shared
 multi-tenant schema, shared-database RLS, and cross-customer data mixing remain
 permanently out of scope and are not authorized by this record.
 
 The release signoff record is preserved in [saas/release-signoff.md](saas/release-signoff.md).
+
+## 2026-09-14 - Forwarded role-claim enforcement
+
+The browser-facing BFF path remains the authorized trust boundary, but the backend now also verifies that any forwarded `X-OKR-Role` and `X-OKR-Roles` claims match the actor's resolved scope. This closes the remaining repo-side spoofing vector where a caller could attempt to impersonate a stronger role by sending mismatched role metadata. The change is covered by the backend ingress regression suite and is treated as a fail-closed control.
 
 ## Current status reconciliation (2026-09-02)
 

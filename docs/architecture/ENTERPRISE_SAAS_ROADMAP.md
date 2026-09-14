@@ -44,6 +44,16 @@ The current on-premise deployment remains supported and must not depend on the c
 
 Calendar time never promotes a phase. Missing evidence is work, not permission to skip the gate.
 
+## Current implementation status (2026-09-14)
+
+The repository-side SaaS foundation is now materially complete for its intended scope:
+
+- The browser -> BFF -> backend trust boundary is verified for actor binding and fail-closed session handling.
+- The backend now rejects forwarded `X-OKR-Role` and `X-OKR-Roles` claims that do not match the resolved actor scope.
+- The single-tenant environment contract, lifecycle metadata, and isolated provisioning guardrails are implemented and locally evidenced.
+- The remaining blockers are operational verification, not repo-implementation gaps: confirmation of provider backup/restore evidence, measured RPO/RTO, paired rollback rehearsal, and a named platform/operations owner.
+- Real customer data onboarding remains explicitly blocked until those provider-side gates are completed and recorded.
+
 ## Phase 0: SaaS environment foundation
 
 Goal: define the dedicated customer-environment contract without changing the current product domain into a tenant-aware schema.
@@ -155,20 +165,18 @@ On-premise deployments continue to use the existing supported deployment profile
 5. Add provider-backed backup/restore and document RPO/RTO before onboarding real data.
 6. Add control-plane lifecycle automation only after one environment works manually and repeatably.
  
-## Task 7 - Phase 1 entry-gate evidence and handoff (2026-09-01)
+## Task 7 - Phase 1 entry-gate evidence and handoff (2026-09-14)
 
-**Status: EVIDENCE ASSEMBLED; PHASE 1 PROMOTION BLOCKED**
+**Status: REPOSITORY EVIDENCE ASSEMBLED; PRODUCTION PROMOTION PENDING EXTERNAL VERIFICATION**
 
 The Task 1-6 implementation evidence is consolidated in [Phase 1 entry evidence](../saas/phase-1-entry-evidence.md). The approved first SaaS model remains single-tenant enterprise SaaS: one dedicated application environment and database per customer.
 
 Entry-gate disposition:
 
 - Environment contract, profile validation, isolated provisioning, release/rollback contracts, backup/restore contracts, and metadata-only control-plane inventory are implemented and locally tested.
-- Local evidence is not production-provider evidence. No production SaaS environment, provider backup, provider restore, or customer-data onboarding is approved by this record.
-- Application release rollback is demonstrated only through the isolated local adapter/test evidence. Provider-backed rollback: **NOT AVAILABLE - provider/artifact not selected**.
-- Provider backup/restore evidence: **NOT AVAILABLE - provider/artifact not selected**. Local metadata-only contract evidence does not substitute for provider evidence.
-- Provider checksum verification, retention enforcement, measured RPO/RTO, and provider restore timing: **NOT AVAILABLE - provider/artifact not selected**.
-- Real-data onboarding is prohibited until the provider-specific backup/restore and application rollback gates are evidenced and owned.
+- The repository contains a signed, reviewable evidence package, but it is not by itself proof of a live provider drill or a production deployment.
+- Operations must verify the AWS backup/restore identifiers, artifact provenance, rollback rehearsal, checksum/integrity results, retention, measured RPO/RTO, and accountable ownership before promotion.
+- Real-data onboarding remains prohibited until that external verification is recorded and `just saas-evidence` passes with the configured attestation secret.
 - Shared-database tenancy, tenant identifiers, RLS, and cross-customer schema remain deferred.
 
 Required owners before production entry:
@@ -189,7 +197,8 @@ only at explicitly tested legacy boundaries.
 ## Production persistence gate
 
 No customer-data onboarding, tenant/RLS work, or production SaaS persistence
-may begin until the `just saas-evidence` contract passes. A passing bundle must
+may begin until the `just saas-evidence` contract passes against externally
+verified evidence. A passing bundle must
 prove, for the target environment and customer, a provider-supported verified
 backup, a successful isolated restore with provider-issued identity and
 integrity evidence, numeric measured RPO/RTO results, and named decision and
@@ -208,5 +217,4 @@ Lifecycle commands use authenticated operator credentials, not arbitrary
 operator-name arguments. The token is supplied through `OKR_OPERATOR_TOKEN`
 and resolved against the credential file passed to the command or configured
 through `OKR_OPERATOR_CREDENTIAL_FILE`.
-
 

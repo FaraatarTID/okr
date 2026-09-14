@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Mapping
 
 from src.saas.environment_contract import normalize_deployment_profile
+from src.saas.identity_contract import load_enterprise_identity_config
 
 
 class ConfigError(ValueError):
@@ -32,6 +33,7 @@ class SaaSEnvironmentConfig:
     health_url: str
     backup_provider: str
     backup_schedule: str
+    identity_config: object | None = None
 
     @classmethod
     def from_env(
@@ -72,6 +74,14 @@ class SaaSEnvironmentConfig:
                 "OKR_DATABASE_URL must use the postgresql+psycopg2:// scheme"
             )
 
+        identity_config = load_enterprise_identity_config(values)
+        if identity_config.enabled and not identity_config.allow_local_passwords:
+            if not identity_config.allowed_domains:
+                raise ConfigError(
+                    "enterprise identity requires OKR_ALLOWED_EMAIL_DOMAINS when "
+                    "OKR_ALLOW_LOCAL_PASSWORDS is disabled"
+                )
+
         return cls(
             deployment_profile=profile,
             environment_id=_required(values, "OKR_ENVIRONMENT_ID"),
@@ -88,4 +98,5 @@ class SaaSEnvironmentConfig:
                 values.get("OKR_BACKUP_SCHEDULE", "deferred")
             ).strip()
             or "deferred",
+            identity_config=identity_config,
         )

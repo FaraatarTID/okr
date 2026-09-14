@@ -235,6 +235,35 @@ describe("spa-bff server", () => {
     expect(String(setCookie)).toContain("SameSite=Strict");
   });
 
+  it("forwards the derived session role and group claims to backend requests", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/backend/v1/read/query",
+      headers: {
+        ...csrfHeaders(),
+        cookie: sessionCookie({
+          ...DEFAULT_USER,
+          role: "admin",
+          roles: ["atlas-admin", "atlas-manager"],
+        }),
+      },
+      payload: { kind: "atlas_scope", params: {} },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    const outboundHeaders = fetchFn.mock.calls[0][1].headers as Record<string, string>;
+    expect(outboundHeaders["x-okr-role"]).toBe("admin");
+    expect(outboundHeaders["x-okr-roles"]).toBe("atlas-admin,atlas-manager");
+  });
+
   it("returns invalid-credentials response when backend login is unsuccessful", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response(

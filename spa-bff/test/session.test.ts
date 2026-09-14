@@ -35,6 +35,25 @@ describe("session token helpers", () => {
     expect(verified?.role).toBe("admin");
   });
 
+  it("preserves the derived role list in the browser session payload", () => {
+    const token = issueSessionToken({
+      user: {
+        ...USER,
+        roles: ["atlas-admin", "atlas-manager"],
+      },
+      secret: "session-secret",
+      nowEpochSeconds: 1_700_000_000,
+      ttlSeconds: 600,
+    });
+    const verified = verifySessionToken({
+      token,
+      secret: "session-secret",
+      nowEpochSeconds: 1_700_000_300,
+    });
+    expect(verified?.role).toBe("admin");
+    expect(verified?.roles).toEqual(["atlas-admin", "atlas-manager"]);
+  });
+
   it("rejects tampered tokens", () => {
     const token = issueSessionToken({
       user: USER,
@@ -42,7 +61,9 @@ describe("session token helpers", () => {
       nowEpochSeconds: 1_700_000_000,
       ttlSeconds: 600,
     });
-    const tampered = `${token.slice(0, -1)}a`;
+    const lastCharacter = token.slice(-1);
+    const replacement = lastCharacter === "a" ? "b" : "a";
+    const tampered = `${token.slice(0, -1)}${replacement}`;
     const verified = verifySessionToken({
       token: tampered,
       secret: "session-secret",

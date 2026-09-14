@@ -94,6 +94,8 @@ export async function proxyToBackend(
   const tokenVersion = firstHeaderValue(
     request.incomingHeaders["x-okr-token-version"],
   );
+  const sessionRole = firstHeaderValue(request.incomingHeaders["x-okr-role"]);
+  const sessionRoles = firstHeaderValue(request.incomingHeaders["x-okr-roles"]);
 
   // Forward the real client IP for backend rate limiting.
   // The backend trusts this header only when the service token is valid,
@@ -123,6 +125,12 @@ export async function proxyToBackend(
   }
   if (tokenVersion) {
     outboundHeaders["x-okr-token-version"] = tokenVersion;
+  }
+  if (sessionRole) {
+    outboundHeaders["x-okr-role"] = sessionRole;
+  }
+  if (sessionRoles) {
+    outboundHeaders["x-okr-roles"] = sessionRoles;
   }
 
   const securityHeaders = buildBackendSecurityHeaders({
