@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "release_id": "release-id",
+  "captured_at": "2026-01-01T00:00:00Z",
+  "operator": "operator-id",
+  "topology": "bff",
+  "controls": [
+    {
+      "name": "session_cookie_protection",
+      "status": "pending",
+      "observed": "Record secure, HTTP-only, same-site, and expiry behavior.",
+      "artifact": "evidence/security/session-cookie.json"
+    },
+    {
+      "name": "csrf_and_origin_controls",
+      "status": "pending",
+      "observed": "Record rejection of missing or invalid CSRF/origin proofs.",
+      "artifact": "evidence/security/csrf-origin.json"
+    },
+    {
+      "name": "actor_binding",
+      "status": "pending",
+      "observed": "Record rejection when a client attempts to select another actor.",
+      "artifact": "evidence/security/actor-binding.json"
+    },
+    {
+      "name": "request_signing",
+      "status": "pending",
+      "observed": "Record rejection of missing, invalid, or replayed internal signatures.",
+      "artifact": "evidence/security/request-signing.json"
+    },
+    {
+      "name": "route_allowlisting",
+      "status": "pending",
+      "observed": "Record that only approved browser routes are exposed.",
+      "artifact": "evidence/security/route-allowlist.json"
+    },
+    {
+      "name": "rate_limiting",
+      "status": "pending",
+      "observed": "Record throttling behavior and sanitized client-facing errors.",
+      "artifact": "evidence/security/rate-limit.json"
+    }
+  ]
+}

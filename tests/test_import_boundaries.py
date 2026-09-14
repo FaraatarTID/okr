@@ -50,3 +50,23 @@ def test_root_app_facade_import_is_rejected_but_similar_module_is_not(
         f"{relative}: production code must not import root app.py facade"
     ]
     assert _boundary_errors(similarly_named, _python_imports(similarly_named)) == []
+
+
+def test_pure_domain_modules_reject_infrastructure_imports(tmp_path, monkeypatch):
+    monkeypatch.setattr("scripts.check_import_boundaries.ROOT_DIR", tmp_path)
+    for name in ("scoring.py", "lifecycle.py", "permissions.py", "crud_contracts.py", "password_policy.py"):
+        path = tmp_path / "src" / "domain" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("from sqlalchemy import func\n", encoding="utf-8")
+        errors = _boundary_errors(path, _python_imports(path))
+        assert errors == [
+            f"{str(Path('src') / 'domain' / name)}: pure domain module must not import infrastructure sqlalchemy"
+        ]
+
+
+def test_persistence_backed_domain_helpers_may_use_session_types(tmp_path, monkeypatch):
+    monkeypatch.setattr("scripts.check_import_boundaries.ROOT_DIR", tmp_path)
+    path = tmp_path / "src" / "domain" / "read_queries.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("from sqlmodel import Session\n", encoding="utf-8")
+    assert _boundary_errors(path, _python_imports(path)) == []

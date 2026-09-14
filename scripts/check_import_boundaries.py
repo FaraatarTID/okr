@@ -11,6 +11,18 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 WORKSPACES = {"spa-bff": "okr-spa-bff", "spa-web": "okr-spa-web"}
 DELIVERY_FRAMEWORK_MODULES = frozenset({"fastapi", "flask", "starlette", "streamlit"})
+# Database clients and HTTP transport clients are infrastructure concerns.
+# Pure domain rules (src/domain/scoring.py, lifecycle.py, permissions.py,
+# crud_contracts.py) must not import them; persistence-backed domain helpers
+# are tracked separately until they are refactored behind ports.
+INFRASTRUCTURE_MODULES = frozenset({"sqlalchemy", "sqlmodel", "httpx", "redis"})
+PURE_DOMAIN_MODULES = frozenset({
+    "scoring.py",
+    "lifecycle.py",
+    "permissions.py",
+    "crud_contracts.py",
+    "password_policy.py",
+})
 
 
 def _production_python_paths() -> list[Path]:
@@ -50,6 +62,12 @@ def _boundary_errors(path: Path, imports: set[str]) -> list[str]:
         for module in sorted(imports & DELIVERY_FRAMEWORK_MODULES):
             errors.append(
                 f"{relative_path}: src must not import delivery framework {module}"
+            )
+
+    if is_src and path.parent.name == "domain" and path.name in PURE_DOMAIN_MODULES:
+        for module in sorted(imports & INFRASTRUCTURE_MODULES):
+            errors.append(
+                f"{relative_path}: pure domain module must not import infrastructure {module}"
             )
 
     if "app" in imports:

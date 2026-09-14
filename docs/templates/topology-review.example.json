@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "release_id": "release-id",
+  "captured_at": "2026-01-01T00:00:00Z",
+  "operator": "operator-id",
+  "topology": "bff",
+  "decision": "retain_bff",
+  "evidence": {
+    "security_parity": {
+      "status": "pending",
+      "artifact": "evidence/security-parity.json",
+      "summary": "Describe authentication, cookies, CSRF, actor binding, signing, and rate-limit parity."
+    },
+    "failure_isolation": {
+      "status": "pending",
+      "artifact": "evidence/failure-isolation.json",
+      "summary": "Validate with scripts/validate_failure_isolation.py after restart rehearsal."
+    },
+    "resource_overhead": {
+      "status": "pending",
+      "artifact": "evidence/topology-comparison.json",
+      "summary": "Link SLO and resource comparisons for equivalent traffic."
+    },
+    "rollback_rehearsal": {
+      "status": "pending",
+      "artifact": "evidence/rollback-rehearsal.json",
+      "summary": "Record the last-known-good BFF/API pair and measured restoration result."
+    }
+  }
+}

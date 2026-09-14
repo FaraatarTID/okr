@@ -1,0 +1,74 @@
+name: Migrate SaaS tenant databases
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_retries:
+        description: Non-negative retries per tenant after a failed migration
+        required: false
+        default: "1"
+      fail_fast:
+        description: Stop after the first tenant failure
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Run tenant migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Install Python dependencies
+        run: uv sync --locked --group dev
+
+      - name: Materialize migration inputs
+        env:
+          SAAS_PROVISIONING_STATE_JSON: ${{ secrets.SAAS_PROVISIONING_STATE_JSON }}
+          SAAS_DATABASE_URLS_JSON: ${{ secrets.SAAS_DATABASE_URLS_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SAAS_PROVISIONING_STATE_JSON:-}" ]; then
+            echo "Missing required secret: SAAS_PROVISIONING_STATE_JSON"
+            exit 1
+          fi
+          if [ -z "${SAAS_DATABASE_URLS_JSON:-}" ]; then
+            echo "Missing required secret: SAAS_DATABASE_URLS_JSON"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/okr-migrations"
+          printf '%s' "$SAAS_PROVISIONING_STATE_JSON" > "$RUNNER_TEMP/okr-migrations/environments.json"
+          printf '%s' "$SAAS_DATABASE_URLS_JSON" > "$RUNNER_TEMP/okr-migrations/database-urls.json"
+          python -m json.tool "$RUNNER_TEMP/okr-migrations/environments.json" >/dev/null
+          python -m json.tool "$RUNNER_TEMP/okr-migrations/database-urls.json" >/dev/null
+
+      - name: Migrate all provisioned tenants
+        run: |
+          set -euo pipefail
+          args=(
+            --provisioning-state-file "$RUNNER_TEMP/okr-migrations/environments.json"
+            --database-urls-file "$RUNNER_TEMP/okr-migrations/database-urls.json"
+            --max-retries "${{ inputs.max_retries }}"
+            --output migration-report.json
+          )
+          if [ "${{ inputs.fail_fast }}" = "true" ]; then
+            args+=(--fail-fast)
+          fi
+          uv run python scripts/migrate_tenant_databases.py "${args[@]}"
+
+      - name: Upload migration report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: saas-migration-report-${{ github.run_id }}
+          path: migration-report.json
+          if-no-files-found: warn

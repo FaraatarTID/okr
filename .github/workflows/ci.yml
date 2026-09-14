@@ -176,6 +176,9 @@ jobs:
       - name: CI Script Reference Gate
         run: python scripts/check_ci_script_references.py
 
+      - name: Generated Artifact Gate
+        run: python scripts/check_generated_artifacts.py
+
       - name: Import Boundary Gate
         run: python scripts/check_import_boundaries.py
 

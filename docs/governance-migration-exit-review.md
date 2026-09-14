@@ -97,14 +97,44 @@ Written intent can move a package into `IN-PROGRESS`; only acceptance evidence c
 
 ## Exit review checklist
 
-- [ ] P0-00 inventory has verified ownership and startup topology.
+- [x] P0-00 inventory has verified ownership and startup topology; see
+  `docs/pre-saas-architecture-inventory.md` and the topology checks.
 - [x] P0-01 import direction and compatibility facade path are evidenced; the root `app.py` facade has been retired.
-- [ ] P0-02 supported runtime profiles and readiness checks are evidenced.
-- [ ] P0-03 BFF repository responsibilities and security boundary are evidenced; provider deployment, rollback, and production performance evidence remain open.
-- [ ] P0-04 compatibility callers and removal or deprecation paths are evidenced.
-- [ ] P0-05 Documentation HQ and lifecycle checks are evidenced.
-- [ ] P0-06 rollback rehearsal and migration safety records are attached.
-- [ ] Open risks have owners, dates, and explicit release disposition.
+- [x] P0-02 supported runtime profiles and readiness checks are evidenced
+  repository-side; provider ingress, restart, and live-health evidence remain
+  open.
+- [x] P0-03 BFF repository responsibilities and security boundary are evidenced
+  repository-side; provider deployment, rollback, and production performance
+  evidence remain open.
+- [x] P0-04 compatibility callers and removal or deprecation paths are
+  evidenced; provider start/stop rehearsal is an operational follow-up.
+- [x] P0-05 Documentation HQ and lifecycle checks are evidenced; the link gate
+  and lifecycle records are current.
+- [x] P0-06 migration orchestration, migration safety, and rollback controls
+  are implemented and locally evidenced; provider-backed rollback and recovery
+  evidence remain open.
+- [ ] Open risks have owners, dates, and explicit release disposition. This is
+  the remaining governance action before production customer-data onboarding:
+  assign the platform/operations owner and record provider evidence or an
+  owner-approved disposition.
+
+## Current reconciliation — 2026-09-14
+
+Repository-side evidence was rechecked after the P2/P3 implementation wave:
+
+- `python -m pytest -q`: 1039 passed, 8 skipped.
+- `python scripts/check_generated_artifacts.py`: passed; generated artifacts are
+  ignored and no longer tracked.
+- `python scripts/check_import_boundaries.py` and
+  `python scripts/check_spa_bff_boundaries.py`: passed.
+- `python scripts/check_deployment_topology.py`, configuration parity, docs
+  links, and observability readiness: passed.
+- Disposable Docker Compose full-stack smoke: passed.
+
+The remaining unchecked governance item is intentionally external: Darkube
+staging/production observations, provider-backed rollback and recovery, named
+operations ownership, and real tenant migration execution require provider
+access and must be attached through the [provider evidence checklist](saas/provider-evidence-checklist.md).
 
 ## Exit decision
 

@@ -58,6 +58,87 @@ the separate-service and proposed simplified topologies:
 - independent deployment and rollback behavior for the web, BFF, API, and
   worker.
 
+The canonical evidence capture command is:
+
+```text
+python scripts/slo_probe.py \
+  --base-url https://<browser-origin> \
+  --username <synthetic-user> \
+  --password <synthetic-password> \
+  --output evidence/bff-slo.json
+```
+
+The JSON artifact contains only endpoint metadata, timings, status summaries,
+and pass/fail results; it does not write credentials, cookies, or response
+bodies. Capture equivalent artifacts for each candidate topology and retain
+them with the release evidence. A topology decision remains open until the
+artifacts include latency/error comparisons and a documented restart/rollback
+rehearsal.
+
+Compare two captured runs with:
+
+```text
+python scripts/compare_topology_evidence.py \
+  evidence/bff-slo.json \
+  evidence/direct-api-slo.json \
+  --baseline-resources evidence/bff-resources.json \
+  --candidate-resources evidence/direct-api-resources.json \
+  --resource-map evidence/resource-map.json \
+  --output evidence/topology-comparison.json
+```
+
+The comparison reports per-SLO absolute and relative changes, but deliberately
+returns `human_review_required`; lower latency alone is not sufficient to
+remove the browser security boundary.
+
+After the comparison, record the non-latency evidence in a review manifest and
+validate it with:
+
+```text
+python scripts/validate_topology_review.py evidence/topology-review.json
+```
+
+The manifest must include passed, linked evidence and a summary for
+`security_parity`, `failure_isolation`, `resource_overhead`, and
+`rollback_rehearsal`. This prevents a latency-only result from being treated
+as approval to remove the BFF.
+
+For the resource-overhead category, capture a sanitized Compose snapshot with:
+
+```text
+just topology-resources evidence/compose-resources.json
+```
+
+The snapshot records container names, CPU percentages, and memory usage only; it
+does not retain container IDs, environment variables, logs, or application
+payloads.
+
+Record restart rehearsals with the required scenarios
+`bff_unavailable_api_reachable`, `api_unavailable_bff_reports_dependency_failure`,
+and `worker_unavailable_api_remains_ready`. Validate the resulting manifest with
+`python scripts/validate_failure_isolation.py`; each scenario must link its
+sanitized observation artifact and be explicitly marked `passed`.
+
+Record security-parity observations for session-cookie protection, CSRF and
+origin controls, actor binding, request signing, route allowlisting, and rate
+limiting. Validate the manifest with `just topology-security-review
+evidence/security-parity.json`; every control must link its sanitized artifact
+and be explicitly marked `passed`.
+
+Validate rollback evidence with `just topology-rollback-review
+evidence/rollback-rehearsal.json`. It must identify the last-known-good and
+candidate releases, record restoration duration, verify data integrity, and
+link the sanitized rehearsal artifact.
+
+Resource snapshots should be compared alongside the SLO artifacts during the
+review. The comparison tool reports CPU deltas and preserves the before/after
+memory strings, allowing the operator to record resource overhead without
+claiming that a single sample is a capacity benchmark.
+
+When container names differ between topologies, `resource-map.json` must map a
+logical role to the corresponding baseline and candidate containers, for
+example: `{ "api": { "baseline": "bff-api-1", "candidate": "direct-api-1" } }`.
+
 No simplification is a supported deployment profile until the replacement
 passes those checks and receives a new ADR decision. Co-location on one host
 with separate service processes remains the lower-risk optimization.

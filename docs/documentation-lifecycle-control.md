@@ -66,7 +66,7 @@ Cross-cutting decisions should link back to the affected work package and must n
 
 ## Current control gaps
 
-- Documentation HQ link check passed: `python scripts/check_docs_hq_links.py` scanned 62 Markdown files.
+- Documentation HQ link check passed: `python scripts/check_docs_hq_links.py` scanned 93 Markdown files (2026-09-14).
 - Several package rows still need implementation and verification evidence.
 - The initial inventory and boundary proposal contain intentional open questions.
 - Existing architecture references need reconciliation against the new status ledger.
