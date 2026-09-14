@@ -1,5 +1,7 @@
 # Topology external-execution matrix
 
+Documentation HQ: [README](../README.md)
+
 This matrix is the execution record for the external-only P2 checks. Run every
 row against a disposable or staging environment using the same immutable
 release identifier and equivalent synthetic traffic. Never run the stop,

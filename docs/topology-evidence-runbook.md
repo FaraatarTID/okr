@@ -1,5 +1,7 @@
 # BFF topology evidence runbook
 
+Documentation HQ: [README](../README.md)
+
 Use this runbook before approving any change that removes, merges, or thins the
 BFF. The evidence must be collected for equivalent traffic and the same release
 identity.
