@@ -339,13 +339,8 @@ describe("spa-bff server", () => {
     expect(response.json().request_id).toBeTruthy();
   });
 
-  it("uses session actor for actor-scoped routes and ignores forged client actor header", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ status: "ok" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
+  it("rejects forged client actor headers for actor-scoped routes", async () => {
+    const fetchFn = vi.fn();
 
     const app = createServer(baseConfig, { fetchFn });
     const response = await app.inject({
@@ -368,17 +363,10 @@ describe("spa-bff server", () => {
     });
     await app.close();
 
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ status: "ok" });
-    expect(fetchFn).toHaveBeenCalledTimes(1);
-
-    const [, options] = fetchFn.mock.calls[0] as [string, RequestInit];
-    const headers = (options.headers ?? {}) as Record<string, string>;
-    expect(headers["x-okr-service-token"]).toBe("test-token");
-    expect(headers["x-okr-actor"]).toBe("admin");
-    expect(headers["x-okr-signature"]).toMatch(/^[a-f0-9]{64}$/);
-    expect(headers["x-okr-timestamp"]).toMatch(/^\d+$/);
-    expect(headers["x-okr-nonce"]).toMatch(/^[a-f0-9]{32}$/);
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe("INVALID_ACTOR_HEADER");
+    expect(response.json().message).toContain("does not match");
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it("rejects actor-scoped routes when session is missing", async () => {
@@ -399,6 +387,35 @@ describe("spa-bff server", () => {
     expect(response.json().message).toContain("Missing or invalid session");
     expect(typeof response.json().request_id).toBe("string");
     expect(response.json().request_id).toBeTruthy();
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("rejects mismatched client actor headers for actor-scoped routes", async () => {
+    const fetchFn = vi.fn();
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/backend/v1/read/query",
+      headers: {
+        ...csrfHeaders(),
+        cookie: sessionCookie({
+          ...DEFAULT_USER,
+          username: "admin",
+          role: "admin",
+        }),
+        "x-okr-actor": "forged-user",
+      },
+      payload: {
+        kind: "node",
+        params: { node_type: "GOAL", node_id: 1 },
+        actor_username: "forged-payload-user",
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json().code).toBe("INVALID_ACTOR_HEADER");
+    expect(response.json().message).toContain("actor");
     expect(fetchFn).not.toHaveBeenCalled();
   });
 

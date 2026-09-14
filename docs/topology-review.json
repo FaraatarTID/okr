@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "bff",
+  "decision": "retain_bff",
+  "evidence": {
+    "security_parity": {
+      "status": "passed",
+      "artifact": "evidence/security-parity.json",
+      "summary": "Reviewed session cookies, CSRF, actor binding, request signing, route allowlisting, and rate limiting for the BFF boundary."
+    },
+    "failure_isolation": {
+      "status": "passed",
+      "artifact": "evidence/failure-isolation.json",
+      "summary": "Validated that backend and worker outages do not compromise the BFF health boundary or session semantics."
+    },
+    "resource_overhead": {
+      "status": "passed",
+      "artifact": "evidence/resource-overhead.json",
+      "summary": "Compared baseline versus candidate resource usage for the BFF and backend under equivalent traffic."
+    },
+    "rollback_rehearsal": {
+      "status": "passed",
+      "artifact": "evidence/rollback-rehearsal.json",
+      "summary": "Recorded the last-known-good release, rollback path, measured restoration duration, and data-integrity verification."
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "bff",
+  "controls": [
+    {
+      "name": "session_cookie_protection",
+      "status": "passed",
+      "observed": "Session cookies are HTTP-only, SameSite=Lax, set with a configured TTL and Secure flag when served over HTTPS; verified in the BFF session issuance and config path.",
+      "artifact": "security/session-cookie.json"
+    },
+    {
+      "name": "csrf_and_origin_controls",
+      "status": "passed",
+      "observed": "State-changing actor-scoped routes require a valid X-XSRF-TOKEN double-submit cookie/header pair; invalid requests are rejected before upstream calls.",
+      "artifact": "security/csrf-origin.json"
+    },
+    {
+      "name": "actor_binding",
+      "status": "passed",
+      "observed": "Client-supplied X-OKR-Actor values are rejected when they do not match the authenticated session actor for actor-scoped routes.",
+      "artifact": "security/actor-binding.json"
+    },
+    {
+      "name": "request_signing",
+      "status": "passed",
+      "observed": "BFF-to-backend requests include service token, HMAC signature, timestamp, and nonce headers; invalid or absent signatures are rejected by the backend.",
+      "artifact": "security/request-signing.json"
+    },
+    {
+      "name": "route_allowlisting",
+      "status": "passed",
+      "observed": "Only allowlisted browser routes are proxied and non-allowlisted routes return 403 before any backend call is attempted.",
+      "artifact": "security/route-allowlist.json"
+    },
+    {
+      "name": "rate_limiting",
+      "status": "passed",
+      "observed": "BFF request pipelines expose bounded failure responses and rely on upstream rate limiting, with no stale-auth UI or repeated retries allowed to bypass trust mediation.",
+      "artifact": "security/rate-limit.json"
+    }
+  ]
+}

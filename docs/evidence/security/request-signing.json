@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "bff",
+  "control": "request_signing",
+  "status": "passed",
+  "observed": "BFF requests include service token, signature, timestamp, and nonce headers; backend validation rejects unsigned or tampered requests."
+}

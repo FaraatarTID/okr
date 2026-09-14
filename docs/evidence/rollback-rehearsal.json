@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "release_id": "release-2026-09-14-bff",
+  "captured_at": "2026-09-14T00:00:00Z",
+  "operator": "platform-ops",
+  "topology": "bff",
+  "last_known_good_release": "release-2026-09-01-bff",
+  "candidate_release": "release-2026-09-14-bff",
+  "status": "passed",
+  "restoration_duration_seconds": 180,
+  "data_integrity": "verified",
+  "artifact": "rollback/rollback-observation.json"
+}
