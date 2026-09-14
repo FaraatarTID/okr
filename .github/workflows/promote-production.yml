@@ -38,7 +38,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download staging verification
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -47,7 +47,7 @@ jobs:
           path: staging-verification
 
       - name: Download staging release manifest
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -85,7 +85,7 @@ jobs:
         run: cosign version
 
       - name: Download release manifest
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
@@ -125,7 +125,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Download verified release manifest
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}

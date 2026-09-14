@@ -403,7 +403,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Download GHCR release manifest
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: darkube-ghcr-release-manifest-${{ github.sha }}
           path: release-manifest
@@ -455,21 +455,21 @@ jobs:
         with: {python-version: "3.11"}
       - name: Download public and private verification artifacts
         if: always()
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: darkube-prerelease-*-smoke
           path: verification
           merge-multiple: true
       - name: Download GHCR release manifest
         if: always()
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: darkube-ghcr-release-manifest-${{ github.sha }}
           path: release-manifest
         continue-on-error: true
       - name: Download deployment verification
         if: always()
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: darkube-deployment-verification
           path: deployment-verification
