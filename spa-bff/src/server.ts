@@ -16,6 +16,7 @@ import {
   issueSessionCookie,
   issueSessionToken,
   readSessionUserFromCookie,
+  revokeSessionFromCookieHeader,
   validateCsrfToken,
   type SessionUser,
 } from "./session.js";
@@ -479,7 +480,9 @@ export function createServer(
     }
   });
 
-  app.post("/session/logout", async (_request, reply) => {
+  app.post("/session/logout", async (request, reply) => {
+    const cookieHeader = firstHeaderValue(request.headers.cookie);
+    revokeSessionFromCookieHeader(cookieHeader);
     reply.header("set-cookie", [
       clearSessionCookie({ secure: config.cookieSecure }),
       clearCsrfCookie({ secure: config.cookieSecure }),
