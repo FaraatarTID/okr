@@ -1,5 +1,7 @@
 # BFF Runtime Release Gate
 
+Documentation HQ: [README](../README.md)
+
 ## Scope
 
 This is the final runtime gate for the browser -> BFF -> backend topology. It supplements the repo evidence and the topology review, and should be used before any release or promotion that depends on the BFF trust boundary.

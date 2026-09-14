@@ -1,5 +1,7 @@
 # BFF Release Runbook
 
+Documentation HQ: [README](../README.md)
+
 ## Purpose
 This runbook closes the gap between the repository evidence gate and the live staging signoff. It combines the runtime smoke checks with the release signoff criteria so a release owner can execute, record, and approve the BFF topology safely.
 

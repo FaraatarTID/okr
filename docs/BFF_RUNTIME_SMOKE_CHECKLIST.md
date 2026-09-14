@@ -1,5 +1,7 @@
 # BFF Runtime Smoke Checklist
 
+Documentation HQ: [README](../README.md)
+
 This checklist captures the next operational slice after the repository-level evidence and topology review gates have passed.
 
 ## Purpose

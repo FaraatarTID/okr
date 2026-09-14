@@ -1,5 +1,7 @@
 # BFF Release Signoff Template
 
+Documentation HQ: [README](../README.md)
+
 ## Release metadata
 - Release ID:
 - Environment:
