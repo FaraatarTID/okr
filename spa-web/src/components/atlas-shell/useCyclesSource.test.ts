@@ -66,8 +66,12 @@ function setup() {
 
 describe("useCyclesSource", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    // The pair is cached per username and every test uses the same user.
+    // `clearAllMocks` only clears call history; it keeps the previous test's
+    // implementation, which would silently serve that test's payload to this one.
+    // `mockReset` drops the implementation too.
+    vi.mocked(api.readCyclesQuery).mockReset();
+    // The pair is cached per username and every test here uses the same user, so
+    // the cache must be dropped as well or a later test reads the earlier value.
     clearResourceCache();
   });
 
@@ -123,8 +127,14 @@ describe("useCyclesSource", () => {
     const { run } = setup();
 
     await run();
-    await run({ bypassCache: true });
+    expect(readCyclesQueryMock).toHaveBeenCalledTimes(2);
 
+    // Point the loader at different data: if the cached pair were reused, the
+    // second read would return the earlier list instead of this one.
+    mockCycles([cycle(6)], []);
+    const bypassed = await run({ bypassCache: true });
+
+    expect(bypassed.map((row) => row.id)).toEqual([6]);
     expect(readCyclesQueryMock).toHaveBeenCalledTimes(4);
   });
 

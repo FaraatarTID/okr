@@ -25,6 +25,10 @@ describe("useAdminResources", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.clearAllMocks();
+    // `clearAllMocks` keeps the previous test's mock implementations, which would
+    // serve a stale payload here. Reset both readers explicitly.
+    vi.mocked(api.readCyclesQuery).mockReset();
+    vi.mocked(api.readBackendQuery).mockReset();
     // The cycle read is cached per username, and every test in this file uses
     // the same user, so the cache must be dropped between tests or a later test
     // would be served the previous test's value instead of exercising the API.

@@ -155,7 +155,7 @@ describe("useAdminActions", () => {
         username: "new-user",
       }),
     );
-    expect(loadAdminUsersAndTeams).toHaveBeenCalledWith(baseUser);
+    expect(loadAdminUsersAndTeams).toHaveBeenCalledWith(baseUser, { bypassCache: true });
     expect(result.current.adminCycleMessage).toContain('User "new-user" created.');
   });
 
@@ -212,7 +212,7 @@ describe("useAdminActions", () => {
         is_active: true,
       }),
     );
-    expect(loadAdminCycles).toHaveBeenCalledWith(baseUser);
+    expect(loadAdminCycles).toHaveBeenCalledWith(baseUser, { bypassCache: true });
     expect(onCycleActivated).toHaveBeenCalledWith(cycle);
   });
 
