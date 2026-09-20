@@ -129,13 +129,19 @@ def _run_pip_audit() -> list[ScanFinding]:
 
 
 def _run_npm_audit(prefix: str, *, audit_level: str = "high") -> list[ScanFinding]:
-    if shutil.which("npm") is None:
+    # Resolve the launcher once and invoke that path. On Windows `npm` is
+    # `npm.cmd`, and `subprocess` does not apply PATHEXT, so passing the bare
+    # name raised FileNotFoundError ("[WinError 2] The system cannot find the
+    # file specified"). That surfaced only as a warning, so this scan silently
+    # never ran on Windows while still reporting success.
+    npm = shutil.which("npm")
+    if npm is None:
         if CI_MODE:
             raise RuntimeError(f"npm is required in CI but unavailable in PATH for {prefix}.")
         raise RuntimeError("npm is unavailable in PATH.")
 
     code, payload, stderr = _run_json_command(
-        ["npm", "audit", "--audit-level", audit_level, "--json"],
+        [npm, "audit", "--audit-level", audit_level, "--json"],
         cwd=ROOT / prefix,
         fail_on_nonzero=True,
     )
