@@ -140,12 +140,23 @@ jobs:
           merge-multiple: true
 
       - name: Create release manifest
+        env:
+          # Deliberately a release-manifest secret rather than the provider attestation
+          # secret in OKR_SAAS_ATTESTATION_SECRET's own documentation. The manifest is
+          # our own build evidence, so signing it must not require the external
+          # provider's key to be held by this pipeline. The variable name is the one the
+          # verifier reads; only the secret it is populated from differs.
+          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET }}
         run: |
           python scripts/create_release_manifest.py \
             --fragments release-fragments \
             --output release-manifest.json \
             --repository "${GITHUB_REPOSITORY}" \
-            --commit-sha "${GITHUB_SHA}"
+            --commit-sha "${GITHUB_SHA}" \
+            --attestation-provider github-actions \
+            --attestation-key-id publish-ghcr \
+            --attestation-evidence-id "ghcr-release-${GITHUB_RUN_ID}" \
+            --require-attestation
 
       - name: Upload release manifest
         uses: actions/upload-artifact@v7

@@ -27,6 +27,7 @@ import hashlib
 import hmac
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -85,6 +86,46 @@ def _secret(secret: str | None) -> str:
     if secret is not None:
         return secret
     return os.environ.get(ATTESTATION_SECRET_ENV, "")
+
+
+def attach_attestation(
+    payload: dict[str, Any],
+    *,
+    provider: str,
+    key_id: str,
+    evidence_id: str,
+    secret: str | None = None,
+    issued_at: str | None = None,
+) -> dict[str, Any]:
+    """Return `payload` with a signed `attestation` member.
+
+    Both `signed_payload_sha256` and `signature` cover the payload without its
+    `attestation`, which is exactly what `verify_attestation_signature` recomputes, so a
+    producer and a verifier cannot disagree about what was signed.
+
+    This is the counterpart to verification, and it lives here so producers do not each
+    reimplement the canonical form. A release manifest and a rollback record are both
+    signed this way. Note that adding any member to an already-attested payload
+    invalidates its signature, because the payload is what was signed - which is why a
+    record derived from an attested manifest carries its own attestation rather than
+    reusing the manifest's.
+    """
+    configured = _secret(secret)
+    if not configured:
+        raise AttestationError(
+            f"{ATTESTATION_SECRET_ENV} must be configured to sign an attestation"
+        )
+    unsigned = unsigned_payload(payload)
+    attestation = {
+        "provider": provider,
+        "evidence_id": evidence_id,
+        "algorithm": HMAC_ALGORITHM,
+        "key_id": key_id,
+        "issued_at": issued_at or datetime.now(timezone.utc).isoformat(),
+        "signed_payload_sha256": canonical_digest(unsigned),
+        "signature": sign_hmac(unsigned, configured),
+    }
+    return {**unsigned, "attestation": attestation}
 
 
 def _public_key_pem(public_key_pem: str | None) -> str:

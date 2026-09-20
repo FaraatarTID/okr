@@ -29,14 +29,25 @@ def _load(path: Path) -> dict[str, Any]:
 
 
 def verify_release_pair(
-    new_manifest: dict[str, Any], old_manifest: dict[str, Any]
+    new_manifest: dict[str, Any],
+    old_manifest: dict[str, Any],
+    new_cosign_references: list[str] | None = None,
+    old_cosign_references: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Verify a distinct current/rollback pair without making deployment claims."""
+    """Verify a distinct current/rollback pair without making deployment claims.
+
+    Each manifest needs its own Cosign references, because the references are checked
+    against that manifest's image digests and the two releases pin different digests.
+    """
     try:
         new_commit = new_manifest["commit_sha"]
         old_commit = old_manifest["commit_sha"]
-        new_result = verify_rollback_manifest(new_manifest, new_commit)
-        old_result = verify_rollback_manifest(old_manifest, old_commit)
+        new_result = verify_rollback_manifest(
+            new_manifest, new_commit, new_cosign_references
+        )
+        old_result = verify_rollback_manifest(
+            old_manifest, old_commit, old_cosign_references
+        )
     except (KeyError, RollbackEvidenceError) as exc:
         raise ReleasePairError(str(exc)) from exc
 
@@ -62,11 +73,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--new-manifest", type=Path, required=True)
     parser.add_argument("--old-manifest", type=Path, required=True)
+    parser.add_argument("--new-cosign-reference", action="append", default=[])
+    parser.add_argument("--old-cosign-reference", action="append", default=[])
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
 
     try:
-        result = verify_release_pair(_load(args.new_manifest), _load(args.old_manifest))
+        result = verify_release_pair(
+            _load(args.new_manifest),
+            _load(args.old_manifest),
+            args.new_cosign_reference,
+            args.old_cosign_reference,
+        )
     except ReleasePairError as exc:
         print(f"[RELEASE-PAIR] verification failed: {exc}", file=sys.stderr)
         return 2
