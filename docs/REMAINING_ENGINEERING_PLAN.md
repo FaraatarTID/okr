@@ -95,9 +95,33 @@ an OIDC login without signature verification would be worse than having no login
 | D3 | Session revocation is process-local, fails open, and is unreachable in production for two independent reasons. | `spa-bff/src/session.ts:7` holds an in-process `Map`; `isSessionRegistryActive` returns true for a null, empty, or unknown session id (`:132-139`). `revokeSessionsForIdentity` is called only from `test/identity_session_revocation.test.ts`. More seriously, `external_subject` exists at exactly three lines, all in `session.ts` (`:19,71,180`), and `normalizeSessionUser` (`server.ts:169-179`) never copies it, so every real session records `externalSubject: undefined` and the identity match can never succeed. | Fix the dead field end-to-end (preserve `external_subject` in `normalizeSessionUser`, and have the backend return it, which cascades into the OpenAPI, route-policy, and allowlist regeneration chain). Introduce a revocation port with an explicit tri-state result (`active` / `revoked` / `unavailable`), where `unavailable` denies and maps to 503 rather than allowing. Expose a real deprovision route with admin plus CSRF enforcement, and a service-to-service variant for SCIM. | Revocation on one instance is observed by another. A genuine logout invalidates the server-side session. An unknown session id is rejected in production. An unreachable store denies rather than allows. | L |
 | D4 | The BFF has no rate limiting and no origin enforcement, while the docs claim both — and the new OIDC routes are outside every existing gate. | No rate-limit or origin code in `spa-bff/src`; the only mention is a comment at `proxy.ts:100-102`. The CSRF rejection branch at `server.ts:550-558` has no test because every test supplies a valid token. `POST /session/login` has no session, CSRF, or origin check; `/session/logout` has no CSRF or session check. The BFF-native `/session/oidc/*` routes bypass both the allowlist and the backend service-token rate limiter (`backend_app/security.py:205-217`), so an attacker could drive unbounded JWKS fetches and token exchanges. | Add an `onRequest` rate limit with a general bucket and a tighter auth bucket covering `/session/login`, `/session/oidc/authorize`, `/session/oidc/callback`, and the proxied login, returning 429 with `Retry-After`. Add an origin check for cookie-authenticated state-changing routes, and add CSRF gating to login and logout. Ship this with D2, not after it. | Rate-limit and origin rejection are enforced and tested. An invalid-CSRF request receives 403 `INVALID_CSRF_TOKEN` in a test. A third request from one IP against a limit of two receives 429. | M |
 | D5 | SAML, SCIM, MFA policy, and entitlements are unbuilt. | `src/saas/identity_ports.py` is ports plus in-memory test doubles with zero production importers. `src/saas/entitlement_policy.py` is inert: `enforcement_enabled` defaults false and `pre_saas()` hard-disables it. `docs/architecture/ENTERPRISE_SAAS_ROADMAP.md:99-117` targets all of these in Phase 2. | Sequence behind D1 to D4 and behind a concrete customer requirement: SCIM provision and deprovision, SAML where required, MFA policy passthrough, and entitlement enforcement consistent across UI, API, and worker paths. | Each capability, when taken, has a contract test and a fail-closed default. Entitlements are enforced consistently across UI, API, and worker. | L each |
-| D6 | Two mutually incompatible session-token formats already coexist, so neither side's token can be validated by the other. | `src/saas/identity_contract.py:457-501` `issue_app_session_token` emits `{v: "oidc-session-v1", actor, username, provider, subject, email, ...}` with no `sid` and no `user` object. `spa-bff/src/session.ts:221` requires `v === "v1"` and reads `payload.sid` plus `payload.user`. Python serializes with `json.dumps(sort_keys=True)`, TypeScript with insertion-ordered `JSON.stringify`, so the bytes never match either. | Name one session authority and delete or explicitly deprecate the other. If the BFF owns the session, mark the Python issue/verify pair as unsupported and non-authoritative. | Exactly one implementation can mint a session the BFF accepts, and the other is documented or removed. A test asserts the BFF rejects a Python-issued token. | S-M |
+| D6 | Two mutually incompatible session-token formats already coexist, so neither side's token can be validated by the other. | `src/saas/identity_contract.py:457-501` `issue_app_session_token` emits `{v: "oidc-session-v1", actor, username, provider, subject, email, ...}` with no `sid` and no `user` object. `spa-bff/src/session.ts:221` requires `v === "v1"` and reads `payload.sid` plus `payload.user`. Python serializes with `json.dumps(sort_keys=True)`, TypeScript with insertion-ordered `JSON.stringify`, so the bytes never match either. | **DECIDED (D6-1, BFF owns the session).** The BFF remains the only minter. Mark the Python `issue_app_session_token` / `verify_app_session_token` pair (`identity_contract.py:457-501`, `:503`) as deprecated, non-authoritative, and scheduled for removal; it must never be treated as a second authority. The boundary between D6-1 (deprecate) and the follow-up D6-4 (delete outright) is a single open question: whether any consumer outside this repository verifies Python-issued tokens. Until that consumer search is run, deprecate rather than delete. Record the current Python mint formula (tag `oidc-session-v1`, the flat claim set, and `separators=(",",":")` with `sort_keys=True`) in this plan as the reference, so the search can recognise the real artefact later; recording only, no implementation. | Exactly one implementation can mint a session the BFF accepts, and the other is documented or removed. A test asserts the BFF rejects a Python-issued token. | S-M |
 | D7 | `token_version` is frozen at login on the proxy path, so a mid-session revocation is not seen by ordinary API calls. | `spa-bff/src/server.ts:201-203` forwards `x-okr-token-version` only when the cookie carries it, and the cookie is minted from the login response at `:390-394`, so the value is fixed for the whole TTL. `/session/me` re-validates, but the `/api/backend/*` path forwards the stale value at `:587-590`. Separately `backend_app/security.py:261` resolves the actor scope without a `token_version`, so the forwarded-role-claim check can pass against a stale scope. | Decide whether a `token_version` bump must invalidate proxied requests within a bounded time; if so, re-resolve it on the proxy path or shorten the session TTL, and pass the version into the backend scope resolution. | Revoking a user's sessions takes effect on the next proxied request within a documented bound, and the bound is tested. | M |
-| D8 | OIDC user resolution depends on an unverified identity assumption. | `SessionUser.id` is a required positive integer (`spa-bff/src/session.ts:10`, enforced at `session.ts:161` and `server.ts:160`) and an ID token cannot supply it. The only path that avoids a backend change is calling the existing `GET /v1/auth/me` with `x-okr-actor: <email>`, which relies on the internal `username` happening to equal the email (`backend_app/routers/platform_routes.py:128-142`). | Confirm the assumption against the provisioning model before D2 is implemented. If internal usernames are not emails, add a backend enterprise-exchange endpoint taking verified `{iss, sub, email}`, and run the full OpenAPI, route-policy, and auth-matrix regeneration chain. | The chosen resolution path is verified against real provisioning, or the new endpoint exists with its contract, allowlist entry, and matrix row. | S to verify, M-L if the endpoint is needed |
+| D8 | OIDC user resolution depends on an unverified identity assumption. | `SessionUser.id` is a required positive integer (`spa-bff/src/session.ts:10`, enforced at `session.ts:161` and `server.ts:160`) and an ID token cannot supply it. The only path that avoids a backend change is calling the existing `GET /v1/auth/me` with `x-okr-actor: <email>`, which relies on the internal `username` happening to equal the email (`backend_app/routers/platform_routes.py:128-142`). **Assumption REFUTED against real provisioning (read-only counts, 2026-09-20).** On the database named by `deploy/docker/.env` the `public."user"` table has exactly 1 row: `username LIKE '%@%'` = 0, non-email usernames = 1, and the row is `username = 'admin'` — the hardcoded bootstrap admin (`src/crud_auth_helpers.py:1082-1089`). Normalized-username collisions = 0, non-lowercase or padded usernames = 0. The table's 12 columns are `id, username, password_hash, must_change_password, password_changed_at, display_name, role, manager_id, created_at, is_active, team_id, token_version`: there is **no `email` column and no `external_subject` column**, so `username` is the only identity string that exists. | **Outcome locked to the M-L path.** The cheap `/v1/auth/me` exchange cannot resolve any user in the current database, because the sole account's username is not an email, and nothing in the repo provisions an email-username row (no JIT/OIDC provisioning path exists). Do not implement D2's user resolution on the cheap path. Either add an `external_subject` column on `User` (a migration, so it is separately gated by the `alembic/versions/` freeze and by whatever backfills the bootstrap admin) or add a backend enterprise-exchange endpoint taking verified `{iss, sub, email}`, which cascades into the full OpenAPI, route-policy, and auth-matrix regeneration chain. Re-run the counts before implementing, and confirm the invariant on the target deployment, not only this one. | The chosen resolution path is verified against real provisioning, or the new endpoint exists with its contract, allowlist entry, and matrix row. | S to verify, M-L if the endpoint is needed |
+| D9 | An unverified `email_verified` claim is accepted as identity, so an unverified or self-asserted address can claim another user's account. | `email_verified` is carried but never enforced. It appears at `src/saas/identity_contract.py:436` (read from the ID token, defaulting to `False` when absent) and `:487` (copied into the session payload), plus four assertions in `tests/test_saas_identity_contract.py`. A repository-wide search of `*.py` / `*.ts` / `*.tsx` finds no comparison of the claim against `true` and no rejection path. The identity contract maps the email straight into both `actor` and `username` (`:482-483`), and the backend resolves the actor by exact `User.username` match (`backend_app/routers/platform_routes.py:138-142`), so an unverified email is sufficient to assume that identity. | Fail the OIDC exchange and the session-minting path closed when the claim is missing, not a boolean, or `false` — treat `email_verified` as required, not advisory. Whether enforcement is possible depends on the outstanding human answer about whether this IdP always asserts the claim as true for legitimate users; if it does not, define an explicit fallback that does not silently trust the address. Add a distinct error code per failure mode, consistent with D2's fail-closed convention. | A token whose `email_verified` is missing, `false`, or non-boolean fails closed at the exchange and mints no session, with a test for each case. A token with `email_verified: true` still succeeds. | S to verify, M to implement |
+
+### D6 reference: the current Python mint formula (recorded, not implemented)
+
+Recorded so the later consumer search for D6-4 can recognise the real artefact
+instead of guessing. This is a description of what exists today, not a proposal
+and not code to add.
+
+- Tag: `"oidc-session-v1"`, emitted as the `v` field.
+- Shape: a single flat object, no nested `user` object and no `sid`.
+- Fields: `v`, `iat`, `exp`, `expires_at`, `actor`, `username`, `provider`,
+  `subject`, `email`, `email_verified`, `name`, `issuer`, `aud`, `role`, `roles`.
+- Serialization: `json.dumps(payload, separators=(",", ":"), sort_keys=True)`,
+  then base64url.
+- Encoding: `f"{payload_part}.{signature}"` where `signature` is the lowercase
+  hex HMAC-SHA256 of the base64url payload, keyed by the configured secret.
+- Divergence from the BFF format, for the search's benefit: the BFF writes
+  `v: "v1"` and requires `sid` plus a nested `user` object, and serializes with
+  insertion-ordered `JSON.stringify`, so neither the tag, the shape, nor the
+  bytes match.
+
+A consumer search should look for the literal `oidc-session-v1`, for a
+`payload.signature` split on a single `.`, and for verification callers of
+`verify_app_session_token`.
 
 ## Workstream E - Provider-gated and externally blocked
 
@@ -172,14 +196,24 @@ Implementation notes for this phase:
 
 ### Phase 3 - Enterprise identity
 
-Items, in order: D1, D3, D4, D6, and D8 (the verification step), then D2, then D5 and D7.
+Items, in order: D1, D3, D4, D6, D8, and D9 (the verification and decision steps),
+then D2, then D5 and D7.
 
 D1 is a hard gate: exposing any real OIDC login before signature verification
 exists would be worse than having no login. D4 must ship **with** D2 rather than
 after it, because the new unauthenticated OIDC routes bypass both the allowlist
-and the backend's service-token rate limiter. D6 and D8 must be resolved before
-D2 is written, since they determine whether the session authority and the user
-resolution path are even viable.
+and the backend's service-token rate limiter. D6, D8, and D9 must be resolved
+before D2 is written, since they determine the session authority, the user
+resolution path, and whether an unverified address may be trusted at all.
+
+Progress:
+
+| Item | State | Note |
+| --- | --- | --- |
+| D6 | Decided | D6-1 accepted: the BFF owns the session; the Python issue/verify pair is deprecated and non-authoritative. D6-4 (delete outright) is gated on a consumer search for the recorded mint formula. |
+| D8 | Verified, assumption refuted | Read-only counts against the configured database found one non-email `admin` row and no `email` or `external_subject` column, so the cheap `/v1/auth/me` path cannot resolve any current user. Outcome locked to the M-L path. |
+| D9 | Registered | New: `email_verified` is carried but never enforced. Acceptance criterion written; enforcement depends on an outstanding human answer about the IdP's claim behaviour. |
+| D1, D2, D3, D4, D5, D7 | Not started | Phase 3 remainder. |
 
 Implementation notes for this phase:
 
@@ -258,9 +292,12 @@ Implementation notes for this phase:
   `nonce`, or `client_secret`; enforce that in review.
 - Open questions to resolve before implementation, none answerable from the repo:
   whether the IdP is a confidential client, whether `email` and `email_verified`
-  are always present, and whether internal usernames equal email addresses (D8).
+  are always present, and whether internal usernames equal email addresses.
   There is no OIDC configuration artifact and no `BFF_OIDC_*` or `OKR_IDENTITY_*`
-  entry in any `.env.example`.
+  entry in any `.env.example`. **Status 2026-09-20:** the username-equals-email
+  question is answered — no, refuted by read-only counts (see D8) — and is no
+  longer open. The client-type and `email_verified` questions remain open and now
+  bind D2 and D9 respectively.
 
 ### Phase 4 - Provider and external
 
