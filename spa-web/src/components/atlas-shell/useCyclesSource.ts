@@ -33,7 +33,6 @@ export type CyclesSource = {
  * instead of issuing a second request.
  */
 export default function useCyclesSource({
-  user,
   setSessionCycles,
 }: UseCyclesSourceInput): CyclesSource {
   const [pending, setPending] = useState(false);

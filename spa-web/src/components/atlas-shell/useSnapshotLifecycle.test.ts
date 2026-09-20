@@ -127,14 +127,15 @@ describe("useSnapshotLifecycle", () => {
     );
 
     let firstLoad: Promise<void>;
+    let secondLoad: Promise<void>;
     await act(async () => {
       firstLoad = result.current.loadSnapshotForUser(baseUser);
       await Promise.resolve();
     });
     await act(async () => {
-      // Deliberately not awaited: this second call is the one under test, and
-      // the assertions below drive its resolution out of order.
-      void result.current.loadSnapshotForUser(baseUser);
+      // Both loads are awaited at the end of the test. Their responses are
+      // resolved out of order below, which is the behaviour under test.
+      secondLoad = result.current.loadSnapshotForUser(baseUser);
       await Promise.resolve();
     });
 
@@ -152,5 +153,6 @@ describe("useSnapshotLifecycle", () => {
     });
     expect(result.current.snapshotPayload).toEqual(managerSnapshot);
     await firstLoad!;
+    await secondLoad!;
   });
 });

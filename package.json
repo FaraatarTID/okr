@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
-    "lint": "eslint spa-web/src spa-bff/src spa-bff/test",
+    "lint": "eslint spa-web spa-bff",
     "test": "npm run test --workspaces",
     "typecheck": "npm run typecheck --workspace spa-web && npm run typecheck --workspace spa-bff"
   },
