@@ -362,6 +362,9 @@ jobs:
       - name: SPA BFF build
         run: npm --prefix spa-bff run build
 
+      - name: SPA BFF typecheck
+        run: npm --prefix spa-bff run typecheck
+
       - name: SPA Web build
         run: npm run build --workspace spa-web
 

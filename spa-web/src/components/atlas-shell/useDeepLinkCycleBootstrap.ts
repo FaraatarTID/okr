@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { type AuthUser, type CycleSummary } from "@/lib/api";
 import { mergeCyclePair, readCyclesPair } from "@/lib/cycles";
-import { DEFAULT_LENS, DEFAULT_MODE, normalizeFocusTaskRef, parseDeepLink } from "@/lib/deeplink";
+import { DEFAULT_LENS, normalizeFocusTaskRef, parseDeepLink } from "@/lib/deeplink";
 import { modeForLocation } from "@/components/atlas-shell/navigation";
 
 type ResolvedCycleState = Pick<

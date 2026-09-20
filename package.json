@@ -9,7 +9,7 @@
   "scripts": {
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
-    "typecheck": "npm run typecheck --workspace spa-web && npm run build --workspace spa-bff"
+    "typecheck": "npm run typecheck --workspace spa-web && npm run typecheck --workspace spa-bff"
   },
   "devDependencies": {
     "happy-dom": "^20.11.0"
