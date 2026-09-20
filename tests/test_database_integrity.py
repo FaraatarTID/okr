@@ -245,10 +245,3 @@ def test_run_migrations_adopts_legacy_database_without_alembic_version(
     assert "audit_event" in tables
     assert "sync_retry_event" not in tables
     engine.dispose()
-
-
-
-
-
-
-

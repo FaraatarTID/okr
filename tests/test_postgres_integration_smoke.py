@@ -57,7 +57,9 @@ def _postgres_revision_state() -> tuple[str, set[str]]:
         current = MigrationContext.configure(connection).get_current_revision()
 
     if not current:
-        raise AssertionError("PostgreSQL integration DB is not on any Alembic revision.")
+        raise AssertionError(
+            "PostgreSQL integration DB is not on any Alembic revision."
+        )
 
     return current, heads
 
@@ -147,7 +149,13 @@ def test_postgres_locking_and_constraint_behavior(monkeypatch) -> None:
 
     import src.crud as crud
     import src.database as database
-    from src.crud import create_cycle, create_goal, create_key_result, create_objective, create_task
+    from src.crud import (
+        create_cycle,
+        create_goal,
+        create_key_result,
+        create_objective,
+        create_task,
+    )
     from src.database import get_session_context
     from src.models import WorkLog
 

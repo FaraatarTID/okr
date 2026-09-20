@@ -81,10 +81,15 @@ services:
     assert any("database state volume" in failure for failure in failures)
 
 
-def test_worker_without_healthcheck_is_valid_when_restart_is_configured(tmp_path: Path) -> None:
+def test_worker_without_healthcheck_is_valid_when_restart_is_configured(
+    tmp_path: Path,
+) -> None:
     root = _valid_repository(tmp_path)
     compose = (root / "deploy/docker/docker-compose.yml").read_text(encoding="utf-8")
-    compose = compose.replace("    restart: unless-stopped\n    healthcheck:\n      disable: true", "    healthcheck:\n      disable: true")
+    compose = compose.replace(
+        "    restart: unless-stopped\n    healthcheck:\n      disable: true",
+        "    healthcheck:\n      disable: true",
+    )
     (root / "deploy/docker/docker-compose.yml").write_text(compose, encoding="utf-8")
 
     failures = verify_repository(root)
@@ -110,7 +115,8 @@ def test_local_control_plane_volume_is_rejected(tmp_path: Path) -> None:
     root = _valid_repository(tmp_path)
     compose_path = root / "deploy/docker/docker-compose.yml"
     compose = compose_path.read_text(encoding="utf-8").replace(
-        "  backend-api:\n", "  backend-api:\n    volumes:\n      - okr-control-plane-state:/var/lib/okr\n"
+        "  backend-api:\n",
+        "  backend-api:\n    volumes:\n      - okr-control-plane-state:/var/lib/okr\n",
     )
     compose_path.write_text(compose, encoding="utf-8")
 
@@ -129,4 +135,7 @@ def test_runtime_template_cannot_enable_process_local_state(tmp_path: Path) -> N
 
     failures = verify_repository(root)
 
-    assert any("normal runtime template enables process-local state" in failure for failure in failures)
+    assert any(
+        "normal runtime template enables process-local state" in failure
+        for failure in failures
+    )

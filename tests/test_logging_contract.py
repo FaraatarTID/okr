@@ -17,7 +17,7 @@ def test_contract_rejects_raw_secret_inputs(tmp_path: Path) -> None:
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         content = (
-            'import json\ndef log_payload(*, event, **fields):\n'
+            "import json\ndef log_payload(*, event, **fields):\n"
             '    return json.dumps({"event": event, "ts": "now", **fields})\n'
             if relative == verifier.BACKEND_FILES[0]
             else 'build_observability_log_payload(request.headers["authorization"])\n'
@@ -50,7 +50,7 @@ def test_contract_rejects_missing_structured_bff_timestamp(tmp_path: Path) -> No
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         content = (
-            'import json\ndef log_payload(*, event, **fields):\n'
+            "import json\ndef log_payload(*, event, **fields):\n"
             '    return json.dumps({"event": event, "ts": "now", **fields})\n'
             if relative == verifier.BACKEND_FILES[0]
             else "build_observability_log_payload()\n"
@@ -90,8 +90,7 @@ def test_contract_rejects_file_based_audit_sink(tmp_path: Path) -> None:
     audit = tmp_path / verifier.AUDIT_FILE
     audit.parent.mkdir(parents=True, exist_ok=True)
     audit.write_text(
-        "import logging\n"
-        "logging.FileHandler('audit.log')\n",
+        "import logging\nlogging.FileHandler('audit.log')\n",
         encoding="utf-8",
     )
 
@@ -121,7 +120,7 @@ def test_contract_requires_centralized_redaction(tmp_path: Path) -> None:
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         content = (
-            'import json\ndef log_payload(*, event, **fields):\n'
+            "import json\ndef log_payload(*, event, **fields):\n"
             '    return json.dumps({"event": event, "ts": "now", **fields})\n'
             if relative == verifier.BACKEND_FILES[0]
             else "build_observability_log_payload()\n"

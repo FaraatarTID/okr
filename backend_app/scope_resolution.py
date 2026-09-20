@@ -170,7 +170,9 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
             ).get("users")
             or []
         )
-        rows = [dict(actor)] + [dict(row) for row in manager_rows if isinstance(row, dict)]
+        rows = [dict(actor)] + [
+            dict(row) for row in manager_rows if isinstance(row, dict)
+        ]
     else:
         rows = [dict(actor)]
 

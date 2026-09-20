@@ -182,11 +182,15 @@ def main() -> int:
     checks: list[tuple[str, Callable[[], tuple[bool, str]]]] = [
         (
             "backend healthz",
-            lambda: _http_json(args.backend_health_url, timeout_seconds=min(10.0, interval * 3)),
+            lambda: _http_json(
+                args.backend_health_url, timeout_seconds=min(10.0, interval * 3)
+            ),
         ),
         (
             "bff healthz",
-            lambda: _http_json(args.bff_health_url, timeout_seconds=min(10.0, interval * 3)),
+            lambda: _http_json(
+                args.bff_health_url, timeout_seconds=min(10.0, interval * 3)
+            ),
         ),
         (
             "spa-web root",

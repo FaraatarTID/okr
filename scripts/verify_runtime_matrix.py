@@ -27,8 +27,13 @@ def verify_matrix(path: Path) -> list[str]:
             failures.append(f"runtime matrix field {key!r} is required")
     entrypoints = payload.get("entrypoints")
     if not isinstance(entrypoints, dict) or set(entrypoints) != REQUIRED_ENTRYPOINTS:
-        failures.append("runtime matrix must define api, worker, bff, and web entrypoints")
-    elif entrypoints["api"] != "python -m backend_app.run_api" or entrypoints["worker"] != "python -m backend_app.worker":
+        failures.append(
+            "runtime matrix must define api, worker, bff, and web entrypoints"
+        )
+    elif (
+        entrypoints["api"] != "python -m backend_app.run_api"
+        or entrypoints["worker"] != "python -m backend_app.worker"
+    ):
         failures.append("API and worker entrypoints do not match the release contract")
     health = payload.get("health")
     if not isinstance(health, dict) or set(health) != REQUIRED_HEALTH:

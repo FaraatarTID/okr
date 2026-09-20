@@ -107,7 +107,9 @@ def _schema_from_baseline() -> dict[str, dict[str, tuple[bool, bool]]]:
         for part in _split_top_level(body):
             upper = part.upper()
             # Skip constraint clauses.
-            if upper.startswith(("PRIMARY KEY", "FOREIGN KEY", "UNIQUE", "CHECK", "CONSTRAINT")):
+            if upper.startswith(
+                ("PRIMARY KEY", "FOREIGN KEY", "UNIQUE", "CHECK", "CONSTRAINT")
+            ):
                 continue
             m = re.match(r"(\w+|\S+)\s+(.+)", part, re.DOTALL)
             if not m:

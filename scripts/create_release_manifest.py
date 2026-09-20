@@ -13,7 +13,9 @@ _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
-def build_manifest(fragments_dir: Path, repository: str, commit_sha: str) -> dict[str, object]:
+def build_manifest(
+    fragments_dir: Path, repository: str, commit_sha: str
+) -> dict[str, object]:
     if not _COMMIT_RE.fullmatch(commit_sha):
         raise ValueError("commit SHA must be a 40-character lowercase commit SHA")
     fragments = sorted(fragments_dir.glob("*.json"))
@@ -35,7 +37,11 @@ def build_manifest(fragments_dir: Path, repository: str, commit_sha: str) -> dic
             raise ValueError(f"{name} does not contain a registry digest")
         image = fragment.get("image")
         expected_suffix = f"/{name}:{commit_sha}"
-        if not isinstance(image, str) or not image.startswith("ghcr.io/") or not image.endswith(expected_suffix):
+        if (
+            not isinstance(image, str)
+            or not image.startswith("ghcr.io/")
+            or not image.endswith(expected_suffix)
+        ):
             raise ValueError(f"{name} image must use a GHCR commit SHA tag")
         if any(character.isspace() for character in image):
             raise ValueError(f"{name} does not contain a GHCR image reference")

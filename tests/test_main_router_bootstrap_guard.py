@@ -31,4 +31,7 @@ def test_main_import_route_guard_is_enforced():
     )
 
     assert process.returncode == 0
-    assert "ROUTE_BOOTSTRAP_ASSERTED:Required route missing during bootstrap" in process.stdout
+    assert (
+        "ROUTE_BOOTSTRAP_ASSERTED:Required route missing during bootstrap"
+        in process.stdout
+    )

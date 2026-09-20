@@ -232,7 +232,10 @@ def test_oidc_code_exchange_returns_session_tokens():
     assert fake_client.calls[0]["data"]["grant_type"] == "authorization_code"
     assert fake_client.calls[0]["data"]["code"] == "auth-code-123"
     assert fake_client.calls[0]["data"]["client_id"] == "atlas-client"
-    assert fake_client.calls[0]["data"]["redirect_uri"] == "https://app.example.com/callback"
+    assert (
+        fake_client.calls[0]["data"]["redirect_uri"]
+        == "https://app.example.com/callback"
+    )
 
 
 def test_oidc_id_token_maps_to_app_session_claims():
@@ -293,7 +296,9 @@ def test_oidc_session_token_is_signed_and_verifiable():
         now_epoch_seconds=1700000000,
     )
 
-    payload = config.verify_app_session_token(token=token, secret="super-secret", now_epoch_seconds=1700000100)
+    payload = config.verify_app_session_token(
+        token=token, secret="super-secret", now_epoch_seconds=1700000100
+    )
 
     assert payload["actor"] == "user@example.com"
     assert payload["provider"] == "oidc"
@@ -357,7 +362,9 @@ def test_oidc_signed_session_token_contains_role_and_group_claims():
         now_epoch_seconds=1700000000,
     )
 
-    payload = config.verify_app_session_token(token=token, secret="super-secret", now_epoch_seconds=1700000100)
+    payload = config.verify_app_session_token(
+        token=token, secret="super-secret", now_epoch_seconds=1700000100
+    )
 
     assert payload["role"] == "admin"
     assert "atlas-admin" in payload["roles"]

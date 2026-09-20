@@ -3,12 +3,21 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
-from scripts.check_deploy_config import is_saas_mode_requested, main, validate_saas_environment
+from scripts.check_deploy_config import (
+    is_saas_mode_requested,
+    main,
+    validate_saas_environment,
+)
 from src.saas.environment_config import ConfigError, SaaSEnvironmentConfig
-from src.saas.identity_contract import IdentityProviderType, enforce_enterprise_login_policy
+from src.saas.identity_contract import (
+    IdentityProviderType,
+    enforce_enterprise_login_policy,
+)
 
 
-COMPOSE_FILE = Path(__file__).resolve().parents[1] / "deploy" / "docker" / "docker-compose.yml"
+COMPOSE_FILE = (
+    Path(__file__).resolve().parents[1] / "deploy" / "docker" / "docker-compose.yml"
+)
 
 
 def _saas_env() -> dict[str, str]:
@@ -115,7 +124,9 @@ def test_saas_profile_loads_enterprise_identity_policy_when_enabled():
     env["OKR_IDENTITY_PROVIDER"] = "oidc"
     env["OKR_IDENTITY_ISSUER"] = "https://idp.example.com/realms/acme"
     env["OKR_IDENTITY_CLIENT_ID"] = "atlas-client"
-    env["OKR_IDENTITY_AUTHORIZATION_ENDPOINT"] = "https://idp.example.com/oauth2/authorize"
+    env["OKR_IDENTITY_AUTHORIZATION_ENDPOINT"] = (
+        "https://idp.example.com/oauth2/authorize"
+    )
     env["OKR_IDENTITY_TOKEN_ENDPOINT"] = "https://idp.example.com/oauth2/token"
     env["OKR_IDENTITY_JWKS_URI"] = "https://idp.example.com/oauth2/jwks"
     env["OKR_ALLOW_LOCAL_PASSWORDS"] = "false"
@@ -135,7 +146,9 @@ def test_enterprise_login_policy_rejects_disallowed_identifiers():
     env["OKR_IDENTITY_PROVIDER"] = "oidc"
     env["OKR_IDENTITY_ISSUER"] = "https://idp.example.com/realms/acme"
     env["OKR_IDENTITY_CLIENT_ID"] = "atlas-client"
-    env["OKR_IDENTITY_AUTHORIZATION_ENDPOINT"] = "https://idp.example.com/oauth2/authorize"
+    env["OKR_IDENTITY_AUTHORIZATION_ENDPOINT"] = (
+        "https://idp.example.com/oauth2/authorize"
+    )
     env["OKR_IDENTITY_TOKEN_ENDPOINT"] = "https://idp.example.com/oauth2/token"
     env["OKR_IDENTITY_JWKS_URI"] = "https://idp.example.com/oauth2/jwks"
     env["OKR_ALLOW_LOCAL_PASSWORDS"] = "false"
@@ -194,7 +207,10 @@ def test_empty_self_hosted_database_remains_compatible_with_local_default():
     compose = COMPOSE_FILE.read_text(encoding="utf-8")
 
     assert report.ok
-    assert "OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}" in compose
+    assert (
+        "OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}"
+        in compose
+    )
 
 
 def test_compose_runs_saas_preflight_and_propagates_identity():
@@ -218,9 +234,7 @@ def test_compose_does_not_require_process_local_control_plane_state():
 
 
 def test_saas_example_is_explicitly_a_template():
-    example = (
-        COMPOSE_FILE.parent / ".env.saas.example"
-    ).read_text(encoding="utf-8")
+    example = (COMPOSE_FILE.parent / ".env.saas.example").read_text(encoding="utf-8")
 
     assert "template" in example.splitlines()[0].lower()
     assert "CHANGE_ME" in example
@@ -244,9 +258,7 @@ def test_saas_only_validates_an_env_file_as_saas(tmp_path: Path):
         encoding="utf-8",
     )
 
-    result = main(
-        ["--mode", "template", "--saas-only", "--env-file", str(env_file)]
-    )
+    result = main(["--mode", "template", "--saas-only", "--env-file", str(env_file)])
 
     assert result == 1
 
@@ -254,5 +266,11 @@ def test_saas_only_validates_an_env_file_as_saas(tmp_path: Path):
 def test_compose_preserves_explicit_empty_database_url():
     compose = COMPOSE_FILE.read_text(encoding="utf-8")
 
-    assert "OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}" in compose
-    assert "OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}" not in compose
+    assert (
+        "OKR_DATABASE_URL=${OKR_DATABASE_URL-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}"
+        in compose
+    )
+    assert (
+        "OKR_DATABASE_URL=${OKR_DATABASE_URL:-postgresql+psycopg2://okr:okr_dev_password@postgres:5432/okr}"
+        not in compose
+    )

@@ -29,7 +29,9 @@ def _canonicalize(value, *, key: str | None = None):
     if isinstance(value, list):
         normalized = [_canonicalize(child, key=key) for child in value]
         if key in _ORDER_INSENSITIVE_KEYS:
-            return sorted(normalized, key=lambda child: json.dumps(child, sort_keys=True))
+            return sorted(
+                normalized, key=lambda child: json.dumps(child, sort_keys=True)
+            )
         return normalized
     return value
 
@@ -80,11 +82,9 @@ def main() -> int:
     except json_mod.JSONDecodeError:
         committed_obj = None
 
-    if (
-        committed_obj is not None
-        and _canonicalize(_contract_document(fresh_obj))
-        == _canonicalize(_contract_document(committed_obj))
-    ):
+    if committed_obj is not None and _canonicalize(
+        _contract_document(fresh_obj)
+    ) == _canonicalize(_contract_document(committed_obj)):
         print("[PASS] OpenAPI artifact is up to date.")
         return 0
 
@@ -108,8 +108,14 @@ def main() -> int:
         ]
         if changed:
             print("Paths changed:", ", ".join(changed[:20]))
-        fresh_components = set(fresh_obj.get("components", {}).get("schemas", {}).keys()) - _NON_CONTRACT_SCHEMAS
-        committed_components = set(committed_obj.get("components", {}).get("schemas", {}).keys()) - _NON_CONTRACT_SCHEMAS
+        fresh_components = (
+            set(fresh_obj.get("components", {}).get("schemas", {}).keys())
+            - _NON_CONTRACT_SCHEMAS
+        )
+        committed_components = (
+            set(committed_obj.get("components", {}).get("schemas", {}).keys())
+            - _NON_CONTRACT_SCHEMAS
+        )
         changed_components = [
             name
             for name in sorted(fresh_components & committed_components)

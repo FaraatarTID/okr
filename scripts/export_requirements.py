@@ -22,7 +22,9 @@ def rendered_requirements() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--check", action="store_true", help="fail if the export is stale")
+    parser.add_argument(
+        "--check", action="store_true", help="fail if the export is stale"
+    )
     args = parser.parse_args()
     expected = rendered_requirements()
     actual = TARGET.read_text(encoding="utf-8") if TARGET.exists() else ""

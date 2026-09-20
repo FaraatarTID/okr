@@ -14,8 +14,13 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from scripts.verify_darkube_deployment import DeploymentVerificationError, verify_deployment
-except ModuleNotFoundError:  # Direct invocation: python scripts/verify_environment_parity.py
+    from scripts.verify_darkube_deployment import (
+        DeploymentVerificationError,
+        verify_deployment,
+    )
+except (
+    ModuleNotFoundError
+):  # Direct invocation: python scripts/verify_environment_parity.py
     from verify_darkube_deployment import DeploymentVerificationError, verify_deployment
 
 
@@ -111,7 +116,10 @@ def build_report(
         _check(
             "provider-evidence-verifier",
             bool(darkube_verifier)
-            and all(marker in darkube_verifier for marker in ("sha256:[0-9a-f]{64}", "applications", "manifest")),
+            and all(
+                marker in darkube_verifier
+                for marker in ("sha256:[0-9a-f]{64}", "applications", "manifest")
+            ),
             "Darkube evidence is accepted only through exact manifest and digest verification.",
         ),
     ]
@@ -138,8 +146,13 @@ def build_report(
 
     report = {
         "schema_version": "environment-parity-v1",
-        "status": "PASS" if all(item["status"] == "PASS" for item in checks) and provider_evidence != "FAIL" else "FAIL",
-        "repository_contract": "PASS" if all(item["status"] == "PASS" for item in checks) else "FAIL",
+        "status": "PASS"
+        if all(item["status"] == "PASS" for item in checks)
+        and provider_evidence != "FAIL"
+        else "FAIL",
+        "repository_contract": "PASS"
+        if all(item["status"] == "PASS" for item in checks)
+        else "FAIL",
         "checks": checks,
         "provider_evidence": provider_evidence,
         "provider_evidence_reason": provider_evidence_reason,
@@ -155,9 +168,19 @@ def build_report(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--json", action="store_true", help="Emit JSON instead of human-readable evidence.")
-    parser.add_argument("--manifest", type=Path, help="Release manifest paired with sanitized provider evidence.")
-    parser.add_argument("--evidence", type=Path, help="Sanitized Darkube deployment evidence JSON.")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit JSON instead of human-readable evidence.",
+    )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        help="Release manifest paired with sanitized provider evidence.",
+    )
+    parser.add_argument(
+        "--evidence", type=Path, help="Sanitized Darkube deployment evidence JSON."
+    )
     args = parser.parse_args(argv)
     report = build_report(manifest_path=args.manifest, evidence_path=args.evidence)
     if args.json:
@@ -166,7 +189,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Repository parity contract: {report['repository_contract']}")
         for item in report["checks"]:
             print(f"[{item['status']}] {item['name']}: {item['detail']}")
-        print(f"[{report['provider_evidence']}] provider_evidence: {report['provider_evidence_reason']}")
+        print(
+            f"[{report['provider_evidence']}] provider_evidence: {report['provider_evidence_reason']}"
+        )
         if report.get("provider_evidence_error"):
             print(f"- {report['provider_evidence_error']}")
         for item in report["provider_pending"]:

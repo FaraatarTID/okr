@@ -11,7 +11,12 @@ import pytest
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from src.saas.control_plane import AuditEvent, ControlPlane, EnvironmentNotFound, EnvironmentSummary
+from src.saas.control_plane import (
+    AuditEvent,
+    ControlPlane,
+    EnvironmentNotFound,
+    EnvironmentSummary,
+)
 from src.saas.environment_contract import EnvironmentManifest
 
 
@@ -30,7 +35,9 @@ class FakeMain:
     @staticmethod
     def require_control_plane_operator(actor: str) -> None:
         if actor != "operator":
-            raise HTTPException(status_code=403, detail="Control-plane operator required.")
+            raise HTTPException(
+                status_code=403, detail="Control-plane operator required."
+            )
 
     @staticmethod
     def _require_admin_actor_scope(actor: str) -> None:
@@ -42,7 +49,8 @@ def _client(environments=None, actor: str | None = "operator") -> TestClient:
     from backend_app.routers.control_plane_routes import register_control_plane_routes
 
     service = ControlPlane(
-        environments=environments or [
+        environments=environments
+        or [
             EnvironmentSummary(
                 environment_id="env-a",
                 customer_id="customer-a",
@@ -59,7 +67,9 @@ def _client(environments=None, actor: str | None = "operator") -> TestClient:
     app = FastAPI()
     router = APIRouter()
     fake = FakeMain(service)
-    fake.require_authenticated_principal = lambda: ({"username": actor} if actor else {})
+    fake.require_authenticated_principal = lambda: (
+        {"username": actor} if actor else {}
+    )
     register_control_plane_routes(router, fake)
     app.include_router(router)
     return TestClient(app)
@@ -156,7 +166,9 @@ def test_control_plane_persists_and_reloads_audit_events(tmp_path: Path) -> None
     )
     first = ControlPlane([summary], state_path=state_path)
     first.record_lifecycle_event(
-        AuditEvent("env-a", "READY", "operator", "2026-09-01T00:00:00+00:00", "accepted")
+        AuditEvent(
+            "env-a", "READY", "operator", "2026-09-01T00:00:00+00:00", "accepted"
+        )
     )
 
     reloaded = ControlPlane(state_path=state_path)
@@ -165,13 +177,19 @@ def test_control_plane_persists_and_reloads_audit_events(tmp_path: Path) -> None
     assert reloaded.list_lifecycle_events("env-a")[0].event == "READY"
 
 
-def test_control_plane_concurrent_process_updates_preserve_records_and_events(tmp_path: Path) -> None:
+def test_control_plane_concurrent_process_updates_preserve_records_and_events(
+    tmp_path: Path,
+) -> None:
     state_path = tmp_path / "control-plane.json"
-    summary = EnvironmentSummary("env-a", "customer-a", "single_tenant_saas", "release-1", "READY")
+    summary = EnvironmentSummary(
+        "env-a", "customer-a", "single_tenant_saas", "release-1", "READY"
+    )
     ControlPlane([summary], state_path=state_path).register_environment(
         EnvironmentManifest(
-            environment_id="env-a", customer_id="customer-a",
-            deployment_profile="single_tenant_saas", application_version="release-1",
+            environment_id="env-a",
+            customer_id="customer-a",
+            deployment_profile="single_tenant_saas",
+            application_version="release-1",
             database_target="db-resource:env-a",
         )
     )
@@ -180,8 +198,16 @@ def test_control_plane_concurrent_process_updates_preserve_records_and_events(tm
     second = ControlPlane(state_path=state_path)
     first.update_environment_metadata("env-a", health_state="healthy")
     second.update_environment_metadata("env-a", backup_state="verified")
-    first.record_lifecycle_event(AuditEvent("env-a", "READY", "operator-a", "2026-09-01T00:00:00+00:00", "accepted"))
-    second.record_lifecycle_event(AuditEvent("env-a", "BACKUP", "operator-b", "2026-09-01T00:00:01+00:00", "accepted"))
+    first.record_lifecycle_event(
+        AuditEvent(
+            "env-a", "READY", "operator-a", "2026-09-01T00:00:00+00:00", "accepted"
+        )
+    )
+    second.record_lifecycle_event(
+        AuditEvent(
+            "env-a", "BACKUP", "operator-b", "2026-09-01T00:00:01+00:00", "accepted"
+        )
+    )
 
     reloaded = ControlPlane(state_path=state_path)
     assert reloaded.get_environment("env-a").health_state == "healthy"
@@ -189,7 +215,9 @@ def test_control_plane_concurrent_process_updates_preserve_records_and_events(tm
     assert len(reloaded.list_lifecycle_events("env-a")) == 2
 
 
-def test_control_plane_persistence_contains_only_opaque_database_resource_id(tmp_path: Path) -> None:
+def test_control_plane_persistence_contains_only_opaque_database_resource_id(
+    tmp_path: Path,
+) -> None:
     state_path = tmp_path / "control-plane.json"
     summary = EnvironmentSummary(
         environment_id="env-a",
@@ -228,9 +256,11 @@ def test_environment_summary_exposes_release_and_backup_metadata() -> None:
         backup_verified=True,
     )
 
-    body = _client([summary]).get(
-        "/control-plane/environments", headers={"X-OKR-Actor": "operator"}
-    ).json()
+    body = (
+        _client([summary])
+        .get("/control-plane/environments", headers={"X-OKR-Actor": "operator"})
+        .json()
+    )
     assert body["environments"][0]["release_digest"] == summary.release_digest
     assert body["environments"][0]["backup_id"] == "provider-backup-a"
     assert body["environments"][0]["backup_verified"] is True
@@ -240,7 +270,9 @@ def test_missing_operator_identity_is_rejected() -> None:
     assert _client(actor=None).get("/control-plane/environments").status_code == 401
 
 
-def test_production_control_plane_operator_requires_explicit_allowlist(monkeypatch) -> None:
+def test_production_control_plane_operator_requires_explicit_allowlist(
+    monkeypatch,
+) -> None:
     import backend_app.main as backend_main
 
     monkeypatch.setenv("OKR_ENV", "production")
@@ -253,14 +285,18 @@ def test_production_control_plane_operator_requires_explicit_allowlist(monkeypat
     assert exc.value.status_code == 503
 
 
-def test_nonproduction_control_plane_keeps_explicit_admin_compatibility(monkeypatch) -> None:
+def test_nonproduction_control_plane_keeps_explicit_admin_compatibility(
+    monkeypatch,
+) -> None:
     import backend_app.main as backend_main
 
     called: list[str] = []
     monkeypatch.setenv("OKR_ENV", "development")
     monkeypatch.delenv("OKR_RUNTIME_ENV", raising=False)
     monkeypatch.delenv("OKR_CONTROL_PLANE_OPERATORS", raising=False)
-    monkeypatch.setattr(backend_main, "_require_admin_actor_scope", lambda actor: called.append(actor))
+    monkeypatch.setattr(
+        backend_main, "_require_admin_actor_scope", lambda actor: called.append(actor)
+    )
 
     backend_main.require_control_plane_operator("admin")
 
@@ -277,14 +313,24 @@ def test_customer_session_cannot_record_lifecycle_event() -> None:
     assert response.status_code == 403
 
 
-def test_production_backend_app_registers_control_plane_routes(monkeypatch, tmp_path) -> None:
+def test_production_backend_app_registers_control_plane_routes(
+    monkeypatch, tmp_path
+) -> None:
     import backend_app.main as backend_main
 
-    monkeypatch.setenv("OKR_CONTROL_PLANE_STATE_PATH", str(tmp_path / "control-plane.json"))
+    monkeypatch.setenv(
+        "OKR_CONTROL_PLANE_STATE_PATH", str(tmp_path / "control-plane.json")
+    )
     monkeypatch.setattr(backend_main, "control_plane", ControlPlane())
-    backend_main.app.dependency_overrides[backend_main.require_service_access] = lambda: None
-    monkeypatch.setattr(backend_main, "require_control_plane_operator", lambda actor: None)
-    backend_main.app.dependency_overrides[backend_main.require_authenticated_principal] = lambda: {"username": "operator"}
+    backend_main.app.dependency_overrides[backend_main.require_service_access] = (
+        lambda: None
+    )
+    monkeypatch.setattr(
+        backend_main, "require_control_plane_operator", lambda actor: None
+    )
+    backend_main.app.dependency_overrides[
+        backend_main.require_authenticated_principal
+    ] = lambda: {"username": "operator"}
     try:
         response = TestClient(backend_main.app).get(
             "/control-plane/environments", headers={"X-OKR-Actor": "operator"}
@@ -310,9 +356,19 @@ def test_repository_import_boundary_checker_is_invoked() -> None:
 
 def test_control_plane_modules_have_no_customer_domain_imports() -> None:
     root = Path(__file__).resolve().parents[1]
-    forbidden = ("src.crud", "src.models", "backend_app.read_query_helpers", "backend_app.response_scope_helpers")
-    for relative in ("src/saas/control_plane.py", "backend_app/routers/control_plane_routes.py"):
-        tree = ast.parse((root / relative).read_text(encoding="utf-8"), filename=relative)
+    forbidden = (
+        "src.crud",
+        "src.models",
+        "backend_app.read_query_helpers",
+        "backend_app.response_scope_helpers",
+    )
+    for relative in (
+        "src/saas/control_plane.py",
+        "backend_app/routers/control_plane_routes.py",
+    ):
+        tree = ast.parse(
+            (root / relative).read_text(encoding="utf-8"), filename=relative
+        )
         imported = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

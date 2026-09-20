@@ -30,7 +30,9 @@ def run_sequence(*, root: Path, runner: str = "uv") -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT)
-    parser.add_argument("--runner", default="uv", help="Dependency runner, normally uv.")
+    parser.add_argument(
+        "--runner", default="uv", help="Dependency runner, normally uv."
+    )
     args = parser.parse_args(argv)
     return run_sequence(root=args.root.resolve(), runner=args.runner)
 

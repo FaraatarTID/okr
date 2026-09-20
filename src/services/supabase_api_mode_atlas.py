@@ -16,6 +16,8 @@ from src.services.supabase_api_mode_transport import (
     _parse_dt,
     _rest_select,
 )
+
+
 def build_atlas_scope_snapshot_via_supabase_api(
     *,
     cycle_id: int,
@@ -594,5 +596,3 @@ def get_leadership_metrics_via_supabase_api(
         "member_deadlines": member_deadlines,
         "heatmap_data": heatmap_data,
     }
-
-

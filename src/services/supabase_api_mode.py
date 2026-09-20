@@ -27,7 +27,9 @@ read_query_via_supabase_api = supabase_api_mode_read.read_query_via_supabase_api
 create_alignment_via_supabase_api = (
     supabase_api_mode_operations.create_alignment_via_supabase_api
 )
-create_cycle_via_supabase_api = supabase_api_mode_operations.create_cycle_via_supabase_api
+create_cycle_via_supabase_api = (
+    supabase_api_mode_operations.create_cycle_via_supabase_api
+)
 create_check_in_via_supabase_api = (
     supabase_api_mode_operations.create_check_in_via_supabase_api
 )
@@ -48,7 +50,9 @@ stop_timer_via_supabase_api = supabase_api_mode_operations.stop_timer_via_supaba
 upsert_retro_experiment_outcome_via_supabase_api = (
     supabase_api_mode_operations.upsert_retro_experiment_outcome_via_supabase_api
 )
-update_cycle_via_supabase_api = supabase_api_mode_operations.update_cycle_via_supabase_api
+update_cycle_via_supabase_api = (
+    supabase_api_mode_operations.update_cycle_via_supabase_api
+)
 update_experiment_via_supabase_api = (
     supabase_api_mode_operations.update_experiment_via_supabase_api
 )
@@ -119,6 +123,8 @@ _role_for_storage = supabase_api_mode_transport._role_for_storage
 _normalize_user_row_role = supabase_api_mode_transport._normalize_user_row_role
 _utc_now_iso = supabase_api_mode_transport._utc_now_iso
 _date_only_iso = supabase_api_mode_transport._date_only_iso
-_cycle_owner_column_supported = supabase_api_mode_transport._cycle_owner_column_supported
+_cycle_owner_column_supported = (
+    supabase_api_mode_transport._cycle_owner_column_supported
+)
 _cycle_select_fields = supabase_api_mode_transport._cycle_select_fields
 ensure_supabase_api_ready = supabase_api_mode_transport.ensure_supabase_api_ready

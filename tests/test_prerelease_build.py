@@ -42,8 +42,14 @@ def test_backend_api_and_worker_use_root_context_and_shared_dockerfile() -> None
     assert (ROOT / "backend_app").is_dir()
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "| API | `okr-prerelease-api` | `ghcr.io/<owner>/<repository>/backend:<commit-sha>`" in readme
-    assert "| Worker | `okr-prerelease-worker` | `ghcr.io/<owner>/<repository>/backend:<commit-sha>`" in readme
+    assert (
+        "| API | `okr-prerelease-api` | `ghcr.io/<owner>/<repository>/backend:<commit-sha>`"
+        in readme
+    )
+    assert (
+        "| Worker | `okr-prerelease-worker` | `ghcr.io/<owner>/<repository>/backend:<commit-sha>`"
+        in readme
+    )
     assert "`python -m backend_app.worker`" in readme
 
 
@@ -54,25 +60,33 @@ def test_bff_uses_spa_bff_context_and_dockerfile() -> None:
     assert "COPY --from=build /app/spa-bff/dist ./dist" in dockerfile
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "| BFF | `okr-prerelease-bff` | `ghcr.io/<owner>/<repository>/bff:<commit-sha>`" in readme
+    assert (
+        "| BFF | `okr-prerelease-bff` | `ghcr.io/<owner>/<repository>/bff:<commit-sha>`"
+        in readme
+    )
 
 
 def test_web_uses_spa_web_context_and_dockerfile() -> None:
     _assert_context_inputs(ROOT, "spa-web/Dockerfile")
     dockerfile = _dockerfile("spa-web/Dockerfile")
-    assert 'ENV PORT=3000' in dockerfile
+    assert "ENV PORT=3000" in dockerfile
     assert 'CMD ["npm", "run", "start"]' in dockerfile
     assert "RUN npm run build -- --webpack" in dockerfile
     assert "COPY --from=build /app/spa-web/.next ./.next" in dockerfile
 
     readme = README_PATH.read_text(encoding="utf-8")
-    assert "| Web | `okr-prerelease-web` | `ghcr.io/<owner>/<repository>/web:<commit-sha>`" in readme
+    assert (
+        "| Web | `okr-prerelease-web` | `ghcr.io/<owner>/<repository>/web:<commit-sha>`"
+        in readme
+    )
 
 
 def test_backend_commands_are_distinct_and_explicit() -> None:
     readme = README_PATH.read_text(encoding="utf-8")
     api_row = next(line for line in readme.splitlines() if line.startswith("| API |"))
-    worker_row = next(line for line in readme.splitlines() if line.startswith("| Worker |"))
+    worker_row = next(
+        line for line in readme.splitlines() if line.startswith("| Worker |")
+    )
     assert "`python -m backend_app.run_api`" in api_row
     assert "`python -m backend_app.worker`" in worker_row
     assert api_row != worker_row

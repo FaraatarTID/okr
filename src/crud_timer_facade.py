@@ -100,9 +100,7 @@ def add_manual_log(
     )
 
 
-def get_work_log_by_start_time(
-    task_id: int, start_time: datetime
-) -> Optional[WorkLog]:
+def get_work_log_by_start_time(task_id: int, start_time: datetime) -> Optional[WorkLog]:
     """Find a work log by task_id and start_time (to match JSON data)."""
     return crud_timer_helpers.get_work_log_by_start_time_from_crud(
         crud_module=_crud_module(),

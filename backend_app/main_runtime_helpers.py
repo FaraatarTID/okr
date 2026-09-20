@@ -34,12 +34,12 @@ from backend_app.scope_resolution import (
     _scope_cycle_id as _scope_cycle_id_impl,
     _pick_primary_active_cycle as _pick_primary_active_cycle_impl,
 )
-from backend_app.main_helpers import validate_experiment_transition as _validate_experiment_transition_impl
+from backend_app.main_helpers import (
+    validate_experiment_transition as _validate_experiment_transition_impl,
+)
 
 
-def _resolve_actor(
-    *, header_actor: Optional[str], payload_actor: Optional[str]
-) -> str:
+def _resolve_actor(*, header_actor: Optional[str], payload_actor: Optional[str]) -> str:
     return _resolve_actor_impl(
         header_actor=header_actor,
         payload_actor=payload_actor,
@@ -56,12 +56,18 @@ def _resolve_actor_scope(
     )
 
 
-def _resolve_scope_for_actor(actor: str, token_version: Optional[int] = None) -> dict[str, Any]:
+def _resolve_scope_for_actor(
+    actor: str, token_version: Optional[int] = None
+) -> dict[str, Any]:
     from backend_app import main as backend_main
 
     patched_resolver = getattr(backend_main, "_resolve_scope_for_actor", None)
     baseline_resolver = getattr(backend_main, "_resolve_scope_for_actor_runtime", None)
-    if callable(patched_resolver) and baseline_resolver is not None and patched_resolver is not baseline_resolver:
+    if (
+        callable(patched_resolver)
+        and baseline_resolver is not None
+        and patched_resolver is not baseline_resolver
+    ):
         return patched_resolver(actor, token_version=token_version)
 
     scoped_resolver = getattr(backend_main, "_resolve_actor_scope", None)
@@ -181,9 +187,7 @@ def _list_cycles_for_scope(
     get_all_cycles = getattr(backend_main, "get_all_cycles", None)
     get_active_cycles = getattr(backend_main, "get_active_cycles", None)
     if callable(get_all_cycles) and callable(get_active_cycles):
-        return list(
-            get_active_cycles() if active_only else get_all_cycles()
-        )
+        return list(get_active_cycles() if active_only else get_all_cycles())
     return _list_cycles_for_scope_impl(scope=scope, active_only=active_only)
 
 
@@ -195,9 +199,7 @@ def _visible_cycles_for_scope(scope: dict[str, Any], cycles: list[Any]) -> list[
     return _visible_cycles_for_scope_impl(scope=scope, cycles=cycles)
 
 
-def _validate_experiment_transition(
-    current_status: Any, next_status: Any
-) -> None:
+def _validate_experiment_transition(current_status: Any, next_status: Any) -> None:
     return _validate_experiment_transition_impl(current_status, next_status)
 
 

@@ -167,7 +167,11 @@ def test_backend_request_log_events_are_structured(monkeypatch):
     )
     assert response.status_code == 200
 
-    parsed = [json.loads(item) for item in logs if item.strip().startswith("{") and item.strip().endswith("}")]
+    parsed = [
+        json.loads(item)
+        for item in logs
+        if item.strip().startswith("{") and item.strip().endswith("}")
+    ]
     request_logs = [entry for entry in parsed if entry.get("event") == "http_request"]
     assert request_logs, "structured request log event not emitted"
     latest = request_logs[-1]

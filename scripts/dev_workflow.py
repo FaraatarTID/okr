@@ -27,7 +27,10 @@ def _available_host_port(preferred: int) -> int:
 
 def _runtime_environment() -> tuple[dict[str, str], str]:
     environment = os.environ.copy()
-    password = str(environment.get("OKR_DEV_ADMIN_PASSWORD", "")).strip() or f"Aa1!{secrets.token_urlsafe(18)}"
+    password = (
+        str(environment.get("OKR_DEV_ADMIN_PASSWORD", "")).strip()
+        or f"Aa1!{secrets.token_urlsafe(18)}"
+    )
     environment.update(
         {
             "OKR_DEV_DISPOSABLE": "1",
@@ -59,19 +62,35 @@ def _compose(*args: str, environment: dict[str, str]) -> None:
     subprocess.run(command, cwd=ROOT, env=environment, check=True)
 
 
-def _published_port(service: str, container_port: int, environment: dict[str, str]) -> str:
+def _published_port(
+    service: str, container_port: int, environment: dict[str, str]
+) -> str:
     command = [
-        "docker", "compose", "-p", PROJECT, "-f", str(COMPOSE_FILE),
-        "port", service, str(container_port),
+        "docker",
+        "compose",
+        "-p",
+        PROJECT,
+        "-f",
+        str(COMPOSE_FILE),
+        "port",
+        service,
+        str(container_port),
     ]
     result = subprocess.run(
-        command, cwd=ROOT, env=environment, capture_output=True, text=True, check=False,
+        command,
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     published = result.stdout.strip().rsplit(":", 1)
     return published[-1] if result.returncode == 0 and len(published) == 2 else ""
 
 
-def _print_urls(environment: dict[str, str], password: str | None = None, *, actual: bool = False) -> None:
+def _print_urls(
+    environment: dict[str, str], password: str | None = None, *, actual: bool = False
+) -> None:
     web_port = _published_port("spa-web", 3000, environment) if actual else ""
     bff_port = _published_port("spa-bff", 3001, environment) if actual else ""
     api_port = _published_port("backend-api", 8100, environment) if actual else ""
@@ -89,18 +108,50 @@ def _print_urls(environment: dict[str, str], password: str | None = None, *, act
 def reset() -> int:
     environment, password = _runtime_environment()
     _compose("down", "--volumes", environment=environment)
-    _compose("up", "-d", "--build", "--wait", "--wait-timeout", "120", "postgres", environment=environment)
     _compose(
-        "run", "--build", "--rm", "--no-deps", "backend-api",
-        "alembic", "upgrade", "head", environment=environment,
+        "up",
+        "-d",
+        "--build",
+        "--wait",
+        "--wait-timeout",
+        "120",
+        "postgres",
+        environment=environment,
     )
     _compose(
-        "run", "--rm", "--no-deps", "backend-api", "python", "scripts/seed_dev_demo.py",
-        "--confirm-disposable", "--reset-admin-password", environment=environment,
+        "run",
+        "--build",
+        "--rm",
+        "--no-deps",
+        "backend-api",
+        "alembic",
+        "upgrade",
+        "head",
+        environment=environment,
     )
     _compose(
-        "up", "-d", "--build", "--wait", "--wait-timeout", "120",
-        "backend-api", "backend-worker", "spa-bff", "spa-web", environment=environment,
+        "run",
+        "--rm",
+        "--no-deps",
+        "backend-api",
+        "python",
+        "scripts/seed_dev_demo.py",
+        "--confirm-disposable",
+        "--reset-admin-password",
+        environment=environment,
+    )
+    _compose(
+        "up",
+        "-d",
+        "--build",
+        "--wait",
+        "--wait-timeout",
+        "120",
+        "backend-api",
+        "backend-worker",
+        "spa-bff",
+        "spa-web",
+        environment=environment,
     )
     _print_urls(environment, password)
     return 0
@@ -109,8 +160,14 @@ def reset() -> int:
 def seed() -> int:
     environment, _password = _runtime_environment()
     _compose(
-        "run", "--rm", "--no-deps", "backend-api", "python", "scripts/seed_dev_demo.py",
-        "--confirm-disposable", environment=environment,
+        "run",
+        "--rm",
+        "--no-deps",
+        "backend-api",
+        "python",
+        "scripts/seed_dev_demo.py",
+        "--confirm-disposable",
+        environment=environment,
     )
     return 0
 
@@ -134,9 +191,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("command", choices=("reset", "seed", "status", "clean"))
     args = parser.parse_args(argv)
     try:
-        return {"reset": reset, "seed": seed, "status": status, "clean": clean}[args.command]()
+        return {"reset": reset, "seed": seed, "status": status, "clean": clean}[
+            args.command
+        ]()
     except FileNotFoundError:
-        print("[DEV] Docker Compose is required. Install Docker Desktop and retry.", file=sys.stderr)
+        print(
+            "[DEV] Docker Compose is required. Install Docker Desktop and retry.",
+            file=sys.stderr,
+        )
         return 2
     except subprocess.CalledProcessError as exc:
         print(

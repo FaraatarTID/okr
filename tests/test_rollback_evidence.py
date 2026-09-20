@@ -53,11 +53,15 @@ def valid_manifest() -> dict[str, object]:
 def cosign_references(manifest: dict[str, object]) -> list[str]:
     images = manifest["images"]
     assert isinstance(images, dict)
-    return [f"{images[name]['image']}@{images[name]['digest']}" for name in sorted(images)]
+    return [
+        f"{images[name]['image']}@{images[name]['digest']}" for name in sorted(images)
+    ]
 
 
 def test_verifies_previous_known_good_manifest() -> None:
-    result = verify_rollback_manifest(valid_manifest(), COMMIT, cosign_references(valid_manifest()))
+    result = verify_rollback_manifest(
+        valid_manifest(), COMMIT, cosign_references(valid_manifest())
+    )
 
     assert result == {
         "schema_version": 1,
@@ -72,10 +76,26 @@ def test_verifies_previous_known_good_manifest() -> None:
     ("change", "message"),
     [
         (lambda manifest: manifest.update({"commit_sha": "b" * 40}), "synthetic"),
-        (lambda manifest: manifest["images"].pop("backend"), "exactly web, bff, and backend"),
-        (lambda manifest: manifest["images"].update({"debug": manifest["images"]["web"]}), "exactly web, bff, and backend"),
-        (lambda manifest: manifest["images"]["web"].update({"digest": "sha256:bad"}), "digest"),
-        (lambda manifest: manifest["images"]["bff"].update({"image": "docker.io/example/bff:tag"}), "GHCR"),
+        (
+            lambda manifest: manifest["images"].pop("backend"),
+            "exactly web, bff, and backend",
+        ),
+        (
+            lambda manifest: manifest["images"].update(
+                {"debug": manifest["images"]["web"]}
+            ),
+            "exactly web, bff, and backend",
+        ),
+        (
+            lambda manifest: manifest["images"]["web"].update({"digest": "sha256:bad"}),
+            "digest",
+        ),
+        (
+            lambda manifest: manifest["images"]["bff"].update(
+                {"image": "docker.io/example/bff:tag"}
+            ),
+            "GHCR",
+        ),
     ],
 )
 def test_rejects_invalid_previous_manifest(change, message: str) -> None:
@@ -100,7 +120,9 @@ def test_rejects_manifest_from_unexpected_repository() -> None:
     manifest["repository"] = "another-owner/another-repository"
 
     with pytest.raises(RollbackEvidenceError, match="repository"):
-        verify_rollback_manifest(manifest, COMMIT, expected_repository="FaraatarTID/okr")
+        verify_rollback_manifest(
+            manifest, COMMIT, expected_repository="FaraatarTID/okr"
+        )
 
 
 def test_cli_writes_stable_rollback_evidence(tmp_path) -> None:
@@ -109,17 +131,26 @@ def test_cli_writes_stable_rollback_evidence(tmp_path) -> None:
     output_path = tmp_path / "rollback-evidence.json"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    assert main(
-        [
-            "--manifest",
-            str(manifest_path),
-            "--commit-sha",
-            COMMIT,
-            *sum((["--cosign-reference", reference] for reference in cosign_references(manifest)), []),
-            "--output",
-            str(output_path),
-        ]
-    ) == 0
+    assert (
+        main(
+            [
+                "--manifest",
+                str(manifest_path),
+                "--commit-sha",
+                COMMIT,
+                *sum(
+                    (
+                        ["--cosign-reference", reference]
+                        for reference in cosign_references(manifest)
+                    ),
+                    [],
+                ),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
     assert json.loads(output_path.read_text(encoding="utf-8"))["verified"] is True
 
 
@@ -148,7 +179,9 @@ def test_verifies_final_production_rollback_record() -> None:
         "key_id": "release-key-2026",
         "signature": "rollback-signature-value-with-more-than-32-bytes",
         "issued_at": "2026-09-02T10:21:30Z",
-        "signed_payload_sha256": _payload_digest({key: value for key, value in record.items() if key != "attestation"}),
+        "signed_payload_sha256": _payload_digest(
+            {key: value for key, value in record.items() if key != "attestation"}
+        ),
     }
 
     result = verify_rollback_record(record, COMMIT)
@@ -172,7 +205,9 @@ def test_verifies_final_production_rollback_record() -> None:
         ("approved_at", "not-a-timestamp", "approved at"),
     ],
 )
-def test_rejects_invalid_final_production_rollback_record(field: str, value: str, message: str) -> None:
+def test_rejects_invalid_final_production_rollback_record(
+    field: str, value: str, message: str
+) -> None:
     manifest = valid_manifest()
     record = {
         **manifest,
@@ -197,7 +232,9 @@ def test_rejects_invalid_final_production_rollback_record(field: str, value: str
         "key_id": "release-key-2026",
         "signature": "rollback-signature-value-with-more-than-32-bytes",
         "issued_at": "2026-09-02T10:21:30Z",
-        "signed_payload_sha256": _payload_digest({key: value for key, value in record.items() if key != "attestation"}),
+        "signed_payload_sha256": _payload_digest(
+            {key: value for key, value in record.items() if key != "attestation"}
+        ),
     }
     record[field] = value
 

@@ -377,13 +377,13 @@ def e2e_stack(
             "OKR_BACKEND_API_URL": f"http://127.0.0.1:{backend_port}",
             "OKR_BACKEND_HOST": "127.0.0.1",
             "OKR_BACKEND_PORT": str(backend_port),
-                "OKR_BACKEND_SERVICE_TOKEN": service_token,
-                "OKR_BACKEND_ENFORCE_TOKEN": "true",
-                "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
-                "OKR_ALEMBIC_UPGRADE_TARGET": "heads",
-                "PYTHONUNBUFFERED": "1",
-            }
-        )
+            "OKR_BACKEND_SERVICE_TOKEN": service_token,
+            "OKR_BACKEND_ENFORCE_TOKEN": "true",
+            "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
+            "OKR_ALEMBIC_UPGRADE_TARGET": "heads",
+            "PYTHONUNBUFFERED": "1",
+        }
+    )
 
     _seed_database(repo_root, env)
 
@@ -404,9 +404,15 @@ def e2e_stack(
         worker_log_path.open("w", encoding="utf-8") as worker_log,
     ):
         try:
-            startup_timeout_backend = _env_float("OKR_E2E_BACKEND_STARTUP_TIMEOUT_SECONDS", 60.0)
-            startup_timeout_bff = _env_float("OKR_E2E_BFF_STARTUP_TIMEOUT_SECONDS", 90.0)
-            startup_timeout_spa = _env_float("OKR_E2E_SPA_STARTUP_TIMEOUT_SECONDS", 180.0)
+            startup_timeout_backend = _env_float(
+                "OKR_E2E_BACKEND_STARTUP_TIMEOUT_SECONDS", 60.0
+            )
+            startup_timeout_bff = _env_float(
+                "OKR_E2E_BFF_STARTUP_TIMEOUT_SECONDS", 90.0
+            )
+            startup_timeout_spa = _env_float(
+                "OKR_E2E_SPA_STARTUP_TIMEOUT_SECONDS", 180.0
+            )
 
             backend_process = subprocess.Popen(
                 [sys.executable, "-m", "backend_app.run_api"],
@@ -589,12 +595,12 @@ def _login(page, username: str, password: str) -> None:
         raise AssertionError("Login request payload was not observed.")
     request_payload = observed_login_payload.get("json")
     if isinstance(request_payload, dict):
-        assert (
-            str(request_payload.get("username", "")) == username
-        ), f"Sent username mismatch: {request_payload.get('username')!r} != {username!r}"
-        assert (
-            str(request_payload.get("password", "")) == password
-        ), f"Sent password mismatch: {request_payload.get('password')!r}"
+        assert str(request_payload.get("username", "")) == username, (
+            f"Sent username mismatch: {request_payload.get('username')!r} != {username!r}"
+        )
+        assert str(request_payload.get("password", "")) == password, (
+            f"Sent password mismatch: {request_payload.get('password')!r}"
+        )
     expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
         timeout=90_000
     )
@@ -768,6 +774,7 @@ def _run_check_in_path(page) -> None:
 
 def _run_weekly_job_path(page) -> None:
     from playwright.sync_api import expect
+
     job_events: list[dict[str, object]] = []
 
     def _capture_job_response(response) -> None:
@@ -792,7 +799,9 @@ def _run_weekly_job_path(page) -> None:
         expect(weekly_pdf).to_have_text("Exporting...", timeout=15_000)
     except Exception:
         try:
-            expect(weekly_pdf).to_have_text("PDF export unavailable; downloaded HTML fallback.", timeout=1_000)
+            expect(weekly_pdf).to_have_text(
+                "PDF export unavailable; downloaded HTML fallback.", timeout=1_000
+            )
         except Exception:
             pass
 
@@ -809,7 +818,9 @@ def _run_weekly_job_path(page) -> None:
             f"url={last_event.get('url')}, status_text={last_event.get('status_text')}"
         )
 
-    fallback_error = page.locator("text=PDF export unavailable; downloaded HTML fallback.")
+    fallback_error = page.locator(
+        "text=PDF export unavailable; downloaded HTML fallback."
+    )
     if fallback_error.count() > 0:
         expect(fallback_error).to_be_visible(timeout=1_000)
 
@@ -818,7 +829,9 @@ def _run_admin_mutation_path(page) -> None:
     from playwright.sync_api import expect
 
     page.get_by_role("button", name="Admin").click()
-    expect(page.get_by_role("heading", name="Platform Controls")).to_be_visible(timeout=90_000)
+    expect(page.get_by_role("heading", name="Platform Controls")).to_be_visible(
+        timeout=90_000
+    )
     page.get_by_role("button", name="Cycles").click()
     page.get_by_placeholder("Cycle title (example: Q1-2026)").fill(
         f"E2E Cycle {datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
@@ -847,6 +860,7 @@ def _run_admin_mutation_path(page) -> None:
 )
 def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
     from playwright.sync_api import Error, expect, sync_playwright
+
     chromium_path = _resolve_chromium_executable()
     launch_kwargs: dict[str, object] = {"headless": True}
     if chromium_path:
@@ -870,7 +884,9 @@ def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
         context = browser.new_context(viewport={"width": 1600, "height": 1000})
         page = context.new_page()
         username, password = _E2E_ROLES[role]
-        page.goto(f"{e2e_stack.app_url}/login", wait_until="domcontentloaded", timeout=90_000)
+        page.goto(
+            f"{e2e_stack.app_url}/login", wait_until="domcontentloaded", timeout=90_000
+        )
 
         _login(page, username=username, password=password)
         _run_timer_path(page)
@@ -880,8 +896,12 @@ def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
         if role == "admin":
             _run_admin_mutation_path(page)
         else:
-            expect(page.get_by_role("button", name="Admin")).to_have_count(0, timeout=10_000)
-            expect(page.get_by_role("button", name="Admin")).to_have_count(0, timeout=10_000)
+            expect(page.get_by_role("button", name="Admin")).to_have_count(
+                0, timeout=10_000
+            )
+            expect(page.get_by_role("button", name="Admin")).to_have_count(
+                0, timeout=10_000
+            )
 
         page.get_by_role("button", name="Sign out", exact=True).click()
         expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(

@@ -21,7 +21,8 @@ def test_backend_error_envelope_for_missing_route_includes_request_ids(monkeypat
     client, _backend_main = _make_client(monkeypatch)
     route = "/__backend-error-envelope-route-not-found"
     if not any(
-        getattr(route_obj, "path", "") == route for route_obj in _backend_main.app.router.routes
+        getattr(route_obj, "path", "") == route
+        for route_obj in _backend_main.app.router.routes
     ):
 
         def _not_found():
@@ -49,7 +50,10 @@ def test_backend_request_validation_error_envelope(monkeypatch):
         user_id: int
 
     route = "/__backend-error-envelope-validation"
-    if not any(getattr(route_obj, "path", "") == route for route_obj in backend_main.app.router.routes):
+    if not any(
+        getattr(route_obj, "path", "") == route
+        for route_obj in backend_main.app.router.routes
+    ):
 
         def _echo(payload: EchoRequest):
             return payload.dict()
@@ -71,7 +75,10 @@ def test_backend_generic_exception_error_envelope(monkeypatch):
     client, backend_main = _make_client(monkeypatch)
 
     route = "/__backend-error-envelope-generic"
-    if not any(getattr(route_obj, "path", "") == route for route_obj in backend_main.app.router.routes):
+    if not any(
+        getattr(route_obj, "path", "") == route
+        for route_obj in backend_main.app.router.routes
+    ):
 
         def _crash():
             raise RuntimeError("crash")

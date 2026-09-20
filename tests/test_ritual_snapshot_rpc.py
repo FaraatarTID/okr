@@ -106,7 +106,7 @@ def no_rpc(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def _raise_missing(*, kind: str, params: dict, actor: str) -> dict:
         exc = Exception(
-            'Supabase API error (ritual.snapshot): function fn_ritual_snapshot '
+            "Supabase API error (ritual.snapshot): function fn_ritual_snapshot "
             "does not exist (SQLSTATE 42883)"
         )
         exc.status_code = 500  # type: ignore[attr-defined]
@@ -137,18 +137,18 @@ def test_snapshot_rpc_path_maps_sections() -> None:
         "snapshot": _snapshot_payload()
     }
     result = rqh.read_query_payload(
-            kind="ritual.snapshot",
-            params={
-                "user_id": 1,
-                "cycle_id": 1,
-                "days_threshold": 7,
-                "date": "2026-08-24T00:00:00Z",
-                "window_start": "2026-08-17T00:00:00Z",
-                "window_end": "2026-08-24T00:00:00Z",
-            },
-            actor="alice",
-            main=main,
-        )
+        kind="ritual.snapshot",
+        params={
+            "user_id": 1,
+            "cycle_id": 1,
+            "days_threshold": 7,
+            "date": "2026-08-24T00:00:00Z",
+            "window_start": "2026-08-17T00:00:00Z",
+            "window_end": "2026-08-24T00:00:00Z",
+        },
+        actor="alice",
+        main=main,
+    )
 
     assert result["key_results"] == [{"id": 10, "title": "KR A"}]
     assert result["weekly_plan"]["priority_1"] == "P1"
@@ -170,19 +170,19 @@ def test_snapshot_out_of_scope_user_id_rejected_before_dispatch() -> None:
 
     main.read_query_via_supabase_api = _spy
     with pytest.raises(Exception) as excinfo:
-            rqh.read_query_payload(
-                kind="ritual.snapshot",
-                params={
-                    "user_id": 99,  # Bob's id — outside Alice's scope
-                    "cycle_id": 1,
-                    "days_threshold": 7,
-                    "date": "2026-08-24T00:00:00Z",
-                    "window_start": "2026-08-17T00:00:00Z",
-                    "window_end": "2026-08-24T00:00:00Z",
-                },
-                actor="alice",
-                main=main,
-            )
+        rqh.read_query_payload(
+            kind="ritual.snapshot",
+            params={
+                "user_id": 99,  # Bob's id — outside Alice's scope
+                "cycle_id": 1,
+                "days_threshold": 7,
+                "date": "2026-08-24T00:00:00Z",
+                "window_start": "2026-08-17T00:00:00Z",
+                "window_end": "2026-08-24T00:00:00Z",
+            },
+            actor="alice",
+            main=main,
+        )
 
     assert dispatched["called"] is False
     assert "403" in str(excinfo.value) or "not authorized" in str(excinfo.value)

@@ -53,7 +53,9 @@ def _python_contract(root: Path) -> list[str]:
         errors.append(f"{AUDIT_FILE} must apply centralized observability redaction")
     metrics = _read(root, BACKEND_FILES[0])
     if "redact_observability" not in metrics:
-        errors.append(f"{BACKEND_FILES[0]} must apply centralized observability redaction")
+        errors.append(
+            f"{BACKEND_FILES[0]} must apply centralized observability redaction"
+        )
     try:
         tree = ast.parse(metrics)
     except SyntaxError as exc:
@@ -119,14 +121,18 @@ def validate_logging_contract(root: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument(
+        "--root", type=Path, default=Path(__file__).resolve().parents[1]
+    )
     args = parser.parse_args()
     errors = validate_logging_contract(args.root.resolve())
     if errors:
         for error in errors:
             print(f"[LOGGING-CONTRACT] {error}")
         return 1
-    print("[LOGGING-CONTRACT] Structured stdout/stderr and secret-redaction contract passed.")
+    print(
+        "[LOGGING-CONTRACT] Structured stdout/stderr and secret-redaction contract passed."
+    )
     return 0
 
 

@@ -6,8 +6,12 @@ from scripts.check_environment_config_parity import check_parity
 def test_matching_config_shape_passes(tmp_path: Path) -> None:
     canonical = tmp_path / "canonical.env"
     staging = tmp_path / "staging.env"
-    canonical.write_text("FLAG=true\nCOUNT=1\nSERVICE_URL=http://api\n", encoding="utf-8")
-    staging.write_text("FLAG=false\nCOUNT=2\nSERVICE_URL=http://other\nEXTRA=value\n", encoding="utf-8")
+    canonical.write_text(
+        "FLAG=true\nCOUNT=1\nSERVICE_URL=http://api\n", encoding="utf-8"
+    )
+    staging.write_text(
+        "FLAG=false\nCOUNT=2\nSERVICE_URL=http://other\nEXTRA=value\n", encoding="utf-8"
+    )
 
     assert check_parity(canonical, staging) == []
 

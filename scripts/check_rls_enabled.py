@@ -51,11 +51,7 @@ POLICY_AUDIT_ROLES: tuple[str, ...] = ("anon", "authenticated", "public")
 
 
 def _database_url() -> str:
-    value = (
-        os.getenv("OKR_DATABASE_URL")
-        or os.getenv("DATABASE_URL")
-        or ""
-    ).strip()
+    value = (os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL") or "").strip()
     if not value:
         raise SystemExit(
             "check_rls_enabled: OKR_DATABASE_URL or DATABASE_URL must be set."
@@ -109,9 +105,7 @@ def _permissive_policy_violations(engine) -> list[str]:
     with engine.connect() as conn:
         rows = conn.execute(query).fetchall()
     for row in rows:
-        applies_to_exposed = bool(
-            set(row.roles or []) & set(POLICY_AUDIT_ROLES)
-        )
+        applies_to_exposed = bool(set(row.roles or []) & set(POLICY_AUDIT_ROLES))
         if not applies_to_exposed:
             continue
         for expr in (row.qual, row.with_check):
@@ -156,8 +150,7 @@ def _role_grant_violations(engine) -> list[str] | None:
         ).fetchall()
 
     return [
-        f"public.{row.table_name} has grants for role '{row.grantee}'"
-        for row in rows
+        f"public.{row.table_name} has grants for role '{row.grantee}'" for row in rows
     ]
 
 
@@ -184,7 +177,9 @@ def main() -> int:
             violations = None
 
         if violations:
-            print("check_rls_enabled: FAIL — PostgREST role grants on owner-only tables:")
+            print(
+                "check_rls_enabled: FAIL — PostgREST role grants on owner-only tables:"
+            )
             for item in violations:
                 print(f"  - {item}")
             return 1
@@ -196,7 +191,9 @@ def main() -> int:
             policy_violations = []
 
         if policy_violations:
-            print("check_rls_enabled: FAIL — permissive policies exposed to anon/authenticated:")
+            print(
+                "check_rls_enabled: FAIL — permissive policies exposed to anon/authenticated:"
+            )
             for item in policy_violations:
                 print(f"  - {item}")
             return 1

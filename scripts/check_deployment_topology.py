@@ -108,10 +108,17 @@ def _published_host(port_value: str) -> str | None:
 
 def _is_private_host(host: str) -> bool:
     normalized = host.strip().lower().rstrip(".")
-    if normalized in {"localhost", "::1"} or normalized.endswith(".svc") or ".svc." in normalized:
+    if (
+        normalized in {"localhost", "::1"}
+        or normalized.endswith(".svc")
+        or ".svc." in normalized
+    ):
         return True
     try:
-        return ipaddress.ip_address(normalized).is_private or ipaddress.ip_address(normalized).is_loopback
+        return (
+            ipaddress.ip_address(normalized).is_private
+            or ipaddress.ip_address(normalized).is_loopback
+        )
     except ValueError:
         return False
 
@@ -148,7 +155,9 @@ def validate_compose_text(text: str) -> None:
             raw_value = line.split("-", 1)[1].strip()
             host = _published_host(raw_value)
             if host is None:
-                raise TopologyError(f"{service} has an ambiguous published port: {raw_value}")
+                raise TopologyError(
+                    f"{service} has an ambiguous published port: {raw_value}"
+                )
             if not _is_private_host(host):
                 raise TopologyError(
                     f"{service} published port binds to public host '{host}'; "
@@ -160,7 +169,11 @@ def validate_compose_text(text: str) -> None:
     if backend_url.startswith("${"):
         backend_url = _default_interpolation(backend_url) or ""
     parsed = urlsplit(backend_url)
-    if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"backend-api", "backend"} and not (parsed.hostname or "").endswith(".svc"):
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.hostname not in {"backend-api", "backend"}
+        and not (parsed.hostname or "").endswith(".svc")
+    ):
         raise TopologyError(
             "spa-bff OKR_BACKEND_API_URL must target the private backend service"
         )

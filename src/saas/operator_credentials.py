@@ -34,7 +34,12 @@ class OperatorCredential:
         return cls(principal, f"test:{principal}", "test-token-digest")
 
 
-def resolve_operator_principal(*, token: str | None = None, credential_file: str | Path | None = None, environ: Mapping[str, str] | None = None) -> OperatorCredential:
+def resolve_operator_principal(
+    *,
+    token: str | None = None,
+    credential_file: str | Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> OperatorCredential:
     env = environ or os.environ
     supplied_token = token or env.get("OKR_OPERATOR_TOKEN", "")
     path = credential_file or env.get("OKR_OPERATOR_CREDENTIAL_FILE", "")
@@ -55,7 +60,11 @@ def resolve_operator_principal(*, token: str | None = None, credential_file: str
         if hmac.compare_digest(token_hash, str(entry.get("token_sha256", "")).lower()):
             principal = str(entry.get("principal", "")).strip()
             if not principal or principal.upper() == "UNASSIGNED":
-                raise OperatorCredentialError("authenticated operator principal is invalid")
-            credential_id = str(entry.get("credential_id", entry.get("principal", ""))).strip()
+                raise OperatorCredentialError(
+                    "authenticated operator principal is invalid"
+                )
+            credential_id = str(
+                entry.get("credential_id", entry.get("principal", ""))
+            ).strip()
             return OperatorCredential(principal, credential_id, token_hash)
     raise OperatorCredentialError("invalid operator credential")

@@ -107,7 +107,9 @@ def _check_playwright_command(project_dir: Path, label: str) -> CheckResult:
                 f"Run: (cd {project_dir.name} && npm install && npx playwright install chromium)"
             ),
         )
-    code, output = _run_capture(["npx", "playwright", "install", "--dry-run"], project_dir)
+    code, output = _run_capture(
+        ["npx", "playwright", "install", "--dry-run"], project_dir
+    )
     if code != 0:
         return CheckResult(
             name=f"{label}: playwright CLI",
@@ -146,14 +148,18 @@ def verify(project_root: Path) -> int:
         print("\nSetup guidance:")
         print("- cd spa-web && npm install")
         print("- cd spa-bff && npm install")
-        print("- npm install -g @playwright/test (if preferred) OR npm install in each project")
+        print(
+            "- npm install -g @playwright/test (if preferred) OR npm install in each project"
+        )
         print("- npx playwright install chromium")
         return 1
     return 0
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Verify Playwright SPA e2e environment.")
+    parser = argparse.ArgumentParser(
+        description="Verify Playwright SPA e2e environment."
+    )
     parser.add_argument(
         "--root",
         default=str(PROJECT_ROOT),

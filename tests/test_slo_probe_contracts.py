@@ -107,7 +107,13 @@ def test_weekly_plan_probe_is_valid_and_reuses_same_week(monkeypatch) -> None:
     assert len({(p["user_id"], p["start_date"], p["end_date"]) for p in payloads}) == 1
     assert payloads[0]["p1"]
     assert set(payloads[0]) == {
-        "user_id", "start_date", "end_date", "p1", "p2", "p3", "actor_username"
+        "user_id",
+        "start_date",
+        "end_date",
+        "p1",
+        "p2",
+        "p3",
+        "actor_username",
     }
 
 
@@ -148,12 +154,16 @@ def test_snapshot_context_creates_only_explicit_disposable_cycle(monkeypatch) ->
             return 200, {"user": {"id": 7, "role": "admin"}}, 0.01
         if payload.get("kind") == "cycles.all":
             return 200, {"cycles": []}, 0.01
-        return 201, {
-            "id": 91,
-            "title": payload["title"],
-            "is_active": True,
-            "owner_manager_id": 7,
-        }, 0.01
+        return (
+            201,
+            {
+                "id": 91,
+                "title": payload["title"],
+                "is_active": True,
+                "owner_manager_id": 7,
+            },
+            0.01,
+        )
 
     def fake_delete(base, path, cookie, **kwargs):
         calls.append(("DELETE", path, kwargs))
@@ -178,7 +188,9 @@ def test_snapshot_context_creates_only_explicit_disposable_cycle(monkeypatch) ->
     assert calls[2][2]["is_active"] is True
 
 
-def test_snapshot_context_refuses_create_when_any_active_cycle_is_visible(monkeypatch) -> None:
+def test_snapshot_context_refuses_create_when_any_active_cycle_is_visible(
+    monkeypatch,
+) -> None:
     def fake_post(_base, _path, payload, _cookie, **kwargs):
         if payload.get("kind") == "users.by_username":
             return 200, {"user": {"id": 7, "role": "admin"}}, 0.01
@@ -198,7 +210,9 @@ def test_snapshot_context_refuses_create_when_any_active_cycle_is_visible(monkey
     ) == (None, None)
 
 
-def test_snapshot_context_refuses_disposable_create_for_non_admin_probe(monkeypatch) -> None:
+def test_snapshot_context_refuses_disposable_create_for_non_admin_probe(
+    monkeypatch,
+) -> None:
     def fake_post(_base, _path, payload, _cookie, **kwargs):
         if payload.get("kind") == "users.by_username":
             return 200, {"user": {"id": 7, "role": "member"}}, 0.01
@@ -224,9 +238,10 @@ def test_snapshot_fixture_cleanup_deletes_only_created_cycle(monkeypatch) -> Non
         return 200, {"deleted": True}, 0.01
 
     monkeypatch.setattr(slo_probe, "_delete_authenticated", fake_delete)
-    assert slo_probe._cleanup_snapshot_cycle(
-        "http://probe", "session=1", 91, "csrf"
-    ) is True
+    assert (
+        slo_probe._cleanup_snapshot_cycle("http://probe", "session=1", 91, "csrf")
+        is True
+    )
     assert captured == {
         "path": "/api/backend/v1/cycles/91",
         "cookie": "session=1",
@@ -263,8 +278,7 @@ def test_login_session_returns_csrf_token_for_mutations(monkeypatch) -> None:
         return _FakeResponse(
             headers={
                 "Set-Cookie": (
-                    "okr_spa_session=session-1; Path=/, "
-                    "okr_csrf_token=csrf-1; Path=/"
+                    "okr_spa_session=session-1; Path=/, okr_csrf_token=csrf-1; Path=/"
                 )
             }
         )

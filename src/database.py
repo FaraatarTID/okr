@@ -436,7 +436,8 @@ def run_migrations():
         except Exception as exc:
             if (
                 upgrade_target == "head"
-                and "Multiple head revisions are present for given argument 'head'" in str(exc)
+                and "Multiple head revisions are present for given argument 'head'"
+                in str(exc)
             ):
                 logger.warning(
                     "Multiple alembic heads detected; falling back to 'heads' upgrade target."

@@ -17,9 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 DEFAULT_TESTS = ("tests/test_postgres_integration_smoke.py",)
 
-_POSTGRES_DEFAULT_URL = (
-    "postgresql+psycopg2://okr:okr_dev_password@127.0.0.1:15432/okr"
-)
+_POSTGRES_DEFAULT_URL = "postgresql+psycopg2://okr:okr_dev_password@127.0.0.1:15432/okr"
 
 
 def _available_port(preferred: int) -> int:
@@ -138,7 +136,11 @@ def _run_postgres_smoke(*, args: argparse.Namespace) -> int:
         started_postgres = True
 
     try:
-        if not _wait_for_tcp("127.0.0.1", selected_port if args.ensure_docker_service else args.postgres_host_port, timeout_seconds=80):
+        if not _wait_for_tcp(
+            "127.0.0.1",
+            selected_port if args.ensure_docker_service else args.postgres_host_port,
+            timeout_seconds=80,
+        ):
             raise RuntimeError(
                 "PostgreSQL service did not become reachable on configured host port."
             )

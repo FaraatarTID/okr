@@ -306,7 +306,7 @@ def _normalize_allowlist_path(path_template: str) -> str:
     if normalized.startswith("/v1/nodes/") and not normalized.startswith(
         "/v1/nodes/{param}"
     ):
-        suffix = normalized[len("/v1/nodes/"):]
+        suffix = normalized[len("/v1/nodes/") :]
         if "/" not in suffix and suffix:
             normalized = "/v1/nodes/{param}"
     return normalized

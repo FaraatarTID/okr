@@ -51,8 +51,10 @@ BACKEND_MODULES = frozenset(
         "src",
     }
 )
-FORBIDDEN_RUNTIME_PACKAGES = DATABASE_PACKAGES | BACKEND_MODULES | frozenset(
-    {"next", "react", "react-dom", "spa-web", "okr-platform-workspace"}
+FORBIDDEN_RUNTIME_PACKAGES = (
+    DATABASE_PACKAGES
+    | BACKEND_MODULES
+    | frozenset({"next", "react", "react-dom", "spa-web", "okr-platform-workspace"})
 )
 OPENAPI_TOOLING_PACKAGES = frozenset({"openapi-typescript"})
 

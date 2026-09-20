@@ -20,9 +20,9 @@ def test_smoke_environment_reaches_pytest_without_losing_activation(
 
     assert pytest_env["TOP10_SMOKE"] == "1"
     assert pytest_env["TOP10_SMOKE_USERNAME"] == "admin"
-    assert pytest_env["TOP10_SMOKE_PASSWORD"] == smoke_env[
-        "OKR_BOOTSTRAP_ADMIN_PASSWORD"
-    ]
+    assert (
+        pytest_env["TOP10_SMOKE_PASSWORD"] == smoke_env["OKR_BOOTSTRAP_ADMIN_PASSWORD"]
+    )
     assert pytest_env["TOP10_SMOKE_BFF_URL"].endswith(service_urls["bff_port"])
     assert pytest_env["TOP10_SMOKE_WEB_URL"].endswith(service_urls["web_port"])
     assert smoke_env["OKR_POSTGRES_PASSWORD"] in smoke_env["OKR_DATABASE_URL"]

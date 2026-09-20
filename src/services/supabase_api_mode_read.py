@@ -77,7 +77,9 @@ def read_query_via_supabase_api(
         code = ""
         if isinstance(snapshot, dict):
             code = str(snapshot.get("code") or "")
-        if status == 404 and (code in {"42883", "PGRST202"} or "does not exist" in detail):
+        if status == 404 and (
+            code in {"42883", "PGRST202"} or "does not exist" in detail
+        ):
             exc = ValueError(
                 f"Supabase API error (ritual.snapshot): function missing "
                 f"(SQLSTATE 42883): {detail}"
@@ -636,9 +638,7 @@ def read_query_via_supabase_api(
 
         selected: list[dict[str, Any]] = []
         kr_ids = [
-            str(_as_int(kr.get("id"), 0))
-            for kr in krs
-            if _as_int(kr.get("id"), 0) > 0
+            str(_as_int(kr.get("id"), 0)) for kr in krs if _as_int(kr.get("id"), 0) > 0
         ]
         latest_checkin_by_kr: dict[int, datetime] = {}
         if kr_ids:

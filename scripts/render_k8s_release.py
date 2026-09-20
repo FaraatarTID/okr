@@ -26,7 +26,9 @@ def _validate_digest(value: str, label: str) -> str:
 def render(*, api_digest: str, worker_digest: str, output_dir: Path) -> None:
     values = {
         "deployment-backend-api.yaml": _validate_digest(api_digest, "api_digest"),
-        "deployment-backend-worker.yaml": _validate_digest(worker_digest, "worker_digest"),
+        "deployment-backend-worker.yaml": _validate_digest(
+            worker_digest, "worker_digest"
+        ),
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     for filename, relative in _SOURCES.items():

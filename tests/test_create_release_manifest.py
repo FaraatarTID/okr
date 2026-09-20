@@ -8,7 +8,9 @@ from scripts.create_release_manifest import build_manifest
 COMMIT = "a" * 40
 
 
-def write_fragments(directory: Path, *, digest: str = "sha256:" + "1" * 64, image_tag: str = COMMIT) -> None:
+def write_fragments(
+    directory: Path, *, digest: str = "sha256:" + "1" * 64, image_tag: str = COMMIT
+) -> None:
     for name in ("web", "bff", "backend"):
         (directory / f"{name}.json").write_text(
             '{"name": "%s", "commit_sha": "%s", "image": "ghcr.io/faraatartid/okr/%s:%s", "digest": "%s"}'
@@ -17,7 +19,9 @@ def write_fragments(directory: Path, *, digest: str = "sha256:" + "1" * 64, imag
         )
 
 
-def test_build_manifest_accepts_complete_digest_pinned_commit_pair(tmp_path: Path) -> None:
+def test_build_manifest_accepts_complete_digest_pinned_commit_pair(
+    tmp_path: Path,
+) -> None:
     write_fragments(tmp_path)
 
     manifest = build_manifest(tmp_path, "FaraatarTID/okr", COMMIT)

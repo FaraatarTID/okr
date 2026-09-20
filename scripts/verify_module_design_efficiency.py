@@ -96,7 +96,10 @@ def _contains_module_imports(tree: ast.AST, expected_prefixes: list[str]) -> boo
                 if any(alias.name.startswith(prefix) for prefix in expected_prefixes):
                     return True
                 if alias.name == "src":
-                    if any(f"src.{alias.name}".startswith(prefix) for prefix in expected_prefixes):
+                    if any(
+                        f"src.{alias.name}".startswith(prefix)
+                        for prefix in expected_prefixes
+                    ):
                         return True
     return False
 
@@ -114,7 +117,11 @@ def _profile_module(path: Path, expected: ModuleSpec) -> ModuleProfile:
 
     module_name = expected["module"]
 
-    defs = [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))]
+    defs = [
+        n
+        for n in tree.body
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    ]
     required_missing: list[str] = []
     high_complexity: list[str] = []
     non_wrapper_required: list[str] = []
@@ -139,7 +146,9 @@ def _profile_module(path: Path, expected: ModuleSpec) -> ModuleProfile:
             module_name=module_name,
             path=path,
             total_defs=len(defs),
-            total_assignments=sum(1 for node in tree.body if isinstance(node, ast.Assign)),
+            total_assignments=sum(
+                1 for node in tree.body if isinstance(node, ast.Assign)
+            ),
             thin_wrapper_count=thin_wrapper_count,
             required_symbol_missing=required_missing,
             non_wrapper_required=non_wrapper_required,
@@ -344,7 +353,9 @@ def run_checks() -> int:
             )
 
         if profile.module_name == "backend_app.main" and profile.thin_wrapper_count < 6:
-            issues.append("backend_app.main: thin-wrapper count unexpectedly low for facade compatibility surface")
+            issues.append(
+                "backend_app.main: thin-wrapper count unexpectedly low for facade compatibility surface"
+            )
 
     if issues:
         for issue in issues:

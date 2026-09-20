@@ -23,42 +23,58 @@ def main() -> int:
     errors: list[str] = []
 
     required_files = [
-        ("docs/OPS_READINESS_AND_RECOVERY_GUIDE.md", [
-            "Retention and Table-Growth Control Policy",
-            "Partitioning Strategy for Growth-Risk Tables",
-            "Backup and Restore Control Surface",
-            "Restore Drill Procedure",
-        ]),
-        ("src/database.py", [
-            "export_database_backup()",
-            "import_database_backup",
-            "BACKUP_FORMAT_VERSION",
-        ]),
-        ("backend_app/jobs.py", [
-            "def prune_terminal_jobs",
-            "def prune_audit_events",
-        ]),
-        ("backend_app/worker.py", [
-            "worker_prune_async_jobs",
-            "worker_prune_audit_events",
-        ]),
-        ("backend_app/config.py", [
-            "OKR_BACKEND_JOB_RETENTION_DAYS",
-            "OKR_BACKEND_AUDIT_RETENTION_DAYS",
-            "OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS",
-            "OKR_BACKEND_JOB_PRUNE_BATCH_SIZE",
-        ]),
-        ("backend_app/routers/platform_routes.py", [
-            "/v1/admin/db-backup",
-            "/v1/admin/db-restore",
-            "OKR_ENABLE_DIRECT_DB_RESTORE",
-        ]),
+        (
+            "docs/OPS_READINESS_AND_RECOVERY_GUIDE.md",
+            [
+                "Retention and Table-Growth Control Policy",
+                "Partitioning Strategy for Growth-Risk Tables",
+                "Backup and Restore Control Surface",
+                "Restore Drill Procedure",
+            ],
+        ),
+        (
+            "src/database.py",
+            [
+                "export_database_backup()",
+                "import_database_backup",
+                "BACKUP_FORMAT_VERSION",
+            ],
+        ),
+        (
+            "backend_app/jobs.py",
+            [
+                "def prune_terminal_jobs",
+                "def prune_audit_events",
+            ],
+        ),
+        (
+            "backend_app/worker.py",
+            [
+                "worker_prune_async_jobs",
+                "worker_prune_audit_events",
+            ],
+        ),
+        (
+            "backend_app/config.py",
+            [
+                "OKR_BACKEND_JOB_RETENTION_DAYS",
+                "OKR_BACKEND_AUDIT_RETENTION_DAYS",
+                "OKR_BACKEND_JOB_PRUNE_INTERVAL_SECONDS",
+                "OKR_BACKEND_JOB_PRUNE_BATCH_SIZE",
+            ],
+        ),
+        (
+            "backend_app/routers/platform_routes.py",
+            [
+                "/v1/admin/db-backup",
+                "/v1/admin/db-restore",
+                "OKR_ENABLE_DIRECT_DB_RESTORE",
+            ],
+        ),
     ]
 
     for rel, markers in required_files:
-        errors.extend(
-            _validate_file(Path(rel), markers, rel.replace("\\", "/"))
-        )
+        errors.extend(_validate_file(Path(rel), markers, rel.replace("\\", "/")))
 
     migration = Path("alembic/versions/bc1d2e3f4a5b_ops01_growth_table_indexes.py")
     if migration.exists():
@@ -70,9 +86,7 @@ def main() -> int:
             "audit_event",
             "create_index",
         ]
-        errors.extend(
-            _validate_file(migration, migration_checks, migration.as_posix())
-        )
+        errors.extend(_validate_file(migration, migration_checks, migration.as_posix()))
     else:
         # Post-squash: the growth indexes live in the baseline schema. Verify
         # the baseline exists and carries the index contract instead.

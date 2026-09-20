@@ -53,9 +53,9 @@ def get_node_from_crud(
                     # Eager-load the full parent chain so analysis code can
                     # traverse node.objective.goal.cycle after the session
                     # closes (avoids DetachedInstanceError).
-                    crud_module.selectinload(crud_module.KeyResult.objective).selectinload(
-                        crud_module.Objective.goal
-                    ).selectinload(crud_module.Goal.cycle),
+                    crud_module.selectinload(crud_module.KeyResult.objective)
+                    .selectinload(crud_module.Objective.goal)
+                    .selectinload(crud_module.Goal.cycle),
                 )
             )
             node = session.exec(statement).first()

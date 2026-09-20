@@ -42,7 +42,10 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
         _check(
             "migration-lint-operation",
             bool(migration)
-            and all(marker in migration for marker in ("--require-baseline", "main(", "_validate_linear_chain"))
+            and all(
+                marker in migration
+                for marker in ("--require-baseline", "main(", "_validate_linear_chain")
+            )
             and (
                 "uv run alembic upgrade head" in ci
                 or "verify_migration_sequence.py" in ci
@@ -52,21 +55,37 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
         _check(
             "environment-lifecycle-operation",
             bool(lifecycle)
-            and all(marker in lifecycle for marker in ("provision", "suspend", "retire", "Provisioner")),
+            and all(
+                marker in lifecycle
+                for marker in ("provision", "suspend", "retire", "Provisioner")
+            ),
             "Environment provisioning, suspension, and retirement are explicit operator commands.",
         ),
         _check(
             "release-deploy-and-rollback-operation",
             bool(release)
-            and all(marker in release for marker in ("choices=(\"deploy\", \"rollback\", \"compose-env\")", "ReleaseManager", ".rollback(")),
+            and all(
+                marker in release
+                for marker in (
+                    'choices=("deploy", "rollback", "compose-env")',
+                    "ReleaseManager",
+                    ".rollback(",
+                )
+            ),
             "Release deployment and rollback consume explicit artifact descriptors and environment state.",
         ),
         _check(
             "backup-and-restore-boundary",
             bool(backup)
             and bool(restore)
-            and all(marker in backup for marker in ("--test-only", "select_backup_provider", "BackupManager"))
-            and all(marker in restore for marker in ("--isolated-target", "--test-only", "RestoreManager")),
+            and all(
+                marker in backup
+                for marker in ("--test-only", "select_backup_provider", "BackupManager")
+            )
+            and all(
+                marker in restore
+                for marker in ("--isolated-target", "--test-only", "RestoreManager")
+            ),
             "Backup/restore commands require explicit provider selection and isolated restore targets.",
         ),
         _check(
@@ -74,15 +93,33 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
             bool(rollback_evidence)
             and bool(recovery_evidence)
             and bool(phase1_evidence)
-            and all(marker in rollback_evidence for marker in ("verify_rollback_manifest", "signed Cosign references", "_verify_attestation", "synthetic"))
-            and all(marker in recovery_evidence for marker in ("checksum", "isolated", "_verify_attestation", "failed evidence is not verifiable"))
+            and all(
+                marker in rollback_evidence
+                for marker in (
+                    "verify_rollback_manifest",
+                    "signed Cosign references",
+                    "_verify_attestation",
+                    "synthetic",
+                )
+            )
+            and all(
+                marker in recovery_evidence
+                for marker in (
+                    "checksum",
+                    "isolated",
+                    "_verify_attestation",
+                    "failed evidence is not verifiable",
+                )
+            )
             and "signature" in phase1_evidence,
             "Rollback and recovery evidence require successful, bound attestations and reject synthetic inputs.",
         ),
     ]
     return {
         "schema_version": "admin-process-contract-v1",
-        "status": "PASS" if all(item["status"] == "PASS" for item in checks) else "FAIL",
+        "status": "PASS"
+        if all(item["status"] == "PASS" for item in checks)
+        else "FAIL",
         "checks": checks,
         "provider_recovery": "PENDING",
         "provider_pending": [
@@ -94,7 +131,11 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--json", action="store_true", help="Emit JSON instead of human-readable evidence.")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit JSON instead of human-readable evidence.",
+    )
     args = parser.parse_args(argv)
     report = build_report()
     if args.json:
@@ -103,7 +144,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Admin process contract: {report['status']}")
         for item in report["checks"]:
             print(f"[{item['status']}] {item['name']}: {item['detail']}")
-        print("[PENDING] provider_recovery: provider evidence is pending and was not fabricated.")
+        print(
+            "[PENDING] provider_recovery: provider evidence is pending and was not fabricated."
+        )
         for item in report["provider_pending"]:
             print(f"- {item}")
     return 0 if report["status"] == "PASS" else 1

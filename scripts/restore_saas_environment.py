@@ -24,7 +24,9 @@ from src.saas.operator_credentials import resolve_operator_principal
 def _add_common_arguments(command: argparse.ArgumentParser) -> None:
     command.add_argument("--environment-id", required=True)
     command.add_argument("--isolated-target", required=True)
-    command.add_argument("--state-file", type=Path, default=Path("tmp/saas-backups.json"))
+    command.add_argument(
+        "--state-file", type=Path, default=Path("tmp/saas-backups.json")
+    )
     command.add_argument("--credential-file", type=Path)
     command.add_argument("--test-only", action="store_true")
     command.add_argument(
@@ -42,7 +44,9 @@ def main(argv: list[str] | None = None) -> int:
         help="register an isolated restore target so a restore can target it",
     )
     _add_common_arguments(register)
-    restore = sub.add_parser("restore", help="restore a backup into a registered isolated target")
+    restore = sub.add_parser(
+        "restore", help="restore a backup into a registered isolated target"
+    )
     restore.add_argument("--backup-id", required=True)
     _add_common_arguments(restore)
     args = parser.parse_args(argv)
@@ -50,7 +54,9 @@ def main(argv: list[str] | None = None) -> int:
     # Resolving the operator first keeps both actions authenticated and fails
     # closed before any provider or state mutation.
     operator = resolve_operator_principal(credential_file=args.credential_file)
-    provider = select_backup_provider(test_only=args.test_only, state_path=args.state_file)
+    provider = select_backup_provider(
+        test_only=args.test_only, state_path=args.state_file
+    )
     target = RestoreTarget(args.environment_id, args.isolated_target)
 
     if args.action == "register-target":

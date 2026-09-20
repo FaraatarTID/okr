@@ -33,11 +33,17 @@ def main(argv: list[str] | None = None) -> int:
         operation_parser.add_argument(
             "--state-file", type=Path, default=Path("tmp/saas-environments.json")
         )
-        operation_parser.add_argument("--control-plane-state-file", type=Path, default=Path("tmp/saas-control-plane.json"))
+        operation_parser.add_argument(
+            "--control-plane-state-file",
+            type=Path,
+            default=Path("tmp/saas-control-plane.json"),
+        )
     args = parser.parse_args(argv)
     operator = resolve_operator_principal(credential_file=args.credential_file)
     provider = LocalDisposableEnvironmentProvider(args.state_file)
-    provisioner = Provisioner(provider, operator=operator).with_control_plane(ControlPlane(state_path=args.control_plane_state_file))
+    provisioner = Provisioner(provider, operator=operator).with_control_plane(
+        ControlPlane(state_path=args.control_plane_state_file)
+    )
 
     if args.operation == "provision":
         manifest = EnvironmentManifest.model_validate_json(

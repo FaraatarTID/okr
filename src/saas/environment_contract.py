@@ -8,7 +8,14 @@ from enum import StrEnum
 import re
 from typing import ClassVar, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 class DeploymentProfile(StrEnum):
@@ -17,14 +24,18 @@ class DeploymentProfile(StrEnum):
     CONTROL_PLANE = "control_plane"
 
 
-def normalize_deployment_profile(value: str, *, allow_legacy_alias: bool = False) -> DeploymentProfile:
+def normalize_deployment_profile(
+    value: str, *, allow_legacy_alias: bool = False
+) -> DeploymentProfile:
     normalized = str(value or "").strip().lower()
     if allow_legacy_alias and normalized == "self_hosted":
         normalized = DeploymentProfile.ON_PREMISE.value
     try:
         return DeploymentProfile(normalized)
     except ValueError as exc:
-        raise ValueError("deployment profile must be on_premise, single_tenant_saas, or control_plane") from exc
+        raise ValueError(
+            "deployment profile must be on_premise, single_tenant_saas, or control_plane"
+        ) from exc
 
 
 class EnvironmentState(StrEnum):
@@ -113,16 +124,22 @@ class EnvironmentManifest(BaseModel):
             return None
         value = value.strip()
         if not value or "://" in value or "@" in value or "?" in value or "#" in value:
-            raise ValueError("database_resource_id must be an opaque resource identifier, not a credential-bearing URL")
+            raise ValueError(
+                "database_resource_id must be an opaque resource identifier, not a credential-bearing URL"
+            )
         if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}", value):
-            raise ValueError("database_resource_id must be an opaque resource identifier")
+            raise ValueError(
+                "database_resource_id must be an opaque resource identifier"
+            )
         return value
 
     @model_validator(mode="after")
     def validate_profile_boundary(self) -> "EnvironmentManifest":
         if self.deployment_profile is DeploymentProfile.SINGLE_TENANT_SAAS:
             if not self.database_resource_id:
-                raise ValueError("single_tenant_saas requires a dedicated database target/resource id")
+                raise ValueError(
+                    "single_tenant_saas requires a dedicated database target/resource id"
+                )
         if (
             self.deployment_profile is DeploymentProfile.ON_PREMISE
             and self.control_plane_owner is not None
@@ -145,21 +162,39 @@ class EnvironmentManifest(BaseModel):
 
 # Explicit legal transition table.  Missing entries are illegal transitions.
 LEGAL_TRANSITIONS: dict[tuple[EnvironmentState, EnvironmentEvent], EnvironmentState] = {
-    (EnvironmentState.PROVISIONING, EnvironmentEvent.COMPLETE_PROVISIONING): EnvironmentState.READY,
-    (EnvironmentState.PROVISIONING, EnvironmentEvent.MARK_DEGRADED): EnvironmentState.DEGRADED,
+    (
+        EnvironmentState.PROVISIONING,
+        EnvironmentEvent.COMPLETE_PROVISIONING,
+    ): EnvironmentState.READY,
+    (
+        EnvironmentState.PROVISIONING,
+        EnvironmentEvent.MARK_DEGRADED,
+    ): EnvironmentState.DEGRADED,
     (EnvironmentState.PROVISIONING, EnvironmentEvent.RETIRE): EnvironmentState.RETIRED,
     (EnvironmentState.READY, EnvironmentEvent.SUSPEND): EnvironmentState.SUSPENDED,
-    (EnvironmentState.READY, EnvironmentEvent.BEGIN_UPGRADE): EnvironmentState.UPGRADING,
+    (
+        EnvironmentState.READY,
+        EnvironmentEvent.BEGIN_UPGRADE,
+    ): EnvironmentState.UPGRADING,
     (EnvironmentState.READY, EnvironmentEvent.MARK_DEGRADED): EnvironmentState.DEGRADED,
     (EnvironmentState.READY, EnvironmentEvent.RETIRE): EnvironmentState.RETIRED,
     (EnvironmentState.SUSPENDED, EnvironmentEvent.ACTIVATE): EnvironmentState.READY,
     (EnvironmentState.SUSPENDED, EnvironmentEvent.RETIRE): EnvironmentState.RETIRED,
-    (EnvironmentState.UPGRADING, EnvironmentEvent.COMPLETE_UPGRADE): EnvironmentState.READY,
-    (EnvironmentState.UPGRADING, EnvironmentEvent.MARK_DEGRADED): EnvironmentState.DEGRADED,
+    (
+        EnvironmentState.UPGRADING,
+        EnvironmentEvent.COMPLETE_UPGRADE,
+    ): EnvironmentState.READY,
+    (
+        EnvironmentState.UPGRADING,
+        EnvironmentEvent.MARK_DEGRADED,
+    ): EnvironmentState.DEGRADED,
     (EnvironmentState.UPGRADING, EnvironmentEvent.RETIRE): EnvironmentState.RETIRED,
     (EnvironmentState.DEGRADED, EnvironmentEvent.RECOVER): EnvironmentState.READY,
     (EnvironmentState.DEGRADED, EnvironmentEvent.SUSPEND): EnvironmentState.SUSPENDED,
-    (EnvironmentState.DEGRADED, EnvironmentEvent.BEGIN_UPGRADE): EnvironmentState.UPGRADING,
+    (
+        EnvironmentState.DEGRADED,
+        EnvironmentEvent.BEGIN_UPGRADE,
+    ): EnvironmentState.UPGRADING,
     (EnvironmentState.DEGRADED, EnvironmentEvent.RETIRE): EnvironmentState.RETIRED,
 }
 

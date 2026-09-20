@@ -203,7 +203,8 @@ def test_deactivate_does_not_touch_other_cycles(
     )
     # No bulk-deactivation update should have been issued.
     assert all(
-        match != {"is_active": "eq.true"} for match, _payload in two_active_cycles.updates
+        match != {"is_active": "eq.true"}
+        for match, _payload in two_active_cycles.updates
     )
 
 
@@ -215,7 +216,9 @@ def test_create_cycle_with_is_active_deactivates_existing(
 
     captured: dict[str, Any] = {}
 
-    def fake_request(method, path, *, query=None, body=None, prefer_representation=False):
+    def fake_request(
+        method, path, *, query=None, body=None, prefer_representation=False
+    ):
         captured["body"] = body
         return 201, [dict(body or {}, id=3)]
 

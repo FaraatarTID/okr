@@ -8,7 +8,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from scripts.verify_rollback_evidence import RollbackEvidenceError, verify_rollback_manifest
+from scripts.verify_rollback_evidence import (
+    RollbackEvidenceError,
+    verify_rollback_manifest,
+)
 
 
 class ReleasePairError(ValueError):
@@ -40,7 +43,9 @@ def verify_release_pair(
     if new_commit == old_commit:
         raise ReleasePairError("new and old manifests must have different commit SHAs")
     if new_result["images"] != old_result["images"]:
-        raise ReleasePairError("new and old manifests must contain the same artifact set")
+        raise ReleasePairError(
+            "new and old manifests must contain the same artifact set"
+        )
 
     return {
         "schema_version": 1,
@@ -71,7 +76,10 @@ def main(argv: list[str] | None = None) -> int:
         args.output.write_text(rendered, encoding="utf-8", newline="\n")
     else:
         print(rendered, end="")
-    print("[RELEASE-PAIR] distinct immutable release pair verified; no deployment performed", file=sys.stderr)
+    print(
+        "[RELEASE-PAIR] distinct immutable release pair verified; no deployment performed",
+        file=sys.stderr,
+    )
     return 0
 
 

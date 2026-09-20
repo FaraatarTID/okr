@@ -99,7 +99,11 @@ def test_deploy_and_restore_are_usable_subprocess_entry_points() -> None:
     assert "deploy" in deploy.stdout and "rollback" in deploy.stdout
 
     restore = subprocess.run(
-        [sys.executable, str(SCRIPT_DIRECTORY / "restore_saas_environment.py"), "--help"],
+        [
+            sys.executable,
+            str(SCRIPT_DIRECTORY / "restore_saas_environment.py"),
+            "--help",
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -256,9 +260,12 @@ def test_backup_restore_cli_round_trip_through_target_registration() -> None:
         assert outcome["verified"] is True
 
         # The control plane must have recorded the restore against the environment.
-        assert ControlPlane(state_path=control_plane_state_file).get_environment(
-            "env-a"
-        ).backup_state == "restore-tested"
+        assert (
+            ControlPlane(state_path=control_plane_state_file)
+            .get_environment("env-a")
+            .backup_state
+            == "restore-tested"
+        )
 
         # An unsafe target is rejected and must not be persisted.
         for unsafe_target in ("customer-prod-db", "live-db", "production"):

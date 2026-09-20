@@ -55,7 +55,10 @@ def test_release_workflows_use_supported_cosign_installer_line() -> None:
     )
     for name in release_workflows:
         workflow = (root / "workflows" / name).read_text(encoding="utf-8")
-        assert "uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2" in workflow
+        assert (
+            "uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2"
+            in workflow
+        )
         assert "curl-retries: 10" in workflow
         assert "run: cosign version" in workflow
         assert "sigstore/cosign-installer@v3." not in workflow
@@ -65,7 +68,10 @@ def test_cosign_health_workflow_exercises_the_same_installer_contract() -> None:
     root = WORKFLOW.parents[1]
     workflow = (root / "workflows" / "cosign-health.yml").read_text(encoding="utf-8")
     assert "schedule:" in workflow
-    assert "uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2" in workflow
+    assert (
+        "uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2"
+        in workflow
+    )
     assert "curl-retries: 10" in workflow
     assert "cosign version" in workflow
 

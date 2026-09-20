@@ -9,7 +9,9 @@ from scripts.migrate_tenant_databases import (
 
 
 def _target(environment_id: str) -> TenantTarget:
-    return TenantTarget(environment_id=environment_id, database_resource_id=f"db:{environment_id}")
+    return TenantTarget(
+        environment_id=environment_id, database_resource_id=f"db:{environment_id}"
+    )
 
 
 def test_no_tenants_is_success_with_empty_report() -> None:
@@ -49,11 +51,20 @@ def test_failed_tenant_marks_release_incomplete_and_rerun_is_safe() -> None:
             return None, "boom"
         return "head", None
 
-    failing = migrate_tenants([_target("env-a")], url_resolver={"db:env-a": "sqlite:///a.db"}, runner=flaky, max_retries=0)
+    failing = migrate_tenants(
+        [_target("env-a")],
+        url_resolver={"db:env-a": "sqlite:///a.db"},
+        runner=flaky,
+        max_retries=0,
+    )
     assert not failing.ok
     assert failing.failed[0].error == "boom"
 
-    recovered = migrate_tenants([_target("env-a")], url_resolver={"db:env-a": "sqlite:///a.db"}, runner=lambda target, url: ("head", None))
+    recovered = migrate_tenants(
+        [_target("env-a")],
+        url_resolver={"db:env-a": "sqlite:///a.db"},
+        runner=lambda target, url: ("head", None),
+    )
     assert recovered.ok
 
 
@@ -101,7 +112,13 @@ def test_dry_run_without_inventory_uses_empty_report(monkeypatch, tmp_path) -> N
     import scripts.migrate_tenant_databases as migration
 
     missing = tmp_path / "missing.json"
-    monkeypatch.setattr(migration, "Path", lambda value: missing if value == "tmp/saas-environments.json" else __import__("pathlib").Path(value))
+    monkeypatch.setattr(
+        migration,
+        "Path",
+        lambda value: missing
+        if value == "tmp/saas-environments.json"
+        else __import__("pathlib").Path(value),
+    )
     report = migration.migrate_tenants([], dry_run=True)
     assert report.ok is True
     assert report.results == []
@@ -112,10 +129,12 @@ def test_dry_run_without_inventory_uses_empty_report(monkeypatch, tmp_path) -> N
 def test_current_revision_failure_is_reported(monkeypatch) -> None:
     from types import SimpleNamespace
 
-    responses = iter([
-        SimpleNamespace(returncode=0, stdout="", stderr=""),
-        SimpleNamespace(returncode=1, stdout="", stderr="database unavailable"),
-    ])
+    responses = iter(
+        [
+            SimpleNamespace(returncode=0, stdout="", stderr=""),
+            SimpleNamespace(returncode=1, stdout="", stderr="database unavailable"),
+        ]
+    )
     monkeypatch.setattr(
         "scripts.migrate_tenant_databases.subprocess.run",
         lambda *args, **kwargs: next(responses),
@@ -136,7 +155,9 @@ def test_retry_succeeds_after_transient_failure() -> None:
             return None, "transient"
         return "head", None
 
-    report = migrate_tenants([_target("env-a")], url_resolver={"db:env-a": "u"}, runner=runner, max_retries=1)
+    report = migrate_tenants(
+        [_target("env-a")], url_resolver={"db:env-a": "u"}, runner=runner, max_retries=1
+    )
     assert report.ok
     assert report.results[0].attempts == 2
 
@@ -161,5 +182,7 @@ def test_inventory_lists_provisioned_tenants(tmp_path) -> None:
         )
     targets = list_tenant_targets(provisioning_state_file=state_file)
     assert [item.environment_id for item in targets] == ["env-a", "env-b"]
-    filtered = list_tenant_targets(provisioning_state_file=state_file, tenants=["env-b"])
+    filtered = list_tenant_targets(
+        provisioning_state_file=state_file, tenants=["env-b"]
+    )
     assert [item.environment_id for item in filtered] == ["env-b"]

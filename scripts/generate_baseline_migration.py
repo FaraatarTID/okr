@@ -71,7 +71,7 @@ def downgrade() -> None:
         op.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
 '''
 
-_RLS_EXCLUDED_BLOCK = '''
+_RLS_EXCLUDED_BLOCK = """
 
 _RLS_EXCLUDED = {
     "alembic_version",
@@ -88,7 +88,7 @@ _RLS_EXCLUDED = {
     "sso_providers",
     "sso_domains",
     "keys",
-}'''
+}"""
 
 
 def main() -> int:
@@ -99,10 +99,20 @@ def main() -> int:
     pg = postgresql.dialect()
 
     rls_excluded = {  # noqa: F841
-        "alembic_version", "spa_users", "audit_log_entries", "identities",
-        "sessions", "mfa_factors", "mfa_challenges", "mfa_amr_claims",
-        "refresh_tokens", "schema_migrations", "flow_state", "sso_providers",
-        "sso_domains", "keys",
+        "alembic_version",
+        "spa_users",
+        "audit_log_entries",
+        "identities",
+        "sessions",
+        "mfa_factors",
+        "mfa_challenges",
+        "mfa_amr_claims",
+        "refresh_tokens",
+        "schema_migrations",
+        "flow_state",
+        "sso_providers",
+        "sso_domains",
+        "keys",
     }
 
     table_names = []
@@ -122,7 +132,7 @@ def main() -> int:
     body = "".join(ddl_blocks)
     rls_block = (
         "\n    # Row Level Security on user-data tables (Supabase hardening).\n"
-        '    user_tables = [t for t in _all_tables() if t not in _RLS_EXCLUDED]\n'
+        "    user_tables = [t for t in _all_tables() if t not in _RLS_EXCLUDED]\n"
         "    for table in user_tables:\n"
         '        op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")\n'
     )
@@ -136,16 +146,16 @@ def main() -> int:
         "    try:\n"
         "        return set(inspector.get_table_names())\n"
         "    except Exception:\n"
-        "        return []\n"
-        + _RLS_EXCLUDED_BLOCK
-        + "\n"
+        "        return []\n" + _RLS_EXCLUDED_BLOCK + "\n"
     )
     marker = "depends_on: Union[str, Sequence[str], None] = None\n"
     content = content.replace(marker, marker + helpers, 1)
     # Replace the inline RLS loop with helper-based one.
-    content = content.replace(rls_block, rls_block.replace("_all_tables()", "_all_tables()"))
     content = content.replace(
-        'for table in [t for t in _table_names() if t not in _RLS_EXCLUDED]:',
+        rls_block, rls_block.replace("_all_tables()", "_all_tables()")
+    )
+    content = content.replace(
+        "for table in [t for t in _table_names() if t not in _RLS_EXCLUDED]:",
         "for table in sorted(_all_tables() - _RLS_EXCLUDED):",
     )
     OUT.write_text(content, encoding="utf-8")

@@ -63,13 +63,42 @@ def test_review_validates_linked_category_artifacts(tmp_path) -> None:
         review["evidence"][category]["artifact"] = f"evidence/{category}.json"
     review["evidence"]["resource_overhead"]["artifact"] = "evidence/comparison.json"
     (artifact_dir / "security_parity.json").write_text(
-        json.dumps({"schema_version": 1, "release_id": "release-a", "captured_at": "2026-01-01T00:00:00Z", "operator": "operator", "topology": "bff", "controls": []}), encoding="utf-8"
+        json.dumps(
+            {
+                "schema_version": 1,
+                "release_id": "release-a",
+                "captured_at": "2026-01-01T00:00:00Z",
+                "operator": "operator",
+                "topology": "bff",
+                "controls": [],
+            }
+        ),
+        encoding="utf-8",
     )
     (artifact_dir / "failure_isolation.json").write_text(
-        json.dumps({"schema_version": 1, "release_id": "release-a", "captured_at": "2026-01-01T00:00:00Z", "operator": "operator", "topology": "bff", "scenarios": []}), encoding="utf-8"
+        json.dumps(
+            {
+                "schema_version": 1,
+                "release_id": "release-a",
+                "captured_at": "2026-01-01T00:00:00Z",
+                "operator": "operator",
+                "topology": "bff",
+                "scenarios": [],
+            }
+        ),
+        encoding="utf-8",
     )
     (artifact_dir / "rollback_rehearsal.json").write_text(
-        json.dumps({"schema_version": 1, "release_id": "release-a", "captured_at": "2026-01-01T00:00:00Z", "operator": "operator", "topology": "bff"}), encoding="utf-8"
+        json.dumps(
+            {
+                "schema_version": 1,
+                "release_id": "release-a",
+                "captured_at": "2026-01-01T00:00:00Z",
+                "operator": "operator",
+                "topology": "bff",
+            }
+        ),
+        encoding="utf-8",
     )
     (artifact_dir / "comparison.json").write_text(
         json.dumps(
@@ -169,7 +198,7 @@ def test_complete_review_and_specialized_artifacts_pass(tmp_path) -> None:
                         "baseline_sample_count": 1,
                         "candidate_sample_count": 1,
                     }
-                ]
+                ],
             }
         ),
         encoding="utf-8",
@@ -209,11 +238,30 @@ def test_review_rejects_malformed_resource_comparison(tmp_path) -> None:
     for category in review["evidence"]:
         review["evidence"][category]["artifact"] = f"evidence/{category}.json"
         (artifact_dir / f"{category}.json").write_text(
-            json.dumps({"schema_version": 1, "release_id": "release-a", "captured_at": "2026-01-01T00:00:00Z", "operator": "operator", "topology": "bff"}),
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "release_id": "release-a",
+                    "captured_at": "2026-01-01T00:00:00Z",
+                    "operator": "operator",
+                    "topology": "bff",
+                }
+            ),
             encoding="utf-8",
         )
     (artifact_dir / "resource_overhead.json").write_text(
-            json.dumps({"schema_version": 1, "release_id": "release-a", "captured_at": "2026-01-01T00:00:00Z", "operator": "operator", "topology": "comparison", "resource_comparisons": [{"container": "bff-1", "cpu_delta_percent": "1.0"}]}),
+        json.dumps(
+            {
+                "schema_version": 1,
+                "release_id": "release-a",
+                "captured_at": "2026-01-01T00:00:00Z",
+                "operator": "operator",
+                "topology": "comparison",
+                "resource_comparisons": [
+                    {"container": "bff-1", "cpu_delta_percent": "1.0"}
+                ],
+            }
+        ),
         encoding="utf-8",
     )
 
@@ -230,9 +278,12 @@ def test_review_rejects_artifact_from_another_release(tmp_path) -> None:
     for category in review["evidence"]:
         review["evidence"][category]["artifact"] = f"evidence/{category}.json"
         (artifact_dir / f"{category}.json").write_text(
-            json.dumps({"schema_version": 1, "release_id": "release-b"}), encoding="utf-8"
+            json.dumps({"schema_version": 1, "release_id": "release-b"}),
+            encoding="utf-8",
         )
 
     errors = validate_review(review, base_dir=tmp_path)
 
-    assert "evidence.security_parity.artifact release_id must match the review" in errors
+    assert (
+        "evidence.security_parity.artifact release_id must match the review" in errors
+    )

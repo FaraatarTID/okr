@@ -44,7 +44,10 @@ def validate_security_parity(
         seen.add(name)
         if control.get("status") != "passed":
             errors.append(f"control {name} status must be passed")
-        if not isinstance(control.get("observed"), str) or not control["observed"].strip():
+        if (
+            not isinstance(control.get("observed"), str)
+            or not control["observed"].strip()
+        ):
             errors.append(f"control {name} observed result is required")
         artifact = control.get("artifact")
         if not isinstance(artifact, str) or not artifact.strip():
@@ -52,7 +55,9 @@ def validate_security_parity(
         elif base_dir is not None:
             path = Path(artifact)
             if path.is_absolute() or ".." in path.parts:
-                errors.append(f"control {name} artifact must stay below the evidence directory")
+                errors.append(
+                    f"control {name} artifact must stay below the evidence directory"
+                )
             elif not (base_dir / path).is_file():
                 errors.append(f"control {name} artifact does not exist: {path}")
     for missing in sorted(REQUIRED_CONTROLS - seen):

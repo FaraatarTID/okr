@@ -40,8 +40,17 @@ class MinimalProviderWithoutStatus:
             self.persisted_status = data["status"]
 
     def create_backup(self, environment_id, retention_class):
-        payload = {"backup_id": "minimal-backup-1", "environment_id": environment_id, "created_at": "2026-09-01T00:00:00+00:00"}
-        record = {**payload, "provider": self.provider_name, "checksum": checksum_for_payload(payload), "retention_class": retention_class}
+        payload = {
+            "backup_id": "minimal-backup-1",
+            "environment_id": environment_id,
+            "created_at": "2026-09-01T00:00:00+00:00",
+        }
+        record = {
+            **payload,
+            "provider": self.provider_name,
+            "checksum": checksum_for_payload(payload),
+            "retention_class": retention_class,
+        }
         self.backups[record["backup_id"]] = record
         return record
 
@@ -53,7 +62,11 @@ class MinimalProviderWithoutStatus:
 
     def record_status(self, backup_id, status):
         self.persisted_status[backup_id] = dict(status)
-        self.state_path.write_text(__import__("json").dumps({"backups": self.backups, "status": self.persisted_status}))
+        self.state_path.write_text(
+            __import__("json").dumps(
+                {"backups": self.backups, "status": self.persisted_status}
+            )
+        )
 
 
 def test_backup_record_requires_provider_identifier_and_checksum() -> None:
@@ -104,7 +117,9 @@ def test_local_provider_requires_explicit_test_selection() -> None:
 
 def test_backup_creation_rejects_provider_identity_mismatch() -> None:
     provider = LocalBackupProvider()
-    manager = BackupManager(provider, operator=OperatorCredential.for_test("operator-a"))
+    manager = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    )
 
     original_create = provider.create_backup
 
@@ -120,16 +135,22 @@ def test_backup_creation_rejects_provider_identity_mismatch() -> None:
 
 def test_backup_verification_rejects_provider_identity_mismatch() -> None:
     provider = LocalBackupProvider()
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
     provider._backups[record.backup_id]["provider"] = "other-provider"
 
     with pytest.raises(ProviderContractError, match="provider identity"):
-        BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).verify(record.backup_id)
+        BackupManager(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).verify(record.backup_id)
 
 
 def test_backup_verification_rejects_manifest_identity_mismatch() -> None:
     provider = LocalBackupProvider()
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
     provider._backups[record.backup_id]["manifest"] = {
         "backup_id": record.backup_id,
         "environment_id": "env-b",
@@ -137,7 +158,9 @@ def test_backup_verification_rejects_manifest_identity_mismatch() -> None:
     }
 
     with pytest.raises(ProviderContractError, match="manifest identity"):
-        BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).verify(record.backup_id)
+        BackupManager(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).verify(record.backup_id)
 
 
 def test_production_manager_rejects_test_only_provider() -> None:
@@ -151,7 +174,9 @@ def test_production_manager_rejects_test_only_provider() -> None:
 
 def test_restore_rejects_restore_provider_identity_mismatch() -> None:
     provider = LocalBackupProvider()
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
     provider.register_target(RestoreTarget("env-a", "rehearsal-db-1"))
 
     class WrongProvider:
@@ -170,7 +195,11 @@ def test_restore_rejects_restore_provider_identity_mismatch() -> None:
 
 def test_verify_rejects_stale_backup() -> None:
     provider = LocalBackupProvider(clock=lambda: datetime(2026, 9, 1, tzinfo=UTC))
-    manager = BackupManager(provider, operator=OperatorCredential.for_test("operator-a"), max_age=timedelta(hours=1))
+    manager = BackupManager(
+        provider,
+        operator=OperatorCredential.for_test("operator-a"),
+        max_age=timedelta(hours=1),
+    )
     record = manager.create("env-a")
     provider.set_now(datetime(2026, 9, 1, 2, 0, 1, tzinfo=UTC))
 
@@ -185,7 +214,9 @@ def test_verify_rejects_stale_backup() -> None:
 def test_verify_rejects_checksum_mismatch() -> None:
     state_path = ".test-artifacts/backup-checksum-failure.json"
     provider = LocalBackupProvider(state_path)
-    manager = BackupManager(provider, operator=OperatorCredential.for_test("operator-a"))
+    manager = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    )
     record = manager.create("env-a")
     provider._backups[record.backup_id]["checksum"] = "sha256:" + "0" * 64
 
@@ -202,15 +233,34 @@ def test_verify_rejects_checksum_mismatch() -> None:
 
 def test_failed_backup_verification_degrades_control_plane_metadata(tmp_path) -> None:
     from src.saas.control_plane import ControlPlane, EnvironmentSummary
+
     control_plane = ControlPlane(
-        [EnvironmentSummary("env-a", "customer-a", "single_tenant_saas", "release-1", "READY", backup_state="verified", backup_verified=True)],
+        [
+            EnvironmentSummary(
+                "env-a",
+                "customer-a",
+                "single_tenant_saas",
+                "release-1",
+                "READY",
+                backup_state="verified",
+                backup_verified=True,
+            )
+        ],
         state_path=tmp_path / "control-plane.json",
     )
     provider = LocalBackupProvider()
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a"), control_plane=control_plane).create("env-a")
+    record = BackupManager(
+        provider,
+        operator=OperatorCredential.for_test("operator-a"),
+        control_plane=control_plane,
+    ).create("env-a")
     provider._backups[record.backup_id]["checksum"] = "sha256:" + "0" * 64
     with pytest.raises(BackupVerificationError):
-        BackupManager(provider, operator=OperatorCredential.for_test("operator-a"), control_plane=control_plane).verify(record.backup_id)
+        BackupManager(
+            provider,
+            operator=OperatorCredential.for_test("operator-a"),
+            control_plane=control_plane,
+        ).verify(record.backup_id)
     summary = control_plane.get_environment("env-a")
     assert summary.backup_state == "failed"
     assert summary.backup_verified is False
@@ -226,7 +276,10 @@ def test_backup_status_persists_success_freshness_and_retention(tmp_path) -> Non
         rpo_seconds=900,
         rto_seconds=1800,
     ).create("env-a")
-    BackupManager(LocalBackupProvider(state_path), operator=OperatorCredential.for_test("operator-a")).verify(record.backup_id)
+    BackupManager(
+        LocalBackupProvider(state_path),
+        operator=OperatorCredential.for_test("operator-a"),
+    ).verify(record.backup_id)
 
     persisted = LocalBackupProvider(state_path)
     status = persisted.status[record.backup_id]
@@ -275,12 +328,16 @@ def test_create_provider_failure_persists_complete_failed_status(tmp_path) -> No
 def test_verify_provider_failure_persists_failed_status_across_reload(tmp_path) -> None:
     state_path = tmp_path / "backups.json"
     provider = LocalBackupProvider(state_path)
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
     reloaded_provider = LocalBackupProvider(state_path)
     reloaded_provider.fail_verify = True
 
     with pytest.raises(RuntimeError, match="verification failed"):
-        BackupManager(reloaded_provider, operator=OperatorCredential.for_test("operator-a")).verify(record.backup_id)
+        BackupManager(
+            reloaded_provider, operator=OperatorCredential.for_test("operator-a")
+        ).verify(record.backup_id)
 
     status = LocalBackupProvider(state_path).status[record.backup_id]
     assert status["provider"] == "local-isolated"
@@ -293,13 +350,19 @@ def test_verify_provider_failure_persists_failed_status_across_reload(tmp_path) 
 def test_negative_rpo_rto_rejected_before_provider_call() -> None:
     provider = LocalBackupProvider()
     with pytest.raises(ValueError, match="non-negative"):
-        BackupManager(provider, operator=OperatorCredential.for_test("operator-a"), rpo_seconds=-1)
+        BackupManager(
+            provider, operator=OperatorCredential.for_test("operator-a"), rpo_seconds=-1
+        )
     with pytest.raises(ValueError, match="non-negative"):
-        BackupManager(provider, operator=OperatorCredential.for_test("operator-a"), rto_seconds=-1)
+        BackupManager(
+            provider, operator=OperatorCredential.for_test("operator-a"), rto_seconds=-1
+        )
     assert provider.create_calls == 0
 
 
-def test_verify_failure_without_provider_status_persists_complete_metadata(tmp_path) -> None:
+def test_verify_failure_without_provider_status_persists_complete_metadata(
+    tmp_path,
+) -> None:
     state_path = tmp_path / "minimal-provider.json"
     first_provider = MinimalProviderWithoutStatus(state_path)
     record = BackupManager(
@@ -337,23 +400,33 @@ def test_verify_failure_without_provider_status_persists_complete_metadata(tmp_p
 
 def test_restore_rejects_live_target() -> None:
     provider = LocalBackupProvider()
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
 
     with pytest.raises(UnsafeRestoreTarget):
-        RestoreManager(provider, operator=OperatorCredential.for_test("operator-a")).restore(
-            record.backup_id, isolated_target=RestoreTarget(
-                environment_id="env-a", database_target="postgres://prod-db",
+        RestoreManager(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).restore(
+            record.backup_id,
+            isolated_target=RestoreTarget(
+                environment_id="env-a",
+                database_target="postgres://prod-db",
                 registered=True,
-            )
+            ),
         )
 
 
 def test_restore_records_isolated_drill_and_measured_rto() -> None:
     provider = LocalBackupProvider()
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
     provider.register_target(RestoreTarget("env-a", "rehearsal-db-1"))
 
-    restored = RestoreManager(provider, operator=OperatorCredential.for_test("operator-a")).restore(
+    restored = RestoreManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).restore(
         record.backup_id,
         isolated_target=RestoreTarget(
             environment_id="env-a", database_target="rehearsal-db-1"
@@ -371,13 +444,18 @@ def test_restore_records_isolated_drill_and_measured_rto() -> None:
 
 def test_restore_rejects_target_named_live_environment() -> None:
     provider = LocalBackupProvider()
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
 
     with pytest.raises(UnsafeRestoreTarget):
-        RestoreManager(provider, operator=OperatorCredential.for_test("operator-a")).restore(
+        RestoreManager(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).restore(
             record.backup_id,
             isolated_target=RestoreTarget(
-                environment_id="env-a", database_target="https://customer-live.example",
+                environment_id="env-a",
+                database_target="https://customer-live.example",
                 registered=True,
             ),
         )
@@ -385,13 +463,19 @@ def test_restore_rejects_target_named_live_environment() -> None:
 
 def test_restore_rejects_unregistered_target_before_provider_call() -> None:
     provider = LocalBackupProvider()
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
 
     with pytest.raises(UnsafeRestoreTarget, match="registered"):
-        RestoreManager(provider, operator=OperatorCredential.for_test("operator-a")).restore(
+        RestoreManager(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).restore(
             record.backup_id,
             isolated_target=RestoreTarget(
-                environment_id="env-a", database_target="rehearsal-db-1", registered=False
+                environment_id="env-a",
+                database_target="rehearsal-db-1",
+                registered=False,
             ),
         )
 
@@ -399,25 +483,30 @@ def test_restore_rejects_unregistered_target_before_provider_call() -> None:
 def test_restore_requires_persisted_target_registration(tmp_path) -> None:
     state_path = tmp_path / "backups.json"
     provider = LocalBackupProvider(state_path)
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
     provider.register_target(RestoreTarget("env-a", "rehearsal-db-1"))
-    restored = RestoreManager(LocalBackupProvider(state_path), operator=OperatorCredential.for_test("operator-a")).restore(
-        record.backup_id, RestoreTarget("env-a", "rehearsal-db-1")
-    )
+    restored = RestoreManager(
+        LocalBackupProvider(state_path),
+        operator=OperatorCredential.for_test("operator-a"),
+    ).restore(record.backup_id, RestoreTarget("env-a", "rehearsal-db-1"))
     assert restored.target == "rehearsal-db-1"
 
 
 def test_restore_provider_failure_persists_failed_test_status(tmp_path) -> None:
     state_path = tmp_path / "backups.json"
     provider = LocalBackupProvider(state_path)
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
     provider.register_target(RestoreTarget("env-a", "rehearsal-db-1"))
     provider.fail_restore = True
 
     with pytest.raises(RuntimeError, match="restore failed"):
-        RestoreManager(provider, operator=OperatorCredential.for_test("operator-a")).restore(
-            record.backup_id, RestoreTarget("env-a", "rehearsal-db-1")
-        )
+        RestoreManager(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).restore(record.backup_id, RestoreTarget("env-a", "rehearsal-db-1"))
     status = LocalBackupProvider(state_path).status[record.backup_id]
     assert status["restore_test_status"] == "FAILED"
     assert "restore failed" in status["restore_test_error"]
@@ -427,29 +516,65 @@ def test_restore_provider_failure_persists_failed_test_status(tmp_path) -> None:
 def test_restore_cli_does_not_register_arbitrary_target(tmp_path) -> None:
     state_path = tmp_path / "backups.json"
     provider = LocalBackupProvider(state_path)
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
     credential_file = tmp_path / "operators.json"
-    credential_file.write_text(json.dumps({"operators": [{
-        "principal": "operator-a",
-        "token_sha256": hashlib.sha256(b"token-a").hexdigest(),
-    }]}), encoding="utf-8")
+    credential_file.write_text(
+        json.dumps(
+            {
+                "operators": [
+                    {
+                        "principal": "operator-a",
+                        "token_sha256": hashlib.sha256(b"token-a").hexdigest(),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     command = [
-        sys.executable, "scripts/restore_saas_environment.py", "restore",
-        "--backup-id", record.backup_id, "--environment-id", "env-a",
-        "--isolated-target", "unknown-db", "--state-file", str(state_path),
-        "--credential-file", str(credential_file), "--test-only",
+        sys.executable,
+        "scripts/restore_saas_environment.py",
+        "restore",
+        "--backup-id",
+        record.backup_id,
+        "--environment-id",
+        "env-a",
+        "--isolated-target",
+        "unknown-db",
+        "--state-file",
+        str(state_path),
+        "--credential-file",
+        str(credential_file),
+        "--test-only",
     ]
-    result = subprocess.run(command, capture_output=True, text=True, check=False, env={**os.environ, "OKR_OPERATOR_TOKEN": "token-a"})
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "OKR_OPERATOR_TOKEN": "token-a"},
+    )
     assert result.returncode != 0
     assert "registered" in result.stderr
 
 
 def _operator_environment(tmp_path) -> tuple[dict[str, str], Path]:
     credential_file = tmp_path / "operators.json"
-    credential_file.write_text(json.dumps({"operators": [{
-        "principal": "operator-a",
-        "token_sha256": hashlib.sha256(b"token-a").hexdigest(),
-    }]}), encoding="utf-8")
+    credential_file.write_text(
+        json.dumps(
+            {
+                "operators": [
+                    {
+                        "principal": "operator-a",
+                        "token_sha256": hashlib.sha256(b"token-a").hexdigest(),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     return {**os.environ, "OKR_OPERATOR_TOKEN": "token-a"}, credential_file
 
 
@@ -457,7 +582,9 @@ def test_restore_cli_registers_target_and_completes_round_trip(tmp_path) -> None
     state_path = tmp_path / "backups.json"
     control_plane_path = tmp_path / "control-plane.json"
     provider = LocalBackupProvider(state_path)
-    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    record = BackupManager(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).create("env-a")
     env, credential_file = _operator_environment(tmp_path)
 
     # The restore CLI records provider metadata through the control plane, which
@@ -474,12 +601,25 @@ def test_restore_cli_registers_target_and_completes_round_trip(tmp_path) -> None
 
     register = subprocess.run(
         [
-            sys.executable, "scripts/restore_saas_environment.py", "register-target",
-            "--environment-id", "env-a", "--isolated-target", "rehearsal-db-1",
-            "--state-file", str(state_path), "--credential-file", str(credential_file),
-            "--control-plane-state-file", str(control_plane_path), "--test-only",
+            sys.executable,
+            "scripts/restore_saas_environment.py",
+            "register-target",
+            "--environment-id",
+            "env-a",
+            "--isolated-target",
+            "rehearsal-db-1",
+            "--state-file",
+            str(state_path),
+            "--credential-file",
+            str(credential_file),
+            "--control-plane-state-file",
+            str(control_plane_path),
+            "--test-only",
         ],
-        capture_output=True, text=True, check=False, env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
     )
     assert register.returncode == 0, register.stderr
     assert json.loads(register.stdout)["registered"] is True
@@ -488,37 +628,67 @@ def test_restore_cli_registers_target_and_completes_round_trip(tmp_path) -> None
     # would still be unreachable through the CLI.
     restore = subprocess.run(
         [
-            sys.executable, "scripts/restore_saas_environment.py", "restore",
-            "--backup-id", record.backup_id, "--environment-id", "env-a",
-            "--isolated-target", "rehearsal-db-1", "--state-file", str(state_path),
-            "--credential-file", str(credential_file),
-            "--control-plane-state-file", str(control_plane_path), "--test-only",
+            sys.executable,
+            "scripts/restore_saas_environment.py",
+            "restore",
+            "--backup-id",
+            record.backup_id,
+            "--environment-id",
+            "env-a",
+            "--isolated-target",
+            "rehearsal-db-1",
+            "--state-file",
+            str(state_path),
+            "--credential-file",
+            str(credential_file),
+            "--control-plane-state-file",
+            str(control_plane_path),
+            "--test-only",
         ],
-        capture_output=True, text=True, check=False, env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
     )
     assert restore.returncode == 0, restore.stderr
     payload = json.loads(restore.stdout)
     assert payload["action"] == "restore"
     assert payload["target"] == "rehearsal-db-1"
     assert payload["verified"] is True
-    assert ControlPlane(state_path=control_plane_path).get_environment(
-        "env-a"
-    ).backup_state == "restore-tested"
+    assert (
+        ControlPlane(state_path=control_plane_path)
+        .get_environment("env-a")
+        .backup_state
+        == "restore-tested"
+    )
 
 
-def test_restore_cli_register_target_rejects_live_and_production_names(tmp_path) -> None:
+def test_restore_cli_register_target_rejects_live_and_production_names(
+    tmp_path,
+) -> None:
     state_path = tmp_path / "backups.json"
     env, credential_file = _operator_environment(tmp_path)
 
     for unsafe_target in ("customer-prod-db", "live-db", "production"):
         result = subprocess.run(
             [
-                sys.executable, "scripts/restore_saas_environment.py", "register-target",
-                "--environment-id", "env-a", "--isolated-target", unsafe_target,
-                "--state-file", str(state_path), "--credential-file", str(credential_file),
+                sys.executable,
+                "scripts/restore_saas_environment.py",
+                "register-target",
+                "--environment-id",
+                "env-a",
+                "--isolated-target",
+                unsafe_target,
+                "--state-file",
+                str(state_path),
+                "--credential-file",
+                str(credential_file),
                 "--test-only",
             ],
-            capture_output=True, text=True, check=False, env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
         )
         assert result.returncode != 0, unsafe_target
         assert "prohibited" in result.stderr
@@ -533,12 +703,23 @@ def test_restore_cli_requires_an_authenticated_operator_to_register(tmp_path) ->
 
     result = subprocess.run(
         [
-            sys.executable, "scripts/restore_saas_environment.py", "register-target",
-            "--environment-id", "env-a", "--isolated-target", "rehearsal-db-1",
-            "--state-file", str(state_path), "--credential-file", str(credential_file),
+            sys.executable,
+            "scripts/restore_saas_environment.py",
+            "register-target",
+            "--environment-id",
+            "env-a",
+            "--isolated-target",
+            "rehearsal-db-1",
+            "--state-file",
+            str(state_path),
+            "--credential-file",
+            str(credential_file),
             "--test-only",
         ],
-        capture_output=True, text=True, check=False, env={**os.environ, "OKR_OPERATOR_TOKEN": ""},
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "OKR_OPERATOR_TOKEN": ""},
     )
     assert result.returncode != 0
     assert "operator token is required" in result.stderr

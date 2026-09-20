@@ -48,10 +48,19 @@ def _manifest_fingerprint(manifest: EnvironmentManifest) -> str:
 
 def _validate_opaque_database_resource(resource: str) -> str:
     value = str(resource or "")
-    if (not value or value != value.strip() or any(char.isspace() for char in value)
-            or "://" in value or "@" in value or "?" in value or "#" in value
-            or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{2,127}", value)):
-        raise ValueError("database resource must be a non-empty opaque database resource")
+    if (
+        not value
+        or value != value.strip()
+        or any(char.isspace() for char in value)
+        or "://" in value
+        or "@" in value
+        or "?" in value
+        or "#" in value
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{2,127}", value)
+    ):
+        raise ValueError(
+            "database resource must be a non-empty opaque database resource"
+        )
     return value
 
 
@@ -172,8 +181,14 @@ class LocalDisposableEnvironmentProvider:
             if self.state_path is None:
                 yield
             else:
-                lock_path = self.state_path.with_suffix(self.state_path.suffix + ".lock")
-                with locked_file(lock_path, timeout_seconds=self.lock_timeout_seconds, label="provisioning lock"):
+                lock_path = self.state_path.with_suffix(
+                    self.state_path.suffix + ".lock"
+                )
+                with locked_file(
+                    lock_path,
+                    timeout_seconds=self.lock_timeout_seconds,
+                    label="provisioning lock",
+                ):
                     self._load()
                     yield
 
@@ -230,7 +245,9 @@ class LocalDisposableEnvironmentProvider:
         loaded: dict[str, EnvironmentRecord] = {}
         for item in payload.get("environments", []):
             legacy_resource = item.get("database_resource")
-            if legacy_resource and ("://" in str(legacy_resource) or "@" in str(legacy_resource)):
+            if legacy_resource and (
+                "://" in str(legacy_resource) or "@" in str(legacy_resource)
+            ):
                 raise ValueError("persisted database resource contains credentials")
             database_resource_id = _validate_opaque_database_resource(
                 item.get("database_resource_id")
@@ -252,7 +269,9 @@ class LocalDisposableEnvironmentProvider:
         if self.state_path is None:
             return
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"environments": [record.__dict__ for record in environments.values()]}
+        payload = {
+            "environments": [record.__dict__ for record in environments.values()]
+        }
         if self.orphans:
             payload["orphans"] = self.orphans
         fd, temporary = tempfile.mkstemp(
@@ -280,7 +299,12 @@ class LocalDisposableEnvironmentProvider:
 class Provisioner:
     """Coordinate isolated environment resources without customer-domain writes."""
 
-    def __init__(self, provider: EnvironmentProvider, *, operator: OperatorCredential | None = None) -> None:
+    def __init__(
+        self,
+        provider: EnvironmentProvider,
+        *,
+        operator: OperatorCredential | None = None,
+    ) -> None:
         self.provider = provider
         if not isinstance(operator, OperatorCredential):
             raise ValueError("authenticated operator credential is required")
@@ -295,41 +319,49 @@ class Provisioner:
         if manifest.deployment_profile is not DeploymentProfile.SINGLE_TENANT_SAAS:
             raise ValueError("SaaS provisioning requires single_tenant_saas")
 
-        lock = self.provider.provision_lock() if hasattr(self.provider, "provision_lock") else getattr(self.provider, "_lock", Lock())
+        lock = (
+            self.provider.provision_lock()
+            if hasattr(self.provider, "provision_lock")
+            else getattr(self.provider, "_lock", Lock())
+        )
         with lock:
             existing = self.provider.get_environment(manifest.environment_id)
             if existing is not None:
                 return self._existing_result(existing, manifest)
             return self._provision_locked(manifest)
 
-    def _existing_result(self, existing: EnvironmentRecord, manifest: EnvironmentManifest) -> ProvisionResult:
-            if (
-                existing.customer_id != manifest.customer_id
-                or existing.requested_database_resource_id not in (None, manifest.database_resource_id)
-                or existing.application_version != manifest.application_version
-                or existing.manifest_fingerprint != _manifest_fingerprint(manifest)
-            ):
-                raise ProvisioningConflict(
-                    f"environment {manifest.environment_id!r} has conflicting identity"
-                )
-            return ProvisionResult(
-                environment_id=existing.environment_id,
-                customer_id=existing.customer_id,
-                state=existing.state,
-                created=False,
-                resources=(
-                    existing.application_resource,
-                    existing.database_resource_id,
-                    existing.secrets_resource,
-                    existing.routing_resource,
-                    existing.health_resource,
-                ),
+    def _existing_result(
+        self, existing: EnvironmentRecord, manifest: EnvironmentManifest
+    ) -> ProvisionResult:
+        if (
+            existing.customer_id != manifest.customer_id
+            or existing.requested_database_resource_id
+            not in (None, manifest.database_resource_id)
+            or existing.application_version != manifest.application_version
+            or existing.manifest_fingerprint != _manifest_fingerprint(manifest)
+        ):
+            raise ProvisioningConflict(
+                f"environment {manifest.environment_id!r} has conflicting identity"
             )
+        return ProvisionResult(
+            environment_id=existing.environment_id,
+            customer_id=existing.customer_id,
+            state=existing.state,
+            created=False,
+            resources=(
+                existing.application_resource,
+                existing.database_resource_id,
+                existing.secrets_resource,
+                existing.routing_resource,
+                existing.health_resource,
+            ),
+        )
 
     def _provision_locked(self, manifest: EnvironmentManifest) -> ProvisionResult:
-
         if manifest.lifecycle_state is not EnvironmentState.PROVISIONING:
-            raise ValueError("newly provisioned environments must start in PROVISIONING state")
+            raise ValueError(
+                "newly provisioned environments must start in PROVISIONING state"
+            )
         ready_state = transition(
             manifest.lifecycle_state, EnvironmentEvent.COMPLETE_PROVISIONING
         )
@@ -389,14 +421,16 @@ class Provisioner:
                 self.provider.record_orphan(orphan)
                 error.add_note("cleanup errors: " + "; ".join(cleanup_errors))
             elif created:
-                self.provider.record_orphan({
-                    "environment_id": manifest.environment_id,
-                    "customer_id": manifest.customer_id,
-                    "resources": [resource for _, resource in created],
-                    "cleanup_errors": [],
-                    "recorded_at": datetime.now(UTC).isoformat(),
-                    "reconciliation_status": "cleanup-complete",
-                })
+                self.provider.record_orphan(
+                    {
+                        "environment_id": manifest.environment_id,
+                        "customer_id": manifest.customer_id,
+                        "resources": [resource for _, resource in created],
+                        "cleanup_errors": [],
+                        "recorded_at": datetime.now(UTC).isoformat(),
+                        "reconciliation_status": "cleanup-complete",
+                    }
+                )
             raise
         resources = tuple(resource for _, resource in created)
         return ProvisionResult(
@@ -430,9 +464,15 @@ class Provisioner:
             EnvironmentRecord(**{**record.__dict__, "state": next_state})
         )
         if self.control_plane is not None:
-            self.control_plane.update_environment_metadata(environment_id, state=next_state.value)
+            self.control_plane.update_environment_metadata(
+                environment_id, state=next_state.value
+            )
             self._audit(environment_id, event.value, "accepted")
         return LifecycleResult(environment_id, next_state, changed=True)
 
-    def _audit(self, environment_id: str, event: str, result: str, reason: str | None = None) -> None:
-        self.control_plane.record_lifecycle_event(AuditEvent(environment_id, event, self.operator, now_utc(), result, reason))
+    def _audit(
+        self, environment_id: str, event: str, result: str, reason: str | None = None
+    ) -> None:
+        self.control_plane.record_lifecycle_event(
+            AuditEvent(environment_id, event, self.operator, now_utc(), result, reason)
+        )

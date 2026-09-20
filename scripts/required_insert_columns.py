@@ -18,4 +18,3 @@ REQUIRED_INSERT_COLUMNS: dict[str, set[str]] = {
     "team": {"name", "created_at"},
     "work_log": {"task_id", "start_time", "duration_minutes"},
 }
-

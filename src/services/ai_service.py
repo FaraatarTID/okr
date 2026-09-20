@@ -223,7 +223,9 @@ def _populate_rest_relations(ns, node_type: str) -> None:
             if status < 400 and rows:
                 return types.SimpleNamespace(**rows[0])
         except Exception as exc:
-            logger.debug("REST relation fetch failed for %s #%s: %s", table, row_id, exc)
+            logger.debug(
+                "REST relation fetch failed for %s #%s: %s", table, row_id, exc
+            )
         return None
 
     if normalized in ("KEY_RESULT", "KEYRESULT"):
@@ -245,9 +247,7 @@ def _populate_rest_relations(ns, node_type: str) -> None:
                     "select": "*",
                 },
             )
-            ns.check_ins = [
-                _simple_namespace_from_row(c) for c in (ci_rows or [])
-            ]
+            ns.check_ins = [_simple_namespace_from_row(c) for c in (ci_rows or [])]
         except Exception as exc:
             logger.debug("REST check_ins fetch failed: %s", exc)
             ns.check_ins = []
@@ -384,7 +384,9 @@ def _safe_rel(obj, attr):
     try:
         return getattr(obj, attr, None)
     except Exception as exc:
-        logger.debug("Relation '%s' unavailable on %s: %s", attr, type(obj).__name__, exc)
+        logger.debug(
+            "Relation '%s' unavailable on %s: %s", attr, type(obj).__name__, exc
+        )
         return None
 
 

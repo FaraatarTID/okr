@@ -37,11 +37,7 @@ def create_alignment_from_crud(
             child_goal = crud_module._resolve_goal_for_node(
                 session, node_type="OBJECTIVE", node_id=child_goal.id
             )
-            if (
-                parent_goal
-                and child_goal
-                and child_goal.id != parent_goal.id
-            ):
+            if parent_goal and child_goal and child_goal.id != parent_goal.id:
                 actor_user = session.exec(
                     crud_module.select(crud_module.User).where(
                         crud_module.User.username == actor_username
@@ -58,10 +54,9 @@ def create_alignment_from_crud(
                     child_owner = session.get(crud_module.User, int(child_owner_id))
                     if child_owner is None:
                         raise PermissionError("Insufficient permissions for this goal")
-                    if (
-                        int(child_owner.id or 0) != int(actor_user.id)
-                        and int(child_owner.manager_id or 0) != int(actor_user.id)
-                    ):
+                    if int(child_owner.id or 0) != int(actor_user.id) and int(
+                        child_owner.manager_id or 0
+                    ) != int(actor_user.id):
                         raise PermissionError("Insufficient permissions for this goal")
                 else:
                     # Non-managers are validated through the existing scoped mutation
@@ -115,9 +110,7 @@ def create_alignment_from_crud(
                 )
             ).first()
             actor_role = str(
-                getattr(actor_user, "role", None)
-                if actor_user is not None
-                else None
+                getattr(actor_user, "role", None) if actor_user is not None else None
             ).lower()
             actor_role = actor_role.split(".")[-1]
             if actor_user is not None and actor_role in {"manager", "userrole.manager"}:
@@ -127,10 +120,9 @@ def create_alignment_from_crud(
                 child_owner = session.get(crud_module.User, int(child_owner_id))
                 if child_owner is None:
                     raise PermissionError("Insufficient permissions for this goal")
-                if (
-                    int(child_owner.id or 0) != int(actor_user.id)
-                    and int(child_owner.manager_id or 0) != int(actor_user.id)
-                ):
+                if int(child_owner.id or 0) != int(actor_user.id) and int(
+                    child_owner.manager_id or 0
+                ) != int(actor_user.id):
                     raise PermissionError("Insufficient permissions for this goal")
         if child_goal and parent_goal and child_goal.id != parent_goal.id:
             crud_module._authorize_node_mutation(

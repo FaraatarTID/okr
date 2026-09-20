@@ -112,8 +112,18 @@ def test_supabase_manager_scope_discovers_admin_ids_for_global_cycles(monkeypatc
             return {
                 "users": [
                     {"id": 1, "username": "admin", "role": "admin", "is_active": True},
-                    {"id": 20, "username": "manager", "role": "manager", "is_active": True},
-                    {"id": 30, "username": "other", "role": "manager", "is_active": True},
+                    {
+                        "id": 20,
+                        "username": "manager",
+                        "role": "manager",
+                        "is_active": True,
+                    },
+                    {
+                        "id": 30,
+                        "username": "other",
+                        "role": "manager",
+                        "is_active": True,
+                    },
                 ]
             }
         raise AssertionError(f"Unexpected query kind: {kind}")

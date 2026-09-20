@@ -488,6 +488,7 @@ def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
         return "admin"
 
     client = TestClient(backend_main.app)
+
     async def _allow_service_access(**kwargs):
         return None
 

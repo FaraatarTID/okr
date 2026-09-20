@@ -20,7 +20,9 @@ def test_seed_requires_explicit_opt_in_before_opening_database(monkeypatch) -> N
 
     monkeypatch.setattr(seed_performance_fixture, "get_engine", fail_if_opened)
 
-    with pytest.raises(seed_performance_fixture.SeedConfigError, match="confirm-disposable"):
+    with pytest.raises(
+        seed_performance_fixture.SeedConfigError, match="confirm-disposable"
+    ):
         seed_performance_fixture.run(
             [],
             environ={
@@ -58,7 +60,9 @@ def test_seed_requires_password_from_environment(monkeypatch) -> None:
         lambda: pytest.fail("database must not be opened without a password"),
     )
 
-    with pytest.raises(seed_performance_fixture.SeedConfigError, match="OKR_BOOTSTRAP_ADMIN_PASSWORD"):
+    with pytest.raises(
+        seed_performance_fixture.SeedConfigError, match="OKR_BOOTSTRAP_ADMIN_PASSWORD"
+    ):
         seed_performance_fixture.run(
             ["--confirm-disposable"],
             environ={
@@ -89,10 +93,21 @@ def test_seed_creates_minimal_labeled_graph_without_printing_password(
     assert users[0].username == seed_performance_fixture.FIXTURE_USERNAME
     assert users[0].role.value == "admin"
     assert users[0].must_change_password is False
-    assert len(cycles) == len(goals) == len(objectives) == len(key_results) == len(tasks) == 1
+    assert (
+        len(cycles)
+        == len(goals)
+        == len(objectives)
+        == len(key_results)
+        == len(tasks)
+        == 1
+    )
     assert goals[0].external_id == seed_performance_fixture.FIXTURE_IDS["goal"]
-    assert objectives[0].external_id == seed_performance_fixture.FIXTURE_IDS["objective"]
-    assert key_results[0].external_id == seed_performance_fixture.FIXTURE_IDS["key_result"]
+    assert (
+        objectives[0].external_id == seed_performance_fixture.FIXTURE_IDS["objective"]
+    )
+    assert (
+        key_results[0].external_id == seed_performance_fixture.FIXTURE_IDS["key_result"]
+    )
     assert tasks[0].external_id == seed_performance_fixture.FIXTURE_IDS["task"]
     assert goals[0].cycle_id == cycles[0].id
     assert objectives[0].goal_id == goals[0].id
@@ -158,7 +173,9 @@ def test_seed_refuses_to_repair_legacy_draft_fixture(tmp_path: Path) -> None:
         session.add(objective)
         session.commit()
 
-    with pytest.raises(seed_performance_fixture.SeedConfigError, match="fresh disposable database"):
+    with pytest.raises(
+        seed_performance_fixture.SeedConfigError, match="fresh disposable database"
+    ):
         seed_performance_fixture.seed_fixture(
             engine, password=_test_password("performance_fixture_legacy")
         )

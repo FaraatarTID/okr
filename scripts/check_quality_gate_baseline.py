@@ -17,20 +17,22 @@ class BaselineItem:
 
 BASELINE_ITEMS: tuple[BaselineItem, ...] = (
     BaselineItem(
-        id="QG-001",
-        scope="Repo-wide Ruff format check remains targeted while legacy formatting debt is burned down.",
-        rationale=(
-            "Formatting debt is tracked separately to avoid high-churn refactors in operational hardening branches."
-        ),
-        expires_on=date(2026, 9, 30),
-    ),
-    BaselineItem(
         id="QG-002",
-        scope="Repo-wide mypy remains staged; broad default coverage is active for scripts + utils + runtime-core modules.",
-        rationale=(
-            "Type debt is reduced incrementally while maintaining stable release velocity and green CI."
+        scope=(
+            "Repo-wide mypy remains staged; broad default coverage is active for scripts plus the "
+            "runtime-core backend_app modules. Measured 2026-09-20: 127 errors in 24 of 347 checked "
+            "files (src 10, tests 10, backend_app 2, scripts 2), led by arg-type 56, union-attr 16 "
+            "and attr-defined 15."
         ),
-        expires_on=date(2026, 9, 30),
+        rationale=(
+            "Type debt is retired incrementally while keeping CI stable. QG-001 was closed on "
+            "2026-09-20 by expanding the Ruff format check to repo scope, so this is now the only "
+            "remaining exception. It is re-dated to a nearer review point with a staged burn-down "
+            "(<= 80 errors by 2026-10-15, <= 40 by 2026-11-15, 0 by 2026-12-31) rather than extended "
+            "by a year, so the remaining debt cannot drift silently. Re-measure with: python -m mypy "
+            "--no-incremental --ignore-missing-imports --follow-imports=skip backend_app src scripts tests"
+        ),
+        expires_on=date(2026, 11, 15),
     ),
 )
 

@@ -46,8 +46,12 @@ def test_compare_rejects_different_release_ids() -> None:
 
 
 def test_compare_resources_reports_cpu_delta() -> None:
-    baseline = {"services": [{"container": "bff-1", "cpu_percent": "2.0%", "memory": "20MiB"}]}
-    candidate = {"services": [{"container": "bff-1", "cpu_percent": "3.5%", "memory": "22MiB"}]}
+    baseline = {
+        "services": [{"container": "bff-1", "cpu_percent": "2.0%", "memory": "20MiB"}]
+    }
+    candidate = {
+        "services": [{"container": "bff-1", "cpu_percent": "3.5%", "memory": "22MiB"}]
+    }
 
     assert compare_resources(baseline, candidate) == [
         {
@@ -64,8 +68,16 @@ def test_compare_resources_reports_cpu_delta() -> None:
 
 
 def test_compare_resources_supports_logical_mapping_for_different_topologies() -> None:
-    baseline = {"services": [{"container": "bff-api-1", "cpu_percent": "2.0%", "memory": "20MiB"}]}
-    candidate = {"services": [{"container": "direct-api-1", "cpu_percent": "1.0%", "memory": "18MiB"}]}
+    baseline = {
+        "services": [
+            {"container": "bff-api-1", "cpu_percent": "2.0%", "memory": "20MiB"}
+        ]
+    }
+    candidate = {
+        "services": [
+            {"container": "direct-api-1", "cpu_percent": "1.0%", "memory": "18MiB"}
+        ]
+    }
 
     result = compare_resources(
         baseline,

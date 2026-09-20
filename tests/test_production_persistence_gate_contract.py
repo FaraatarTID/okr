@@ -10,7 +10,9 @@ def _read(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8").lower()
 
 
-def test_architecture_status_declares_conditionally_reviewed_single_tenant_gate() -> None:
+def test_architecture_status_declares_conditionally_reviewed_single_tenant_gate() -> (
+    None
+):
     content = _read("docs/architecture-status.md")
 
     assert "blocked pending provider evidence" in content
@@ -41,7 +43,9 @@ def test_saas_roadmap_and_runbook_preserve_the_same_gate() -> None:
 
 
 def test_current_phase_evidence_fails_closed_until_provider_evidence_exists() -> None:
-    errors = check(ROOT / "docs/saas/phase-1-entry-evidence.md", secret="phase1-ops-secret")
+    errors = check(
+        ROOT / "docs/saas/phase-1-entry-evidence.md", secret="phase1-ops-secret"
+    )
     assert errors
     assert any("decision approval" in error for error in errors)
     assert any("isolated restore evidence" in error for error in errors)

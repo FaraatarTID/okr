@@ -22,9 +22,14 @@ def test_bff_policy_routes_exist_in_openapi_and_preserve_exclusions():
     }
 
     assert ("/v1/auth/login", "POST") in signatures
-    assert next(route for route in policy["routes"] if route["pathTemplate"] == "/v1/auth/login")[
-        "actorRequired"
-    ] is False
+    assert (
+        next(
+            route
+            for route in policy["routes"]
+            if route["pathTemplate"] == "/v1/auth/login"
+        )["actorRequired"]
+        is False
+    )
     assert all(
         path not in {"/healthz", "/v1/admin/observability/metrics"}
         for path, _method in signatures

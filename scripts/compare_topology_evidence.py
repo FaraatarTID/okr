@@ -19,7 +19,6 @@ from typing import Any
 from scripts.evidence_metadata import validate_evidence_metadata
 
 
-
 class EvidenceError(ValueError):
     """Raised when an SLO evidence artifact is incomplete or malformed."""
 
@@ -32,26 +31,39 @@ def compare_resources(
 ) -> list[dict[str, Any]]:
     """Compare numeric CPU snapshots when Docker emitted parseable percentages."""
     baseline_items = {item["container"]: item for item in baseline.get("services", [])}
-    candidate_items = {item["container"]: item for item in candidate.get("services", [])}
+    candidate_items = {
+        item["container"]: item for item in candidate.get("services", [])
+    }
     if resource_map is None and set(baseline_items) != set(candidate_items):
         raise EvidenceError("resource snapshots must contain the same containers")
     if resource_map is not None:
         pairs = []
         for logical, names in resource_map.items():
             if not isinstance(logical, str) or not isinstance(names, dict):
-                raise EvidenceError("resource map entries must be logical names and objects")
+                raise EvidenceError(
+                    "resource map entries must be logical names and objects"
+                )
             baseline_name = names.get("baseline")
             candidate_name = names.get("candidate")
-            if not isinstance(baseline_name, str) or not isinstance(candidate_name, str):
+            if not isinstance(baseline_name, str) or not isinstance(
+                candidate_name, str
+            ):
                 raise EvidenceError(f"resource map entry is incomplete for {logical}")
             pairs.append((logical, baseline_name, candidate_name))
         pairs.sort()
     else:
-        pairs = [(container, container, container) for container in sorted(baseline_items)]
+        pairs = [
+            (container, container, container) for container in sorted(baseline_items)
+        ]
     comparisons = []
     for logical, baseline_container, candidate_container in pairs:
-        if baseline_container not in baseline_items or candidate_container not in candidate_items:
-            raise EvidenceError(f"resource map references an unknown container for {logical}")
+        if (
+            baseline_container not in baseline_items
+            or candidate_container not in candidate_items
+        ):
+            raise EvidenceError(
+                f"resource map references an unknown container for {logical}"
+            )
         before = baseline_items[baseline_container]
         after = candidate_items[candidate_container]
         try:
@@ -112,7 +124,9 @@ def compare(
     if set(baseline_items) != set(candidate_items):
         missing = sorted(set(baseline_items) - set(candidate_items))
         extra = sorted(set(candidate_items) - set(baseline_items))
-        raise EvidenceError(f"topologies must measure the same SLOs; missing={missing}, extra={extra}")
+        raise EvidenceError(
+            f"topologies must measure the same SLOs; missing={missing}, extra={extra}"
+        )
 
     comparisons = []
     for slo in sorted(baseline_items):
@@ -138,7 +152,9 @@ def compare(
 
     return {
         "schema_version": 1,
-        "release_id": baseline.get("release_id") or candidate.get("release_id") or "local",
+        "release_id": baseline.get("release_id")
+        or candidate.get("release_id")
+        or "local",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "operator": os.getenv("GITHUB_ACTOR", "local"),
         "topology": "comparison",
@@ -169,7 +185,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         resource_comparisons = None
         if (args.baseline_resources is None) != (args.candidate_resources is None):
-            raise EvidenceError("both resource snapshots are required when comparing resources")
+            raise EvidenceError(
+                "both resource snapshots are required when comparing resources"
+            )
         if args.resource_map is not None and args.baseline_resources is None:
             raise EvidenceError("--resource-map requires resource snapshots")
         if args.baseline_resources is not None and args.candidate_resources is not None:
@@ -178,23 +196,41 @@ def main(argv: list[str] | None = None) -> int:
                 resource_map = json.loads(args.resource_map.read_text(encoding="utf-8"))
                 if not isinstance(resource_map, dict):
                     raise EvidenceError("--resource-map must contain a JSON object")
-            baseline_resources = json.loads(args.baseline_resources.read_text(encoding="utf-8"))
-            candidate_resources = json.loads(args.candidate_resources.read_text(encoding="utf-8"))
-            if not isinstance(baseline_resources, dict) or not isinstance(candidate_resources, dict):
+            baseline_resources = json.loads(
+                args.baseline_resources.read_text(encoding="utf-8")
+            )
+            candidate_resources = json.loads(
+                args.candidate_resources.read_text(encoding="utf-8")
+            )
+            if not isinstance(baseline_resources, dict) or not isinstance(
+                candidate_resources, dict
+            ):
                 raise EvidenceError("resource snapshots must contain JSON objects")
-            metadata_errors = validate_evidence_metadata(baseline_resources) + validate_evidence_metadata(candidate_resources)
+            metadata_errors = validate_evidence_metadata(
+                baseline_resources
+            ) + validate_evidence_metadata(candidate_resources)
             if metadata_errors:
-                raise EvidenceError(f"resource snapshot metadata invalid: {', '.join(metadata_errors)}")
-            if baseline_resources.get("release_id") != candidate_resources.get("release_id"):
+                raise EvidenceError(
+                    f"resource snapshot metadata invalid: {', '.join(metadata_errors)}"
+                )
+            if baseline_resources.get("release_id") != candidate_resources.get(
+                "release_id"
+            ):
                 raise EvidenceError("resource snapshots must use the same release_id")
             resource_comparisons = compare_resources(
                 baseline_resources,
                 candidate_resources,
                 resource_map=resource_map,
             )
-        report = compare(_load(args.baseline), _load(args.candidate), resource_comparisons=resource_comparisons)
+        report = compare(
+            _load(args.baseline),
+            _load(args.candidate),
+            resource_comparisons=resource_comparisons,
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        args.output.write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
     except EvidenceError as exc:
         print(f"topology evidence comparison failed: {exc}", file=sys.stderr)
         return 2

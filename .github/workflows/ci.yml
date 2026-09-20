@@ -229,6 +229,9 @@ jobs:
             tests \
             --select E9,F63,F7,F82
 
+      - name: Format Check (Ruff, repo-wide)
+        run: python -m ruff format --check .
+
       - name: Helper Integrity Gate
         run: python scripts/verify_helper_integrity.py
 

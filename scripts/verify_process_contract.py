@@ -50,7 +50,11 @@ def _service_block(compose: str, service: str) -> str:
 
 def _check_ports(compose: str) -> str | None:
     required = {
-        "backend-api": ("OKR_BACKEND_PORT", "OKR_BACKEND_HOST_PORT", "OKR_BACKEND_PORT"),
+        "backend-api": (
+            "OKR_BACKEND_PORT",
+            "OKR_BACKEND_HOST_PORT",
+            "OKR_BACKEND_PORT",
+        ),
         "spa-bff": ("BFF_PORT", "SPA_BFF_HOST_PORT", "BFF_PORT"),
         "spa-web": ("PORT", "SPA_WEB_HOST_PORT", "SPA_WEB_PORT"),
     }
@@ -61,7 +65,9 @@ def _check_ports(compose: str) -> str | None:
             or "ports:" not in block
             or not all(var in block for var in variables[:2])
             or not re.search(rf"\b{re.escape(variables[0])}=\$\{{", block)
-            or not re.search(rf"\$\{{{re.escape(variables[2])}(?::[-?][^}}]*)?}}", block)
+            or not re.search(
+                rf"\$\{{{re.escape(variables[2])}(?::[-?][^}}]*)?}}", block
+            )
         ):
             return f"environment-driven ports are incomplete for {service}"
     return None
@@ -85,7 +91,10 @@ def _check_restart(compose: str) -> str | None:
 def _check_processes(compose: str) -> str | None:
     api = _service_block(compose, "backend-api")
     worker = _service_block(compose, "backend-worker")
-    if "python -m backend_app.run_api" not in api or "python -m backend_app.worker" not in worker:
+    if (
+        "python -m backend_app.run_api" not in api
+        or "python -m backend_app.worker" not in worker
+    ):
         return "separate API and worker processes are not declared"
     return None
 
@@ -98,7 +107,11 @@ def _check_volumes(compose: str) -> str | None:
         return "database state volume is not explicitly declared"
     if "/var/lib/postgresql/data" not in postgres:
         return "database state volume is not mounted on postgres"
-    if "okr-control-plane-state:" in compose or "/var/lib/okr" in api or "/var/lib/okr" in worker:
+    if (
+        "okr-control-plane-state:" in compose
+        or "/var/lib/okr" in api
+        or "/var/lib/okr" in worker
+    ):
         return "control-plane state must not require a process-local volume"
     return None
 
@@ -107,8 +120,18 @@ def verify_repository(root: Path = ROOT) -> list[str]:
     compose = _read_compose(root)
     if not compose:
         return ["process contract: deploy/docker/docker-compose.yml is missing"]
-    checks = (_check_ports, _check_health, _check_restart, _check_processes, _check_volumes)
-    failures = [f"process contract: {failure}" for check in checks if (failure := check(compose))]
+    checks = (
+        _check_ports,
+        _check_health,
+        _check_restart,
+        _check_processes,
+        _check_volumes,
+    )
+    failures = [
+        f"process contract: {failure}"
+        for check in checks
+        if (failure := check(compose))
+    ]
     if template_failure := _check_runtime_templates(root):
         failures.append(f"process contract: {template_failure}")
     return failures

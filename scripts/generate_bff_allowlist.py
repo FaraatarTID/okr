@@ -40,6 +40,7 @@ def _path_regex(path_template: str) -> str:
     override = PATH_PATTERN_OVERRIDES.get(path_template)
     if override:
         return override
+
     def replacement(match: re.Match[str]) -> str:
         parameter = match.group(0)[1:-1]
         return r"\d+" if parameter.endswith("_id") else r"[^/]+"
@@ -54,14 +55,20 @@ def build_policy(schema: dict, policy: dict) -> dict:
     for route in policy.get("routes", []):
         path_template = route["pathTemplate"]
         if path_template in EXCLUDED_PATHS or not path_template.startswith("/v1/"):
-            raise ValueError(f"BFF policy contains excluded or invalid path: {path_template}")
+            raise ValueError(
+                f"BFF policy contains excluded or invalid path: {path_template}"
+            )
         path_item = openapi_paths.get(path_template)
         if path_item is None:
-            raise ValueError(f"BFF policy route is missing from OpenAPI: {path_template}")
+            raise ValueError(
+                f"BFF policy route is missing from OpenAPI: {path_template}"
+            )
         methods = [method.upper() for method in route["methods"]]
         missing = [method for method in methods if method.lower() not in path_item]
         if missing:
-            raise ValueError(f"BFF policy methods missing from OpenAPI for {path_template}: {missing}")
+            raise ValueError(
+                f"BFF policy methods missing from OpenAPI for {path_template}: {missing}"
+            )
         routes.append(
             {
                 "pathTemplate": path_template,
@@ -70,7 +77,11 @@ def build_policy(schema: dict, policy: dict) -> dict:
                 "actorRequired": bool(route["actorRequired"]),
             }
         )
-    return {"version": 1, "source": "spa-web/src/lib/api/openapi.json", "routes": routes}
+    return {
+        "version": 1,
+        "source": "spa-web/src/lib/api/openapi.json",
+        "routes": routes,
+    }
 
 
 def render_allowlist(policy: dict) -> str:
@@ -135,7 +146,7 @@ def render_allowlist(policy: dict) -> str:
             '  if (normalized.includes("..")) {',
             "    return null;",
             "  }",
-            '  if (!/^\\/[a-zA-Z0-9/_-]+$/.test(normalized)) {',
+            "  if (!/^\\/[a-zA-Z0-9/_-]+$/.test(normalized)) {",
             "    return null;",
             "  }",
             "  return normalized;",
@@ -156,7 +167,7 @@ def render_allowlist(policy: dict) -> str:
             "",
             "export function policySignatures(): string[] {",
             "  return ALLOWLIST_POLICY_ROUTES.flatMap((rule) =>",
-            '    rule.methods.map((method) => `${method} ${rule.pathTemplate}`),',
+            "    rule.methods.map((method) => `${method} ${rule.pathTemplate}`),",
             "  ).sort();",
             "}",
             "",
@@ -184,7 +195,9 @@ def _serialized(value: object) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate the SPA BFF route policy.")
-    parser.add_argument("--check", action="store_true", help="Fail if generated files are stale.")
+    parser.add_argument(
+        "--check", action="store_true", help="Fail if generated files are stale."
+    )
     args = parser.parse_args()
 
     if not OPENAPI_PATH.exists():
@@ -196,7 +209,10 @@ def main() -> int:
     expected_allowlist = render_allowlist(policy)
 
     stale = []
-    if not ALLOWLIST_PATH.exists() or ALLOWLIST_PATH.read_text(encoding="utf-8") != expected_allowlist:
+    if (
+        not ALLOWLIST_PATH.exists()
+        or ALLOWLIST_PATH.read_text(encoding="utf-8") != expected_allowlist
+    ):
         stale.append(str(ALLOWLIST_PATH))
     if args.check:
         if stale:

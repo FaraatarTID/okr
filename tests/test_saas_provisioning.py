@@ -29,7 +29,9 @@ def manifest(environment_id="env-a", customer_id="customer-a"):
 
 def test_repeating_provision_returns_existing_environment():
     provider = LocalDisposableEnvironmentProvider()
-    provisioner = Provisioner(provider, operator=OperatorCredential.for_test("operator-a"))
+    provisioner = Provisioner(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    )
     first = provisioner.provision(manifest())
     second = provisioner.provision(manifest())
     assert second.environment_id == first.environment_id
@@ -43,8 +45,13 @@ def test_provider_canonical_database_resource_id_is_persisted():
             return "provider-db:canonical-env-a"
 
     provider = CanonicalProvider()
-    result = Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(manifest())
-    assert provider.environments[result.environment_id].database_resource_id == "provider-db:canonical-env-a"
+    result = Provisioner(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    ).provision(manifest())
+    assert (
+        provider.environments[result.environment_id].database_resource_id
+        == "provider-db:canonical-env-a"
+    )
 
 
 def test_stale_lock_file_is_reused_without_deletion(tmp_path):
@@ -57,14 +64,20 @@ def test_stale_lock_file_is_reused_without_deletion(tmp_path):
 
 
 def test_conflicting_identity_is_rejected():
-    provisioner = Provisioner(LocalDisposableEnvironmentProvider(), operator=OperatorCredential.for_test("operator-a"))
+    provisioner = Provisioner(
+        LocalDisposableEnvironmentProvider(),
+        operator=OperatorCredential.for_test("operator-a"),
+    )
     provisioner.provision(manifest())
     with pytest.raises(ProvisioningConflict):
         provisioner.provision(manifest(customer_id="customer-b"))
 
 
 def test_lifecycle_operations_are_idempotent():
-    provisioner = Provisioner(LocalDisposableEnvironmentProvider(), operator=OperatorCredential.for_test("operator-a"))
+    provisioner = Provisioner(
+        LocalDisposableEnvironmentProvider(),
+        operator=OperatorCredential.for_test("operator-a"),
+    )
     provisioner.provision(manifest())
     suspended = provisioner.suspend("env-a")
     repeated = provisioner.suspend("env-a")
@@ -77,22 +90,31 @@ def test_lifecycle_operations_are_idempotent():
 
 
 def test_unknown_environment_is_rejected():
-    provisioner = Provisioner(LocalDisposableEnvironmentProvider(), operator=OperatorCredential.for_test("operator-a"))
+    provisioner = Provisioner(
+        LocalDisposableEnvironmentProvider(),
+        operator=OperatorCredential.for_test("operator-a"),
+    )
     with pytest.raises(ProvisioningNotFound):
         provisioner.suspend("missing")
 
 
 def test_provider_only_contains_environment_metadata():
     provider = LocalDisposableEnvironmentProvider()
-    Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(manifest())
+    Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(
+        manifest()
+    )
     assert set(provider.environments) == {"env-a"}
     assert not hasattr(provider, "customer_records")
 
 
 def test_provisioning_records_authenticated_lifecycle_audit():
     from src.saas.control_plane import ControlPlane
+
     control_plane = ControlPlane(state_path=".test-artifacts/provisioning-audit.json")
-    Provisioner(LocalDisposableEnvironmentProvider(), operator=OperatorCredential.for_test("operator-a")).with_control_plane(control_plane).provision(manifest())
+    Provisioner(
+        LocalDisposableEnvironmentProvider(),
+        operator=OperatorCredential.for_test("operator-a"),
+    ).with_control_plane(control_plane).provision(manifest())
     event = control_plane.list_lifecycle_events("env-a")[-1]
     assert event.actor == "operator-a"
     assert event.event == "PROVISION"
@@ -100,7 +122,9 @@ def test_provisioning_records_authenticated_lifecycle_audit():
 
 def test_on_premise_manifest_is_not_provisioned():
     provider = LocalDisposableEnvironmentProvider()
-    provisioner = Provisioner(provider, operator=OperatorCredential.for_test("operator-a"))
+    provisioner = Provisioner(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    )
     on_premise = manifest()
     on_premise = on_premise.model_copy(update={"deployment_profile": "on_premise"})
     with pytest.raises(ValueError):
@@ -111,7 +135,9 @@ def test_invalid_initial_state_is_rejected_before_resource_creation():
     provider = LocalDisposableEnvironmentProvider()
     invalid = manifest().model_copy(update={"lifecycle_state": "READY"})
     with pytest.raises(ValueError, match="PROVISIONING"):
-        Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(invalid)
+        Provisioner(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).provision(invalid)
     assert provider.create_calls == 0
     assert provider.environments == {}
 
@@ -123,7 +149,9 @@ def test_save_failure_cleans_up_every_resource_and_saves_no_record():
 
     provider = SaveFailingProvider()
     with pytest.raises(RuntimeError, match="state unavailable"):
-        Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(manifest())
+        Provisioner(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).provision(manifest())
     assert provider.environments == {}
     assert provider.deleted_resources == [
         "local-health:env-a",
@@ -149,7 +177,9 @@ def test_cleanup_failures_do_not_prevent_remaining_cleanup():
 
     provider = CleanupFailingProvider()
     with pytest.raises(RuntimeError, match="health unavailable") as caught:
-        Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(manifest())
+        Provisioner(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).provision(manifest())
     assert provider.environments == {}
     assert provider.deleted_resources == [
         "local-routing:env-a",
@@ -162,7 +192,9 @@ def test_cleanup_failures_do_not_prevent_remaining_cleanup():
 
 def test_manifest_version_or_metadata_change_is_a_conflict():
     provider = LocalDisposableEnvironmentProvider()
-    provisioner = Provisioner(provider, operator=OperatorCredential.for_test("operator-a"))
+    provisioner = Provisioner(
+        provider, operator=OperatorCredential.for_test("operator-a")
+    )
     provisioner.provision(manifest())
     changed_version = manifest().model_copy(update={"application_version": "release-2"})
     with pytest.raises(ProvisioningConflict):
@@ -184,7 +216,9 @@ def test_provision_failure_compensates_resources_without_saving_record():
 
     provider = FailingProvider()
     with pytest.raises(RuntimeError, match="routing unavailable"):
-        Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(manifest())
+        Provisioner(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).provision(manifest())
     assert provider.environments == {}
     assert provider.deleted_resources == [
         "local-secrets:env-a",
@@ -196,7 +230,9 @@ def test_provision_failure_compensates_resources_without_saving_record():
 def test_file_provider_persists_metadata_only(tmp_path):
     state_file = tmp_path / "environment-state.json"
     provider = LocalDisposableEnvironmentProvider(state_file)
-    Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(manifest())
+    Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(
+        manifest()
+    )
     payload = json.loads(state_file.read_text(encoding="utf-8"))
     assert set(payload) == {"environments"}
     assert payload["environments"][0]["customer_id"] == "customer-a"
@@ -206,7 +242,9 @@ def test_file_provider_persists_metadata_only(tmp_path):
 def test_provider_record_persists_only_opaque_database_resource_id(tmp_path):
     state_file = tmp_path / "environment-state.json"
     provider = LocalDisposableEnvironmentProvider(state_file)
-    Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(manifest())
+    Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(
+        manifest()
+    )
 
     record = provider.environments["env-a"]
     payload = json.loads(state_file.read_text(encoding="utf-8"))
@@ -223,7 +261,9 @@ def test_provider_rejects_credential_bearing_database_resource():
 
     provider = CredentialBearingDatabaseProvider()
     with pytest.raises(ValueError, match="opaque database resource"):
-        Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(manifest())
+        Provisioner(
+            provider, operator=OperatorCredential.for_test("operator-a")
+        ).provision(manifest())
 
     assert provider.environments == {}
 
@@ -254,10 +294,19 @@ def test_cli_lifecycle_works_across_processes(tmp_path):
     manifest_file = tmp_path / "manifest.json"
     manifest_file.write_text(manifest().model_dump_json(), encoding="utf-8")
     credential_file = tmp_path / "operators.json"
-    credential_file.write_text(json.dumps({"operators": [{
-        "principal": "operator-a",
-        "token_sha256": hashlib.sha256(b"token-a").hexdigest(),
-    }]}), encoding="utf-8")
+    credential_file.write_text(
+        json.dumps(
+            {
+                "operators": [
+                    {
+                        "principal": "operator-a",
+                        "token_sha256": hashlib.sha256(b"token-a").hexdigest(),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
     control_plane_file = tmp_path / "control-plane.json"
     script = "scripts/provision_saas_environment.py"
     base = [sys.executable, script, "--state-file", str(state_file)]
@@ -270,35 +319,90 @@ def test_cli_lifecycle_works_across_processes(tmp_path):
     assert invalid.returncode != 0
     env = {**os.environ, "OKR_OPERATOR_TOKEN": "token-a"}
     provisioned = subprocess.run(
-            [*base[:2], "provision", "--manifest", str(manifest_file), "--credential-file", str(credential_file), "--state-file", str(state_file), "--control-plane-state-file", str(control_plane_file)],
-            capture_output=True,
-            text=True,
-            env=env,
-            check=True,
-        )
+        [
+            *base[:2],
+            "provision",
+            "--manifest",
+            str(manifest_file),
+            "--credential-file",
+            str(credential_file),
+            "--state-file",
+            str(state_file),
+            "--control-plane-state-file",
+            str(control_plane_file),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
     repeated = subprocess.run(
-            [*base[:2], "provision", "--manifest", str(manifest_file), "--credential-file", str(credential_file), "--state-file", str(state_file), "--control-plane-state-file", str(control_plane_file)],
-            capture_output=True,
-            text=True,
-            env=env,
-            check=True,
-        )
+        [
+            *base[:2],
+            "provision",
+            "--manifest",
+            str(manifest_file),
+            "--credential-file",
+            str(credential_file),
+            "--state-file",
+            str(state_file),
+            "--control-plane-state-file",
+            str(control_plane_file),
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=True,
+    )
     suspended = subprocess.run(
-        [*base[:2], "suspend", "--environment-id", "env-a", "--credential-file", str(credential_file), "--state-file", str(state_file), "--control-plane-state-file", str(control_plane_file)],
+        [
+            *base[:2],
+            "suspend",
+            "--environment-id",
+            "env-a",
+            "--credential-file",
+            str(credential_file),
+            "--state-file",
+            str(state_file),
+            "--control-plane-state-file",
+            str(control_plane_file),
+        ],
         capture_output=True,
         text=True,
         env=env,
         check=True,
     )
     retired = subprocess.run(
-        [*base[:2], "retire", "--environment-id", "env-a", "--credential-file", str(credential_file), "--state-file", str(state_file), "--control-plane-state-file", str(control_plane_file)],
+        [
+            *base[:2],
+            "retire",
+            "--environment-id",
+            "env-a",
+            "--credential-file",
+            str(credential_file),
+            "--state-file",
+            str(state_file),
+            "--control-plane-state-file",
+            str(control_plane_file),
+        ],
         capture_output=True,
         text=True,
         env=env,
         check=True,
     )
     later_process = subprocess.run(
-        [*base[:2], "retire", "--environment-id", "env-a", "--credential-file", str(credential_file), "--state-file", str(state_file), "--control-plane-state-file", str(control_plane_file)],
+        [
+            *base[:2],
+            "retire",
+            "--environment-id",
+            "env-a",
+            "--credential-file",
+            str(credential_file),
+            "--state-file",
+            str(state_file),
+            "--control-plane-state-file",
+            str(control_plane_file),
+        ],
         capture_output=True,
         text=True,
         env=env,
@@ -316,10 +420,14 @@ def test_cli_lifecycle_works_across_processes(tmp_path):
     }
 
 
-def test_atomic_state_replacement_failure_preserves_existing_registry(tmp_path, monkeypatch):
+def test_atomic_state_replacement_failure_preserves_existing_registry(
+    tmp_path, monkeypatch
+):
     state_file = tmp_path / "environment-state.json"
     provider = LocalDisposableEnvironmentProvider(state_file)
-    Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(manifest())
+    Provisioner(provider, operator=OperatorCredential.for_test("operator-a")).provision(
+        manifest()
+    )
     before = state_file.read_text(encoding="utf-8")
 
     def fail_replace(source, destination):
@@ -327,9 +435,11 @@ def test_atomic_state_replacement_failure_preserves_existing_registry(tmp_path, 
 
     monkeypatch.setattr(provisioning_module.os, "replace", fail_replace)
     with pytest.raises(OSError, match="replacement unavailable"):
-        Provisioner(LocalDisposableEnvironmentProvider(state_file), operator=OperatorCredential.for_test("operator-a")).suspend("env-a")
+        Provisioner(
+            LocalDisposableEnvironmentProvider(state_file),
+            operator=OperatorCredential.for_test("operator-a"),
+        ).suspend("env-a")
 
     assert state_file.read_text(encoding="utf-8") == before
     reloaded = LocalDisposableEnvironmentProvider(state_file)
     assert reloaded.environments["env-a"].state is EnvironmentState.READY
-

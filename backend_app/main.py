@@ -124,6 +124,7 @@ from src.models import (
     Objective,  # noqa: F401
     User,  # noqa: F401
 )
+
 ensure_shared_src_on_path()
 
 _LOGGER = logging.getLogger(__name__)
@@ -252,7 +253,7 @@ analyze_team_health = ai_service.analyze_team_health
 calculate_burnout_risk = analysis_domain.calculate_burnout_risk
 generate_predictive_outlook = ai_service.generate_predictive_outlook
 detect_strategy_gaps = analysis_domain.detect_strategy_gaps
- 
+
 _ALLOWED_READ_QUERY_KINDS = _ALLOWED_READ_QUERY_KINDS_IMPL
 
 
@@ -327,7 +328,9 @@ def _coerce_int(value: Any, *, field_name: str) -> int:
     return _coerce_int_impl(value=value, field_name=field_name)
 
 
-def _atomic_idempotent_check(*, session, actor: str, scope_id: Optional[str], payload: Any) -> tuple[bool, bool]:
+def _atomic_idempotent_check(
+    *, session, actor: str, scope_id: Optional[str], payload: Any
+) -> tuple[bool, bool]:
     """Compatibility wrapper for request dedupe/idempotency checks."""
     return _atomic_idempotent_check_impl(
         session=session, actor=actor, scope_id=scope_id, payload=payload
@@ -348,7 +351,9 @@ def _load_idempotent_response(*, actor: str, scope_id: str | None = None) -> Any
     return _load_idempotent_response_impl(actor=actor, scope_id=scope_id)
 
 
-def _store_idempotent_response(*, actor: str, response_payload: Any, status_code: int) -> None:
+def _store_idempotent_response(
+    *, actor: str, response_payload: Any, status_code: int
+) -> None:
     """Compatibility wrapper for idempotent response storage."""
     return _store_idempotent_response_impl(
         actor=actor, response_payload=response_payload, status_code=status_code

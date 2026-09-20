@@ -27,8 +27,14 @@ def test_validate_baseline_expiry_passes_before_deadline():
 
 def test_validate_baseline_expiry_fails_after_deadline():
     errors = check_quality_gate_baseline.validate_baseline_expiry(
-        today=date(2026, 10, 1)
+        today=date(2026, 12, 1)
     )
     assert errors
-    assert any("QG-001" in err for err in errors)
     assert any("QG-002" in err for err in errors)
+
+
+def test_qg_001_is_retired_by_repo_wide_format_coverage():
+    """QG-001 was closed on 2026-09-20 by expanding the Ruff format check to repo scope."""
+    ids = [item.id for item in check_quality_gate_baseline.BASELINE_ITEMS]
+    assert "QG-001" not in ids
+    assert "QG-002" in ids

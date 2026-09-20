@@ -119,7 +119,11 @@ def test_weekly_plan_cache_bucket_is_week_stable():
 
 
 def test_app_serializers_handle_missing_objects():
-    from src.services.app_shell_runtime import serialize_cycle, serialize_user, serialize_weekly_plan
+    from src.services.app_shell_runtime import (
+        serialize_cycle,
+        serialize_user,
+        serialize_weekly_plan,
+    )
 
     assert serialize_cycle(None) is None
     assert serialize_user(None) is None

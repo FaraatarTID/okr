@@ -36,10 +36,18 @@ def _run_mutation_mode(
     supabase_handler,
     method: str = "post",
 ):
-    monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: bool(mode))
-    monkeypatch.setattr(main_mutation_handlers, "is_supabase_api_mode_enabled", lambda: bool(mode))
-    monkeypatch.setattr(backend_main, "_atomic_idempotent_check", lambda **_kwargs: None)
-    monkeypatch.setattr(backend_main, "_complete_idempotent_response", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        backend_main, "is_supabase_api_mode_enabled", lambda: bool(mode)
+    )
+    monkeypatch.setattr(
+        main_mutation_handlers, "is_supabase_api_mode_enabled", lambda: bool(mode)
+    )
+    monkeypatch.setattr(
+        backend_main, "_atomic_idempotent_check", lambda **_kwargs: None
+    )
+    monkeypatch.setattr(
+        backend_main, "_complete_idempotent_response", lambda **_kwargs: None
+    )
     monkeypatch.setattr(backend_main, db_handler_name, db_handler, raising=False)
     monkeypatch.setattr(
         backend_main,
@@ -61,7 +69,9 @@ def _run_mutation_mode(
     )
 
 
-def _goal_mutation_payload(*, updated_at: datetime, node_id: int = 101) -> SimpleNamespace:
+def _goal_mutation_payload(
+    *, updated_at: datetime, node_id: int = 101
+) -> SimpleNamespace:
     return SimpleNamespace(
         id=node_id,
         title="Dual mode parity",
@@ -89,7 +99,11 @@ def _goal_mutation_payload(*, updated_at: datetime, node_id: int = 101) -> Simpl
         ),
         (
             "/v1/nodes/objective",
-            {"goal_id": 10, "title": "Objective parity", "description": "Critical flow"},
+            {
+                "goal_id": 10,
+                "title": "Objective parity",
+                "description": "Critical flow",
+            },
             "create_objective",
             "create_objective_via_supabase_api",
             201,
@@ -236,7 +250,7 @@ def test_dual_mode_critical_mutation_payload_parity(
         (
             "/v1/users/901/reset-password",
             {
-            "new_password": credential_password("reset"),
+                "new_password": credential_password("reset"),
                 "require_change": True,
             },
             "reset_user_password",
@@ -265,6 +279,7 @@ def test_dual_mode_user_mutation_payload_parity(
     )
 
     if route.endswith("/reset-password"):
+
         def _db(**kwargs):
             marker["calls"].append(("db", kwargs))
             return True
@@ -273,6 +288,7 @@ def test_dual_mode_user_mutation_payload_parity(
             marker["calls"].append(("supabase", kwargs))
             return True
     else:
+
         def _user_obj(role_value: str, *, user_id: int = 901) -> SimpleNamespace:
             role = str(getattr(role_value, "value", role_value))
             return SimpleNamespace(
@@ -338,8 +354,16 @@ def test_dual_mode_user_mutation_payload_parity(
 @pytest.mark.parametrize(
     ("kind", "params", "expected"),
     [
-        ("users.by_username", {"username": "alice"}, {"user": {"id": 101, "username": "alice", "role": "member"}}),
-        ("users.all", {}, {"users": [{"id": 101, "username": "alice", "role": "member"}]}),
+        (
+            "users.by_username",
+            {"username": "alice"},
+            {"user": {"id": 101, "username": "alice", "role": "member"}},
+        ),
+        (
+            "users.all",
+            {},
+            {"users": [{"id": 101, "username": "alice", "role": "member"}]},
+        ),
     ],
 )
 def test_dual_mode_read_query_payload_parity(monkeypatch, kind, params, expected):
@@ -360,7 +384,9 @@ def test_dual_mode_read_query_payload_parity(monkeypatch, kind, params, expected
             "role": str(getattr(user, "role", "member")).lower(),
         }
 
-    monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", lambda *_args, **_kwargs: actor_scope)
+    monkeypatch.setattr(
+        backend_main, "_resolve_scope_for_actor", lambda *_args, **_kwargs: actor_scope
+    )
     monkeypatch.setattr(backend_main, "_serialize_user", _serialize_user)
     monkeypatch.setattr(
         backend_main,

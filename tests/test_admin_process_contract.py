@@ -31,7 +31,9 @@ def test_admin_process_cli_emits_deterministic_json(capsys):
     assert payload["provider_recovery"] == "PENDING"
 
 
-def test_admin_process_contract_fails_when_required_operation_is_missing(tmp_path: Path):
+def test_admin_process_contract_fails_when_required_operation_is_missing(
+    tmp_path: Path,
+):
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     (scripts / "verify_migration_lint.py").write_text("", encoding="utf-8")

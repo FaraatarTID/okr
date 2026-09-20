@@ -72,9 +72,7 @@ def _validate_supabase_read_scope(
             scope, main._coerce_int(params.get("user_id"), field_name="user_id")
         )
     elif kind == "users.by_username":
-        main._require_allowed_username(
-            scope, str(params.get("username") or "").strip()
-        )
+        main._require_allowed_username(scope, str(params.get("username") or "").strip())
     elif kind in {"node.get"}:
         owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
             node_type=str(params.get("node_type") or "").strip(),
@@ -106,7 +104,9 @@ def read_query_payload(
     allowed_kinds: set[str] | None = None,
 ) -> dict:
     kind = str(kind or "").strip()
-    allowed = allowed_kinds if allowed_kinds is not None else get_read_query_allowed_kinds()
+    allowed = (
+        allowed_kinds if allowed_kinds is not None else get_read_query_allowed_kinds()
+    )
     user_serializer = getattr(main, "_serialize_user", serialize_user)
     if kind not in allowed:
         raise main.HTTPException(
@@ -218,18 +218,25 @@ def read_query_payload(
             }
         return {
             "key_results": read_query_payload(
-                kind="krs.needing_checkin", params=query_params, actor=actor,
-                main=main, allowed_kinds=allowed,
+                kind="krs.needing_checkin",
+                params=query_params,
+                actor=actor,
+                main=main,
+                allowed_kinds=allowed,
             ).get("key_results", []),
             "weekly_plan": read_query_payload(
                 kind="weekly_plan.active",
                 params={"user_id": user_id, "date": params.get("date")},
-                actor=actor, main=main, allowed_kinds=allowed,
+                actor=actor,
+                main=main,
+                allowed_kinds=allowed,
             ).get("weekly_plan"),
             "retros": read_query_payload(
                 kind="retros.user",
                 params={"user_id": user_id, "cycle_id": cycle_id},
-                actor=actor, main=main, allowed_kinds=allowed,
+                actor=actor,
+                main=main,
+                allowed_kinds=allowed,
             ).get("retros", []),
             "work_logs": read_query_payload(
                 kind="work_logs.by_range",
@@ -238,11 +245,16 @@ def read_query_payload(
                     "start_date": params.get("window_start"),
                     "end_date": params.get("window_end"),
                 },
-                actor=actor, main=main, allowed_kinds=allowed,
+                actor=actor,
+                main=main,
+                allowed_kinds=allowed,
             ).get("work_logs", []),
             "experiments": read_query_payload(
-                kind="experiments.for_retro_window", params=review_params,
-                actor=actor, main=main, allowed_kinds=allowed,
+                kind="experiments.for_retro_window",
+                params=review_params,
+                actor=actor,
+                main=main,
+                allowed_kinds=allowed,
             ).get("experiments", []),
         }
 
@@ -283,14 +295,19 @@ def read_query_payload(
         notify_tcp_db_failure()
         if resolve_read_mode() == "supabase_api":
             return read_query_payload(
-                kind=kind, params=params, actor=actor,
-                main=main, allowed_kinds=allowed,
+                kind=kind,
+                params=params,
+                actor=actor,
+                main=main,
+                allowed_kinds=allowed,
             )
         raise
 
     if kind == "audit.summary":
         if not bool(scope.get("is_admin", False)):
-            raise main.HTTPException(status_code=403, detail="Admin privileges required.")
+            raise main.HTTPException(
+                status_code=403, detail="Admin privileges required."
+            )
         days = main._coerce_int(params.get("days", 30), field_name="days")
         if days < 1 or days > 365:
             raise main.HTTPException(
@@ -398,7 +415,9 @@ def read_query_payload(
         return {"team": main._serialize_team(main.get_team_by_id(team_id))}
 
     if kind == "cycles.all":
-        cycles = main._visible_cycles_for_scope(scope, list(main.get_all_cycles() or []))
+        cycles = main._visible_cycles_for_scope(
+            scope, list(main.get_all_cycles() or [])
+        )
         if main._scope_role(scope) == "member":
             if not cycles:
                 cycles = main._visible_cycles_for_scope(
@@ -418,7 +437,9 @@ def read_query_payload(
         }
 
     if kind == "cycles.active":
-        cycles = main._visible_cycles_for_scope(scope, list(main.get_active_cycles() or []))
+        cycles = main._visible_cycles_for_scope(
+            scope, list(main.get_active_cycles() or [])
+        )
         if main._scope_role(scope) == "member":
             primary = main._pick_primary_active_cycle(cycles, scope)
             cycles = [primary] if primary is not None else []
@@ -443,7 +464,9 @@ def read_query_payload(
 
     if kind == "node.get":
         node_id = main._coerce_int(params.get("node_id"), field_name="node_id")
-        requested_node_type = main._normalize_node_type(str(params.get("node_type") or ""))
+        requested_node_type = main._normalize_node_type(
+            str(params.get("node_type") or "")
+        )
         node = main.get_node(node_id, requested_node_type, actor_username=actor)
         payload = main._serialize_node_for_type(requested_node_type, node)
         if payload is None:
@@ -480,7 +503,9 @@ def read_query_payload(
                 status_code=400, detail="limit must be between 1 and 500."
             )
         offset = main._coerce_int(offset_raw, field_name="offset")
-        krs = list(main.get_all_krs_by_cycle(cycle_id, limit=limit, offset=offset) or [])
+        krs = list(
+            main.get_all_krs_by_cycle(cycle_id, limit=limit, offset=offset) or []
+        )
         if not bool(scope.get("is_admin", False)):
             owner_ids = {int(value) for value in (scope.get("owner_ids") or set())}
             filtered = []
@@ -528,7 +553,9 @@ def read_query_payload(
                 status_code=400, detail="limit must be between 1 and 500."
             )
         offset = main._coerce_int(offset_raw, field_name="offset")
-        tasks = list(main.get_all_tasks_by_cycle(cycle_id, limit=limit, offset=offset) or [])
+        tasks = list(
+            main.get_all_tasks_by_cycle(cycle_id, limit=limit, offset=offset) or []
+        )
         tasks = main._filter_tasks_for_scope(tasks, scope)
         return {
             "tasks": [
@@ -563,7 +590,9 @@ def read_query_payload(
                     status_code=400,
                     detail="Date range must not exceed 90 days.",
                 )
-        logs = list(main.get_work_logs_by_date_range(user_id, start_date, end_date) or [])
+        logs = list(
+            main.get_work_logs_by_date_range(user_id, start_date, end_date) or []
+        )
         return {
             "work_logs": [
                 payload
@@ -727,7 +756,9 @@ def read_query_payload(
             requested_cycle_id,
             required=False,
         )
-        retros = list(main.get_user_retrospectives(user_id=user_id, cycle_id=cycle_id) or [])
+        retros = list(
+            main.get_user_retrospectives(user_id=user_id, cycle_id=cycle_id) or []
+        )
         return {
             "retros": [
                 payload
@@ -752,13 +783,17 @@ def read_query_payload(
             requested_cycle_id,
             required=False,
         )
-        retros = list(main.get_team_retrospectives(manager_id=manager_id, cycle_id=cycle_id) or [])
+        retros = list(
+            main.get_team_retrospectives(manager_id=manager_id, cycle_id=cycle_id) or []
+        )
         with main.get_session_context() as session:
             users_by_id: dict[int, Any] = {
                 int(getattr(user, "id")): user
                 for user in (
                     session.exec(
-                        main.select(main.User).where(main.User.manager_id == int(manager_id))
+                        main.select(main.User).where(
+                            main.User.manager_id == int(manager_id)
+                        )
                     ).all()
                 )
                 if getattr(user, "id", None) is not None
@@ -768,7 +803,9 @@ def read_query_payload(
             payload = main._serialize_retro(retro, include_user=False)
             if payload is None:
                 continue
-            user_payload = user_serializer(users_by_id.get(int(payload.get("user_id") or 0)))
+            user_payload = user_serializer(
+                users_by_id.get(int(payload.get("user_id") or 0))
+            )
             payload["user"] = user_payload
             serialized_retros.append(payload)
         return {"retros": serialized_retros}
@@ -808,8 +845,12 @@ def read_query_payload(
                     .limit(500)
                 ).all()
             )
-            available_goals = list(session.exec(main.select(main.Goal).limit(500)).all())
-            available_krs = list(session.exec(main.select(main.KeyResult).limit(500)).all())
+            available_goals = list(
+                session.exec(main.select(main.Goal).limit(500)).all()
+            )
+            available_krs = list(
+                session.exec(main.select(main.KeyResult).limit(500)).all()
+            )
             try:
                 from src.models import ObjectiveAlignmentLink
 
@@ -989,7 +1030,9 @@ def read_query_payload(
                 include_work_logs=True,
             )
         else:
-            node_payload = main._serialize_node_for_type(resolved_node_type, scoped_node)
+            node_payload = main._serialize_node_for_type(
+                resolved_node_type, scoped_node
+            )
         return {"node": node_payload, "node_type": resolved_node_type}
 
     raise main.HTTPException(status_code=404, detail="Unsupported read query kind.")
@@ -998,4 +1041,8 @@ def read_query_payload(
 _ALLOWED_READ_QUERY_KINDS = get_read_query_allowed_kinds()
 
 
-__all__ = ["_ALLOWED_READ_QUERY_KINDS", "get_read_query_allowed_kinds", "read_query_payload"]
+__all__ = [
+    "_ALLOWED_READ_QUERY_KINDS",
+    "get_read_query_allowed_kinds",
+    "read_query_payload",
+]

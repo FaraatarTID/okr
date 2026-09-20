@@ -54,9 +54,7 @@ def stop_capture(monkeypatch: pytest.MonkeyPatch) -> _StopCapture:
 def test_timer_stop_rounds_duration_to_whole_minutes(stop_capture):
     from src.services.supabase_api_mode_operations import stop_timer_via_supabase_api
 
-    result = stop_timer_via_supabase_api(
-        task_id=1, summary="probe", user_id="alice"
-    )
+    result = stop_timer_via_supabase_api(task_id=1, summary="probe", user_id="alice")
     assert result is not None
     payload = stop_capture.update_payload
     assert payload is not None

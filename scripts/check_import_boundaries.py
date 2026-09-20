@@ -16,13 +16,15 @@ DELIVERY_FRAMEWORK_MODULES = frozenset({"fastapi", "flask", "starlette", "stream
 # crud_contracts.py) must not import them; persistence-backed domain helpers
 # are tracked separately until they are refactored behind ports.
 INFRASTRUCTURE_MODULES = frozenset({"sqlalchemy", "sqlmodel", "httpx", "redis"})
-PURE_DOMAIN_MODULES = frozenset({
-    "scoring.py",
-    "lifecycle.py",
-    "permissions.py",
-    "crud_contracts.py",
-    "password_policy.py",
-})
+PURE_DOMAIN_MODULES = frozenset(
+    {
+        "scoring.py",
+        "lifecycle.py",
+        "permissions.py",
+        "crud_contracts.py",
+        "password_policy.py",
+    }
+)
 
 
 def _production_python_paths() -> list[Path]:
@@ -92,7 +94,12 @@ def main() -> int:
         manifest_path = ROOT_DIR / directory / "package.json"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         declared: set[str] = set()
-        for section in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
+        for section in (
+            "dependencies",
+            "devDependencies",
+            "peerDependencies",
+            "optionalDependencies",
+        ):
             declared.update(manifest.get(section, {}))
         for dependency in sorted(declared & workspace_names):
             if dependency != package_name:

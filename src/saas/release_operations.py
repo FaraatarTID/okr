@@ -35,7 +35,14 @@ class ReleaseArtifact:
     digest: str
 
     def __post_init__(self) -> None:
-        for name in ("environment_id", "version", "backend_image", "bff_image", "web_image", "digest"):
+        for name in (
+            "environment_id",
+            "version",
+            "backend_image",
+            "bff_image",
+            "web_image",
+            "digest",
+        ):
             if not getattr(self, name).strip():
                 raise ValueError(f"release artifact {name} must not be empty")
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", self.digest):
@@ -43,7 +50,9 @@ class ReleaseArtifact:
         for name in ("backend_image", "bff_image", "web_image"):
             image = getattr(self, name)
             if "@" not in image or image.rsplit("@", 1)[-1] != self.digest:
-                raise ValueError("release artifact image refs must use the artifact digest")
+                raise ValueError(
+                    "release artifact image refs must use the artifact digest"
+                )
 
     @classmethod
     def from_mapping(cls, value: dict[str, Any]) -> "ReleaseArtifact":
@@ -99,17 +108,26 @@ class RuntimeAdapter(Protocol):
     def deploy(self, environment_id: str, artifact: ReleaseArtifact) -> None: ...
     def health_check(self, environment_id: str, artifact: ReleaseArtifact) -> bool: ...
     def current(self, environment_id: str) -> ReleaseArtifact | None: ...
-    def restore(self, environment_id: str, artifact: ReleaseArtifact | None) -> None: ...
+    def restore(
+        self, environment_id: str, artifact: ReleaseArtifact | None
+    ) -> None: ...
     def is_registered(self, environment_id: str, artifact: ReleaseArtifact) -> bool: ...
 
-    def compose_environment(self, environment_id: str, artifact: ReleaseArtifact) -> dict[str, str]: ...
+    def compose_environment(
+        self, environment_id: str, artifact: ReleaseArtifact
+    ) -> dict[str, str]: ...
     def record_deployment(self, record: DeploymentRecord) -> None: ...
 
 
 class LocalRuntimeAdapter:
     """Isolated local adapter; it never starts or changes a live service."""
 
-    def __init__(self, *, health: dict[str, bool] | None = None, state_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        health: dict[str, bool] | None = None,
+        state_path: str | Path | None = None,
+    ) -> None:
         self.artifacts: dict[tuple[str, str], ReleaseArtifact] = {}
         self._current: dict[str, ReleaseArtifact] = {}
         self.deployment_records: list[DeploymentRecord] = []
@@ -126,7 +144,12 @@ class LocalRuntimeAdapter:
             if existing is not None and existing != artifact:
                 raise ValueError("artifact digest is immutable and already registered")
             version_match = next(
-                (item for item in self.artifacts.values() if item.environment_id == artifact.environment_id and item.version == artifact.version),
+                (
+                    item
+                    for item in self.artifacts.values()
+                    if item.environment_id == artifact.environment_id
+                    and item.version == artifact.version
+                ),
                 None,
             )
             if version_match is not None and version_match != artifact:
@@ -157,9 +180,13 @@ class LocalRuntimeAdapter:
     def is_registered(self, environment_id: str, artifact: ReleaseArtifact) -> bool:
         return self.artifacts.get((environment_id, artifact.digest)) == artifact
 
-    def compose_environment(self, environment_id: str, artifact: ReleaseArtifact) -> dict[str, str]:
+    def compose_environment(
+        self, environment_id: str, artifact: ReleaseArtifact
+    ) -> dict[str, str]:
         if not self.is_registered(environment_id, artifact):
-            raise ValueError("Compose mapping requires a registered artifact for this environment")
+            raise ValueError(
+                "Compose mapping requires a registered artifact for this environment"
+            )
         return compose_environment_mapping(artifact)
 
     def record_deployment(self, record: DeploymentRecord) -> None:
@@ -182,9 +209,17 @@ class LocalRuntimeAdapter:
         if self._state_path is None or not self._state_path.exists():
             return
         data = json.loads(self._state_path.read_text(encoding="utf-8"))
-        self.artifacts = {tuple(key.split("\0", 1)): ReleaseArtifact.from_mapping(value) for key, value in data.get("artifacts", {}).items()}
-        self._current = {key: ReleaseArtifact.from_mapping(value) for key, value in data.get("current", {}).items()}
-        self.deployment_records = [DeploymentRecord(**value) for value in data.get("deployment_records", [])]
+        self.artifacts = {
+            tuple(key.split("\0", 1)): ReleaseArtifact.from_mapping(value)
+            for key, value in data.get("artifacts", {}).items()
+        }
+        self._current = {
+            key: ReleaseArtifact.from_mapping(value)
+            for key, value in data.get("current", {}).items()
+        }
+        self.deployment_records = [
+            DeploymentRecord(**value) for value in data.get("deployment_records", [])
+        ]
 
     def _save(self) -> None:
         if self._state_path is None:
@@ -197,17 +232,33 @@ class LocalRuntimeAdapter:
 
     def _write_unlocked(self) -> None:
         payload = {
-            "artifacts": {"\0".join(key): value.to_mapping() for key, value in self.artifacts.items()},
-            "current": {key: value.to_mapping() for key, value in self._current.items()},
-            "deployment_records": [asdict(record) for record in self.deployment_records],
+            "artifacts": {
+                "\0".join(key): value.to_mapping()
+                for key, value in self.artifacts.items()
+            },
+            "current": {
+                key: value.to_mapping() for key, value in self._current.items()
+            },
+            "deployment_records": [
+                asdict(record) for record in self.deployment_records
+            ],
         }
         temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
-        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        temporary.write_text(
+            json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+        )
         temporary.replace(self._state_path)
 
 
 class ReleaseManager:
-    def __init__(self, environment_provider: EnvironmentProvider, runtime: RuntimeAdapter, *, operator: OperatorCredential | None = None, control_plane: Any | None = None) -> None:
+    def __init__(
+        self,
+        environment_provider: EnvironmentProvider,
+        runtime: RuntimeAdapter,
+        *,
+        operator: OperatorCredential | None = None,
+        control_plane: Any | None = None,
+    ) -> None:
         self.environment_provider = environment_provider
         self.runtime = runtime
         if not isinstance(operator, OperatorCredential):
@@ -216,27 +267,59 @@ class ReleaseManager:
         self.records = getattr(runtime, "deployment_records", [])
         self.control_plane = control_plane
 
-    def deploy(self, environment_id: str, release_artifact: ReleaseArtifact) -> DeploymentResult:
+    def deploy(
+        self, environment_id: str, release_artifact: ReleaseArtifact
+    ) -> DeploymentResult:
         environment = self._require_ready(environment_id)
         if release_artifact.environment_id != environment_id:
             raise ValueError("release artifact belongs to a different environment")
         previous = self.runtime.current(environment_id)
-        previous_version = previous.version if previous else environment.application_version
+        previous_version = (
+            previous.version if previous else environment.application_version
+        )
         self.runtime.register_artifact(release_artifact)
-        result = self._apply(environment_id, previous, previous_version, release_artifact)
+        result = self._apply(
+            environment_id, previous, previous_version, release_artifact
+        )
         if self.control_plane is not None:
             if result.status is DeploymentStatus.DEPLOYED:
-                self.control_plane.update_environment_metadata(environment_id, application_version=release_artifact.version, release_digest=release_artifact.digest, health_state=result.record.health_result)
-                self.control_plane.record_lifecycle_event(AuditEvent(environment_id, "RELEASE", self.operator, result.record.recorded_at, "accepted"))
+                self.control_plane.update_environment_metadata(
+                    environment_id,
+                    application_version=release_artifact.version,
+                    release_digest=release_artifact.digest,
+                    health_state=result.record.health_result,
+                )
+                self.control_plane.record_lifecycle_event(
+                    AuditEvent(
+                        environment_id,
+                        "RELEASE",
+                        self.operator,
+                        result.record.recorded_at,
+                        "accepted",
+                    )
+                )
             else:
                 self._reconcile_failure(environment_id, result.record)
         return result
 
     def _reconcile_failure(self, environment_id: str, record: DeploymentRecord) -> None:
-        self.control_plane.update_environment_metadata(environment_id, health_state="degraded")
-        self.control_plane.record_lifecycle_event(AuditEvent(environment_id, "RELEASE", self.operator, record.recorded_at, "failed", record.error))
+        self.control_plane.update_environment_metadata(
+            environment_id, health_state="degraded"
+        )
+        self.control_plane.record_lifecycle_event(
+            AuditEvent(
+                environment_id,
+                "RELEASE",
+                self.operator,
+                record.recorded_at,
+                "failed",
+                record.error,
+            )
+        )
 
-    def rollback(self, environment_id: str, previous_artifact: ReleaseArtifact) -> DeploymentResult:
+    def rollback(
+        self, environment_id: str, previous_artifact: ReleaseArtifact
+    ) -> DeploymentResult:
         self._require_ready(environment_id)
         if previous_artifact.environment_id != environment_id:
             raise ValueError("release artifact belongs to a different environment")
@@ -245,24 +328,45 @@ class ReleaseManager:
         current = self.runtime.current(environment_id)
         if current is None:
             raise ValueError("cannot roll back an environment with no current release")
-        result = self._apply(environment_id, current, current.version, previous_artifact)
-        if self.control_plane is not None and result.status is DeploymentStatus.DEPLOYED:
+        result = self._apply(
+            environment_id, current, current.version, previous_artifact
+        )
+        if (
+            self.control_plane is not None
+            and result.status is DeploymentStatus.DEPLOYED
+        ):
             self.control_plane.update_environment_metadata(
                 environment_id,
                 application_version=previous_artifact.version,
                 release_digest=previous_artifact.digest,
                 health_state=result.record.health_result,
             )
-            self.control_plane.record_lifecycle_event(AuditEvent(environment_id, "ROLLBACK", self.operator, result.record.recorded_at, "accepted"))
+            self.control_plane.record_lifecycle_event(
+                AuditEvent(
+                    environment_id,
+                    "ROLLBACK",
+                    self.operator,
+                    result.record.recorded_at,
+                    "accepted",
+                )
+            )
         elif self.control_plane is not None:
             self._reconcile_failure(environment_id, result.record)
         return result
 
-    def _apply(self, environment_id: str, previous: ReleaseArtifact | None, previous_version: str, target: ReleaseArtifact) -> DeploymentResult:
+    def _apply(
+        self,
+        environment_id: str,
+        previous: ReleaseArtifact | None,
+        previous_version: str,
+        target: ReleaseArtifact,
+    ) -> DeploymentResult:
         try:
             self.runtime.deploy(environment_id, target)
             if not self.runtime.health_check(environment_id, target):
-                raise DeploymentHealthError(f"release {target.version!r} failed health gate")
+                raise DeploymentHealthError(
+                    f"release {target.version!r} failed health gate"
+                )
         except Exception as failure:
             error = str(failure)
             rollback_result = "passed"
@@ -275,12 +379,29 @@ class ReleaseManager:
                     self.runtime.restore(environment_id, None)
                 except Exception:
                     pass
-            record = self._record(environment_id, previous_version, target, "failed", rollback_result, error)
+            record = self._record(
+                environment_id,
+                previous_version,
+                target,
+                "failed",
+                rollback_result,
+                error,
+            )
             return DeploymentResult(DeploymentStatus.ROLLED_BACK, record)
-        record = self._record(environment_id, previous_version, target, "passed", None, None)
+        record = self._record(
+            environment_id, previous_version, target, "passed", None, None
+        )
         return DeploymentResult(DeploymentStatus.DEPLOYED, record)
 
-    def _record(self, environment_id: str, previous_version: str, target: ReleaseArtifact, health_result: str, rollback_result: str | None, error: str | None) -> DeploymentRecord:
+    def _record(
+        self,
+        environment_id: str,
+        previous_version: str,
+        target: ReleaseArtifact,
+        health_result: str,
+        rollback_result: str | None,
+        error: str | None,
+    ) -> DeploymentRecord:
         record = DeploymentRecord(
             environment_id=environment_id,
             previous_version=previous_version,
@@ -301,6 +422,9 @@ class ReleaseManager:
             raise ValueError(f"unknown environment: {environment_id}")
         state = getattr(environment, "state", None)
         if state is not None:
-            if str(getattr(state, "name", "")).lower() != "ready" and str(getattr(state, "value", state)).lower() != "ready":
+            if (
+                str(getattr(state, "name", "")).lower() != "ready"
+                and str(getattr(state, "value", state)).lower() != "ready"
+            ):
                 raise ValueError(f"environment {environment_id} is not ready")
         return environment
