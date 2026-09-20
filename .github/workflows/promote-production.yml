@@ -117,10 +117,34 @@ jobs:
               "${image}@${digest}"
           done
 
+  phase-1-evidence:
+    name: Verify Phase 1 promotion evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout evidence and gate
+        uses: actions/checkout@v6
+
+      # The Phase 1 evidence bundle must be complete before a release is promoted.
+      #
+      # This is deliberately not a pull-request gate. The bundle records production
+      # facts - provider restore evidence, measured RPO/RTO, named decision and
+      # operations owners, explicit real-data approval, and a provider attestation - that
+      # cannot exist until an operator performs and records them. Required per pull
+      # request it would leave every PR permanently red, and a permanently red required
+      # check teaches people to ignore it. At promotion time those facts are supposed to
+      # exist, so here it is required and fails closed.
+      - name: Verify Phase 1 promotion evidence
+        env:
+          # The bundle carries the provider's attestation, so this is the provider's
+          # secret and not the release-manifest one.
+          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_SAAS_ATTESTATION_SECRET }}
+        run: python scripts/check_saas_phase1_evidence.py
+
   approve-and-prepare:
     name: Approve and prepare production promotion
     runs-on: ubuntu-latest
-    needs: [verify-staging, verify-signatures]
+    needs: [verify-staging, verify-signatures, phase-1-evidence]
     environment: production
     timeout-minutes: 15
     steps:

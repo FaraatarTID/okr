@@ -4,9 +4,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.attestation_verification import (  # noqa: E402
+    ATTESTATION_SECRET_ENV,
+    attach_attestation,
+)
 
 EXPECTED_IMAGES = {"web", "bff", "backend"}
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -60,14 +70,57 @@ def build_manifest(
     }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--fragments", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--commit-sha", required=True)
-    args = parser.parse_args()
+    parser.add_argument(
+        "--attestation-provider",
+        default="github-actions",
+        help="Recorded as attestation.provider.",
+    )
+    parser.add_argument(
+        "--attestation-key-id",
+        default="release-manifest",
+        help="Recorded as attestation.key_id.",
+    )
+    parser.add_argument(
+        "--attestation-evidence-id",
+        help="Recorded as attestation.evidence_id. Defaults to the commit SHA.",
+    )
+    parser.add_argument(
+        "--require-attestation",
+        action="store_true",
+        help=(
+            f"Fail instead of writing an unsigned manifest when {ATTESTATION_SECRET_ENV} "
+            "is not configured. Release workflows pass this so an unverifiable manifest "
+            "cannot be published."
+        ),
+    )
+    args = parser.parse_args(argv)
+
     manifest = build_manifest(args.fragments, args.repository, args.commit_sha)
+    secret = os.environ.get(ATTESTATION_SECRET_ENV, "")
+    if secret:
+        manifest = attach_attestation(
+            manifest,
+            provider=args.attestation_provider,
+            key_id=args.attestation_key_id,
+            evidence_id=args.attestation_evidence_id
+            or f"ghcr-release-{args.commit_sha}",
+            secret=secret,
+        )
+    elif args.require_attestation:
+        print(
+            "[RELEASE-MANIFEST] refusing to write an unsigned release manifest: "
+            f"{ATTESTATION_SECRET_ENV} is not configured, so no verifier could ever "
+            "accept the rollback evidence built from it.",
+            file=sys.stderr,
+        )
+        return 1
+
     args.output.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Release manifest written: {args.output}")
     return 0

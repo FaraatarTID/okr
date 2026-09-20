@@ -1,0 +1,112 @@
+name: Verify rollback execution
+
+# Post-deployment half of the production rollback contract.
+#
+# `rollback-production.yml` can only validate what exists before anything is deployed,
+# so it validates the pre-deployment approval. The stricter record contract requires a
+# completed execution - a provider operation ID, a PASSED healthcheck and an observed
+# timestamp - and the Darkube deployment is performed by hand after that workflow ends.
+# This workflow is therefore run by the operator once the deployment is done, and it is
+# the only place the completed-execution contract is machine-checked.
+#
+# Honest limit: the execution outcome is supplied by the operator, so the attestation
+# this workflow attaches records what it was given rather than proving it independently.
+# It is a binding record, not a substitute for the provider's own evidence. What it does
+# guarantee is that a rollback cannot be closed out with a record whose execution fields
+# are missing, malformed, or contradicted by the pre-deployment approval it extends.
+
+on:
+  workflow_dispatch:
+    inputs:
+      rollback_record_run_id:
+        description: Run ID of the rollback-production workflow that produced the record
+        required: true
+        type: string
+      previous_release_sha:
+        description: Full commit SHA of the release that was restored
+        required: true
+        type: string
+      execution_outcome:
+        description: >-
+          JSON object from the provider describing the completed rollback, for example
+          {"status":"SUCCESS","target_environment_id":"...","provider_operation_id":"...","healthcheck":"PASSED","observed_at":"2026-09-20T12:00:00Z"}
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  RELEASE_SHA: ${{ inputs.previous_release_sha }}
+
+jobs:
+  verify-execution:
+    name: Verify completed rollback execution
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout verification tools
+        uses: actions/checkout@v6
+
+      - name: Download the pre-deployment rollback record
+        uses: actions/download-artifact@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.rollback_record_run_id }}
+          name: production-rollback-${{ inputs.previous_release_sha }}
+          path: rollback-record
+
+      - name: Attach the provider execution outcome
+        env:
+          EXECUTION_OUTCOME: ${{ inputs.execution_outcome }}
+        run: |
+          set -euo pipefail
+          test -f rollback-record/production-rollback.json
+          test -n "$EXECUTION_OUTCOME"
+          printf '%s' "$EXECUTION_OUTCOME" | jq -e . >/dev/null
+          jq --argjson execution "$EXECUTION_OUTCOME" \
+            '.execution = $execution' \
+            rollback-record/production-rollback.json > production-rollback-execution.json
+
+      # Adding `execution` changed the payload the pre-deployment attestation covered,
+      # so the record is re-signed over its completed contents before validation.
+      - name: Sign the completed rollback record
+        env:
+          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET }}
+        run: |
+          python scripts/attest_evidence.py \
+            --record production-rollback-execution.json \
+            --provider github-actions \
+            --key-id rollback-execution \
+            --evidence-id "rollback-execution-${GITHUB_RUN_ID}"
+
+      - name: Validate completed rollback record contract
+        env:
+          REPOSITORY: ${{ github.repository }}
+          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET }}
+        run: |
+          python scripts/verify_rollback_evidence.py \
+            --record production-rollback-execution.json \
+            --commit-sha "$RELEASE_SHA" \
+            --repository "$REPOSITORY" \
+            --output rollback-execution-verification.json
+
+      - name: Write rollback execution summary
+        run: |
+          {
+            echo "## Production rollback execution verified"
+            echo "- Restored release: \`$RELEASE_SHA\`"
+            echo "- Pre-deployment record run: \`${{ inputs.rollback_record_run_id }}\`"
+            echo "- Execution contract: passed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload verified execution record
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-rollback-execution-${{ inputs.previous_release_sha }}
+          path: |
+            production-rollback-execution.json
+            rollback-execution-verification.json
+          retention-days: 365

@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from pathlib import Path
 
 import pytest
 
 from scripts.verify_rollback_evidence import (
     RollbackEvidenceError,
     main,
+    verify_rollback_approval,
     verify_rollback_manifest,
     verify_rollback_record,
 )
@@ -323,3 +325,148 @@ def test_rejects_provider_signed_attestation_without_a_configured_secret(
 
     with pytest.raises(RollbackEvidenceError, match="not verifiable"):
         verify_rollback_manifest(manifest, COMMIT, cosign_references(manifest))
+
+
+def valid_approval_record() -> dict[str, object]:
+    """A pre-deployment approval record, signed over its own contents."""
+    record: dict[str, object] = dict(valid_manifest())
+    record.pop("attestation", None)
+    record.update(
+        {
+            "rollback": "rollback",
+            "rollback_from_manifest_run_id": "1234567890",
+            "incident_reference": "INC-2026-001",
+            "approved_by": "operator",
+            "approved_at": "2026-09-20T10:00:00Z",
+            "cosign_references": cosign_references(record),
+        }
+    )
+    record["attestation"] = {
+        "provider": "github-actions",
+        "evidence_id": "rollback-20260920",
+        "algorithm": "provider-signed",
+        "key_id": "rollback-workflow",
+        "signature": _signature(record),
+        "issued_at": "2026-09-20T10:00:00Z",
+        "signed_payload_sha256": _payload_digest(record),
+    }
+    return record
+
+
+def test_verifies_a_pre_deployment_approval_record() -> None:
+    result = verify_rollback_approval(valid_approval_record(), COMMIT)
+
+    assert result["verified"] is True
+    assert result["rollback"] == "rollback"
+    assert result["deployment_performed"] is False
+
+
+def test_approval_rejects_a_record_that_already_claims_an_execution() -> None:
+    """A pre-deployment approval cannot have observed a deployment outcome."""
+    record = valid_approval_record()
+    record["execution"] = {"status": "SUCCESS"}
+
+    with pytest.raises(RollbackEvidenceError, match="must be absent before deployment"):
+        verify_rollback_approval(record, COMMIT)
+
+
+def test_approval_rejects_a_missing_cosign_reference_list() -> None:
+    record = valid_approval_record()
+    del record["cosign_references"]
+
+    with pytest.raises(RollbackEvidenceError, match="cosign_references"):
+        verify_rollback_approval(record, COMMIT)
+
+
+def test_approval_rejects_a_missing_record_attestation() -> None:
+    record = valid_approval_record()
+    del record["attestation"]
+
+    with pytest.raises(RollbackEvidenceError, match="must be an object"):
+        verify_rollback_approval(record, COMMIT)
+
+
+def test_approval_rejects_a_field_changed_after_the_record_was_signed() -> None:
+    """The approval fields are covered by the record's signature, not decorative."""
+    record = valid_approval_record()
+    record["approved_by"] = "someone-else"
+
+    with pytest.raises(RollbackEvidenceError, match="does not match evidence"):
+        verify_rollback_approval(record, COMMIT)
+
+
+@pytest.mark.parametrize("run_id", ["0", "-1", "not-a-number"])
+def test_approval_rejects_a_non_positive_manifest_run_id(run_id: str) -> None:
+    record = valid_approval_record()
+    record["rollback_from_manifest_run_id"] = run_id
+    record["attestation"]["signature"] = _signature(
+        {key: value for key, value in record.items() if key != "attestation"}
+    )
+    record["attestation"]["signed_payload_sha256"] = _payload_digest(
+        {key: value for key, value in record.items() if key != "attestation"}
+    )
+
+    with pytest.raises(RollbackEvidenceError, match="positive integer"):
+        verify_rollback_approval(record, COMMIT)
+
+
+def test_approval_rejects_a_timestamp_without_a_timezone() -> None:
+    record = valid_approval_record()
+    record["approved_at"] = "2026-09-20T10:00:00"
+    record["attestation"]["signature"] = _signature(
+        {key: value for key, value in record.items() if key != "attestation"}
+    )
+    record["attestation"]["signed_payload_sha256"] = _payload_digest(
+        {key: value for key, value in record.items() if key != "attestation"}
+    )
+
+    with pytest.raises(RollbackEvidenceError, match="must include a timezone"):
+        verify_rollback_approval(record, COMMIT)
+
+
+def test_approval_requires_a_configured_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OKR_SAAS_ATTESTATION_SECRET", raising=False)
+
+    with pytest.raises(RollbackEvidenceError, match="not verifiable"):
+        verify_rollback_approval(valid_approval_record(), COMMIT)
+
+
+def test_cli_accepts_approval_mode(tmp_path: Path) -> None:
+    path = tmp_path / "production-rollback.json"
+    path.write_text(json.dumps(valid_approval_record()), encoding="utf-8")
+    output = tmp_path / "rollback-approval-verification.json"
+
+    code = main(
+        [
+            "--approval",
+            str(path),
+            "--commit-sha",
+            COMMIT,
+            "--repository",
+            "FaraatarTID/okr",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert code == 0
+    assert json.loads(output.read_text(encoding="utf-8"))["rollback"] == "rollback"
+
+
+def test_cli_rejects_cosign_references_with_approval_mode(tmp_path: Path) -> None:
+    """Approval mode reads references from the record, so passing them is a mistake."""
+    path = tmp_path / "production-rollback.json"
+    path.write_text(json.dumps(valid_approval_record()), encoding="utf-8")
+
+    code = main(
+        [
+            "--approval",
+            str(path),
+            "--commit-sha",
+            COMMIT,
+            "--cosign-reference",
+            "ghcr.io/faraatartid/okr/web@sha256:" + "0" * 64,
+        ]
+    )
+
+    assert code == 2

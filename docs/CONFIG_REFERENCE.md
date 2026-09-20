@@ -258,6 +258,34 @@ Evidence attestation
   every attested value. The two evidence verifiers sign the evidence object instead,
   because there the attestation is only a pointer to the content being attested.
 
+Release and rollback evidence producers
+
+- The release pipeline signs the manifest it publishes, and every record derived from
+  that manifest signs itself:
+  - `OKR_RELEASE_MANIFEST_ATTESTATION_SECRET` is the GitHub secret mapped onto
+    `OKR_SAAS_ATTESTATION_SECRET` inside `.github/workflows/publish-ghcr.yml`,
+    `.github/workflows/rollback-production.yml`, and
+    `.github/workflows/rollback-execution-verification.yml`.
+  - It is deliberately a different secret from the provider's attestation key. The
+    release pipeline's trust domain is this repository's own workflows, whereas a
+    provider attestation asserts an external party's facts; sharing one key would let a
+    workflow mint evidence attributed to the provider.
+- `scripts/create_release_manifest.py --require-attestation` refuses to write a manifest
+  it cannot sign, so a release cannot publish a manifest that no verifier will accept.
+- `scripts/attest_evidence.py` signs a derived record. A record that gains a member
+  after signing cannot inherit the earlier signature, because the signature covers the
+  payload it was computed over, so each derived record is signed in its own right.
+- The production rollback evidence contract is split across two workflows because its
+  two halves become true at different times:
+  - `.github/workflows/rollback-production.yml` validates the pre-deployment approval
+    (`--approval`): the restored release, its verified Cosign references, and a named
+    operator approval. It rejects any record that already claims an execution, because
+    nothing has been deployed yet when it runs.
+  - `.github/workflows/rollback-execution-verification.yml` validates the completed
+    execution (`--record`) after the Darkube deployment. Its execution outcome is
+    supplied by the operator, so the attestation it attaches records what it was given
+    rather than proving the deployment independently.
+
 Admin bootstrap
 
 - On first run (empty DB), an admin user is created:

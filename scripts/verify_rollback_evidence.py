@@ -230,6 +230,88 @@ def verify_rollback_manifest(
     return result
 
 
+def verify_rollback_approval(
+    record: dict[str, Any],
+    expected_commit_sha: str,
+    expected_repository: str | None = None,
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
+) -> dict[str, Any]:
+    """Validate a pre-deployment rollback approval record.
+
+    This is the pre-flight contract, and it is separate from
+    `verify_rollback_record` on purpose. Everything it proves exists *before* anything
+    is deployed: that the release being restored is the exact known-good manifest, that
+    a named operator approved the rollback, and that the images carry verified
+    signatures.
+
+    The record is signed in its own right rather than reusing the manifest's signature,
+    because the approval fields change the payload the manifest's signature covers, so
+    that signature can no longer be checked once the record is derived. The record's own
+    attestation covers every manifest field as well as the approval fields, which is why
+    the embedded manifest is checked with `require_attestation=False` here - not to relax
+    the requirement, but because the stronger record-level signature subsumes it.
+
+    It rejects a record that already carries an `execution` block. That is not
+    bookkeeping: a pre-deployment approval cannot have observed a deployment outcome, so
+    a record claiming one at this point is either forged or a symptom of validating in
+    the wrong order. The completed deployment is validated by the stricter
+    post-deployment contract.
+    """
+    record = _mapping(record, "rollback record")
+    cosign_references = record.get("cosign_references")
+    if not isinstance(cosign_references, list):
+        raise RollbackEvidenceError(
+            "rollback record.cosign_references must be a complete signed list"
+        )
+    if "execution" in record:
+        raise RollbackEvidenceError(
+            "rollback record.execution must be absent before deployment; validate a "
+            "completed execution with the post-deployment record contract"
+        )
+    manifest_result = verify_rollback_manifest(
+        record,
+        expected_commit_sha,
+        cosign_references=cosign_references,
+        expected_repository=expected_repository,
+        require_attestation=False,
+    )
+    _verify_attestation(
+        record,
+        "rollback record.attestation",
+        secret=secret,
+        public_key_pem=public_key_pem,
+    )
+    if record.get("rollback") != "rollback":
+        raise RollbackEvidenceError("rollback record.rollback must be 'rollback'")
+    run_id = _required_string(
+        record.get("rollback_from_manifest_run_id"), "rollback record manifest run ID"
+    )
+    if not run_id.isdigit() or int(run_id) <= 0:
+        raise RollbackEvidenceError(
+            "rollback record manifest run ID must be a positive integer"
+        )
+    _required_string(record.get("approved_by"), "rollback record approved by")
+    _required_string(
+        record.get("incident_reference"), "rollback record incident reference"
+    )
+    approved_at = _required_string(
+        record.get("approved_at"), "rollback record approved at"
+    )
+    try:
+        parsed = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RollbackEvidenceError(
+            "rollback record approved at must be an ISO-8601 timestamp"
+        ) from exc
+    if parsed.tzinfo is None:
+        raise RollbackEvidenceError(
+            "rollback record approved at must include a timezone"
+        )
+    return {**manifest_result, "rollback": "rollback", "deployment_performed": False}
+
+
 def verify_rollback_record(
     record: dict[str, Any],
     expected_commit_sha: str,
@@ -307,13 +389,18 @@ def main(argv: list[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--manifest", type=Path)
     source.add_argument("--record", type=Path)
+    source.add_argument(
+        "--approval",
+        type=Path,
+        help="Pre-deployment approval record; see verify_rollback_approval.",
+    )
     parser.add_argument("--commit-sha", required=True)
     parser.add_argument("--repository")
     parser.add_argument("--cosign-reference", action="append", default=[])
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     try:
-        source_path = args.record or args.manifest
+        source_path = args.record or args.approval or args.manifest
         payload = json.loads(source_path.read_text(encoding="utf-8"))
         if args.record:
             if args.cosign_reference:
@@ -321,6 +408,12 @@ def main(argv: list[str] | None = None) -> int:
                     "Cosign references are only valid with --manifest"
                 )
             result = verify_rollback_record(payload, args.commit_sha, args.repository)
+        elif args.approval:
+            if args.cosign_reference:
+                raise RollbackEvidenceError(
+                    "Cosign references are only valid with --manifest"
+                )
+            result = verify_rollback_approval(payload, args.commit_sha, args.repository)
         else:
             result = verify_rollback_manifest(
                 payload, args.commit_sha, args.cosign_reference, args.repository
@@ -334,7 +427,12 @@ def main(argv: list[str] | None = None) -> int:
         args.output.write_text(rendered, encoding="utf-8", newline="\n")
     else:
         print(rendered, end="")
-    print("[ROLLBACK-EVIDENCE] known-good release manifest verified", file=sys.stderr)
+    print(
+        "[ROLLBACK-EVIDENCE] pre-deployment rollback approval verified"
+        if args.approval
+        else "[ROLLBACK-EVIDENCE] known-good release manifest verified",
+        file=sys.stderr,
+    )
     return 0
 
 
