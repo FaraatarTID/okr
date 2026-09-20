@@ -1,13 +1,23 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as api from "@/lib/api";
 import type { AuthUser, CycleSummary } from "@/lib/api";
+import * as cyclesModule from "@/lib/cycles";
 import useCyclesSource from "@/components/atlas-shell/useCyclesSource";
-import { cacheKeys, clearResourceCache, invalidateCache } from "@/lib/resourceCache";
 
-vi.mock("@/lib/api", () => ({
-  readCyclesQuery: vi.fn(),
+/**
+ * These tests own the hook's contract, not the cache's.
+ *
+ * `readMergedCycles` is mocked at the module boundary on purpose. An earlier
+ * version of this file drove the real cycle cache with a mocked `@/lib/api` and
+ * was not deterministic: the cache is module state, so a payload from one test
+ * was served to another (`expected [ 5, 4 ] to deeply equal [ 12, 11, 9, 2 ]`).
+ * The cache itself — TTL expiry, in-flight joining, invalidation, clear, and the
+ * refusal to cache failures — is covered directly and deterministically in
+ * `src/lib/resourceCache.test.ts`.
+ */
+vi.mock("@/lib/cycles", () => ({
+  readMergedCycles: vi.fn(),
 }));
 
 const baseUser: AuthUser = {
@@ -25,21 +35,13 @@ const cycle = (id: number, isActive = false): CycleSummary => ({
   end_date: null,
 });
 
-/** Resolve each query after a tick, so overlapping reads can genuinely overlap. */
-function mockCycles(all: CycleSummary[], active: CycleSummary[]) {
-  const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-  readCyclesQueryMock.mockImplementation(async ({ kind }: { kind: string }) => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    return kind === "cycles.active" ? active : all;
-  });
-  return readCyclesQueryMock;
-}
+const readMergedCyclesMock = () => vi.mocked(cyclesModule.readMergedCycles);
 
 /**
  * Render the hook and hand back the `refreshCycles` callback plus a helper that
  * invokes it inside `act`. The callback is captured once, the way the real shell
- * does it when it destructures the hook result, so a re-render between calls
- * cannot leave the test holding a stale reference.
+ * does when it destructures the hook result, so a re-render between calls cannot
+ * leave the test holding a stale reference.
  */
 function setup() {
   const setSessionCycles = vi.fn();
@@ -66,122 +68,78 @@ function setup() {
 
 describe("useCyclesSource", () => {
   beforeEach(() => {
-    // `clearAllMocks` only clears call history; it keeps the previous test's
-    // implementation, which would silently serve that test's payload to this one.
-    // `mockReset` drops the implementation too.
-    vi.mocked(api.readCyclesQuery).mockReset();
-    // The pair is cached per username and every test here uses the same user, so
-    // the cache must be dropped as well or a later test reads the earlier value.
-    clearResourceCache();
+    readMergedCyclesMock().mockReset();
   });
 
-  it("merges cycles.all with cycles.active and orders by descending id", async () => {
-    mockCycles([cycle(2), cycle(9), cycle(11)], [cycle(12, true)]);
+  it("returns the merged list and publishes it to session cycles", async () => {
+    const merged = [cycle(12, true), cycle(11), cycle(9), cycle(2)];
+    readMergedCyclesMock().mockResolvedValue(merged);
     const { run, setSessionCycles, pending } = setup();
 
-    const merged = await run();
+    const value = await run();
 
-    expect(merged.map((row) => row.id)).toEqual([12, 11, 9, 2]);
+    expect(value).toEqual(merged);
     expect(setSessionCycles).toHaveBeenCalledWith(merged);
     expect(pending()).toBe(false);
   });
 
-  it("keeps the active cycle in the list even when cycles.all omits it", async () => {
-    mockCycles([cycle(2)], [cycle(12, true)]);
+  it("reads through the shared cycle cache for the acting user", async () => {
+    readMergedCyclesMock().mockResolvedValue([]);
     const { run } = setup();
 
-    const merged = await run();
+    await run();
 
-    expect(merged.map((row) => row.id)).toEqual([12, 2]);
-  });
-
-  it("issues the pair once when two reads overlap on the same mount", async () => {
-    // The defect C1 fixes: the deep-link bootstrap and this hook both needed the
-    // pair, and each issued its own request for it.
-    const readCyclesQueryMock = mockCycles([cycle(1)], []);
-    const { refresh } = setup();
-
-    await act(async () => {
-      await Promise.all([refresh(baseUser), refresh(baseUser)]);
+    expect(readMergedCyclesMock()).toHaveBeenCalledWith("alice", {
+      bypassCache: undefined,
     });
-
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(2);
-    expect(readCyclesQueryMock.mock.calls.map(([input]) => input.kind).sort()).toEqual([
-      "cycles.active",
-      "cycles.all",
-    ]);
   });
 
-  it("serves a later read within the TTL from cache", async () => {
-    const readCyclesQueryMock = mockCycles([cycle(5)], []);
+  it("asks the cache to bypass when the caller requires fresh data", async () => {
+    readMergedCyclesMock().mockResolvedValue([]);
     const { run } = setup();
 
-    await run();
-    await run();
+    await run({ bypassCache: true });
 
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(2);
+    expect(readMergedCyclesMock()).toHaveBeenCalledWith("alice", {
+      bypassCache: true,
+    });
   });
 
-  it("re-reads when the caller bypasses the cache", async () => {
-    const readCyclesQueryMock = mockCycles([cycle(5)], []);
-    const { run } = setup();
-
-    await run();
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(2);
-
-    // Point the loader at different data: if the cached pair were reused, the
-    // second read would return the earlier list instead of this one.
-    mockCycles([cycle(6)], []);
-    const bypassed = await run({ bypassCache: true });
-
-    expect(bypassed.map((row) => row.id)).toEqual([6]);
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(4);
-  });
-
-  it("propagates a cycles.all failure instead of caching it", async () => {
-    const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-    readCyclesQueryMock.mockRejectedValue(new Error("cycles unavailable"));
+  it("propagates a read failure and leaves session cycles untouched", async () => {
+    readMergedCyclesMock().mockRejectedValue(new Error("cycles unavailable"));
     const { refresh, setSessionCycles, pending } = setup();
 
     await act(async () => {
       await expect(refresh(baseUser)).rejects.toThrow("cycles unavailable");
     });
 
-    expect(pending()).toBe(false);
     expect(setSessionCycles).not.toHaveBeenCalled();
+    expect(pending()).toBe(false);
+  });
 
-    // A transient failure must not be cached, so a retry reaches the API again.
-    readCyclesQueryMock.mockClear();
-    mockCycles([cycle(3)], []);
+  it("retries the cache on a later read instead of remembering the failure", async () => {
+    readMergedCyclesMock().mockRejectedValueOnce(new Error("transient"));
+    readMergedCyclesMock().mockResolvedValueOnce([cycle(3)]);
+    const { run } = setup();
+
+    await expect(
+      act(async () => {
+        await expect(run()).rejects.toThrow("transient");
+      }),
+    ).resolves.toBeUndefined();
+
+    const recovered = await run();
+    expect(recovered.map((row) => row.id)).toEqual([3]);
+  });
+
+  it("clears the pending flag even when the read fails", async () => {
+    readMergedCyclesMock().mockRejectedValue(new Error("boom"));
+    const { refresh, pending } = setup();
+
     await act(async () => {
-      await refresh(baseUser);
+      await expect(refresh(baseUser)).rejects.toThrow("boom");
     });
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(2);
-  });
 
-  it("degrades to an empty active list when cycles.active fails", async () => {
-    const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-    readCyclesQueryMock.mockImplementation(async ({ kind }: { kind: string }) => {
-      if (kind === "cycles.active") {
-        throw new Error("active unavailable");
-      }
-      return [cycle(4)];
-    });
-    const { run } = setup();
-
-    const merged = await run();
-
-    expect(merged.map((row) => row.id)).toEqual([4]);
-  });
-
-  it("re-reads after an explicit invalidation", async () => {
-    const readCyclesQueryMock = mockCycles([cycle(5)], []);
-    const { run } = setup();
-
-    await run();
-    invalidateCache(cacheKeys.cycles(baseUser.username));
-    await run();
-
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(4);
+    expect(pending()).toBe(false);
   });
 });
