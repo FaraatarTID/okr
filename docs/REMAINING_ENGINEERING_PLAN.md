@@ -194,6 +194,15 @@ Implementation notes for this phase:
   dead import, then ratchet. Error-level `exhaustive-deps` and
   `no-floating-promises` on the first run will fail CI on pre-existing debt.
 
+Progress:
+
+| Item | Status | What landed |
+| --- | --- | --- |
+| C1 | Implemented (cycles and admin); session deliberately excluded | A short-TTL read-through cache in `spa-web/src/lib/resourceCache.ts` with in-flight de-duplication, explicit namespace invalidation, and no caching of failures. `cycles.all` + `cycles.active` now come from one shared entry, so the deep-link bootstrap, the top-bar cycle source, and the admin panel issue one pair between them instead of one each. The admin `users.all` + `teams.all` pair is cached the same way, and sign-out clears the whole cache. Mutation paths pass `bypassCache` and re-seed the entry. |
+| C1 note | Session not cached, by decision | `readSessionUser()` carries `role`, and the gate in `useShellAccessControl.ts` decides what chrome renders. Caching it would widen the window in which a server-side demotion still shows admin controls from one round trip to the whole TTL, which this plan flags as the highest-blast-radius risk in the workstream. Because C8 removed the per-navigation remount, the session is now read once per shell lifetime, so there is nothing left to gain. |
+| C8 | Implemented and merged with CI green; drill open | Lands ahead of the order stated above: C8 removes the remount, so the per-navigation cost C1 targeted is already gone and C1's remaining gain is the duplicate pair on a single mount. `VERIFIED` still requires the warmed-stack navigation drill recorded in the status ledger. |
+| C2, C3, C4, C5, C6 | Not started | Phase 2 remainder. C4 (lint and `spa-bff` typecheck) is the next prerequisite, because it must exist before C2 and any further rewrite of large files. |
+
 ### Phase 3 - Enterprise identity
 
 Items, in order: D1, D3, D4, D6, D8, and D9 (the verification and decision steps),
