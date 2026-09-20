@@ -5,6 +5,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from src.saas.provisioning import LocalDisposableEnvironmentProvider
 from src.saas.control_plane import ControlPlane
 from src.saas.release_operations import LocalRuntimeAdapter, ReleaseArtifact, ReleaseManager
