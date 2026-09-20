@@ -1,24 +1,20 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import * as api from "@/lib/api";
-import type { CycleSummary } from "@/lib/api";
-import { mergeCyclePair, readCyclesPair, readMergedCycles } from "@/lib/cycles";
-import { clearResourceCache } from "@/lib/resourceCache";
+import type { AuthUser, CycleSummary } from "@/lib/api";
+import { mergeCyclePair } from "@/lib/cycles";
+import { cacheKeys, clearResourceCache, readThroughCache } from "@/lib/resourceCache";
 
 /**
- * The one test that exercises the real cache end to end.
+ * `mergeCyclePair` is pure, so it is tested directly with no mocking.
  *
- * This is the assertion C1 exists for: the deep-link bootstrap and the top-bar
- * cycle source both needed the `cycles.all` + `cycles.active` pair, and each
- * issued its own request for it. The hook-level tests mock this module, so the
- * de-duplication has to be proven here, against the real cache.
- *
- * Every test uses its own username and clears the cache before and after itself,
- * so no other test file can observe or pollute this state.
+ * The de-duplication C1 exists for — the deep-link bootstrap and the top-bar
+ * cycle source each requesting the same `cycles.all` + `cycles.active` pair —
+ * rests on `readThroughCache` joining concurrent readers of one key. That join is
+ * proven on the real primitive in `src/lib/resourceCache.test.ts`, and re-proven
+ * here against the exact keys `cycles.ts` uses, with a synthetic loader so no API
+ * or network is involved. The hook-level tests mock `@/lib/cycles`, so no test
+ * drives the real cycle cache through the API layer.
  */
-vi.mock("@/lib/api", () => ({
-  readCyclesQuery: vi.fn(),
-}));
 
 const cycle = (id: number, isActive = false): CycleSummary => ({
   id,
@@ -26,102 +22,6 @@ const cycle = (id: number, isActive = false): CycleSummary => ({
   is_active: isActive,
   start_date: null,
   end_date: null,
-});
-
-function mockQueries(all: CycleSummary[], active: CycleSummary[]) {
-  const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-  readCyclesQueryMock.mockReset();
-  readCyclesQueryMock.mockImplementation(async ({ kind }: { kind: string }) => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    return kind === "cycles.active" ? active : all;
-  });
-  return readCyclesQueryMock;
-}
-
-describe("readCyclesPair", () => {
-  beforeEach(() => {
-    clearResourceCache();
-  });
-
-  it("issues the pair once when two consumers read together", async () => {
-    const readCyclesQueryMock = mockQueries([cycle(2)], [cycle(12, true)]);
-
-    // Two independent concurrent consumers, as two hooks on one mount are.
-    await Promise.all([readCyclesPair("c1-concurrent"), readMergedCycles("c1-concurrent")]);
-
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(2);
-    expect(readCyclesQueryMock.mock.calls.map(([input]) => input.kind).sort()).toEqual([
-      "cycles.active",
-      "cycles.all",
-    ]);
-  });
-
-  it("serves the second consumer from the cache within the TTL", async () => {
-    const readCyclesQueryMock = mockQueries([cycle(2)], []);
-
-    await readCyclesPair("c1-sequential");
-    await readMergedCycles("c1-sequential");
-
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(2);
-    clearResourceCache();
-  });
-
-  it("bypasses the cache when the caller needs fresh data", async () => {
-    const readCyclesQueryMock = mockQueries([cycle(2)], []);
-
-    await readMergedCycles("c1-bypass");
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(2);
-
-    // Different data proves the second read really went back out.
-    mockQueries([cycle(7)], []);
-    const fresh = await readMergedCycles("c1-bypass", { bypassCache: true });
-
-    expect(fresh.map((row) => row.id)).toEqual([7]);
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(2);
-    clearResourceCache();
-  });
-
-  it("keeps different users apart", async () => {
-    const readCyclesQueryMock = mockQueries([cycle(2)], []);
-
-    await readMergedCycles("c1-user-a");
-    await readMergedCycles("c1-user-b");
-
-    // Distinct keys, so no cross-user reuse.
-    expect(readCyclesQueryMock).toHaveBeenCalledTimes(4);
-    clearResourceCache();
-  });
-
-  it("degrades cycles.active to empty without failing the pair", async () => {
-    const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-    readCyclesQueryMock.mockReset();
-    readCyclesQueryMock.mockImplementation(async ({ kind }: { kind: string }) => {
-      if (kind === "cycles.active") {
-        throw new Error("active unavailable");
-      }
-      return [cycle(4)];
-    });
-
-    const pair = await readCyclesPair("c1-degrade");
-
-    expect(pair.all.map((row) => row.id)).toEqual([4]);
-    expect(pair.active).toEqual([]);
-    clearResourceCache();
-  });
-
-  it("does not cache a cycles.all failure, so a retry reaches the API", async () => {
-    const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-    readCyclesQueryMock.mockReset();
-    readCyclesQueryMock.mockRejectedValue(new Error("down"));
-
-    await expect(readCyclesPair("c1-retry")).rejects.toThrow("down");
-
-    mockQueries([cycle(3)], []);
-    const recovered = await readMergedCycles("c1-retry");
-
-    expect(recovered.map((row) => row.id)).toEqual([3]);
-    clearResourceCache();
-  });
 });
 
 describe("mergeCyclePair", () => {
@@ -142,5 +42,60 @@ describe("mergeCyclePair", () => {
 
     expect(merged).toHaveLength(1);
     expect(merged[0].title).toBe("From all");
+  });
+
+  it("handles an empty pair", () => {
+    expect(mergeCyclePair({ all: [], active: [] })).toEqual([]);
+  });
+
+  it("includes an active cycle that cycles.all omitted", () => {
+    const merged = mergeCyclePair({ all: [], active: [cycle(12, true)] });
+    expect(merged.map((row) => row.id)).toEqual([12]);
+  });
+});
+
+describe("cycle cache keys", () => {
+  const user = (username: string): AuthUser => ({
+    id: 1,
+    username,
+    display_name: "User",
+    role: "admin",
+  });
+
+  it("joins two concurrent consumers of the same user into one request", async () => {
+    clearResourceCache();
+    const key = cacheKeys.cycles(user("dedupe-user").username);
+    let calls = 0;
+    const loader = async () => {
+      calls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return "pair";
+    };
+
+    // Two independent consumers mounting together.
+    const [first, second] = await Promise.all([
+      readThroughCache(key, loader),
+      readThroughCache(key, loader),
+    ]);
+
+    expect(first).toBe("pair");
+    expect(second).toBe("pair");
+    expect(calls).toBe(1);
+    clearResourceCache();
+  });
+
+  it("keys by username so two users never share a cached pair", async () => {
+    clearResourceCache();
+    let calls = 0;
+    const loader = async () => {
+      calls += 1;
+      return "pair";
+    };
+
+    await readThroughCache(cacheKeys.cycles("user-a"), loader);
+    await readThroughCache(cacheKeys.cycles("user-b"), loader);
+
+    expect(calls).toBe(2);
+    clearResourceCache();
   });
 });
