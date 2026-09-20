@@ -131,7 +131,7 @@ export function normalizeBackendDateTime(value: unknown): string {
     return "";
   }
   const matched = text.match(
-    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([zZ]|[+\-]\d{2}:\d{2})?$/,
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([zZ]|[+-]\d{2}:\d{2})?$/,
   );
   if (!matched) {
     return text;
@@ -199,6 +199,7 @@ export async function retryWithFetch<T>(
       }
       throw new Error(
         `${label} failed: ${String(error instanceof Error ? error.message : error)}`,
+        { cause: error },
       );
     }
 

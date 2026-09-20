@@ -24,8 +24,13 @@ typecheck:
 build:
     npm run build
 
-lint:
+lint: lint-python lint-javascript
+
+lint-python:
     uv run ruff check backend_app scripts tests
+
+lint-javascript:
+    npm run lint
 
 contracts:
     uv run python scripts/check_ci_script_references.py

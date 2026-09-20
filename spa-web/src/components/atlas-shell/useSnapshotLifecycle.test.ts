@@ -132,7 +132,9 @@ describe("useSnapshotLifecycle", () => {
       await Promise.resolve();
     });
     await act(async () => {
-      result.current.loadSnapshotForUser(baseUser);
+      // Deliberately not awaited: this second call is the one under test, and
+      // the assertions below drive its resolution out of order.
+      void result.current.loadSnapshotForUser(baseUser);
       await Promise.resolve();
     });
 
