@@ -1,4 +1,4 @@
-﻿import { parseTypedRef } from "@/lib/atlas";
+import { parseTypedRef } from "@/lib/atlas";
 
 export const DEFAULT_MODE = "atlas";
 export const DEFAULT_LENS = "focus";
@@ -8,7 +8,7 @@ const LENS_ALIASES = new Map<string, string>([
   ["scope", "focus"],
   ["branch", "owner"],
 ]);
-const ALLOWED_MODES = new Set([
+export const ALLOWED_MODES = new Set([
   "atlas",
   "weekly",
   "daily",
@@ -27,7 +27,7 @@ export interface AtlasDeepLinkState {
   lens: string;
 }
 
-const MODE_ALIASES = new Map<string, string>([
+export const MODE_ALIASES = new Map<string, string>([
   ["check-in", "ritual"],
   ["checkin", "ritual"],
 ]);
