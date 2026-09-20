@@ -41,14 +41,22 @@ def validate_failure_isolation(
         seen.add(name)
         if scenario.get("status") != "passed":
             errors.append(f"scenario {name} status must be passed")
-        if not isinstance(scenario.get("observed"), str) or not scenario["observed"].strip():
+        if (
+            not isinstance(scenario.get("observed"), str)
+            or not scenario["observed"].strip()
+        ):
             errors.append(f"scenario {name} observed result is required")
-        if not isinstance(scenario.get("artifact"), str) or not scenario["artifact"].strip():
+        if (
+            not isinstance(scenario.get("artifact"), str)
+            or not scenario["artifact"].strip()
+        ):
             errors.append(f"scenario {name} artifact is required")
         elif base_dir is not None:
             artifact = Path(scenario["artifact"])
             if artifact.is_absolute() or ".." in artifact.parts:
-                errors.append(f"scenario {name} artifact must stay below the evidence directory")
+                errors.append(
+                    f"scenario {name} artifact must stay below the evidence directory"
+                )
             elif not (base_dir / artifact).is_file():
                 errors.append(f"scenario {name} artifact does not exist: {artifact}")
     for missing in sorted(REQUIRED_SCENARIOS - seen):

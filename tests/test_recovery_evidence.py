@@ -1,22 +1,41 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 
 import pytest
 
-from scripts.verify_recovery_evidence import RecoveryEvidenceError, main, verify_recovery_evidence
+from scripts.verify_recovery_evidence import (
+    RecoveryEvidenceError,
+    main,
+    verify_recovery_evidence,
+)
 
 
 NOW = "2026-09-01T10:00:00+00:00"
 BACKUP_CREATED = "2026-09-01T09:50:00+00:00"
 RESTORE_STARTED = "2026-09-01T10:01:00+00:00"
 RESTORE_COMPLETED = "2026-09-01T10:16:00+00:00"
+SECRET = "recovery-attestation-test-secret"
+
+
+@pytest.fixture(autouse=True)
+def _attestation_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An attestation is only verifiable against a configured key."""
+    monkeypatch.setenv("OKR_SAAS_ATTESTATION_SECRET", SECRET)
 
 
 def _checksum(payload: dict[str, object]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _signature(payload: dict[str, object]) -> str:
+    """Compute the HMAC independently of the code under test."""
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    digest = hmac.new(SECRET.encode("utf-8"), encoded, hashlib.sha256).hexdigest()
+    return "hmac-sha256:" + digest
 
 
 def valid_evidence() -> dict[str, object]:
@@ -63,7 +82,7 @@ def valid_evidence() -> dict[str, object]:
         "evidence_id": "provider-recovery-20260901-001",
         "algorithm": "provider-signed",
         "key_id": "provider-key-2026",
-        "signature": "provider-signature-value-with-more-than-32-bytes",
+        "signature": _signature(evidence),
         "issued_at": NOW,
         "signed_payload_sha256": _checksum(evidence),
     }
@@ -97,10 +116,18 @@ def test_verifies_sanitized_successful_recovery_evidence() -> None:
         (lambda e: e["backup"].update({"checksum": "sha256:" + "0" * 64}), "checksum"),
         (lambda e: e["restore"]["target"].update({"isolation": "shared"}), "isolated"),
         (lambda e: e["restore"]["target"].update({"live": True}), "live"),
-        (lambda e: e["restore"]["target"].update({"identity": "db-env-a-primary"}), "different"),
+        (
+            lambda e: e["restore"]["target"].update({"identity": "db-env-a-primary"}),
+            "different",
+        ),
         (lambda e: e.update({"measured_rto_seconds": 1801}), "RTO"),
         (lambda e: e.update({"measured_rpo_seconds": 3601}), "RPO"),
-        (lambda e: e["restore"].update({"completed_at": "2026-09-01T10:00:59+00:00"}), "timestamp"),
+        (
+            lambda e: e["restore"].update(
+                {"completed_at": "2026-09-01T10:00:59+00:00"}
+            ),
+            "timestamp",
+        ),
     ],
 )
 def test_rejects_unsafe_or_out_of_policy_evidence(change, message: str) -> None:
@@ -111,11 +138,19 @@ def test_rejects_unsafe_or_out_of_policy_evidence(change, message: str) -> None:
         verify_recovery_evidence(evidence)
 
 
-def test_rejects_failed_status_even_with_failure_reasons_and_complete_timestamps() -> None:
+def test_rejects_failed_status_even_with_failure_reasons_and_complete_timestamps() -> (
+    None
+):
     evidence = valid_evidence()
-    evidence["backup"].update({"status": "FAILED", "failure_reason": "provider timeout"})
-    evidence["restore"].update({"status": "FAILED", "failure_reason": "restore aborted"})
-    evidence.update({"status": "FAILED", "measured_rto_seconds": 0, "measured_rpo_seconds": 0})
+    evidence["backup"].update(
+        {"status": "FAILED", "failure_reason": "provider timeout"}
+    )
+    evidence["restore"].update(
+        {"status": "FAILED", "failure_reason": "restore aborted"}
+    )
+    evidence.update(
+        {"status": "FAILED", "measured_rto_seconds": 0, "measured_rpo_seconds": 0}
+    )
 
     with pytest.raises(RecoveryEvidenceError, match="failed evidence"):
         verify_recovery_evidence(evidence)
@@ -156,3 +191,39 @@ def test_cli_writes_deterministic_verification_artifact(tmp_path) -> None:
 
     assert main(["--evidence", str(evidence_path), "--output", str(output_path)]) == 0
     assert json.loads(output_path.read_text(encoding="utf-8"))["verified"] is True
+
+
+def test_rejects_fabricated_signature_with_a_valid_self_digest() -> None:
+    """The defect A5 closed: a self-consistent digest used to be enough to pass."""
+    evidence = valid_evidence()
+    evidence["attestation"]["signature"] = (
+        "provider-signature-value-with-more-than-32-bytes"
+    )
+    assert evidence["attestation"]["signed_payload_sha256"] == _checksum(
+        {key: value for key, value in evidence.items() if key != "attestation"}
+    )
+
+    with pytest.raises(RecoveryEvidenceError, match="not verifiable"):
+        verify_recovery_evidence(evidence)
+
+
+def test_rejects_payload_tampered_after_signing_even_with_a_fresh_digest() -> None:
+    """The signature must bind the content, not merely accompany a recomputed digest."""
+    evidence = valid_evidence()
+    evidence["measured_rpo_seconds"] = 1
+    evidence["attestation"]["signed_payload_sha256"] = _checksum(
+        {key: value for key, value in evidence.items() if key != "attestation"}
+    )
+
+    with pytest.raises(RecoveryEvidenceError, match="not verifiable"):
+        verify_recovery_evidence(evidence)
+
+
+def test_rejects_provider_signed_attestation_without_a_configured_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OKR_SAAS_ATTESTATION_SECRET", raising=False)
+    evidence = valid_evidence()
+
+    with pytest.raises(RecoveryEvidenceError, match="not verifiable"):
+        verify_recovery_evidence(evidence)

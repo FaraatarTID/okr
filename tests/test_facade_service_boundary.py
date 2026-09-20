@@ -24,7 +24,9 @@ from src.services.app_shell_runtime import (
 )
 
 
-@pytest.mark.parametrize("serializer", [serialize_cycle, serialize_user, serialize_weekly_plan])
+@pytest.mark.parametrize(
+    "serializer", [serialize_cycle, serialize_user, serialize_weekly_plan]
+)
 def test_canonical_facade_serializers_preserve_missing_object_contract(serializer):
     assert serializer(None) is None
 

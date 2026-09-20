@@ -50,10 +50,6 @@ aliases; runtime requests still go through the BFF boundary.
 
 - `BFF_PUBLIC_ORIGIN` (optional, default `http://127.0.0.1:3001`)
   - Used by server-side route handlers to proxy `/api/backend/*` and `/api/session/*` to BFF.
-- `NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA` (optional, default `100`)
-  - Maximum KR point change allowed per AI sync run.
-- `NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE` (optional, default `true`)
-  - Allow AI to lower KR progress values. Set to `false` to only allow increases.
 
 ## Local development
 

@@ -43,33 +43,42 @@ COMMIT_PATTERN = re.compile(r"^[0-9a-f]{40,64}$")
 NAMESPACE_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 OPAQUE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$")
 MIGRATION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,63}$")
-TIMESTAMP_PATTERN = re.compile(
-    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
-)
+TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 
 
 class EvidenceValidationError(ValueError):
     """Raised when an evidence payload is incomplete or unsafe to publish."""
 
 
-def _require_string(value: object, field: str, *, pattern: re.Pattern[str] | None = None) -> str:
+def _require_string(
+    value: object, field: str, *, pattern: re.Pattern[str] | None = None
+) -> str:
     if not isinstance(value, str) or not value.strip():
         raise EvidenceValidationError(f"{field} must be a non-empty string")
     text = value.strip()
     if _contains_forbidden_content(text):
-        raise EvidenceValidationError(f"{field} contains a URL, credential, token, or placeholder")
+        raise EvidenceValidationError(
+            f"{field} contains a URL, credential, token, or placeholder"
+        )
     if pattern is not None and pattern.fullmatch(text) is None:
         raise EvidenceValidationError(f"{field} has an invalid format")
     return text
 
 
 def _contains_forbidden_content(text: str) -> bool:
-    return bool(URL_PATTERN.search(text) or PLACEHOLDER_PATTERN.search(text) or SENSITIVE_PATTERN.search(text) or JWT_PATTERN.fullmatch(text))
+    return bool(
+        URL_PATTERN.search(text)
+        or PLACEHOLDER_PATTERN.search(text)
+        or SENSITIVE_PATTERN.search(text)
+        or JWT_PATTERN.fullmatch(text)
+    )
 
 
 def _require_result(value: object, field: str) -> str:
     if not isinstance(value, str) or value not in CHECK_STATUSES:
-        raise EvidenceValidationError(f"{field} must be one of: {', '.join(CHECK_STATUSES)}")
+        raise EvidenceValidationError(
+            f"{field} must be one of: {', '.join(CHECK_STATUSES)}"
+        )
     return value
 
 
@@ -79,11 +88,15 @@ def _parse_timestamp(value: object) -> str:
         datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%SZ")
     except ValueError as error:
         if "." not in timestamp:
-            raise EvidenceValidationError("timestamp is not a valid UTC timestamp") from error
+            raise EvidenceValidationError(
+                "timestamp is not a valid UTC timestamp"
+            ) from error
         try:
             datetime.fromisoformat(timestamp[:-1])
         except ValueError as fractional_error:
-            raise EvidenceValidationError("timestamp is not a valid UTC timestamp") from fractional_error
+            raise EvidenceValidationError(
+                "timestamp is not a valid UTC timestamp"
+            ) from fractional_error
     return timestamp
 
 
@@ -101,12 +114,22 @@ class PreReleaseEvidence:
     timestamp: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "commit", _require_string(self.commit, "commit", pattern=COMMIT_PATTERN))
-        object.__setattr__(self, "namespace", _require_string(self.namespace, "namespace", pattern=NAMESPACE_PATTERN))
+        object.__setattr__(
+            self,
+            "commit",
+            _require_string(self.commit, "commit", pattern=COMMIT_PATTERN),
+        )
+        object.__setattr__(
+            self,
+            "namespace",
+            _require_string(self.namespace, "namespace", pattern=NAMESPACE_PATTERN),
+        )
         if not isinstance(self.darkube_build_ids, Mapping):
             raise EvidenceValidationError("darkube_build_ids must be an object")
         if set(self.darkube_build_ids) != set(BUILD_COMPONENTS):
-            raise EvidenceValidationError("darkube_build_ids must contain exactly web, bff, api, and worker")
+            raise EvidenceValidationError(
+                "darkube_build_ids must contain exactly web, bff, api, and worker"
+            )
         build_ids = {
             component: _require_string(
                 self.darkube_build_ids[component],
@@ -119,11 +142,23 @@ class PreReleaseEvidence:
         object.__setattr__(
             self,
             "database_resource_id",
-            _require_string(self.database_resource_id, "database_resource_id", pattern=OPAQUE_ID_PATTERN),
+            _require_string(
+                self.database_resource_id,
+                "database_resource_id",
+                pattern=OPAQUE_ID_PATTERN,
+            ),
         )
-        object.__setattr__(self, "migration_head", _require_string(self.migration_head, "migration_head", pattern=MIGRATION_PATTERN))
+        object.__setattr__(
+            self,
+            "migration_head",
+            _require_string(
+                self.migration_head, "migration_head", pattern=MIGRATION_PATTERN
+            ),
+        )
         for field in ("health_result", "smoke_result", "rollback_result"):
-            object.__setattr__(self, field, _require_result(getattr(self, field), field))
+            object.__setattr__(
+                self, field, _require_result(getattr(self, field), field)
+            )
         object.__setattr__(self, "operator", _require_string(self.operator, "operator"))
         object.__setattr__(self, "timestamp", _parse_timestamp(self.timestamp))
 
@@ -156,7 +191,10 @@ class PreReleaseEvidence:
             "operator": self.operator,
             "timestamp": self.timestamp,
             "overall_result": "passed"
-            if all(getattr(self, field) == "passed" for field in ("health_result", "smoke_result", "rollback_result"))
+            if all(
+                getattr(self, field) == "passed"
+                for field in ("health_result", "smoke_result", "rollback_result")
+            )
             else "not_passed",
         }
 
@@ -180,7 +218,9 @@ def write_evidence(evidence: PreReleaseEvidence, output: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", type=Path, help="JSON file containing the sanitized evidence fields")
+    parser.add_argument(
+        "input", type=Path, help="JSON file containing the sanitized evidence fields"
+    )
     parser.add_argument("output", type=Path, help="Markdown path to write")
     args = parser.parse_args(argv)
     try:

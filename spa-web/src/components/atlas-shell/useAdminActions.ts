@@ -26,6 +26,7 @@ import type {
   AdminTeamDraft,
   AdminUserDraft,
 } from "@/components/atlas-shell/AdminModePanel";
+import { clearResourceCache } from "@/lib/resourceCache";
 
 type UseAdminActionsInput = {
   user: AuthUser | null;
@@ -34,9 +35,15 @@ type UseAdminActionsInput = {
   adminUsers: ReadQueryUser[];
   setAdminCycleError: (value: string) => void;
   setAdminDataError: (value: string) => void;
-  loadAdminCycles: (activeUser: AuthUser) => Promise<void>;
+  loadAdminCycles: (
+    activeUser: AuthUser,
+    options?: { bypassCache?: boolean },
+  ) => Promise<void>;
   adminCycles: CycleSummary[];
-  loadAdminUsersAndTeams: (activeUser: AuthUser) => Promise<void>;
+  loadAdminUsersAndTeams: (
+    activeUser: AuthUser,
+    options?: { bypassCache?: boolean },
+  ) => Promise<void>;
   loadAdminResources: (activeUser: AuthUser) => Promise<void>;
   onCycleActivated: (cycle: CycleSummary) => void;
   /** Refresh the Atlas top-bar cycle list (all cycles, not just active). */
@@ -140,7 +147,7 @@ export default function useAdminActions({
     } finally {
       setAdminBackupPending(false);
     }
-  }, [isAdmin, user]);
+  }, [isAdmin, setAdminDataError, user]);
 
   const handleAdminBackupRestore = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {
@@ -165,13 +172,30 @@ export default function useAdminActions({
       });
       setAdminBackupRestoreResult(result);
       setAdminCycleMessage("Backup restored.");
+      // A restore replaces the whole database, so every cached read is suspect,
+      // not only the admin pair. Clearing is exact here in a way that bypassing
+      // one dataset would not be, and it is what makes the reloads below observe
+      // restored data instead of pre-restore data still held by the cache.
+      clearResourceCache();
       await loadAdminResources(user);
+      // The top-bar cycle list is a separate owner and is not covered by
+      // loadAdminResources, so a restore that replaced the cycles would leave it
+      // showing pre-restore cycles until the next navigation.
+      await refreshSessionCycles(user);
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     } finally {
       setAdminBackupPending(false);
     }
-  }, [adminBackupConfirm, adminBackupFile, isAdmin, loadAdminResources, user]);
+  }, [
+    adminBackupConfirm,
+    adminBackupFile,
+    isAdmin,
+    loadAdminResources,
+    refreshSessionCycles,
+    setAdminDataError,
+    user,
+  ]);
 
   const handleAdminCreateUser = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {
@@ -208,11 +232,11 @@ export default function useAdminActions({
         teamId: "",
         mustChangePassword: true,
       });
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminUserDraft, isAdmin, loadAdminUsersAndTeams, user]);
+  }, [adminUserDraft, isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminToggleUserActive = useCallback(async (userRow: AdminUserRead): Promise<void> => {
     if (!user || !isAdmin) {
@@ -228,11 +252,11 @@ export default function useAdminActions({
         `${userRow.username} ${userRow.is_active ? "deactivated" : "activated"}.`,
       );
       setAdminDataError("");
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminUsersAndTeams, user]);
+  }, [isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminCreateTeam = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {
@@ -252,11 +276,11 @@ export default function useAdminActions({
       setAdminCycleMessage(`Team "${teamName}" created.`);
       setAdminDataError("");
       setAdminTeamDraft({ name: "", description: "" });
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminTeamDraft.description, adminTeamDraft.name, isAdmin, loadAdminUsersAndTeams, user]);
+  }, [adminTeamDraft.description, adminTeamDraft.name, isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminUpdateTeam = useCallback(async (team: AdminTeamRead): Promise<void> => {
     if (!user || !isAdmin) {
@@ -271,11 +295,11 @@ export default function useAdminActions({
       });
       setAdminCycleMessage(`Team "${team.name}" updated.`);
       setAdminDataError("");
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminUsersAndTeams, user]);
+  }, [isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminDeleteTeam = useCallback(async (team: AdminTeamRead): Promise<void> => {
     if (!user || !isAdmin) {
@@ -294,11 +318,11 @@ export default function useAdminActions({
       });
       setAdminCycleMessage(`Team "${team.name}" deleted.`);
       setAdminDataError("");
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminUsersAndTeams, user]);
+  }, [isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminResetPassword = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {
@@ -324,7 +348,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminResetDraft, adminUsers, isAdmin, user]);
+  }, [adminResetDraft, adminUsers, isAdmin, setAdminDataError, user]);
 
   const handleAdminCreateCycle = useCallback(async (): Promise<void> => {
     if (!user || !canManageCycles) {
@@ -361,12 +385,12 @@ export default function useAdminActions({
         isActive: false,
         ownerManagerId: "",
       });
-      await loadAdminCycles(user);
+      await loadAdminCycles(user, { bypassCache: true });
       await refreshSessionCycles(user);
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminCreateCycleDraft, canManageCycles, isAdmin, loadAdminCycles, refreshSessionCycles, toIsoEnd, toIsoStart, user]);
+  }, [adminCreateCycleDraft, canManageCycles, isAdmin, loadAdminCycles, refreshSessionCycles, setAdminCycleError, toIsoEnd, toIsoStart, user]);
 
   const handleAdminSetCycleActive = useCallback(async (
     cycle: CycleSummary,
@@ -413,7 +437,7 @@ export default function useAdminActions({
             : undefined,
       });
       setAdminCycleMessage(isActive ? "Cycle activated." : "Cycle deactivated.");
-      await loadAdminCycles(user);
+      await loadAdminCycles(user, { bypassCache: true });
       await refreshSessionCycles(user);
       if (isActive) {
         onCycleActivated(cycle);
@@ -421,7 +445,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminCycles, isAdmin, loadAdminCycles, onCycleActivated, refreshSessionCycles, user]);
+  }, [adminCycles, canManageCycles, isAdmin, loadAdminCycles, onCycleActivated, ownsCycle, refreshSessionCycles, setAdminCycleError, user]);
 
   const handleAdminDeleteCycle = useCallback(async (cycle: CycleSummary): Promise<void> => {
     if (!user || !canManageCycles) {
@@ -446,12 +470,12 @@ export default function useAdminActions({
         cycle_id: cycle.id,
       });
       setAdminCycleMessage("Cycle deleted.");
-      await loadAdminCycles(user);
+      await loadAdminCycles(user, { bypassCache: true });
       await refreshSessionCycles(user);
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminCycles, refreshSessionCycles, user]);
+  }, [canManageCycles, isAdmin, loadAdminCycles, ownsCycle, refreshSessionCycles, setAdminCycleError, user]);
 
   const handleAdminUpdateCycleOwner = useCallback(async (
     cycle: CycleSummary,
@@ -481,7 +505,7 @@ export default function useAdminActions({
         owner_manager_id: ownerManagerId,
       });
       setAdminCycleMessage("Cycle owner updated.");
-      await loadAdminCycles(user);
+      await loadAdminCycles(user, { bypassCache: true });
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }

@@ -40,7 +40,11 @@ EXPECTED_CALLABLE_SIGNATURES: dict[Path, dict[str, list[str]]] = {
     ROOT / "backend_app" / "main.py": {
         "_resolve_actor_scope": ["session", "actor_username", "token_version"],
         "_resolve_scope_for_actor": ["actor", "token_version"],
-        "_resolve_effective_cycle_id_for_scope": ["scope", "requested_cycle_id", "required"],
+        "_resolve_effective_cycle_id_for_scope": [
+            "scope",
+            "requested_cycle_id",
+            "required",
+        ],
         "_require_admin_actor_scope": ["actor"],
         "_require_admin_or_manager_actor_scope": ["actor"],
         "_coerce_owner_ids": ["values"],
@@ -63,13 +67,28 @@ EXPECTED_CALLABLE_SIGNATURES: dict[Path, dict[str, list[str]]] = {
     ROOT / "backend_app" / "main_runtime_helpers.py": {
         "_resolve_actor_scope": ["session", "actor_username", "token_version"],
         "_resolve_scope_for_actor": ["actor", "token_version"],
-        "_resolve_effective_cycle_id_for_scope": ["scope", "requested_cycle_id", "required"],
+        "_resolve_effective_cycle_id_for_scope": [
+            "scope",
+            "requested_cycle_id",
+            "required",
+        ],
         "_coerce_owner_ids": ["values"],
         "_coerce_string_list": ["values"],
         "_load_idempotent_response": ["scope", "actor", "idempotency_key", "payload"],
-        "_store_idempotent_response": ["scope", "actor", "idempotency_key", "payload", "response_payload"],
+        "_store_idempotent_response": [
+            "scope",
+            "actor",
+            "idempotency_key",
+            "payload",
+            "response_payload",
+        ],
         "_atomic_idempotent_check": ["scope", "actor", "idempotency_key", "payload"],
-        "_complete_idempotent_response": ["scope", "actor", "idempotency_key", "response_payload"],
+        "_complete_idempotent_response": [
+            "scope",
+            "actor",
+            "idempotency_key",
+            "response_payload",
+        ],
         "_payload_fingerprint": ["payload"],
         "_idempotency_state_key": ["scope", "actor", "key"],
         "get_observability_metrics_snapshot": [],
@@ -123,7 +142,8 @@ def _module_name_from_path(path: Path) -> str:
 def _extract_all_names(tree: ast.Module) -> list[str]:
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
-            isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in node.targets
         ):
             try:
                 value = ast.literal_eval(node.value)
@@ -146,18 +166,24 @@ def _is_wrapper_function(tree: ast.Module, function_name: str) -> bool:
     return False
 
 
-def _validate_runtime_signatures(path: Path, module_obj: object, expected_calls: dict[str, list[str]]) -> list[str]:
+def _validate_runtime_signatures(
+    path: Path, module_obj: object, expected_calls: dict[str, list[str]]
+) -> list[str]:
     issues: list[str] = []
     for symbol, expected_params in expected_calls.items():
         if not hasattr(module_obj, symbol):
-            issues.append(f"{path.name}: expected exported symbol '{symbol}' is missing in runtime import check")
+            issues.append(
+                f"{path.name}: expected exported symbol '{symbol}' is missing in runtime import check"
+            )
             continue
 
         symbol_value = getattr(module_obj, symbol)
         if not expected_params:
             continue
         if not callable(symbol_value):
-            issues.append(f"{path.name}: expected exported symbol '{symbol}' should be callable for signature check")
+            issues.append(
+                f"{path.name}: expected exported symbol '{symbol}' should be callable for signature check"
+            )
             continue
 
         try:
@@ -192,7 +218,9 @@ def verify_exports_and_duplicates(
         seen_all.add(name)
 
     non_wrapper_defs = [
-        name for name in required_wrappers if name in defs_set and not _is_wrapper_function(tree, name)
+        name
+        for name in required_wrappers
+        if name in defs_set and not _is_wrapper_function(tree, name)
     ]
     missing_wrappers = [name for name in required_wrappers if name not in defs_set]
 
@@ -209,12 +237,30 @@ def check() -> int:
     issues: list[str] = []
     for path, required_wrappers in TARGETS.items():
         quality = verify_exports_and_duplicates(path, required_wrappers)
-        issues.extend([f"{path.name}: duplicate definition '{name}'" for name in quality.duplicate_defs])
-        issues.extend([f"{path.name}: duplicate __all__ entry '{name}'" for name in quality.duplicate_all])
         issues.extend(
-            [f"{path.name}: helper wrapper '{name}' is not a thin delegation function" for name in quality.non_wrapper_defs]
+            [
+                f"{path.name}: duplicate definition '{name}'"
+                for name in quality.duplicate_defs
+            ]
         )
-        issues.extend([f"{path.name}: expected helper wrapper '{name}' is missing" for name in quality.missing_wrappers])
+        issues.extend(
+            [
+                f"{path.name}: duplicate __all__ entry '{name}'"
+                for name in quality.duplicate_all
+            ]
+        )
+        issues.extend(
+            [
+                f"{path.name}: helper wrapper '{name}' is not a thin delegation function"
+                for name in quality.non_wrapper_defs
+            ]
+        )
+        issues.extend(
+            [
+                f"{path.name}: expected helper wrapper '{name}' is missing"
+                for name in quality.missing_wrappers
+            ]
+        )
 
         module_name = _module_name_from_path(path)
         try:
@@ -224,7 +270,9 @@ def check() -> int:
             continue
 
         issues.extend(
-            _validate_runtime_signatures(path, module_obj, EXPECTED_CALLABLE_SIGNATURES.get(path, {}))
+            _validate_runtime_signatures(
+                path, module_obj, EXPECTED_CALLABLE_SIGNATURES.get(path, {})
+            )
         )
 
     if issues:

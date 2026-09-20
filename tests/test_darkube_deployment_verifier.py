@@ -4,7 +4,11 @@ import json
 
 import pytest
 
-from scripts.verify_darkube_deployment import DeploymentVerificationError, main, verify_deployment
+from scripts.verify_darkube_deployment import (
+    DeploymentVerificationError,
+    main,
+    verify_deployment,
+)
 
 
 COMMIT = "a" * 40
@@ -16,8 +20,14 @@ def valid_manifest() -> dict[str, object]:
         "repository": "FaraatarTID/okr",
         "commit_sha": COMMIT,
         "images": {
-            "web": {"image": f"ghcr.io/faraatartid/okr/web:{COMMIT}", "digest": "sha256:" + "1" * 64},
-            "bff": {"image": f"ghcr.io/faraatartid/okr/bff:{COMMIT}", "digest": "sha256:" + "2" * 64},
+            "web": {
+                "image": f"ghcr.io/faraatartid/okr/web:{COMMIT}",
+                "digest": "sha256:" + "1" * 64,
+            },
+            "bff": {
+                "image": f"ghcr.io/faraatartid/okr/bff:{COMMIT}",
+                "digest": "sha256:" + "2" * 64,
+            },
             "backend": {
                 "image": f"ghcr.io/faraatartid/okr/backend:{COMMIT}",
                 "digest": "sha256:" + "3" * 64,
@@ -45,7 +55,9 @@ def valid_evidence(manifest: dict[str, object]) -> dict[str, object]:
             "api": copy_identity("backend"),
             "worker": copy_identity("backend"),
         },
-        "health": {application: "passed" for application in ("api", "bff", "web", "worker")},
+        "health": {
+            application: "passed" for application in ("api", "bff", "web", "worker")
+        },
         "restart": {"status": "passed", "services": ["api", "bff", "web", "worker"]},
         "ingress": {"status": "passed", "checks": ["web", "bff-health", "api-health"]},
     }
@@ -69,9 +81,22 @@ def test_verifies_all_darkube_apps_against_manifest() -> None:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (lambda evidence: evidence["applications"]["api"].update({"digest": "sha256:" + "9" * 64}), "digest"),
-        (lambda evidence: evidence["applications"].pop("worker"), "exactly api, bff, web, and worker"),
-        (lambda evidence: evidence["applications"].update({"debug": evidence["applications"]["web"]}), "exactly api, bff, web, and worker"),
+        (
+            lambda evidence: evidence["applications"]["api"].update(
+                {"digest": "sha256:" + "9" * 64}
+            ),
+            "digest",
+        ),
+        (
+            lambda evidence: evidence["applications"].pop("worker"),
+            "exactly api, bff, web, and worker",
+        ),
+        (
+            lambda evidence: evidence["applications"].update(
+                {"debug": evidence["applications"]["web"]}
+            ),
+            "exactly api, bff, web, and worker",
+        ),
         (lambda evidence: evidence.update({"commit_sha": "b" * 40}), "commit SHA"),
     ],
 )
@@ -92,7 +117,19 @@ def test_cli_writes_deterministic_verification_artifact(tmp_path) -> None:
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     evidence_path.write_text(json.dumps(valid_evidence(manifest)), encoding="utf-8")
 
-    assert main(["--manifest", str(manifest_path), "--evidence", str(evidence_path), "--output", str(output_path)]) == 0
+    assert (
+        main(
+            [
+                "--manifest",
+                str(manifest_path),
+                "--evidence",
+                str(evidence_path),
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
     assert json.loads(output_path.read_text(encoding="utf-8"))["verified"] is True
 
 
@@ -100,11 +137,17 @@ def test_cli_writes_deterministic_verification_artifact(tmp_path) -> None:
     ("field", "value", "message"),
     [
         ("health", {"api": "passed"}, "health must contain exactly"),
-        ("restart", {"status": "failed", "services": ["api", "bff", "web", "worker"]}, "restart.status"),
+        (
+            "restart",
+            {"status": "failed", "services": ["api", "bff", "web", "worker"]},
+            "restart.status",
+        ),
         ("ingress", {"status": "passed", "checks": ["web"]}, "ingress.checks"),
     ],
 )
-def test_rejects_incomplete_or_failed_provider_observations(field, value, message: str) -> None:
+def test_rejects_incomplete_or_failed_provider_observations(
+    field, value, message: str
+) -> None:
     manifest = valid_manifest()
     evidence = valid_evidence(manifest)
     evidence[field] = value

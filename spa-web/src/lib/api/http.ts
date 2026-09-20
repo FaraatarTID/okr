@@ -76,23 +76,6 @@ export function waitMs(durationMs: number): Promise<void> {
   });
 }
 
-export async function fetchWithTimeout(
-  url: string,
-  init: RequestInit,
-  timeoutMs: number,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), Math.max(1, Math.floor(timeoutMs)));
-  try {
-    return await fetch(url, {
-      ...init,
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export function isTransientNetworkError(error: unknown): boolean {
   const text = String(error instanceof Error ? error.message : error || "")
     .trim()
@@ -131,7 +114,7 @@ export function normalizeBackendDateTime(value: unknown): string {
     return "";
   }
   const matched = text.match(
-    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([zZ]|[+\-]\d{2}:\d{2})?$/,
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([zZ]|[+-]\d{2}:\d{2})?$/,
   );
   if (!matched) {
     return text;
@@ -175,8 +158,27 @@ export interface RetryWithFetchOptions {
   label: string;
 }
 
+/**
+ * Runs `fetchFn` under a per-attempt deadline and retries transient failures.
+ *
+ * `fetchFn` is handed an `AbortSignal` that fires when `perAttemptTimeoutMs`
+ * elapses, and it must forward that signal to `fetch`. The signal belongs to a
+ * single attempt: each retry gets a fresh one, and it is never aborted after
+ * the attempt it belongs to has settled.
+ *
+ * A deadline abort is classified as transient. A real abort rejects with
+ * `AbortError` and the message "This operation was aborted", which matches the
+ * `aborted` pattern in `isTransientNetworkError`, so a timing-out attempt is
+ * retried and consumes the remaining attempts. Worst case is therefore roughly
+ * `maxAttempts * perAttemptTimeoutMs` plus backoff — about eight minutes at the
+ * 120s budget the read paths pass. That is not new: the call sites already
+ * behaved this way when each wrapped its own request in a timeout helper, and
+ * this refactor preserves it deliberately rather than folding a retry-policy
+ * change into a fix for a dead option. Whether a timeout ought to fail fast is
+ * a separate decision and is recorded as such.
+ */
 export async function retryWithFetch<T>(
-  fetchFn: () => Promise<Response>,
+  fetchFn: (signal: AbortSignal) => Promise<Response>,
   handleSuccess: (response: Response) => Promise<T>,
   options: RetryWithFetchOptions,
 ): Promise<T> {
@@ -189,8 +191,13 @@ export async function retryWithFetch<T>(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     let response: Response;
+    const controller = new AbortController();
+    const timer = setTimeout(
+      () => controller.abort(),
+      Math.max(1, Math.floor(perAttemptTimeoutMs)),
+    );
     try {
-      response = await fetchFn();
+      response = await fetchFn(controller.signal);
     } catch (error) {
       const retryable = isTransientNetworkError(error);
       if (retryable && attempt < maxAttempts) {
@@ -199,7 +206,10 @@ export async function retryWithFetch<T>(
       }
       throw new Error(
         `${label} failed: ${String(error instanceof Error ? error.message : error)}`,
+        { cause: error },
       );
+    } finally {
+      clearTimeout(timer);
     }
 
     if (response.ok) {

@@ -112,8 +112,7 @@ def test_production_rejects_public_backend_api_host():
         runtime_env="production",
     )
     assert any(
-        "appears non-private in production" in msg
-        or "non-private" in msg
+        "appears non-private in production" in msg or "non-private" in msg
         for msg in report.errors
     )
 
@@ -132,8 +131,7 @@ def test_production_rejects_public_backend_api_ip():
         runtime_env="production",
     )
     assert any(
-        "appears non-private in production" in msg
-        or "non-private" in msg
+        "appears non-private in production" in msg or "non-private" in msg
         for msg in report.errors
     )
 

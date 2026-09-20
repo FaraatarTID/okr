@@ -37,8 +37,24 @@ to a concrete value and must not duplicate backend business rules:
 | Actor binding | Prevents clients from selecting another actor through request payloads or headers | Actor-rewrite rejection tests |
 | Request signing and service token | Authenticates the BFF-to-backend hop and detects tampering | Signing and replay-protection tests |
 | Route allowlisting | Exposes only approved browser routes while keeping operator/internal APIs private | Generated allowlist drift gate |
-| CSRF and origin controls | Protects state-changing browser requests at the edge | BFF security review and request tests |
-| Rate limiting and error shaping | Controls browser-facing abuse and prevents internal error leakage | BFF policy tests and sanitized error contracts |
+| CSRF protection | Rejects state-changing browser requests that lack a valid double-submit token | CSRF request tests and [bff-security-review.md](bff-security-review.md) |
+| Error shaping | Prevents internal error leakage by returning bounded error envelopes | Sanitized error contracts |
+
+Two controls that earlier revisions of this table listed as provided are **not
+implemented** in `spa-bff`. They are recorded as `pending` in
+[evidence/security-parity.json](evidence/security-parity.json), remain open
+controls under D4 in [REMAINING_ENGINEERING_PLAN.md](REMAINING_ENGINEERING_PLAN.md),
+and must be closed before this ADR can claim a complete browser-security boundary:
+
+- **Origin controls.** The package never reads the `Origin` or `Referer` request
+  header to decide whether to accept a request, and no allowlisted-origin
+  configuration exists. CSRF protection is implemented, but it is a separate
+  mechanism and does not substitute for origin validation.
+- **Rate limiting at the browser edge.** The package references no limiter, no
+  request budget, and no abuse threshold. Rate limiting exists in the backend
+  (`OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS`, `OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS`),
+  and the BFF forwards the client IP so that the backend can apply it, but that
+  protects the backend hop rather than the browser edge.
 
 The BFF must not become a redundant pass-through layer. New BFF code requires
 an entry in this matrix or an approved architecture decision explaining its
@@ -229,7 +245,7 @@ Rejected because it would encourage business logic duplication and make future c
 
 - BFF policy check passed: `npm run check:allowlist` reports 44 routes up to date.
 - The package does not define `npm run check`; the intended allowlist control is `npm run check:allowlist`.
-- BFF test suite passed: `npm test` completed 7 test files and 65 tests successfully.
+- BFF test suite passed: `npm test` completed 9 test files and 74 tests successfully.
 - Initial live health baseline captured on 2026-08-31: backend HTTP 200 in approximately 1146 ms and BFF HTTP 200 in approximately 7 ms for single local requests. This is a local baseline sample, not a production performance conclusion.
 - Route and responsibility inventory for `spa-bff/src/server.ts`.
 - API contract mapping for every BFF-to-backend call.

@@ -53,8 +53,12 @@ def check_parity(canonical: Path, staging: Path) -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--canonical", type=Path, default=ROOT / "deploy/docker/.env.saas.example")
-    parser.add_argument("--staging", type=Path, default=ROOT / "deploy/darkube/prerelease/.env.example")
+    parser.add_argument(
+        "--canonical", type=Path, default=ROOT / "deploy/docker/.env.saas.example"
+    )
+    parser.add_argument(
+        "--staging", type=Path, default=ROOT / "deploy/darkube/prerelease/.env.example"
+    )
     args = parser.parse_args(argv)
     failures = check_parity(args.canonical, args.staging)
     if failures:

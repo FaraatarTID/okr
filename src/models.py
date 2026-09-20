@@ -17,6 +17,7 @@ from sqlmodel import SQLModel, Field, Relationship
 
 from src.utils.time_utils import utc_now_naive
 
+
 class TaskStatus(str, Enum):
     """Status options for tasks."""
 

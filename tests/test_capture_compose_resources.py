@@ -6,13 +6,19 @@ from scripts.capture_compose_resources import aggregate_stats, parse_stats
 
 
 def test_parse_stats_omits_container_id_and_sorts_containers() -> None:
-    raw = '\n'.join([
-        '{"Name":"okr-spa-bff-1","CPUPerc":"1.2%","MemUsage":"20MiB / 1GiB"}',
-        '{"Name":"okr-backend-api-1","CPUPerc":"3.4%","MemUsage":"40MiB / 1GiB"}',
-    ])
+    raw = "\n".join(
+        [
+            '{"Name":"okr-spa-bff-1","CPUPerc":"1.2%","MemUsage":"20MiB / 1GiB"}',
+            '{"Name":"okr-backend-api-1","CPUPerc":"3.4%","MemUsage":"40MiB / 1GiB"}',
+        ]
+    )
 
     assert parse_stats(raw) == [
-        {"container": "okr-backend-api-1", "cpu_percent": "3.4%", "memory": "40MiB / 1GiB"},
+        {
+            "container": "okr-backend-api-1",
+            "cpu_percent": "3.4%",
+            "memory": "40MiB / 1GiB",
+        },
         {"container": "okr-spa-bff-1", "cpu_percent": "1.2%", "memory": "20MiB / 1GiB"},
     ]
 

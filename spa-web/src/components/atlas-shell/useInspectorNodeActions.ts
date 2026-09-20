@@ -219,7 +219,7 @@ export default function useInspectorNodeActions({
     } finally {
       setInspectAnalysisPending(false);
     }
-  }, [loadSnapshotForUser, parsedCycleId, user, selectedMeta, user]);
+  }, [loadSnapshotForUser, parsedCycleId, user, selectedMeta]);
 
   const handleInspectorSave = useCallback(async (): Promise<void> => {
     if (!user || !selectedMeta) {
@@ -275,7 +275,7 @@ export default function useInspectorNodeActions({
     } finally {
       setInspectPending(false);
     }
-  }, [inspectDraft.deadline, inspectDraft.description, inspectDraft.estimatedMinutes, inspectDraft.progress, inspectDraft.title, loadSnapshotForUser, parsedCycleId, user, selectedMeta]);
+  }, [inspectDraft.deadline, inspectDraft.description, inspectDraft.estimatedMinutes, inspectDraft.progress, inspectDraft.startValue, inspectDraft.targetValue, inspectDraft.title, loadSnapshotForUser, parsedCycleId, user, selectedMeta]);
 
   const handleNodeCreate = useCallback(async (): Promise<void> => {
     if (!user) {
@@ -379,7 +379,7 @@ export default function useInspectorNodeActions({
     } finally {
       setCreatePending(false);
     }
-  }, [canCreateForContext, createContext.goalId, createContext.keyResultId, createContext.objectiveId, createDraft, loadSnapshotForUser, parsedCycleId, user, setSelectedRef, user]);
+  }, [canCreateForContext, createContext.goalId, createContext.keyResultId, createContext.objectiveId, createDraft, loadSnapshotForUser, parsedCycleId, setSelectedRef, user]);
 
   const handleNodeDelete = useCallback(async (): Promise<void> => {
     if (!user || !selectedMeta) {
@@ -417,7 +417,7 @@ export default function useInspectorNodeActions({
     } finally {
       setDeletePending(false);
     }
-  }, [focusTaskRef, loadSnapshotForUser, parsedCycleId, user, selectedMeta, setFocusTaskRef, setSelectedRef, user]);
+  }, [focusTaskRef, loadSnapshotForUser, parsedCycleId, selectedMeta, setFocusTaskRef, setSelectedRef, user]);
 
   return {
     inspectPending,

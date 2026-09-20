@@ -61,20 +61,43 @@ def validate_request(*, argv: list[str], environ: Mapping[str, str]) -> None:
     if _value(environ, "OKR_DEV_DISPOSABLE").lower() not in {"1", "true", "yes", "on"}:
         raise SeedConfigError("Set OKR_DEV_DISPOSABLE=1 for this local-only operation.")
     if _value(environ, "OKR_DATA_ACCESS_MODE").lower() != "database":
-        raise SeedConfigError("The disposable demo requires OKR_DATA_ACCESS_MODE=database.")
+        raise SeedConfigError(
+            "The disposable demo requires OKR_DATA_ACCESS_MODE=database."
+        )
     if _value(environ, "OKR_SAAS_MODE").lower() in {"1", "true", "yes", "on"}:
         raise SeedConfigError("The disposable demo refuses SaaS mode.")
     if _value(environ, "OKR_DEPLOYMENT_PROFILE").lower() == "single_tenant_saas":
-        raise SeedConfigError("The disposable demo refuses the single_tenant_saas profile.")
-    if _value(environ, "OKR_ENV").lower() in {"production", "staging", "pre-release", "prerelease"}:
-        raise SeedConfigError("The disposable demo refuses production-like environments.")
-    database_url = _value(environ, "OKR_DATABASE_URL") or _value(environ, "DATABASE_URL")
+        raise SeedConfigError(
+            "The disposable demo refuses the single_tenant_saas profile."
+        )
+    if _value(environ, "OKR_ENV").lower() in {
+        "production",
+        "staging",
+        "pre-release",
+        "prerelease",
+    }:
+        raise SeedConfigError(
+            "The disposable demo refuses production-like environments."
+        )
+    database_url = _value(environ, "OKR_DATABASE_URL") or _value(
+        environ, "DATABASE_URL"
+    )
     if not database_url.startswith(("postgresql+psycopg2://", "sqlite:///")):
-        raise SeedConfigError("Set a PostgreSQL or test SQLite database URL before seeding.")
+        raise SeedConfigError(
+            "Set a PostgreSQL or test SQLite database URL before seeding."
+        )
 
 
 def _new_counts() -> dict[str, int]:
-    return {"admin": 0, "team": 0, "cycle": 0, "goal": 0, "objective": 0, "key_result": 0, "task": 0}
+    return {
+        "admin": 0,
+        "team": 0,
+        "cycle": 0,
+        "goal": 0,
+        "objective": 0,
+        "key_result": 0,
+        "task": 0,
+    }
 
 
 def seed_demo(
@@ -94,7 +117,10 @@ def seed_demo(
         try:
             team = session.exec(select(Team).where(Team.name == DEMO_TEAM_NAME)).first()
             if team is None:
-                team = Team(name=DEMO_TEAM_NAME, description="Synthetic disposable development workspace")
+                team = Team(
+                    name=DEMO_TEAM_NAME,
+                    description="Synthetic disposable development workspace",
+                )
                 session.add(team)
                 session.flush()
                 created["team"] = 1
@@ -116,7 +142,9 @@ def seed_demo(
                 session.flush()
                 created["admin"] = 1
             elif admin.role != UserRole.ADMIN:
-                raise SeedConfigError(f"Existing local user {username!r} is not an administrator.")
+                raise SeedConfigError(
+                    f"Existing local user {username!r} is not an administrator."
+                )
             else:
                 admin.team_id = team.id
                 if reset_admin_password:
@@ -126,7 +154,9 @@ def seed_demo(
                     admin.token_version = int(admin.token_version or 0) + 1
                     session.add(admin)
 
-            cycle = session.exec(select(Cycle).where(Cycle.title == DEMO_CYCLE_TITLE)).first()
+            cycle = session.exec(
+                select(Cycle).where(Cycle.title == DEMO_CYCLE_TITLE)
+            ).first()
             if cycle is None:
                 conflicting = session.exec(
                     select(Cycle).where(
@@ -135,7 +165,9 @@ def seed_demo(
                     )
                 ).first()
                 if conflicting is not None:
-                    raise SeedConfigError("The local administrator already owns another active cycle.")
+                    raise SeedConfigError(
+                        "The local administrator already owns another active cycle."
+                    )
                 cycle = Cycle(
                     title=DEMO_CYCLE_TITLE,
                     start_date=now - timedelta(days=14),
@@ -149,7 +181,9 @@ def seed_demo(
             elif not cycle.is_active:
                 raise SeedConfigError("The existing disposable demo cycle is inactive.")
 
-            goal = session.exec(select(Goal).where(Goal.external_id == DEMO_IDS["goal"])).first()
+            goal = session.exec(
+                select(Goal).where(Goal.external_id == DEMO_IDS["goal"])
+            ).first()
             if goal is None:
                 goal = Goal(
                     external_id=DEMO_IDS["goal"],
@@ -165,9 +199,13 @@ def seed_demo(
                 session.flush()
                 created["goal"] = 1
             elif goal.cycle_id != cycle.id or goal.owner_id != admin.id:
-                raise SeedConfigError("The demo goal has conflicting ownership or parent data.")
+                raise SeedConfigError(
+                    "The demo goal has conflicting ownership or parent data."
+                )
 
-            objective = session.exec(select(Objective).where(Objective.external_id == DEMO_IDS["objective"])).first()
+            objective = session.exec(
+                select(Objective).where(Objective.external_id == DEMO_IDS["objective"])
+            ).first()
             if objective is None:
                 objective = Objective(
                     external_id=DEMO_IDS["objective"],
@@ -189,7 +227,9 @@ def seed_demo(
                 (DEMO_IDS["key_result_one"], "Increase completed outcome reviews", 45),
                 (DEMO_IDS["key_result_two"], "Reduce unresolved planning risks", 30),
             ):
-                key_result = session.exec(select(KeyResult).where(KeyResult.external_id == external_id)).first()
+                key_result = session.exec(
+                    select(KeyResult).where(KeyResult.external_id == external_id)
+                ).first()
                 if key_result is None:
                     key_result = KeyResult(
                         external_id=external_id,
@@ -209,11 +249,18 @@ def seed_demo(
                     session.add(key_result)
                     session.flush()
                     created["key_result"] += 1
-                elif key_result.objective_id != objective.id or key_result.owner_id != admin.id:
-                    raise SeedConfigError(f"The demo key result {external_id!r} has conflicting ownership.")
+                elif (
+                    key_result.objective_id != objective.id
+                    or key_result.owner_id != admin.id
+                ):
+                    raise SeedConfigError(
+                        f"The demo key result {external_id!r} has conflicting ownership."
+                    )
                 key_results.append(key_result)
 
-            task = session.exec(select(Task).where(Task.external_id == DEMO_IDS["task"])).first()
+            task = session.exec(
+                select(Task).where(Task.external_id == DEMO_IDS["task"])
+            ).first()
             if task is None:
                 task = Task(
                     external_id=DEMO_IDS["task"],
@@ -230,8 +277,12 @@ def seed_demo(
                 session.add(task)
                 session.flush()
                 created["task"] = 1
-            elif task.key_result_id != key_results[0].id or task.assignee_id != admin.id:
-                raise SeedConfigError("The demo task has conflicting ownership or parent data.")
+            elif (
+                task.key_result_id != key_results[0].id or task.assignee_id != admin.id
+            ):
+                raise SeedConfigError(
+                    "The demo task has conflicting ownership or parent data."
+                )
 
             session.commit()
             return {
@@ -251,7 +302,9 @@ def seed_demo(
             raise
 
 
-def _resolve_password(environ: Mapping[str, str], provided: str | None) -> tuple[str, bool]:
+def _resolve_password(
+    environ: Mapping[str, str], provided: str | None
+) -> tuple[str, bool]:
     selected = str(provided or "").strip() or _value(environ, "OKR_DEV_ADMIN_PASSWORD")
     if selected:
         return selected, False

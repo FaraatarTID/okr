@@ -190,9 +190,7 @@ def count_dead_jobs() -> int:
     return int(count or 0)
 
 
-def retry_dead_job(
-    job_id: str, *, actor_username: str
-) -> Optional[AsyncJob]:
+def retry_dead_job(job_id: str, *, actor_username: str) -> Optional[AsyncJob]:
     """Reset an exhausted FAILED job back to PENDING for re-execution.
 
     Only the job's owner (or an admin via caller check upstream) may retry.
@@ -322,9 +320,7 @@ def requeue_job_for_shutdown(job_id: str, worker_id: str) -> bool:
         if not job:
             return False
         status = (
-            AsyncJobStatus.CANCELLED
-            if job.cancel_requested
-            else AsyncJobStatus.PENDING
+            AsyncJobStatus.CANCELLED if job.cancel_requested else AsyncJobStatus.PENDING
         )
         changed = session.exec(
             update(AsyncJob)

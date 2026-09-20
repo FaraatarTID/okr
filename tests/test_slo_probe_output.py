@@ -55,16 +55,19 @@ def test_probe_accepts_password_from_environment(monkeypatch) -> None:
     monkeypatch.setattr(slo_probe, "probe", fake_probe)
     monkeypatch.setenv("PROBE_PASSWORD", "env-secret")
 
-    assert slo_probe.main(
-        [
-            "--base-url",
-            "https://example.test",
-            "--username",
-            "synthetic-user",
-            "--password-env",
-            "PROBE_PASSWORD",
-        ]
-    ) == 0
+    assert (
+        slo_probe.main(
+            [
+                "--base-url",
+                "https://example.test",
+                "--username",
+                "synthetic-user",
+                "--password-env",
+                "PROBE_PASSWORD",
+            ]
+        )
+        == 0
+    )
     assert captured["password"] == "env-secret"
 
 

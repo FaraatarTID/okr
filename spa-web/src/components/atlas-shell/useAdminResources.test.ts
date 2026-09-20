@@ -3,14 +3,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as api from "@/lib/api";
 import type { AuthUser } from "@/lib/api";
+import * as adminResourcesModule from "@/lib/adminResources";
+import * as cyclesModule from "@/lib/cycles";
 import useAdminResources from "@/components/atlas-shell/useAdminResources";
 
+/**
+ * The cache-backed reads are mocked at their module boundary on purpose.
+ *
+ * Driving the real cache from here is module state shared across tests and is not
+ * deterministic (an earlier version of this file served one test's payload to
+ * another). The cache is covered directly in `src/lib/resourceCache.test.ts`, and
+ * these tests own what the hook does with the pair it receives: publishing it,
+ * sorting it, clearing it on failure, and asking for a bypass when the caller
+ * needs fresh data.
+ */
 vi.mock("@/lib/api", () => ({
   readAdminAiHealth: vi.fn(),
   readAdminPdfHealth: vi.fn(),
   readAuditSummary: vi.fn(),
-  readBackendQuery: vi.fn(),
-  readCyclesQuery: vi.fn(),
+}));
+
+vi.mock("@/lib/cycles", () => ({
+  readMergedCycles: vi.fn(),
+}));
+
+vi.mock("@/lib/adminResources", () => ({
+  readSortedAdminResources: vi.fn(),
 }));
 
 const baseUser: AuthUser = {
@@ -20,32 +38,27 @@ const baseUser: AuthUser = {
   role: "admin",
 };
 
+const readMergedCyclesMock = () => vi.mocked(cyclesModule.readMergedCycles);
+const readSortedAdminMock = () => vi.mocked(adminResourcesModule.readSortedAdminResources);
+
 describe("useAdminResources", () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
-    vi.clearAllMocks();
+    vi.mocked(api.readAdminAiHealth).mockReset();
+    vi.mocked(api.readAdminPdfHealth).mockReset();
+    vi.mocked(api.readAuditSummary).mockReset();
+    readMergedCyclesMock().mockReset();
+    readSortedAdminMock().mockReset();
   });
 
   it("loads cycles/users/teams with stable sorting", async () => {
-    const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-    const readBackendQueryMock = vi.mocked(api.readBackendQuery);
-    readCyclesQueryMock.mockResolvedValue([
-      { id: 2, title: "Cycle 2" },
+    readMergedCyclesMock().mockResolvedValue([
       { id: 9, title: "Cycle 9" },
+      { id: 2, title: "Cycle 2" },
     ] as never);
-    readBackendQueryMock
-      .mockResolvedValueOnce({
-        users: [
-          { id: 2, username: "zoe" },
-          { id: 1, username: "alice" },
-        ],
-      } as never)
-      .mockResolvedValueOnce({
-        teams: [
-          { id: 2, name: "Platform" },
-          { id: 1, name: "AI" },
-        ],
-      } as never);
+    readSortedAdminMock().mockResolvedValue({
+      users: [{ id: 1, username: "alice" }, { id: 2, username: "zoe" }],
+      teams: [{ id: 1, name: "AI" }, { id: 2, name: "Platform" }],
+    } as never);
 
     const { result } = renderHook(() => useAdminResources());
 
@@ -61,10 +74,8 @@ describe("useAdminResources", () => {
   });
 
   it("captures data-load failure and clears collections", async () => {
-    const readCyclesQueryMock = vi.mocked(api.readCyclesQuery);
-    const readBackendQueryMock = vi.mocked(api.readBackendQuery);
-    readCyclesQueryMock.mockRejectedValue(new Error("cycles unavailable"));
-    readBackendQueryMock.mockRejectedValue(new Error("users unavailable"));
+    readMergedCyclesMock().mockRejectedValue(new Error("cycles unavailable"));
+    readSortedAdminMock().mockRejectedValue(new Error("users unavailable"));
 
     const { result } = renderHook(() => useAdminResources());
 
@@ -79,14 +90,76 @@ describe("useAdminResources", () => {
     expect(result.current.adminDataError).toContain("users unavailable");
   });
 
+  it("publishes the users/teams pair it receives", async () => {
+    readSortedAdminMock().mockResolvedValue({
+      users: [{ id: 1, username: "alice" }],
+      teams: [{ id: 1, name: "AI" }],
+    } as never);
+
+    const { result } = renderHook(() => useAdminResources());
+
+    await act(async () => {
+      await result.current.loadAdminUsersAndTeams(baseUser);
+    });
+
+    expect(result.current.adminUsers.map((row) => row.username)).toEqual(["alice"]);
+    expect(result.current.adminTeams.map((row) => row.name)).toEqual(["AI"]);
+    expect(result.current.adminDataPending).toBe(false);
+  });
+
+  it("asks for a cache bypass when the caller needs fresh users/teams", async () => {
+    readSortedAdminMock().mockResolvedValue({ users: [], teams: [] } as never);
+
+    const { result } = renderHook(() => useAdminResources());
+
+    await act(async () => {
+      await result.current.loadAdminUsersAndTeams(baseUser);
+    });
+    expect(readSortedAdminMock()).toHaveBeenLastCalledWith("alice", {
+      bypassCache: undefined,
+    });
+
+    await act(async () => {
+      await result.current.loadAdminUsersAndTeams(baseUser, { bypassCache: true });
+    });
+    expect(readSortedAdminMock()).toHaveBeenLastCalledWith("alice", {
+      bypassCache: true,
+    });
+  });
+
+  it("asks for a cache bypass when the caller needs fresh cycles", async () => {
+    readMergedCyclesMock().mockResolvedValue([] as never);
+
+    const { result } = renderHook(() => useAdminResources());
+
+    await act(async () => {
+      await result.current.loadAdminCycles(baseUser, { bypassCache: true });
+    });
+
+    expect(readMergedCyclesMock()).toHaveBeenCalledWith("alice", {
+      bypassCache: true,
+    });
+  });
+
+  it("clears the pending flag when the users/teams read fails", async () => {
+    readSortedAdminMock().mockRejectedValue(new Error("teams unavailable"));
+
+    const { result } = renderHook(() => useAdminResources());
+
+    await act(async () => {
+      await result.current.loadAdminUsersAndTeams(baseUser);
+    });
+
+    expect(result.current.adminDataPending).toBe(false);
+    expect(result.current.adminDataError).toContain("teams unavailable");
+  });
+
   it("loads admin ai/pdf health payloads and clears pending state", async () => {
-    const readAdminAiHealthMock = vi.mocked(api.readAdminAiHealth);
-    const readAdminPdfHealthMock = vi.mocked(api.readAdminPdfHealth);
-    readAdminAiHealthMock.mockResolvedValue({
+    vi.mocked(api.readAdminAiHealth).mockResolvedValue({
       ok: true,
       provider: "gemini",
     } as never);
-    readAdminPdfHealthMock.mockResolvedValue({
+    vi.mocked(api.readAdminPdfHealth).mockResolvedValue({
       ok: true,
       backend: "wkhtmltopdf",
     } as never);
@@ -97,10 +170,10 @@ describe("useAdminResources", () => {
       await result.current.loadAdminHealth(baseUser, false);
     });
 
-    expect(readAdminAiHealthMock).toHaveBeenCalledWith(
+    expect(vi.mocked(api.readAdminAiHealth)).toHaveBeenCalledWith(
       expect.objectContaining({ actor_username: "alice", live_probe: false }),
     );
-    expect(readAdminPdfHealthMock).toHaveBeenCalledWith(
+    expect(vi.mocked(api.readAdminPdfHealth)).toHaveBeenCalledWith(
       expect.objectContaining({ actor_username: "alice" }),
     );
     expect(result.current.adminAiHealth).toEqual(expect.objectContaining({ provider: "gemini" }));
@@ -108,14 +181,8 @@ describe("useAdminResources", () => {
     expect(result.current.adminHealthPending).toBe(false);
   });
 
-  it("loads audit summary payloads and clears pending state", async () => {
-    const readAuditSummaryMock = vi.mocked(api.readAuditSummary);
-    readAuditSummaryMock.mockResolvedValue({
-      total_events: 12,
-      success_events: 10,
-      failure_events: 2,
-      recent_events: [],
-    } as never);
+  it("loads the admin audit summary", async () => {
+    vi.mocked(api.readAuditSummary).mockResolvedValue({ total_events: 12 } as never);
 
     const { result } = renderHook(() => useAdminResources());
 
@@ -123,7 +190,7 @@ describe("useAdminResources", () => {
       await result.current.loadAdminAuditSummary(baseUser);
     });
 
-    expect(readAuditSummaryMock).toHaveBeenCalledWith(
+    expect(vi.mocked(api.readAuditSummary)).toHaveBeenCalledWith(
       expect.objectContaining({ actor_username: "alice", days: 30, recent_limit: 10 }),
     );
     expect(result.current.adminAuditSummary).toEqual(expect.objectContaining({ total_events: 12 }));

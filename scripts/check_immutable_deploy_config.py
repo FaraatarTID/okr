@@ -10,7 +10,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_MUTABLE_TAG_RE = re.compile(r":(?:latest|stable|main|master)(?:[\s\"'`]|$)", re.IGNORECASE)
+_MUTABLE_TAG_RE = re.compile(
+    r":(?:latest|stable|main|master)(?:[\s\"'`]|$)", re.IGNORECASE
+)
 
 
 def find_mutable_references(root: Path = ROOT) -> list[str]:

@@ -22,14 +22,14 @@ def test_compose_keeps_api_worker_and_bff_as_independent_processes() -> None:
     worker = _service_block("backend-worker", "spa-bff")
     bff = _service_block("spa-bff", "spa-web")
 
-    assert 'python -m backend_app.run_api' in api
-    assert 'python -m backend_app.worker' in worker
-    assert 'dockerfile: spa-bff/Dockerfile' in bff
-    assert 'restart: unless-stopped' in api
-    assert 'restart: unless-stopped' in worker
-    assert 'restart: unless-stopped' in bff
-    assert 'healthcheck:' in api
-    assert 'python -m backend_app.worker_healthcheck' in worker
+    assert "python -m backend_app.run_api" in api
+    assert "python -m backend_app.worker" in worker
+    assert "dockerfile: spa-bff/Dockerfile" in bff
+    assert "restart: unless-stopped" in api
+    assert "restart: unless-stopped" in worker
+    assert "restart: unless-stopped" in bff
+    assert "healthcheck:" in api
+    assert "python -m backend_app.worker_healthcheck" in worker
 
 
 def test_readiness_requires_api_worker_bff_and_web(monkeypatch) -> None:

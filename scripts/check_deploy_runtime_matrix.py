@@ -21,7 +21,9 @@ ROOT = Path(__file__).resolve().parents[1]
 @dataclass(frozen=True)
 class RuntimeScenario:
     name: str
-    db_url: str = "postgresql+psycopg2://okr:okr_ci_pass_2026@postgres:5432/okr?sslmode=require"
+    db_url: str = (
+        "postgresql+psycopg2://okr:okr_ci_pass_2026@postgres:5432/okr?sslmode=require"
+    )
     backend_api_url: str = "http://backend-api:8100"
     pdf_method: str = "chromium"
     pdfshift_api_key: str = ""
@@ -185,7 +187,9 @@ def _parse_compose_env(rendered: str) -> dict[str, dict[str, str]]:
         for service_name, service_data in data.get("services", {}).items():
             if not isinstance(service_data, dict):
                 continue
-            services[service_name] = _coerce_compose_env(service_data.get("environment"))
+            services[service_name] = _coerce_compose_env(
+                service_data.get("environment")
+            )
         return services
 
     raw = rendered.lstrip()

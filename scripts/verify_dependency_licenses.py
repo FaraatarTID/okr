@@ -41,20 +41,34 @@ ALLOWED_LICENSES = {
 LICENSE_EXCEPTIONS = {
     "spa-web": {
         "caniuse-lite": {"CC-BY-4.0", "no-restriction"},
-        "@img/sharp-wasm32": {"Apache-2.0 AND LGPL-3.0-or-later AND MIT": "license-combo-known"},
-        "@img/sharp-win32-arm64": {"Apache-2.0 AND LGPL-3.0-or-later": "license-combo-known"},
-        "@img/sharp-win32-ia32": {"Apache-2.0 AND LGPL-3.0-or-later": "license-combo-known"},
-        "@img/sharp-win32-x64": {"Apache-2.0 AND LGPL-3.0-or-later": "license-combo-known"},
+        "@img/sharp-wasm32": {
+            "Apache-2.0 AND LGPL-3.0-or-later AND MIT": "license-combo-known"
+        },
+        "@img/sharp-win32-arm64": {
+            "Apache-2.0 AND LGPL-3.0-or-later": "license-combo-known"
+        },
+        "@img/sharp-win32-ia32": {
+            "Apache-2.0 AND LGPL-3.0-or-later": "license-combo-known"
+        },
+        "@img/sharp-win32-x64": {
+            "Apache-2.0 AND LGPL-3.0-or-later": "license-combo-known"
+        },
         "@img/sharp-libvips-darwin-arm64": {"LGPL-3.0-or-later": "license-combo-known"},
         "@img/sharp-libvips-darwin-x64": {"LGPL-3.0-or-later": "license-combo-known"},
         "@img/sharp-libvips-linux-arm": {"LGPL-3.0-or-later": "license-combo-known"},
         "@img/sharp-libvips-linux-arm64": {"LGPL-3.0-or-later": "license-combo-known"},
         "@img/sharp-libvips-linux-ppc64": {"LGPL-3.0-or-later": "license-combo-known"},
-        "@img/sharp-libvips-linux-riscv64": {"LGPL-3.0-or-later": "license-combo-known"},
+        "@img/sharp-libvips-linux-riscv64": {
+            "LGPL-3.0-or-later": "license-combo-known"
+        },
         "@img/sharp-libvips-linux-s390x": {"LGPL-3.0-or-later": "license-combo-known"},
         "@img/sharp-libvips-linux-x64": {"LGPL-3.0-or-later": "license-combo-known"},
-        "@img/sharp-libvips-linuxmusl-arm64": {"LGPL-3.0-or-later": "license-combo-known"},
-        "@img/sharp-libvips-linuxmusl-x64": {"LGPL-3.0-or-later": "license-combo-known"},
+        "@img/sharp-libvips-linuxmusl-arm64": {
+            "LGPL-3.0-or-later": "license-combo-known"
+        },
+        "@img/sharp-libvips-linuxmusl-x64": {
+            "LGPL-3.0-or-later": "license-combo-known"
+        },
     }
 }
 
@@ -89,7 +103,10 @@ def _normalize_license(value: str) -> str:
     if not isinstance(value, str):
         return "unknown"
     normalized = value.strip()
-    if normalized in {"Mozilla Public License 2.0 (MPL 2.0)", "Mozilla Public License Version 2.0"}:
+    if normalized in {
+        "Mozilla Public License 2.0 (MPL 2.0)",
+        "Mozilla Public License Version 2.0",
+    }:
         return "MPL-2.0"
     if normalized.startswith("Mozilla Public License") and "MPL 2.0" in normalized:
         return "MPL-2.0"
@@ -100,7 +117,9 @@ def _normalize_license(value: str) -> str:
 
 def _run_pip_licenses() -> list[LicenseFinding]:
     if not shutil.which("pip-licenses"):
-        raise RuntimeError("pip-licenses is unavailable. Install with: python -m pip install pip-licenses.")
+        raise RuntimeError(
+            "pip-licenses is unavailable. Install with: python -m pip install pip-licenses."
+        )
 
     completed = subprocess.run(
         [
@@ -114,7 +133,9 @@ def _run_pip_licenses() -> list[LicenseFinding]:
         check=False,
     )
     if completed.returncode != 0:
-        raise RuntimeError(f"pip-licenses failed: {completed.stderr or completed.stdout}")
+        raise RuntimeError(
+            f"pip-licenses failed: {completed.stderr or completed.stdout}"
+        )
 
     try:
         rows = json.loads(completed.stdout or "[]")
@@ -154,14 +175,22 @@ def _run_npm_lock_scan(prefix: str) -> list[LicenseFinding]:
         license_name = _normalize_license(str(meta.get("license", "unknown")))
         if license_name == "unknown":
             continue
-        package_name = name.removeprefix("node_modules/") if name.startswith("node_modules/") else name
+        package_name = (
+            name.removeprefix("node_modules/")
+            if name.startswith("node_modules/")
+            else name
+        )
         allowed_for_package = LICENSE_EXCEPTIONS.get(prefix, {}).get(package_name)
         if (
             (license_name not in ALLOWED_LICENSES)
             and (not _is_allowed_license_expr(license_name))
             and not allowed_for_package
         ):
-            package_name = name.removeprefix("node_modules/") if name.startswith("node_modules/") else name
+            package_name = (
+                name.removeprefix("node_modules/")
+                if name.startswith("node_modules/")
+                else name
+            )
             findings.append(
                 LicenseFinding(
                     scope=prefix,
@@ -205,7 +234,9 @@ def main() -> int:
         except RuntimeError as exc:
             unavailable = True
             if CI_MODE:
-                raise RuntimeError(f"Node license scan unavailable in CI for {prefix}: {exc}")
+                raise RuntimeError(
+                    f"Node license scan unavailable in CI for {prefix}: {exc}"
+                )
             print(f"[WARN] Node license scan skipped for {prefix}: {exc}")
 
     _summarize(findings)
@@ -214,7 +245,9 @@ def main() -> int:
         return 1
 
     if unavailable:
-        print("Dependency license checks completed with warnings (some scans unavailable).")
+        print(
+            "Dependency license checks completed with warnings (some scans unavailable)."
+        )
     return 0
 
 

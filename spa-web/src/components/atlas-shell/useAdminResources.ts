@@ -6,8 +6,6 @@ import {
   readAdminAiHealth,
   readAuditSummary,
   readAdminPdfHealth,
-  readBackendQuery,
-  readCyclesQuery,
   type AdminAiHealthResponse,
   type AdminPdfHealthResponse,
   type AuditSummaryResponse,
@@ -16,6 +14,8 @@ import {
   type ReadQueryTeam,
   type ReadQueryUser,
 } from "@/lib/api";
+import { readMergedCycles } from "@/lib/cycles";
+import { readSortedAdminResources } from "@/lib/adminResources";
 
 type AdminUserRead = ReadQueryUser;
 type AdminTeamRead = ReadQueryTeam;
@@ -35,54 +35,52 @@ export default function useAdminResources() {
   const [adminAuditSummaryPending, setAdminAuditSummaryPending] = useState(false);
   const [adminAuditSummaryError, setAdminAuditSummaryError] = useState("");
 
-  const loadAdminCycles = useCallback(async (activeUser: AuthUser): Promise<void> => {
-    setAdminCyclesPending(true);
-    setAdminCycleError("");
-    try {
-      const cycles = await readCyclesQuery({
-        actor_username: activeUser.username,
-        kind: "cycles.all",
-      });
-      const sorted = [...cycles].sort((left, right) => right.id - left.id);
-      setAdminCycles(sorted);
-    } catch (error) {
-      setAdminCycleError(String(error instanceof Error ? error.message : error));
-      setAdminCycles([]);
-    } finally {
-      setAdminCyclesPending(false);
-    }
-  }, []);
+  const loadAdminCycles = useCallback(
+    async (activeUser: AuthUser, options: { bypassCache?: boolean } = {}): Promise<void> => {
+      setAdminCyclesPending(true);
+      setAdminCycleError("");
+      try {
+        // Shares the cycle cache with `useCyclesSource` and the deep-link
+        // bootstrap, so entering the admin panel does not issue a third
+        // `cycles.all` request. The result is already merged and sorted by
+        // descending id, which is the order this panel renders.
+        const cycles = await readMergedCycles(activeUser.username, {
+          bypassCache: options.bypassCache,
+        });
+        setAdminCycles(cycles);
+      } catch (error) {
+        setAdminCycleError(String(error instanceof Error ? error.message : error));
+        setAdminCycles([]);
+      } finally {
+        setAdminCyclesPending(false);
+      }
+    },
+    [],
+  );
 
-  const loadAdminUsersAndTeams = useCallback(async (activeUser: AuthUser): Promise<void> => {
-    setAdminDataPending(true);
-    setAdminDataError("");
-    try {
-      const [usersPayload, teamsPayload] = await Promise.all([
-        readBackendQuery({
-          actor_username: activeUser.username,
-          kind: "users.all",
-        }),
-        readBackendQuery({
-          actor_username: activeUser.username,
-          kind: "teams.all",
-        }),
-      ]);
-      const users = (usersPayload.users || []).sort((a, b) =>
-        String(a.username || "").localeCompare(String(b.username || "")),
-      );
-      const teams = (teamsPayload.teams || []).sort((a, b) =>
-        String(a.name || "").localeCompare(String(b.name || "")),
-      );
-      setAdminUsers(users);
-      setAdminTeams(teams);
-    } catch (error) {
-      setAdminDataError(String(error instanceof Error ? error.message : error));
-      setAdminUsers([]);
-      setAdminTeams([]);
-    } finally {
-      setAdminDataPending(false);
-    }
-  }, []);
+  const loadAdminUsersAndTeams = useCallback(
+    async (activeUser: AuthUser, options: { bypassCache?: boolean } = {}): Promise<void> => {
+      setAdminDataPending(true);
+      setAdminDataError("");
+      try {
+        // Shares the admin cache, so re-entering the admin panel inside the TTL
+        // does not re-request users and teams. Mutation paths pass
+        // `bypassCache: true`; the fresh result re-seeds the cache.
+        const { users, teams } = await readSortedAdminResources(activeUser.username, {
+          bypassCache: options.bypassCache,
+        });
+        setAdminUsers(users);
+        setAdminTeams(teams);
+      } catch (error) {
+        setAdminDataError(String(error instanceof Error ? error.message : error));
+        setAdminUsers([]);
+        setAdminTeams([]);
+      } finally {
+        setAdminDataPending(false);
+      }
+    },
+    [],
+  );
 
   const loadAdminResources = useCallback(async (activeUser: AuthUser): Promise<void> => {
     await Promise.all([loadAdminCycles(activeUser), loadAdminUsersAndTeams(activeUser)]);

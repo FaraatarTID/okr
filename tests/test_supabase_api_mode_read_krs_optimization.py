@@ -6,7 +6,9 @@ def test_krs_by_cycle_uses_nested_relationship_query(monkeypatch):
 
     def fake_select(table, *, query):
         calls.append((table, query))
-        return 200, [{"id": 7, "title": "Increase adoption", "objective": {"goal_id": 3}}]
+        return 200, [
+            {"id": 7, "title": "Increase adoption", "objective": {"goal_id": 3}}
+        ]
 
     monkeypatch.setattr(supabase_api_mode_read, "_rest_select", fake_select)
 

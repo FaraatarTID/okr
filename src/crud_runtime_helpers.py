@@ -19,7 +19,9 @@ from src import crud_core_helpers
 def _crud_module_context():
     crud_module = importlib.import_module("src.crud")
     if crud_module is None:
-        raise RuntimeError("src.crud module is not available for CRUD runtime helper context.")
+        raise RuntimeError(
+            "src.crud module is not available for CRUD runtime helper context."
+        )
     return crud_module
 
 
@@ -108,7 +110,11 @@ def _node_from_backend_payload(
 
 
 def _validate_update_fields(
-    entity_name: str, updates: dict, allowed_fields: set, *, crud_module: Optional[Any] = None
+    entity_name: str,
+    updates: dict,
+    allowed_fields: set,
+    *,
+    crud_module: Optional[Any] = None,
 ) -> None:
     if crud_module is None:
         crud_module = _crud_module_context()

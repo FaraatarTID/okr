@@ -38,7 +38,11 @@ def _validate_cycle_owner(
 
 
 def _is_last_active_cycle(
-    *, crud_module, session, exclude_cycle_id: int, owner_manager_id: Optional[int] = None
+    *,
+    crud_module,
+    session,
+    exclude_cycle_id: int,
+    owner_manager_id: Optional[int] = None,
 ) -> bool:
     """True when no OTHER cycle for the same owner is active."""
     others = session.exec(
@@ -204,7 +208,10 @@ def update_cycle_from_crud(
         cycle.start_date = start_date
         cycle.end_date = end_date
         target_owner_manager_id = owner_manager_id
-        if actor is not None and getattr(actor, "role", None) == crud_module.UserRole.MANAGER:
+        if (
+            actor is not None
+            and getattr(actor, "role", None) == crud_module.UserRole.MANAGER
+        ):
             target_owner_manager_id = int(getattr(actor, "id", 0) or 0)
         elif target_owner_manager_id is None:
             target_owner_manager_id = getattr(cycle, "owner_manager_id", None)
@@ -222,13 +229,15 @@ def update_cycle_from_crud(
         if (
             not is_active
             and bool(getattr(cycle, "is_active", False))
-            and _is_last_active_cycle(crud_module=crud_module, session=session,
-                                      exclude_cycle_id=cycle_id,
-                                      owner_manager_id=getattr(cycle, "owner_manager_id", None))
+            and _is_last_active_cycle(
+                crud_module=crud_module,
+                session=session,
+                exclude_cycle_id=cycle_id,
+                owner_manager_id=getattr(cycle, "owner_manager_id", None),
+            )
         ):
             raise ValueError(
-                "Cannot deactivate the only active cycle. "
-                "Activate another cycle first."
+                "Cannot deactivate the only active cycle. Activate another cycle first."
             )
         cycle.is_active = is_active
         if (

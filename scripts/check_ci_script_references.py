@@ -39,8 +39,7 @@ def missing_references(paths: tuple[Path, ...] = DEFAULT_FILES) -> list[str]:
         for reference in sorted(set(SCRIPT_REFERENCE_RE.findall(source))):
             if not (ROOT / reference).is_file():
                 missing.append(
-                    f"{display_path}: "
-                    f"referenced script does not exist: {reference}"
+                    f"{display_path}: referenced script does not exist: {reference}"
                 )
     return missing
 

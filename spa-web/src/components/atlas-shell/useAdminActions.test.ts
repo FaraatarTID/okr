@@ -4,6 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import type { AuthUser, CycleSummary } from "@/lib/api";
 import useAdminActions from "@/components/atlas-shell/useAdminActions";
+import * as resourceCache from "@/lib/resourceCache";
+
+vi.mock("@/lib/resourceCache", () => ({
+  clearResourceCache: vi.fn(),
+}));
 
 vi.mock("@/lib/api", () => ({
   createCycleMutation: vi.fn(),
@@ -155,7 +160,7 @@ describe("useAdminActions", () => {
         username: "new-user",
       }),
     );
-    expect(loadAdminUsersAndTeams).toHaveBeenCalledWith(baseUser);
+    expect(loadAdminUsersAndTeams).toHaveBeenCalledWith(baseUser, { bypassCache: true });
     expect(result.current.adminCycleMessage).toContain('User "new-user" created.');
   });
 
@@ -166,7 +171,9 @@ describe("useAdminActions", () => {
       restored_entities: 12,
       warnings: [],
     } as never);
-    const { result, loadAdminResources } = renderAdminHook();
+    const clearResourceCacheMock = vi.mocked(resourceCache.clearResourceCache);
+    clearResourceCacheMock.mockClear();
+    const { result, loadAdminResources, refreshSessionCycles } = renderAdminHook();
 
     const file = new File(
       [JSON.stringify({ users: [{ id: 1 }] })],
@@ -187,6 +194,18 @@ describe("useAdminActions", () => {
     );
     expect(loadAdminResources).toHaveBeenCalledWith(baseUser);
     expect(result.current.adminCycleMessage).toBe("Backup restored.");
+
+    // A restore replaces the whole database, so every cached read is suspect.
+    // Without this the reloads below would be served pre-restore data for a
+    // full TTL, which is what a restore must never show.
+    expect(clearResourceCacheMock).toHaveBeenCalledTimes(1);
+    expect(clearResourceCacheMock.mock.invocationCallOrder[0]).toBeLessThan(
+      loadAdminResources.mock.invocationCallOrder[0],
+    );
+
+    // The top-bar cycle list is a separate owner of cycle state, so a restore
+    // that replaced cycles has to refresh it explicitly.
+    expect(refreshSessionCycles).toHaveBeenCalledWith(baseUser);
   });
 
   it("activates cycle and forwards selected active cycle callback", async () => {
@@ -212,7 +231,7 @@ describe("useAdminActions", () => {
         is_active: true,
       }),
     );
-    expect(loadAdminCycles).toHaveBeenCalledWith(baseUser);
+    expect(loadAdminCycles).toHaveBeenCalledWith(baseUser, { bypassCache: true });
     expect(onCycleActivated).toHaveBeenCalledWith(cycle);
   });
 

@@ -13,8 +13,8 @@
     },
     {
       "name": "csrf_and_origin_controls",
-      "status": "passed",
-      "observed": "State-changing actor-scoped routes require a valid X-XSRF-TOKEN double-submit cookie/header pair; invalid requests are rejected before upstream calls.",
+      "status": "pending",
+      "observed": "CSRF protection is implemented and observed: state-changing requests require a valid X-XSRF-TOKEN double-submit cookie/header pair and invalid requests are rejected with HTTP 403 before upstream calls. Origin validation is not implemented, because spa-bff never reads the Origin or Referer header to decide whether to accept a request. The control is named for both mechanisms, so it is recorded as pending.",
       "artifact": "security/csrf-origin.json"
     },
     {
@@ -37,8 +37,8 @@
     },
     {
       "name": "rate_limiting",
-      "status": "passed",
-      "observed": "BFF request pipelines expose bounded failure responses and rely on upstream rate limiting, with no stale-auth UI or repeated retries allowed to bypass trust mediation.",
+      "status": "pending",
+      "observed": "No rate limiting is implemented in spa-bff; the package references no limiter, request budget, or abuse threshold. The abuse-resistance behaviour actually observed is fail-closed session handling with bounded error envelopes and no retry loop that bypasses trust mediation. Backend rate limiting exists through OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS and OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS, but it protects the backend hop rather than the browser edge, so it does not satisfy a BFF-boundary control.",
       "artifact": "security/rate-limit.json"
     }
   ]

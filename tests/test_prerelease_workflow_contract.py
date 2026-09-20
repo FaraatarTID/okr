@@ -75,7 +75,7 @@ def test_workflow_uses_immutable_commit_identity_and_never_deploys() -> None:
     assert "inputs.web_url" not in text
     assert "inputs.api_health_url" not in text
     assert "inputs.bff_health_url" not in text
-    assert "python -m scripts.slo_probe --base-url \"$web_url\"" in text
+    assert 'python -m scripts.slo_probe --base-url "$web_url"' in text
 
 
 def test_workflow_validates_configuration_and_sanitizes_evidence() -> None:
@@ -100,8 +100,8 @@ def test_workflow_validates_configuration_and_sanitizes_evidence() -> None:
     assert "actions/download-artifact" in text
     assert "public-smoke.json" in text
     assert "private-smoke.json" in text
-    assert "public.get(\"ok\")" in text
-    assert "private.get(\"ok\")" in text
+    assert 'public.get("ok")' in text
+    assert 'private.get("ok")' in text
     assert "ROLLBACK_INPUT" in text
     assert "rollback_values" in text
     assert "test_e2e_playwright_spa_login_to_atlas.py" in text

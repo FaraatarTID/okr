@@ -70,7 +70,9 @@ def analyze_trace(trace: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Diagnose a page-load trace JSON file.")
+    parser = argparse.ArgumentParser(
+        description="Diagnose a page-load trace JSON file."
+    )
     parser.add_argument("trace", type=Path)
     args = parser.parse_args()
     try:

@@ -69,17 +69,35 @@ def test_typed_models_are_serializable() -> None:
     assert result.to_dict()["checks"][0]["status_code"] == 200
 
 
-def test_smoke_result_requires_web_bff_api_worker_and_migration_success(smoke_server: tuple[str, ThreadingHTTPServer]) -> None:
+def test_smoke_result_requires_web_bff_api_worker_and_migration_success(
+    smoke_server: tuple[str, ThreadingHTTPServer],
+) -> None:
     base_url, _server = smoke_server
     result = verify_prerelease_smoke(**_kwargs(base_url), timeout_seconds=2.0)
     assert result.ok
     assert result.independent_ok
-    assert {check.name for check in result.checks} == {"web", "bff", "api", "worker", "migration"}
-    assert next(check for check in result.checks if check.name == "worker").evidence_type == "MANUAL_ATTESTATION"
-    assert next(check for check in result.checks if check.name == "migration").evidence_type == "MANUAL_ATTESTATION"
+    assert {check.name for check in result.checks} == {
+        "web",
+        "bff",
+        "api",
+        "worker",
+        "migration",
+    }
+    assert (
+        next(check for check in result.checks if check.name == "worker").evidence_type
+        == "MANUAL_ATTESTATION"
+    )
+    assert (
+        next(
+            check for check in result.checks if check.name == "migration"
+        ).evidence_type
+        == "MANUAL_ATTESTATION"
+    )
 
 
-def test_smoke_failure_does_not_include_response_body(smoke_server: tuple[str, ThreadingHTTPServer]) -> None:
+def test_smoke_failure_does_not_include_response_body(
+    smoke_server: tuple[str, ThreadingHTTPServer],
+) -> None:
     from tests._test_credentials import test_password
 
     fixture_password = test_password("prerelease_smoke")
@@ -93,10 +111,15 @@ def test_smoke_failure_does_not_include_response_body(smoke_server: tuple[str, T
     assert not result.ok
     assert "password" not in result.summary.lower()
     assert fixture_password not in json.dumps(result.to_dict())
-    assert next(check for check in result.checks if check.name == "bff").detail == "HTTP 503"
+    assert (
+        next(check for check in result.checks if check.name == "bff").detail
+        == "HTTP 503"
+    )
 
 
-def test_missing_worker_and_migration_evidence_fail_independently(smoke_server: tuple[str, ThreadingHTTPServer]) -> None:
+def test_missing_worker_and_migration_evidence_fail_independently(
+    smoke_server: tuple[str, ThreadingHTTPServer],
+) -> None:
     base_url, _server = smoke_server
     result = verify_prerelease_smoke(
         web_url=f"{base_url}/",
@@ -108,7 +131,9 @@ def test_missing_worker_and_migration_evidence_fail_independently(smoke_server: 
     assert not next(check for check in result.checks if check.name == "migration").ok
 
 
-def test_health_endpoint_requires_json_status_ok(smoke_server: tuple[str, ThreadingHTTPServer]) -> None:
+def test_health_endpoint_requires_json_status_ok(
+    smoke_server: tuple[str, ThreadingHTTPServer],
+) -> None:
     _SmokeHandler.responses["/api/healthz"] = (200, b"healthy", "text/plain")
     base_url, _server = smoke_server
     result = verify_prerelease_smoke(**_kwargs(base_url))
@@ -119,12 +144,16 @@ def test_health_endpoint_requires_json_status_ok(smoke_server: tuple[str, Thread
 
 def test_timeout_must_be_finite_and_bounded() -> None:
     with pytest.raises(ValueError, match="finite positive"):
-        verify_prerelease_smoke(**_kwargs("http://127.0.0.1:1"), timeout_seconds=float("inf"))
+        verify_prerelease_smoke(
+            **_kwargs("http://127.0.0.1:1"), timeout_seconds=float("inf")
+        )
     with pytest.raises(ValueError, match="must not exceed"):
         verify_prerelease_smoke(**_kwargs("http://127.0.0.1:1"), timeout_seconds=61)
 
 
-def test_cli_json_output_and_failure_exit_code(smoke_server: tuple[str, ThreadingHTTPServer], capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_json_output_and_failure_exit_code(
+    smoke_server: tuple[str, ThreadingHTTPServer], capsys: pytest.CaptureFixture[str]
+) -> None:
     base_url, _server = smoke_server
     exit_code = main(
         [
@@ -151,7 +180,9 @@ def test_cli_json_output_and_failure_exit_code(smoke_server: tuple[str, Threadin
 
 
 def test_cli_text_output_can_read_worker_evidence_file(
-    smoke_server: tuple[str, ThreadingHTTPServer], tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    smoke_server: tuple[str, ThreadingHTTPServer],
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     base_url, _server = smoke_server
     evidence_file = tmp_path / "worker-status.txt"

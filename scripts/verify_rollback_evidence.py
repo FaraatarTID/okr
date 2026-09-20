@@ -10,13 +10,30 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.attestation_verification import (  # noqa: E402
+    AttestationError,
+    SUPPORTED_ALGORITHMS,
+    canonical_digest,
+    verify_attestation_signature,
+)
+
 
 REQUIRED_IMAGES = ("web", "bff", "backend")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _IMAGE_RE = re.compile(r"^ghcr\.io/[^@\s:]+/[^@\s:]+/(web|bff|backend):([0-9a-f]{40})$")
-_ATTESTATION_ALGORITHMS = {"ed25519", "rsa-pss-sha256", "provider-signed"}
-_SYNTHETIC_MARKERS = ("test", "fixture", "synthetic", "mock", "local", "fake", "example")
+_SYNTHETIC_MARKERS = (
+    "test",
+    "fixture",
+    "synthetic",
+    "mock",
+    "local",
+    "fake",
+    "example",
+)
 
 
 class RollbackEvidenceError(ValueError):
@@ -40,42 +57,57 @@ def _reject_synthetic(value: str, label: str) -> None:
         raise RollbackEvidenceError(f"{label} must identify a real release operation")
 
 
-def _payload_digest(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    import hashlib
-
-    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
-
-
-def _verify_attestation(payload: dict[str, Any], label: str = "attestation") -> None:
+def _verify_attestation(
+    payload: dict[str, Any],
+    label: str = "attestation",
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
+) -> None:
     attestation = _mapping(payload.get("attestation"), label)
     provider = _required_string(attestation.get("provider"), f"{label}.provider")
-    evidence_id = _required_string(attestation.get("evidence_id"), f"{label}.evidence_id")
-    algorithm = _required_string(attestation.get("algorithm"), f"{label}.algorithm").lower()
+    evidence_id = _required_string(
+        attestation.get("evidence_id"), f"{label}.evidence_id"
+    )
+    algorithm = _required_string(
+        attestation.get("algorithm"), f"{label}.algorithm"
+    ).lower()
     _required_string(attestation.get("key_id"), f"{label}.key_id")
-    signature = _required_string(attestation.get("signature"), f"{label}.signature")
     approved_at = _required_string(attestation.get("issued_at"), f"{label}.issued_at")
     try:
         parsed = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise RollbackEvidenceError(f"{label}.issued_at must be an ISO-8601 timestamp") from exc
+        raise RollbackEvidenceError(
+            f"{label}.issued_at must be an ISO-8601 timestamp"
+        ) from exc
     if parsed.tzinfo is None:
         raise RollbackEvidenceError(f"{label}.issued_at must include a timezone")
     _reject_synthetic(provider, f"{label}.provider")
     _reject_synthetic(evidence_id, f"{label}.evidence_id")
-    if algorithm not in _ATTESTATION_ALGORITHMS:
+    if algorithm not in SUPPORTED_ALGORITHMS:
         raise RollbackEvidenceError(f"{label}.algorithm is unsupported")
-    if len(signature) < 32:
-        raise RollbackEvidenceError(f"{label}.signature is incomplete")
     unsigned = {key: value for key, value in payload.items() if key != "attestation"}
-    if attestation.get("signed_payload_sha256") != _payload_digest(unsigned):
+    if attestation.get("signed_payload_sha256") != canonical_digest(unsigned):
         raise RollbackEvidenceError(f"{label} signed payload does not match evidence")
+    try:
+        verify_attestation_signature(
+            payload,
+            label=label,
+            secret=secret,
+            public_key_pem=public_key_pem,
+        )
+    except AttestationError as exc:
+        raise RollbackEvidenceError(
+            f"{label} signature is not verifiable: {exc}"
+        ) from exc
 
 
 def _commit(value: Any, label: str) -> str:
     value = _required_string(value, label)
     if not _COMMIT_RE.fullmatch(value):
-        raise RollbackEvidenceError(f"{label} must be a 40-character lowercase commit SHA")
+        raise RollbackEvidenceError(
+            f"{label} must be a 40-character lowercase commit SHA"
+        )
     if len(set(value)) == 1:
         raise RollbackEvidenceError(f"{label} must not be a synthetic repeated value")
     return value
@@ -91,9 +123,13 @@ def _image_identity(value: Any, name: str, commit_sha: str) -> tuple[str, str]:
         )
     digest = _required_string(image.get("digest"), f"manifest.images.{name}.digest")
     if not _DIGEST_RE.fullmatch(digest):
-        raise RollbackEvidenceError(f"manifest.images.{name}.digest must be a sha256 registry digest")
+        raise RollbackEvidenceError(
+            f"manifest.images.{name}.digest must be a sha256 registry digest"
+        )
     if len(set(digest.removeprefix("sha256:"))) == 1:
-        raise RollbackEvidenceError(f"manifest.images.{name}.digest must not be synthetic")
+        raise RollbackEvidenceError(
+            f"manifest.images.{name}.digest must not be synthetic"
+        )
     return image_ref, digest
 
 
@@ -108,21 +144,31 @@ def _validate_cosign_references(
         if not isinstance(reference, str):
             raise RollbackEvidenceError("Cosign reference must be a string")
         if "@" not in reference:
-            raise RollbackEvidenceError("Cosign reference must use image@sha256:digest form")
+            raise RollbackEvidenceError(
+                "Cosign reference must use image@sha256:digest form"
+            )
         image_ref, digest = reference.rsplit("@", 1)
         match = _IMAGE_RE.fullmatch(image_ref)
         if not match or not _DIGEST_RE.fullmatch(digest):
-            raise RollbackEvidenceError("Cosign reference must be a valid GHCR image@sha256:digest")
+            raise RollbackEvidenceError(
+                "Cosign reference must be a valid GHCR image@sha256:digest"
+            )
         name = match.group(1)
         if name in actual:
             raise RollbackEvidenceError(f"duplicate Cosign reference for {name}")
         if expected[name] != (image_ref, digest):
-            raise RollbackEvidenceError(f"Cosign reference for {name} does not match the manifest")
+            raise RollbackEvidenceError(
+                f"Cosign reference for {name} does not match the manifest"
+            )
         actual[name] = digest
 
     if set(actual) != set(REQUIRED_IMAGES):
-        raise RollbackEvidenceError("Cosign references must contain exactly web, bff, and backend")
-    return [f"{expected[name][0]}@{expected[name][1]}" for name in sorted(REQUIRED_IMAGES)]
+        raise RollbackEvidenceError(
+            "Cosign references must contain exactly web, bff, and backend"
+        )
+    return [
+        f"{expected[name][0]}@{expected[name][1]}" for name in sorted(REQUIRED_IMAGES)
+    ]
 
 
 def verify_rollback_manifest(
@@ -131,8 +177,15 @@ def verify_rollback_manifest(
     cosign_references: list[str] | None = None,
     expected_repository: str | None = None,
     require_attestation: bool = True,
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
 ) -> dict[str, Any]:
-    """Return deterministic rollback evidence or raise on any mismatch."""
+    """Return deterministic rollback evidence or raise on any mismatch.
+
+    `secret` and `public_key_pem` override the environment configuration and exist
+    for tests and for callers that already hold the key material.
+    """
     manifest = _mapping(manifest, "manifest")
     if manifest.get("schema_version") != 1:
         raise RollbackEvidenceError("manifest.schema_version must be 1")
@@ -140,20 +193,31 @@ def verify_rollback_manifest(
     if expected_repository is not None:
         repository = _required_string(manifest.get("repository"), "manifest.repository")
         if repository != expected_repository:
-            raise RollbackEvidenceError("manifest repository does not match expected repository")
+            raise RollbackEvidenceError(
+                "manifest repository does not match expected repository"
+            )
     manifest_commit_sha = _commit(manifest.get("commit_sha"), "manifest.commit_sha")
     if manifest_commit_sha != expected_commit_sha:
-        raise RollbackEvidenceError("manifest commit SHA does not match expected commit SHA")
+        raise RollbackEvidenceError(
+            "manifest commit SHA does not match expected commit SHA"
+        )
 
     images = _mapping(manifest.get("images"), "manifest.images")
     if set(images) != set(REQUIRED_IMAGES):
-        raise RollbackEvidenceError("manifest images must be exactly web, bff, and backend")
-    expected = {name: _image_identity(images[name], name, manifest_commit_sha) for name in REQUIRED_IMAGES}
+        raise RollbackEvidenceError(
+            "manifest images must be exactly web, bff, and backend"
+        )
+    expected = {
+        name: _image_identity(images[name], name, manifest_commit_sha)
+        for name in REQUIRED_IMAGES
+    }
     verified_cosign = _validate_cosign_references(cosign_references or [], expected)
     if not verified_cosign:
-        raise RollbackEvidenceError("signed Cosign references are required for rollback evidence")
+        raise RollbackEvidenceError(
+            "signed Cosign references are required for rollback evidence"
+        )
     if require_attestation:
-        _verify_attestation(manifest)
+        _verify_attestation(manifest, secret=secret, public_key_pem=public_key_pem)
 
     result: dict[str, Any] = {
         "schema_version": 1,
@@ -167,13 +231,20 @@ def verify_rollback_manifest(
 
 
 def verify_rollback_record(
-    record: dict[str, Any], expected_commit_sha: str, expected_repository: str | None = None
+    record: dict[str, Any],
+    expected_commit_sha: str,
+    expected_repository: str | None = None,
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
 ) -> dict[str, Any]:
     """Validate the final approval record uploaded by the rollback workflow."""
     record = _mapping(record, "rollback record")
     cosign_references = record.get("cosign_references")
     if not isinstance(cosign_references, list):
-        raise RollbackEvidenceError("rollback record.cosign_references must be a complete signed list")
+        raise RollbackEvidenceError(
+            "rollback record.cosign_references must be a complete signed list"
+        )
     manifest_result = verify_rollback_manifest(
         record,
         expected_commit_sha,
@@ -183,26 +254,51 @@ def verify_rollback_record(
     )
     if record.get("rollback") != "rollback":
         raise RollbackEvidenceError("rollback record.rollback must be 'rollback'")
-    run_id = _required_string(record.get("rollback_from_manifest_run_id"), "rollback record manifest run ID")
+    run_id = _required_string(
+        record.get("rollback_from_manifest_run_id"), "rollback record manifest run ID"
+    )
     if not run_id.isdigit() or int(run_id) <= 0:
-        raise RollbackEvidenceError("rollback record manifest run ID must be a positive integer")
+        raise RollbackEvidenceError(
+            "rollback record manifest run ID must be a positive integer"
+        )
     _required_string(record.get("approved_by"), "rollback record approved by")
-    approved_at = _required_string(record.get("approved_at"), "rollback record approved at")
+    approved_at = _required_string(
+        record.get("approved_at"), "rollback record approved at"
+    )
     try:
         parsed = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise RollbackEvidenceError("rollback record approved at must be an ISO-8601 timestamp") from exc
+        raise RollbackEvidenceError(
+            "rollback record approved at must be an ISO-8601 timestamp"
+        ) from exc
     if parsed.tzinfo is None:
-        raise RollbackEvidenceError("rollback record approved at must include a timezone")
+        raise RollbackEvidenceError(
+            "rollback record approved at must include a timezone"
+        )
     execution = _mapping(record.get("execution"), "rollback record.execution")
     if execution.get("status") != "SUCCESS":
         raise RollbackEvidenceError("rollback record.execution.status must be SUCCESS")
-    for field in ("target_environment_id", "provider_operation_id", "healthcheck", "observed_at"):
+    for field in (
+        "target_environment_id",
+        "provider_operation_id",
+        "healthcheck",
+        "observed_at",
+    ):
         _required_string(execution.get(field), f"rollback record.execution.{field}")
     if execution.get("healthcheck") != "PASSED":
-        raise RollbackEvidenceError("rollback record.execution.healthcheck must be PASSED")
-    _reject_synthetic(execution["provider_operation_id"], "rollback record.execution.provider_operation_id")
-    _verify_attestation(record, "rollback record.attestation")
+        raise RollbackEvidenceError(
+            "rollback record.execution.healthcheck must be PASSED"
+        )
+    _reject_synthetic(
+        execution["provider_operation_id"],
+        "rollback record.execution.provider_operation_id",
+    )
+    _verify_attestation(
+        record,
+        "rollback record.attestation",
+        secret=secret,
+        public_key_pem=public_key_pem,
+    )
     return {**manifest_result, "rollback": "rollback"}
 
 
@@ -221,7 +317,9 @@ def main(argv: list[str] | None = None) -> int:
         payload = json.loads(source_path.read_text(encoding="utf-8"))
         if args.record:
             if args.cosign_reference:
-                raise RollbackEvidenceError("Cosign references are only valid with --manifest")
+                raise RollbackEvidenceError(
+                    "Cosign references are only valid with --manifest"
+                )
             result = verify_rollback_record(payload, args.commit_sha, args.repository)
         else:
             result = verify_rollback_manifest(

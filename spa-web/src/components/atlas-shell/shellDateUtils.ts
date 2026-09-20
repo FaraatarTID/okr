@@ -14,7 +14,7 @@ export function parseDateOrNull(raw: unknown): Date | null {
   // millisecond precision. This prevents local-time interpretation drift.
   let normalized = text;
   const matched = normalized.match(
-    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([zZ]|[+\-]\d{2}:\d{2})?$/,
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.(\d+))?([zZ]|[+-]\d{2}:\d{2})?$/,
   );
   if (matched) {
     const [, datePart, timePart, fractionalRaw, timezoneRaw] = matched;

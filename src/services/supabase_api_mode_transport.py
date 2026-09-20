@@ -42,7 +42,9 @@ def _get_concurrency_semaphore() -> threading.BoundedSemaphore:
             if _CONCURRENCY_SEMAPHORE is None:
                 try:
                     limit = int(
-                        str(get_config_value("OKR_SUPABASE_MAX_CONCURRENCY", "")).strip()
+                        str(
+                            get_config_value("OKR_SUPABASE_MAX_CONCURRENCY", "")
+                        ).strip()
                         or _DEFAULT_MAX_CONCURRENCY
                     )
                 except ValueError:
@@ -306,8 +308,7 @@ def _request_json_with_method(
     except httpx.HTTPError as exc:
         _record_breaker_failure()
         raise SupabaseTransportError(
-            f"Supabase request failed ({type(exc).__name__}): "
-            f"{request_method} {path}",
+            f"Supabase request failed ({type(exc).__name__}): {request_method} {path}",
             kind="http",
             retryable=False,
         ) from exc

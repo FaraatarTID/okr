@@ -15,9 +15,7 @@ def test_dependency_manifest_is_checked_against_uv_authority() -> None:
 
 
 def test_release_manifests_reject_unresolved_kubernetes_digests() -> None:
-    source = (ROOT / "scripts" / "render_k8s_release.py").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / "scripts" / "render_k8s_release.py").read_text(encoding="utf-8")
     assert "REPLACE_WITH_RELEASE_DIGEST" in source
     assert "64" in source
 

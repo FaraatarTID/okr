@@ -68,7 +68,9 @@ def _timing_medians(samples: list[dict[str, float]]) -> dict[str, float]:
     """Return machine-readable p50 attribution without request metadata."""
     names = sorted({name for sample in samples for name in sample})
     return {
-        name: round(statistics.median([sample[name] for sample in samples if name in sample]), 3)
+        name: round(
+            statistics.median([sample[name] for sample in samples if name in sample]), 3
+        )
         for name in names
     }
 
@@ -186,9 +188,7 @@ def probe(
     cleanup_cycle_id: int | None = None
     if session:
         session_cookie, csrf_token = session
-        probe_context = _probe_actor_context(
-            base, session_cookie, username, csrf_token
-        )
+        probe_context = _probe_actor_context(base, session_cookie, username, csrf_token)
         snapshot_context, cleanup_cycle_id = _snapshot_context(
             base,
             session_cookie,
@@ -249,9 +249,7 @@ def probe(
     return results
 
 
-def _login_session(
-    base: str, username: str, password: str
-) -> tuple[str, str] | None:
+def _login_session(base: str, username: str, password: str) -> tuple[str, str] | None:
     """Login and return session and CSRF cookie values, or None."""
     import json
 
@@ -518,7 +516,9 @@ def _snapshot_context(
     cycles = body.get("cycles") if isinstance(body, dict) else None
     if status != 200 or not isinstance(cycles, list):
         return None, None
-    if any(isinstance(cycle, dict) and cycle.get("is_active") is True for cycle in cycles):
+    if any(
+        isinstance(cycle, dict) and cycle.get("is_active") is True for cycle in cycles
+    ):
         return None, None
 
     start_date, end_date = _current_probe_week()
@@ -827,7 +827,9 @@ def main(argv: list[str] | None = None) -> int:
         }
         output_path = __import__("pathlib").Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        output_path.write_text(
+            json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         print(f"Evidence written to {output_path}")
 
     print(f"{'SLO':<28} {'Target':>8} {'Measured':>10} {'Pass':>6}  Detail")

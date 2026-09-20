@@ -37,7 +37,9 @@ def _required_string(value: Any, label: str) -> str:
 def _validate_commit(value: Any, label: str) -> str:
     commit = _required_string(value, label)
     if not _COMMIT_RE.fullmatch(commit):
-        raise DeploymentVerificationError(f"{label} must be a 40-character lowercase commit SHA")
+        raise DeploymentVerificationError(
+            f"{label} must be a 40-character lowercase commit SHA"
+        )
     return commit
 
 
@@ -46,14 +48,18 @@ def _image_identity(value: Any, label: str) -> dict[str, str]:
     image_ref = _required_string(image.get("image"), f"{label}.image")
     digest = _required_string(image.get("digest"), f"{label}.digest")
     if not _DIGEST_RE.fullmatch(digest):
-        raise DeploymentVerificationError(f"{label}.digest must be a sha256 registry digest")
+        raise DeploymentVerificationError(
+            f"{label}.digest must be a sha256 registry digest"
+        )
     return {"image": image_ref, "digest": digest}
 
 
 def _validate_observations(evidence: dict[str, Any]) -> None:
     health = _mapping(evidence.get("health"), "evidence.health")
     if set(health) != set(HEALTH_APPLICATIONS):
-        raise DeploymentVerificationError("health must contain exactly api, bff, web, and worker")
+        raise DeploymentVerificationError(
+            "health must contain exactly api, bff, web, and worker"
+        )
     if any(value != "passed" for value in health.values()):
         raise DeploymentVerificationError("health observations must all be passed")
 
@@ -61,43 +67,71 @@ def _validate_observations(evidence: dict[str, Any]) -> None:
     if restart.get("status") != "passed":
         raise DeploymentVerificationError("restart.status must be passed")
     if restart.get("services") != list(APPLICATIONS):
-        raise DeploymentVerificationError("restart.services must contain exactly api, bff, web, and worker")
+        raise DeploymentVerificationError(
+            "restart.services must contain exactly api, bff, web, and worker"
+        )
 
     ingress = _mapping(evidence.get("ingress"), "evidence.ingress")
     if ingress.get("status") != "passed":
         raise DeploymentVerificationError("ingress.status must be passed")
     if ingress.get("checks") != list(INGRESS_CHECKS):
-        raise DeploymentVerificationError("ingress.checks must contain web, bff-health, and api-health")
+        raise DeploymentVerificationError(
+            "ingress.checks must contain web, bff-health, and api-health"
+        )
 
 
-def verify_deployment(manifest: dict[str, Any], evidence: dict[str, Any]) -> dict[str, Any]:
+def verify_deployment(
+    manifest: dict[str, Any], evidence: dict[str, Any]
+) -> dict[str, Any]:
     """Return stable verification evidence or raise on any contract mismatch."""
     manifest = _mapping(manifest, "manifest")
     evidence = _mapping(evidence, "evidence")
     if manifest.get("schema_version") != 1 or evidence.get("schema_version") != 2:
-        raise DeploymentVerificationError("manifest schema_version must be 1 and evidence schema_version must be 2")
+        raise DeploymentVerificationError(
+            "manifest schema_version must be 1 and evidence schema_version must be 2"
+        )
 
-    manifest_commit = _validate_commit(manifest.get("commit_sha"), "manifest.commit_sha")
-    evidence_commit = _validate_commit(evidence.get("commit_sha"), "evidence.commit_sha")
+    manifest_commit = _validate_commit(
+        manifest.get("commit_sha"), "manifest.commit_sha"
+    )
+    evidence_commit = _validate_commit(
+        evidence.get("commit_sha"), "evidence.commit_sha"
+    )
     if evidence_commit != manifest_commit:
-        raise DeploymentVerificationError("evidence commit SHA does not match manifest commit SHA")
+        raise DeploymentVerificationError(
+            "evidence commit SHA does not match manifest commit SHA"
+        )
 
     manifest_images = _mapping(manifest.get("images"), "manifest.images")
     if set(manifest_images) != set(MANIFEST_IMAGES):
-        raise DeploymentVerificationError("manifest images must be exactly web, bff, and backend")
-    expected = {name: _image_identity(manifest_images[name], f"manifest.images.{name}") for name in MANIFEST_IMAGES}
+        raise DeploymentVerificationError(
+            "manifest images must be exactly web, bff, and backend"
+        )
+    expected = {
+        name: _image_identity(manifest_images[name], f"manifest.images.{name}")
+        for name in MANIFEST_IMAGES
+    }
 
     applications = _mapping(evidence.get("applications"), "evidence.applications")
     if set(applications) != set(APPLICATIONS):
-        raise DeploymentVerificationError("applications must contain exactly api, bff, web, and worker")
-    actual = {name: _image_identity(applications[name], f"evidence.applications.{name}") for name in APPLICATIONS}
+        raise DeploymentVerificationError(
+            "applications must contain exactly api, bff, web, and worker"
+        )
+    actual = {
+        name: _image_identity(applications[name], f"evidence.applications.{name}")
+        for name in APPLICATIONS
+    }
 
     for application in ("web", "bff"):
         if actual[application] != expected[application]:
-            raise DeploymentVerificationError(f"{application} image or digest does not match manifest")
+            raise DeploymentVerificationError(
+                f"{application} image or digest does not match manifest"
+            )
     for application in ("api", "worker"):
         if actual[application] != expected["backend"]:
-            raise DeploymentVerificationError(f"{application} image or digest does not match manifest backend")
+            raise DeploymentVerificationError(
+                f"{application} image or digest does not match manifest backend"
+            )
 
     namespace = _required_string(evidence.get("namespace"), "evidence.namespace")
     _validate_observations(evidence)

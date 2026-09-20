@@ -119,7 +119,11 @@ def test_backend_rejects_forwarded_role_claim_that_does_not_match_actor_scope(
     monkeypatch.setattr(
         backend_main,
         "_resolve_scope_for_actor",
-        lambda actor, token_version=None: {"role": "member", "actor_id": 1, "actor_username": actor},
+        lambda actor, token_version=None: {
+            "role": "member",
+            "actor_id": 1,
+            "actor_username": actor,
+        },
     )
 
     response = client.post(
@@ -145,7 +149,11 @@ def test_backend_rejects_forwarded_group_claim_that_conflicts_with_actor_scope(
     monkeypatch.setattr(
         backend_main,
         "_resolve_scope_for_actor",
-        lambda actor, token_version=None: {"role": "manager", "actor_id": 1, "actor_username": actor},
+        lambda actor, token_version=None: {
+            "role": "manager",
+            "actor_id": 1,
+            "actor_username": actor,
+        },
     )
 
     response = client.post(

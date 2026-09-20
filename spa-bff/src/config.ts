@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import net from "node:net";
 
 export interface BffConfig {
@@ -169,8 +170,7 @@ function requireSessionSecret(env: NodeJS.ProcessEnv): string {
   const isDevelopment = String(env.NODE_ENV ?? "").trim().toLowerCase() === "development";
   if (!secret) {
     if (isDevelopment) {
-      const crypto = require("crypto");
-      return crypto.randomBytes(32).toString("hex");
+      return randomBytes(32).toString("hex");
     }
     throw new Error("BFF_SESSION_SECRET is required for non-development spa-bff runtime.");
   }

@@ -32,7 +32,9 @@ def test_single_tenant_manifest_rejects_missing_database_target():
         )
 
 
-@pytest.mark.parametrize("field", ["environment_id", "customer_id", "application_version"])
+@pytest.mark.parametrize(
+    "field", ["environment_id", "customer_id", "application_version"]
+)
 def test_manifest_rejects_empty_identity_or_version(field):
     values = {
         "environment_id": "env-a",
@@ -136,8 +138,16 @@ def test_legal_lifecycle_transition_is_explicit():
     [
         (EnvironmentState.READY, EnvironmentEvent.SUSPEND, EnvironmentState.SUSPENDED),
         (EnvironmentState.SUSPENDED, EnvironmentEvent.ACTIVATE, EnvironmentState.READY),
-        (EnvironmentState.READY, EnvironmentEvent.BEGIN_UPGRADE, EnvironmentState.UPGRADING),
-        (EnvironmentState.UPGRADING, EnvironmentEvent.COMPLETE_UPGRADE, EnvironmentState.READY),
+        (
+            EnvironmentState.READY,
+            EnvironmentEvent.BEGIN_UPGRADE,
+            EnvironmentState.UPGRADING,
+        ),
+        (
+            EnvironmentState.UPGRADING,
+            EnvironmentEvent.COMPLETE_UPGRADE,
+            EnvironmentState.READY,
+        ),
         (EnvironmentState.DEGRADED, EnvironmentEvent.RECOVER, EnvironmentState.READY),
         (EnvironmentState.READY, EnvironmentEvent.RETIRE, EnvironmentState.RETIRED),
     ],

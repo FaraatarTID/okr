@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 """CI gate: verify every table in the public schema has RLS enabled.
 
+This is Supabase/PostgREST exposure hardening, and it is unrelated to tenant
+isolation. When Supabase exposes the `public` schema over PostgREST, a table
+without row level security is readable through the generated REST API by any
+holder of the anon key, so every table must have RLS enabled as a deny-by-default
+backstop. The check is about what the generated API can reach, not about keeping
+one customer's rows away from another's: shared-database multi-tenancy and
+RLS-based tenant isolation are permanently rejected by
+`docs/ADR-001-multitenant-data-access-boundary.md`, and customer isolation is
+provided by dedicated deployments and databases instead.
+
+The gate name and the file name are historical. Read "RLS" here as "PostgREST
+exposure hardening" and nothing more.
+
 Connects to a PostgreSQL database (OKR_DATABASE_URL or DATABASE_URL) and
 fails if any user table in the public schema does not have row level
 security enabled. This prevents new tables from silently shipping without
@@ -51,11 +64,7 @@ POLICY_AUDIT_ROLES: tuple[str, ...] = ("anon", "authenticated", "public")
 
 
 def _database_url() -> str:
-    value = (
-        os.getenv("OKR_DATABASE_URL")
-        or os.getenv("DATABASE_URL")
-        or ""
-    ).strip()
+    value = (os.getenv("OKR_DATABASE_URL") or os.getenv("DATABASE_URL") or "").strip()
     if not value:
         raise SystemExit(
             "check_rls_enabled: OKR_DATABASE_URL or DATABASE_URL must be set."
@@ -109,9 +118,7 @@ def _permissive_policy_violations(engine) -> list[str]:
     with engine.connect() as conn:
         rows = conn.execute(query).fetchall()
     for row in rows:
-        applies_to_exposed = bool(
-            set(row.roles or []) & set(POLICY_AUDIT_ROLES)
-        )
+        applies_to_exposed = bool(set(row.roles or []) & set(POLICY_AUDIT_ROLES))
         if not applies_to_exposed:
             continue
         for expr in (row.qual, row.with_check):
@@ -156,8 +163,7 @@ def _role_grant_violations(engine) -> list[str] | None:
         ).fetchall()
 
     return [
-        f"public.{row.table_name} has grants for role '{row.grantee}'"
-        for row in rows
+        f"public.{row.table_name} has grants for role '{row.grantee}'" for row in rows
     ]
 
 
@@ -184,7 +190,9 @@ def main() -> int:
             violations = None
 
         if violations:
-            print("check_rls_enabled: FAIL — PostgREST role grants on owner-only tables:")
+            print(
+                "check_rls_enabled: FAIL — PostgREST role grants on owner-only tables:"
+            )
             for item in violations:
                 print(f"  - {item}")
             return 1
@@ -196,7 +204,9 @@ def main() -> int:
             policy_violations = []
 
         if policy_violations:
-            print("check_rls_enabled: FAIL — permissive policies exposed to anon/authenticated:")
+            print(
+                "check_rls_enabled: FAIL — permissive policies exposed to anon/authenticated:"
+            )
             for item in policy_violations:
                 print(f"  - {item}")
             return 1

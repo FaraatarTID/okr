@@ -68,7 +68,12 @@ is intentional and currently fails closed.
 
 | Date | Item | Consequence of missing it |
 | --- | --- | --- |
-| 2026-09-30 | Quality gate baseline items QG-001 and QG-002 (`docs/QUALITY_GATE_BASELINE.md`) | On 2026-10-01 `scripts/check_quality_gate_baseline.py` fails. It is an `always_run` pre-commit hook and a CI gate, so every commit and every CI run fails. Resolve under B6. |
+| 2026-11-15 | Quality gate baseline item QG-002 (`docs/QUALITY_GATE_BASELINE.md`) | On 2026-11-16 `scripts/check_quality_gate_baseline.py` fails. It is an `always_run` pre-commit hook and a CI gate, so every commit and every CI run fails until QG-002 is retired or re-dated with a fresh rationale. |
+
+The earlier 2026-09-30 deadline covering QG-001 and QG-002 was resolved on
+2026-09-20 under B6. QG-001 was closed by expanding the Ruff format check to
+repo scope, so its cliff no longer exists; QG-002 was re-dated to 2026-11-15 with
+a staged burn-down recorded in `docs/QUALITY_GATE_BASELINE.md`.
 
 ## Decision rule
 

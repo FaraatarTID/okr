@@ -132,7 +132,6 @@ class TestCircuitBreaker:
         assert status == 200
 
     def test_success_resets_failure_count(self, monkeypatch):
-
         def failing(request: httpx.Request) -> httpx.Response:
             raise httpx.ConnectError("x", request=request)
 
@@ -212,6 +211,7 @@ class TestShutdownLifecycle:
                 init_database=lambda: None,
                 ensure_admin_exists=lambda: None,
             )
+
             async def _run() -> None:
                 cm = lifespan(None)
                 await cm.__aenter__()

@@ -614,7 +614,9 @@ def api_delete_alignment(
                 actor_username=actor,
             )
         else:
-            deleted = _resolve_backend_main().delete_alignment(int(edge_id), actor_username=actor)
+            deleted = _resolve_backend_main().delete_alignment(
+                int(edge_id), actor_username=actor
+            )
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:

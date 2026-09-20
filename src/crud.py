@@ -116,9 +116,13 @@ _resolve_backend_actor = _crud_runtime_helpers._resolve_backend_actor
 _raise_backend_read_error = _crud_runtime_helpers._raise_backend_read_error
 _backend_read_result_or_raise = _crud_runtime_helpers._backend_read_result_or_raise
 _local_backend_fallback_allowed = _crud_runtime_helpers._local_backend_fallback_allowed
-_is_transient_backend_mutation_error = _crud_runtime_helpers._is_transient_backend_mutation_error
+_is_transient_backend_mutation_error = (
+    _crud_runtime_helpers._is_transient_backend_mutation_error
+)
 _raise_backend_mutation_error = _crud_runtime_helpers._raise_backend_mutation_error
-_enforce_backend_mutation_failure_policy = _crud_runtime_helpers._enforce_backend_mutation_failure_policy
+_enforce_backend_mutation_failure_policy = (
+    _crud_runtime_helpers._enforce_backend_mutation_failure_policy
+)
 _node_from_backend_payload = _crud_runtime_helpers._node_from_backend_payload
 _validate_update_fields = _crud_runtime_helpers._validate_update_fields
 
@@ -174,8 +178,12 @@ stop_timer = _crud_timer_facade.stop_timer
 # internal guardrail primitives used by helper modules for throttling/RBAC.
 # Implementation is delegated across helper modules (`src.crud_runtime_helpers`,
 # `src.crud_auth_helpers`) to keep ownership boundaries clear.
-_auth_throttle_fail_open_allowed = _crud_runtime_helpers._auth_throttle_fail_open_allowed
-_resolve_bootstrap_admin_password = _crud_runtime_helpers._resolve_bootstrap_admin_password
+_auth_throttle_fail_open_allowed = (
+    _crud_runtime_helpers._auth_throttle_fail_open_allowed
+)
+_resolve_bootstrap_admin_password = (
+    _crud_runtime_helpers._resolve_bootstrap_admin_password
+)
 hash_password = _crud_runtime_helpers.hash_password
 verify_password = _crud_runtime_helpers.verify_password
 create_user = _crud_runtime_helpers.create_user
@@ -183,7 +191,9 @@ get_user_by_username = _crud_runtime_helpers.get_user_by_username
 
 _goal_owner_predicate_by_username = _crud_auth_helpers._goal_owner_predicate_by_username
 _goal_owner_predicate_by_user_id = _crud_auth_helpers._goal_owner_predicate_by_user_id
-_timer_owner_predicate_by_username = _crud_auth_helpers._timer_owner_predicate_by_username
+_timer_owner_predicate_by_username = (
+    _crud_auth_helpers._timer_owner_predicate_by_username
+)
 _can_manage_goal = _crud_auth_helpers._can_manage_goal
 _can_manage_owner = _crud_auth_helpers._can_manage_owner
 _resolve_goal_for_node = _crud_auth_helpers._resolve_goal_for_node
@@ -201,14 +211,18 @@ _remaining_lockout_seconds = _crud_auth_helpers._remaining_lockout_seconds
 _prepare_throttle_state_for_check = _crud_auth_helpers._prepare_throttle_state_for_check
 _record_failed_auth_attempt = _crud_auth_helpers._record_failed_auth_attempt
 _clear_auth_throttle_state = _crud_auth_helpers._clear_auth_throttle_state
-_is_auth_throttle_operational_error = _crud_auth_helpers._is_auth_throttle_operational_error
+_is_auth_throttle_operational_error = (
+    _crud_auth_helpers._is_auth_throttle_operational_error
+)
 _is_auth_throttle_schema_operational_error = (
     _crud_auth_helpers._is_auth_throttle_schema_operational_error
 )
 _is_transient_connection_operational_error = (
     _crud_auth_helpers._is_transient_connection_operational_error
 )
-_authenticate_user_without_throttle = _crud_auth_helpers._authenticate_user_without_throttle
+_authenticate_user_without_throttle = (
+    _crud_auth_helpers._authenticate_user_without_throttle
+)
 authenticate_user_detailed = _crud_auth_helpers.authenticate_user_detailed
 authenticate_user = _crud_auth_helpers.authenticate_user
 
@@ -242,7 +256,9 @@ delete_objective = _crud_mutation_facade.delete_objective
 delete_key_result = _crud_mutation_facade.delete_key_result
 calculate_progress = _crud_mutation_facade.calculate_progress
 update_progress_chain = _crud_mutation_facade.update_progress_chain
-recalculate_rollup_for_key_results = _crud_mutation_facade.recalculate_rollup_for_key_results
+recalculate_rollup_for_key_results = (
+    _crud_mutation_facade.recalculate_rollup_for_key_results
+)
 create_weekly_plan = _crud_mutation_facade.create_weekly_plan
 create_retrospective = _crud_mutation_facade.create_retrospective
 upsert_retro_experiment_outcome = _crud_mutation_facade.upsert_retro_experiment_outcome
@@ -255,8 +271,6 @@ delete_team = _crud_mutation_facade.delete_team
 # ============================================================================
 # Timer and work-log APIs are delegated to `src.crud_timer_facade` for ownership
 # boundaries while preserving legacy `src.crud` symbol availability.
-
-
 
 
 # ============================================================================

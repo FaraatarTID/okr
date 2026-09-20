@@ -25,7 +25,9 @@ def test_default_control_plane_is_memory_backed(monkeypatch, tmp_path: Path) -> 
 
 def test_explicit_control_plane_path_remains_durable(tmp_path: Path) -> None:
     state_path = tmp_path / "control-plane.json"
-    summary = EnvironmentSummary("env-a", "customer-a", "single_tenant_saas", "release-1", "READY")
+    summary = EnvironmentSummary(
+        "env-a", "customer-a", "single_tenant_saas", "release-1", "READY"
+    )
 
     ControlPlane([summary], state_path=state_path)
 

@@ -653,7 +653,9 @@ def create_cycle_via_supabase_api(
     # Invariant: at most one active cycle. Activating a new cycle deactivates
     # all others in the same transactional sequence.
     if payload["is_active"]:
-        _rest_update("cycle", match_query={"is_active": "eq.true"}, payload={"is_active": False})
+        _rest_update(
+            "cycle", match_query={"is_active": "eq.true"}, payload={"is_active": False}
+        )
     status, response = _request_json_with_method(
         "POST",
         "/rest/v1/cycle",
@@ -704,11 +706,7 @@ def update_cycle_via_supabase_api(
                     "limit": "1",
                 },
             )
-            if (
-                status2 < 400
-                and own_rows
-                and bool(own_rows[0].get("is_active"))
-            ):
+            if status2 < 400 and own_rows and bool(own_rows[0].get("is_active")):
                 raise ValueError(
                     "Cannot deactivate the only active cycle. "
                     "Activate another cycle first."
@@ -754,9 +752,7 @@ def update_cycle_via_supabase_api(
                 },
             )
             if status >= 400 or not rows:
-                raise ValueError(
-                    f"Supabase API error (cycle/update refresh): {status}"
-                )
+                raise ValueError(f"Supabase API error (cycle/update refresh): {status}")
             return types.SimpleNamespace(**rows[0])
 
         # Legacy fallback: deactivate others, then activate target.
@@ -809,4 +805,3 @@ def delete_cycle_via_supabase_api(
     if status >= 400:
         raise ValueError(f"Supabase API error (cycle/delete): {status}")
     return True
-

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, type Dispatch, type SetStateAction } from "react";
 
 import {
+  forcedPasswordChangeLocation,
   logoutSession,
   type AdminAiHealthResponse,
   type AuditSummaryResponse,
@@ -10,6 +11,7 @@ import {
   type AuthUser,
 } from "@/lib/api";
 import type { AdminTab } from "@/components/atlas-shell/AdminModePanel";
+import { clearResourceCache } from "@/lib/resourceCache";
 
 type UseShellAccessControlInput = {
   authHydrated: boolean;
@@ -51,12 +53,19 @@ export default function useShellAccessControl({
   clearSnapshot,
 }: UseShellAccessControlInput) {
   useEffect(() => {
-    if (!authHydrated || user) {
+    if (!authHydrated) {
       return;
     }
     const returnTo =
       typeof window === "undefined" ? "/" : `${window.location.pathname}${window.location.search}`;
-    routerReplace(`/login?return_to=${encodeURIComponent(returnTo)}`);
+    // A pending forced password change outranks everything else: it must be
+    // enforced here, at the boundary every application route passes through, so
+    // it cannot be bypassed by navigating straight to a route or by reloading
+    // after login. Only the change flow may render while the flag is set.
+    const destination = user
+      ? forcedPasswordChangeLocation(user, returnTo)
+      : `/login?return_to=${encodeURIComponent(returnTo)}`;
+    routerReplace(destination);
   }, [authHydrated, routerReplace, user]);
 
   useEffect(() => {
@@ -73,7 +82,13 @@ export default function useShellAccessControl({
     if (!isAdmin && mode === "admin" && adminTab !== "cycles") {
       setAdminTab("cycles");
     }
-  }, [adminTab, handleSidebarModeSelect, isAdmin, mode, setAdminTab, user]);
+    // `isManager` feeds `canManageCycles` above and was missing here. Today it
+    // is masked, because `isManager` is derived from `user.role` and `user` is
+    // in the list, so the effect already re-runs whenever the role changes.
+    // Listed anyway: the sibling effects below include it, and the correctness
+    // of the admin gate should not depend on how `isManager` happens to be
+    // derived at the call site.
+  }, [adminTab, handleSidebarModeSelect, isAdmin, isManager, mode, setAdminTab, user]);
 
   useEffect(() => {
     // Managers also need admin resources (users list feeds the cycle-owner
@@ -112,6 +127,9 @@ export default function useShellAccessControl({
       } catch {
         // Ignore logout transport errors and still clear local state.
       } finally {
+        // Clear the read cache before dropping the user, so the next identity on
+        // this browser can never be served the previous user's cycles or teams.
+        clearResourceCache();
         setUser(null);
         clearSnapshot();
         routerReplace("/login?return_to=%2F");

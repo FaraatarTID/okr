@@ -8,7 +8,9 @@ ROOT = Path(__file__).resolve().parents[1]
 COMPOSE = ROOT / "deploy" / "docker" / "docker-compose.yml"
 
 
-def test_worker_shutdown_signal_stops_polling_without_interrupting_current_job() -> None:
+def test_worker_shutdown_signal_stops_polling_without_interrupting_current_job() -> (
+    None
+):
     from backend_app import worker
 
     worker.reset_shutdown_state()
@@ -48,7 +50,7 @@ def test_job_claim_contract_remains_atomic_and_postgres_safe() -> None:
     source = (ROOT / "backend_app" / "jobs.py").read_text(encoding="utf-8")
 
     assert "with_for_update(skip_locked=True)" in source
-    assert '.where(AsyncJob.status == AsyncJobStatus.PENDING)' in source
+    assert ".where(AsyncJob.status == AsyncJobStatus.PENDING)" in source
     assert "status=AsyncJobStatus.RUNNING" in source
 
 
@@ -66,6 +68,12 @@ def test_worker_has_bounded_shutdown_requeue_and_liveness_contract() -> None:
     assert "python -m backend_app.worker_healthcheck" in compose
     assert "disable: true" not in compose
     assert "OKR_WORKER_SHUTDOWN_GRACE_SECONDS" in worker
-    assert "terminationGracePeriodSeconds:" in (ROOT / "deploy/k8s/deployment-backend-worker.yaml").read_text(encoding="utf-8")
-    assert "livenessProbe:" in (ROOT / "deploy/k8s/deployment-backend-worker.yaml").read_text(encoding="utf-8")
-    assert "readinessProbe:" in (ROOT / "deploy/k8s/deployment-backend-worker.yaml").read_text(encoding="utf-8")
+    assert "terminationGracePeriodSeconds:" in (
+        ROOT / "deploy/k8s/deployment-backend-worker.yaml"
+    ).read_text(encoding="utf-8")
+    assert "livenessProbe:" in (
+        ROOT / "deploy/k8s/deployment-backend-worker.yaml"
+    ).read_text(encoding="utf-8")
+    assert "readinessProbe:" in (
+        ROOT / "deploy/k8s/deployment-backend-worker.yaml"
+    ).read_text(encoding="utf-8")

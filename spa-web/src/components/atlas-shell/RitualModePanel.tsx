@@ -1,7 +1,6 @@
 "use client";
 
 import type { Dispatch, SetStateAction } from "react";
-import { rtlStyle } from "@/lib/rtl";
 
 type WorkLogReadView = {
   duration_minutes?: number | null;

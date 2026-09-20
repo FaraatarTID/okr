@@ -21,7 +21,6 @@ from backend_app.schemas import ExperimentMutationView
 from src.models import ExperimentStatus
 
 
-
 def get_observability_metrics_snapshot() -> dict[str, Any]:
     return observability_snapshot()
 

@@ -21,7 +21,9 @@ def require_control_plane_operator(actor: str) -> None:
     }
     if configured:
         if actor not in configured:
-            raise HTTPException(status_code=403, detail="Control-plane operator required.")
+            raise HTTPException(
+                status_code=403, detail="Control-plane operator required."
+            )
         return
     if is_production_runtime():
         raise HTTPException(
@@ -31,13 +33,20 @@ def require_control_plane_operator(actor: str) -> None:
     import sys
 
     main_module = sys.modules.get("backend_app.main")
-    admin_scope = getattr(main_module, "_require_admin_actor_scope", _require_admin_actor_scope)
+    admin_scope = getattr(
+        main_module, "_require_admin_actor_scope", _require_admin_actor_scope
+    )
     admin_scope(actor)
 
 
 async def require_authenticated_principal(request: Request) -> dict[str, str]:
     """Return the principal established by authentication middleware."""
     principal: Any = getattr(request.state, "authenticated_principal", None)
-    if not isinstance(principal, dict) or not str(principal.get("username") or "").strip():
-        raise HTTPException(status_code=401, detail="Authenticated principal is required.")
+    if (
+        not isinstance(principal, dict)
+        or not str(principal.get("username") or "").strip()
+    ):
+        raise HTTPException(
+            status_code=401, detail="Authenticated principal is required."
+        )
     return principal

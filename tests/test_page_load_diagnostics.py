@@ -49,7 +49,10 @@ def test_trace_identifies_dominant_instrumented_stage() -> None:
     [
         ({"total_duration_ms": 0, "spans": []}, "total_duration_ms"),
         (
-            {"total_duration_ms": 100, "spans": [{"stage": "worker", "duration_ms": 1}]},
+            {
+                "total_duration_ms": 100,
+                "spans": [{"stage": "worker", "duration_ms": 1}],
+            },
             "stage",
         ),
         (

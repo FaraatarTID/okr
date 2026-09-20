@@ -6,7 +6,6 @@ import type {
 } from "@/lib/api/backend-schema";
 
 import {
-  fetchWithTimeout,
   jsonHeaders,
   normalizeBackendDateTime,
   responseDetail,
@@ -174,28 +173,26 @@ export async function readCyclesQuery(input: {
   kind: "cycles.active" | "cycles.all";
 }): Promise<CycleSummary[]> {
   return retryWithFetch(
-    () =>
-      fetchWithTimeout(
-        "/api/backend/v1/read/query",
-        {
-          method: "POST",
-          cache: "no-store",
-          headers: jsonHeaders(input.actor_username),
-          body: JSON.stringify({
-            kind: input.kind,
-            params: {},
-            actor_username: input.actor_username,
-          }),
-        },
-        // Supabase free-tier wake-up and pooler latency can exceed 8 seconds
-        // for Check-In's multi-query workspace load.
-        120_000,
-      ),
+    (signal) =>
+      fetch("/api/backend/v1/read/query", {
+        method: "POST",
+        cache: "no-store",
+        headers: jsonHeaders(input.actor_username),
+        body: JSON.stringify({
+          kind: input.kind,
+          params: {},
+          actor_username: input.actor_username,
+        }),
+        signal,
+      }),
     async (response) => {
       const payload = (await response.json()) as ReadQueryResponse;
       return Array.isArray(payload.cycles) ? payload.cycles : [];
     },
-    { label: "Cycle query" },
+    // Supabase free-tier wake-up and pooler latency can exceed 8 seconds for
+    // Check-In's multi-query workspace load, so the budget stays explicit at
+    // 120s rather than falling back to the helper's 8s default.
+    { label: "Cycle query", perAttemptTimeoutMs: 120_000 },
   );
 }
 
@@ -277,20 +274,17 @@ export async function readBackendQuery(input: {
     params: input.params || {},
   };
   return retryWithFetch(
-    () =>
-      fetchWithTimeout(
-        "/api/backend/v1/read/query",
-        {
-          method: "POST",
-          cache: "no-store",
-          headers: jsonHeaders(input.actor_username),
-          body: JSON.stringify(requestBody),
-        },
-        // Keep the browser timeout aligned with the BFF's read-query budget.
-        120_000,
-      ),
+    (signal) =>
+      fetch("/api/backend/v1/read/query", {
+        method: "POST",
+        cache: "no-store",
+        headers: jsonHeaders(input.actor_username),
+        body: JSON.stringify(requestBody),
+        signal,
+      }),
     async (response) => (await response.json()) as Record<string, unknown>,
-    { label: "Read query" },
+    // Keep the browser timeout aligned with the BFF's read-query budget.
+    { label: "Read query", perAttemptTimeoutMs: 120_000 },
   );
 }
 

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  aiProgressDecision,
   asRecord,
   averageLogMinutes,
   buildStrategyPulseBaseline,
@@ -40,15 +39,9 @@ describe("shellAnalyticsUtils", () => {
     expect(grouped[0]).toEqual({ taskId: 7, title: "Auth", minutes: 31, sessions: 2 });
   });
 
-  it("formats deltas and policy decisions", () => {
+  it("formats deltas", () => {
     expect(formatSignedDelta(5.4)).toBe("+5");
     expect(formatSignedDelta(-1.2)).toBe("-1");
-
-    expect(aiProgressDecision(20, 30, 20, false)).toMatchObject({ action: "apply", delta: 10 });
-    expect(aiProgressDecision(20, 20, 20, false)).toMatchObject({ action: "skip", reason: "no_change" });
-    expect(aiProgressDecision(50, 10, 20, false)).toMatchObject({ action: "skip", reason: "decrease_blocked" });
-    expect(aiProgressDecision(10, 90, 30, true)).toMatchObject({ action: "skip", reason: "delta_cap" });
-    expect(aiProgressDecision(10, "x", 30, true)).toMatchObject({ action: "skip", reason: "missing_ai_score" });
   });
 
   it("parses analysis and report summaries", () => {

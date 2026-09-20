@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "alembic==1.18.4",
     "bcrypt==5.0.0",
+    "cryptography==50.0.1",
     "fastapi==0.138.0",
     "google-genai==1.61.0",
     "httpx==0.28.1",
@@ -32,3 +33,17 @@ dev = [
 # The repository currently uses a flat application layout rather than a
 # distributable Python package. uv still provides one authoritative resolver.
 package = false
+
+[tool.ruff]
+# Applied migrations are immutable. Reformatting one rewrites its bytes without
+# changing its meaning, which defeats the reason they are frozen, so they are
+# excluded from the repo-wide format check instead of being silently reformatted.
+# This is the only path-level carve-out in the gate; everything else is formatted.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.format]
+# `.gitattributes` declares `*.py text eol=lf`, so the emitted line ending must not
+# depend on the host platform. Ruff's `auto` default preserved whatever it found and
+# wrote CRLF on Windows, and `ruff format --check` did not report that as a
+# difference, so the gate could pass while producing files the attribute forbids.
+line-ending = "lf"

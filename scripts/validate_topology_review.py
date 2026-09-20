@@ -22,7 +22,9 @@ REQUIRED_CATEGORIES = (
 )
 
 
-def validate_review(review: dict[str, Any], *, base_dir: Path | None = None) -> list[str]:
+def validate_review(
+    review: dict[str, Any], *, base_dir: Path | None = None
+) -> list[str]:
     errors: list[str] = []
     if base_dir is not None:
         errors.extend(validate_evidence_metadata(review))
@@ -46,45 +48,96 @@ def validate_review(review: dict[str, Any], *, base_dir: Path | None = None) -> 
         elif base_dir is not None:
             artifact = Path(item["artifact"])
             if artifact.is_absolute() or ".." in artifact.parts:
-                errors.append(f"evidence.{category}.artifact must stay below the review directory")
+                errors.append(
+                    f"evidence.{category}.artifact must stay below the review directory"
+                )
             else:
                 artifact_path = base_dir / artifact
                 if not artifact_path.is_file():
-                    errors.append(f"evidence.{category}.artifact does not exist: {artifact}")
+                    errors.append(
+                        f"evidence.{category}.artifact does not exist: {artifact}"
+                    )
                 else:
                     try:
-                        artifact_payload = json.loads(artifact_path.read_text(encoding="utf-8"))
+                        artifact_payload = json.loads(
+                            artifact_path.read_text(encoding="utf-8")
+                        )
                     except (OSError, json.JSONDecodeError) as exc:
-                        errors.append(f"evidence.{category}.artifact is unreadable: {exc}")
+                        errors.append(
+                            f"evidence.{category}.artifact is unreadable: {exc}"
+                        )
                     else:
                         if not isinstance(artifact_payload, dict):
-                            errors.append(f"evidence.{category}.artifact must contain a JSON object")
-                        elif artifact_payload.get("release_id") != review.get("release_id"):
-                            errors.append(f"evidence.{category}.artifact release_id must match the review")
+                            errors.append(
+                                f"evidence.{category}.artifact must contain a JSON object"
+                            )
+                        elif artifact_payload.get("release_id") != review.get(
+                            "release_id"
+                        ):
+                            errors.append(
+                                f"evidence.{category}.artifact release_id must match the review"
+                            )
                         elif category == "security_parity":
-                            errors.extend(validate_security_parity(artifact_payload, base_dir=base_dir))
+                            errors.extend(
+                                validate_security_parity(
+                                    artifact_payload, base_dir=base_dir
+                                )
+                            )
                         elif category == "failure_isolation":
-                            errors.extend(validate_failure_isolation(artifact_payload, base_dir=base_dir))
+                            errors.extend(
+                                validate_failure_isolation(
+                                    artifact_payload, base_dir=base_dir
+                                )
+                            )
                         elif category == "rollback_rehearsal":
-                            errors.extend(validate_rollback_rehearsal(artifact_payload, base_dir=base_dir))
+                            errors.extend(
+                                validate_rollback_rehearsal(
+                                    artifact_payload, base_dir=base_dir
+                                )
+                            )
                         elif category == "resource_overhead":
                             errors.extend(validate_evidence_metadata(artifact_payload))
                             comparisons = artifact_payload.get("resource_comparisons")
                             if not isinstance(comparisons, list) or not comparisons:
-                                errors.append("resource_overhead artifact must contain resource_comparisons")
+                                errors.append(
+                                    "resource_overhead artifact must contain resource_comparisons"
+                                )
                             else:
                                 for index, comparison in enumerate(comparisons):
                                     if not isinstance(comparison, dict):
-                                        errors.append(f"resource_comparisons[{index}] must be an object")
+                                        errors.append(
+                                            f"resource_comparisons[{index}] must be an object"
+                                        )
                                         continue
-                                    if not isinstance(comparison.get("container"), str) or not comparison["container"].strip():
-                                        errors.append(f"resource_comparisons[{index}].container is required")
-                                    for field in ("baseline_cpu_percent", "candidate_cpu_percent", "cpu_delta_percent"):
-                                        if not isinstance(comparison.get(field), (int, float)):
-                                            errors.append(f"resource_comparisons[{index}].{field} must be numeric")
-                                    for field in ("baseline_sample_count", "candidate_sample_count"):
-                                        if not isinstance(comparison.get(field), int) or comparison[field] < 1:
-                                            errors.append(f"resource_comparisons[{index}].{field} must be positive")
+                                    if (
+                                        not isinstance(comparison.get("container"), str)
+                                        or not comparison["container"].strip()
+                                    ):
+                                        errors.append(
+                                            f"resource_comparisons[{index}].container is required"
+                                        )
+                                    for field in (
+                                        "baseline_cpu_percent",
+                                        "candidate_cpu_percent",
+                                        "cpu_delta_percent",
+                                    ):
+                                        if not isinstance(
+                                            comparison.get(field), (int, float)
+                                        ):
+                                            errors.append(
+                                                f"resource_comparisons[{index}].{field} must be numeric"
+                                            )
+                                    for field in (
+                                        "baseline_sample_count",
+                                        "candidate_sample_count",
+                                    ):
+                                        if (
+                                            not isinstance(comparison.get(field), int)
+                                            or comparison[field] < 1
+                                        ):
+                                            errors.append(
+                                                f"resource_comparisons[{index}].{field} must be positive"
+                                            )
         if not isinstance(item.get("summary"), str) or not item["summary"].strip():
             errors.append(f"evidence.{category}.summary is required")
     return errors

@@ -66,16 +66,20 @@ def _request_json(
     request_body = None
     if payload is not None:
         request_headers["content-type"] = "application/json"
-        request_body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode(
-            "utf-8"
-        )
+        request_body = json.dumps(
+            payload, ensure_ascii=False, separators=(",", ":")
+        ).encode("utf-8")
 
-    request = Request(url=url, data=request_body, headers=request_headers, method=method)
+    request = Request(
+        url=url, data=request_body, headers=request_headers, method=method
+    )
     with client.open(request, timeout=25) as response:
         return int(response.status), _parse_response(response)
 
 
-def _wait_for_ok(client: OpenerDirector, *, url: str, timeout_seconds: float = 15.0) -> bool:
+def _wait_for_ok(
+    client: OpenerDirector, *, url: str, timeout_seconds: float = 15.0
+) -> bool:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         try:
@@ -182,7 +186,9 @@ def _do_login(client: OpenerDirector, *, bff_url: str) -> str:
     if status != 200:
         raise RuntimeError(f"Login request failed with status {status}: {payload}")
     if not bool(payload.get("success")):
-        raise RuntimeError(f"Login response indicates authentication failure: {payload}")
+        raise RuntimeError(
+            f"Login response indicates authentication failure: {payload}"
+        )
 
     me_status, me_payload = _read_with_retry(
         client,
@@ -191,7 +197,9 @@ def _do_login(client: OpenerDirector, *, bff_url: str) -> str:
         timeout_seconds=15,
     )
     if me_status != 200:
-        raise RuntimeError(f"Session validation failed with status {me_status}: {me_payload}")
+        raise RuntimeError(
+            f"Session validation failed with status {me_status}: {me_payload}"
+        )
 
     actor = str((me_payload.get("user") or {}).get("username") or "").strip()
     if not actor:
@@ -324,7 +332,9 @@ def test_full_stack_smoke(smoke_env: _SmokeConfig) -> None:
     client = build_opener(HTTPCookieProcessor(cookie_jar))
 
     if not _wait_for_ok(client, url=f"{bff_url}/healthz", timeout_seconds=40):
-        raise RuntimeError(f"BFF health endpoint did not become ready: {bff_url}/healthz")
+        raise RuntimeError(
+            f"BFF health endpoint did not become ready: {bff_url}/healthz"
+        )
     if not _wait_for_ok(client, url=f"{web_url}", timeout_seconds=40):
         raise RuntimeError(f"Web service did not become ready: {web_url}")
 

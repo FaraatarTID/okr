@@ -30,7 +30,9 @@ def test_seed_rejects_saas_mode() -> None:
     environment["OKR_SAAS_MODE"] = "true"
 
     with pytest.raises(seed_dev_demo.SeedConfigError, match="SaaS"):
-        seed_dev_demo.validate_request(argv=["--confirm-disposable"], environ=environment)
+        seed_dev_demo.validate_request(
+            argv=["--confirm-disposable"], environ=environment
+        )
 
 
 def test_seed_is_idempotent_and_creates_minimal_hierarchy(isolated_db) -> None:
@@ -66,4 +68,6 @@ def test_seed_rejects_production_like_environment() -> None:
     environment["OKR_ENV"] = "production"
 
     with pytest.raises(seed_dev_demo.SeedConfigError, match="production-like"):
-        seed_dev_demo.validate_request(argv=["--confirm-disposable"], environ=environment)
+        seed_dev_demo.validate_request(
+            argv=["--confirm-disposable"], environ=environment
+        )

@@ -32,7 +32,12 @@ def test_environment_parity_cli_can_emit_machine_readable_report(capsys):
 
 
 def test_environment_parity_fails_when_ci_contract_is_missing(tmp_path: Path):
-    for relative in (".github/workflows/ci.yml", ".github/workflows/darkube-prerelease.yml", ".github/workflows/promote-production.yml", "deploy/docker/docker-compose.yml"):
+    for relative in (
+        ".github/workflows/ci.yml",
+        ".github/workflows/darkube-prerelease.yml",
+        ".github/workflows/promote-production.yml",
+        "deploy/docker/docker-compose.yml",
+    ):
         target = tmp_path / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("", encoding="utf-8")
@@ -55,7 +60,9 @@ def test_environment_parity_rejects_unverifiable_darkube_evidence(tmp_path: Path
     evidence = tmp_path / "evidence.json"
     evidence.write_text("{}", encoding="utf-8")
 
-    report = build_report(tmp_path, evidence_path=evidence, manifest_path=tmp_path / "manifest.json")
+    report = build_report(
+        tmp_path, evidence_path=evidence, manifest_path=tmp_path / "manifest.json"
+    )
 
     assert report["status"] == "FAIL"
     assert report["provider_evidence"] == "FAIL"

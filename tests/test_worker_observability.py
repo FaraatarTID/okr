@@ -5,6 +5,7 @@ import json
 import threading
 import time
 
+
 def test_worker_process_sets_job_observability_context(monkeypatch):
     import backend_app.worker as worker
     from src.observability import get_correlation_id, get_request_id
@@ -52,10 +53,18 @@ def test_worker_process_logs_structured_events(monkeypatch):
     import backend_app.worker as worker
 
     logs: list[str] = []
-    monkeypatch.setattr(worker.logger, "info", lambda payload: logs.append(str(payload)))
-    monkeypatch.setattr(worker.logger, "warning", lambda payload: logs.append(str(payload)))
-    monkeypatch.setattr(worker.logger, "debug", lambda payload: logs.append(str(payload)))
-    monkeypatch.setattr(worker.logger, "exception", lambda payload: logs.append(str(payload)))
+    monkeypatch.setattr(
+        worker.logger, "info", lambda payload: logs.append(str(payload))
+    )
+    monkeypatch.setattr(
+        worker.logger, "warning", lambda payload: logs.append(str(payload))
+    )
+    monkeypatch.setattr(
+        worker.logger, "debug", lambda payload: logs.append(str(payload))
+    )
+    monkeypatch.setattr(
+        worker.logger, "exception", lambda payload: logs.append(str(payload))
+    )
 
     monkeypatch.setattr(
         worker,
@@ -88,8 +97,12 @@ def test_worker_process_logs_structured_events(monkeypatch):
         for item in logs
         if item.strip().startswith("{") and item.strip().endswith("}")
     ]
-    start_events = [entry for entry in payloads if entry.get("event") == "worker_job_started"]
-    final_events = [entry for entry in payloads if entry.get("event") == "worker_job_finalized"]
+    start_events = [
+        entry for entry in payloads if entry.get("event") == "worker_job_started"
+    ]
+    final_events = [
+        entry for entry in payloads if entry.get("event") == "worker_job_finalized"
+    ]
     assert start_events
     assert final_events
     assert start_events[0]["job_id"] == "job-logjob"
@@ -153,7 +166,9 @@ def test_worker_refreshes_heartbeat_while_long_job_runs(monkeypatch):
     writes = []
     release = threading.Event()
     monkeypatch.setenv("OKR_WORKER_HEARTBEAT_INTERVAL_SECONDS", "0.01")
-    monkeypatch.setattr(worker, "write_heartbeat", lambda: writes.append(time.monotonic()))
+    monkeypatch.setattr(
+        worker, "write_heartbeat", lambda: writes.append(time.monotonic())
+    )
     monkeypatch.setattr(
         worker,
         "claim_next_pending_job",
@@ -165,7 +180,11 @@ def test_worker_refreshes_heartbeat_while_long_job_runs(monkeypatch):
     )
     monkeypatch.setattr(worker, "get_job", lambda _job_id: None)
     monkeypatch.setattr(worker, "mark_job_succeeded", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(worker, "run_job", lambda *_args, **_kwargs: (release.wait(0.08), {"ok": True})[1])
+    monkeypatch.setattr(
+        worker,
+        "run_job",
+        lambda *_args, **_kwargs: (release.wait(0.08), {"ok": True})[1],
+    )
 
     assert worker.process_next_job(worker_id="worker-heartbeat") is True
     assert len(writes) >= 2
@@ -188,11 +207,19 @@ def test_worker_requeues_and_returns_after_shutdown_deadline(monkeypatch):
             payload_json='{"prompt":"hello"}',
         ),
     )
-    monkeypatch.setattr(worker, "requeue_job_for_shutdown", lambda *args: requeued.append(args) or True)
-    monkeypatch.setattr(worker, "run_job", lambda *_args, **_kwargs: (release.wait(), {"ok": True})[1])
+    monkeypatch.setattr(
+        worker, "requeue_job_for_shutdown", lambda *args: requeued.append(args) or True
+    )
+    monkeypatch.setattr(
+        worker, "run_job", lambda *_args, **_kwargs: (release.wait(), {"ok": True})[1]
+    )
 
     result = []
-    thread = threading.Thread(target=lambda: result.append(worker.process_next_job(worker_id="worker-deadline")))
+    thread = threading.Thread(
+        target=lambda: result.append(
+            worker.process_next_job(worker_id="worker-deadline")
+        )
+    )
     thread.start()
     time.sleep(0.01)
     monkeypatch.setattr(worker, "shutdown_requested", lambda: True)

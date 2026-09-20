@@ -48,9 +48,11 @@ def heartbeat_interval_seconds() -> float:
 
 def is_healthy() -> bool:
     try:
-        timeout = float(os.environ.get(
-            "OKR_WORKER_HEARTBEAT_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)
-        ))
+        timeout = float(
+            os.environ.get(
+                "OKR_WORKER_HEARTBEAT_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)
+            )
+        )
         return time.time() - heartbeat_path().stat().st_mtime <= max(1.0, timeout)
     except (OSError, TypeError, ValueError):
         return False

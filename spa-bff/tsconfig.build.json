@@ -1,0 +1,25 @@
+{
+  // Extends the main project but emits only `src`. The main `tsconfig.json`
+  // includes `test/**/*.ts`, so building with it wrote compiled tests into
+  // `dist/test`, and vitest no longer excludes `dist` by default (the 4.x line
+  // reduced the default `exclude` to `node_modules` and `.git`), which made
+  // every test file get collected twice and pushed the slowest test past its
+  // timeout. Tests stay type-checked through `typecheck`, which uses
+  // `tsconfig.json`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Deliberately not incremental, and this is load-bearing.
+    //
+    // `tsc --incremental` trusts its `.tsbuildinfo` and never checks that the
+    // output files still exist, so when a build-info is present and `dist` is
+    // absent, `tsc` exits 0 having emitted nothing. That is exactly the CI
+    // situation: the `spa-build-cache` step restores `spa-bff/.cache` but does
+    // not restore `spa-bff/dist`, so on a cache hit the build step would report
+    // success while producing no artifact at all. The container's CMD is
+    // `node dist/src/server.js`, so a silently empty `dist` is not a cosmetic
+    // problem. Verified by deleting `dist` and rebuilding with the build-info
+    // present: previously exit 0 with no output, now exit 0 with the artifact.
+    "incremental": false
+  },
+  "include": ["src/**/*.ts"]
+}

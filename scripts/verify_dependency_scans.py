@@ -115,9 +115,13 @@ def _run_pip_audit() -> list[ScanFinding]:
     if payload is None:
         if code == 0:
             return []
-        raise RuntimeError(f"pip-audit failed before reporting vulnerabilities:\n{stderr}")
+        raise RuntimeError(
+            f"pip-audit failed before reporting vulnerabilities:\n{stderr}"
+        )
 
-    vulnerabilities = payload.get("vulnerabilities", []) if isinstance(payload, dict) else []
+    vulnerabilities = (
+        payload.get("vulnerabilities", []) if isinstance(payload, dict) else []
+    )
     findings: list[ScanFinding] = []
     for vulnerability in vulnerabilities:
         if not isinstance(vulnerability, dict):
@@ -129,13 +133,21 @@ def _run_pip_audit() -> list[ScanFinding]:
 
 
 def _run_npm_audit(prefix: str, *, audit_level: str = "high") -> list[ScanFinding]:
-    if shutil.which("npm") is None:
+    # Resolve the launcher once and invoke that path. On Windows `npm` is
+    # `npm.cmd`, and `subprocess` does not apply PATHEXT, so passing the bare
+    # name raised FileNotFoundError ("[WinError 2] The system cannot find the
+    # file specified"). That surfaced only as a warning, so this scan silently
+    # never ran on Windows while still reporting success.
+    npm = shutil.which("npm")
+    if npm is None:
         if CI_MODE:
-            raise RuntimeError(f"npm is required in CI but unavailable in PATH for {prefix}.")
+            raise RuntimeError(
+                f"npm is required in CI but unavailable in PATH for {prefix}."
+            )
         raise RuntimeError("npm is unavailable in PATH.")
 
     code, payload, stderr = _run_json_command(
-        ["npm", "audit", "--audit-level", audit_level, "--json"],
+        [npm, "audit", "--audit-level", audit_level, "--json"],
         cwd=ROOT / prefix,
         fail_on_nonzero=True,
     )
@@ -144,7 +156,9 @@ def _run_npm_audit(prefix: str, *, audit_level: str = "high") -> list[ScanFindin
             return []
         raise RuntimeError(f"npm audit failed for {prefix}:\n{stderr}")
 
-    vulnerabilities = payload.get("vulnerabilities", {}) if isinstance(payload, dict) else {}
+    vulnerabilities = (
+        payload.get("vulnerabilities", {}) if isinstance(payload, dict) else {}
+    )
     findings: list[ScanFinding] = []
     for package_name, details in vulnerabilities.items():
         if not isinstance(details, dict):
@@ -189,7 +203,9 @@ def main() -> int:
 
     if not findings:
         if had_skipped_tools:
-            print("Dependency vulnerability scan completed with warnings (some scanners unavailable).")
+            print(
+                "Dependency vulnerability scan completed with warnings (some scanners unavailable)."
+            )
             return 0
         print("Dependency vulnerability scan completed with no findings.")
         return 0

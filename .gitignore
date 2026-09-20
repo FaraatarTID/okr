@@ -51,6 +51,9 @@ build/
 # Test artifacts
 .test-artifacts/
 .tmp-backend-api-test.env
+# Vitest 5 writes reporter output, attachments and traces here by default.
+.vitest/
+**/.vitest/
 
 # Runtime tmp
 tmp/

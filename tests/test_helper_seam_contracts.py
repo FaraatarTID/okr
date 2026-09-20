@@ -130,22 +130,36 @@ def test_auth_service_read_wrappers_delegate_to_read_service(monkeypatch):
     )
 
     dummy_module = object()
-    assert auth_service.get_user_by_username_from_crud(
-        crud_module=dummy_module, username="alice"
-    ) == "get_user_by_username_from_crud"
-    assert auth_service.get_user_by_id_from_crud(
-        crud_module=dummy_module, user_id=7
-    ) == "get_user_by_id_from_crud"
-    assert auth_service.get_all_users_from_crud(crud_module=dummy_module) == "get_all_users_from_crud"
-    assert auth_service.get_team_members_from_crud(
-        crud_module=dummy_module, manager_id=3
-    ) == "get_team_members_from_crud"
-    assert auth_service.get_user_goals_from_crud(
-        crud_module=dummy_module, username="alice", cycle_id=1
-    ) == "get_user_goals_from_crud"
+    assert (
+        auth_service.get_user_by_username_from_crud(
+            crud_module=dummy_module, username="alice"
+        )
+        == "get_user_by_username_from_crud"
+    )
+    assert (
+        auth_service.get_user_by_id_from_crud(crud_module=dummy_module, user_id=7)
+        == "get_user_by_id_from_crud"
+    )
+    assert (
+        auth_service.get_all_users_from_crud(crud_module=dummy_module)
+        == "get_all_users_from_crud"
+    )
+    assert (
+        auth_service.get_team_members_from_crud(crud_module=dummy_module, manager_id=3)
+        == "get_team_members_from_crud"
+    )
+    assert (
+        auth_service.get_user_goals_from_crud(
+            crud_module=dummy_module, username="alice", cycle_id=1
+        )
+        == "get_user_goals_from_crud"
+    )
 
     assert captured == [
-        ("get_user_by_username_from_crud", {"crud_module": dummy_module, "username": "alice"}),
+        (
+            "get_user_by_username_from_crud",
+            {"crud_module": dummy_module, "username": "alice"},
+        ),
         ("get_user_by_id_from_crud", {"crud_module": dummy_module, "user_id": 7}),
         ("get_all_users_from_crud", {"crud_module": dummy_module}),
         ("get_team_members_from_crud", {"crud_module": dummy_module, "manager_id": 3}),

@@ -36,9 +36,7 @@ class SaaSEnvironmentConfig:
     identity_config: object | None = None
 
     @classmethod
-    def from_env(
-        cls, env: Mapping[str, str] | None = None
-    ) -> "SaaSEnvironmentConfig":
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "SaaSEnvironmentConfig":
         values = os.environ if env is None else env
         profile = _required(values, "OKR_DEPLOYMENT_PROFILE")
         try:
@@ -90,13 +88,9 @@ class SaaSEnvironmentConfig:
             database_url=database_url,
             health_url=str(values.get("OKR_HEALTH_URL", "/healthz")).strip()
             or "/healthz",
-            backup_provider=str(
-                values.get("OKR_BACKUP_PROVIDER", "deferred")
-            ).strip()
+            backup_provider=str(values.get("OKR_BACKUP_PROVIDER", "deferred")).strip()
             or "deferred",
-            backup_schedule=str(
-                values.get("OKR_BACKUP_SCHEDULE", "deferred")
-            ).strip()
+            backup_schedule=str(values.get("OKR_BACKUP_SCHEDULE", "deferred")).strip()
             or "deferred",
             identity_config=identity_config,
         )

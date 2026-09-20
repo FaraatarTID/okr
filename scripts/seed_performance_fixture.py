@@ -71,9 +71,9 @@ def validate_request(*, argv: list[str], environ: Mapping[str, str]) -> str:
             "Supabase API mode is not supported."
         )
 
-    database_url = _environment_value(environ, "OKR_DATABASE_URL") or _environment_value(
-        environ, "DATABASE_URL"
-    )
+    database_url = _environment_value(
+        environ, "OKR_DATABASE_URL"
+    ) or _environment_value(environ, "DATABASE_URL")
     if not database_url:
         raise SeedConfigError("Set OKR_DATABASE_URL or DATABASE_URL before seeding.")
     if not database_url.lower().startswith("postgresql+psycopg2://"):
@@ -179,7 +179,9 @@ def seed_fixture(engine: Any, *, password: str) -> dict[str, Any]:
                 session.flush()
                 created["goal"] = 1
             elif goal.cycle_id != cycle.id or goal.owner_id != admin.id:
-                raise SeedConfigError("Existing performance fixture goal has conflicting ownership.")
+                raise SeedConfigError(
+                    "Existing performance fixture goal has conflicting ownership."
+                )
 
             objective = session.exec(
                 select(Objective).where(
@@ -200,7 +202,9 @@ def seed_fixture(engine: Any, *, password: str) -> dict[str, Any]:
                 session.flush()
                 created["objective"] = 1
             elif objective.goal_id != goal.id:
-                raise SeedConfigError("Existing performance fixture objective has a conflicting parent.")
+                raise SeedConfigError(
+                    "Existing performance fixture objective has a conflicting parent."
+                )
             elif objective.state != LifecycleState.ACTIVE:
                 raise SeedConfigError(
                     "Existing performance fixture objective is not active; "
@@ -230,7 +234,9 @@ def seed_fixture(engine: Any, *, password: str) -> dict[str, Any]:
                 session.flush()
                 created["key_result"] = 1
             elif key_result.objective_id != objective.id:
-                raise SeedConfigError("Existing performance fixture key result has a conflicting parent.")
+                raise SeedConfigError(
+                    "Existing performance fixture key result has a conflicting parent."
+                )
             elif key_result.state != LifecycleState.ACTIVE:
                 raise SeedConfigError(
                     "Existing performance fixture key result is not active; "
@@ -256,7 +262,9 @@ def seed_fixture(engine: Any, *, password: str) -> dict[str, Any]:
                 session.flush()
                 created["task"] = 1
             elif task.key_result_id != key_result.id or task.assignee_id != admin.id:
-                raise SeedConfigError("Existing performance fixture task has conflicting ownership.")
+                raise SeedConfigError(
+                    "Existing performance fixture task has conflicting ownership."
+                )
 
             result_ids = {
                 "cycle": cycle.id,
@@ -277,7 +285,9 @@ def seed_fixture(engine: Any, *, password: str) -> dict[str, Any]:
     }
 
 
-def run(argv: list[str] | None = None, *, environ: Mapping[str, str] | None = None) -> dict[str, Any]:
+def run(
+    argv: list[str] | None = None, *, environ: Mapping[str, str] | None = None
+) -> dict[str, Any]:
     raw_argv = list(argv or [])
     env = environ if environ is not None else os.environ
     password = validate_request(argv=raw_argv, environ=env)

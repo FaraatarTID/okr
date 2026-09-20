@@ -103,7 +103,9 @@ def test_read_mode_recovery_after_tcp_probe_reset(monkeypatch):
         assert context.resolver_state == "primary_available"
 
 
-def test_mutation_recovery_path_does_not_fallback_to_supabase_on_db_failure(monkeypatch):
+def test_mutation_recovery_path_does_not_fallback_to_supabase_on_db_failure(
+    monkeypatch,
+):
     client, backend_main = _make_client(monkeypatch)
     import backend_app.main_mutation_handlers as main_mutation_handlers
 
@@ -140,7 +142,9 @@ def test_mutation_recovery_path_does_not_fallback_to_supabase_on_db_failure(monk
 
     monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: False)
     monkeypatch.setattr(backend_main, "create_goal", _create_goal_db_failure)
-    monkeypatch.setattr(backend_main, "create_goal_via_supabase_api", _create_goal_supabase)
+    monkeypatch.setattr(
+        backend_main, "create_goal_via_supabase_api", _create_goal_supabase
+    )
 
     response = client.post(
         "/v1/nodes/goal",

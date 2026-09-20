@@ -36,10 +36,11 @@ def _resolve_request_observability_ids(request: Request) -> tuple[str, str]:
         state_request_id = getattr(request_state, "request_id", None)
         if state_correlation_id or state_request_id:
             correlation_id = _normalize_observability_id(
-                state_correlation_id
-                or state_request_id
+                state_correlation_id or state_request_id
             )
-            request_id = _normalize_observability_id(state_request_id or state_correlation_id)
+            request_id = _normalize_observability_id(
+                state_request_id or state_correlation_id
+            )
             if not correlation_id:
                 correlation_id = f"req-{uuid.uuid4().hex}"
             if not request_id:
@@ -62,7 +63,9 @@ def _resolve_request_observability_ids(request: Request) -> tuple[str, str]:
 
 
 def _get_request_start_time(request: Request) -> float:
-    return float(getattr(getattr(request, "state", None), "start_time", time.perf_counter()))
+    return float(
+        getattr(getattr(request, "state", None), "start_time", time.perf_counter())
+    )
 
 
 def _normalize_error_detail(detail: Any) -> Any:
@@ -112,7 +115,9 @@ def build_error_envelope(
     request_id: str,
     correlation_id: str,
 ) -> dict[str, Any]:
-    message = str(detail if isinstance(detail, (str, int, float, bool)) else "Request failed.")
+    message = str(
+        detail if isinstance(detail, (str, int, float, bool)) else "Request failed."
+    )
     return {
         "code": f"HTTP_{status_code}",
         "error": message,
@@ -139,12 +144,14 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
         status_code = 500
         from backend_app.data_access_mode import data_access_context
 
-        with timing_context(), data_access_context(
-            actor=actor,
-            request_id=request_id,
-            correlation_id=correlation_id,
-        ), observability_context(
-            correlation_id=correlation_id, request_id=request_id
+        with (
+            timing_context(),
+            data_access_context(
+                actor=actor,
+                request_id=request_id,
+                correlation_id=correlation_id,
+            ),
+            observability_context(correlation_id=correlation_id, request_id=request_id),
         ):
             try:
                 dispatch_started_at = time.perf_counter()
@@ -259,7 +266,9 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
         return response
 
     @app.exception_handler(HTTPException)
-    async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    async def _http_exception_handler(
+        request: Request, exc: HTTPException
+    ) -> JSONResponse:
         correlation_id, request_id = _resolve_request_observability_ids(request)
         payload = build_error_envelope(
             status_code=exc.status_code,
@@ -284,7 +293,9 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                 error_type=type(exc).__name__,
                 correlation_id=correlation_id,
                 request_id=request_id,
-                duration_ms=round((time.perf_counter() - _get_request_start_time(request)) * 1000, 3),
+                duration_ms=round(
+                    (time.perf_counter() - _get_request_start_time(request)) * 1000, 3
+                ),
                 actor=request.headers.get("x-okr-actor"),
             )
         )
@@ -292,7 +303,8 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
             exc.status_code == 429
             and "retry-after" not in response.headers
             and isinstance(exc.detail, dict)
-            and (retry_after_seconds := exc.detail.get("retry_after_seconds")) is not None
+            and (retry_after_seconds := exc.detail.get("retry_after_seconds"))
+            is not None
         ):
             response.headers["Retry-After"] = str(retry_after_seconds)
         duration_ms = (time.perf_counter() - _get_request_start_time(request)) * 1000
@@ -330,7 +342,9 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                 error_type="RequestValidationError",
                 correlation_id=correlation_id,
                 request_id=request_id,
-                duration_ms=round((time.perf_counter() - _get_request_start_time(request)) * 1000, 3),
+                duration_ms=round(
+                    (time.perf_counter() - _get_request_start_time(request)) * 1000, 3
+                ),
                 actor=request.headers.get("x-okr-actor"),
                 validation_error_count=len(exc.errors()),
             )
@@ -346,7 +360,9 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
         return response
 
     @app.exception_handler(Exception)
-    async def _generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def _generic_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         correlation_id, request_id = _resolve_request_observability_ids(request)
         logger.exception(
             build_observability_log_payload(

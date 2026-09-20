@@ -45,7 +45,9 @@ def artifact(version: str, digest: str) -> ReleaseArtifact:
 
 def test_deploy_registers_immutable_artifact_and_records_health_gated_promotion():
     runtime = LocalRuntimeAdapter()
-    manager = ReleaseManager(environment_provider(), runtime, operator=OperatorCredential.for_test("alice"))
+    manager = ReleaseManager(
+        environment_provider(), runtime, operator=OperatorCredential.for_test("alice")
+    )
     release = artifact("2026.09.1", "sha256:release-1")
 
     record = manager.deploy("env-acme", release)
@@ -65,7 +67,9 @@ def test_deploy_registers_immutable_artifact_and_records_health_gated_promotion(
 
 def test_unhealthy_deploy_is_not_promoted_and_records_rollback():
     runtime = LocalRuntimeAdapter(health={"2026.09.1": False})
-    manager = ReleaseManager(environment_provider(), runtime, operator=OperatorCredential.for_test("alice"))
+    manager = ReleaseManager(
+        environment_provider(), runtime, operator=OperatorCredential.for_test("alice")
+    )
     release = artifact("2026.09.1", "sha256:release-1")
 
     result = manager.deploy("env-acme", release)
@@ -80,7 +84,11 @@ def test_unhealthy_deploy_is_not_promoted_and_records_rollback():
 
 def test_rollback_uses_second_real_artifact_and_health_gates_it():
     runtime = LocalRuntimeAdapter()
-    manager = ReleaseManager(environment_provider(), runtime, operator=OperatorCredential.for_test("release-bot"))
+    manager = ReleaseManager(
+        environment_provider(),
+        runtime,
+        operator=OperatorCredential.for_test("release-bot"),
+    )
     first = artifact("2026.09.1", "sha256:release-1")
     previous = artifact("2026.09.0", "sha256:release-0")
 
@@ -96,7 +104,11 @@ def test_rollback_uses_second_real_artifact_and_health_gates_it():
 
 def test_conflicting_artifact_digest_is_rejected():
     runtime = LocalRuntimeAdapter()
-    manager = ReleaseManager(environment_provider(), runtime, operator=OperatorCredential.for_test("operator-a"))
+    manager = ReleaseManager(
+        environment_provider(),
+        runtime,
+        operator=OperatorCredential.for_test("operator-a"),
+    )
     manager.deploy("env-acme", artifact("2026.09.1", "sha256:release-1"))
 
     with pytest.raises(ValueError, match="immutable"):
@@ -117,7 +129,11 @@ def test_mutable_image_refs_are_rejected():
 
 def test_rollback_requires_artifact_registered_for_same_environment():
     runtime = LocalRuntimeAdapter()
-    manager = ReleaseManager(environment_provider(), runtime, operator=OperatorCredential.for_test("operator-a"))
+    manager = ReleaseManager(
+        environment_provider(),
+        runtime,
+        operator=OperatorCredential.for_test("operator-a"),
+    )
     manager.deploy("env-acme", artifact("2026.09.1", "sha256:" + "1" * 64))
     foreign = ReleaseArtifact(
         environment_id="env-other",
@@ -139,7 +155,11 @@ def test_rollback_requires_artifact_registered_for_same_environment():
 def test_deployment_records_reload_atomically(tmp_path: Path):
     state_path = tmp_path / "release-state.json"
     first_runtime = LocalRuntimeAdapter(state_path=state_path)
-    first_manager = ReleaseManager(environment_provider(), first_runtime, operator=OperatorCredential.for_test("alice"))
+    first_manager = ReleaseManager(
+        environment_provider(),
+        first_runtime,
+        operator=OperatorCredential.for_test("alice"),
+    )
     first_manager.deploy("env-acme", artifact("2026.09.1", "sha256:" + "1" * 64))
 
     second_runtime = LocalRuntimeAdapter(state_path=state_path)
@@ -151,7 +171,11 @@ def test_deployment_records_reload_atomically(tmp_path: Path):
 def test_deployment_exception_returns_rollback_result_and_clears_candidate():
     runtime = LocalRuntimeAdapter(health={"2026.09.1": True})
     runtime.fail_deploy = True
-    manager = ReleaseManager(environment_provider(), runtime, operator=OperatorCredential.for_test("operator-a"))
+    manager = ReleaseManager(
+        environment_provider(),
+        runtime,
+        operator=OperatorCredential.for_test("operator-a"),
+    )
 
     result = manager.deploy("env-acme", artifact("2026.09.1", "sha256:" + "1" * 64))
 
@@ -163,7 +187,11 @@ def test_deployment_exception_returns_rollback_result_and_clears_candidate():
 def test_health_exception_returns_rollback_result_and_records_error():
     runtime = LocalRuntimeAdapter()
     runtime.fail_health = True
-    manager = ReleaseManager(environment_provider(), runtime, operator=OperatorCredential.for_test("operator-a"))
+    manager = ReleaseManager(
+        environment_provider(),
+        runtime,
+        operator=OperatorCredential.for_test("operator-a"),
+    )
 
     result = manager.deploy("env-acme", artifact("2026.09.1", "sha256:" + "1" * 64))
 
@@ -176,9 +204,18 @@ def test_compose_runs_the_registered_release_image_mapping():
     compose = Path("deploy/docker/docker-compose.yml").read_text(encoding="utf-8")
 
     assert "x-release-images:" in compose
-    assert "backend: &release-backend-image ${OKR_RELEASE_BACKEND_IMAGE:-${IMAGE:-okr-backend:local}}" in compose
-    assert "bff: &release-bff-image ${OKR_RELEASE_BFF_IMAGE:-${SPA_BFF_IMAGE:-okr-spa-bff:local}}" in compose
-    assert "web: &release-web-image ${OKR_RELEASE_WEB_IMAGE:-${SPA_WEB_IMAGE:-okr-spa-web:local}}" in compose
+    assert (
+        "backend: &release-backend-image ${OKR_RELEASE_BACKEND_IMAGE:-${IMAGE:-okr-backend:local}}"
+        in compose
+    )
+    assert (
+        "bff: &release-bff-image ${OKR_RELEASE_BFF_IMAGE:-${SPA_BFF_IMAGE:-okr-spa-bff:local}}"
+        in compose
+    )
+    assert (
+        "web: &release-web-image ${OKR_RELEASE_WEB_IMAGE:-${SPA_WEB_IMAGE:-okr-spa-web:local}}"
+        in compose
+    )
     assert "image: *release-backend-image" in compose
     assert "image: *release-bff-image" in compose
     assert "image: *release-web-image" in compose
@@ -206,24 +243,46 @@ def test_compose_fallbacks_remain_when_no_release_mapping_is_supplied():
 
 
 def test_unknown_environment_is_rejected():
-    manager = ReleaseManager(environment_provider(), LocalRuntimeAdapter(), operator=OperatorCredential.for_test("operator-a"))
+    manager = ReleaseManager(
+        environment_provider(),
+        LocalRuntimeAdapter(),
+        operator=OperatorCredential.for_test("operator-a"),
+    )
 
     with pytest.raises(ValueError, match="unknown environment"):
         manager.deploy("missing", artifact("2026.09.1", "sha256:" + "1" * 64))
 
 
-def test_release_manager_requires_operator_when_reconciling_control_plane(tmp_path: Path):
-    control_plane = __import__("src.saas.control_plane", fromlist=["ControlPlane"]).ControlPlane(state_path=tmp_path / "cp.json")
+def test_release_manager_requires_operator_when_reconciling_control_plane(
+    tmp_path: Path,
+):
+    control_plane = __import__(
+        "src.saas.control_plane", fromlist=["ControlPlane"]
+    ).ControlPlane(state_path=tmp_path / "cp.json")
     with pytest.raises(ValueError, match="operator"):
-        ReleaseManager(environment_provider(), LocalRuntimeAdapter(), control_plane=control_plane)
+        ReleaseManager(
+            environment_provider(), LocalRuntimeAdapter(), control_plane=control_plane
+        )
 
 
 def test_failed_release_marks_control_plane_degraded_and_audited(tmp_path: Path):
     from src.saas.control_plane import ControlPlane, EnvironmentSummary
-    control_plane = ControlPlane([EnvironmentSummary("env-acme", "customer-acme", "single_tenant_saas", "2026.09.0", "READY")], state_path=tmp_path / "cp.json")
+
+    control_plane = ControlPlane(
+        [
+            EnvironmentSummary(
+                "env-acme", "customer-acme", "single_tenant_saas", "2026.09.0", "READY"
+            )
+        ],
+        state_path=tmp_path / "cp.json",
+    )
     runtime = LocalRuntimeAdapter(health={"2026.09.1": False})
-    result = ReleaseManager(environment_provider(), runtime, operator=OperatorCredential.for_test("alice"), control_plane=control_plane).deploy("env-acme", artifact("2026.09.1", "sha256:release-1"))
+    result = ReleaseManager(
+        environment_provider(),
+        runtime,
+        operator=OperatorCredential.for_test("alice"),
+        control_plane=control_plane,
+    ).deploy("env-acme", artifact("2026.09.1", "sha256:release-1"))
     assert result.status is DeploymentStatus.ROLLED_BACK
     assert control_plane.get_environment("env-acme").health_state == "degraded"
     assert control_plane.list_lifecycle_events("env-acme")[-1].result == "failed"
-

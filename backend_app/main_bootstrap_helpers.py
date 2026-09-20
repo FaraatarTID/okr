@@ -22,7 +22,10 @@ def validate_runtime_preflight() -> None:
     strict = get_bool_config("OKR_STRICT_RUNTIME_PREFLIGHT", default=True)
     profile = get_config_value("OKR_DEPLOYMENT_PROFILE", "")
     mode = get_config_value("OKR_DATA_ACCESS_MODE", "database")
-    if not strict and str(profile).strip().lower() not in {"single_tenant_saas", "saas"}:
+    if not strict and str(profile).strip().lower() not in {
+        "single_tenant_saas",
+        "saas",
+    }:
         return
 
     report = evaluate_runtime_preflight(
@@ -168,7 +171,9 @@ def _assert_required_routes(*, app: FastAPI) -> None:
 
 def _normalize_route_path(path: str) -> str:
     """Normalize route path for stable equality checks."""
-    normalized = "/" + "/".join(segment for segment in (path or "").split("/") if segment)
+    normalized = "/" + "/".join(
+        segment for segment in (path or "").split("/") if segment
+    )
     if normalized == "//":
         normalized = "/"
     return normalized

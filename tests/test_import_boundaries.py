@@ -54,7 +54,13 @@ def test_root_app_facade_import_is_rejected_but_similar_module_is_not(
 
 def test_pure_domain_modules_reject_infrastructure_imports(tmp_path, monkeypatch):
     monkeypatch.setattr("scripts.check_import_boundaries.ROOT_DIR", tmp_path)
-    for name in ("scoring.py", "lifecycle.py", "permissions.py", "crud_contracts.py", "password_policy.py"):
+    for name in (
+        "scoring.py",
+        "lifecycle.py",
+        "permissions.py",
+        "crud_contracts.py",
+        "password_policy.py",
+    ):
         path = tmp_path / "src" / "domain" / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("from sqlalchemy import func\n", encoding="utf-8")

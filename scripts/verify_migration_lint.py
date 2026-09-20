@@ -21,7 +21,9 @@ VERSIONS_DIR = ROOT_DIR / "alembic" / "versions"
 
 
 class _RevisionRecord:
-    def __init__(self, revision: str, down_revisions: tuple[str, ...], path: Path) -> None:
+    def __init__(
+        self, revision: str, down_revisions: tuple[str, ...], path: Path
+    ) -> None:
         self.revision = revision
         self.down_revisions = down_revisions
         self.path = path
@@ -62,7 +64,9 @@ def _parse_migration_file(path: Path) -> _RevisionRecord | None:
         targets: list[ast.Name] = []
         expr: ast.AST | None = None
         if isinstance(node, ast.Assign):
-            targets = [target for target in node.targets if isinstance(target, ast.Name)]
+            targets = [
+                target for target in node.targets if isinstance(target, ast.Name)
+            ]
             expr = node.value
         elif isinstance(node, ast.AnnAssign):
             if isinstance(node.target, ast.Name):
@@ -144,7 +148,9 @@ def _validate_linear_chain(
             )
         return errors
 
-    merge_candidates = [rec.revision for rec in revisions if len(rec.down_revisions) > 1]
+    merge_candidates = [
+        rec.revision for rec in revisions if len(rec.down_revisions) > 1
+    ]
     if merge_candidates:
         merge_items = ", ".join(merge_candidates)
         errors.append(
@@ -154,7 +160,9 @@ def _validate_linear_chain(
 
     roots = [rec for rec in revisions if not rec.down_revisions]
     if not roots:
-        errors.append("No migration has down_revision=None; cannot determine chain root.")
+        errors.append(
+            "No migration has down_revision=None; cannot determine chain root."
+        )
         return errors
     if len(roots) > 1:
         root_ids = ", ".join(sorted(rec.revision for rec in roots))
@@ -178,7 +186,10 @@ def _validate_linear_chain(
         return errors
 
     # Reachability/cycle checks by walking from each head to root.
-    parent_index = {rec.revision: rec.down_revisions[0] if rec.down_revisions else None for rec in revisions}
+    parent_index = {
+        rec.revision: rec.down_revisions[0] if rec.down_revisions else None
+        for rec in revisions
+    }
     head_revisions = [rec.revision for rec in heads]
     for head in head_revisions:
         chain_seen: set[str] = set()

@@ -156,17 +156,37 @@ EXPECTED_EXPORTS: dict[str, list[str]] = {
 }
 
 MANDATORY_CALLABLES: dict[str, list[str]] = {
-    "backend_app.main": ["create_app", "_resolve_actor_scope", "_coerce_int", "api_create_goal"],
-    "backend_app.main_bootstrap_helpers": ["make_main_lifespan", "register_main_routers"],
-    "backend_app.main_runtime_helpers": ["get_observability_metrics_snapshot", "_coerce_int"],
+    "backend_app.main": [
+        "create_app",
+        "_resolve_actor_scope",
+        "_coerce_int",
+        "api_create_goal",
+    ],
+    "backend_app.main_bootstrap_helpers": [
+        "make_main_lifespan",
+        "register_main_routers",
+    ],
+    "backend_app.main_runtime_helpers": [
+        "get_observability_metrics_snapshot",
+        "_coerce_int",
+    ],
     "backend_app.main_mutation_handlers": ["_resolve_backend_main", "api_create_goal"],
-    "backend_app.main_workflow_handlers": ["_resolve_backend_main", "api_create_experiment"],
+    "backend_app.main_workflow_handlers": [
+        "_resolve_backend_main",
+        "api_create_experiment",
+    ],
     "src.crud_auth_helpers": ["authenticate_user_detailed", "authenticate_user"],
-    "src.crud_runtime_helpers": ["hash_password", "verify_password", "get_user_by_username"],
+    "src.crud_runtime_helpers": [
+        "hash_password",
+        "verify_password",
+        "get_user_by_username",
+    ],
 }
 
 
-def _find_duplicate_entries(values: list[str], module_name: str, context: str) -> list[str]:
+def _find_duplicate_entries(
+    values: list[str], module_name: str, context: str
+) -> list[str]:
     seen: set[str] = set()
     duplicates: list[str] = []
     for value in values:
@@ -176,7 +196,9 @@ def _find_duplicate_entries(values: list[str], module_name: str, context: str) -
     return duplicates
 
 
-def _check_all_dunder_exports(module_obj: object, module_name: str, issues: list[str]) -> None:
+def _check_all_dunder_exports(
+    module_obj: object, module_name: str, issues: list[str]
+) -> None:
     raw_exports = getattr(module_obj, "__all__", [])
     if not isinstance(raw_exports, (list, tuple)):
         return
@@ -194,9 +216,7 @@ def check() -> int:
             issues.append(f"{module_name}: failed to import ({exc})")
             continue
 
-        issues.extend(
-            _find_duplicate_entries(expected, module_name, "manifest export")
-        )
+        issues.extend(_find_duplicate_entries(expected, module_name, "manifest export"))
 
         for symbol in expected:
             if not hasattr(module_obj, symbol):
@@ -207,7 +227,9 @@ def check() -> int:
             if not hasattr(module_obj, symbol):
                 continue
             if not callable(getattr(module_obj, symbol)):
-                issues.append(f"{module_name}: required export '{symbol}' must be callable")
+                issues.append(
+                    f"{module_name}: required export '{symbol}' must be callable"
+                )
 
         _check_all_dunder_exports(module_obj, module_name, issues)
 

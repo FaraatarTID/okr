@@ -49,43 +49,163 @@ def _make_client(monkeypatch):
 
 
 _ROUTER_CONTRACTS = {
-    ("POST", "/v1/nodes/goal"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
-    ("POST", "/v1/nodes/objective"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
-    ("POST", "/v1/nodes/key_result"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
-    ("POST", "/v1/nodes/task"): (201, NodeMutationView, "backend_app.routers.node_mutation_routes"),
-    ("PATCH", "/v1/nodes/{node_type}/{node_id}"): (200, NodeMutationView, "backend_app.routers.node_mutation_routes"),
-    ("DELETE", "/v1/nodes/{node_type}/{node_id}"): (200, NodeDeleteResponse, "backend_app.routers.node_mutation_routes"),
-    ("POST", "/v1/cycles"): (201, CycleMutationView, "backend_app.routers.cycle_mutation_routes"),
-    ("PATCH", "/v1/cycles/{cycle_id}"): (200, None, "backend_app.routers.cycle_mutation_routes"),
-    ("DELETE", "/v1/cycles/{cycle_id}"): (200, CycleDeleteResponse, "backend_app.routers.cycle_mutation_routes"),
-    ("POST", "/v1/teams"): (201, TeamMutationView, "backend_app.routers.team_mutation_routes"),
-    ("PATCH", "/v1/teams/{team_id}"): (200, TeamMutationView, "backend_app.routers.team_mutation_routes"),
-    ("DELETE", "/v1/teams/{team_id}"): (200, TeamDeleteResponse, "backend_app.routers.team_mutation_routes"),
-    ("POST", "/v1/users"): (201, UserMutationView, "backend_app.routers.user_mutation_routes"),
-    ("PATCH", "/v1/users/{user_id}"): (200, UserMutationView, "backend_app.routers.user_mutation_routes"),
-    ("POST", "/v1/users/{user_id}/reset-password"): (200, UserPasswordResetResponse, "backend_app.routers.user_mutation_routes"),
-    ("POST", "/v1/check-ins"): (201, CheckInMutationView, "backend_app.routers.checkin_mutation_routes"),
-    ("POST", "/v1/experiments"): (201, ExperimentMutationView, "backend_app.routers.experiment_mutation_routes"),
-    ("PATCH", "/v1/experiments/{experiment_id}"): (200, ExperimentMutationView, "backend_app.routers.experiment_mutation_routes"),
-    ("POST", "/v1/experiments/{experiment_id}/close"): (200, ExperimentMutationView, "backend_app.routers.experiment_mutation_routes"),
-    ("POST", "/v1/alignments"): (201, AlignmentMutationView, "backend_app.routers.analytics_mutation_routes"),
-    ("DELETE", "/v1/alignments/{edge_id}"): (200, AlignmentDeleteResponse, "backend_app.routers.analytics_mutation_routes"),
-    ("POST", "/v1/objective-alignment-links"): (201, ObjectiveAlignmentLinkMutationView, "backend_app.routers.analytics_mutation_routes"),
-    ("DELETE", "/v1/objective-alignment-links/{link_id}"): (200, ObjectiveAlignmentLinkDeleteResponse, "backend_app.routers.analytics_mutation_routes"),
-    ("DELETE", "/v1/work-logs/{work_log_id}"): (200, WorkLogDeleteResponse, "backend_app.routers.analytics_mutation_routes"),
-    ("POST", "/v1/retrospectives"): (201, RetrospectiveMutationView, "backend_app.routers.analytics_mutation_routes"),
-    ("PUT", "/v1/retrospectives/{retrospective_id}/experiment-outcomes"): (200, RetroExperimentOutcomeView, "backend_app.routers.analytics_mutation_routes"),
-    ("POST", "/v1/weekly-plans"): (201, WeeklyPlanMutationView, "backend_app.routers.analytics_mutation_routes"),
+    ("POST", "/v1/nodes/goal"): (
+        201,
+        NodeMutationView,
+        "backend_app.routers.node_mutation_routes",
+    ),
+    ("POST", "/v1/nodes/objective"): (
+        201,
+        NodeMutationView,
+        "backend_app.routers.node_mutation_routes",
+    ),
+    ("POST", "/v1/nodes/key_result"): (
+        201,
+        NodeMutationView,
+        "backend_app.routers.node_mutation_routes",
+    ),
+    ("POST", "/v1/nodes/task"): (
+        201,
+        NodeMutationView,
+        "backend_app.routers.node_mutation_routes",
+    ),
+    ("PATCH", "/v1/nodes/{node_type}/{node_id}"): (
+        200,
+        NodeMutationView,
+        "backend_app.routers.node_mutation_routes",
+    ),
+    ("DELETE", "/v1/nodes/{node_type}/{node_id}"): (
+        200,
+        NodeDeleteResponse,
+        "backend_app.routers.node_mutation_routes",
+    ),
+    ("POST", "/v1/cycles"): (
+        201,
+        CycleMutationView,
+        "backend_app.routers.cycle_mutation_routes",
+    ),
+    ("PATCH", "/v1/cycles/{cycle_id}"): (
+        200,
+        None,
+        "backend_app.routers.cycle_mutation_routes",
+    ),
+    ("DELETE", "/v1/cycles/{cycle_id}"): (
+        200,
+        CycleDeleteResponse,
+        "backend_app.routers.cycle_mutation_routes",
+    ),
+    ("POST", "/v1/teams"): (
+        201,
+        TeamMutationView,
+        "backend_app.routers.team_mutation_routes",
+    ),
+    ("PATCH", "/v1/teams/{team_id}"): (
+        200,
+        TeamMutationView,
+        "backend_app.routers.team_mutation_routes",
+    ),
+    ("DELETE", "/v1/teams/{team_id}"): (
+        200,
+        TeamDeleteResponse,
+        "backend_app.routers.team_mutation_routes",
+    ),
+    ("POST", "/v1/users"): (
+        201,
+        UserMutationView,
+        "backend_app.routers.user_mutation_routes",
+    ),
+    ("PATCH", "/v1/users/{user_id}"): (
+        200,
+        UserMutationView,
+        "backend_app.routers.user_mutation_routes",
+    ),
+    ("POST", "/v1/users/{user_id}/reset-password"): (
+        200,
+        UserPasswordResetResponse,
+        "backend_app.routers.user_mutation_routes",
+    ),
+    ("POST", "/v1/check-ins"): (
+        201,
+        CheckInMutationView,
+        "backend_app.routers.checkin_mutation_routes",
+    ),
+    ("POST", "/v1/experiments"): (
+        201,
+        ExperimentMutationView,
+        "backend_app.routers.experiment_mutation_routes",
+    ),
+    ("PATCH", "/v1/experiments/{experiment_id}"): (
+        200,
+        ExperimentMutationView,
+        "backend_app.routers.experiment_mutation_routes",
+    ),
+    ("POST", "/v1/experiments/{experiment_id}/close"): (
+        200,
+        ExperimentMutationView,
+        "backend_app.routers.experiment_mutation_routes",
+    ),
+    ("POST", "/v1/alignments"): (
+        201,
+        AlignmentMutationView,
+        "backend_app.routers.analytics_mutation_routes",
+    ),
+    ("DELETE", "/v1/alignments/{edge_id}"): (
+        200,
+        AlignmentDeleteResponse,
+        "backend_app.routers.analytics_mutation_routes",
+    ),
+    ("POST", "/v1/objective-alignment-links"): (
+        201,
+        ObjectiveAlignmentLinkMutationView,
+        "backend_app.routers.analytics_mutation_routes",
+    ),
+    ("DELETE", "/v1/objective-alignment-links/{link_id}"): (
+        200,
+        ObjectiveAlignmentLinkDeleteResponse,
+        "backend_app.routers.analytics_mutation_routes",
+    ),
+    ("DELETE", "/v1/work-logs/{work_log_id}"): (
+        200,
+        WorkLogDeleteResponse,
+        "backend_app.routers.analytics_mutation_routes",
+    ),
+    ("POST", "/v1/retrospectives"): (
+        201,
+        RetrospectiveMutationView,
+        "backend_app.routers.analytics_mutation_routes",
+    ),
+    ("PUT", "/v1/retrospectives/{retrospective_id}/experiment-outcomes"): (
+        200,
+        RetroExperimentOutcomeView,
+        "backend_app.routers.analytics_mutation_routes",
+    ),
+    ("POST", "/v1/weekly-plans"): (
+        201,
+        WeeklyPlanMutationView,
+        "backend_app.routers.analytics_mutation_routes",
+    ),
     ("POST", "/v1/jobs"): (202, JobView, "backend_app.routers.operations_routes"),
-    ("DELETE", "/v1/jobs/{job_id}"): (204, None, "backend_app.routers.operations_routes"),
-    ("POST", "/v1/jobs/{job_id}/cancel"): (200, JobCancelResponse, "backend_app.routers.operations_routes"),
+    ("DELETE", "/v1/jobs/{job_id}"): (
+        204,
+        None,
+        "backend_app.routers.operations_routes",
+    ),
+    ("POST", "/v1/jobs/{job_id}/cancel"): (
+        200,
+        JobCancelResponse,
+        "backend_app.routers.operations_routes",
+    ),
     ("POST", "/v1/timer/start"): (200, None, "backend_app.routers.operations_routes"),
     ("POST", "/v1/timer/stop"): (200, None, "backend_app.routers.operations_routes"),
     ("POST", "/v1/ai/analyze-node"): (200, None, "backend_app.routers.ai_routes"),
     ("POST", "/v1/ai/strategy-pulse"): (200, None, "backend_app.routers.ai_routes"),
     ("POST", "/v1/ai/team-coach"): (200, None, "backend_app.routers.ai_routes"),
     ("POST", "/v1/state/{key}"): (200, None, "backend_app.routers.platform_routes"),
-    ("POST", "/v1/admin/db-restore"): (200, None, "backend_app.routers.platform_routes"),
+    ("POST", "/v1/admin/db-restore"): (
+        200,
+        None,
+        "backend_app.routers.platform_routes",
+    ),
 }
 
 
@@ -149,7 +269,11 @@ def _find_route(method: str, path: str):
 
 
 def test_router_contracts_for_mutation_endpoints_stay_stable():
-    for (method, path), (status_code, response_model, expected_module) in _ROUTER_CONTRACTS.items():
+    for (method, path), (
+        status_code,
+        response_model,
+        expected_module,
+    ) in _ROUTER_CONTRACTS.items():
         route = _find_route(method, path)
         assert route is not None, f"Missing route {method} {path}"
         assert (route.status_code or 200) == status_code, (
@@ -186,7 +310,9 @@ def test_router_modules_expose_registration_functions():
     ]
     for module_name in router_modules:
         module = importlib.import_module(module_name)
-        register_name = "register_" + module_name.rsplit("_", 1)[0].split(".")[-1] + "_routes"
+        register_name = (
+            "register_" + module_name.rsplit("_", 1)[0].split(".")[-1] + "_routes"
+        )
         if module_name.endswith("ai_routes"):
             register_name = "register_ai_routes"
         elif module_name.endswith("platform_routes"):
@@ -198,7 +324,9 @@ def test_router_modules_expose_registration_functions():
         elif module_name.endswith("operations_routes"):
             register_name = "register_operations_routes"
         assert hasattr(module, register_name), f"{module_name} missing {register_name}"
-        assert callable(getattr(module, register_name)), f"{module_name}.{register_name} is not callable"
+        assert callable(getattr(module, register_name)), (
+            f"{module_name}.{register_name} is not callable"
+        )
 
 
 def test_backend_startup_bootstraps_admin_user(monkeypatch):
@@ -1085,7 +1213,9 @@ def test_read_atlas_snapshot_uses_session_actor_for_scope(monkeypatch):
     assert captured["owner_ids"] == [1]
 
 
-def test_read_atlas_snapshot_admin_without_owner_filter_reads_manager_cycle(monkeypatch):
+def test_read_atlas_snapshot_admin_without_owner_filter_reads_manager_cycle(
+    monkeypatch,
+):
     client, backend_main = _make_client(monkeypatch)
     captured = {}
     from contextlib import contextmanager

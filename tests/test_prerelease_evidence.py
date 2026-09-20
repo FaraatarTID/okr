@@ -60,9 +60,15 @@ def test_forbidden_or_invalid_values_are_rejected(field: str, value: str) -> Non
 
 def test_build_ids_must_be_exactly_four_opaque_ids() -> None:
     payload = valid_payload()
-    payload["darkube_build_ids"] = {"web": "build-1", "bff": "build-2", "api": "build-3"}
+    payload["darkube_build_ids"] = {
+        "web": "build-1",
+        "bff": "build-2",
+        "api": "build-3",
+    }
 
-    with pytest.raises(EvidenceValidationError, match="exactly web, bff, api, and worker"):
+    with pytest.raises(
+        EvidenceValidationError, match="exactly web, bff, api, and worker"
+    ):
         PreReleaseEvidence.from_dict(payload)
 
 
@@ -107,7 +113,9 @@ def test_cli_writes_valid_input_and_rejects_invalid_input(tmp_path) -> None:
     assert output_path.exists()
 
     invalid_path = tmp_path / "invalid.json"
-    invalid_path.write_text(json.dumps({**valid_payload(), "operator": "TOKEN=secret"}), encoding="utf-8")
+    invalid_path.write_text(
+        json.dumps({**valid_payload(), "operator": "TOKEN=secret"}), encoding="utf-8"
+    )
     assert main([str(invalid_path), str(tmp_path / "should-not-exist.md")]) == 2
 
 

@@ -87,7 +87,6 @@ def _resolve_backend_main():
     import backend_app.main as backend_main
 
     return backend_main
- 
 
 
 def api_create_goal(
@@ -356,18 +355,20 @@ def api_update_node(
             elif normalized_type == "OBJECTIVE":
                 from backend_app import main as main_module
 
-                node = main_module.update_objective(node_id, actor_username=actor, **updates)
+                node = main_module.update_objective(
+                    node_id, actor_username=actor, **updates
+                )
             elif normalized_type == "KEY_RESULT":
                 from backend_app import main as main_module
 
-                node = main_module.update_key_result(node_id, actor_username=actor, **updates)
+                node = main_module.update_key_result(
+                    node_id, actor_username=actor, **updates
+                )
             else:
                 # Keep task mutation patchable by test via backend_app.main.update_task.
                 from backend_app import main as main_module
 
-                node = main_module.update_task(
-                    node_id, actor_username=actor, **updates
-                )
+                node = main_module.update_task(node_id, actor_username=actor, **updates)
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
@@ -414,9 +415,7 @@ def api_delete_node(
             elif normalized_type == "KEY_RESULT":
                 from backend_app import main as main_module
 
-                deleted = main_module.delete_key_result(
-                    node_id, actor_username=actor
-                )
+                deleted = main_module.delete_key_result(node_id, actor_username=actor)
             else:
                 from backend_app import main as main_module
 

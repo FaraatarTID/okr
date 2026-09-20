@@ -20,8 +20,14 @@ def _valid_repository(root: Path) -> None:
     _write(root, "spa-bff/package-lock.json", '{"lockfileVersion": 3}\n')
     _write(root, "spa-web/package.json", '{"private": true}\n')
     _write(root, "spa-web/package-lock.json", '{"lockfileVersion": 3}\n')
-    _write(root, "deploy/docker/.env.example", "OKR_DATABASE_URL=\nBFF_SESSION_SECRET=\n")
-    _write(root, "deploy/docker/.env.saas.example", "OKR_DATABASE_URL=\nOKR_BACKEND_SERVICE_TOKEN=\n")
+    _write(
+        root, "deploy/docker/.env.example", "OKR_DATABASE_URL=\nBFF_SESSION_SECRET=\n"
+    )
+    _write(
+        root,
+        "deploy/docker/.env.saas.example",
+        "OKR_DATABASE_URL=\nOKR_BACKEND_SERVICE_TOKEN=\n",
+    )
     _write(
         root,
         "deploy/docker/docker-compose.yml",
@@ -37,7 +43,11 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8100/healthz"]
 """,
     )
-    _write(root, "deploy/docker/Dockerfile", "EXPOSE 8100\nHEALTHCHECK CMD curl -f http://localhost:8100/healthz\n")
+    _write(
+        root,
+        "deploy/docker/Dockerfile",
+        "EXPOSE 8100\nHEALTHCHECK CMD curl -f http://localhost:8100/healthz\n",
+    )
     _write(root, "spa-bff/Dockerfile", "EXPOSE 3001\n")
     _write(root, "spa-web/Dockerfile", "EXPOSE 3000\n")
     _write(
@@ -52,9 +62,17 @@ services:
             )
         ),
     )
-    _write(root, ".github/workflows/promote-production.yml", "image@sha256:${DIGEST}\nrelease_sha: ${{ inputs.release_sha }}\n")
+    _write(
+        root,
+        ".github/workflows/promote-production.yml",
+        "image@sha256:${DIGEST}\nrelease_sha: ${{ inputs.release_sha }}\n",
+    )
     _write(root, ".github/workflows/docker-deploy.yml", "sha256:[0-9a-fA-F]{64}\n")
-    _write(root, "docs/saas/prerelease-runbook.md", "Run this one-off admin command:\n\n    alembic upgrade head\n")
+    _write(
+        root,
+        "docs/saas/prerelease-runbook.md",
+        "Run this one-off admin command:\n\n    alembic upgrade head\n",
+    )
 
 
 def test_valid_repository_passes() -> None:
@@ -87,7 +105,9 @@ def test_non_immutable_promotion_reference_is_reported(tmp_path: Path) -> None:
     assert any("immutable image references" in failure for failure in failures)
 
 
-def test_release_image_inputs_require_workflow_digest_validation(tmp_path: Path) -> None:
+def test_release_image_inputs_require_workflow_digest_validation(
+    tmp_path: Path,
+) -> None:
     _valid_repository(tmp_path)
     _write(
         tmp_path,
@@ -110,7 +130,9 @@ def test_release_image_inputs_require_workflow_digest_validation(tmp_path: Path)
     assert verify_repository(tmp_path) == []
 
 
-def test_release_image_inputs_without_digest_validation_are_reported(tmp_path: Path) -> None:
+def test_release_image_inputs_without_digest_validation_are_reported(
+    tmp_path: Path,
+) -> None:
     _valid_repository(tmp_path)
     _write(
         tmp_path,
@@ -130,10 +152,12 @@ def test_web_mapping_must_target_configured_container_port(tmp_path: Path) -> No
     _valid_repository(tmp_path)
     compose = tmp_path / "deploy/docker/docker-compose.yml"
     compose.write_text(
-        (compose.read_text(encoding="utf-8")
-         + "\n  spa-web:\n"
-         + "    ports:\n"
-         + '      - "${SPA_WEB_HOST_PORT:-3000}:3000"\n'),
+        (
+            compose.read_text(encoding="utf-8")
+            + "\n  spa-web:\n"
+            + "    ports:\n"
+            + '      - "${SPA_WEB_HOST_PORT:-3000}:3000"\n'
+        ),
         encoding="utf-8",
     )
 
@@ -145,8 +169,12 @@ def test_web_mapping_must_target_configured_container_port(tmp_path: Path) -> No
 def test_missing_healthcheck_and_admin_command_are_reported(tmp_path: Path) -> None:
     _valid_repository(tmp_path)
     compose = tmp_path / "deploy/docker/docker-compose.yml"
-    compose.write_text("services:\n  api:\n    ports: ['8100:8100']\n", encoding="utf-8")
-    (tmp_path / "deploy/docker/Dockerfile").write_text("EXPOSE 8100\n", encoding="utf-8")
+    compose.write_text(
+        "services:\n  api:\n    ports: ['8100:8100']\n", encoding="utf-8"
+    )
+    (tmp_path / "deploy/docker/Dockerfile").write_text(
+        "EXPOSE 8100\n", encoding="utf-8"
+    )
     (tmp_path / "docs/saas/prerelease-runbook.md").write_text(
         "Use the admin console.\n", encoding="utf-8"
     )

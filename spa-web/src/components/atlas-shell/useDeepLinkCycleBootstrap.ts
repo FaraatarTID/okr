@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { usePathname } from "next/navigation";
 
-import { readCyclesQuery, type AuthUser, type CycleSummary } from "@/lib/api";
-import { DEFAULT_LENS, DEFAULT_MODE, normalizeFocusTaskRef, parseDeepLink } from "@/lib/deeplink";
-import { modeForPath } from "@/components/atlas-shell/navigation";
+import { type AuthUser, type CycleSummary } from "@/lib/api";
+import { mergeCyclePair, readCyclesPair } from "@/lib/cycles";
+import { DEFAULT_LENS, normalizeFocusTaskRef, parseDeepLink } from "@/lib/deeplink";
+import { modeForLocation } from "@/components/atlas-shell/navigation";
 
 type ResolvedCycleState = Pick<
   CycleSummary,
@@ -36,7 +38,6 @@ export default function useDeepLinkCycleBootstrap({
   canManageCycleSelection = true,
   parsedCycleId,
   resolvedCycle,
-  sessionCycles,
   deepLinkReady,
   deepLinkQuery,
   setResolvedCycle,
@@ -51,6 +52,7 @@ export default function useDeepLinkCycleBootstrap({
   setDeepLinkReady,
 }: UseDeepLinkCycleBootstrapInput) {
   const explicitCycleSelectionRef = useRef(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     if (parsedCycleId) {
@@ -74,14 +76,17 @@ export default function useDeepLinkCycleBootstrap({
 
     const syncFromLocation = () => {
       const parsed = parseDeepLink(window.location.search);
-      const pathMode = modeForPath(window.location.pathname);
       if (parsed.cycle && canManageCycleSelection) {
         setResolvedCycle(null);
         setCycleId(parsed.cycle);
       } else if (!canManageCycleSelection) {
         setCycleId("");
       }
-      setMode(parsed.mode || pathMode || DEFAULT_MODE);
+      // Note: parseDeepLink().mode is always populated (normalizeMode returns
+      // DEFAULT_MODE when the parameter is absent), so it must not be part of
+      // this expression — an `|| parsed.mode` fallback would make modeForLocation
+      // dead and silently pin every path to the default mode.
+      setMode(modeForLocation(window.location.pathname, window.location.search));
       setLens(parsed.lens || DEFAULT_LENS);
       if (parsed.sel) {
         setSelectedRef(parsed.sel);
@@ -141,34 +146,18 @@ export default function useDeepLinkCycleBootstrap({
     void (async () => {
       try {
         // Fetch the complete list of cycles for the dropdown AND all visible
-        // active cycles in parallel. Each owner may have one active cycle;
-        // admins prefer their global cycle for automatic selection.
-        const [allCycles, activeCycles] = await Promise.all([
-          readCyclesQuery({
-            actor_username: user.username,
-            kind: "cycles.all",
-          }),
-          readCyclesQuery({
-            actor_username: user.username,
-            kind: "cycles.active",
-          }).catch(() => [] as CycleSummary[]),
-        ]);
+        // active cycles. Each owner may have one active cycle; admins prefer
+        // their global cycle for automatic selection. The pair is read through
+        // the shared cache, so `useCyclesSource` on the same mount joins this
+        // request instead of issuing a duplicate one.
+        const pair = await readCyclesPair(user.username);
+        const { active: activeCycles } = pair;
         if (!active) {
           return;
         }
-        const sortedAll = [...allCycles].sort((left, right) => right.id - left.id);
         // Merge: guarantee every active cycle is present in the dropdown even
         // if `cycles.all` was stale or scope-filtered it out.
-        const mergedById = new Map<number, CycleSummary>();
-        for (const cycle of sortedAll) {
-          mergedById.set(cycle.id, cycle);
-        }
-        for (const activeCycle of activeCycles) {
-          if (!mergedById.has(activeCycle.id)) {
-            mergedById.set(activeCycle.id, activeCycle);
-          }
-        }
-        const merged = [...mergedById.values()].sort((left, right) => right.id - left.id);
+        const merged = mergeCyclePair(pair);
         setSessionCycles(merged);
 
         // The authoritative active cycle (if any).
@@ -255,4 +244,24 @@ export default function useDeepLinkCycleBootstrap({
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     window.history.replaceState(null, "", nextUrl);
   }, [deepLinkQuery, deepLinkReady]);
+
+  useEffect(() => {
+    // Re-derive the mode whenever the route changes. This is what makes the
+    // single shared shell layout correct (C8).
+    //
+    // While every route rendered its own <AtlasShell />, a navigation remounted
+    // the shell, and the boot effect above re-read the path on that fresh mount.
+    // With one shared layout the shell stays mounted, so nothing re-reads the
+    // path after the first navigation, and <Link>-style navigation — or any
+    // future call to router.replace that does not also call setMode — would
+    // leave the previous panel rendered at the new URL.
+    //
+    // Only the mode is reconciled here. Cycle, lens, and selection are handled by
+    // the boot sync and by the explicit handlers, and re-deriving them on every
+    // path change would fight those handlers.
+    if (typeof window === "undefined") {
+      return;
+    }
+    setMode(modeForLocation(pathname, window.location.search));
+  }, [pathname, setMode]);
 }

@@ -7,9 +7,9 @@
   "decision": "retain_bff",
   "evidence": {
     "security_parity": {
-      "status": "passed",
+      "status": "pending",
       "artifact": "evidence/security-parity.json",
-      "summary": "Reviewed session cookies, CSRF, actor binding, request signing, route allowlisting, and rate limiting for the BFF boundary."
+      "summary": "Reviewed session cookies, CSRF, actor binding, request signing, and route allowlisting, all of which passed. CSRF and origin controls are recorded as pending because only CSRF enforcement exists, and rate limiting is recorded as pending because no BFF-side limiter exists. The BFF itself remains the retained topology."
     },
     "failure_isolation": {
       "status": "passed",

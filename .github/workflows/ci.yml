@@ -76,7 +76,7 @@ jobs:
               - '!pyproject.toml'
               - '!uv.lock'
 
-  rls-gate:
+  postgrest-exposure-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: changes
@@ -130,7 +130,7 @@ jobs:
       - name: Apply migrations
         run: uv run python scripts/verify_migration_sequence.py
 
-      - name: RLS Coverage Gate
+      - name: PostgREST Exposure Gate
         run: uv run python scripts/check_rls_enabled.py
 
   backend-quality:
@@ -228,6 +228,9 @@ jobs:
             scripts \
             tests \
             --select E9,F63,F7,F82
+
+      - name: Format Check (Ruff, repo-wide)
+        run: python -m ruff format --check .
 
       - name: Helper Integrity Gate
         run: python scripts/verify_helper_integrity.py
@@ -342,6 +345,9 @@ jobs:
       - name: BFF OpenAPI generated types freshness gate
         run: npm --prefix spa-bff run check:gen:api
 
+      - name: JavaScript lint gate
+        run: npm run lint
+
       - name: Restore JavaScript build caches
         id: spa-build-cache
         uses: actions/cache@v6
@@ -349,7 +355,7 @@ jobs:
           path: |
             spa-web/.next/cache
             spa-bff/.cache
-          key: ${{ runner.os }}-spa-build-${{ hashFiles('package-lock.json', 'spa-bff/**/*.ts', 'spa-bff/tsconfig.json', 'spa-web/**/*.ts', 'spa-web/**/*.tsx', 'spa-web/next.config.*') }}
+          key: ${{ runner.os }}-spa-build-${{ hashFiles('package-lock.json', 'spa-bff/**/*.ts', 'spa-bff/tsconfig.json', 'spa-bff/tsconfig.build.json', 'spa-web/**/*.ts', 'spa-web/**/*.tsx', 'spa-web/next.config.*') }}
           restore-keys: |
             ${{ runner.os }}-spa-build-
 
@@ -361,6 +367,9 @@ jobs:
 
       - name: SPA BFF build
         run: npm --prefix spa-bff run build
+
+      - name: SPA BFF typecheck
+        run: npm --prefix spa-bff run typecheck
 
       - name: SPA Web build
         run: npm run build --workspace spa-web
@@ -467,7 +476,7 @@ jobs:
     if: always()
     needs:
       - changes
-      - rls-gate
+      - postgrest-exposure-gate
       - backend-quality
       - spa-quality
       - spa-e2e
@@ -477,14 +486,14 @@ jobs:
         shell: bash
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
-          RLS_RESULT: ${{ needs.rls-gate.result }}
+          POSTGREST_EXPOSURE_RESULT: ${{ needs.postgrest-exposure-gate.result }}
           BACKEND_RESULT: ${{ needs.backend-quality.result }}
           SPA_RESULT: ${{ needs.spa-quality.result }}
           E2E_RESULT: ${{ needs.spa-e2e.result }}
           DOCS_RESULT: ${{ needs.docs-quality.result }}
         run: |
           set -euo pipefail
-          for result in "$CHANGES_RESULT" "$RLS_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT" "$DOCS_RESULT"; do
+          for result in "$CHANGES_RESULT" "$POSTGREST_EXPOSURE_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT" "$DOCS_RESULT"; do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               echo "CI result failed because a required job returned: $result"
               exit 1

@@ -75,7 +75,9 @@ class PreReleaseSmokeResult:
         independent_checks = [
             check for check in self.checks if check.evidence_type == "INDEPENDENT"
         ]
-        return bool(independent_checks) and all(check.ok for check in independent_checks)
+        return bool(independent_checks) and all(
+            check.ok for check in independent_checks
+        )
 
     @property
     def summary(self) -> str:
@@ -110,7 +112,9 @@ def _validate_url(url: str) -> None:
         raise ValueError("URL credentials are not accepted")
 
 
-def _safe_http_error(url: str, timeout_seconds: float) -> tuple[bool, int | None, str, bytes]:
+def _safe_http_error(
+    url: str, timeout_seconds: float
+) -> tuple[bool, int | None, str, bytes]:
     """Fetch one URL while keeping all diagnostics independent of remote data."""
     try:
         _validate_url(url)
@@ -140,13 +144,20 @@ def _safe_http_error(url: str, timeout_seconds: float) -> tuple[bool, int | None
     return True, status_code, f"HTTP {status_code}", body
 
 
-def _http_check(name: str, url: str, timeout_seconds: float, *, health_json: bool) -> SmokeCheck:
+def _http_check(
+    name: str, url: str, timeout_seconds: float, *, health_json: bool
+) -> SmokeCheck:
     ok, status_code, detail, body = _safe_http_error(url, timeout_seconds)
     if not ok:
         return SmokeCheck(name=name, ok=False, detail=detail, status_code=status_code)
 
     if not health_json:
-        return SmokeCheck(name=name, ok=True, detail=f"{detail}; endpoint reachable", status_code=status_code)
+        return SmokeCheck(
+            name=name,
+            ok=True,
+            detail=f"{detail}; endpoint reachable",
+            status_code=status_code,
+        )
 
     try:
         payload = json.loads(body.decode("utf-8"))
@@ -164,7 +175,9 @@ def _http_check(name: str, url: str, timeout_seconds: float, *, health_json: boo
             detail="health endpoint did not report status=ok",
             status_code=status_code,
         )
-    return SmokeCheck(name=name, ok=True, detail=f"{detail}; status=ok", status_code=status_code)
+    return SmokeCheck(
+        name=name, ok=True, detail=f"{detail}; status=ok", status_code=status_code
+    )
 
 
 def _contains_sensitive_marker(value: str) -> bool:
@@ -198,7 +211,10 @@ def _worker_status(evidence: str | Mapping[str, Any] | None) -> str | None:
 def _worker_check(evidence: str | Mapping[str, Any] | None) -> SmokeCheck:
     if evidence is None:
         return SmokeCheck(
-            "worker", False, "worker evidence was not supplied", evidence_type="MANUAL_ATTESTATION"
+            "worker",
+            False,
+            "worker evidence was not supplied",
+            evidence_type="MANUAL_ATTESTATION",
         )
     status = _worker_status(evidence)
     if status is None:
@@ -223,7 +239,9 @@ def _worker_check(evidence: str | Mapping[str, Any] | None) -> SmokeCheck:
     )
 
 
-def _migration_check(migration_head: str | None, expected_migration_head: str | None) -> SmokeCheck:
+def _migration_check(
+    migration_head: str | None, expected_migration_head: str | None
+) -> SmokeCheck:
     if migration_head is None or not migration_head.strip():
         return SmokeCheck(
             "migration",
@@ -232,7 +250,11 @@ def _migration_check(migration_head: str | None, expected_migration_head: str | 
             evidence_type="MANUAL_ATTESTATION",
         )
     head = migration_head.strip()
-    if len(head) > 256 or any(char.isspace() for char in head) or _contains_sensitive_marker(head):
+    if (
+        len(head) > 256
+        or any(char.isspace() for char in head)
+        or _contains_sensitive_marker(head)
+    ):
         return SmokeCheck(
             "migration",
             False,
@@ -299,16 +321,30 @@ def verify_prerelease_smoke(
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Verify a remote Darkube pre-release deployment.")
+    parser = argparse.ArgumentParser(
+        description="Verify a remote Darkube pre-release deployment."
+    )
     parser.add_argument("--scope", choices=SMOKE_SCOPES, default="full")
     parser.add_argument("--web-url", help="Public pre-release web URL.")
     parser.add_argument("--bff-health-url", help="Public pre-release BFF health URL.")
     parser.add_argument("--api-health-url", help="Private pre-release API health URL.")
-    parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)
-    parser.add_argument("--worker-evidence", help="Sanitized worker status, for example status=running.")
-    parser.add_argument("--worker-evidence-file", type=Path, help="File containing sanitized worker evidence.")
-    parser.add_argument("--migration-head", help="Sanitized migration head observed in the deployment.")
-    parser.add_argument("--expected-migration-head", help="Expected migration head to compare against.")
+    parser.add_argument(
+        "--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS
+    )
+    parser.add_argument(
+        "--worker-evidence", help="Sanitized worker status, for example status=running."
+    )
+    parser.add_argument(
+        "--worker-evidence-file",
+        type=Path,
+        help="File containing sanitized worker evidence.",
+    )
+    parser.add_argument(
+        "--migration-head", help="Sanitized migration head observed in the deployment."
+    )
+    parser.add_argument(
+        "--expected-migration-head", help="Expected migration head to compare against."
+    )
     parser.add_argument("--format", choices=("text", "json"), default="text")
     args = parser.parse_args(argv)
     if args.worker_evidence is not None and args.worker_evidence_file is not None:
@@ -318,7 +354,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             args.worker_evidence = args.worker_evidence_file.read_text(encoding="utf-8")
         except OSError:
             parser.error("unable to read --worker-evidence-file")
-    if args.scope in {"full", "public"} and (not args.web_url or not args.bff_health_url):
+    if args.scope in {"full", "public"} and (
+        not args.web_url or not args.bff_health_url
+    ):
         parser.error("the selected scope requires --web-url and --bff-health-url")
     if args.scope in {"full", "private"} and not args.api_health_url:
         parser.error("the selected scope requires --api-health-url")
@@ -327,7 +365,11 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def _print_text(result: PreReleaseSmokeResult) -> None:
     for check in result.checks:
-        flag = check.evidence_type if check.evidence_type != "INDEPENDENT" else ("PASS" if check.ok else "FAIL")
+        flag = (
+            check.evidence_type
+            if check.evidence_type != "INDEPENDENT"
+            else ("PASS" if check.ok else "FAIL")
+        )
         print(f"[{flag}] {check.name}: {check.detail}")
     print(
         f"{result.summary}; independent_ok={result.independent_ok}; "

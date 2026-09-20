@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Generic, Hashable, Iterable, Mapping, Sequence, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Hashable,
+    Iterable,
+    Mapping,
+    Sequence,
+    TypeVar,
+)
 
 from src.serialization_helpers import (
     serialize_cycle_snapshot,

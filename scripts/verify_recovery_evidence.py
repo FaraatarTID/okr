@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.attestation_verification import (  # noqa: E402
+    AttestationError,
+    SUPPORTED_ALGORITHMS,
+    canonical_digest,
+    verify_attestation_signature,
+)
 
 
 class RecoveryEvidenceError(ValueError):
@@ -18,8 +27,15 @@ class RecoveryEvidenceError(ValueError):
 
 _CHECKSUM_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _STATUSES = {"SUCCESS"}
-_ATTESTATION_ALGORITHMS = {"ed25519", "rsa-pss-sha256", "provider-signed"}
-_SYNTHETIC_MARKERS = ("test", "fixture", "synthetic", "mock", "local", "fake", "example")
+_SYNTHETIC_MARKERS = (
+    "test",
+    "fixture",
+    "synthetic",
+    "mock",
+    "local",
+    "fake",
+    "example",
+)
 
 
 def _object(value: Any, label: str) -> dict[str, Any]:
@@ -54,13 +70,10 @@ def _seconds(value: Any, label: str) -> int:
 def _status(record: dict[str, Any], label: str) -> str:
     value = _string(record.get("status"), f"{label}.status").upper()
     if value not in _STATUSES:
-        raise RecoveryEvidenceError(f"{label}.status must be SUCCESS; failed evidence is not verifiable")
+        raise RecoveryEvidenceError(
+            f"{label}.status must be SUCCESS; failed evidence is not verifiable"
+        )
     return value
-
-
-def _checksum(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
 def _reject_synthetic(value: str, label: str) -> None:
@@ -69,29 +82,50 @@ def _reject_synthetic(value: str, label: str) -> None:
         raise RecoveryEvidenceError(f"{label} must identify a real provider operation")
 
 
-def _verify_attestation(evidence: dict[str, Any]) -> None:
+def _verify_attestation(
+    evidence: dict[str, Any],
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
+) -> None:
     attestation = _object(evidence.get("attestation"), "attestation")
     provider = _string(attestation.get("provider"), "attestation.provider")
     evidence_id = _string(attestation.get("evidence_id"), "attestation.evidence_id")
     algorithm = _string(attestation.get("algorithm"), "attestation.algorithm").lower()
     _string(attestation.get("key_id"), "attestation.key_id")
-    signature = _string(attestation.get("signature"), "attestation.signature")
     issued_at = _timestamp(attestation.get("issued_at"), "attestation.issued_at")
     _reject_synthetic(provider, "attestation.provider")
     _reject_synthetic(evidence_id, "attestation.evidence_id")
-    if algorithm not in _ATTESTATION_ALGORITHMS:
+    if algorithm not in SUPPORTED_ALGORITHMS:
         raise RecoveryEvidenceError("attestation.algorithm is unsupported")
-    if len(signature) < 32:
-        raise RecoveryEvidenceError("attestation.signature is incomplete")
     payload = {key: value for key, value in evidence.items() if key != "attestation"}
-    if attestation.get("signed_payload_sha256") != _checksum(payload):
-        raise RecoveryEvidenceError("attestation signed payload does not match evidence")
+    if attestation.get("signed_payload_sha256") != canonical_digest(payload):
+        raise RecoveryEvidenceError(
+            "attestation signed payload does not match evidence"
+        )
     if issued_at > datetime.now(issued_at.tzinfo):
         raise RecoveryEvidenceError("attestation.issued_at cannot be in the future")
+    try:
+        verify_attestation_signature(
+            evidence, secret=secret, public_key_pem=public_key_pem
+        )
+    except AttestationError as exc:
+        raise RecoveryEvidenceError(
+            f"attestation signature is not verifiable: {exc}"
+        ) from exc
 
 
-def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
-    """Return a stable verification summary or raise on any evidence violation."""
+def verify_recovery_evidence(
+    evidence: dict[str, Any],
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
+) -> dict[str, Any]:
+    """Return a stable verification summary or raise on any evidence violation.
+
+    `secret` and `public_key_pem` override the environment configuration and exist
+    for tests and for callers that already hold the key material.
+    """
     evidence = _object(evidence, "evidence")
     if evidence.get("schema_version") != 1:
         raise RecoveryEvidenceError("schema_version must be 1")
@@ -109,7 +143,9 @@ def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     if verified_at < created_at:
         raise RecoveryEvidenceError("backup timestamps are out of order")
 
-    checksum_payload = _object(backup.get("checksum_payload"), "backup.checksum_payload")
+    checksum_payload = _object(
+        backup.get("checksum_payload"), "backup.checksum_payload"
+    )
     expected_payload = {
         "backup_id": backup_id,
         "database_identity": database_identity,
@@ -117,19 +153,29 @@ def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
         "created_at": backup.get("created_at"),
     }
     if checksum_payload != expected_payload:
-        raise RecoveryEvidenceError("backup.checksum_payload does not match database identity")
+        raise RecoveryEvidenceError(
+            "backup.checksum_payload does not match database identity"
+        )
     checksum = _string(backup.get("checksum"), "backup.checksum")
-    if not _CHECKSUM_RE.fullmatch(checksum) or checksum != _checksum(checksum_payload):
-        raise RecoveryEvidenceError("backup checksum does not match canonical evidence payload")
+    if not _CHECKSUM_RE.fullmatch(checksum) or checksum != canonical_digest(
+        checksum_payload
+    ):
+        raise RecoveryEvidenceError(
+            "backup checksum does not match canonical evidence payload"
+        )
 
     restore = _object(evidence.get("restore"), "restore")
     restore_status = _status(restore, "restore")
     target = _object(restore.get("target"), "restore.target")
     target_identity = _string(target.get("identity"), "restore.target.identity")
     if target_identity == database_identity:
-        raise RecoveryEvidenceError("restore target must be different from the source database")
+        raise RecoveryEvidenceError(
+            "restore target must be different from the source database"
+        )
     if target.get("environment_id") != environment_id:
-        raise RecoveryEvidenceError("restore target environment must match database environment")
+        raise RecoveryEvidenceError(
+            "restore target environment must match database environment"
+        )
     if target.get("isolation") != "isolated":
         raise RecoveryEvidenceError("restore target must be isolated")
     if target.get("live") is not False:
@@ -144,18 +190,28 @@ def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
 
     rpo_target = _seconds(evidence.get("rpo_target_seconds"), "rpo_target_seconds")
     rto_target = _seconds(evidence.get("rto_target_seconds"), "rto_target_seconds")
-    measured_rpo = _seconds(evidence.get("measured_rpo_seconds"), "measured_rpo_seconds")
-    measured_rto = _seconds(evidence.get("measured_rto_seconds"), "measured_rto_seconds")
+    measured_rpo = _seconds(
+        evidence.get("measured_rpo_seconds"), "measured_rpo_seconds"
+    )
+    measured_rto = _seconds(
+        evidence.get("measured_rto_seconds"), "measured_rto_seconds"
+    )
     if measured_rpo > rpo_target:
         raise RecoveryEvidenceError("measured RPO exceeds RPO target")
     if measured_rto > rto_target:
         raise RecoveryEvidenceError("measured RTO exceeds RTO target")
 
     overall_status = _string(evidence.get("status"), "status").upper()
-    if overall_status != "PASSED" or backup_status != "SUCCESS" or restore_status != "SUCCESS":
-        raise RecoveryEvidenceError("status must be PASSED and backup/restore must both be SUCCESS")
+    if (
+        overall_status != "PASSED"
+        or backup_status != "SUCCESS"
+        or restore_status != "SUCCESS"
+    ):
+        raise RecoveryEvidenceError(
+            "status must be PASSED and backup/restore must both be SUCCESS"
+        )
     _string(evidence.get("operator"), "operator")
-    _verify_attestation(evidence)
+    _verify_attestation(evidence, secret=secret, public_key_pem=public_key_pem)
 
     return {
         "schema_version": 1,
@@ -192,7 +248,10 @@ def main(argv: list[str] | None = None) -> int:
         args.output.write_text(rendered, encoding="utf-8", newline="\n")
     else:
         print(rendered, end="")
-    print("[RECOVERY-EVIDENCE] sanitized backup/restore evidence verified", file=sys.stderr)
+    print(
+        "[RECOVERY-EVIDENCE] sanitized backup/restore evidence verified",
+        file=sys.stderr,
+    )
     return 0
 
 

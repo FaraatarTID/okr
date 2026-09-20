@@ -419,7 +419,11 @@ def create_user_from_crud(
                 crud_module.UserRole.ADMIN,
             ):
                 raise ValueError("manager_id must reference a manager or admin.")
-        if enforce_manager_chain and role == crud_module.UserRole.MEMBER and manager_id is None:
+        if (
+            enforce_manager_chain
+            and role == crud_module.UserRole.MEMBER
+            and manager_id is None
+        ):
             raise ValueError("Member users must have a manager_id.")
 
         user = crud_module.User(
@@ -967,7 +971,11 @@ def update_user_from_crud(
                 crud_module.UserRole.ADMIN,
             ):
                 raise ValueError("manager_id must reference a manager or admin.")
-        if actor_username and next_role == crud_module.UserRole.MEMBER and next_manager_id is None:
+        if (
+            actor_username
+            and next_role == crud_module.UserRole.MEMBER
+            and next_manager_id is None
+        ):
             raise ValueError("Member users must have a manager_id.")
 
         if display_name is not None:
@@ -1112,7 +1120,9 @@ def ensure_admin_exists_once_from_crud(*, crud_module) -> bool:
                 bootstrap_admin_password,
                 admin.password_hash,
             ):
-                admin.password_hash = crud_module.hash_password(bootstrap_admin_password)
+                admin.password_hash = crud_module.hash_password(
+                    bootstrap_admin_password
+                )
                 admin.password_changed_at = None
                 session.add(admin)
                 session.commit()
@@ -1167,7 +1177,9 @@ def ensure_admin_exists_from_crud(*, crud_module) -> bool:
 def _crud_module_context():
     crud_module = importlib.import_module("src.crud")
     if crud_module is None:
-        raise RuntimeError("src.crud module is not available for CRUD auth helper context.")
+        raise RuntimeError(
+            "src.crud module is not available for CRUD auth helper context."
+        )
     return crud_module
 
 
@@ -1286,7 +1298,9 @@ def _normalize_client_ip(client_ip: Optional[str]) -> Optional[str]:
     return normalize_client_ip_from_crud(client_ip=client_ip)
 
 
-def _get_auth_throttle_states(session, normalized_username: str, normalized_ip: Optional[str]):
+def _get_auth_throttle_states(
+    session, normalized_username: str, normalized_ip: Optional[str]
+):
     return get_auth_throttle_states_from_crud(
         crud_module=_crud_module_context(),
         session=session,
@@ -1374,7 +1388,9 @@ def _authenticate_user_without_throttle(
     )
 
 
-def authenticate_user_detailed(username: str, password: str, client_ip: Optional[str] = None):
+def authenticate_user_detailed(
+    username: str, password: str, client_ip: Optional[str] = None
+):
     return authenticate_user_detailed_from_crud(
         crud_module=_crud_module_context(),
         username=username,

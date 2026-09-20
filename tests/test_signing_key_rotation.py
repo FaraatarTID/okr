@@ -77,8 +77,12 @@ def _signed_post(
     body = json.dumps({"task_id": 5}, separators=(",", ":")).encode("utf-8")
     timestamp = str(int(time.time()))
     signature = _sign_request(
-        secret=secret, method="POST", path=path, timestamp=timestamp,
-        nonce=nonce, body=body,
+        secret=secret,
+        method="POST",
+        path=path,
+        timestamp=timestamp,
+        nonce=nonce,
+        body=body,
     )
     headers = {
         "Content-Type": "application/json",

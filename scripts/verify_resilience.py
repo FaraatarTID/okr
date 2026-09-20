@@ -120,8 +120,7 @@ def _write_smoke_env_file(path: Path) -> tuple[dict[str, str], dict[str, str]]:
         "OKR_POSTGRES_DB": "okr",
         "OKR_POSTGRES_HOST_PORT": str(postgres_host_port),
         "OKR_DATABASE_URL": (
-            "postgresql+psycopg2://"
-            f"okr:{postgres_password}@postgres:5432/okr"
+            f"postgresql+psycopg2://okr:{postgres_password}@postgres:5432/okr"
         ),
         "OKR_BACKEND_SERVICE_TOKEN": service_token,
         "OKR_BOOTSTRAP_ADMIN_PASSWORD": bootstrap_password,
@@ -208,8 +207,7 @@ def _run_compose(
     compose_env = {
         key: value
         for key, value in os.environ.items()
-        if key not in _SMOKE_ENV_NAMES
-        and not key.startswith(_SMOKE_ENV_PREFIXES)
+        if key not in _SMOKE_ENV_NAMES and not key.startswith(_SMOKE_ENV_PREFIXES)
     }
     for raw_line in env_file.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
@@ -297,13 +295,13 @@ def _smoke_check_services(
             except Exception as exc:
                 last_errors[service_name] = f"{type(exc).__name__}: {exc}"
         if len(ready_services) == len(service_checks):
-                return CheckResult(
-                    name="compose_service_readiness",
-                    status="pass",
-                    detail=(
-                        "Backend, spa-bff, and spa-web became ready for smoke execution."
-                    ),
-                )
+            return CheckResult(
+                name="compose_service_readiness",
+                status="pass",
+                detail=(
+                    "Backend, spa-bff, and spa-web became ready for smoke execution."
+                ),
+            )
         time.sleep(1.5)
     error_summary = "; ".join(
         f"{service}={error}" for service, error in sorted(last_errors.items())
@@ -329,7 +327,9 @@ def _run_smoke_compose(
             detail=f"Compose file not found: {args.compose_file}",
         )
 
-    compose_project = str(args.compose_project).strip() or f"okr-smoke-{secrets.token_hex(3)}"
+    compose_project = (
+        str(args.compose_project).strip() or f"okr-smoke-{secrets.token_hex(3)}"
+    )
     compose_file = args.compose_file
 
     with tempfile.TemporaryDirectory(prefix="okr-smoke-") as workdir:

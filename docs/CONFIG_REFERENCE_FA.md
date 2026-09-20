@@ -46,11 +46,6 @@ Documentation HQ: [README](../README.md)
   - `AI_MODEL`
   - `AI_API_KEY` (اختیاری)
 
-## کنترل‌های AI Sync در SPA
-
-- `NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA` (پیش‌فرض: `100`): حداکثر تغییر امتیاز KR در هر اجرای AI sync.
-- `NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE` (پیش‌فرض: `true`): اجازه کاهش پیشرفت KR توسط AI. روی `false` تنظیم کنید تا فقط افزایش مجاز باشد.
-
 ## Runtime Preflight
 
 - `OKR_STRICT_RUNTIME_PREFLIGHT`:

@@ -66,7 +66,8 @@ downgrades.
 ## 4. Evidence contract
 
 Create a sanitized JSON file with this shape. Values shown are examples, not
-usable credentials or provider identifiers:
+usable credentials or provider identifiers. Angle-bracketed values are
+placeholders that the operator computes or obtains from the provider:
 
 ```json
 {
@@ -74,20 +75,26 @@ usable credentials or provider identifiers:
   "environment_id": "customer-a-prod",
   "database": {
     "identity": "hamravesh-db-resource-redacted",
-    "provider": "hamravesh",
-    "environment_id": "customer-a-prod"
+    "provider": "hamravesh"
   },
   "backup": {
-    "id": "backup-redacted",
+    "backup_id": "hamravesh-backup-redacted",
     "status": "SUCCESS",
-    "checksum": "sha256:<64-hex-digest>",
-    "verified_at": "2026-09-01T12:00:00Z"
+    "created_at": "2026-09-01T11:55:00Z",
+    "verified_at": "2026-09-01T12:00:00Z",
+    "checksum_payload": {
+      "backup_id": "hamravesh-backup-redacted",
+      "database_identity": "hamravesh-db-resource-redacted",
+      "environment_id": "customer-a-prod",
+      "created_at": "2026-09-01T11:55:00Z"
+    },
+    "checksum": "<sha256 of the canonical checksum_payload: sha256:<64-hex-digest>>"
   },
   "restore": {
     "status": "SUCCESS",
     "started_at": "2026-09-01T12:01:00Z",
     "completed_at": "2026-09-01T12:21:00Z",
-    "restored_checksum": "sha256:<64-hex-digest>",
+    "restored_checksum": "<must equal backup.checksum>",
     "target": {
       "identity": "hamravesh-restore-resource-redacted",
       "environment_id": "customer-a-prod",
@@ -100,9 +107,30 @@ usable credentials or provider identifiers:
   "measured_rpo_seconds": 900,
   "measured_rto_seconds": 1200,
   "status": "PASSED",
-  "operator": "operations-owner"
+  "operator": "operations-owner",
+  "attestation": {
+    "provider": "hamravesh",
+    "evidence_id": "hamravesh-evidence-redacted",
+    "algorithm": "provider-signed",
+    "key_id": "hamravesh-attestation-key-2026",
+    "signature": "<hmac-sha256:<64-hex-signature> over this document without the attestation member>",
+    "issued_at": "2026-09-01T12:22:00Z",
+    "signed_payload_sha256": "<sha256:<64-hex-digest> of this document without the attestation member>"
+  }
 }
 ```
+
+The `checksum_payload` member is not decorative. The verifier recomputes the
+canonical digest of exactly those four members and requires `checksum` to match,
+so the checksum binds the backup to this database, environment, and creation time.
+`restored_checksum` must equal the same digest.
+
+The signature must be verifiable against configured key material, or verification
+fails. For `provider-signed`, set `OKR_SAAS_ATTESTATION_SECRET`; for `ed25519` or
+`rsa-pss-sha256`, set `OKR_SAAS_ATTESTATION_PUBLIC_KEY_PEM` or
+`OKR_SAAS_ATTESTATION_PUBLIC_KEY_PATH`. See
+[CONFIG_REFERENCE.md](../CONFIG_REFERENCE.md). An attestation that cannot be
+verified is rejected rather than accepted with a warning.
 
 Run:
 

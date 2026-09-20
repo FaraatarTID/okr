@@ -42,9 +42,9 @@ repos:
         pass_filenames: false
         always_run: true
 
-      - id: ruff-format-check-targeted
-        name: Ruff format check (targeted)
-        entry: python -m ruff format --check tests/test_deadline_utils.py tests/test_performance_hotpaths.py
+      - id: ruff-format-check-repo
+        name: Ruff format check (repo-wide)
+        entry: python -m ruff format --check .
         language: system
         pass_filenames: false
         always_run: true

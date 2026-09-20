@@ -65,7 +65,10 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         response_model_exclude_unset=True,
     )
     def api_auth_login(payload: LoginRequest) -> dict:
-        from backend_app.data_access_mode import notify_tcp_db_failure, resolve_read_mode
+        from backend_app.data_access_mode import (
+            notify_tcp_db_failure,
+            resolve_read_mode,
+        )
 
         username = str(payload.username or "").strip()
         try:
@@ -182,9 +185,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                     payload_actor=payload.actor_username,
                 )
             finally:
-                record_timing(
-                    "actor", (time.perf_counter() - actor_started_at) * 1000
-                )
+                record_timing("actor", (time.perf_counter() - actor_started_at) * 1000)
             try:
                 return main._read_query_payload(
                     kind=str(payload.kind or "").strip(),
@@ -207,9 +208,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                     detail="Unexpected server error while processing read query.",
                 ) from exc
         finally:
-            record_timing(
-                "handler", (time.perf_counter() - handler_started_at) * 1000
-            )
+            record_timing("handler", (time.perf_counter() - handler_started_at) * 1000)
 
     @router.get("/healthz")
     def healthz() -> dict:

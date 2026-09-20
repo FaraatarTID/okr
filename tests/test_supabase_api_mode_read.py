@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 def test_krs_needing_checkin_batches_latest_checkins(monkeypatch):
     from src.services import supabase_api_mode_read as read
 
@@ -51,7 +52,9 @@ def test_tasks_by_cycle_uses_one_nested_postgrest_query(monkeypatch):
 
     def fake_select(table: str, *, query=None):
         calls.append((table, query))
-        return 200, [{"id": 31, "title": "Task", "key_result": {"objective": {"goal_id": 7}}}]
+        return 200, [
+            {"id": 31, "title": "Task", "key_result": {"objective": {"goal_id": 7}}}
+        ]
 
     monkeypatch.setattr(read, "_rest_select", fake_select)
 
