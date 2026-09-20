@@ -258,6 +258,8 @@ If you are a first-time reader, skip this section until after `Start Here`.
 - Architecture backlog: [ARCHITECTURE_BACKLOG.md](docs/architecture/ARCHITECTURE_BACKLOG.md)
 - Archived architecture status ledger: [docs/archive/architecture-2026-08-31/architecture-status_2026-08-31.md](docs/archive/architecture-2026-08-31/architecture-status_2026-08-31.md)
 - Architecture delivery system: [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTURE_DELIVERY_SYSTEM.md)
+- Remaining engineering plan: [docs/REMAINING_ENGINEERING_PLAN.md](docs/REMAINING_ENGINEERING_PLAN.md)
+- Working guide (start here to continue work): [docs/WORKING_GUIDE.md](docs/WORKING_GUIDE.md)
 - Documentation lifecycle registry: [docs/DOCUMENTATION_LIFECYCLE.md](docs/DOCUMENTATION_LIFECYCLE.md)
 - Task-graph evaluation: [docs/TASK_GRAPH_EVALUATION.md](docs/TASK_GRAPH_EVALUATION.md)
 - Enterprise SaaS roadmap: [ENTERPRISE_SAAS_ROADMAP.md](docs/architecture/ENTERPRISE_SAAS_ROADMAP.md)

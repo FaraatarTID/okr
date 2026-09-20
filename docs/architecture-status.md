@@ -112,13 +112,13 @@ CLIs, and audit records preserve only its authenticated principal. Control-plane
 initialization writes execute inside the shared crash-safe guard. No live
 provider was invoked and tenant/RLS/customer-domain behavior is unchanged.
 
-## Production persistence evidence package - conditionally reviewed
+## Production persistence evidence package - blocked pending provider evidence
 
-The repository contains a signed and structurally complete evidence package for
-the controlled single-tenant SaaS path under the repository contract in
-[saas/phase-1-entry-evidence.md](saas/phase-1-entry-evidence.md). This is a
-repository-level attestation package, not independent proof that the AWS drill
-occurred or that a production environment is approved.
+The repository contains the evidence shape for the controlled single-tenant
+SaaS path under the repository contract in
+[saas/phase-1-entry-evidence.md](saas/phase-1-entry-evidence.md). The current
+record is intentionally blocked: Hamravesh/Darkube provider evidence, a named
+operations owner, and a verified attestation are not present.
 
 The approved evidence package includes the following, tied to the same
 environment and customer identity:
@@ -137,8 +137,8 @@ environment and customer identity:
 
 Operations must independently verify the provider records and rerun the
 fail-closed checker with the configured attestation secret before production
-promotion. Until then, the approval remains limited to repository evidence and
-does not authorize customer-data onboarding. Shared
+promotion. Until then, no approval is active and customer-data onboarding is
+not authorized. Shared
 multi-tenant schema, shared-database RLS, and cross-customer data mixing remain
 permanently out of scope and are not authorized by this record.
 

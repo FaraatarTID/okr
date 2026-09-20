@@ -162,7 +162,7 @@ On-premise deployments continue to use the existing supported deployment profile
 2. Define the customer-environment manifest and lifecycle contract in [Customer Environment Contract](../saas/customer-environment-contract.md).
 3. Build one repeatable isolated environment from the existing artifacts.
 4. Add versioned deployment, health-gated promotion, and application rollback.
-5. Add provider-backed backup/restore and document RPO/RTO before onboarding real data.
+5. Execute the [Hamravesh/Darkube provider evidence handoff](../saas/provider-evidence-handoff.md), add provider-backed backup/restore, and document measured RPO/RTO before onboarding real data.
 6. Add control-plane lifecycle automation only after one environment works manually and repeatably.
  
 ## Task 7 - Phase 1 entry-gate evidence and handoff (2026-09-14)
@@ -175,7 +175,7 @@ Entry-gate disposition:
 
 - Environment contract, profile validation, isolated provisioning, release/rollback contracts, backup/restore contracts, and metadata-only control-plane inventory are implemented and locally tested.
 - The repository contains a signed, reviewable evidence package, but it is not by itself proof of a live provider drill or a production deployment.
-- Operations must verify the AWS backup/restore identifiers, artifact provenance, rollback rehearsal, checksum/integrity results, retention, measured RPO/RTO, and accountable ownership before promotion.
+- Operations must verify the Hamravesh/Darkube backup/restore identifiers, artifact provenance, rollback rehearsal, checksum/integrity results, retention, measured RPO/RTO, and accountable ownership before promotion.
 - Real-data onboarding remains prohibited until that external verification is recorded and `just saas-evidence` passes with the configured attestation secret.
 - Shared-database tenancy, tenant identifiers, RLS, and cross-customer schema remain deferred.
 
@@ -217,4 +217,3 @@ Lifecycle commands use authenticated operator credentials, not arbitrary
 operator-name arguments. The token is supplied through `OKR_OPERATOR_TOKEN`
 and resolved against the credential file passed to the command or configured
 through `OKR_OPERATOR_CREDENTIAL_FILE`.
-

@@ -3,12 +3,14 @@
 Documentation HQ: [README](../../README.md)
 
 **Date:** 2026-09-14  
-**Decision:** Controlled single-tenant SaaS entry evidence approved for normal release review  
+**Decision:** BLOCKED pending Hamravesh/Darkube provider evidence
 **Scope:** Phase 1 production-persistence evidence package and attestation
 
 ## Executive disposition
 
-This evidence bundle satisfies the repository gate for single-tenant production persistence entry. The configured environment is a dedicated customer environment with an opaque database resource identifier; no shared-database RLS or cross-tenant schema is authorized by this record.
+This document records the evidence shape for the dedicated single-tenant path.
+It does not contain verified Hamravesh/Darkube provider evidence and does not
+authorize production persistence or customer-data onboarding.
 
 The evidence below is the machine-readable package consumed by the fail-closed gate in `just saas-evidence` and by the verification contract in `scripts/check_saas_phase1_evidence.py`.
 
@@ -18,7 +20,7 @@ The evidence below is the machine-readable package consumed by the fail-closed g
 {
   "schema_version": 1,
   "decision": {
-    "status": "APPROVED",
+    "status": "BLOCKED",
     "owner": "engineering-owner"
   },
   "provisioning": {
@@ -43,15 +45,15 @@ The evidence below is the machine-readable package consumed by the fail-closed g
     "measured_rollback_seconds": 45
   },
   "backup": {
-    "provider": "aws-rds",
-    "backup_id": "aws-backup-2026-09-14-001",
+    "provider": "UNSELECTED",
+    "backup_id": "UNSELECTED",
     "backup_target": "dedicated-db-a",
     "verified": true
   },
   "restore": {
-    "result": "passed",
-    "target": "isolated-db-1",
-    "restore_id": "aws-restore-2026-09-14-001"
+    "result": "not_run",
+    "target": "",
+    "restore_id": "UNSELECTED"
   },
   "rpo_rto": {
     "measured_rpo_seconds": 60,
@@ -59,13 +61,13 @@ The evidence below is the machine-readable package consumed by the fail-closed g
   },
   "owners": {
     "decision": "engineering-owner",
-    "operations": "platform-ops-owner"
+    "operations": "UNASSIGNED"
   },
-  "real_data_approval": true,
+  "real_data_approval": false,
   "attestation": {
-    "provider": "aws-rds",
-    "backup_id": "aws-backup-2026-09-14-001",
-    "restore_id": "aws-restore-2026-09-14-001",
+    "provider": "UNSELECTED",
+    "backup_id": "UNSELECTED",
+    "restore_id": "UNSELECTED",
     "environment_id": "env-a",
     "customer_id": "customer-a",
     "backup_target": "dedicated-db-a",
@@ -79,8 +81,8 @@ The evidence below is the machine-readable package consumed by the fail-closed g
     "measured_rpo_seconds": 60,
     "measured_rto_seconds": 120,
     "decision_owner": "engineering-owner",
-    "operations_owner": "platform-ops-owner",
-    "signature": "hmac-sha256:f51c175e6963983a3d41abff7655055f36d2260b735f0df0cc085f217c3f1a28"
+    "operations_owner": "UNASSIGNED",
+    "signature": "UNSET"
   }
 }
 ```
@@ -88,26 +90,31 @@ The evidence below is the machine-readable package consumed by the fail-closed g
 ## Evidence summary
 
 - Decision owner: `engineering-owner`
-- Operations owner: `platform-ops-owner`
+- Operations owner: `UNASSIGNED`
 - Environment: `env-a`
 - Customer: `customer-a`
-- Provider: `aws-rds`
-- Backup ID: `aws-backup-2026-09-14-001`
-- Restore ID: `aws-restore-2026-09-14-001`
+- Provider: `UNSELECTED - Hamravesh/Darkube confirmation pending`
+- Backup ID: `UNSELECTED`
+- Restore ID: `UNSELECTED`
 - Release identity: `release-rehearsal-a`
 - Provisioning identity: `provisioning-a`
 - Artifact digests: two immutable SHA-256 values recorded above
 - Rollback duration: 45 seconds
 - RPO target: 60 seconds
 - RTO target: 120 seconds
-- Real-data approval: `true`
+- Real-data approval: `false`
 
 ## Verification note
 
-The evidence block above is intentionally signed with the canonical HMAC-SHA256 of the attestation payload using the configured attestation secret. The corresponding secret for this local repository validation is set in the execution environment for the release gate, which is the correct operational pattern for this repository-level release evidence check.
+The attestation is intentionally unset. Operations must replace this template
+with sanitized Hamravesh/Darkube records and sign it through the approved
+secret-management process.
 
 ## Release gate outcome
 
-The repository gate `just saas-evidence` is expected to pass when the attestation secret is present in the environment exactly as used for this approval record.
+The repository gate `just saas-evidence` is expected to fail closed until the
+Hamravesh/Darkube provider evidence, named operations owner, real-data approval,
+and attestation secret are present.
 
-The current evidence set is not a claim of a live production customer deployment; it is a controlled, reviewed, auditable release-gate bundle for the dedicated single-tenant SaaS model and its persistence controls.
+The current evidence set is a blocked template, not a claim of a live provider
+operation or production customer deployment.

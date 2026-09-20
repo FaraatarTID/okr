@@ -57,10 +57,23 @@ class EnterpriseIdentityConfig(BaseModel):
     scim_endpoint: str | None = None
     scim_token: str | None = None
     allowed_domains: list[str] = Field(default_factory=list)
+    allowed_groups: list[str] = Field(default_factory=list)
+    group_role_map: dict[str, str] = Field(default_factory=dict)
     require_mfa: bool = True
     allow_local_passwords: bool = True
 
-    @field_validator("issuer", "client_id", "authorization_endpoint", "token_endpoint", "jwks_uri", "entity_id", "sso_url", "x509_certificate", "scim_endpoint", "scim_token")
+    @field_validator(
+        "issuer",
+        "client_id",
+        "authorization_endpoint",
+        "token_endpoint",
+        "jwks_uri",
+        "entity_id",
+        "sso_url",
+        "x509_certificate",
+        "scim_endpoint",
+        "scim_token",
+    )
     @classmethod
     def reject_blank_optional_values(cls, value: str | None) -> str | None:
         if value is None:
@@ -80,6 +93,22 @@ class EnterpriseIdentityConfig(BaseModel):
             normalized.append(text)
         return normalized
 
+    @field_validator("allowed_groups")
+    @classmethod
+    def normalize_allowed_groups(cls, value: list[str]) -> list[str]:
+        return sorted(
+            {str(item).strip().lower() for item in (value or []) if str(item).strip()}
+        )
+
+    @field_validator("group_role_map")
+    @classmethod
+    def normalize_group_role_map(cls, value: dict[str, str]) -> dict[str, str]:
+        return {
+            str(group).strip().lower(): str(role).strip().lower()
+            for group, role in (value or {}).items()
+            if str(group).strip() and str(role).strip()
+        }
+
     @model_validator(mode="after")
     def validate_required_enterprise_fields(self) -> "EnterpriseIdentityConfig":
         if not self.enabled:
@@ -93,16 +122,29 @@ class EnterpriseIdentityConfig(BaseModel):
             IdentityProviderType.CUSTOM,
         }:
             if not self.issuer:
-                raise ValueError("issuer is required when enterprise identity is enabled")
+                raise ValueError(
+                    "issuer is required when enterprise identity is enabled"
+                )
             if not self.client_id:
-                raise ValueError("client_id is required when enterprise identity is enabled")
-            if self.provider in {IdentityProviderType.OIDC, IdentityProviderType.CUSTOM}:
+                raise ValueError(
+                    "client_id is required when enterprise identity is enabled"
+                )
+            if self.provider in {
+                IdentityProviderType.OIDC,
+                IdentityProviderType.CUSTOM,
+            }:
                 if not self.authorization_endpoint:
-                    raise ValueError("authorization_endpoint is required for OIDC-based enterprise login")
+                    raise ValueError(
+                        "authorization_endpoint is required for OIDC-based enterprise login"
+                    )
                 if not self.token_endpoint:
-                    raise ValueError("token_endpoint is required for OIDC-based enterprise login")
+                    raise ValueError(
+                        "token_endpoint is required for OIDC-based enterprise login"
+                    )
                 if not self.jwks_uri:
-                    raise ValueError("jwks_uri is required for OIDC-based enterprise login")
+                    raise ValueError(
+                        "jwks_uri is required for OIDC-based enterprise login"
+                    )
 
         if self.provider is IdentityProviderType.SAML:
             if not self.entity_id:
@@ -110,15 +152,25 @@ class EnterpriseIdentityConfig(BaseModel):
             if not self.sso_url:
                 raise ValueError("sso_url is required for SAML enterprise login")
             if not self.x509_certificate:
-                raise ValueError("x509_certificate is required for SAML enterprise login")
+                raise ValueError(
+                    "x509_certificate is required for SAML enterprise login"
+                )
 
         if self.scim_mode is IdentityProvisioningMode.SCIM:
             if not self.scim_endpoint:
-                raise ValueError("scim_endpoint is required when SCIM provisioning is enabled")
+                raise ValueError(
+                    "scim_endpoint is required when SCIM provisioning is enabled"
+                )
             if not self.scim_token:
-                raise ValueError("scim_token is required when SCIM provisioning is enabled")
+                raise ValueError(
+                    "scim_token is required when SCIM provisioning is enabled"
+                )
 
-        if self.enabled and self.allow_local_passwords is False and not self.allowed_domains:
+        if (
+            self.enabled
+            and self.allow_local_passwords is False
+            and not self.allowed_domains
+        ):
             # This is a deliberate operating policy: when enterprise SSO replaces the local sign-in
             # flow, the domain allowlist becomes mandatory as a guardrail to prevent broad account
             # takeover or accidental open access. The runtime can still accept explicitly approved
@@ -180,7 +232,9 @@ class EnterpriseIdentityConfig(BaseModel):
             IdentityProviderType.KEYCLOAK,
             IdentityProviderType.CUSTOM,
         }:
-            raise ValueError("OIDC discovery is only valid for OIDC-compatible providers")
+            raise ValueError(
+                "OIDC discovery is only valid for OIDC-compatible providers"
+            )
 
         issuer = str(self.issuer or "").strip()
         if not issuer:
@@ -212,18 +266,29 @@ class EnterpriseIdentityConfig(BaseModel):
             if not expected_value:
                 continue
             actual_value = payload.get(field_name)
-            if not actual_value or str(actual_value).strip() != str(expected_value).strip():
+            if (
+                not actual_value
+                or str(actual_value).strip() != str(expected_value).strip()
+            ):
                 raise ValueError(
                     f"OIDC discovery metadata mismatch for {field_name}: "
                     f"expected {expected_value!r}, got {actual_value!r}"
                 )
 
-        if self.issuer and payload.get("issuer") and str(payload["issuer"]).strip() != issuer:
+        if (
+            self.issuer
+            and payload.get("issuer")
+            and str(payload["issuer"]).strip() != issuer
+        ):
             raise ValueError(
                 f"OIDC discovery issuer mismatch: expected {issuer!r}, got {payload.get('issuer')!r}"
             )
 
-        return {str(key): str(value) for key, value in payload.items() if isinstance(value, str)}
+        return {
+            str(key): str(value)
+            for key, value in payload.items()
+            if isinstance(value, str)
+        }
 
     def exchange_authorization_code(
         self,
@@ -242,14 +307,20 @@ class EnterpriseIdentityConfig(BaseModel):
             IdentityProviderType.KEYCLOAK,
             IdentityProviderType.CUSTOM,
         }:
-            raise ValueError("authorization-code exchange is only valid for OIDC-compatible providers")
+            raise ValueError(
+                "authorization-code exchange is only valid for OIDC-compatible providers"
+            )
 
         token_endpoint = str(self.token_endpoint or "").strip()
         if not token_endpoint:
-            raise ValueError("token_endpoint is required for OIDC authorization-code exchange")
+            raise ValueError(
+                "token_endpoint is required for OIDC authorization-code exchange"
+            )
 
         if not code or not redirect_uri or not state:
-            raise ValueError("code, redirect_uri, and state are required for OIDC authorization-code exchange")
+            raise ValueError(
+                "code, redirect_uri, and state are required for OIDC authorization-code exchange"
+            )
 
         payload = {
             "grant_type": "authorization_code",
@@ -278,7 +349,9 @@ class EnterpriseIdentityConfig(BaseModel):
 
         access_token = body.get("access_token")
         if not access_token:
-            raise ValueError("OIDC token exchange response did not include an access_token")
+            raise ValueError(
+                "OIDC token exchange response did not include an access_token"
+            )
 
         return {
             str(key): value
@@ -286,7 +359,9 @@ class EnterpriseIdentityConfig(BaseModel):
             if isinstance(value, (str, int))
         }
 
-    def build_session_claims_from_id_token(self, claims: Mapping[str, object]) -> dict[str, object]:
+    def build_session_claims_from_id_token(
+        self, claims: Mapping[str, object]
+    ) -> dict[str, object]:
         """Translate a provider-issued OIDC claim set into app-session identity claims."""
 
         if self.provider not in {
@@ -296,23 +371,40 @@ class EnterpriseIdentityConfig(BaseModel):
             IdentityProviderType.KEYCLOAK,
             IdentityProviderType.CUSTOM,
         }:
-            raise ValueError("session mapping is only defined for OIDC-compatible identity providers")
+            raise ValueError(
+                "session mapping is only defined for OIDC-compatible identity providers"
+            )
 
         issuer = str(claims.get("iss") or "").strip()
         if issuer and self.issuer and issuer != self.issuer:
-            raise ValueError("ID token issuer does not match the configured enterprise issuer")
+            raise ValueError(
+                "ID token issuer does not match the configured enterprise issuer"
+            )
 
         audience = claims.get("aud")
         if audience is not None and isinstance(audience, (list, tuple)):
-            audience_values = {str(item).strip() for item in audience if str(item).strip()}
+            audience_values = {
+                str(item).strip() for item in audience if str(item).strip()
+            }
             if self.client_id and self.client_id not in audience_values:
-                raise ValueError("ID token audience does not include the configured client_id")
-        elif audience is not None and str(audience).strip() and self.client_id and str(audience).strip() != self.client_id:
-            raise ValueError("ID token audience does not match the configured client_id")
+                raise ValueError(
+                    "ID token audience does not include the configured client_id"
+                )
+        elif (
+            audience is not None
+            and str(audience).strip()
+            and self.client_id
+            and str(audience).strip() != self.client_id
+        ):
+            raise ValueError(
+                "ID token audience does not match the configured client_id"
+            )
 
         email = str(claims.get("email") or "").strip()
         if not email:
-            raise ValueError("ID token must include an email claim for enterprise app session binding")
+            raise ValueError(
+                "ID token must include an email claim for enterprise app session binding"
+            )
 
         if self.enabled and not self.allow_local_passwords:
             self.validate_login_identifier(email)
@@ -351,12 +443,16 @@ class EnterpriseIdentityConfig(BaseModel):
 
     @staticmethod
     def _b64url_encode(value: str) -> str:
-        return base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
+        return (
+            base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
+        )
 
     @staticmethod
     def _b64url_decode(value: str) -> str:
         padding = "=" * ((4 - len(value) % 4) % 4)
-        return base64.urlsafe_b64decode((value + padding).encode("ascii")).decode("utf-8")
+        return base64.urlsafe_b64decode((value + padding).encode("ascii")).decode(
+            "utf-8"
+        )
 
     def issue_app_session_token(
         self,
@@ -395,9 +491,13 @@ class EnterpriseIdentityConfig(BaseModel):
             "role": session_claims.get("role", "member"),
             "roles": session_claims.get("roles", []),
         }
-        payload_json = __import__("json").dumps(payload, separators=(",", ":"), sort_keys=True)
+        payload_json = __import__("json").dumps(
+            payload, separators=(",", ":"), sort_keys=True
+        )
         payload_part = self._b64url_encode(payload_json)
-        signature = hmac.new(secret.encode("utf-8"), payload_part.encode("utf-8"), hashlib.sha256).hexdigest()
+        signature = hmac.new(
+            secret.encode("utf-8"), payload_part.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
         return f"{payload_part}.{signature}"
 
     def verify_app_session_token(
@@ -419,7 +519,9 @@ class EnterpriseIdentityConfig(BaseModel):
             raise ValueError("invalid app session token format")
 
         payload_part, supplied_signature = token[:separator], token[separator + 1 :]
-        expected_signature = hmac.new(secret.encode("utf-8"), payload_part.encode("utf-8"), hashlib.sha256).hexdigest()
+        expected_signature = hmac.new(
+            secret.encode("utf-8"), payload_part.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
         if not hmac.compare_digest(expected_signature, supplied_signature):
             raise ValueError("invalid app session token signature")
 
@@ -433,7 +535,11 @@ class EnterpriseIdentityConfig(BaseModel):
             raise ValueError("invalid app session token payload")
 
         expires_at = int(payload.get("exp", 0))
-        effective_now = int(now_epoch_seconds if now_epoch_seconds is not None else __import__("time").time())
+        effective_now = int(
+            now_epoch_seconds
+            if now_epoch_seconds is not None
+            else __import__("time").time()
+        )
         if expires_at <= effective_now:
             raise ValueError("app session token has expired")
 
@@ -449,15 +555,21 @@ class EnterpriseIdentityConfig(BaseModel):
             "require_mfa": self.require_mfa,
             "allow_local_passwords": self.allow_local_passwords,
             "allowed_domains": list(self.allowed_domains),
+            "allowed_groups": list(self.allowed_groups),
+            "group_role_map": dict(self.group_role_map),
         }
 
 
-def load_enterprise_identity_config(env: Mapping[str, str] | None = None) -> EnterpriseIdentityConfig:
+def load_enterprise_identity_config(
+    env: Mapping[str, str] | None = None,
+) -> EnterpriseIdentityConfig:
     """Build a typed enterprise identity config from environment variables."""
 
     values = dict(env or {})
     provider = str(values.get("OKR_IDENTITY_PROVIDER", "oidc")).strip().lower()
-    enabled = str(values.get("OKR_ENTERPRISE_IDENTITY_ENABLED", "false")).strip().lower() in {"1", "true", "yes", "on"}
+    enabled = str(
+        values.get("OKR_ENTERPRISE_IDENTITY_ENABLED", "false")
+    ).strip().lower() in {"1", "true", "yes", "on"}
     mode = str(values.get("OKR_PROVISIONING_MODE", "none")).strip().lower()
     if not provider:
         provider = IdentityProviderType.OIDC.value
@@ -477,14 +589,29 @@ def load_enterprise_identity_config(env: Mapping[str, str] | None = None) -> Ent
         scim_mode=mode,
         scim_endpoint=values.get("OKR_SCIM_ENDPOINT"),
         scim_token=values.get("OKR_SCIM_TOKEN"),
-        allowed_domains=[domain for domain in str(values.get("OKR_ALLOWED_EMAIL_DOMAINS", "")).split(",") if domain.strip()],
-        require_mfa=str(values.get("OKR_REQUIRE_MFA", "true")).strip().lower() in {"1", "true", "yes", "on"},
-        allow_local_passwords=str(values.get("OKR_ALLOW_LOCAL_PASSWORDS", "false")).strip().lower() in {"1", "true", "yes", "on"},
+        allowed_domains=[
+            domain
+            for domain in str(values.get("OKR_ALLOWED_EMAIL_DOMAINS", "")).split(",")
+            if domain.strip()
+        ],
+        allowed_groups=[
+            group
+            for group in str(values.get("OKR_ALLOWED_IDENTITY_GROUPS", "")).split(",")
+            if group.strip()
+        ],
+        require_mfa=str(values.get("OKR_REQUIRE_MFA", "true")).strip().lower()
+        in {"1", "true", "yes", "on"},
+        allow_local_passwords=str(values.get("OKR_ALLOW_LOCAL_PASSWORDS", "false"))
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"},
     )
     return config
 
 
-def enforce_enterprise_login_policy(identifier: str, *, env: Mapping[str, str] | None = None) -> None:
+def enforce_enterprise_login_policy(
+    identifier: str, *, env: Mapping[str, str] | None = None
+) -> None:
     """Reject disallowed login identifiers when enterprise-only sign-in is configured."""
 
     config = load_enterprise_identity_config(env)
