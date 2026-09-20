@@ -21,8 +21,6 @@ vi.mock("@/lib/api", () => ({
   readAdminAiHealth: vi.fn(),
   readAdminPdfHealth: vi.fn(),
   readAuditSummary: vi.fn(),
-  readBackendQuery: vi.fn(),
-  readCyclesQuery: vi.fn(),
 }));
 
 vi.mock("@/lib/cycles", () => ({

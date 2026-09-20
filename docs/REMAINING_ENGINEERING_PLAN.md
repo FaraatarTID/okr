@@ -20,7 +20,7 @@ they are not mistaken for available work.
 
 ## Corrections to prior assessments
 
-Two claims made during the repository review of this date are corrected here and
+Three claims made during the repository review of this date are corrected here and
 the plan reflects the corrected versions.
 
 1. `docs/architecture/ARCHITECTURE_BACKLOG.md` is not wholesale superseded. Its
@@ -33,6 +33,16 @@ the plan reflects the corrected versions.
    tenant isolation. The check is legitimate and must be kept; only its name and
    documentation are misleading, because ADR-001 rejects shared-database RLS as
    a tenant-isolation model.
+3. C8's problem statement said "all nine non-login routes are near-identical
+   nine-line wrappers that each render `AtlasShell`". The count was wrong and so
+   was the shape. Eight routes rendered the shell, not nine: `app/ritual/page.tsx`
+   is a five-line server component that calls `redirect("/check-in")` and renders
+   no shell at all. Nor were they near-identical wrappers — they happened to
+   converge on the same nine lines only because every one of them duplicated the
+   same `<AtlasShell />` call, while `dashboard/page.tsx` was a bare five-line file
+   and the `--dashboard` modifier sat on `app/page.tsx` rather than on the route
+   that names it. The conclusion C8 draws is unaffected, and the corrected count
+   is what the ledger and the worklog record.
 
 ## Effort scale
 
@@ -80,7 +90,7 @@ The performance items originate in the P0-00 package of
 | C5 | In-app password change is unreachable. | `PasswordChangePanel.tsx` is mounted only from `spa-web/src/app/login/page.tsx:95`, and its `compact` prop is never passed as true. | Add an in-app entry point, with the admin/settings surface as the natural home, and cover it. | A signed-in user can change their password without signing out. Tests cover success and failure paths. | S-M |
 | C6 | Frontend E2E coverage is thin. | `tests/test_e2e_playwright_spa_login_to_atlas.py:843-892` covers login, timer start and stop, check-in submit, weekly PDF job, admin cycle creation, and sign-out across three roles. It does not cover retrobox, timeline, dashboard, daily, alignment, admin users/teams/backup/audit, deep links, or RTL. | Extend E2E coverage to the listed routes. | Each listed route has at least one role-parameterised happy-path E2E. | M |
 | C7 | The `spa-bff` local test setup collects duplicates. | `spa-bff/tsconfig.json` includes `test/**/*.ts`, so compiled tests land in `dist/test/*.test.js`, and `spa-bff` has no `vitest.config.ts`. Locally vitest collects `dist/` duplicates as well as `test/*.test.ts`. CI escapes only because `dist/` is gitignored. | Add `spa-bff/vitest.config.ts` excluding `dist/**`. | A local `npm test --workspace spa-bff` collects each of the 9 test files once, with no `dist/` duplicates. | S |
-| C8 | Every navigation remounts the shell. All nine non-login routes are near-identical nine-line wrappers that each render `AtlasShell`, so client-side navigation repeats the entire bootstrap waterfall instead of reusing the mounted shell. | `spa-web/src/app/page.tsx:1-9` and the equivalents under `admin/`, `check-in/`, `daily/`, `dashboard/`, `retrobox/`, `ritual/`, `timeline/`, and `weekly/` all render the same component. This is the mechanism behind the "across navigation" defect in `docs/architecture/ARCHITECTURE_BACKLOG.md:158`. | Adopt a shared Next.js route group layout that renders `AtlasShell` once and keeps it mounted across mode navigation, with the mode derived from the pathname. Consolidate the duplicated route files. | Navigating between modes does not remount the shell: the session bootstrap, cycle bootstrap, and snapshot effect each run once, and the snapshot poll is not restarted on navigation. | M |
+| C8 | Every navigation remounts the shell. Eight non-login routes each rendered `AtlasShell` as a near-identical wrapper, so client-side navigation repeated the entire bootstrap waterfall instead of reusing the mounted shell. | `spa-web/src/app/page.tsx:1-9` and the equivalents under `admin/`, `check-in/`, `daily/`, `dashboard/`, `retrobox/`, `timeline/`, and `weekly/` all rendered the same component. This is the mechanism behind the "across navigation" defect in `docs/architecture/ARCHITECTURE_BACKLOG.md:158`. | Adopt a shared Next.js route group layout that renders `AtlasShell` once and keeps it mounted across mode navigation, with the mode derived from the pathname. Consolidate the duplicated route files. | Navigating between modes does not remount the shell: the session bootstrap, cycle bootstrap, and snapshot effect each run once, and the snapshot poll is not restarted on navigation. | M |
 | C9 | Forced password change is bypassable. | `readSessionUser()` returns `must_change_password` (`spa-web/src/lib/api/auth.ts:10`), but only `login/page.tsx:80-83` acts on it. `useAuthBootstrap.ts:15-19` calls `setUser` unconditionally and `AtlasShell` never inspects the flag, so navigating directly to `/` or reloading after login reaches the shell without the prompt. | Enforce the flag at the shell boundary, in the same place role gating is enforced, so it cannot be bypassed by navigation. | A user with `must_change_password: true` is forced to the change flow on any route; a cached or seeded session cannot bypass it. | S |
 
 ## Workstream D - Enterprise identity (Phase 2)
@@ -180,6 +190,12 @@ Implementation notes for this phase:
 - Recommended cache TTLs are 30 seconds for the session and 60 seconds for cycles
   and admin resources, with namespace invalidation (`session`, `cycles:<user>`,
   `admin:<user>`). The session TTL must stay below the 45-second snapshot poll.
+  **Superseded in part, see the progress table below:** the session is not cached
+  at all, and invalidation is coarse rather than per-namespace. Targeted mutations
+  read with `bypassCache: true` and write the fresh result back, which re-seeds the
+  entry instead of only emptying it, and the only whole-cache callers are sign-out
+  and a database restore. The 60-second TTL for cycles and admin resources was
+  adopted as recommended.
 - Prefer a hand-rolled cache module over React Query or SWR. There are only three
   resources, each already has an explicit refresh path, and a new runtime
   dependency must clear `scripts/check_dependency_manifest.py` and the
@@ -198,9 +214,10 @@ Progress:
 
 | Item | Status | What landed |
 | --- | --- | --- |
-| C1 | Implemented (cycles and admin); session deliberately excluded | A short-TTL read-through cache in `spa-web/src/lib/resourceCache.ts` with in-flight de-duplication, explicit namespace invalidation, and no caching of failures. `cycles.all` + `cycles.active` now come from one shared entry, so the deep-link bootstrap, the top-bar cycle source, and the admin panel issue one pair between them instead of one each. The admin `users.all` + `teams.all` pair is cached the same way, and sign-out clears the whole cache. Mutation paths pass `bypassCache` and re-seed the entry. |
+| C1 | Implemented (cycles and admin); session deliberately excluded | A short-TTL read-through cache in `spa-web/src/lib/resourceCache.ts` with in-flight de-duplication and no caching of failures. `cycles.all` + `cycles.active` now come from one shared entry, so the deep-link bootstrap, the top-bar cycle source, and the admin panel issue one pair between them instead of one each. The admin `users.all` + `teams.all` pair is cached the same way, and sign-out clears the whole cache. Mutation paths pass `bypassCache` and re-seed the entry. Two corrections against what this phase recommended below: invalidation is coarse rather than per-namespace, and the session is not cached. |
+| C1 restore fix | Fixed | A whole-database restore replaced the database but reloaded through the cache, so the admin panel showed pre-restore data for a full TTL. `handleAdminBackupRestore` now clears the whole cache before reloading, and refreshes the top-bar cycle list, which is a separate owner of cycle state and was not covered by the admin reload. A test asserts the clear happens *before* the reload. |
 | C1 note | Session not cached, by decision | `readSessionUser()` carries `role`, and the gate in `useShellAccessControl.ts` decides what chrome renders. Caching it would widen the window in which a server-side demotion still shows admin controls from one round trip to the whole TTL, which this plan flags as the highest-blast-radius risk in the workstream. Because C8 removed the per-navigation remount, the session is now read once per shell lifetime, so there is nothing left to gain. |
-| C8 | Implemented and merged with CI green; drill open | Lands ahead of the order stated above: C8 removes the remount, so the per-navigation cost C1 targeted is already gone and C1's remaining gain is the duplicate pair on a single mount. `VERIFIED` still requires the warmed-stack navigation drill recorded in the status ledger. |
+| C8 | Implemented, open in PR #177 with CI green; drill open | Lands ahead of the order stated above: C8 removes the remount, so the per-navigation cost C1 targeted is already gone and C1's remaining gain is the duplicate pair on a single mount. `VERIFIED` still requires the warmed-stack navigation drill recorded in the status ledger. |
 | C2, C3, C4, C5, C6 | Not started | Phase 2 remainder. C4 (lint and `spa-bff` typecheck) is the next prerequisite, because it must exist before C2 and any further rewrite of large files. |
 
 ### Phase 3 - Enterprise identity

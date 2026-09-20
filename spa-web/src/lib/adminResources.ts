@@ -10,9 +10,13 @@ export type AdminResourcePair = {
  * Read and cache the admin `users.all` + `teams.all` pair.
  *
  * Both requests are issued in parallel, and a failure of either fails the whole
- * read, which matches the existing behaviour of the admin panel load. Call
- * `invalidateAdminResources(username)` from any mutation that changes users or
- * teams.
+ * read, which matches the existing behaviour of the admin panel load.
+ *
+ * Any mutation that changes users or teams must re-read with
+ * `bypassCache: true`, which both skips the stale entry and writes the fresh
+ * result back. There is no per-namespace invalidate call to forget: the only
+ * other invalidation is `clearResourceCache` for whole-cache events such as
+ * sign-out and a database restore.
  */
 export function readAdminResourcePair(
   username: string,

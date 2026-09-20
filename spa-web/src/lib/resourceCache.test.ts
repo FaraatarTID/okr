@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cacheKeys,
   clearResourceCache,
-  invalidateCache,
   isCacheFresh,
   readThroughCache,
   writeThroughCache,
@@ -159,32 +158,6 @@ describe("resourceCache", () => {
     });
   });
 
-  describe("invalidateCache", () => {
-    it("drops the namespace and its children but leaves other namespaces", async () => {
-      await readThroughCache(cacheKeys.cycles("alice"), async () => "alice-cycles");
-      await readThroughCache(cacheKeys.admin("alice"), async () => "alice-admin");
-      await readThroughCache(cacheKeys.cycles("bob"), async () => "bob-cycles");
-
-      invalidateCache(cacheKeys.cycles("alice"));
-
-      expect(isCacheFresh(cacheKeys.cycles("alice"))).toBe(false);
-      expect(isCacheFresh(cacheKeys.cycles("bob"))).toBe(true);
-      expect(isCacheFresh(cacheKeys.admin("alice"))).toBe(true);
-    });
-
-    it("drops every user in a namespace when given the namespace prefix", async () => {
-      await readThroughCache(cacheKeys.cycles("alice"), async () => "a");
-      await readThroughCache(cacheKeys.cycles("bob"), async () => "b");
-      await readThroughCache(cacheKeys.admin("alice"), async () => "c");
-
-      invalidateCache("cycles");
-
-      expect(isCacheFresh(cacheKeys.cycles("alice"))).toBe(false);
-      expect(isCacheFresh(cacheKeys.cycles("bob"))).toBe(false);
-      expect(isCacheFresh(cacheKeys.admin("alice"))).toBe(true);
-    });
-  });
-
   describe("clearResourceCache", () => {
     it("drops every entry so the next identity cannot read the previous one", async () => {
       await readThroughCache(cacheKeys.cycles("alice"), async () => "alice-cycles");
@@ -194,6 +167,18 @@ describe("resourceCache", () => {
 
       expect(isCacheFresh(cacheKeys.cycles("alice"))).toBe(false);
       expect(isCacheFresh(cacheKeys.admin("alice"))).toBe(false);
+    });
+
+    it("is what a whole-database restore relies on, so it must clear every user", async () => {
+      await readThroughCache(cacheKeys.cycles("alice"), async () => "a");
+      await readThroughCache(cacheKeys.cycles("bob"), async () => "b");
+      await readThroughCache(cacheKeys.admin("bob"), async () => "c");
+
+      clearResourceCache();
+
+      expect(isCacheFresh(cacheKeys.cycles("alice"))).toBe(false);
+      expect(isCacheFresh(cacheKeys.cycles("bob"))).toBe(false);
+      expect(isCacheFresh(cacheKeys.admin("bob"))).toBe(false);
     });
   });
 

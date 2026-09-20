@@ -15,8 +15,9 @@ export type CyclePair = {
  * failing the read. A failure of `cycles.all` is a real failure and propagates.
  *
  * Both hooks that need the pair go through here, so the duplicate request is
- * collapsed to one per TTL window. Call `invalidateCycles(username)` from any
- * mutation that changes the cycle list.
+ * collapsed to one per TTL window. Any mutation that changes the cycle list must
+ * re-read with `bypassCache: true`, which skips the stale entry and writes the
+ * fresh result back; `clearResourceCache` is reserved for whole-cache events.
  */
 export function readCyclesPair(
   username: string,

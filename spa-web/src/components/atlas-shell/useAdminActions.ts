@@ -26,6 +26,7 @@ import type {
   AdminTeamDraft,
   AdminUserDraft,
 } from "@/components/atlas-shell/AdminModePanel";
+import { clearResourceCache } from "@/lib/resourceCache";
 
 type UseAdminActionsInput = {
   user: AuthUser | null;
@@ -171,13 +172,29 @@ export default function useAdminActions({
       });
       setAdminBackupRestoreResult(result);
       setAdminCycleMessage("Backup restored.");
+      // A restore replaces the whole database, so every cached read is suspect,
+      // not only the admin pair. Clearing is exact here in a way that bypassing
+      // one dataset would not be, and it is what makes the reloads below observe
+      // restored data instead of pre-restore data still held by the cache.
+      clearResourceCache();
       await loadAdminResources(user);
+      // The top-bar cycle list is a separate owner and is not covered by
+      // loadAdminResources, so a restore that replaced the cycles would leave it
+      // showing pre-restore cycles until the next navigation.
+      await refreshSessionCycles(user);
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     } finally {
       setAdminBackupPending(false);
     }
-  }, [adminBackupConfirm, adminBackupFile, isAdmin, loadAdminResources, user]);
+  }, [
+    adminBackupConfirm,
+    adminBackupFile,
+    isAdmin,
+    loadAdminResources,
+    refreshSessionCycles,
+    user,
+  ]);
 
   const handleAdminCreateUser = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {

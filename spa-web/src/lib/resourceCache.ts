@@ -129,18 +129,17 @@ export function writeThroughCache<T>(
   );
 }
 
-/** Drop every cache entry whose key is `prefix` or starts with `prefix:`. */
-export function invalidateCache(prefix: string): void {
-  for (const key of [...entries.keys()]) {
-    if (key === prefix || key.startsWith(`${prefix}:`)) {
-      entries.delete(key);
-    }
-  }
-}
-
 /**
- * Drop every entry. Sign-out and identity changes must call this so one user's
- * cycles and teams can never be served to the next user on a shared browser.
+ * Drop every entry.
+ *
+ * This is the only invalidation this module needs, and it is deliberately the
+ * coarse one. Targeted mutations do not call it: they read with
+ * `bypassCache: true` and write the fresh result back, so the cache is re-seeded
+ * rather than merely emptied, and the concurrent readers that would otherwise
+ * stampede are served the new value. The callers here are the cases where the
+ * whole cache is genuinely suspect — sign-out, so one user's cycles and teams can
+ * never be served to the next user on a shared browser, and a database restore,
+ * which replaces every dataset at once.
  */
 export function clearResourceCache(): void {
   entries.clear();
