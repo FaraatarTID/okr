@@ -13,6 +13,7 @@ from typing import Any, Iterable
 
 from src.saas.environment_contract import EnvironmentManifest
 from src.saas.file_lock import locked_file
+from src.saas.operational_evidence import EnvironmentReliabilityStatus
 
 
 class EnvironmentNotFound(KeyError):
@@ -34,6 +35,12 @@ class EnvironmentSummary:
     release_digest: str | None = None
     backup_id: str | None = None
     backup_verified: bool | None = None
+    health_evidence_status: str = "NOT_VERIFIED"
+    release_evidence_status: str = "NOT_VERIFIED"
+    backup_restore_evidence_status: str = "BLOCKED"
+    application_rollback_evidence_status: str = "BLOCKED"
+    operational_evidence_owner: str | None = None
+    operational_evidence_reason: str | None = None
 
     def __post_init__(self) -> None:
         resource_id = self.database_resource_id or self.database_target
@@ -43,7 +50,14 @@ class EnvironmentSummary:
         object.__setattr__(self, "database_target", resource_id)
 
     @classmethod
-    def from_manifest(cls, manifest: EnvironmentManifest, *, provisioning: Any | None = None, release: Any | None = None, backup: Any | None = None) -> "EnvironmentSummary":
+    def from_manifest(
+        cls,
+        manifest: EnvironmentManifest,
+        *,
+        provisioning: Any | None = None,
+        release: Any | None = None,
+        backup: Any | None = None,
+    ) -> "EnvironmentSummary":
         state = getattr(manifest.lifecycle_state, "value", manifest.lifecycle_state)
         release_digest = getattr(release, "artifact_digest", None) if release else None
         if release_digest is None and isinstance(release, dict):
@@ -54,12 +68,17 @@ class EnvironmentSummary:
         return cls(
             environment_id=manifest.environment_id,
             customer_id=manifest.customer_id,
-            deployment_profile=str(getattr(manifest.deployment_profile, "value", manifest.deployment_profile)),
+            deployment_profile=str(
+                getattr(
+                    manifest.deployment_profile, "value", manifest.deployment_profile
+                )
+            ),
             application_version=manifest.application_version,
             state=str(state),
             health_state="registered" if provisioning else None,
             backup_state="recorded" if backup else None,
-            database_resource_id=getattr(provisioning, "database_resource_id", None) or manifest.database_resource_id,
+            database_resource_id=getattr(provisioning, "database_resource_id", None)
+            or manifest.database_resource_id,
             health_endpoint=manifest.health_endpoint,
             release_digest=release_digest,
             backup_id=backup_id,
@@ -98,9 +117,20 @@ class ControlPlane:
     ``state_path`` or ``OKR_CONTROL_PLANE_STATE_PATH``.
     """
 
-    def __init__(self, environments: Iterable[EnvironmentSummary] | None = None, *, state_path: str | Path | None = None) -> None:
-        configured_path = state_path if state_path is not None else os.getenv("OKR_CONTROL_PLANE_STATE_PATH", "")
-        self._state_path = Path(configured_path) if str(configured_path).strip() else None
+    def __init__(
+        self,
+        environments: Iterable[EnvironmentSummary] | None = None,
+        *,
+        state_path: str | Path | None = None,
+    ) -> None:
+        configured_path = (
+            state_path
+            if state_path is not None
+            else os.getenv("OKR_CONTROL_PLANE_STATE_PATH", "")
+        )
+        self._state_path = (
+            Path(configured_path) if str(configured_path).strip() else None
+        )
         self._lock = RLock()
         self._environments: dict[str, EnvironmentSummary] = {}
         self._audit_events: list[_ControlPlaneAuditEvent] = []
@@ -113,15 +143,26 @@ class ControlPlane:
         else:
             self._load()
 
-    def register_environment(self, manifest: EnvironmentManifest, *, provisioning: Any | None = None, release: Any | None = None, backup: Any | None = None) -> EnvironmentSummary:
-        summary = EnvironmentSummary.from_manifest(manifest, provisioning=provisioning, release=release, backup=backup)
+    def register_environment(
+        self,
+        manifest: EnvironmentManifest,
+        *,
+        provisioning: Any | None = None,
+        release: Any | None = None,
+        backup: Any | None = None,
+    ) -> EnvironmentSummary:
+        summary = EnvironmentSummary.from_manifest(
+            manifest, provisioning=provisioning, release=release, backup=backup
+        )
         with self._guard():
             self._load()
             self._environments[summary.environment_id] = summary
             self._save()
             return summary
 
-    def update_environment_metadata(self, environment_id: str, **updates: Any) -> EnvironmentSummary:
+    def update_environment_metadata(
+        self, environment_id: str, **updates: Any
+    ) -> EnvironmentSummary:
         """Merge provider operation metadata into the durable environment record."""
         with self._lock:
             with self._guard():
@@ -136,6 +177,14 @@ class ControlPlane:
                 self._environments[environment_id] = updated
                 self._save()
                 return updated
+
+    def update_operational_evidence(
+        self, environment_id: str, status: EnvironmentReliabilityStatus
+    ) -> EnvironmentSummary:
+        """Expose evidence state as control-plane metadata without customer records."""
+        return self.update_environment_metadata(
+            environment_id, **status.control_plane_metadata()
+        )
 
     def list_environments(self) -> list[EnvironmentSummary]:
         with self._guard():
@@ -169,7 +218,11 @@ class ControlPlane:
         with self._guard():
             self._load()
             self._get_environment(environment_id)
-            return [item for item in self._audit_events if item.environment_id == environment_id]
+            return [
+                item
+                for item in self._audit_events
+                if item.environment_id == environment_id
+            ]
 
     @contextmanager
     def _guard(self):
@@ -187,7 +240,9 @@ class ControlPlane:
         data = json.loads(self._state_path.read_text(encoding="utf-8"))
         fields = set(EnvironmentSummary.__dataclass_fields__)
         loaded = {
-            key: EnvironmentSummary(**{name: value for name, value in raw.items() if name in fields})
+            key: EnvironmentSummary(
+                **{name: value for name, value in raw.items() if name in fields}
+            )
             for key, raw in data.get("environments", {}).items()
         }
         self._environments = {**self._environments, **loaded}
@@ -210,9 +265,13 @@ class ControlPlane:
                 }
                 for key, summary in self._environments.items()
             },
-            "audit_events": [_audit_event_values(value) for value in self._audit_events],
+            "audit_events": [
+                _audit_event_values(value) for value in self._audit_events
+            ],
         }
-        temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        temporary.write_text(
+            json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+        )
         temporary.replace(self._state_path)
 
 

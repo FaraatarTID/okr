@@ -4,7 +4,7 @@ const SESSION_COOKIE_NAME = "okr_spa_session";
 const CSRF_COOKIE_NAME = "okr_csrf_token";
 const SESSION_VERSION = "v1";
 
-const ACTIVE_SESSION_REGISTRY = new Map<string, { revoked: boolean; expiresAt: number }>();
+const ACTIVE_SESSION_REGISTRY = new Map<string, { revoked: boolean; expiresAt: number; externalSubject?: string }>();
 
 export interface SessionUser {
   id: number;
@@ -16,6 +16,7 @@ export interface SessionUser {
   manager_id?: number | null;
   must_change_password?: boolean;
   token_version?: number;
+  external_subject?: string;
 }
 
 interface SessionPayload {
@@ -67,6 +68,7 @@ export function issueSessionToken(input: {
   ACTIVE_SESSION_REGISTRY.set(sessionId, {
     revoked: false,
     expiresAt: payload.exp,
+    externalSubject: String(input.user.external_subject ?? "").trim() || undefined,
   });
 
   const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload), "utf-8"));
@@ -111,6 +113,20 @@ export function revokeSessionFromCookieHeader(cookieHeader: string | undefined):
   const cookies = parseCookieHeader(cookieHeader);
   const token = String(cookies[SESSION_COOKIE_NAME] || "").trim();
   return token ? revokeSessionToken(token) : false;
+}
+
+/** Revoke every local application session bound to an external identity subject. */
+export function revokeSessionsForIdentity(externalSubject: string): number {
+  const subject = String(externalSubject || "").trim();
+  if (!subject) return 0;
+  let revoked = 0;
+  for (const record of ACTIVE_SESSION_REGISTRY.values()) {
+    if (record.externalSubject === subject && !record.revoked) {
+      record.revoked = true;
+      revoked += 1;
+    }
+  }
+  return revoked;
 }
 
 function isSessionRegistryActive(sessionId: string | null | undefined, nowEpochSeconds?: number): boolean {
@@ -161,6 +177,7 @@ function normalizeSessionUser(value: unknown): SessionUser | null {
     manager_id: user.manager_id == null ? null : Number(user.manager_id),
     must_change_password: Boolean(user.must_change_password),
     token_version: user.token_version == null ? undefined : Number(user.token_version),
+    external_subject: user.external_subject == null ? undefined : String(user.external_subject).trim() || undefined,
   };
 }
 

@@ -4,10 +4,10 @@ Documentation HQ: [README](../../README.md)
 
 ## Signoff status
 
-Status: APPROVED
+Status: BLOCKED - PROVIDER EVIDENCE PENDING
 Date: 2026-09-14
 Decision owner: engineering-owner
-Operations owner: platform-ops-owner
+Operations owner: UNASSIGNED
 Environment identity: env-a
 Customer identity: customer-a
 Release identity: release-rehearsal-a
@@ -39,20 +39,22 @@ The scope explicitly excludes:
 
 ## Approval statement
 
-The decision owner and operations owner have reviewed the evidence bundle and approve the controlled single-tenant persistence entry gate for the scoped environment and customer profile. This approval is conditional on preserving the documented operating model and continuing to require provider evidence before any further production expansion.
+The decision owner has reviewed the repository contract. No production
+approval is active: Hamravesh/Darkube provider evidence, a named operations
+owner, and a verified attestation are still required.
 
 ## Attestation metadata
 
-- Provider: aws-rds
-- Backup ID: aws-backup-2026-09-14-001
-- Restore ID: aws-restore-2026-09-14-001
+- Provider: UNSELECTED - Hamravesh/Darkube confirmation pending
+- Backup ID: UNSELECTED
+- Restore ID: UNSELECTED
 - Artifacts:
   - release-0: sha256:0000000000000000000000000000000000000000000000000000000000000000
   - release-1: sha256:1111111111111111111111111111111111111111111111111111111111111111
 - Measured rollback seconds: 45
 - Measured RPO seconds: 60
 - Measured RTO seconds: 120
-- Attestation signature: hmac-sha256:f51c175e6963983a3d41abff7655055f36d2260b735f0df0cc085f217c3f1a28
+- Attestation signature: UNSET
 
 ## No-go rule
 

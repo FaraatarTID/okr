@@ -13,9 +13,9 @@ def _read(relative_path: str) -> str:
 def test_architecture_status_declares_conditionally_reviewed_single_tenant_gate() -> None:
     content = _read("docs/architecture-status.md")
 
-    assert "signed and structurally complete evidence package" in content
-    assert "not independent proof" in content
-    assert "does not authorize customer-data onboarding" in content
+    assert "blocked pending provider evidence" in content
+    assert "hamravesh/darkube provider evidence" in content
+    assert "no approval is active" in content
     for marker in (
         "provider-supported backup",
         "isolated target",
@@ -40,6 +40,9 @@ def test_saas_roadmap_and_runbook_preserve_the_same_gate() -> None:
         assert "disposable pre-saas" in content
 
 
-def test_current_phase_evidence_approves_single_tenant_persistence_gate() -> None:
+def test_current_phase_evidence_fails_closed_until_provider_evidence_exists() -> None:
     errors = check(ROOT / "docs/saas/phase-1-entry-evidence.md", secret="phase1-ops-secret")
-    assert errors == []
+    assert errors
+    assert any("decision approval" in error for error in errors)
+    assert any("isolated restore evidence" in error for error in errors)
+    assert any("explicit real-data approval" in error for error in errors)
