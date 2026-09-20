@@ -1,21 +1,28 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
-// This package previously relied on vitest's built-in defaults. The 3.x line
-// excluded `**/dist/**` by default, but from the 4.x line the default list is
-// only `**/node_modules/**` and `**/.git/**`. Because this package moved from
-// 3.x to 5.x, the compiled tree `tsc` writes to `dist/` — which includes
-// `dist/test/` — is now collected alongside the sources, so every test runs
-// twice and the duplicated servers push the slowest test past its 5s budget.
-// CI is unaffected only because `SPA BFF tests` happens to run before
-// `SPA BFF build`; a local build-then-test run fails. Pinning the intended set
-// here removes that ordering dependency.
+// The 3.x line excluded build output, tool config files and editor/cache
+// directories from test discovery by default. The 4.x line reduced the default
+// exclude to only `**/node_modules/**` and `**/.git/**`
+// (see https://v4.vitest.dev/guide/migration, "Simplified exclude"), and this
+// package moved 3.x -> 5.x, so it silently inherited the smaller list.
+//
+// That mattered here because `tsconfig.json` used to compile `test/**/*.ts`
+// into `dist/test/`. Any tree with a build present therefore collected every
+// test twice — once from source and once from the stale compiled copy — and the
+// duplicated Fastify servers pushed the slowest test past its 5s budget. CI
+// escaped only because `SPA BFF tests` runs before `SPA BFF build`.
+//
+// `tsconfig.build.json` now keeps tests out of `dist/` entirely, so the
+// duplication cannot recur. This list restores the documented pre-4.x
+// behaviour as well, so correctness does not depend on build ordering either.
 export default defineConfig({
   test: {
     exclude: [
-      "**/node_modules/**",
+      ...configDefaults.exclude,
       "**/dist/**",
-      "**/.git/**",
-      "**/coverage/**",
+      "**/cypress/**",
+      "**/.{idea,git,cache,output,temp}/**",
+      "**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*",
     ],
   },
 });

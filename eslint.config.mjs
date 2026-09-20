@@ -1,8 +1,10 @@
 // Flat ESLint config for the two JavaScript workspaces.
 //
-// Scope: the typed rule block and the `lint` script both target the two `src`
-// trees, so `npm run lint` covers exactly what was measured. Generated API
-// clients are ignored because they are machine-written.
+// Scope: the typed rule block below and the root `lint` script list the same
+// paths, so `npm run lint` covers exactly what was measured. That scope is the
+// hand-written TypeScript of both packages, including `spa-bff/test` — a gate
+// that skipped the tests would be a partial gate. Generated API clients are
+// ignored because they are machine-written.
 //
 // The rule levels are measured rather than guessed; the evidence is in the C4
 // rows of docs/REMAINING_ENGINEERING_PLAN.md. `no-explicit-any` is an error
@@ -17,6 +19,7 @@ const SOURCE = [
   "spa-web/src/**/*.ts",
   "spa-web/src/**/*.tsx",
   "spa-bff/src/**/*.ts",
+  "spa-bff/test/**/*.ts",
 ];
 
 export default [

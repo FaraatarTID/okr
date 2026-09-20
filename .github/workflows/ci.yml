@@ -352,7 +352,7 @@ jobs:
           path: |
             spa-web/.next/cache
             spa-bff/.cache
-          key: ${{ runner.os }}-spa-build-${{ hashFiles('package-lock.json', 'spa-bff/**/*.ts', 'spa-bff/tsconfig.json', 'spa-web/**/*.ts', 'spa-web/**/*.tsx', 'spa-web/next.config.*') }}
+          key: ${{ runner.os }}-spa-build-${{ hashFiles('package-lock.json', 'spa-bff/**/*.ts', 'spa-bff/tsconfig.json', 'spa-bff/tsconfig.build.json', 'spa-web/**/*.ts', 'spa-web/**/*.tsx', 'spa-web/next.config.*') }}
           restore-keys: |
             ${{ runner.os }}-spa-build-
 

@@ -7,6 +7,7 @@ COPY spa-web/package*.json ./spa-web/
 RUN npm ci --include-workspace-root --include=dev
 
 COPY spa-bff/tsconfig.json ./spa-bff/tsconfig.json
+COPY spa-bff/tsconfig.build.json ./spa-bff/tsconfig.build.json
 COPY spa-bff/src ./spa-bff/src
 WORKDIR /app/spa-bff
 RUN npm run build
