@@ -166,6 +166,11 @@ divergences that would otherwise mislead Phase 2 and Phase 3. C9 is a small
 security-relevant gap that must not be tangled into the performance refactor, so
 it belongs here rather than in Phase 2.
 
+A6 was not in the original list and is recorded here because it was found while
+checking A5's blast radius and fixed in this phase rather than deferred: it is the one
+finding in this phase that can block a production incident response, since it made the
+production rollback workflow unreachable.
+
 Progress:
 
 | Item | Status | What landed |
