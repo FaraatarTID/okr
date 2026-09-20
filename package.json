@@ -8,11 +8,16 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces",
+    "lint": "eslint spa-web/src spa-bff/src",
     "test": "npm run test --workspaces",
     "typecheck": "npm run typecheck --workspace spa-web && npm run typecheck --workspace spa-bff"
   },
   "devDependencies": {
-    "happy-dom": "^20.11.0"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "happy-dom": "^20.11.0",
+    "typescript-eslint": "^8.70.0"
   },
   "overrides": {
     "okr-spa-bff": {
