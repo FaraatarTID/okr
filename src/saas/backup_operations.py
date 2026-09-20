@@ -111,6 +111,20 @@ class RestoreTarget:
     live: bool = False
 
 
+def validate_restore_target(target: RestoreTarget) -> None:
+    """Reject an unsafe restore target before any provider or state mutation.
+
+    Shared by target registration and restore execution so an unsafe target
+    cannot be persisted as a side effect of registering it.
+    """
+
+    if target.live or not target.environment_id.strip():
+        raise UnsafeRestoreTarget("restore target must be explicitly registered and isolated")
+    value = target.database_target.strip()
+    if not value or re.search(r"(^|[-_.:/])(live|prod|production)(?=$|[-_.:/])", value.lower()):
+        raise UnsafeRestoreTarget("live or production-like restore targets are prohibited")
+
+
 @dataclass(frozen=True, slots=True)
 class RestoreRecord:
     backup_id: str
@@ -205,8 +219,7 @@ class LocalBackupProvider:
             self.status[backup_id] = dict(status)
 
     def register_target(self, target: RestoreTarget) -> None:
-        if not target.environment_id.strip() or not target.database_target.strip() or target.live:
-            raise UnsafeRestoreTarget("only isolated targets can be registered")
+        validate_restore_target(target)
         with self._state_transaction():
             key = f"{target.environment_id}\0{target.database_target}"
             self.targets[key] = {"environment_id": target.environment_id, "database_target": target.database_target}
@@ -401,11 +414,7 @@ class RestoreManager:
 
     @staticmethod
     def _validate_target(target: RestoreTarget) -> None:
-        if target.live or not target.environment_id.strip():
-            raise UnsafeRestoreTarget("restore target must be explicitly registered and isolated")
-        value = target.database_target.strip()
-        if not value or re.search(r"(^|[-_.:/])(live|prod|production)(?=$|[-_.:/])", value.lower()):
-            raise UnsafeRestoreTarget("live or production-like restore targets are prohibited")
+        validate_restore_target(target)
 
 
 def select_backup_provider(*, test_only: bool, state_path: str | Path | None = None) -> LocalBackupProvider:

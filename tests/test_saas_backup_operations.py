@@ -4,12 +4,15 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 
 import pytest
 
 from src.saas.operator_credentials import OperatorCredential
+from src.saas.control_plane import ControlPlane
+from src.saas.environment_contract import DeploymentProfile, EnvironmentManifest
 from src.saas.backup_operations import (
     BackupVerificationError,
     BackupManager,
@@ -431,7 +434,7 @@ def test_restore_cli_does_not_register_arbitrary_target(tmp_path) -> None:
         "token_sha256": hashlib.sha256(b"token-a").hexdigest(),
     }]}), encoding="utf-8")
     command = [
-        sys.executable, "scripts/restore_saas_environment.py",
+        sys.executable, "scripts/restore_saas_environment.py", "restore",
         "--backup-id", record.backup_id, "--environment-id", "env-a",
         "--isolated-target", "unknown-db", "--state-file", str(state_path),
         "--credential-file", str(credential_file), "--test-only",
@@ -439,3 +442,104 @@ def test_restore_cli_does_not_register_arbitrary_target(tmp_path) -> None:
     result = subprocess.run(command, capture_output=True, text=True, check=False, env={**os.environ, "OKR_OPERATOR_TOKEN": "token-a"})
     assert result.returncode != 0
     assert "registered" in result.stderr
+
+
+def _operator_environment(tmp_path) -> tuple[dict[str, str], Path]:
+    credential_file = tmp_path / "operators.json"
+    credential_file.write_text(json.dumps({"operators": [{
+        "principal": "operator-a",
+        "token_sha256": hashlib.sha256(b"token-a").hexdigest(),
+    }]}), encoding="utf-8")
+    return {**os.environ, "OKR_OPERATOR_TOKEN": "token-a"}, credential_file
+
+
+def test_restore_cli_registers_target_and_completes_round_trip(tmp_path) -> None:
+    state_path = tmp_path / "backups.json"
+    control_plane_path = tmp_path / "control-plane.json"
+    provider = LocalBackupProvider(state_path)
+    record = BackupManager(provider, operator=OperatorCredential.for_test("operator-a")).create("env-a")
+    env, credential_file = _operator_environment(tmp_path)
+
+    # The restore CLI records provider metadata through the control plane, which
+    # requires the environment to be registered first.
+    ControlPlane(state_path=control_plane_path).register_environment(
+        EnvironmentManifest(
+            environment_id="env-a",
+            customer_id="customer-a",
+            deployment_profile=DeploymentProfile.SINGLE_TENANT_SAAS,
+            application_version="release-1",
+            database_resource_id="local-db:env-a",
+        )
+    )
+
+    register = subprocess.run(
+        [
+            sys.executable, "scripts/restore_saas_environment.py", "register-target",
+            "--environment-id", "env-a", "--isolated-target", "rehearsal-db-1",
+            "--state-file", str(state_path), "--credential-file", str(credential_file),
+            "--control-plane-state-file", str(control_plane_path), "--test-only",
+        ],
+        capture_output=True, text=True, check=False, env=env,
+    )
+    assert register.returncode == 0, register.stderr
+    assert json.loads(register.stdout)["registered"] is True
+
+    # The registration must survive a fresh process, otherwise the restore
+    # would still be unreachable through the CLI.
+    restore = subprocess.run(
+        [
+            sys.executable, "scripts/restore_saas_environment.py", "restore",
+            "--backup-id", record.backup_id, "--environment-id", "env-a",
+            "--isolated-target", "rehearsal-db-1", "--state-file", str(state_path),
+            "--credential-file", str(credential_file),
+            "--control-plane-state-file", str(control_plane_path), "--test-only",
+        ],
+        capture_output=True, text=True, check=False, env=env,
+    )
+    assert restore.returncode == 0, restore.stderr
+    payload = json.loads(restore.stdout)
+    assert payload["action"] == "restore"
+    assert payload["target"] == "rehearsal-db-1"
+    assert payload["verified"] is True
+    assert ControlPlane(state_path=control_plane_path).get_environment(
+        "env-a"
+    ).backup_state == "restore-tested"
+
+
+def test_restore_cli_register_target_rejects_live_and_production_names(tmp_path) -> None:
+    state_path = tmp_path / "backups.json"
+    env, credential_file = _operator_environment(tmp_path)
+
+    for unsafe_target in ("customer-prod-db", "live-db", "production"):
+        result = subprocess.run(
+            [
+                sys.executable, "scripts/restore_saas_environment.py", "register-target",
+                "--environment-id", "env-a", "--isolated-target", unsafe_target,
+                "--state-file", str(state_path), "--credential-file", str(credential_file),
+                "--test-only",
+            ],
+            capture_output=True, text=True, check=False, env=env,
+        )
+        assert result.returncode != 0, unsafe_target
+        assert "prohibited" in result.stderr
+
+    # A rejected registration must not be persisted as a side effect.
+    assert LocalBackupProvider(state_path).targets == {}
+
+
+def test_restore_cli_requires_an_authenticated_operator_to_register(tmp_path) -> None:
+    state_path = tmp_path / "backups.json"
+    _, credential_file = _operator_environment(tmp_path)
+
+    result = subprocess.run(
+        [
+            sys.executable, "scripts/restore_saas_environment.py", "register-target",
+            "--environment-id", "env-a", "--isolated-target", "rehearsal-db-1",
+            "--state-file", str(state_path), "--credential-file", str(credential_file),
+            "--test-only",
+        ],
+        capture_output=True, text=True, check=False, env={**os.environ, "OKR_OPERATOR_TOKEN": ""},
+    )
+    assert result.returncode != 0
+    assert "operator token is required" in result.stderr
+    assert LocalBackupProvider(state_path).targets == {}
