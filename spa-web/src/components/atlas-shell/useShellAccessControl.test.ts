@@ -103,8 +103,75 @@ describe("useShellAccessControl", () => {
     });
   });
 
-  it("navigates non-admin users away from admin mode", async () => {
-    const { handleSidebarModeSelect } = renderAccessHook({
+  it("sends a user owing a password change to the change flow instead of the app", async () => {
+    const { routerReplace, loadAdminResources } = renderAccessHook({
+      authHydrated: true,
+      user: { ...ACTIVE_USER, must_change_password: true },
+      isAdmin: true,
+      isManager: false,
+      mode: "atlas",
+      adminTab: "cycles",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab: vi.fn(),
+    });
+
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith(
+        expect.stringContaining("/login?change_password=1"),
+      );
+    });
+    // The forced change must not still load privileged shell data.
+    expect(loadAdminResources).not.toHaveBeenCalled();
+  });
+
+  it("preserves the current route so the change flow can return to it", async () => {
+    const { routerReplace } = renderAccessHook({
+      authHydrated: true,
+      user: { ...ACTIVE_USER, must_change_password: true },
+      isAdmin: true,
+      isManager: false,
+      mode: "atlas",
+      adminTab: "cycles",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab: vi.fn(),
+    });
+
+    await waitFor(() => {
+      const destination = routerReplace.mock.calls.at(-1)?.[0] as string;
+      expect(destination).toContain("change_password=1");
+      expect(destination).toContain("return_to=");
+    });
+  });
+
+  it("does not divert a user who has already changed their password", async () => {
+    const { routerReplace } = renderAccessHook({
+      authHydrated: true,
+      user: { ...ACTIVE_USER, must_change_password: false },
+      isAdmin: true,
+      isManager: false,
+      mode: "atlas",
+      adminTab: "cycles",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab: vi.fn(),
+    });
+
+    await waitFor(() => {
+      expect(routerReplace).toHaveBeenCalled();
+    });
+    expect(routerReplace).not.toHaveBeenCalledWith(
+      expect.stringContaining("change_password=1"),
+    );
+    // A clean session resumes the route it was on (jsdom serves "/").
+    expect(routerReplace.mock.calls.at(-1)?.[0]).not.toContain("change_password=1");
+  });
+
+  it("navigates non-admin users away from admin mode", async () => {    const { handleSidebarModeSelect } = renderAccessHook({
       authHydrated: true,
       user: { ...ACTIVE_USER, role: "member" },
       isAdmin: false,

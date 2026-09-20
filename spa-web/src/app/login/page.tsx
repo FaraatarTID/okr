@@ -6,7 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { bffLogin, readSessionUser } from "@/lib/api";
 import type { AuthUser } from "@/lib/api/auth";
 import PasswordChangePanel from "@/components/PasswordChangePanel";
-
 const SAFE_RETURN_PATHS = new Set([
   "/",
   "/dashboard",
@@ -43,12 +42,26 @@ function LoginPageContent() {
 
   const returnTo = safeReturnPath(searchParams.get("return_to"));
 
+  // The shell boundary redirects a user with a pending forced password change
+  // here. Treat the flag as advisory and let the session payload decide, so a
+  // hand-typed URL cannot strand an ordinary user on this page.
+  const forcedChangeRequested = searchParams.get("change_password") === "1";
+
   useEffect(() => {
+    if (forcedChangeRequested && !passwordChangeUser) {
+      return;
+    }
     let active = true;
     void (async () => {
       try {
-        await readSessionUser();
+        const sessionUser = await readSessionUser();
         if (!active) {
+          return;
+        }
+        // Never bounce a user who still owes a password change back into the
+        // application: that is exactly the bypass this page used to allow.
+        if (sessionUser.must_change_password) {
+          setPasswordChangeUser(sessionUser);
           return;
         }
         router.replace(returnTo);
@@ -59,7 +72,29 @@ function LoginPageContent() {
     return () => {
       active = false;
     };
-  }, [returnTo, router]);
+  }, [forcedChangeRequested, passwordChangeUser, returnTo, router]);
+
+  // A reload or a direct visit to this page loses React state, so recover the
+  // pending user from the session to keep the change flow reachable.
+  useEffect(() => {
+    if (!forcedChangeRequested || passwordChangeUser) {
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const sessionUser = await readSessionUser();
+        if (active && sessionUser.must_change_password) {
+          setPasswordChangeUser(sessionUser);
+        }
+      } catch {
+        // no active session; the sign-in form remains available
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [forcedChangeRequested, passwordChangeUser]);
 
   async function handleLogin(): Promise<void> {
     setPending(true);

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, type Dispatch, type SetStateAction } from "react";
 
 import {
+  forcedPasswordChangeLocation,
   logoutSession,
   type AdminAiHealthResponse,
   type AuditSummaryResponse,
@@ -51,12 +52,19 @@ export default function useShellAccessControl({
   clearSnapshot,
 }: UseShellAccessControlInput) {
   useEffect(() => {
-    if (!authHydrated || user) {
+    if (!authHydrated) {
       return;
     }
     const returnTo =
       typeof window === "undefined" ? "/" : `${window.location.pathname}${window.location.search}`;
-    routerReplace(`/login?return_to=${encodeURIComponent(returnTo)}`);
+    // A pending forced password change outranks everything else: it must be
+    // enforced here, at the boundary every application route passes through, so
+    // it cannot be bypassed by navigating straight to a route or by reloading
+    // after login. Only the change flow may render while the flag is set.
+    const destination = user
+      ? forcedPasswordChangeLocation(user, returnTo)
+      : `/login?return_to=${encodeURIComponent(returnTo)}`;
+    routerReplace(destination);
   }, [authHydrated, routerReplace, user]);
 
   useEffect(() => {
