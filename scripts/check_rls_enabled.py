@@ -1,6 +1,19 @@
 #!/usr/bin/env python3
 """CI gate: verify every table in the public schema has RLS enabled.
 
+This is Supabase/PostgREST exposure hardening, and it is unrelated to tenant
+isolation. When Supabase exposes the `public` schema over PostgREST, a table
+without row level security is readable through the generated REST API by any
+holder of the anon key, so every table must have RLS enabled as a deny-by-default
+backstop. The check is about what the generated API can reach, not about keeping
+one customer's rows away from another's: shared-database multi-tenancy and
+RLS-based tenant isolation are permanently rejected by
+`docs/ADR-001-multitenant-data-access-boundary.md`, and customer isolation is
+provided by dedicated deployments and databases instead.
+
+The gate name and the file name are historical. Read "RLS" here as "PostgREST
+exposure hardening" and nothing more.
+
 Connects to a PostgreSQL database (OKR_DATABASE_URL or DATABASE_URL) and
 fails if any user table in the public schema does not have row level
 security enabled. This prevents new tables from silently shipping without

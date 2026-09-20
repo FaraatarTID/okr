@@ -14,7 +14,7 @@ import type {
   ReadQueryUser,
 } from "@/lib/api";
 
-export type AdminTab = "cycles" | "users" | "teams" | "security" | "backup" | "audit" | "ai";
+export type AdminTab = "cycles" | "users" | "teams" | "backup" | "audit" | "ai";
 
 const ADMIN_TABS: ReadonlyArray<{ id: AdminTab; label: string }> = [
   { id: "cycles", label: "Cycles" },

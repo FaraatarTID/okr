@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import hmac
+import json
 
 import pytest
 
@@ -14,15 +15,29 @@ from scripts.verify_rollback_evidence import (
 
 
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
+SECRET = "rollback-attestation-test-secret"
 DIGESTS = {
     name: f"sha256:{hashlib.sha256(name.encode()).hexdigest()}"
     for name in ("web", "bff", "backend")
 }
 
 
+@pytest.fixture(autouse=True)
+def _attestation_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An attestation is only verifiable against a configured key."""
+    monkeypatch.setenv("OKR_SAAS_ATTESTATION_SECRET", SECRET)
+
+
 def _payload_digest(payload: dict[str, object]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _signature(payload: dict[str, object]) -> str:
+    """Compute the HMAC independently of the code under test."""
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    digest = hmac.new(SECRET.encode(), encoded, hashlib.sha256).hexdigest()
+    return "hmac-sha256:" + digest
 
 
 def valid_manifest() -> dict[str, object]:
@@ -43,7 +58,7 @@ def valid_manifest() -> dict[str, object]:
         "evidence_id": "run-20260901-001",
         "algorithm": "provider-signed",
         "key_id": "release-key-2026",
-        "signature": "release-signature-value-with-more-than-32-bytes",
+        "signature": _signature(manifest),
         "issued_at": "2026-09-02T10:00:00Z",
         "signed_payload_sha256": _payload_digest(manifest),
     }
@@ -177,7 +192,9 @@ def test_verifies_final_production_rollback_record() -> None:
         "evidence_id": "run-20260902-002",
         "algorithm": "provider-signed",
         "key_id": "release-key-2026",
-        "signature": "rollback-signature-value-with-more-than-32-bytes",
+        "signature": _signature(
+            {key: value for key, value in record.items() if key != "attestation"}
+        ),
         "issued_at": "2026-09-02T10:21:30Z",
         "signed_payload_sha256": _payload_digest(
             {key: value for key, value in record.items() if key != "attestation"}
@@ -230,14 +247,15 @@ def test_rejects_invalid_final_production_rollback_record(
         "evidence_id": "run-20260902-002",
         "algorithm": "provider-signed",
         "key_id": "release-key-2026",
-        "signature": "rollback-signature-value-with-more-than-32-bytes",
+        "signature": _signature(
+            {key: value for key, value in record.items() if key != "attestation"}
+        ),
         "issued_at": "2026-09-02T10:21:30Z",
         "signed_payload_sha256": _payload_digest(
             {key: value for key, value in record.items() if key != "attestation"}
         ),
     }
     record[field] = value
-
     with pytest.raises(RollbackEvidenceError, match=message):
         verify_rollback_record(record, COMMIT)
 
@@ -269,3 +287,39 @@ def test_rejects_synthetic_release_manifest() -> None:
 
     with pytest.raises(RollbackEvidenceError, match="synthetic"):
         verify_rollback_manifest(manifest, "a" * 40, cosign_references(manifest))
+
+
+def test_rejects_fabricated_signature_with_a_valid_self_digest() -> None:
+    """The defect A5 closed: a self-consistent digest used to be enough to pass."""
+    manifest = valid_manifest()
+    manifest["attestation"]["signature"] = (
+        "release-signature-value-with-more-than-32-bytes"
+    )
+    assert manifest["attestation"]["signed_payload_sha256"] == _payload_digest(
+        {key: value for key, value in manifest.items() if key != "attestation"}
+    )
+
+    with pytest.raises(RollbackEvidenceError, match="not verifiable"):
+        verify_rollback_manifest(manifest, COMMIT, cosign_references(manifest))
+
+
+def test_rejects_payload_tampered_after_signing_even_with_a_fresh_digest() -> None:
+    """The signature must bind the content, not merely accompany a recomputed digest."""
+    manifest = valid_manifest()
+    manifest["unexpected_note"] = "added after the attestation was signed"
+    manifest["attestation"]["signed_payload_sha256"] = _payload_digest(
+        {key: value for key, value in manifest.items() if key != "attestation"}
+    )
+
+    with pytest.raises(RollbackEvidenceError, match="not verifiable"):
+        verify_rollback_manifest(manifest, COMMIT, cosign_references(manifest))
+
+
+def test_rejects_provider_signed_attestation_without_a_configured_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OKR_SAAS_ATTESTATION_SECRET", raising=False)
+    manifest = valid_manifest()
+
+    with pytest.raises(RollbackEvidenceError, match="not verifiable"):
+        verify_rollback_manifest(manifest, COMMIT, cosign_references(manifest))

@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
-import hmac
 import json
 import math
 import os
-from pathlib import Path
 import re
+import sys
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.attestation_verification import (  # noqa: E402
+    ATTESTATION_SECRET_ENV,
+    hmac_matches,
+)
 
 REQUIRED_FIELDS = {
     "schema_version",
@@ -45,12 +52,15 @@ FORBIDDEN_MARKERS = re.compile(
 OPAQUE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$")
 
 
-def canonical_attestation_payload(attestation: dict[str, object]) -> bytes:
-    return json.dumps(
-        {key: value for key, value in attestation.items() if key != "signature"},
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
+def unsigned_attestation(attestation: dict[str, object]) -> dict[str, object]:
+    """Return the signed statement, which for Phase 1 evidence is the attestation.
+
+    The structured evidence is cross-checked against the attestation field by field
+    above, so signing the attestation binds every attested value. The two evidence
+    verifiers sign the evidence object instead, because there the attestation is only
+    a pointer to the content being attested.
+    """
+    return {key: value for key, value in attestation.items() if key != "signature"}
 
 
 def check(path: Path, *, secret: str | None = None) -> list[str]:
@@ -251,20 +261,12 @@ def check(path: Path, *, secret: str | None = None) -> list[str]:
         ) or attestation.get("operations_owner") != owners.get("operations"):
             errors.append("attested owners must match structured owner evidence")
         signature = str(attestation.get("signature", "")).strip()
-        configured_secret = secret or os.environ.get("OKR_SAAS_ATTESTATION_SECRET", "")
-        expected = (
-            "hmac-sha256:"
-            + hmac.new(
-                configured_secret.encode("utf-8"),
-                canonical_attestation_payload(attestation),
-                hashlib.sha256,
-            ).hexdigest()
-            if configured_secret
-            else ""
-        )
+        configured_secret = secret or os.environ.get(ATTESTATION_SECRET_ENV, "")
         if not configured_secret:
             errors.append("attestation signature verification secret is required")
-        elif not hmac.compare_digest(signature, expected):
+        elif not hmac_matches(
+            unsigned_attestation(attestation), signature, configured_secret
+        ):
             errors.append("attestation signature is invalid")
     return errors
 

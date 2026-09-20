@@ -21,6 +21,7 @@ historical or compatibility material as current operational guidance.
 | --- | --- | --- |
 | System architecture and code ownership | Canonical | `docs/architecture/ARCHITECTURE.md`, `docs/architecture/CODEBASE_MAP.md` |
 | Architecture execution and evidence | Canonical | `docs/architecture/ARCHITECTURE_BACKLOG.md`, `docs/architecture-status.md`, `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` |
+| CI gate semantics and enforcement surfaces | Operational | `docs/architecture/ARCHITECTURE.md` (what each gate actually checks), `docs/architecture-status.md` (item-level evidence) |
 | Remaining engineering work and sequence | Canonical | `docs/REMAINING_ENGINEERING_PLAN.md`, `docs/WORKING_GUIDE.md` |
 | Pre-SaaS architecture simplification | Canonical | `docs/architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md` |
 | Enterprise SaaS strategy | Canonical | `docs/architecture/ENTERPRISE_SAAS_ROADMAP.md` |

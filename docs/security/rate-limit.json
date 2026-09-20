@@ -5,6 +5,6 @@
   "operator": "platform-ops",
   "topology": "bff",
   "control": "rate_limiting",
-  "status": "passed",
-  "observed": "The BFF fails closed on missing or invalid session/authentication states and exposes bounded error envelopes instead of stale or privileged data."
+  "status": "pending",
+  "observed": "No rate limiting is implemented in spa-bff: neither its source tree nor its configuration references a limiter, a request budget, or an abuse threshold. The abuse-resistance behaviour that was actually observed is fail-closed session handling, in which missing or invalid session and authentication state is rejected with a bounded error envelope instead of being served stale or privileged data, with no retry loop permitted to bypass trust mediation. That behaviour is real, but it is session fail-closed handling rather than rate limiting, so this control is recorded as pending. Rate limiting does exist in the backend through OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS and OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS, but it protects the backend hop rather than the browser edge and therefore does not satisfy a BFF-boundary control."
 }

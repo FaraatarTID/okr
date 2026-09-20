@@ -23,7 +23,7 @@ is not a penetration test or an independent security audit.
 ## Evidence captured
 
 - `npm run check:allowlist` passed with 44 routes.
-- `npm test` passed with 65 BFF tests.
+- `npm test` passed with 9 test files and 74 tests.
 - Backend mutation API and dual-mode parity coverage passed with 128 tests.
 - Backend ingress security regression passed with 6 focused tests covering signed requests, replay protection, and forwarded role-claim enforcement.
 - Live Compose baseline showed the BFF and backend processes running independently.
@@ -31,8 +31,8 @@ is not a penetration test or an independent security audit.
 ## Residual risks and required follow-up
 
 - Production secret rotation and key-version overlap need an operational rehearsal.
-- Cookie domain, Secure flag, proxy trust, and deployment-origin settings need environment-specific review.
-- Rate-limit effectiveness and abuse thresholds need measured production-like traffic evidence.
+- Deployment-origin settings need environment-specific review. Origin validation itself is **not implemented** in `spa-bff`: no request header is consulted to decide whether to accept a request, and no allowlisted-origin configuration exists, so this is a missing control rather than a tuning task.
+- Rate limiting is **not implemented** at the browser edge, so there is no threshold to tune. Rate-limit effectiveness and abuse thresholds need measured production-like traffic evidence once a BFF limiter exists; today the only request budget in the system belongs to the backend hop, which the BFF's forwarded client IP lets the backend apply.
 - Tenant-context propagation is deferred until the canonical SaaS boundary is approved.
 - Removing or thinning the BFF still requires rollback and security-parity evidence.
 

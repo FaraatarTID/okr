@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.attestation_verification import (  # noqa: E402
+    AttestationError,
+    SUPPORTED_ALGORITHMS,
+    canonical_digest,
+    verify_attestation_signature,
+)
 
 
 class RecoveryEvidenceError(ValueError):
@@ -18,7 +27,6 @@ class RecoveryEvidenceError(ValueError):
 
 _CHECKSUM_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _STATUSES = {"SUCCESS"}
-_ATTESTATION_ALGORITHMS = {"ed25519", "rsa-pss-sha256", "provider-signed"}
 _SYNTHETIC_MARKERS = (
     "test",
     "fixture",
@@ -68,42 +76,56 @@ def _status(record: dict[str, Any], label: str) -> str:
     return value
 
 
-def _checksum(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
-
-
 def _reject_synthetic(value: str, label: str) -> None:
     lowered = value.casefold()
     if any(marker in lowered for marker in _SYNTHETIC_MARKERS):
         raise RecoveryEvidenceError(f"{label} must identify a real provider operation")
 
 
-def _verify_attestation(evidence: dict[str, Any]) -> None:
+def _verify_attestation(
+    evidence: dict[str, Any],
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
+) -> None:
     attestation = _object(evidence.get("attestation"), "attestation")
     provider = _string(attestation.get("provider"), "attestation.provider")
     evidence_id = _string(attestation.get("evidence_id"), "attestation.evidence_id")
     algorithm = _string(attestation.get("algorithm"), "attestation.algorithm").lower()
     _string(attestation.get("key_id"), "attestation.key_id")
-    signature = _string(attestation.get("signature"), "attestation.signature")
     issued_at = _timestamp(attestation.get("issued_at"), "attestation.issued_at")
     _reject_synthetic(provider, "attestation.provider")
     _reject_synthetic(evidence_id, "attestation.evidence_id")
-    if algorithm not in _ATTESTATION_ALGORITHMS:
+    if algorithm not in SUPPORTED_ALGORITHMS:
         raise RecoveryEvidenceError("attestation.algorithm is unsupported")
-    if len(signature) < 32:
-        raise RecoveryEvidenceError("attestation.signature is incomplete")
     payload = {key: value for key, value in evidence.items() if key != "attestation"}
-    if attestation.get("signed_payload_sha256") != _checksum(payload):
+    if attestation.get("signed_payload_sha256") != canonical_digest(payload):
         raise RecoveryEvidenceError(
             "attestation signed payload does not match evidence"
         )
     if issued_at > datetime.now(issued_at.tzinfo):
         raise RecoveryEvidenceError("attestation.issued_at cannot be in the future")
+    try:
+        verify_attestation_signature(
+            evidence, secret=secret, public_key_pem=public_key_pem
+        )
+    except AttestationError as exc:
+        raise RecoveryEvidenceError(
+            f"attestation signature is not verifiable: {exc}"
+        ) from exc
 
 
-def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
-    """Return a stable verification summary or raise on any evidence violation."""
+def verify_recovery_evidence(
+    evidence: dict[str, Any],
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
+) -> dict[str, Any]:
+    """Return a stable verification summary or raise on any evidence violation.
+
+    `secret` and `public_key_pem` override the environment configuration and exist
+    for tests and for callers that already hold the key material.
+    """
     evidence = _object(evidence, "evidence")
     if evidence.get("schema_version") != 1:
         raise RecoveryEvidenceError("schema_version must be 1")
@@ -135,7 +157,9 @@ def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
             "backup.checksum_payload does not match database identity"
         )
     checksum = _string(backup.get("checksum"), "backup.checksum")
-    if not _CHECKSUM_RE.fullmatch(checksum) or checksum != _checksum(checksum_payload):
+    if not _CHECKSUM_RE.fullmatch(checksum) or checksum != canonical_digest(
+        checksum_payload
+    ):
         raise RecoveryEvidenceError(
             "backup checksum does not match canonical evidence payload"
         )
@@ -187,7 +211,7 @@ def verify_recovery_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
             "status must be PASSED and backup/restore must both be SUCCESS"
         )
     _string(evidence.get("operator"), "operator")
-    _verify_attestation(evidence)
+    _verify_attestation(evidence, secret=secret, public_key_pem=public_key_pem)
 
     return {
         "schema_version": 1,

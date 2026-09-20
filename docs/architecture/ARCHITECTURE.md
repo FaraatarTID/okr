@@ -318,3 +318,15 @@ Superseded status and worklog records are preserved in
 [docs/archive/architecture-2026-08-31/](../archive/architecture-2026-08-31/).
 Process definition: [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](../ARCHITECTURE_DELIVERY_SYSTEM.md).
 
+One naming trap follows from that decision. CI runs a job named
+`postgrest-exposure-gate`, which executes `scripts/check_rls_enabled.py`. Despite
+the wording in both names, it is not tenant-isolation enforcement and it does not
+reintroduce shared-database RLS. It asserts that every table in the `public`
+schema has row level security enabled, so that Supabase's generated PostgREST API
+cannot reach a table through the anon key. That is deny-by-default exposure
+hardening for a single-tenant deployment, and it is unrelated to keeping one
+customer's rows away from another's, which
+[ADR-001](../ADR-001-multitenant-data-access-boundary.md) rejects as an isolation
+model. The job id is also the GitHub status-check name, so a branch-protection
+rule that still references the former `rls-gate` id must be updated.
+

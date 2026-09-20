@@ -111,11 +111,6 @@ AI integration
   - `AI_PROVIDER=openai_compatible` uses Chat Completions-style APIs, so self-hosted models can be used without Gemini.
   - Runtime preflight reports this policy as an informational status.
 
-SPA AI sync controls
-
-- `NEXT_PUBLIC_OKR_AI_SYNC_MAX_DELTA` (default: `100`): maximum KR point change allowed per AI sync run.
-- `NEXT_PUBLIC_OKR_AI_SYNC_ALLOW_DECREASE` (default: `true`): allow AI to lower KR progress values. Set to `false` to only allow increases.
-
 Runtime preflight policy
 
 - Strict mode default:
@@ -237,6 +232,31 @@ Release governance (CI)
     - `OKR_RUNTIME_ENV_DOTENV` (runtime `.env` content)
   - Gate command executed by workflow:
     - `python scripts/check_deploy_config.py --mode runtime --env-file /tmp/okr-runtime-gate/runtime.env`
+
+Evidence attestation
+
+- Every release-evidence verifier fails closed unless the attestation signature is
+  checked against configured key material. An unverifiable attestation is rejected,
+  never downgraded to a warning.
+- `provider-signed` uses HMAC-SHA256:
+  - `OKR_SAAS_ATTESTATION_SECRET` (required whenever the algorithm is `provider-signed`)
+  - Signature format: `hmac-sha256:` followed by 64 hex characters.
+  - The signed payload is the canonical JSON of the evidence with `attestation`
+    removed, so the signature binds the evidence content rather than merely
+    accompanying a digest that was recomputed from the same file.
+- `ed25519` and `rsa-pss-sha256` are verified against a PEM public key:
+  - `OKR_SAAS_ATTESTATION_PUBLIC_KEY_PEM` (inline PEM), or
+  - `OKR_SAAS_ATTESTATION_PUBLIC_KEY_PATH` (path to a PEM file)
+  - Signature format: `<algorithm>:` followed by the base64 signature.
+- Consumers: `scripts/verify_recovery_evidence.py`,
+  `scripts/verify_rollback_evidence.py`, and `scripts/check_saas_phase1_evidence.py`.
+  All three share `scripts/attestation_verification.py`, which holds the single
+  definition of the canonical payload and of the constant-time comparison.
+- The two conventions differ deliberately. `scripts/check_saas_phase1_evidence.py`
+  signs the attestation object itself, because it cross-checks the structured
+  evidence against the attestation field by field, so signing the attestation binds
+  every attested value. The two evidence verifiers sign the evidence object instead,
+  because there the attestation is only a pointer to the content being attested.
 
 Admin bootstrap
 

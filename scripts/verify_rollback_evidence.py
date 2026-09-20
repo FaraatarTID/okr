@@ -10,12 +10,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.attestation_verification import (  # noqa: E402
+    AttestationError,
+    SUPPORTED_ALGORITHMS,
+    canonical_digest,
+    verify_attestation_signature,
+)
+
 
 REQUIRED_IMAGES = ("web", "bff", "backend")
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _IMAGE_RE = re.compile(r"^ghcr\.io/[^@\s:]+/[^@\s:]+/(web|bff|backend):([0-9a-f]{40})$")
-_ATTESTATION_ALGORITHMS = {"ed25519", "rsa-pss-sha256", "provider-signed"}
 _SYNTHETIC_MARKERS = (
     "test",
     "fixture",
@@ -48,14 +57,13 @@ def _reject_synthetic(value: str, label: str) -> None:
         raise RollbackEvidenceError(f"{label} must identify a real release operation")
 
 
-def _payload_digest(payload: dict[str, Any]) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    import hashlib
-
-    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
-
-
-def _verify_attestation(payload: dict[str, Any], label: str = "attestation") -> None:
+def _verify_attestation(
+    payload: dict[str, Any],
+    label: str = "attestation",
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
+) -> None:
     attestation = _mapping(payload.get("attestation"), label)
     provider = _required_string(attestation.get("provider"), f"{label}.provider")
     evidence_id = _required_string(
@@ -65,7 +73,6 @@ def _verify_attestation(payload: dict[str, Any], label: str = "attestation") -> 
         attestation.get("algorithm"), f"{label}.algorithm"
     ).lower()
     _required_string(attestation.get("key_id"), f"{label}.key_id")
-    signature = _required_string(attestation.get("signature"), f"{label}.signature")
     approved_at = _required_string(attestation.get("issued_at"), f"{label}.issued_at")
     try:
         parsed = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
@@ -77,13 +84,22 @@ def _verify_attestation(payload: dict[str, Any], label: str = "attestation") -> 
         raise RollbackEvidenceError(f"{label}.issued_at must include a timezone")
     _reject_synthetic(provider, f"{label}.provider")
     _reject_synthetic(evidence_id, f"{label}.evidence_id")
-    if algorithm not in _ATTESTATION_ALGORITHMS:
+    if algorithm not in SUPPORTED_ALGORITHMS:
         raise RollbackEvidenceError(f"{label}.algorithm is unsupported")
-    if len(signature) < 32:
-        raise RollbackEvidenceError(f"{label}.signature is incomplete")
     unsigned = {key: value for key, value in payload.items() if key != "attestation"}
-    if attestation.get("signed_payload_sha256") != _payload_digest(unsigned):
+    if attestation.get("signed_payload_sha256") != canonical_digest(unsigned):
         raise RollbackEvidenceError(f"{label} signed payload does not match evidence")
+    try:
+        verify_attestation_signature(
+            payload,
+            label=label,
+            secret=secret,
+            public_key_pem=public_key_pem,
+        )
+    except AttestationError as exc:
+        raise RollbackEvidenceError(
+            f"{label} signature is not verifiable: {exc}"
+        ) from exc
 
 
 def _commit(value: Any, label: str) -> str:
@@ -161,8 +177,15 @@ def verify_rollback_manifest(
     cosign_references: list[str] | None = None,
     expected_repository: str | None = None,
     require_attestation: bool = True,
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
 ) -> dict[str, Any]:
-    """Return deterministic rollback evidence or raise on any mismatch."""
+    """Return deterministic rollback evidence or raise on any mismatch.
+
+    `secret` and `public_key_pem` override the environment configuration and exist
+    for tests and for callers that already hold the key material.
+    """
     manifest = _mapping(manifest, "manifest")
     if manifest.get("schema_version") != 1:
         raise RollbackEvidenceError("manifest.schema_version must be 1")
@@ -194,7 +217,7 @@ def verify_rollback_manifest(
             "signed Cosign references are required for rollback evidence"
         )
     if require_attestation:
-        _verify_attestation(manifest)
+        _verify_attestation(manifest, secret=secret, public_key_pem=public_key_pem)
 
     result: dict[str, Any] = {
         "schema_version": 1,
@@ -211,6 +234,9 @@ def verify_rollback_record(
     record: dict[str, Any],
     expected_commit_sha: str,
     expected_repository: str | None = None,
+    *,
+    secret: str | None = None,
+    public_key_pem: str | None = None,
 ) -> dict[str, Any]:
     """Validate the final approval record uploaded by the rollback workflow."""
     record = _mapping(record, "rollback record")
@@ -267,7 +293,12 @@ def verify_rollback_record(
         execution["provider_operation_id"],
         "rollback record.execution.provider_operation_id",
     )
-    _verify_attestation(record, "rollback record.attestation")
+    _verify_attestation(
+        record,
+        "rollback record.attestation",
+        secret=secret,
+        public_key_pem=public_key_pem,
+    )
     return {**manifest_result, "rollback": "rollback"}
 
 

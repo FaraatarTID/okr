@@ -5,6 +5,6 @@
   "operator": "platform-ops",
   "topology": "bff",
   "control": "csrf_and_origin_controls",
-  "status": "passed",
-  "observed": "State-changing routes require a valid CSRF double-submit token and reject invalid or missing values."
+  "status": "pending",
+  "observed": "CSRF protection is implemented and observed: state-changing requests (POST, PATCH, PUT, DELETE) to actor-scoped routes must carry an X-XSRF-TOKEN header matching the okr_csrf_token double-submit cookie, and a missing or mismatched token is rejected with HTTP 403 INVALID_CSRF_TOKEN before any upstream call. Read routes are intentionally POST-based and non-mutating, and are excluded from the CSRF requirement by contract. Origin validation is not implemented: spa-bff never reads the Origin or Referer request header to decide whether to accept a request, and no allowlisted-origin configuration exists anywhere in the package. The control is named for both mechanisms, so it is recorded as pending rather than passed."
 }

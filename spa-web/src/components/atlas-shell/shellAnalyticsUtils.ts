@@ -104,38 +104,6 @@ export function formatSignedDelta(value: number): string {
   return `${rounded}`;
 }
 
-export function aiProgressDecision(
-  currentProgress: unknown,
-  aiScore: unknown,
-  maxDelta: number,
-  allowDecrease: boolean,
-): {
-  action: "apply" | "skip";
-  reason: "within_policy" | "missing_ai_score" | "no_change" | "decrease_blocked" | "delta_cap";
-  current: number;
-  proposed: number | null;
-  delta: number | null;
-} {
-  const current = clampProgress(currentProgress);
-  const parsedAi = Number(aiScore);
-  if (!Number.isFinite(parsedAi)) {
-    return { action: "skip", reason: "missing_ai_score", current, proposed: null, delta: null };
-  }
-  const proposed = clampProgress(parsedAi);
-  const delta = proposed - current;
-  const boundedDelta = clampProgress(maxDelta);
-  if (delta === 0) {
-    return { action: "skip", reason: "no_change", current, proposed, delta };
-  }
-  if (delta < 0 && !allowDecrease) {
-    return { action: "skip", reason: "decrease_blocked", current, proposed, delta };
-  }
-  if (Math.abs(delta) > boundedDelta) {
-    return { action: "skip", reason: "delta_cap", current, proposed, delta };
-  }
-  return { action: "apply", reason: "within_policy", current, proposed, delta };
-}
-
 const ANALYSIS_STALE_MS = 24 * 60 * 60 * 1000;
 
 export function isAnalysisStale(
