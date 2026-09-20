@@ -34,9 +34,15 @@ type UseAdminActionsInput = {
   adminUsers: ReadQueryUser[];
   setAdminCycleError: (value: string) => void;
   setAdminDataError: (value: string) => void;
-  loadAdminCycles: (activeUser: AuthUser) => Promise<void>;
+  loadAdminCycles: (
+    activeUser: AuthUser,
+    options?: { bypassCache?: boolean },
+  ) => Promise<void>;
   adminCycles: CycleSummary[];
-  loadAdminUsersAndTeams: (activeUser: AuthUser) => Promise<void>;
+  loadAdminUsersAndTeams: (
+    activeUser: AuthUser,
+    options?: { bypassCache?: boolean },
+  ) => Promise<void>;
   loadAdminResources: (activeUser: AuthUser) => Promise<void>;
   onCycleActivated: (cycle: CycleSummary) => void;
   /** Refresh the Atlas top-bar cycle list (all cycles, not just active). */
@@ -208,7 +214,7 @@ export default function useAdminActions({
         teamId: "",
         mustChangePassword: true,
       });
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
@@ -228,7 +234,7 @@ export default function useAdminActions({
         `${userRow.username} ${userRow.is_active ? "deactivated" : "activated"}.`,
       );
       setAdminDataError("");
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
@@ -252,7 +258,7 @@ export default function useAdminActions({
       setAdminCycleMessage(`Team "${teamName}" created.`);
       setAdminDataError("");
       setAdminTeamDraft({ name: "", description: "" });
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
@@ -271,7 +277,7 @@ export default function useAdminActions({
       });
       setAdminCycleMessage(`Team "${team.name}" updated.`);
       setAdminDataError("");
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
@@ -294,7 +300,7 @@ export default function useAdminActions({
       });
       setAdminCycleMessage(`Team "${team.name}" deleted.`);
       setAdminDataError("");
-      await loadAdminUsersAndTeams(user);
+      await loadAdminUsersAndTeams(user, { bypassCache: true });
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
@@ -361,7 +367,7 @@ export default function useAdminActions({
         isActive: false,
         ownerManagerId: "",
       });
-      await loadAdminCycles(user);
+      await loadAdminCycles(user, { bypassCache: true });
       await refreshSessionCycles(user);
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
@@ -413,7 +419,7 @@ export default function useAdminActions({
             : undefined,
       });
       setAdminCycleMessage(isActive ? "Cycle activated." : "Cycle deactivated.");
-      await loadAdminCycles(user);
+      await loadAdminCycles(user, { bypassCache: true });
       await refreshSessionCycles(user);
       if (isActive) {
         onCycleActivated(cycle);
@@ -446,7 +452,7 @@ export default function useAdminActions({
         cycle_id: cycle.id,
       });
       setAdminCycleMessage("Cycle deleted.");
-      await loadAdminCycles(user);
+      await loadAdminCycles(user, { bypassCache: true });
       await refreshSessionCycles(user);
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
@@ -481,7 +487,7 @@ export default function useAdminActions({
         owner_manager_id: ownerManagerId,
       });
       setAdminCycleMessage("Cycle owner updated.");
-      await loadAdminCycles(user);
+      await loadAdminCycles(user, { bypassCache: true });
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }

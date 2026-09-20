@@ -5,6 +5,7 @@ import * as api from "@/lib/api";
 import * as deeplink from "@/lib/deeplink";
 import type { AuthUser, CycleSummary } from "@/lib/api";
 import useDeepLinkCycleBootstrap from "@/components/atlas-shell/useDeepLinkCycleBootstrap";
+import { clearResourceCache } from "@/lib/resourceCache";
 
 const pathnameHolder = vi.hoisted(() => ({ value: "/" }));
 
@@ -53,6 +54,11 @@ describe("useDeepLinkCycleBootstrap", () => {
     // undefined in tests that rely on the real parser. clearAllMocks only
     // clears call history and keeps implementations intact.
     vi.clearAllMocks();
+    // The cycle pair is cached per username and every test here uses the same
+    // user, so the cache must be dropped between tests. Without this, whichever
+    // test ran first would satisfy the rest from the cache and the API
+    // assertions below would silently never be exercised.
+    clearResourceCache();
     window.history.replaceState(null, "", "/");
     pathnameHolder.value = "/";
   });

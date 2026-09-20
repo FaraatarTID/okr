@@ -2,7 +2,8 @@
 
 import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
 
-import { readCyclesQuery, type AuthUser, type CycleSummary } from "@/lib/api";
+import { type AuthUser, type CycleSummary } from "@/lib/api";
+import { readMergedCycles } from "@/lib/cycles";
 
 type UseCyclesSourceInput = {
   user: AuthUser | null;
@@ -11,7 +12,10 @@ type UseCyclesSourceInput = {
 
 export type CyclesSource = {
   /** Fetch cycles.all + cycles.active in parallel; merge into one list. */
-  refreshCycles: (activeUser: AuthUser) => Promise<CycleSummary[]>;
+  refreshCycles: (
+    activeUser: AuthUser,
+    options?: { bypassCache?: boolean },
+  ) => Promise<CycleSummary[]>;
   pending: boolean;
 };
 
@@ -21,6 +25,12 @@ export type CyclesSource = {
  * Fetches `cycles.all` (dropdown contents) and `cycles.active` (the
  * authoritative admin-activated cycle) in parallel and merges them so the
  * active cycle can never be missing from the top bar.
+ *
+ * Reads go through the shared cycle cache via `readMergedCycles`, so this hook
+ * and the deep-link bootstrap hook issue one request pair between them instead
+ * of one each. Mutation paths pass `bypassCache: true`; the fresh result is
+ * written through the cache, so a sibling reader that follows gets the new value
+ * instead of issuing a second request.
  */
 export default function useCyclesSource({
   user,
@@ -29,31 +39,15 @@ export default function useCyclesSource({
   const [pending, setPending] = useState(false);
 
   const refreshCycles = useCallback(
-    async (activeUser: AuthUser): Promise<CycleSummary[]> => {
+    async (
+      activeUser: AuthUser,
+      options: { bypassCache?: boolean } = {},
+    ): Promise<CycleSummary[]> => {
       setPending(true);
       try {
-        const [allCycles, activeCycles] = await Promise.all([
-          readCyclesQuery({
-            actor_username: activeUser.username,
-            kind: "cycles.all",
-          }),
-          readCyclesQuery({
-            actor_username: activeUser.username,
-            kind: "cycles.active",
-          }).catch(() => [] as CycleSummary[]),
-        ]);
-        const mergedById = new Map<number, CycleSummary>();
-        for (const cycle of allCycles) {
-          mergedById.set(cycle.id, cycle);
-        }
-        for (const activeCycle of activeCycles) {
-          if (!mergedById.has(activeCycle.id)) {
-            mergedById.set(activeCycle.id, activeCycle);
-          }
-        }
-        const merged = [...mergedById.values()].sort(
-          (left, right) => right.id - left.id,
-        );
+        const merged = await readMergedCycles(activeUser.username, {
+          bypassCache: options.bypassCache,
+        });
         setSessionCycles(merged);
         return merged;
       } finally {

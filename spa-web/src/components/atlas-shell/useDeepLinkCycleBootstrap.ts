@@ -3,7 +3,8 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { usePathname } from "next/navigation";
 
-import { readCyclesQuery, type AuthUser, type CycleSummary } from "@/lib/api";
+import { type AuthUser, type CycleSummary } from "@/lib/api";
+import { mergeCyclePair, readCyclesPair } from "@/lib/cycles";
 import { DEFAULT_LENS, DEFAULT_MODE, normalizeFocusTaskRef, parseDeepLink } from "@/lib/deeplink";
 import { modeForLocation } from "@/components/atlas-shell/navigation";
 
@@ -146,34 +147,18 @@ export default function useDeepLinkCycleBootstrap({
     void (async () => {
       try {
         // Fetch the complete list of cycles for the dropdown AND all visible
-        // active cycles in parallel. Each owner may have one active cycle;
-        // admins prefer their global cycle for automatic selection.
-        const [allCycles, activeCycles] = await Promise.all([
-          readCyclesQuery({
-            actor_username: user.username,
-            kind: "cycles.all",
-          }),
-          readCyclesQuery({
-            actor_username: user.username,
-            kind: "cycles.active",
-          }).catch(() => [] as CycleSummary[]),
-        ]);
+        // active cycles. Each owner may have one active cycle; admins prefer
+        // their global cycle for automatic selection. The pair is read through
+        // the shared cache, so `useCyclesSource` on the same mount joins this
+        // request instead of issuing a duplicate one.
+        const pair = await readCyclesPair(user.username);
+        const { active: activeCycles } = pair;
         if (!active) {
           return;
         }
-        const sortedAll = [...allCycles].sort((left, right) => right.id - left.id);
         // Merge: guarantee every active cycle is present in the dropdown even
         // if `cycles.all` was stale or scope-filtered it out.
-        const mergedById = new Map<number, CycleSummary>();
-        for (const cycle of sortedAll) {
-          mergedById.set(cycle.id, cycle);
-        }
-        for (const activeCycle of activeCycles) {
-          if (!mergedById.has(activeCycle.id)) {
-            mergedById.set(activeCycle.id, activeCycle);
-          }
-        }
-        const merged = [...mergedById.values()].sort((left, right) => right.id - left.id);
+        const merged = mergeCyclePair(pair);
         setSessionCycles(merged);
 
         // The authoritative active cycle (if any).

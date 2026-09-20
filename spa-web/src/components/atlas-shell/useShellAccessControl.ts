@@ -11,6 +11,7 @@ import {
   type AuthUser,
 } from "@/lib/api";
 import type { AdminTab } from "@/components/atlas-shell/AdminModePanel";
+import { clearResourceCache } from "@/lib/resourceCache";
 
 type UseShellAccessControlInput = {
   authHydrated: boolean;
@@ -120,6 +121,9 @@ export default function useShellAccessControl({
       } catch {
         // Ignore logout transport errors and still clear local state.
       } finally {
+        // Clear the read cache before dropping the user, so the next identity on
+        // this browser can never be served the previous user's cycles or teams.
+        clearResourceCache();
         setUser(null);
         clearSnapshot();
         routerReplace("/login?return_to=%2F");
