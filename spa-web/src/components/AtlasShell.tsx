@@ -10,13 +10,9 @@ import {
   nodeTypeLabel,
   type AtlasIndexNode,
   type AtlasKeyResultSnapshot,
-  type AtlasObjectiveSnapshot,
   type AtlasTaskSnapshot,
 } from "@/lib/atlas";
-import {
-  type AuthUser,
-  type CycleSummary,
-} from "@/lib/api";
+import { type CycleSummary } from "@/lib/api";
 import useCyclesSource from "@/components/atlas-shell/useCyclesSource";
 import {
   DEFAULT_LENS,
@@ -111,54 +107,6 @@ type ResolvedCycle = Pick<
   CycleSummary,
   "id" | "title" | "start_date" | "end_date"
 > & { is_active?: boolean };
-type WeeklyPlanRead = {
-  id: number;
-  user_id: number;
-  week_start_date: string;
-  week_end_date: string;
-  priority_1: string;
-  priority_2?: string | null;
-  priority_3?: string | null;
-  is_active: boolean;
-};
-type WorkLogRead = {
-  id: number;
-  task_id?: number | null;
-  duration_minutes?: number | null;
-  start_time?: string | null;
-  end_time?: string | null;
-  summary?: string | null;
-  task?: { title?: string | null } | null;
-};
-type RetroRead = {
-  id: number;
-  week_start_date?: string | null;
-  content?: string | null;
-  sentiment?: string | null;
-  created_at?: string | null;
-};
-type TimelineTaskRead = {
-  id: number;
-  title?: string | null;
-  description?: string | null;
-  progress?: number | null;
-  status?: string | null;
-  start_date?: string | null;
-  deadline?: string | null;
-  created_at?: string | null;
-  assignee_id?: number | null;
-  estimated_minutes?: number | null;
-  key_result?: {
-    title?: string | null;
-    objective?: {
-      title?: string | null;
-      goal?: {
-        title?: string | null;
-        owner_id?: number | null;
-      } | null;
-    } | null;
-  } | null;
-};
 
 type TimelineRow = {
   id: number;
@@ -220,7 +168,10 @@ export default function AtlasShell() {
   }, [effectiveCycleId]);
   const effectiveOwnerIdsInput = isAdmin ? ownerIdsInput : "";
   const parsedOwnerIds = useMemo(() => parseOwnerIds(effectiveOwnerIdsInput), [effectiveOwnerIdsInput]);
-  const selectedOwnerIds = parsedOwnerIds.value || [];
+  // `|| []` allocated a fresh array on every render whenever `value` was empty,
+  // and this array is a dependency of the memo at the mindmap/tree boundary, so
+  // that memo recomputed on every render. Memoized so the identity is stable.
+  const selectedOwnerIds = useMemo(() => parsedOwnerIds.value || [], [parsedOwnerIds]);
   const {
     snapshotPending,
     snapshotError,

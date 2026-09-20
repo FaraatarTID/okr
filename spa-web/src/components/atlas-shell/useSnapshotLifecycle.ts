@@ -58,7 +58,12 @@ export default function useSnapshotLifecycle({
         setSnapshotPayload(payload);
       }
     },
-    [ownerIds, ownerIdsError, parsedCycleId],
+    // `mode` belongs here: it selects `include_analysis` above, so leaving it
+    // out left the callback closing over the previous mode. Switching dashboard
+    // to atlas then loaded a snapshot with no analysis, and switching the other
+    // way kept sending the large analysis payload the comment above says is
+    // only wanted by the inspector.
+    [mode, ownerIds, ownerIdsError, parsedCycleId],
   );
 
   useEffect(() => {

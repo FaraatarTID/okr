@@ -82,7 +82,13 @@ export default function useShellAccessControl({
     if (!isAdmin && mode === "admin" && adminTab !== "cycles") {
       setAdminTab("cycles");
     }
-  }, [adminTab, handleSidebarModeSelect, isAdmin, mode, setAdminTab, user]);
+    // `isManager` feeds `canManageCycles` above and was missing here. Today it
+    // is masked, because `isManager` is derived from `user.role` and `user` is
+    // in the list, so the effect already re-runs whenever the role changes.
+    // Listed anyway: the sibling effects below include it, and the correctness
+    // of the admin gate should not depend on how `isManager` happens to be
+    // derived at the call site.
+  }, [adminTab, handleSidebarModeSelect, isAdmin, isManager, mode, setAdminTab, user]);
 
   useEffect(() => {
     // Managers also need admin resources (users list feeds the cycle-owner

@@ -38,7 +38,6 @@ export default function useDeepLinkCycleBootstrap({
   canManageCycleSelection = true,
   parsedCycleId,
   resolvedCycle,
-  sessionCycles,
   deepLinkReady,
   deepLinkQuery,
   setResolvedCycle,

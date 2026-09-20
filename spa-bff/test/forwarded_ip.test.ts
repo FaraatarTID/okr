@@ -107,7 +107,7 @@ describe("Fix 2: x-forwarded-for proxy forwarding", () => {
     );
 
     const app = createServer(baseConfig, { fetchFn });
-    const response = await app.inject({
+    await app.inject({
       method: "POST",
       url: "/api/backend/v1/read/query",
       headers: {

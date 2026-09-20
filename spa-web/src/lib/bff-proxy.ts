@@ -22,6 +22,63 @@ function shouldForwardBody(method: string): boolean {
   return !["GET", "HEAD"].includes(normalized);
 }
 
+const MAX_LOGGED_ERROR_LENGTH = 300;
+
+/**
+ * Mirrors the BFF's structured log shape — `event`, `method`, `route`,
+ * `status`, `ts` — so a proxy failure can be grepped the same way on both sides
+ * of the boundary. It logs the request pathname rather than the full URL, and
+ * never headers, cookies or the body, so a credential cannot reach the log.
+ */
+function buildWebProxyLogPayload(
+  event: string,
+  request: NextRequest,
+  status: number,
+  opts?: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    event,
+    method: request.method,
+    route: request.nextUrl.pathname,
+    status,
+    ts: new Date().toISOString(),
+    ...opts,
+  };
+}
+
+function describeProxyError(error: unknown): {
+  error_type: string;
+  error_message: string;
+  error_code?: string;
+} {
+  const name = (error as { name?: unknown } | null | undefined)?.name;
+  const message = (error as { message?: unknown } | null | undefined)?.message;
+  const cause = (error as { cause?: unknown } | null | undefined)?.cause;
+  const code = (cause as { code?: unknown } | null | undefined)?.code;
+  const described: {
+    error_type: string;
+    error_message: string;
+    error_code?: string;
+  } = {
+    error_type: typeof name === "string" && name ? name : typeof error,
+    error_message: (
+      typeof message === "string" && message ? message : String(error ?? "")
+    ).slice(0, MAX_LOGGED_ERROR_LENGTH),
+  };
+  if (typeof code === "string" && code) {
+    described.error_code = code;
+  }
+  return described;
+}
+
+function targetPathname(targetUrl: string): string {
+  try {
+    return new URL(targetUrl).pathname;
+  } catch {
+    return "";
+  }
+}
+
 export async function proxyToBff(
   request: NextRequest,
   targetUrl: string,
@@ -71,6 +128,17 @@ export async function proxyToBff(
       headers: responseHeaders,
     });
   } catch (error) {
+    // The BFF logs its own lifecycle, but a request that never reached it left
+    // no trace there, so the failure is recorded on this side of the boundary.
+    // The client still gets the same generic 502 as before.
+    console.error(
+      JSON.stringify(
+        buildWebProxyLogPayload("spa_web_bff_proxy_error", request, 502, {
+          target: targetPathname(targetUrl),
+          ...describeProxyError(error),
+        }),
+      ),
+    );
     return NextResponse.json(
       {
         error: "BFF request failed.",

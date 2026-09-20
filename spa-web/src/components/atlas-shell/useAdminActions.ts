@@ -147,7 +147,7 @@ export default function useAdminActions({
     } finally {
       setAdminBackupPending(false);
     }
-  }, [isAdmin, user]);
+  }, [isAdmin, setAdminDataError, user]);
 
   const handleAdminBackupRestore = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {
@@ -193,6 +193,7 @@ export default function useAdminActions({
     isAdmin,
     loadAdminResources,
     refreshSessionCycles,
+    setAdminDataError,
     user,
   ]);
 
@@ -235,7 +236,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminUserDraft, isAdmin, loadAdminUsersAndTeams, user]);
+  }, [adminUserDraft, isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminToggleUserActive = useCallback(async (userRow: AdminUserRead): Promise<void> => {
     if (!user || !isAdmin) {
@@ -255,7 +256,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminUsersAndTeams, user]);
+  }, [isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminCreateTeam = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {
@@ -279,7 +280,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminTeamDraft.description, adminTeamDraft.name, isAdmin, loadAdminUsersAndTeams, user]);
+  }, [adminTeamDraft.description, adminTeamDraft.name, isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminUpdateTeam = useCallback(async (team: AdminTeamRead): Promise<void> => {
     if (!user || !isAdmin) {
@@ -298,7 +299,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminUsersAndTeams, user]);
+  }, [isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminDeleteTeam = useCallback(async (team: AdminTeamRead): Promise<void> => {
     if (!user || !isAdmin) {
@@ -321,7 +322,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminUsersAndTeams, user]);
+  }, [isAdmin, loadAdminUsersAndTeams, setAdminDataError, user]);
 
   const handleAdminResetPassword = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {
@@ -347,7 +348,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminDataError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminResetDraft, adminUsers, isAdmin, user]);
+  }, [adminResetDraft, adminUsers, isAdmin, setAdminDataError, user]);
 
   const handleAdminCreateCycle = useCallback(async (): Promise<void> => {
     if (!user || !canManageCycles) {
@@ -389,7 +390,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminCreateCycleDraft, canManageCycles, isAdmin, loadAdminCycles, refreshSessionCycles, toIsoEnd, toIsoStart, user]);
+  }, [adminCreateCycleDraft, canManageCycles, isAdmin, loadAdminCycles, refreshSessionCycles, setAdminCycleError, toIsoEnd, toIsoStart, user]);
 
   const handleAdminSetCycleActive = useCallback(async (
     cycle: CycleSummary,
@@ -444,7 +445,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }
-  }, [adminCycles, isAdmin, loadAdminCycles, onCycleActivated, refreshSessionCycles, user]);
+  }, [adminCycles, canManageCycles, isAdmin, loadAdminCycles, onCycleActivated, ownsCycle, refreshSessionCycles, setAdminCycleError, user]);
 
   const handleAdminDeleteCycle = useCallback(async (cycle: CycleSummary): Promise<void> => {
     if (!user || !canManageCycles) {
@@ -474,7 +475,7 @@ export default function useAdminActions({
     } catch (error) {
       setAdminCycleError(String(error instanceof Error ? error.message : error));
     }
-  }, [isAdmin, loadAdminCycles, refreshSessionCycles, user]);
+  }, [canManageCycles, isAdmin, loadAdminCycles, ownsCycle, refreshSessionCycles, setAdminCycleError, user]);
 
   const handleAdminUpdateCycleOwner = useCallback(async (
     cycle: CycleSummary,
