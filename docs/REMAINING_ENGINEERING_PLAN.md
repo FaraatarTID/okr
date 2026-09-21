@@ -471,7 +471,6 @@ line and an explicit `Blockers:` line, per
 - The single-tenant isolation decision in ADR-001 stands. No item reintroduces tenant identifiers or shared-database RLS.
 - Provider selection, the operations-owner appointment, and real-data approval remain outside engineering control and are not scheduled here.
 - `docs/WORKLOG.md` stays gitignored and local, per `.gitignore:86` and the lifetime table in `docs/ARCHITECTURE_DELIVERY_SYSTEM.md`.
-- Persian mirrors of the new documents are not included in this plan. If the mirror convention in `docs/DOCUMENTATION_LIFECYCLE.md` must be satisfied immediately, treat it as an additional item.
 
 ## Out of scope
 

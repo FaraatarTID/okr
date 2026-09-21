@@ -1,4 +1,4 @@
-﻿# OKR Rollout Guide (Enterprise)
+# OKR Rollout Guide (Enterprise)
 Documentation HQ: [README](../README.md)
 
 This guide translates enterprise OKR rollout practices into an execution model for this project.
@@ -7,7 +7,6 @@ It complements:
 - `docs/MANAGER_PLAYBOOK.md` (manager operating rhythm)
 - `docs/USER_GUIDE.md` (daily user workflow)
 - `docs/OKR_BAU_BOUNDARY_GUIDE.md` (strategic-change vs BAU boundary policy)
-- Persian counterpart: `docs/OKR_ROLLOUT_GUIDE_FA.md`
 
 Use this document when you are introducing OKRs across multiple teams or business units, not only running one team cycle.
 
@@ -171,10 +170,5 @@ Use these templates to operationalize rollout decisions:
 - `docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md`
 - `docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE.md`
 - `docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md`
-
-Persian counterparts:
-- `docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE_FA.md`
-- `docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST_FA.md`
-- `docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE_FA.md`
 
 
