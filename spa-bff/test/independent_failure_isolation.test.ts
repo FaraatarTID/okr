@@ -54,7 +54,7 @@ describe("independent service failure isolation", () => {
     await app.close();
 
     expect(health.statusCode).toBe(200);
-    expect(health.json()).toEqual({ status: "ok", service: "spa-bff" });
+    expect(health.json()).toEqual({ status: "ok" });
     expect(protectedRequest.statusCode).toBe(503);
     expect(protectedRequest.json()).toMatchObject({
       code: "BACKEND_UNAVAILABLE",

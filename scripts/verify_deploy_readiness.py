@@ -140,8 +140,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--bff-health-url",
-        default="http://127.0.0.1:3001/healthz",
-        help="BFF health URL (default: http://127.0.0.1:3001/healthz).",
+        default="http://127.0.0.1:3001/livez",
+        help="BFF health URL (default: http://127.0.0.1:3001/livez).",
     )
     parser.add_argument(
         "--web-url",
@@ -187,7 +187,7 @@ def main() -> int:
             ),
         ),
         (
-            "bff healthz",
+            "bff livez",
             lambda: _http_json(
                 args.bff_health_url, timeout_seconds=min(10.0, interval * 3)
             ),

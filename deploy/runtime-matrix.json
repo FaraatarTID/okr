@@ -11,7 +11,7 @@
   },
   "health": {
     "api": "/healthz",
-    "bff": "/healthz",
+    "bff": "/livez",
     "web": "/"
   },
   "migration_policy": "explicit-one-off-before-release-start"

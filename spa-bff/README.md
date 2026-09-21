@@ -34,7 +34,8 @@ Optional:
 
 ## Endpoints
 
-- `GET /healthz`
+- `GET /livez` (process liveness; `/healthz` is a compatibility alias)
+- `GET /readyz` (authenticated backend dependency readiness)
 - `POST /session/login`
 - `GET /session/me`
 - `POST /session/logout`

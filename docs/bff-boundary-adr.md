@@ -175,7 +175,7 @@ below before deployment:
 - **Network:** web reaches the BFF through the approved HTTPS origin; BFF reaches
   the API through a private service address; API and worker reach only the
   private database. The API and database receive no public ingress.
-- **Health:** API and BFF retain independent `/healthz` checks; the worker has
+- **Health:** API and BFF provides `/livez` process checks and `/readyz` backend dependency checks; the worker has
   an independent startup/status signal; each service has its own restart policy
   and readiness gate. A healthy BFF must not mask an unhealthy API or worker.
 - **Security:** preserve BFF session, cookie, CSRF, actor-binding, and request-

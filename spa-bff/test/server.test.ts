@@ -116,22 +116,110 @@ function csrfHeaders(): Record<string, string> {
 }
 
 describe("spa-bff server", () => {
-  it("returns health payload", async () => {
+  it("returns liveness without probing the backend", async () => {
     const app = createServer(baseConfig, {
       fetchFn: vi.fn(),
     });
 
     const response = await app.inject({
       method: "GET",
-      url: "/healthz",
+      url: "/livez",
     });
     await app.close();
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({
-      status: "ok",
-      service: "spa-bff",
-    });
+    expect(response.json()).toEqual({ status: "ok" });
+  });
+
+  it("keeps /healthz as a liveness compatibility alias", async () => {
+    const fetchFn = vi.fn();
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({ method: "GET", url: "/healthz" });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: "ok" });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it("returns readiness success using signed service authentication", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({ method: "GET", url: "/readyz" });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ status: "ok" });
+    expect(fetchFn).toHaveBeenCalledWith(
+      "http://backend-api:8100/v1/system/readyz",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          "x-okr-service-token": baseConfig.backendServiceToken,
+          "x-okr-signature": expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it.each([
+    ["an unreachable backend", new TypeError("fetch failed")],
+    ["a non-success backend response", new Response(null, { status: 503 })],
+  ])("returns a non-sensitive 503 for %s", async (_label, outcome) => {
+    const fetchFn = vi.fn().mockImplementation(() =>
+      outcome instanceof Response ? Promise.resolve(outcome) : Promise.reject(outcome),
+    );
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({ method: "GET", url: "/readyz" });
+    await app.close();
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ code: "BACKEND_UNAVAILABLE" });
+    expect(response.body).not.toContain(baseConfig.backendApiUrl);
+  });
+
+  it("returns 503 when the readiness probe times out", async () => {
+    const fetchFn = vi.fn().mockImplementation((_url: string, init: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      }),
+    );
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({ method: "GET", url: "/readyz" });
+    await app.close();
+
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toEqual({ code: "BACKEND_UNAVAILABLE" });
+  }, 3_000);
+
+  it("briefly caches completed readiness results", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(new Response(null, { status: 200 }));
+    const app = createServer(baseConfig, { fetchFn });
+    const first = await app.inject({ method: "GET", url: "/readyz" });
+    const second = await app.inject({ method: "GET", url: "/readyz" });
+    await app.close();
+
+    expect(first.statusCode).toBe(200);
+    expect(second.statusCode).toBe(200);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces concurrent readiness requests into one backend probe", async () => {
+    let resolveProbe: (response: Response) => void = () => undefined;
+    const fetchFn = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => {
+      resolveProbe = resolve;
+    }));
+    const app = createServer(baseConfig, { fetchFn });
+    const first = app.inject({ method: "GET", url: "/readyz" });
+    const second = app.inject({ method: "GET", url: "/readyz" });
+    await vi.waitFor(() => expect(fetchFn).toHaveBeenCalledTimes(1));
+    resolveProbe(new Response(null, { status: 200 }));
+    const [firstResponse, secondResponse] = await Promise.all([first, second]);
+    await app.close();
+
+    expect(firstResponse.statusCode).toBe(200);
+    expect(secondResponse.statusCode).toBe(200);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
   it("emits structured request logs with observability identifiers", async () => {

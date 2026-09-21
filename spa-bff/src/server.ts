@@ -23,6 +23,15 @@ import {
 
 type WildcardParams = { "*": string };
 
+const BACKEND_READINESS_PATH = "/v1/system/readyz";
+// Health checks run frequently and must fail quickly enough not to hold an
+// orchestrator worker during a backend outage.  Keep both positive and
+// negative entries short: readiness is a current-state signal, not a cache.
+const READINESS_TIMEOUT_MS = 1_000;
+const READINESS_CACHE_TTL_MS = 1_000;
+
+type ReadinessResult = { ok: true } | { ok: false; code: "BACKEND_UNAVAILABLE" };
+
 const RESPONSE_HEADER_BLOCKLIST = new Set([
   "connection",
   "content-length",
@@ -244,6 +253,64 @@ export function createServer(
     bodyLimit: 50 * 1024 * 1024, // 50 MB — generous for backup uploads, prevents multi-GB abuse
   });
 
+  let cachedReadiness: { result: ReadinessResult; expiresAt: number } | null = null;
+  let readinessInFlight: Promise<ReadinessResult> | null = null;
+
+  async function probeBackendReadiness(): Promise<ReadinessResult> {
+    const now = Date.now();
+    if (cachedReadiness && cachedReadiness.expiresAt > now) {
+      return cachedReadiness.result;
+    }
+    if (readinessInFlight) {
+      return readinessInFlight;
+    }
+
+    const fetchFn = deps?.fetchFn ?? globalThis.fetch;
+    readinessInFlight = (async () => {
+      let result: ReadinessResult;
+      try {
+        const response = await fetchFn(
+          new URL(BACKEND_READINESS_PATH, `${config.backendApiUrl}/`).toString(),
+          {
+            method: "GET",
+            headers: {
+              accept: "application/json",
+              ...buildBackendSecurityHeaders({
+                method: "GET",
+                path: BACKEND_READINESS_PATH,
+                bodyBytes: null,
+                serviceToken: config.backendServiceToken,
+                signingSecret: config.backendSigningSecret,
+                signingKeyId: config.backendSigningKeyId,
+              }),
+            },
+            signal: AbortSignal.timeout(READINESS_TIMEOUT_MS),
+          },
+        );
+        result = response.ok
+          ? { ok: true }
+          : { ok: false, code: "BACKEND_UNAVAILABLE" };
+      } catch {
+        // Deliberately collapse DNS, connection, and timeout errors to one
+        // public code. Detailed error data stays in infrastructure logs.
+        result = { ok: false, code: "BACKEND_UNAVAILABLE" };
+      }
+      cachedReadiness = {
+        result,
+        expiresAt: Date.now() + READINESS_CACHE_TTL_MS,
+      };
+      return result;
+    })();
+
+    try {
+      return await readinessInFlight;
+    } finally {
+      // Never retain a failed/hung promise as the cache entry; only completed
+      // results above are cached for the bounded TTL.
+      readinessInFlight = null;
+    }
+  }
+
   // Security headers on every response
   app.addHook("onSend", async (_request, reply) => {
     reply.header("Strict-Transport-Security", "max-age=63072000; includeSubDomains; preload");
@@ -311,12 +378,23 @@ export function createServer(
     );
   });
 
-  app.get("/healthz", async () => {
-    return {
-      status: "ok",
-      service: "spa-bff",
-    };
-  });
+  app.get("/livez", async () => ({ status: "ok" }));
+
+  const readinessHandler = async (
+    _request: unknown,
+    reply: { code: (status: number) => { send: (payload: unknown) => unknown } },
+  ) => {
+    const result = await probeBackendReadiness();
+    if (result.ok) {
+      return { status: "ok" };
+    }
+    return reply.code(503).send({ code: result.code });
+  };
+  app.get("/readyz", readinessHandler);
+
+  // Compatibility alias: healthz intentionally means process liveness, not
+  // backend readiness. New deployment probes must use /livez or /readyz.
+  app.get("/healthz", async () => ({ status: "ok" }));
 
   app.post("/session/login", async (request, reply) => {
     const requestId = readRequestId(request.headers);

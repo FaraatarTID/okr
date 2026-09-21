@@ -36,7 +36,7 @@ services:
     ports:
       - "${SPA_BFF_HOST_PORT:-3001}:${BFF_PORT:-3001}"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:${BFF_PORT:-3001}/healthz"]
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:${BFF_PORT:-3001}/livez"]
     restart: unless-stopped
   spa-web:
     environment:

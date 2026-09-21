@@ -254,7 +254,7 @@ not run migrations concurrently from API replicas. If Darkube does not offer
 an approved terminal or one-shot command facility, stop at the provider
 confirmation gate and record the limitation.
 
-5. Confirm the API `/healthz`, BFF `/healthz`, web shell, and worker startup
+5. Confirm the API `/healthz`, BFF `/livez`, web shell, and worker startup
    signal. Continue with the verification steps in
    [`docs/saas/prerelease-runbook.md`](../../../docs/saas/prerelease-runbook.md).
 

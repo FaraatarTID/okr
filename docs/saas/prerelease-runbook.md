@@ -144,7 +144,7 @@ Record PASS/FAIL and the observation time for every item:
 
 - Web public HTTPS URL returns a successful response and renders the shell.
 - TLS certificate is valid for the actual pre-release domain.
-- BFF `/healthz` returns an OK response through its approved route.
+- BFF `/livez` returns an OK response through its approved route.
 - API `/healthz` returns an OK response through a private or provider-approved
   probe path.
 - Worker status is running and its runtime log contains a startup/healthy
@@ -263,7 +263,7 @@ SSH path, host-level rollback, or database operation.
    identities and deployment events.
 4. Run the health gates in order:
    - web public HTTPS responds successfully and renders the shell;
-   - BFF `/healthz` responds successfully through the approved route;
+   - BFF `/livez` responds successfully through the approved route;
    - API `/healthz` responds successfully through a private or approved probe;
    - worker reports running and emits its startup/healthy signal;
    - BFF-to-API connectivity succeeds without public database exposure;
@@ -312,7 +312,7 @@ Old release identity (rollback target):
 
 Health gates:
   web HTTPS shell: NOT RUN | PASS | FAIL
-  BFF /healthz: NOT RUN | PASS | FAIL
+  BFF /livez: NOT RUN | PASS | FAIL
   API /healthz: NOT RUN | PASS | FAIL
   worker running/healthy signal: NOT RUN | PASS | FAIL
   BFF-to-API connectivity: NOT RUN | PASS | FAIL

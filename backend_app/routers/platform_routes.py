@@ -228,6 +228,26 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         }
 
     @router.get(
+        "/v1/system/readyz",
+        dependencies=[Depends(main.require_service_access)],
+    )
+    def api_dependency_readyz() -> dict:
+        """Prove the backend's required data dependency is reachable.
+
+        This is deliberately service-authenticated because it is intended for
+        the BFF's readiness probe, rather than for public process liveness.
+        """
+        try:
+            main.count_dead_jobs()
+        except Exception as exc:
+            main.error_log("backend_dependency_readiness_failed", exc)
+            raise HTTPException(
+                status_code=503,
+                detail="Required dependency is unavailable.",
+            ) from exc
+        return {"status": "ok"}
+
+    @router.get(
         "/v1/admin/ai-health",
         dependencies=[Depends(main.require_service_access)],
     )

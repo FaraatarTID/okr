@@ -98,7 +98,7 @@ def _print_urls(
     bff_port = bff_port or environment["SPA_BFF_HOST_PORT"]
     api_port = api_port or environment["OKR_BACKEND_HOST_PORT"]
     print(f"[DEV] Web: http://127.0.0.1:{web_port}")
-    print(f"[DEV] BFF health: http://127.0.0.1:{bff_port}/healthz")
+    print(f"[DEV] BFF health: http://127.0.0.1:{bff_port}/livez")
     print(f"[DEV] API health: http://127.0.0.1:{api_port}/healthz")
     print("[DEV] Login username: admin")
     if password:

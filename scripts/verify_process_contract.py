@@ -74,9 +74,10 @@ def _check_ports(compose: str) -> str | None:
 
 
 def _check_health(compose: str) -> str | None:
-    for service in ("backend-api", "spa-bff"):
+    expected_paths = {"backend-api": "/healthz", "spa-bff": "/livez"}
+    for service, path in expected_paths.items():
         block = _service_block(compose, service)
-        if "healthcheck:" not in block or "/healthz" not in block:
+        if "healthcheck:" not in block or path not in block:
             return f"health/readiness endpoint is incomplete for {service}"
     return None
 

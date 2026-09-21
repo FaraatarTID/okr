@@ -250,7 +250,7 @@ set "SPAWN_PID_FILE=%PID_FILE%"
 set "SPAWN_LAST_PID_FILE=%LAST_PID_FILE%"
 call :spawn_with_logs
 if errorlevel 1 goto :spawn_bff_failed
-call :wait_for_http "SPA BFF" "http://127.0.0.1:3001/healthz" 60
+call :wait_for_http "SPA BFF" "http://127.0.0.1:3001/livez" 60
 if errorlevel 1 goto :startup_failed
 
 echo [INFO] Launching SPA Web process...
@@ -267,7 +267,7 @@ if errorlevel 1 goto :spawn_spa_failed
 echo [8/9] Waiting for service readiness...
 call :wait_for_worker "Backend Worker" "backend_app.worker" 60
 if errorlevel 1 goto :startup_failed
-call :wait_for_http "SPA BFF" "http://127.0.0.1:3001/healthz" 60
+call :wait_for_http "SPA BFF" "http://127.0.0.1:3001/livez" 60
 if errorlevel 1 goto :startup_failed
 call :wait_for_http "SPA Web" "http://127.0.0.1:3000" 120
 if errorlevel 1 goto :startup_failed

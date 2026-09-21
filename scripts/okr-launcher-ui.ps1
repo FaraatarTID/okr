@@ -807,7 +807,7 @@ function Test-HttpEndpoint {
 function Show-ServiceStatus {
     $checks = @(
         @{ Name = "Backend API"; Url = "http://127.0.0.1:8100/healthz" },
-        @{ Name = "SPA BFF";     Url = "http://127.0.0.1:3001/healthz" },
+        @{ Name = "SPA BFF";     Url = "http://127.0.0.1:3001/livez" },
         @{ Name = "SPA Web";     Url = "http://127.0.0.1:3000/" }
     )
     $dockerUp = $false

@@ -4,7 +4,7 @@ import { BFF_ORIGIN } from "@/lib/bff-proxy";
 
 export async function GET(): Promise<NextResponse> {
   try {
-    const response = await fetch(`${BFF_ORIGIN}/healthz`, {
+    const response = await fetch(`${BFF_ORIGIN}/livez`, {
       cache: "no-store",
     });
     return new NextResponse(response.body, {

@@ -277,7 +277,7 @@ def _smoke_check_services(
     while time.time() < deadline:
         service_checks = {
             "backend-api": f"{base_backend_url}/healthz",
-            "spa-bff": f"{base_bff_url}/healthz",
+            "spa-bff": f"{base_bff_url}/livez",
             "spa-web": base_web_url,
         }
         ready_services: set[str] = set()

@@ -22,7 +22,7 @@ def test_compose_fails_closed_for_internal_credentials_and_gates_web_on_bff() ->
     assert "OKR_BACKEND_SERVICE_TOKEN=${OKR_BACKEND_SERVICE_TOKEN:?" in text
     assert "OKR_BACKEND_SIGNING_SECRET=${OKR_BACKEND_SIGNING_SECRET:?" in text
     assert (
-        'test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:${BFF_PORT:-3001}/healthz'
+        'test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:${BFF_PORT:-3001}/livez'
         in text
     )
     assert "spa-bff:\n        condition: service_healthy" in text
