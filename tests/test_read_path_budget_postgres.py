@@ -212,3 +212,89 @@ def test_the_production_connection_cost_is_real_on_postgres(
         "NullPool should make every checkout a new physical connection; "
         f"{counters.checkouts} checkouts produced {counters.new_connections} connections"
     )
+
+
+def test_the_opt_in_pooled_branch_reuses_connections_and_emits_no_prepare(monkeypatch):
+    """Pin the evidence behind the PgBouncer decision in `src/database.py`.
+
+    Three claims are asserted, because all three are load-bearing for P0-8 and each
+    would otherwise rot into a comment nobody re-checks:
+
+    1. The pooled branch is FUNCTIONAL, not dormant-untested code. It is the branch a
+       default-flip would activate, so "we could turn it on" has to be measured.
+    2. `NullPool` really is one physical connection per checkout, which is what makes
+       the opt-in worth anything.
+    3. psycopg2 emits NO server-side PREPARE/DEALLOCATE. This is a TRIPWIRE: it is what
+       makes the prepared-statement half of the PgBouncer risk moot, so if anyone ever
+       enables server-side cursors or `prepare_threshold`, this fails and forces the
+       reasoning in `src/database.py` to be revisited rather than silently invalidated.
+
+    None of this verifies safety under PgBouncer transaction pooling, and CI cannot:
+    that is the point of P0-8. This only proves the branch works on a direct connection.
+    """
+    url = _postgres_url()
+
+    import src.database as database
+
+    def _measure(use_null_pool: bool):
+        monkeypatch.setenv("OKR_DB_USE_NULL_POOL", "true" if use_null_pool else "false")
+        engine = database._create_engine(url)
+        counters = Counters()
+        prepares: list[str] = []
+
+        def _on_connect(dbapi_connection, connection_record):
+            counters.new_connections += 1
+
+        def _on_checkout(dbapi_connection, connection_record, connection_proxy):
+            counters.checkouts += 1
+
+        def _on_before_cursor_execute(
+            conn, cursor, statement, parameters, context, executemany
+        ):
+            head = " ".join(str(statement).split())[:80].upper()
+            if head.startswith(("PREPARE", "DEALLOCATE")):
+                prepares.append(head)
+
+        event.listen(engine, "connect", _on_connect)
+        event.listen(engine, "checkout", _on_checkout)
+        event.listen(engine, "before_cursor_execute", _on_before_cursor_execute)
+        try:
+            # Six sequential acquisitions, the shape a read with several phases has.
+            for _ in range(3):
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                with engine.connect() as conn:
+                    conn.execute(text("SELECT 2"))
+        finally:
+            event.remove(engine, "connect", _on_connect)
+            event.remove(engine, "checkout", _on_checkout)
+            event.remove(engine, "before_cursor_execute", _on_before_cursor_execute)
+            pool_name = type(engine.pool).__name__
+            engine.dispose()
+        return counters, prepares, pool_name
+
+    null_counters, null_prepares, null_pool = _measure(True)
+    pooled_counters, pooled_prepares, pooled_pool = _measure(False)
+
+    assert null_pool == "NullPool", (
+        "the default must remain NullPool pending PgBouncer verification (P0-8); "
+        f"got {null_pool}"
+    )
+    assert pooled_pool == "QueuePool", (
+        f"the opt-in branch produced {pooled_pool}, not QueuePool"
+    )
+
+    # 1 + 2: NullPool pays a physical connection per checkout; the pool does not.
+    assert null_counters.new_connections == null_counters.checkouts
+    assert pooled_counters.new_connections < pooled_counters.checkouts, (
+        "the pooled branch did not reuse connections "
+        f"({pooled_counters.new_connections} connections for "
+        f"{pooled_counters.checkouts} checkouts)"
+    )
+
+    # 3: the tripwire.
+    assert null_prepares == [] and pooled_prepares == [], (
+        "server-side PREPARE/DEALLOCATE was emitted, which invalidates the reasoning in "
+        "src/database.py that the prepared-statement half of the PgBouncer risk is moot; "
+        f"revisit P0-8 (null={null_prepares}, pooled={pooled_prepares})"
+    )

@@ -146,6 +146,26 @@ def _create_engine(url: str):
     elif normalized.startswith("postgresql+psycopg2://"):
         # Supabase recommends PgBouncer transaction pooler; disable app-side pooling
         # by default to avoid session/prepared-statement conflicts.
+        #
+        # Status of that risk, measured rather than assumed (2026-09-21):
+        #   - The prepared-statement half is MOOT for this stack. psycopg2 emits no
+        #     server-side PREPARE/DEALLOCATE under our configuration (counted zero
+        #     across both pool modes), so there is nothing for a transaction-mode
+        #     pooler to invalidate. This would change if server-side cursors or
+        #     prepare_threshold were ever enabled.
+        #   - The session-state half REMAINS. SET variables, temp tables and advisory
+        #     locks do not survive PgBouncer handing out a different backend per
+        #     transaction, and app-side pooling widens the window by holding
+        #     connections longer.
+        #   - The opt-in branch below is FUNCTIONAL, not dormant-untested: measured
+        #     QueuePool with size=5 turning 6 checkouts into 1 physical connection
+        #     (vs 6 under NullPool).
+        #
+        # NOT VERIFIED against PgBouncer in transaction-pooling mode. CI runs direct
+        # PostgreSQL, so a green CI says nothing about the production topology. The
+        # default stays True until that verification exists; do not flip it on the
+        # strength of CI numbers alone. Tracked as P0-8 in
+        # docs/REMAINING_ENGINEERING_PLAN.md.
         use_null_pool = get_bool_config("OKR_DB_USE_NULL_POOL", True)
         if use_null_pool:
             kwargs["poolclass"] = NullPool
