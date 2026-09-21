@@ -470,6 +470,20 @@ jobs:
       - name: Documentation HQ Link Check
         run: python scripts/check_docs_hq_links.py
 
+  workflow-secret-prerequisites:
+    name: Workflow secret prerequisites
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      # Deliberately unconditional rather than path-filtered: the failure this gate
+      # exists to prevent was a workflow referencing a secret no reviewer had been
+      # told about, and a filter is one more way for that to slip through.
+      - name: Check workflow secret prerequisites
+        run: python scripts/check_workflow_secret_prerequisites.py
+
   ci-result:
     name: CI result
     runs-on: ubuntu-latest
@@ -481,6 +495,7 @@ jobs:
       - spa-quality
       - spa-e2e
       - docs-quality
+      - workflow-secret-prerequisites
     steps:
       - name: Require all executed checks to pass
         shell: bash
@@ -491,9 +506,10 @@ jobs:
           SPA_RESULT: ${{ needs.spa-quality.result }}
           E2E_RESULT: ${{ needs.spa-e2e.result }}
           DOCS_RESULT: ${{ needs.docs-quality.result }}
+          SECRET_PREREQ_RESULT: ${{ needs.workflow-secret-prerequisites.result }}
         run: |
           set -euo pipefail
-          for result in "$CHANGES_RESULT" "$POSTGREST_EXPOSURE_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT" "$DOCS_RESULT"; do
+          for result in "$CHANGES_RESULT" "$POSTGREST_EXPOSURE_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT" "$DOCS_RESULT" "$SECRET_PREREQ_RESULT"; do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               echo "CI result failed because a required job returned: $result"
               exit 1
