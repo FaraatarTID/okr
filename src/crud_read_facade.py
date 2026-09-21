@@ -154,13 +154,23 @@ def get_user_goals_simple(user_id: str, cycle_id: Optional[int] = None) -> List[
     )
 
 
-def get_node(node_id: int, node_type: str, actor_username: Optional[str] = None):
-    """Fetch a node by ID and Type string (GOAL, OBJECTIVE, KEY_RESULT, TASK)."""
+def get_node(
+    node_id: int,
+    node_type: str,
+    actor_username: Optional[str] = None,
+    allow_unscoped: bool = False,
+):
+    """Fetch a node by ID and Type string (GOAL, OBJECTIVE, KEY_RESULT, TASK).
+
+    `actor_username` is required for any node that exists: omitting it raises
+    `UnscopedNodeReadError` unless `allow_unscoped=True` is passed deliberately.
+    """
     return read_service.get_node_from_crud(
         crud_module=_crud_module(),
         node_id=node_id,
         node_type=node_type,
         actor_username=actor_username,
+        allow_unscoped=allow_unscoped,
     )
 
 

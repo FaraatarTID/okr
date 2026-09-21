@@ -502,3 +502,74 @@ def test_cycle_governance_allows_manager_and_blocks_member(isolated_db):
             end_date=utc_now_naive() + timedelta(days=90),
             actor_username="member_cycle",
         )
+
+
+def test_get_node_refuses_a_read_with_no_actor(isolated_db):
+    """Omitting the actor fails loudly instead of returning an unscoped node.
+
+    Authorization used to be conditional (`if node and actor_username`), so losing
+    the actor silently downgraded the read to unauthorized rather than failing.
+    """
+    from src.crud import create_cycle, create_goal, create_user, get_node
+    from src.crud_query_helpers import UnscopedNodeReadError
+    from src.models import UserRole
+
+    create_user("owner_unscoped", "owner-pass", role=UserRole.ADMIN)
+    cycle = create_cycle(
+        "Q11",
+        start_date=utc_now_naive(),
+        end_date=utc_now_naive() + timedelta(days=90),
+    )
+    goal = create_goal(
+        "owner_unscoped",
+        title="unscoped goal",
+        cycle_id=cycle.id,
+        actor_username="owner_unscoped",
+    )
+
+    with pytest.raises(UnscopedNodeReadError):
+        get_node(goal.id, "GOAL")
+
+    # The deliberate exception stays available, and stays explicit at the call site.
+    assert get_node(goal.id, "GOAL", allow_unscoped=True) is not None
+
+
+def test_no_call_site_reads_a_node_without_an_actor():
+    """Lint guard: `get_node` may not be called without an actor.
+
+    The refusal above only fires at runtime for a node that exists. This asserts
+    the stronger, static property: no production call site passes an empty actor
+    and none relies on the unscoped default, so the fail-open cannot creep back in
+    through a new caller.
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    call = re.compile(r"\bget_node(?:_from_crud)?\s*\(")
+    offenders: list[str] = []
+
+    for base in ("src", "backend_app"):
+        for path in sorted((root / base).rglob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            for match in call.finditer(text):
+                line_start = text.rfind("\n", 0, match.start()) + 1
+                if text[line_start : match.start()].lstrip().startswith("def "):
+                    continue
+                # Capture the whole argument list, balancing parentheses, so a
+                # call whose arguments span several lines is judged on all of them.
+                depth = 1
+                index = match.end()
+                while index < len(text) and depth:
+                    if text[index] == "(":
+                        depth += 1
+                    elif text[index] == ")":
+                        depth -= 1
+                    index += 1
+                arguments = text[match.end() : index]
+                if "actor_username" in arguments or "allow_unscoped" in arguments:
+                    continue
+                lineno = text.count("\n", 0, match.start()) + 1
+                offenders.append(f"{path.relative_to(root)}:{lineno}")
+
+    assert offenders == [], "node reads without an actor:\n" + "\n".join(offenders)

@@ -360,6 +360,7 @@ def get_node_from_crud(
     node_id: int,
     node_type: str,
     actor_username: Optional[str] = None,
+    allow_unscoped: bool = False,
 ):
     if backend_read_proxy_enabled_from_crud(crud_module=crud_module):
         from src.services import backend_client
@@ -383,6 +384,7 @@ def get_node_from_crud(
         node_id=node_id,
         node_type=node_type,
         actor_username=actor_username,
+        allow_unscoped=allow_unscoped,
     )
 
 

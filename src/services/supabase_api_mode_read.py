@@ -35,8 +35,152 @@ def _rest_rpc(function_name: str, args: dict[str, Any]) -> tuple[int, Any]:
     )
 
 
+_UNRESTRICTED = object()
+
+
+def _team_scope_id(scope: dict[str, Any] | None) -> Any:
+    """Team the actor may read, or `_UNRESTRICTED` for an admin.
+
+    Returns 0 for an actor with no team, which matches no team row: a scopeless
+    actor reads nothing rather than everything. Teams are not global reference
+    data, so the Supabase path filters them the same way the TCP branch does.
+    """
+    if not isinstance(scope, dict) or bool(scope.get("is_admin", False)):
+        return _UNRESTRICTED
+    team_id = scope.get("team_id")
+    return int(team_id) if team_id is not None else 0
+
+
+def _allowed_goal_ids_for_cycle(*, cycle_id: int, scope: Any) -> list[str]:
+    """Goal ids in a cycle, narrowed to the goals the actor owns.
+
+    Two defects are answered at once here, because they are the same query.
+
+    The cycle relation: the embedded fast path filtered
+    `objective.goal_id` against a cycle id. `Goal.cycle_id` is
+    `foreign_key("cycle.id")` and `Objective.goal_id` is `foreign_key("goal.id")`
+    (`src/models.py:373` and `:423`), so that paired one table's primary key with
+    another's. The relation the TCP path uses is `Goal.cycle_id`, and this
+    function's own fallback branch already used it, so the fast path contradicted
+    its sibling.
+
+    The actor relation: nothing filtered these rows by `owner_ids`, so a member saw
+    key results belonging to goals they do not own.
+    """
+    status, rows = _rest_select(
+        "goal",
+        query={
+            "cycle_id": f"eq.{int(cycle_id)}",
+            "select": "id,owner_id",
+            "order": "id.asc",
+        },
+    )
+    if status >= 400:
+        raise ValueError(f"Supabase API error (goal/cycle): {status}")
+
+    is_admin = isinstance(scope, dict) and bool(scope.get("is_admin", False))
+    owner_ids: set[int] = set()
+    if not is_admin and isinstance(scope, dict):
+        raw = scope.get("owner_ids")
+        if isinstance(raw, (set, frozenset, list, tuple)):
+            for value in raw:
+                try:
+                    owner_ids.add(int(value))
+                except (TypeError, ValueError):
+                    continue
+
+    output: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        goal_id = _as_int(row.get("id"), 0)
+        if goal_id <= 0:
+            continue
+        if not is_admin:
+            owner = _as_int(row.get("owner_id"), 0)
+            if owner <= 0 or owner not in owner_ids:
+                continue
+        output.append(str(goal_id))
+    return output
+
+
+def _owner_user_id_for_username(username: str) -> int:
+    """Resolve a username to its user id, mirroring the TCP owner predicate.
+
+    `_goal_owner_predicate_by_username` matches `Goal.owner_id` against the user id
+    found by username (`src/domain/authorization.py:55-58`). Returns 0 when the
+    username resolves to nobody, which matches no goal: an unknown user reads
+    nothing rather than everything.
+    """
+    if not username:
+        return 0
+    status, rows = _rest_select(
+        "user",
+        query={"username": f"eq.{username}", "select": "id", "limit": "1"},
+    )
+    if status >= 400:
+        raise ValueError(f"Supabase API error (user/by_username): {status}")
+    for row in rows:
+        if isinstance(row, dict):
+            user_id = _as_int(row.get("id"), 0)
+            if user_id > 0:
+                return user_id
+    return 0
+
+
+def _key_result_ids_for_cycle_scope(*, cycle_id: int, scope: Any) -> set[int]:
+    """Key result ids in a cycle whose goal the actor may read.
+
+    Mirrors the per-experiment authorization the TCP path performs
+    (`src/crud_experiment_helpers.py:376` calling `_authorize_goal_scoped_access`):
+    the goal's owner, that owner's manager, or an admin. `scope["owner_ids"]` is
+    exactly that set — self plus direct reports for a manager, every active user for
+    an admin (`backend_app/scope_resolution.py:55-69`) — so narrowing the cycle's
+    goals to it reproduces the rule without a per-row round trip.
+    """
+    goal_ids = _allowed_goal_ids_for_cycle(cycle_id=cycle_id, scope=scope)
+    if not goal_ids:
+        return set()
+    status, objectives = _rest_select(
+        "objective",
+        query={
+            "goal_id": f"in.({_in_clause_ids(goal_ids)})",
+            "select": "id",
+            "order": "id.asc",
+        },
+    )
+    if status >= 400:
+        raise ValueError(f"Supabase API error (objective/cycle): {status}")
+    objective_ids = [
+        str(_as_int(row.get("id"), 0))
+        for row in objectives
+        if isinstance(row, dict) and _as_int(row.get("id"), 0) > 0
+    ]
+    if not objective_ids:
+        return set()
+    status, krs = _rest_select(
+        "key_result",
+        query={
+            "objective_id": f"in.({_in_clause_ids(objective_ids)})",
+            "select": "id",
+            "order": "id.asc",
+        },
+    )
+    if status >= 400:
+        raise ValueError(f"Supabase API error (key_result/cycle): {status}")
+    return {
+        _as_int(row.get("id"), 0)
+        for row in krs
+        if isinstance(row, dict) and _as_int(row.get("id"), 0) > 0
+    }
+
+
 def read_query_via_supabase_api(
-    *, kind: str, params: dict[str, Any], actor: str
+    *,
+    kind: str,
+    params: dict[str, Any],
+    actor: str,
+    scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized = str(kind or "").strip()
 
@@ -248,19 +392,25 @@ def read_query_via_supabase_api(
         return {"users": [_normalize_user_row_role(row) for row in rows]}
 
     if normalized == "teams.all":
-        status, rows = _rest_select(
-            "team",
-            query={
-                "select": "id,name,description,created_at",
-                "order": "id.asc",
-            },
-        )
+        team_scope = _team_scope_id(scope)
+        team_query: dict[str, Any] = {
+            "select": "id,name,description,created_at",
+            "order": "id.asc",
+        }
+        if team_scope is not _UNRESTRICTED:
+            team_query["id"] = f"eq.{team_scope}"
+        status, rows = _rest_select("team", query=team_query)
         if status >= 400:
             raise ValueError(f"Supabase API error (teams.all): {status}")
         return {"teams": rows}
 
     if normalized == "teams.by_id":
         team_id = int(params.get("team_id") or 0)
+        team_scope = _team_scope_id(scope)
+        if team_scope is not _UNRESTRICTED and int(team_scope) != team_id:
+            # Report it as absent rather than forbidden: a 403 would confirm that
+            # the team exists, which is the disclosure the filter is here to avoid.
+            return {"team": None}
         status, rows = _rest_select(
             "team",
             query={
@@ -350,9 +500,12 @@ def read_query_via_supabase_api(
         # objective -> key-result hierarchy with three sequential remote
         # calls. Keep the existing path as a compatibility fallback for
         # projects whose PostgREST schema cache lacks the relationship.
+        allowed_goal_ids = _allowed_goal_ids_for_cycle(cycle_id=cycle_id, scope=scope)
+        if not allowed_goal_ids:
+            return {"key_results": []}
         nested_query: dict[str, str] = {
             "select": "*,objective!inner(goal_id)",
-            "objective.goal_id": f"eq.{cycle_id}",
+            "objective.goal_id": f"in.({_in_clause_ids(allowed_goal_ids)})",
             "order": "id.asc",
         }
         if limit is not None:
@@ -368,13 +521,9 @@ def read_query_via_supabase_api(
                 row["__tablename__"] = "keyresult"
             return {"key_results": nested_krs}
 
-        q = {"cycle_id": f"eq.{cycle_id}", "select": "id", "order": "id.asc"}
-        status, goals = _rest_select("goal", query=q)
-        if status >= 400:
-            raise ValueError(f"Supabase API error (krs.by_cycle/goals): {status}")
-        goal_ids = [
-            str(_as_int(g.get("id"), 0)) for g in goals if _as_int(g.get("id"), 0) > 0
-        ]
+        # The goals were already resolved by cycle and narrowed to the actor's
+        # ownership above; re-fetching them here would ask the same question twice.
+        goal_ids = list(allowed_goal_ids)
         if not goal_ids:
             return {"key_results": []}
 
@@ -420,9 +569,12 @@ def read_query_via_supabase_api(
         # Prefer one embedded PostgREST query over walking the hierarchy with
         # four sequential remote calls. Older projects may not expose these
         # FK relationships through PostgREST, so retain the fallback below.
+        allowed_goal_ids = _allowed_goal_ids_for_cycle(cycle_id=cycle_id, scope=scope)
+        if not allowed_goal_ids:
+            return {"tasks": []}
         nested_query: dict[str, str] = {
             "select": "*,key_result!inner(objective!inner(goal_id))",
-            "key_result.objective.goal_id": f"eq.{cycle_id}",
+            "key_result.objective.goal_id": f"in.({_in_clause_ids(allowed_goal_ids)})",
             "order": "id.asc",
         }
         if limit is not None:
@@ -438,15 +590,8 @@ def read_query_via_supabase_api(
                 row["__tablename__"] = "task"
             return {"tasks": nested_tasks}
 
-        status, goals = _rest_select(
-            "goal",
-            query={"cycle_id": f"eq.{cycle_id}", "select": "id", "order": "id.asc"},
-        )
-        if status >= 400:
-            raise ValueError(f"Supabase API error (tasks.by_cycle/goals): {status}")
-        goal_ids = [
-            str(_as_int(g.get("id"), 0)) for g in goals if _as_int(g.get("id"), 0) > 0
-        ]
+        # Already resolved by cycle and narrowed to the actor above.
+        goal_ids = list(allowed_goal_ids)
         if not goal_ids:
             return {"tasks": []}
 
@@ -589,9 +734,26 @@ def read_query_via_supabase_api(
         days_threshold = _as_int(params.get("days_threshold"), 7)
         now_utc = datetime.now(timezone.utc)
 
+        # TCP filters this kind by the *requested user's* goals — there is no admin
+        # bypass, because `get_krs_needing_checkin` always applies
+        # `_goal_owner_predicate_by_username` (`src/domain/analytics.py:253`) — and it
+        # also requires `KeyResult.state == ACTIVE` (`:254`). The HTTPS path applied
+        # neither, so it returned every user's key results in the cycle regardless of
+        # state and regardless of who was asked about.
+        owner_user_id = _owner_user_id_for_username(
+            str(params.get("user_id") or "").strip()
+        )
+        if owner_user_id <= 0:
+            return {"key_results": []}
+
         status, goals = _rest_select(
             "goal",
-            query={"cycle_id": f"eq.{cycle_id}", "select": "id", "order": "id.asc"},
+            query={
+                "cycle_id": f"eq.{cycle_id}",
+                "owner_id": f"eq.{owner_user_id}",
+                "select": "id",
+                "order": "id.asc",
+            },
         )
         if status >= 400:
             raise ValueError(
@@ -627,6 +789,7 @@ def read_query_via_supabase_api(
             "key_result",
             query={
                 "objective_id": f"in.({_in_clause_ids(objective_ids)})",
+                "state": "eq.ACTIVE",
                 "select": "*",
                 "order": "id.asc",
             },
@@ -727,6 +890,22 @@ def read_query_via_supabase_api(
             raise ValueError(
                 f"Supabase API error (experiments.for_retro_window): {status}"
             )
+        # TCP authorizes each experiment against its key result's goal, allowing the
+        # goal's owner, that owner's manager, and admins
+        # (`src/crud_experiment_helpers.py:373-384`). The HTTPS path returned every
+        # experiment in the cycle. Admins are left unfiltered because their scope
+        # already spans every active user and `_authorize_goal_scoped_access` admits
+        # them outright.
+        if not (isinstance(scope, dict) and bool(scope.get("is_admin", False))):
+            allowed_kr_ids = _key_result_ids_for_cycle_scope(
+                cycle_id=cycle_id, scope=scope
+            )
+            rows = [
+                row
+                for row in rows
+                if isinstance(row, dict)
+                and _as_int(row.get("key_result_id"), 0) in allowed_kr_ids
+            ]
         return {"experiments": rows}
 
     if normalized == "retros.user":
