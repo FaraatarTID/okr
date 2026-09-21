@@ -281,6 +281,8 @@ Health check:
 ```bash
 docker compose -f deploy/docker/docker-compose.yml ps
 curl -I http://127.0.0.1:3000/
+curl -f http://127.0.0.1:3001/livez
+curl -f http://127.0.0.1:3001/readyz
 curl -f http://127.0.0.1:8100/healthz
 ```
 
@@ -288,6 +290,7 @@ Expected:
 
 - Services `spa-web`, `spa-bff`, `backend-api`, and `backend-worker` are `Up`
 - HTTP response from `/` is `200 OK`
+- BFF `/livez` confirms its process is running; BFF `/readyz` confirms it can reach the backend
 - Backend health endpoint returns `{"status":"ok"}`
 
 Step 7: Configure Nginx reverse proxy
@@ -306,8 +309,9 @@ server {
     listen 80;
     server_name okr.mycompany.com;
 
+    # Configure the load balancer/upstream health check for GET /readyz.
     location / {
-        proxy_pass http://127.0.0.1:3000/;
+        proxy_pass http://127.0.0.1:3001/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -506,7 +510,8 @@ Security hardening checklist
 
 - Use Supabase PostgreSQL only.
 - Keep only ports 80/443 exposed publicly.
-- Block direct public access to port 3000 (SPA) and 3001 (BFF).
+- Keep the BFF port (`3001`) private except to the reverse proxy/load balancer; configure its upstream availability check for `/readyz`.
+- Keep the SPA port (`3000`) private unless static assets are served separately.
 - Keep backend API port (`8100`) private (default bind: `127.0.0.1`).
 - Use signed internal requests (`OKR_BACKEND_SIGNING_SECRET`) and keep enforcement enabled.
 - Keep secrets in environment variables or platform secret manager.

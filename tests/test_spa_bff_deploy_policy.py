@@ -62,3 +62,26 @@ def test_k8s_backend_api_deployment_has_no_public_host_exposure() -> None:
 def test_k8s_manifests_do_not_define_ingress_for_backend_api() -> None:
     manifests = (ROOT / "deploy" / "k8s").glob("*.yaml")
     assert all("kind: Ingress" not in _read(str(path)) for path in manifests)
+
+
+def test_k8s_bff_uses_dependency_aware_readiness_and_secret_configuration() -> None:
+    deployment = _read("deploy/k8s/deployment-spa-bff.yaml")
+    service = _read("deploy/k8s/service-spa-bff.yaml")
+
+    assert "@sha256:REPLACE_WITH_RELEASE_DIGEST" in deployment
+    assert "runAsNonRoot: true" in deployment
+    assert "allowPrivilegeEscalation: false" in deployment
+    assert "readOnlyRootFilesystem: true" in deployment
+    assert "path: /livez" in deployment
+    assert "path: /readyz" in deployment
+    assert "timeoutSeconds: 2" in deployment
+    assert "failureThreshold: 3" in deployment
+    assert "name: okr-bff-backend" in deployment
+    assert "key: OKR_BACKEND_API_URL" in deployment
+    assert "name: okr-backend-auth" in deployment
+    assert "key: OKR_BACKEND_SERVICE_TOKEN" in deployment
+    assert "key: OKR_BACKEND_SIGNING_SECRET" in deployment
+    assert "name: okr-bff-session" in deployment
+    assert "key: BFF_SESSION_SECRET" in deployment
+    assert "type: ClusterIP" in service
+    assert "targetPort: http" in service

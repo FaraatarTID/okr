@@ -14,7 +14,7 @@ def test_runtime_matrix_rejects_wrong_worker_entrypoint(tmp_path: Path) -> None:
         '{"schema_version": 1, "python": "3.11", "node": "22", "postgresql": "16", '
         '"migration_policy": "one-off", "entrypoints": {"api": "python -m backend_app.run_api", '
         '"worker": "wrong", "bff": "npm run start", "web": "npm run start"}, '
-        '"health": {"api": "/healthz", "bff": "/healthz", "web": "/"}}',
+        '"health": {"api": "/healthz", "bff": {"liveness": "/livez", "readiness": "/readyz"}, "web": "/"}}',
         encoding="utf-8",
     )
 

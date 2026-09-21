@@ -311,11 +311,37 @@ export function createServer(
     );
   });
 
-  app.get("/healthz", async () => {
-    return {
-      status: "ok",
-      service: "spa-bff",
-    };
+  const livenessPayload = {
+    status: "ok",
+    service: "spa-bff",
+  };
+
+  // Liveness deliberately excludes dependencies: restarting a healthy BFF does
+  // not recover a backend outage. Readiness instead controls traffic admission.
+  app.get("/livez", async () => livenessPayload);
+  app.get("/healthz", async () => livenessPayload);
+
+  app.get("/readyz", async (_request, reply) => {
+    try {
+      const response = await (deps?.fetchFn ?? globalThis.fetch)(
+        `${config.backendApiUrl}/healthz`,
+        { signal: AbortSignal.timeout(Math.min(config.requestTimeoutMs, 5_000)) },
+      );
+      if (!response.ok) {
+        return reply.code(503).send({
+          status: "unavailable",
+          service: "spa-bff",
+          dependency: "backend-api",
+        });
+      }
+      return { ...livenessPayload, dependency: "backend-api" };
+    } catch {
+      return reply.code(503).send({
+        status: "unavailable",
+        service: "spa-bff",
+        dependency: "backend-api",
+      });
+    }
   });
 
   app.post("/session/login", async (request, reply) => {

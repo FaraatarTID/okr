@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: okr-spa-bff
+  namespace: okr
+  labels:
+    app: okr-spa-bff
+spec:
+  selector:
+    app: okr-spa-bff
+  ports:
+    - name: http
+      port: 3001
+      targetPort: http
+  type: ClusterIP

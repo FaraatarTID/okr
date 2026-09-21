@@ -50,3 +50,25 @@ It does not remove unrelated services from the Compose project. Migration
 execution remains an explicit one-off operation (`uv run alembic upgrade head`)
 and production backup/restore evidence is maintained separately from disposable
 local verification.
+
+## BFF health and traffic-admission semantics
+
+The browser-facing reverse proxy or load balancer must send application traffic
+only to `spa-bff` (the Kubernetes `okr-spa-bff` Service or the private BFF port
+in Compose). It must use `GET /readyz` as its upstream availability check.
+`/readyz` succeeds only when the BFF can reach `backend-api`; it therefore
+removes an instance from traffic during a backend outage.
+
+`GET /livez` proves only that the BFF process is running. Kubernetes liveness
+probes use this endpoint, so a temporary backend outage does **not** restart
+otherwise healthy BFF containers and create a restart loop. Kubernetes
+readiness probes use `/readyz`; their short timeout and three consecutive
+failure threshold tolerate brief disruptions before removing a BFF instance
+from service endpoints. Compose uses `/readyz` for its `spa-bff` health status,
+which represents end-to-end browser-path availability. Probe `/livez`
+independently when diagnosing local process health.
+
+The BFF's backend URL, backend service token, signing secret, and session secret
+are injected from Kubernetes Secrets (`okr-bff-backend`, `okr-backend-auth`, and
+`okr-bff-session`). Create those secrets through the platform's secret manager
+or `kubectl create secret`; do not place secret values in deployment manifests.

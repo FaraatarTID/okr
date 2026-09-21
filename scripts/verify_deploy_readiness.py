@@ -139,9 +139,17 @@ def _parse_args() -> argparse.Namespace:
         help="Backend health URL (default: http://127.0.0.1:8100/healthz).",
     )
     parser.add_argument(
-        "--bff-health-url",
-        default="http://127.0.0.1:3001/healthz",
-        help="BFF health URL (default: http://127.0.0.1:3001/healthz).",
+        "--bff-liveness-url",
+        default="http://127.0.0.1:3001/livez",
+        help="BFF liveness URL (default: http://127.0.0.1:3001/livez).",
+    )
+    parser.add_argument(
+        "--bff-readiness-url",
+        default="http://127.0.0.1:3001/readyz",
+        help=(
+            "BFF readiness URL, which verifies backend connectivity "
+            "(default: http://127.0.0.1:3001/readyz)."
+        ),
     )
     parser.add_argument(
         "--web-url",
@@ -187,9 +195,15 @@ def main() -> int:
             ),
         ),
         (
-            "bff healthz",
+            "bff livez",
             lambda: _http_json(
-                args.bff_health_url, timeout_seconds=min(10.0, interval * 3)
+                args.bff_liveness_url, timeout_seconds=min(10.0, interval * 3)
+            ),
+        ),
+        (
+            "bff readyz (backend connectivity)",
+            lambda: _http_json(
+                args.bff_readiness_url, timeout_seconds=min(10.0, interval * 3)
             ),
         ),
         (

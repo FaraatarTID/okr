@@ -34,7 +34,9 @@ Optional:
 
 ## Endpoints
 
-- `GET /healthz`
+- `GET /livez` (process liveness)
+- `GET /readyz` (backend-aware traffic readiness)
+- `GET /healthz` (legacy liveness alias)
 - `POST /session/login`
 - `GET /session/me`
 - `POST /session/logout`

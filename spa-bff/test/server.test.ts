@@ -912,4 +912,23 @@ describe("spa-bff server", () => {
     expect(response.statusCode).toBe(404);
     expect(response.json().detail).toContain("not found");
   });
+
+  it("keeps liveness successful while readiness reflects backend availability", async () => {
+    const app = createServer(baseConfig, {
+      fetchFn: vi.fn().mockRejectedValue(new Error("backend unavailable")),
+    });
+
+    const liveness = await app.inject({ method: "GET", url: "/livez" });
+    const readiness = await app.inject({ method: "GET", url: "/readyz" });
+    await app.close();
+
+    expect(liveness.statusCode).toBe(200);
+    expect(liveness.json()).toEqual({ status: "ok", service: "spa-bff" });
+    expect(readiness.statusCode).toBe(503);
+    expect(readiness.json()).toMatchObject({
+      status: "unavailable",
+      dependency: "backend-api",
+    });
+  });
+
 });

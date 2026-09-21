@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: okr-spa-bff
+  namespace: okr
+  labels:
+    app: okr-spa-bff
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: okr-spa-bff
+  template:
+    metadata:
+      labels:
+        app: okr-spa-bff
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: spa-bff
+          # Replace the digest placeholder from the signed release manifest.
+          image: ghcr.io/your-org/okr-spa-bff@sha256:REPLACE_WITH_RELEASE_DIGEST
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 3001
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: BFF_HOST
+              value: "0.0.0.0"
+            - name: BFF_PORT
+              value: "3001"
+            - name: OKR_BACKEND_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: okr-bff-backend
+                  key: OKR_BACKEND_API_URL
+            - name: OKR_BACKEND_SERVICE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: okr-backend-auth
+                  key: OKR_BACKEND_SERVICE_TOKEN
+            - name: OKR_BACKEND_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: okr-backend-auth
+                  key: OKR_BACKEND_SIGNING_SECRET
+            - name: BFF_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: okr-bff-session
+                  key: BFF_SESSION_SECRET
+            - name: BFF_COOKIE_SECURE
+              value: "true"
+            - name: BFF_REQUEST_TIMEOUT_MS
+              value: "20000"
+          startupProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 2
+            failureThreshold: 4
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
