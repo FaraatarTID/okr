@@ -10,6 +10,17 @@ def _workflow_text() -> str:
     return WORKFLOW.read_text(encoding="utf-8")
 
 
+def _passes_curl_retries(workflow: str) -> bool:
+    """Whether a workflow passes `curl-retries` to the Cosign installer.
+
+    Matches a YAML key line rather than a bare substring, so a comment explaining
+    why the input is not used does not itself count as using it.
+    """
+    return any(
+        line.strip().startswith("curl-retries:") for line in workflow.splitlines()
+    )
+
+
 def test_ci_classifies_backend_frontend_and_shared_changes() -> None:
     text = _workflow_text()
 
@@ -59,7 +70,13 @@ def test_release_workflows_use_supported_cosign_installer_line() -> None:
             "uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2"
             in workflow
         )
-        assert "curl-retries: 10" in workflow
+        # `curl-retries` is not an input `sigstore/cosign-installer` accepts; GitHub
+        # reports the valid inputs as cosign-release, install-dir and use-sudo. This
+        # assertion previously required the line to be PRESENT, which certified an
+        # install retry that never occurred. It now requires the inert input to stay
+        # out, so the same false assurance cannot be reintroduced. Matching a key
+        # rather than a bare substring keeps the explanation comments legitimate.
+        assert not _passes_curl_retries(workflow)
         assert "run: cosign version" in workflow
         assert "sigstore/cosign-installer@v3." not in workflow
 
@@ -72,7 +89,9 @@ def test_cosign_health_workflow_exercises_the_same_installer_contract() -> None:
         "uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2"
         in workflow
     )
-    assert "curl-retries: 10" in workflow
+    # See the note in the release-workflow test: the input is not accepted by the
+    # action, so asserting its presence asserted nothing real.
+    assert not _passes_curl_retries(workflow)
     assert "cosign version" in workflow
 
 

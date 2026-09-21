@@ -260,21 +260,30 @@ Evidence attestation
 
 Release and rollback evidence producers
 
-- The release pipeline signs the manifest it publishes, and every record derived from
-  that manifest signs itself:
-  - `OKR_RELEASE_MANIFEST_ATTESTATION_SECRET` is the GitHub secret mapped onto
-    `OKR_SAAS_ATTESTATION_SECRET` inside `.github/workflows/publish-ghcr.yml`,
-    `.github/workflows/rollback-production.yml`, and
-    `.github/workflows/rollback-execution-verification.yml`.
-  - It is deliberately a different secret from the provider's attestation key. The
-    release pipeline's trust domain is this repository's own workflows, whereas a
-    provider attestation asserts an external party's facts; sharing one key would let a
-    workflow mint evidence attributed to the provider.
-- `scripts/create_release_manifest.py --require-attestation` refuses to write a manifest
-  it cannot sign, so a release cannot publish a manifest that no verifier will accept.
-- `scripts/attest_evidence.py` signs a derived record. A record that gains a member
-  after signing cannot inherit the earlier signature, because the signature covers the
-  payload it was computed over, so each derived record is signed in its own right.
+- The release manifest is **deliberately unsigned and needs no secret**. Until
+  2026-09-21 the pipeline signed it with `OKR_RELEASE_MANIFEST_ATTESTATION_SECRET` and
+  refused to publish when that secret was absent. A6c removed that, because it bought
+  nothing:
+  - The digest list the signature covered is already bound to Cosign keyless
+    signatures. `.github/workflows/rollback-production.yml` verifies every
+    `image@digest` against the OIDC identity of `publish-ghcr.yml` on `main`, and
+    `scripts/verify_rollback_evidence.py` cross-checks each verified reference against
+    the manifest. That is asymmetric, externally verifiable, and needs no secret to be
+    shared or rotated.
+  - The record-level signature was worse than redundant: one workflow run signed the
+    record and then verified its own signature with the same key
+    (`rollback-production.yml`), so it could not distinguish an honest record from a
+    forgery produced by that run.
+  - `scripts/attest_evidence.py` was deleted with it, since nothing else used it. The
+    retired secret is no longer required by any workflow and is no longer declared in
+    `docs/deploy/required-secrets.json`.
+- `scripts/create_release_manifest.py` still validates that every fragment names the
+  expected image, carries the expected commit SHA tag, and has a well-formed registry
+  digest. Removing the signature removed none of that validation.
+- `OKR_SAAS_ATTESTATION_SECRET` is a **different** secret and remains in use. It signs
+  provider attestations — the Phase 1 evidence bundle and the recovery evidence
+  contract — where the facts being attested belong to an external party rather than to
+  this repository's own build. Only that provider-facing key survives A6c.
 - The production rollback evidence contract is split across two workflows because its
   two halves become true at different times:
   - `.github/workflows/rollback-production.yml` validates the pre-deployment approval
@@ -283,8 +292,10 @@ Release and rollback evidence producers
     nothing has been deployed yet when it runs.
   - `.github/workflows/rollback-execution-verification.yml` validates the completed
     execution (`--record`) after the Darkube deployment. Its execution outcome is
-    supplied by the operator, so the attestation it attaches records what it was given
-    rather than proving the deployment independently.
+    supplied by the operator, so the contract records what it was given rather than
+    proving the deployment independently — and because it is operator-supplied and
+    unverifiable by construction, it is validated for shape only rather than being
+    signed.
 
 Admin bootstrap
 

@@ -1,22 +1,31 @@
-"""Assemble and validate immutable GHCR image release evidence."""
+"""Assemble and validate immutable GHCR image release evidence.
+
+This manifest is deliberately **unsigned**, and that is a recorded decision rather than
+an omission. Until 2026-09-21 the publisher attached an HMAC-SHA256 attestation from a
+shared `OKR_RELEASE_MANIFEST_ATTESTATION_SECRET`. A6c removed it because it earned
+nothing:
+
+* The digest list it covered is already bound to Cosign keyless signatures, which the
+  rollback workflow verifies against the OIDC identity of `publish-ghcr.yml` on `main`
+  (`.github/workflows/rollback-production.yml`, plus
+  `_validate_cosign_references` in `scripts/verify_rollback_evidence.py`). That check is
+  asymmetric, externally verifiable, and needs no secret to be shared or rotated.
+* A symmetric key held only by workflows in this repository, where one run both signs
+  and verifies the same record, cannot distinguish an honest record from a forgery made
+  by that same workflow.
+
+See A6c in `docs/architecture-status.md`. The signature covered only
+`schema_version`, `repository`, `commit_sha`, `created_at` and `images`; every member
+that matters is re-derived and checked by the verifier anyway.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
-
-if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from scripts.attestation_verification import (  # noqa: E402
-    ATTESTATION_SECRET_ENV,
-    attach_attestation,
-)
 
 EXPECTED_IMAGES = {"web", "bff", "backend"}
 _COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -76,51 +85,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repository", required=True)
     parser.add_argument("--commit-sha", required=True)
-    parser.add_argument(
-        "--attestation-provider",
-        default="github-actions",
-        help="Recorded as attestation.provider.",
-    )
-    parser.add_argument(
-        "--attestation-key-id",
-        default="release-manifest",
-        help="Recorded as attestation.key_id.",
-    )
-    parser.add_argument(
-        "--attestation-evidence-id",
-        help="Recorded as attestation.evidence_id. Defaults to the commit SHA.",
-    )
-    parser.add_argument(
-        "--require-attestation",
-        action="store_true",
-        help=(
-            f"Fail instead of writing an unsigned manifest when {ATTESTATION_SECRET_ENV} "
-            "is not configured. Release workflows pass this so an unverifiable manifest "
-            "cannot be published."
-        ),
-    )
     args = parser.parse_args(argv)
 
     manifest = build_manifest(args.fragments, args.repository, args.commit_sha)
-    secret = os.environ.get(ATTESTATION_SECRET_ENV, "")
-    if secret:
-        manifest = attach_attestation(
-            manifest,
-            provider=args.attestation_provider,
-            key_id=args.attestation_key_id,
-            evidence_id=args.attestation_evidence_id
-            or f"ghcr-release-{args.commit_sha}",
-            secret=secret,
-        )
-    elif args.require_attestation:
-        print(
-            "[RELEASE-MANIFEST] refusing to write an unsigned release manifest: "
-            f"{ATTESTATION_SECRET_ENV} is not configured, so no verifier could ever "
-            "accept the rollback evidence built from it.",
-            file=sys.stderr,
-        )
-        return 1
-
     args.output.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(f"Release manifest written: {args.output}")
     return 0
