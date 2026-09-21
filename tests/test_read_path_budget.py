@@ -103,7 +103,12 @@ def measure(engine, call) -> Counters:
         lowered = normalized.lower()
         if " from user" in lowered or 'from "user"' in lowered:
             counters.user_selects += 1
-        if "password_hash" in lowered and "where user.username" in lowered:
+        # Match on the projection, not on a dot-prefixed `user.username`: PostgreSQL
+        # quotes identifiers (`"user".username`), so a dot-prefixed match counts zero
+        # there and the `scope_resolutions <= 1` assertion passes vacuously. This file
+        # runs on SQLite today, but a detector that only works on one dialect is a trap
+        # for whoever points it at PostgreSQL next.
+        if "password_hash" in lowered and "username" in lowered:
             counters.actor_lookups += 1
 
     def _checkout(dbapi_connection, connection_record, connection_proxy):
@@ -401,7 +406,12 @@ def measure_all_engines(call) -> Counters:
         lowered = normalized.lower()
         if " from user" in lowered or 'from "user"' in lowered:
             counters.user_selects += 1
-        if "password_hash" in lowered and "where user.username" in lowered:
+        # Match on the projection, not on a dot-prefixed `user.username`: PostgreSQL
+        # quotes identifiers (`"user".username`), so a dot-prefixed match counts zero
+        # there and the `scope_resolutions <= 1` assertion passes vacuously. This file
+        # runs on SQLite today, but a detector that only works on one dialect is a trap
+        # for whoever points it at PostgreSQL next.
+        if "password_hash" in lowered and "username" in lowered:
             counters.actor_lookups += 1
 
     def _checkout(dbapi_connection, connection_record, connection_proxy):
