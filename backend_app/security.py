@@ -7,6 +7,7 @@ import hmac
 import secrets
 import time
 from fastapi import Header, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from backend_app.config import get_backend_settings
 from backend_app.rate_limiter import check_rate_limit
@@ -143,7 +144,10 @@ async def _verify_request_signature(
     if not signature_valid:
         raise HTTPException(status_code=401, detail="Invalid request signature.")
 
-    _register_nonce_or_reject(
+    # Replay protection writes to shared security state; keep it off the event loop,
+    # because this dependency is awaited on the loop and every request passes here.
+    await run_in_threadpool(
+        _register_nonce_or_reject,
         nonce=nonce,
         now_ts=now_ts,
         window_seconds=settings.request_signing_window_seconds,
@@ -163,6 +167,14 @@ async def require_service_access(
     x_forwarded_for: str | None = Header(default=None),
 ) -> None:
     settings = get_backend_settings()
+    # This dependency is the first thing every protected request runs, so it is the
+    # right place to start a clean per-request scope cache. Without this reset a
+    # recycled execution context could hand one actor's resolved scope to the next
+    # request, which would be an authorization leak rather than a performance bug.
+    # Imported lazily because scope_resolution imports from this module.
+    from backend_app.scope_resolution import reset_request_scope_cache
+
+    reset_request_scope_cache()
     service_token_valid = False
 
     if settings.enforce_service_token:
@@ -203,7 +215,14 @@ async def require_service_access(
             client_ip = forwarded_ips[0]
 
     try:
-        rl_ok = check_rate_limit(
+        # This dependency is `async` because it awaits `request.body()`, and it is
+        # awaited on the event loop, so synchronous database work here blocks every
+        # concurrent request. The suite forces OKR_BACKEND_API_WORKERS=1, which makes
+        # that serialisation total. The calls below are therefore dispatched to the
+        # threadpool rather than turned into a `def` dependency, which is not possible
+        # while the body read must be awaited.
+        rl_ok = await run_in_threadpool(
+            check_rate_limit,
             key=f"ip:{client_ip}",
             limit=settings.rate_limit_max_requests,
             window_seconds=settings.rate_limit_window_seconds,
@@ -216,7 +235,8 @@ async def require_service_access(
     if not rl_ok:
         raise HTTPException(status_code=429, detail="Rate limit exceeded.")
 
-    validate_forwarded_role_claims(
+    await run_in_threadpool(
+        validate_forwarded_role_claims,
         actor=x_okr_actor,
         x_okr_role=x_okr_role,
         x_okr_roles=x_okr_roles,

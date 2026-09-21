@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextvars
 from typing import Any, Optional
 
 from fastapi import HTTPException
@@ -11,6 +12,41 @@ from src.crud import get_active_cycles, get_all_cycles
 from src.database import get_session_context
 from src.models import User, UserRole
 from src.services.supabase_api_mode import read_query_via_supabase_api
+
+
+# Per-request scope cache. Deliberately a ContextVar rather than a module global: the
+# value must not outlive the request that produced it, because handing one actor's
+# scope to another would be an authorization leak. `reset_request_scope_cache` is
+# called at the entry of the request-scoped auth dependency to guarantee that.
+_REQUEST_SCOPE_CACHE: contextvars.ContextVar[Optional[dict[Any, Any]]] = (
+    contextvars.ContextVar("okr_request_scope_cache", default=None)
+)
+
+
+def reset_request_scope_cache() -> None:
+    """Begin a fresh per-request scope cache."""
+    _REQUEST_SCOPE_CACHE.set({})
+
+
+def _copy_scope(scope: dict[str, Any]) -> dict[str, Any]:
+    """Copy a scope, including its mutable containers.
+
+    Callers are handed their own copy so that mutating a returned scope — narrowing
+    `owner_ids`, say — cannot change what a later caller sees. A shallow `dict()`
+    would still share the underlying sets, which is the shape that would actually
+    leak.
+    """
+    copied: dict[str, Any] = {}
+    for key, value in scope.items():
+        if isinstance(value, set):
+            copied[key] = set(value)
+        elif isinstance(value, list):
+            copied[key] = list(value)
+        elif isinstance(value, dict):
+            copied[key] = dict(value)
+        else:
+            copied[key] = value
+    return copied
 
 
 def _resolve_actor(
@@ -46,10 +82,17 @@ def _resolve_actor_scope(
 
     actor_id_int = int(actor_id)
     role = getattr(actor, "role", UserRole.MEMBER)
-    if role == UserRole.ADMIN:
+    # For an admin the scope-rows query already scans every active user, so it can
+    # carry `role` at no extra cost and answer the admin question too, removing a
+    # whole separate scan. For a manager or member the rows are narrowed to self (and
+    # reports), so the admin set cannot be derived from them and needs its own query.
+    admin_scan_covers_all_users = role == UserRole.ADMIN
+    if admin_scan_covers_all_users:
         rows = list(
             session.exec(
-                select(User.id, User.username).where(User.is_active == True)  # noqa: E712
+                select(User.id, User.username, User.role).where(
+                    User.is_active == True  # noqa: E712
+                )
             ).all()
         )
     elif role == UserRole.MANAGER:
@@ -71,15 +114,22 @@ def _resolve_actor_scope(
 
     owner_ids: set[int] = set()
     usernames: set[str] = set()
+    admin_ids: set[int] = set()
     for row in rows:
         try:
-            user_id_raw, username_raw = row
+            if len(row) == 3:
+                user_id_raw, username_raw, role_raw = row
+            else:
+                user_id_raw, username_raw = row
+                role_raw = None
         except (TypeError, ValueError):
             continue
         if user_id_raw is None or not username_raw:
             continue
         owner_ids.add(int(user_id_raw))
         usernames.add(str(username_raw))
+        if role_raw is not None and role_raw == UserRole.ADMIN:
+            admin_ids.add(int(user_id_raw))
 
     if not owner_ids:
         owner_ids.add(actor_id_int)
@@ -87,19 +137,19 @@ def _resolve_actor_scope(
 
     # Admin-owned cycles are GLOBAL (visible to every scope), so scopes need
     # to know which users are admins to evaluate cycle visibility.
-    admin_id_rows = list(
-        session.exec(
-            select(User.id)
-            .where(User.is_active == True)  # noqa: E712
-            .where(User.role == UserRole.ADMIN)
-        ).all()
-    )
-    admin_ids: set[int] = set()
-    for row in admin_id_rows:
-        try:
-            admin_ids.add(int(row))
-        except (TypeError, ValueError):
-            continue
+    if not admin_scan_covers_all_users:
+        admin_id_rows = list(
+            session.exec(
+                select(User.id)
+                .where(User.is_active == True)  # noqa: E712
+                .where(User.role == UserRole.ADMIN)
+            ).all()
+        )
+        for row in admin_id_rows:
+            try:
+                admin_ids.add(int(row))
+            except (TypeError, ValueError):
+                continue
 
     return {
         "is_admin": role == UserRole.ADMIN,
@@ -308,6 +358,36 @@ def _is_scope_admin_or_manager(scope: dict[str, Any]) -> bool:
 
 
 def _resolve_scope_for_actor(
+    actor: str, token_version: Optional[int] = None
+) -> dict[str, Any]:
+    """Resolve an actor's scope, reusing one resolution per request.
+
+    A single authenticated read resolves the same actor's scope more than once: once
+    in the role-claim check (`backend_app/security.py`) and again in the handler
+    (`backend_app/read_query_helpers.py`). `ritual.snapshot` resolves it seven to eight
+    times, because it fans out into five sub-queries that each re-validate. Every
+    resolution costs three statements and its own connection, so the duplication is
+    the largest avoidable cost on the read path.
+
+    The cache is per request and keyed by (actor, token_version), and callers receive a
+    copy so that mutating a returned scope cannot corrupt a later reader's view.
+    `reset_request_scope_cache` is called at the entry of the request-scoped auth
+    dependency, which is what guarantees a resolution performed for one request can
+    never be handed to another.
+    """
+    cache = _REQUEST_SCOPE_CACHE.get()
+    cache_key = (str(actor), token_version)
+    if cache is not None:
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return _copy_scope(cached)
+    scope = _resolve_scope_for_actor_uncached(actor, token_version=token_version)
+    if cache is not None:
+        cache[cache_key] = scope
+    return _copy_scope(scope)
+
+
+def _resolve_scope_for_actor_uncached(
     actor: str, token_version: Optional[int] = None
 ) -> dict[str, Any]:
     if resolve_read_mode() == "supabase_api":
