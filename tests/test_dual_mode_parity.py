@@ -597,6 +597,76 @@ def test_out_of_scope_cycle_is_refused_in_both_modes(monkeypatch, kind, mode):
     assert excinfo.value.status_code == 403
 
 
+MANAGER_SCOPE = {
+    "is_admin": False,
+    "role": "manager",
+    "actor_id": 7,
+    "manager_id": 5,
+    "owner_ids": {101},
+    "usernames": {"alice"},
+    "admin_ids": {1},
+    "team_id": 7,
+}
+
+# Cycle 11 belongs to neither the actor nor an admin and must never be returned.
+# 12 is admin-owned and therefore global; 13 has no owner and is global.
+FAKE_CYCLES = [
+    {"id": 10, "owner_manager_id": 7, "is_active": True},
+    {"id": 11, "owner_manager_id": 99, "is_active": True},
+    {"id": 12, "owner_manager_id": 1, "is_active": True},
+    {"id": 13, "owner_manager_id": None, "is_active": False},
+]
+HIDDEN_CYCLE_ID = 11
+
+
+@pytest.mark.parametrize("kind", ["cycles.all", "cycles.active"])
+@pytest.mark.parametrize("scope_fixture", ["manager", "member"])
+def test_cycles_are_row_filtered_identically_in_both_modes(
+    monkeypatch, kind, scope_fixture
+):
+    """`cycles.*` returns the same cycle set on both paths, not every cycle.
+
+    The HTTPS branch filtered by nothing, so it returned every cycle in the table
+    while TCP returned only the visible ones. Asserting mode agreement alone would
+    pass vacuously if both returned everything, so the hidden cycle is asserted
+    absent as well.
+    """
+    import backend_app.read_query_helpers as read_query_helpers
+
+    backend_main = _non_admin_main(monkeypatch)
+    scope = MANAGER_SCOPE if scope_fixture == "manager" else NON_ADMIN_SCOPE
+    cycles = [dict(cycle) for cycle in FAKE_CYCLES]
+    active = [cycle for cycle in cycles if cycle["is_active"]]
+
+    monkeypatch.setattr(backend_main, "get_all_cycles", lambda: list(cycles))
+    monkeypatch.setattr(backend_main, "get_active_cycles", lambda: list(active))
+    # `serialize_cycle` is imported into `read_query_helpers`, not reached via `main`.
+    monkeypatch.setattr(
+        read_query_helpers, "serialize_cycle", lambda cycle: dict(cycle)
+    )
+
+    def fake_supabase(*, kind, params, actor, scope):
+        return {"cycles": [dict(cycle) for cycle in cycles]}
+
+    monkeypatch.setattr(
+        backend_main, "read_query_via_supabase_api", fake_supabase, raising=False
+    )
+
+    def ids_for(mode):
+        _force_mode(monkeypatch, mode)
+        payload = read_query_helpers.read_query_payload(
+            kind=kind, params={}, actor="alice", main=backend_main
+        )
+        return {row["id"] for row in payload["cycles"]}
+
+    database_ids = ids_for("database")
+    supabase_ids = ids_for("supabase_api")
+
+    assert HIDDEN_CYCLE_ID not in database_ids, "TCP leaked a foreign cycle"
+    assert HIDDEN_CYCLE_ID not in supabase_ids, "HTTPS leaked a foreign cycle"
+    assert supabase_ids == database_ids
+
+
 def test_supabase_read_dispatch_is_always_scope_guarded():
     """Static guard: only guarded dispatches may call the Supabase implementation.
 

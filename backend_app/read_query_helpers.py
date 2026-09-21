@@ -293,6 +293,56 @@ def _validate_read_scope(
     )
 
 
+def _row_value(row: Any, key: str) -> Any:
+    if isinstance(row, dict):
+        return row.get(key)
+    return getattr(row, key, None)
+
+
+def _apply_https_cycle_row_scope(
+    *, kind: str, payload: Any, scope: dict, main: Any
+) -> Any:
+    """Apply the TCP cycle-visibility rule to rows fetched over HTTPS.
+
+    The Supabase branch constrains `cycle` by nothing at all, so every cycle came
+    back. The rule is applied here rather than in the Supabase query because the
+    member case selects the primary active cycle and that selection is not
+    expressible as a PostgREST filter; reusing `main._visible_cycles_for_scope` and
+    `main._pick_primary_active_cycle` also means the two paths cannot drift, which a
+    second implementation of the same predicate could.
+
+    The over-fetch is a performance cost, not a disclosure: the rows are filtered in
+    the process that already holds them, and the actor never receives the rest.
+    """
+    if kind not in {"cycles.all", "cycles.active"}:
+        return payload
+    if not isinstance(payload, dict):
+        return payload
+    cycles = payload.get("cycles")
+    if not isinstance(cycles, list):
+        return payload
+
+    visible = list(main._visible_cycles_for_scope(scope, cycles))
+    if main._scope_role(scope) != "member":
+        output = dict(payload)
+        output["cycles"] = visible
+        return output
+
+    if kind == "cycles.all" and not visible:
+        # The TCP branch retries against the active cycles when a member sees none.
+        visible = list(
+            main._visible_cycles_for_scope(
+                scope,
+                [cycle for cycle in cycles if bool(_row_value(cycle, "is_active"))],
+            )
+        )
+    active = [cycle for cycle in visible if bool(_row_value(cycle, "is_active"))]
+    primary = main._pick_primary_active_cycle(active, scope)
+    output = dict(payload)
+    output["cycles"] = [primary] if primary is not None else []
+    return output
+
+
 def read_query_payload(
     *,
     kind: str,
@@ -492,11 +542,16 @@ def read_query_payload(
             raise scope_failure
         try:
             with _timed_phase("handler"):
-                return main.read_query_via_supabase_api(
+                return _apply_https_cycle_row_scope(
                     kind=str(kind or "").strip(),
-                    params=dict(params or {}),
-                    actor=str(actor or "").strip(),
+                    payload=main.read_query_via_supabase_api(
+                        kind=str(kind or "").strip(),
+                        params=dict(params or {}),
+                        actor=str(actor or "").strip(),
+                        scope=scope,
+                    ),
                     scope=scope,
+                    main=main,
                 )
         except NotImplementedError as exc:
             raise main.HTTPException(status_code=501, detail=str(exc)) from exc
