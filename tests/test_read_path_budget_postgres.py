@@ -224,10 +224,19 @@ def test_the_opt_in_pooled_branch_reuses_connections_and_emits_no_prepare(monkey
        default-flip would activate, so "we could turn it on" has to be measured.
     2. `NullPool` really is one physical connection per checkout, which is what makes
        the opt-in worth anything.
-    3. psycopg2 emits NO server-side PREPARE/DEALLOCATE. This is a TRIPWIRE: it is what
-       makes the prepared-statement half of the PgBouncer risk moot, so if anyone ever
-       enables server-side cursors or `prepare_threshold`, this fails and forces the
-       reasoning in `src/database.py` to be revisited rather than silently invalidated.
+    3. No session-level statement that a transaction-mode pooler would invalidate is
+       emitted. This is a TRIPWIRE, and its two axes are NOT equally strong:
+
+       - PREPARE/DEALLOCATE is STRUCTURALLY ABSENT, not empirically avoided. psycopg2
+         (2.9.12, the declared driver) has no automatic server-side prepared-statement
+         mechanism and never has; `prepare_threshold` is a psycopg3 attribute and
+         psycopg3 is not installed. Claiming a test "proves" this would overstate it,
+         so it is watched only so that a driver swap cannot pass unnoticed.
+       - DECLARE/FETCH/CLOSE is the axis that is GENUINELY TURNABLE today: setting
+         `use_server_side_cursors=True` on the engine emits named cursors, and a
+         WITH HOLD cursor does not survive PgBouncer handing the connection to a
+         different backend. Nothing in this repo enables it, so this half is a real
+         invariant rather than a restatement of the driver's design.
 
     None of this verifies safety under PgBouncer transaction pooling, and CI cannot:
     that is the point of P0-8. This only proves the branch works on a direct connection.
@@ -240,7 +249,7 @@ def test_the_opt_in_pooled_branch_reuses_connections_and_emits_no_prepare(monkey
         monkeypatch.setenv("OKR_DB_USE_NULL_POOL", "true" if use_null_pool else "false")
         engine = database._create_engine(url)
         counters = Counters()
-        prepares: list[str] = []
+        session_hazards: list[str] = []
 
         def _on_connect(dbapi_connection, connection_record):
             counters.new_connections += 1
@@ -252,8 +261,8 @@ def test_the_opt_in_pooled_branch_reuses_connections_and_emits_no_prepare(monkey
             conn, cursor, statement, parameters, context, executemany
         ):
             head = " ".join(str(statement).split())[:80].upper()
-            if head.startswith(("PREPARE", "DEALLOCATE")):
-                prepares.append(head)
+            if head.startswith(("PREPARE", "DEALLOCATE", "DECLARE", "FETCH", "CLOSE")):
+                session_hazards.append(head)
 
         event.listen(engine, "connect", _on_connect)
         event.listen(engine, "checkout", _on_checkout)
@@ -271,10 +280,10 @@ def test_the_opt_in_pooled_branch_reuses_connections_and_emits_no_prepare(monkey
             event.remove(engine, "before_cursor_execute", _on_before_cursor_execute)
             pool_name = type(engine.pool).__name__
             engine.dispose()
-        return counters, prepares, pool_name
+        return counters, session_hazards, pool_name
 
-    null_counters, null_prepares, null_pool = _measure(True)
-    pooled_counters, pooled_prepares, pooled_pool = _measure(False)
+    null_counters, null_session_hazards, null_pool = _measure(True)
+    pooled_counters, pooled_session_hazards, pooled_pool = _measure(False)
 
     assert null_pool == "NullPool", (
         "the default must remain NullPool pending PgBouncer verification (P0-8); "
@@ -292,9 +301,11 @@ def test_the_opt_in_pooled_branch_reuses_connections_and_emits_no_prepare(monkey
         f"{pooled_counters.checkouts} checkouts)"
     )
 
-    # 3: the tripwire.
-    assert null_prepares == [] and pooled_prepares == [], (
-        "server-side PREPARE/DEALLOCATE was emitted, which invalidates the reasoning in "
-        "src/database.py that the prepared-statement half of the PgBouncer risk is moot; "
-        f"revisit P0-8 (null={null_prepares}, pooled={pooled_prepares})"
+    # 3: the tripwire. DECLARE/FETCH/CLOSE is the half that can actually fire here; the
+    # PREPARE half is structurally absent under psycopg2 and is watched only so a driver
+    # swap cannot slip through unnoticed.
+    assert null_session_hazards == [] and pooled_session_hazards == [], (
+        "a session-level statement that a transaction-mode pooler would not preserve was "
+        "emitted; revisit the PgBouncer reasoning in src/database.py and P0-8 "
+        f"(null={null_session_hazards}, pooled={pooled_session_hazards})"
     )

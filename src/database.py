@@ -147,12 +147,19 @@ def _create_engine(url: str):
         # Supabase recommends PgBouncer transaction pooler; disable app-side pooling
         # by default to avoid session/prepared-statement conflicts.
         #
-        # Status of that risk, measured rather than assumed (2026-09-21):
-        #   - The prepared-statement half is MOOT for this stack. psycopg2 emits no
-        #     server-side PREPARE/DEALLOCATE under our configuration (counted zero
-        #     across both pool modes), so there is nothing for a transaction-mode
-        #     pooler to invalidate. This would change if server-side cursors or
-        #     prepare_threshold were ever enabled.
+        # Status of that risk, checked rather than assumed (2026-09-21):
+        #   - The prepared-statement half does not apply to this stack. psycopg2
+        #     (2.9.12) has no automatic server-side prepared-statement mechanism at
+        #     all; `prepare_threshold` is a psycopg3 attribute and psycopg3 is not
+        #     installed. So there is nothing for a transaction-mode pooler to
+        #     invalidate -- but this is guaranteed by the DRIVER CHOICE, not by
+        #     anything this codebase does, and it would stop being true if the driver
+        #     were changed to psycopg3. Do not read it as a control we operate.
+        #   - The server-side cursor half is the one that IS turnable here. Setting
+        #     `use_server_side_cursors=True` on the engine emits DECLARE/FETCH/CLOSE,
+        #     and a WITH HOLD cursor does not survive PgBouncer handing the connection
+        #     to a different backend. Nothing enables it today;
+        #     `tests/test_read_path_budget_postgres.py` asserts that this stays true.
         #   - The session-state half REMAINS. SET variables, temp tables and advisory
         #     locks do not survive PgBouncer handing out a different backend per
         #     transaction, and app-side pooling widens the window by holding
