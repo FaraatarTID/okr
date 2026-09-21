@@ -93,15 +93,20 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
             bool(rollback_evidence)
             and bool(recovery_evidence)
             and bool(phase1_evidence)
+            # Rollback evidence no longer requires an attestation: A6c removed the
+            # shared-secret HMAC because the digest list it covered is already bound to
+            # Cosign keyless signatures the workflow verifies against the publisher's
+            # OIDC identity. The substantive requirements below are unchanged.
             and all(
                 marker in rollback_evidence
                 for marker in (
                     "verify_rollback_manifest",
                     "signed Cosign references",
-                    "_verify_attestation",
                     "synthetic",
                 )
             )
+            # Recovery and Phase 1 evidence still attest, because there the facts belong
+            # to an external provider rather than to this repository's own build.
             and all(
                 marker in recovery_evidence
                 for marker in (
@@ -112,7 +117,9 @@ def build_report(root: Path = ROOT) -> dict[str, Any]:
                 )
             )
             and "signature" in phase1_evidence,
-            "Rollback and recovery evidence require successful, bound attestations and reject synthetic inputs.",
+            "Rollback evidence binds every digest to verified Cosign references and "
+            "rejects synthetic inputs; recovery and Phase 1 evidence require bound "
+            "provider attestations.",
         ),
     ]
     return {

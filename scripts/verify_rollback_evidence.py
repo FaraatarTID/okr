@@ -1,4 +1,18 @@
-"""Validate a known-good GHCR release manifest for rollback evidence."""
+"""Validate a known-good GHCR release manifest for rollback evidence.
+
+Trust here comes from Cosign, not from a shared secret. Every `image@digest` the
+manifest lists must match a reference the rollback workflow obtained by verifying a
+Cosign keyless signature against the OIDC identity of `publish-ghcr.yml` on `main`
+(`_validate_cosign_references` below, and `.github/workflows/rollback-production.yml`).
+That is asymmetric and externally verifiable.
+
+Until 2026-09-21 this module also required an HMAC attestation on the manifest and on
+each derived record. A6c removed both: the manifest one was redundant with the Cosign
+binding above, and the record one was vacuous because a single workflow run signed the
+record and then verified its own signature with the same key, so it could not
+distinguish an honest record from a forgery produced by that run. See A6c in
+`docs/architecture-status.md`.
+"""
 
 from __future__ import annotations
 
@@ -9,16 +23,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-
-if __package__ in {None, ""}:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from scripts.attestation_verification import (  # noqa: E402
-    AttestationError,
-    SUPPORTED_ALGORITHMS,
-    canonical_digest,
-    verify_attestation_signature,
-)
 
 
 REQUIRED_IMAGES = ("web", "bff", "backend")
@@ -55,51 +59,6 @@ def _required_string(value: Any, label: str) -> str:
 def _reject_synthetic(value: str, label: str) -> None:
     if any(marker in value.casefold() for marker in _SYNTHETIC_MARKERS):
         raise RollbackEvidenceError(f"{label} must identify a real release operation")
-
-
-def _verify_attestation(
-    payload: dict[str, Any],
-    label: str = "attestation",
-    *,
-    secret: str | None = None,
-    public_key_pem: str | None = None,
-) -> None:
-    attestation = _mapping(payload.get("attestation"), label)
-    provider = _required_string(attestation.get("provider"), f"{label}.provider")
-    evidence_id = _required_string(
-        attestation.get("evidence_id"), f"{label}.evidence_id"
-    )
-    algorithm = _required_string(
-        attestation.get("algorithm"), f"{label}.algorithm"
-    ).lower()
-    _required_string(attestation.get("key_id"), f"{label}.key_id")
-    approved_at = _required_string(attestation.get("issued_at"), f"{label}.issued_at")
-    try:
-        parsed = datetime.fromisoformat(approved_at.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise RollbackEvidenceError(
-            f"{label}.issued_at must be an ISO-8601 timestamp"
-        ) from exc
-    if parsed.tzinfo is None:
-        raise RollbackEvidenceError(f"{label}.issued_at must include a timezone")
-    _reject_synthetic(provider, f"{label}.provider")
-    _reject_synthetic(evidence_id, f"{label}.evidence_id")
-    if algorithm not in SUPPORTED_ALGORITHMS:
-        raise RollbackEvidenceError(f"{label}.algorithm is unsupported")
-    unsigned = {key: value for key, value in payload.items() if key != "attestation"}
-    if attestation.get("signed_payload_sha256") != canonical_digest(unsigned):
-        raise RollbackEvidenceError(f"{label} signed payload does not match evidence")
-    try:
-        verify_attestation_signature(
-            payload,
-            label=label,
-            secret=secret,
-            public_key_pem=public_key_pem,
-        )
-    except AttestationError as exc:
-        raise RollbackEvidenceError(
-            f"{label} signature is not verifiable: {exc}"
-        ) from exc
 
 
 def _commit(value: Any, label: str) -> str:
@@ -176,16 +135,8 @@ def verify_rollback_manifest(
     expected_commit_sha: str,
     cosign_references: list[str] | None = None,
     expected_repository: str | None = None,
-    require_attestation: bool = True,
-    *,
-    secret: str | None = None,
-    public_key_pem: str | None = None,
 ) -> dict[str, Any]:
-    """Return deterministic rollback evidence or raise on any mismatch.
-
-    `secret` and `public_key_pem` override the environment configuration and exist
-    for tests and for callers that already hold the key material.
-    """
+    """Return deterministic rollback evidence or raise on any mismatch."""
     manifest = _mapping(manifest, "manifest")
     if manifest.get("schema_version") != 1:
         raise RollbackEvidenceError("manifest.schema_version must be 1")
@@ -216,8 +167,6 @@ def verify_rollback_manifest(
         raise RollbackEvidenceError(
             "signed Cosign references are required for rollback evidence"
         )
-    if require_attestation:
-        _verify_attestation(manifest, secret=secret, public_key_pem=public_key_pem)
 
     result: dict[str, Any] = {
         "schema_version": 1,
@@ -234,9 +183,6 @@ def verify_rollback_approval(
     record: dict[str, Any],
     expected_commit_sha: str,
     expected_repository: str | None = None,
-    *,
-    secret: str | None = None,
-    public_key_pem: str | None = None,
 ) -> dict[str, Any]:
     """Validate a pre-deployment rollback approval record.
 
@@ -246,12 +192,12 @@ def verify_rollback_approval(
     a named operator approved the rollback, and that the images carry verified
     signatures.
 
-    The record is signed in its own right rather than reusing the manifest's signature,
-    because the approval fields change the payload the manifest's signature covers, so
-    that signature can no longer be checked once the record is derived. The record's own
-    attestation covers every manifest field as well as the approval fields, which is why
-    the embedded manifest is checked with `require_attestation=False` here - not to relax
-    the requirement, but because the stronger record-level signature subsumes it.
+    The approval fields are operator-supplied, so this validates their shape and
+    presence; it does not and cannot prove the approval happened, because the record is
+    built from the same workflow inputs the operator supplied. A record attestation used
+    to stand here and was removed under A6c: the run that built the record also signed
+    it and then verified its own signature with the same shared key, so it could not
+    distinguish an honest record from a forgery produced by that run.
 
     It rejects a record that already carries an `execution` block. That is not
     bookkeeping: a pre-deployment approval cannot have observed a deployment outcome, so
@@ -275,13 +221,6 @@ def verify_rollback_approval(
         expected_commit_sha,
         cosign_references=cosign_references,
         expected_repository=expected_repository,
-        require_attestation=False,
-    )
-    _verify_attestation(
-        record,
-        "rollback record.attestation",
-        secret=secret,
-        public_key_pem=public_key_pem,
     )
     if record.get("rollback") != "rollback":
         raise RollbackEvidenceError("rollback record.rollback must be 'rollback'")
@@ -316,9 +255,6 @@ def verify_rollback_record(
     record: dict[str, Any],
     expected_commit_sha: str,
     expected_repository: str | None = None,
-    *,
-    secret: str | None = None,
-    public_key_pem: str | None = None,
 ) -> dict[str, Any]:
     """Validate the final approval record uploaded by the rollback workflow."""
     record = _mapping(record, "rollback record")
@@ -332,7 +268,6 @@ def verify_rollback_record(
         expected_commit_sha,
         cosign_references=cosign_references,
         expected_repository=expected_repository,
-        require_attestation=False,
     )
     if record.get("rollback") != "rollback":
         raise RollbackEvidenceError("rollback record.rollback must be 'rollback'")
@@ -374,12 +309,6 @@ def verify_rollback_record(
     _reject_synthetic(
         execution["provider_operation_id"],
         "rollback record.execution.provider_operation_id",
-    )
-    _verify_attestation(
-        record,
-        "rollback record.attestation",
-        secret=secret,
-        public_key_pem=public_key_pem,
     )
     return {**manifest_result, "rollback": "rollback"}
 

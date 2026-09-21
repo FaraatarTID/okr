@@ -70,22 +70,12 @@ jobs:
             '.execution = $execution' \
             rollback-record/production-rollback.json > production-rollback-execution.json
 
-      # Adding `execution` changed the payload the pre-deployment attestation covered,
-      # so the record is re-signed over its completed contents before validation.
-      - name: Sign the completed rollback record
-        env:
-          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET }}
-        run: |
-          python scripts/attest_evidence.py \
-            --record production-rollback-execution.json \
-            --provider github-actions \
-            --key-id rollback-execution \
-            --evidence-id "rollback-execution-${GITHUB_RUN_ID}"
-
+      # No re-signing step, deliberately. A6c removed the record attestation; the run
+      # that added `execution` also verified it, so a signature made here could not
+      # distinguish an honest record from a forgery produced by this same run.
       - name: Validate completed rollback record contract
         env:
           REPOSITORY: ${{ github.repository }}
-          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET }}
         run: |
           python scripts/verify_rollback_evidence.py \
             --record production-rollback-execution.json \

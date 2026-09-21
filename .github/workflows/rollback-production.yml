@@ -88,7 +88,6 @@ jobs:
       - name: Validate rollback evidence contract
         env:
           REPOSITORY: ${{ github.repository }}
-          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET }}
         run: |
           set -euo pipefail
           references=()
@@ -158,7 +157,6 @@ jobs:
       - name: Revalidate rollback evidence contract
         env:
           REPOSITORY: ${{ github.repository }}
-          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET }}
         run: |
           set -euo pipefail
           references=()
@@ -187,23 +185,14 @@ jobs:
             '. + {rollback: $action, rollback_from_manifest_run_id: $manifest_run_id, incident_reference: $incident_reference, approved_by: $approved_by, approved_at: $approved_at, cosign_references: ($cosign_references | split("\n") | map(select(length > 0)))}' \
             release-manifest/release-manifest.json > production-rollback.json
 
-      # The record is derived from an attested manifest, so it cannot inherit that
-      # signature: the approval fields above changed the payload it covers. It is signed
-      # in its own right, and only then validated.
-      - name: Sign the pre-deployment rollback record
-        env:
-          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET }}
-        run: |
-          python scripts/attest_evidence.py \
-            --record production-rollback.json \
-            --provider github-actions \
-            --key-id rollback-workflow \
-            --evidence-id "rollback-${GITHUB_RUN_ID}"
-
+      # No signing step, deliberately. A6c removed the record attestation because this
+      # run both signed the record and then verified its own signature with the same
+      # shared key, so it could not distinguish an honest record from a forgery produced
+      # by this run. The Cosign references verified above are what bind the record to
+      # real published images.
       - name: Validate pre-deployment rollback approval contract
         env:
           REPOSITORY: ${{ github.repository }}
-          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET }}
         run: |
           python scripts/verify_rollback_evidence.py \
             --approval production-rollback.json \

@@ -95,9 +95,22 @@ def test_a_stale_post_merge_marker_is_reported():
 
 def test_scan_reads_the_real_workflow_directory():
     derived = scan(WORKFLOWS_DIR)
-    # The secret whose absence turned main red; it must be visible to the gate.
-    assert "OKR_RELEASE_MANIFEST_ATTESTATION_SECRET" in derived
+    # A secret that is genuinely still referenced; the gate must see it.
+    assert "OKR_SAAS_ATTESTATION_SECRET" in derived
     assert "GITHUB_TOKEN" not in derived
+
+
+def test_the_retired_manifest_secret_is_no_longer_a_prerequisite():
+    """A6c deleted the HMAC secret, so the gate must stop declaring it.
+
+    This is the declaration half of that removal: if a workflow ever references
+    `secrets.OKR_RELEASE_MANIFEST_ATTESTATION_SECRET` again, the gate fails and this
+    test fails with it.
+    """
+    assert "OKR_RELEASE_MANIFEST_ATTESTATION_SECRET" not in scan(WORKFLOWS_DIR)
+    assert "OKR_RELEASE_MANIFEST_ATTESTATION_SECRET" not in load_declaration(
+        DECLARATION
+    )
 
 
 def test_the_repository_declaration_matches_its_workflows():
@@ -114,7 +127,7 @@ def test_the_gate_reports_the_post_merge_only_set(capsys):
     main([])
     output = capsys.readouterr().out
     assert "Post-merge only" in output
-    assert "OKR_RELEASE_MANIFEST_ATTESTATION_SECRET" in output
+    assert "OKR_SAAS_ATTESTATION_SECRET" in output
 
 
 def test_an_undeclared_secret_fails_a_workflow_scan(tmp_path, monkeypatch):
