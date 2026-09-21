@@ -146,6 +146,33 @@ def _create_engine(url: str):
     elif normalized.startswith("postgresql+psycopg2://"):
         # Supabase recommends PgBouncer transaction pooler; disable app-side pooling
         # by default to avoid session/prepared-statement conflicts.
+        #
+        # Status of that risk, checked rather than assumed (2026-09-21):
+        #   - The prepared-statement half does not apply to this stack. psycopg2
+        #     (2.9.12) has no automatic server-side prepared-statement mechanism at
+        #     all; `prepare_threshold` is a psycopg3 attribute and psycopg3 is not
+        #     installed. So there is nothing for a transaction-mode pooler to
+        #     invalidate -- but this is guaranteed by the DRIVER CHOICE, not by
+        #     anything this codebase does, and it would stop being true if the driver
+        #     were changed to psycopg3. Do not read it as a control we operate.
+        #   - The server-side cursor half is the one that IS turnable here. Setting
+        #     `use_server_side_cursors=True` on the engine emits DECLARE/FETCH/CLOSE,
+        #     and a WITH HOLD cursor does not survive PgBouncer handing the connection
+        #     to a different backend. Nothing enables it today;
+        #     `tests/test_read_path_budget_postgres.py` asserts that this stays true.
+        #   - The session-state half REMAINS. SET variables, temp tables and advisory
+        #     locks do not survive PgBouncer handing out a different backend per
+        #     transaction, and app-side pooling widens the window by holding
+        #     connections longer.
+        #   - The opt-in branch below is FUNCTIONAL, not dormant-untested: measured
+        #     QueuePool with size=5 turning 6 checkouts into 1 physical connection
+        #     (vs 6 under NullPool).
+        #
+        # NOT VERIFIED against PgBouncer in transaction-pooling mode. CI runs direct
+        # PostgreSQL, so a green CI says nothing about the production topology. The
+        # default stays True until that verification exists; do not flip it on the
+        # strength of CI numbers alone. Tracked as P0-8 in
+        # docs/REMAINING_ENGINEERING_PLAN.md.
         use_null_pool = get_bool_config("OKR_DB_USE_NULL_POOL", True)
         if use_null_pool:
             kwargs["poolclass"] = NullPool

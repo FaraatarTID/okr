@@ -435,6 +435,15 @@ def test_job_polling_query_budget_guard(isolated_db, monkeypatch):
     async def _allow_service_access(**kwargs):
         return None
 
+    # WARNING: this patch is a NO-OP, and copying it into a new test will silently
+    # fail to isolate anything. Routes bind the dependency at router-construction
+    # time via `dependencies=[Depends(main.require_service_access)]`, so rebinding the
+    # module attribute changes nothing and the REAL dependency still runs. It is
+    # harmless here only because these tests separately patch `_resolve_scope_for_actor`
+    # (which does work, because main_runtime_helpers re-reads the module attribute) and
+    # their requests carry no role headers. To genuinely relax or tighten the
+    # dependency use `app.dependency_overrides[backend_main.require_service_access]`,
+    # as tests/test_control_plane_environment_routes.py:325 does.
     monkeypatch.setattr(backend_main, "require_service_access", _allow_service_access)
     monkeypatch.setattr(
         backend_main,
@@ -492,6 +501,15 @@ def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
     async def _allow_service_access(**kwargs):
         return None
 
+    # WARNING: this patch is a NO-OP, and copying it into a new test will silently
+    # fail to isolate anything. Routes bind the dependency at router-construction
+    # time via `dependencies=[Depends(main.require_service_access)]`, so rebinding the
+    # module attribute changes nothing and the REAL dependency still runs. It is
+    # harmless here only because these tests separately patch `_resolve_scope_for_actor`
+    # (which does work, because main_runtime_helpers re-reads the module attribute) and
+    # their requests carry no role headers. To genuinely relax or tighten the
+    # dependency use `app.dependency_overrides[backend_main.require_service_access]`,
+    # as tests/test_control_plane_environment_routes.py:325 does.
     monkeypatch.setattr(backend_main, "require_service_access", _allow_service_access)
     monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: False)
     monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _admin_scope)

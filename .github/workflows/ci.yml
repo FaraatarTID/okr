@@ -139,6 +139,32 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true' }}
 
+    # A real PostgreSQL for the read-path budgets. Without it
+    # `tests/test_read_path_budget_postgres.py` skips, and because SQLite does not use
+    # NullPool (`src/database.py:146-151`) the suite would never measure the cost that
+    # dominates production: a fresh physical connection per phase. A permanently
+    # skipped test that leaves CI green is the defect recorded as P0-5, so the service
+    # exists to stop this measurement from silently becoming one.
+    services:
+      postgres:
+        image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
+        env:
+          POSTGRES_USER: okr
+          POSTGRES_PASSWORD: okr
+          POSTGRES_DB: okr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U okr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # Deliberately not OKR_DATABASE_URL: tests/conftest.py:19-20 overwrites that with
+      # sqlite:///:memory: at import, so it can never carry a DSN to the tests.
+      OKR_TEST_POSTGRES_URL: postgresql+psycopg2://okr:okr@localhost:5432/okr
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6

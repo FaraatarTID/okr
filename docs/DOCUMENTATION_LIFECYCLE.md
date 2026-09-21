@@ -37,8 +37,7 @@ historical or compatibility material as current operational guidance.
 | Previous reliability strategy | Historical | `docs/archive/ENTERPRISE_RELIABILITY_ROADMAP_2026-08-31.md` |
 | Reusable rollout artifacts | Template | `docs/templates/` |
 
-The Persian documents mirror the relevant English canonical or operational
-entry. Compatibility redirects remain only while their links have practical
+Compatibility redirects remain only while their links have practical
 value. Obsolete alpha or superseded guidance should be removed or moved out of
 the current index.
 

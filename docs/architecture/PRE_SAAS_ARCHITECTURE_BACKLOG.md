@@ -283,7 +283,6 @@ Tasks:
 - Ensure each active document has a Documentation HQ backlink.
 - Add document owner, status, review trigger, and source-of-truth labels.
 - Remove duplicate implementation instructions from roadmaps and place them in runbooks or ADRs.
-- Update English/Persian mirrors when the changed guidance is operational.
 
 Estimate: 6-10 hours / 1-2 sessions  
 Dependencies: P0-00  
