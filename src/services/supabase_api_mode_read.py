@@ -51,6 +51,59 @@ def _team_scope_id(scope: dict[str, Any] | None) -> Any:
     return int(team_id) if team_id is not None else 0
 
 
+def _allowed_goal_ids_for_cycle(*, cycle_id: int, scope: Any) -> list[str]:
+    """Goal ids in a cycle, narrowed to the goals the actor owns.
+
+    Two defects are answered at once here, because they are the same query.
+
+    The cycle relation: the embedded fast path filtered
+    `objective.goal_id` against a cycle id. `Goal.cycle_id` is
+    `foreign_key("cycle.id")` and `Objective.goal_id` is `foreign_key("goal.id")`
+    (`src/models.py:373` and `:423`), so that paired one table's primary key with
+    another's. The relation the TCP path uses is `Goal.cycle_id`, and this
+    function's own fallback branch already used it, so the fast path contradicted
+    its sibling.
+
+    The actor relation: nothing filtered these rows by `owner_ids`, so a member saw
+    key results belonging to goals they do not own.
+    """
+    status, rows = _rest_select(
+        "goal",
+        query={
+            "cycle_id": f"eq.{int(cycle_id)}",
+            "select": "id,owner_id",
+            "order": "id.asc",
+        },
+    )
+    if status >= 400:
+        raise ValueError(f"Supabase API error (goal/cycle): {status}")
+
+    is_admin = isinstance(scope, dict) and bool(scope.get("is_admin", False))
+    owner_ids: set[int] = set()
+    if not is_admin and isinstance(scope, dict):
+        raw = scope.get("owner_ids")
+        if isinstance(raw, (set, frozenset, list, tuple)):
+            for value in raw:
+                try:
+                    owner_ids.add(int(value))
+                except (TypeError, ValueError):
+                    continue
+
+    output: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        goal_id = _as_int(row.get("id"), 0)
+        if goal_id <= 0:
+            continue
+        if not is_admin:
+            owner = _as_int(row.get("owner_id"), 0)
+            if owner <= 0 or owner not in owner_ids:
+                continue
+        output.append(str(goal_id))
+    return output
+
+
 def read_query_via_supabase_api(
     *,
     kind: str,
@@ -376,9 +429,12 @@ def read_query_via_supabase_api(
         # objective -> key-result hierarchy with three sequential remote
         # calls. Keep the existing path as a compatibility fallback for
         # projects whose PostgREST schema cache lacks the relationship.
+        allowed_goal_ids = _allowed_goal_ids_for_cycle(cycle_id=cycle_id, scope=scope)
+        if not allowed_goal_ids:
+            return {"key_results": []}
         nested_query: dict[str, str] = {
             "select": "*,objective!inner(goal_id)",
-            "objective.goal_id": f"eq.{cycle_id}",
+            "objective.goal_id": f"in.({_in_clause_ids(allowed_goal_ids)})",
             "order": "id.asc",
         }
         if limit is not None:
@@ -394,13 +450,9 @@ def read_query_via_supabase_api(
                 row["__tablename__"] = "keyresult"
             return {"key_results": nested_krs}
 
-        q = {"cycle_id": f"eq.{cycle_id}", "select": "id", "order": "id.asc"}
-        status, goals = _rest_select("goal", query=q)
-        if status >= 400:
-            raise ValueError(f"Supabase API error (krs.by_cycle/goals): {status}")
-        goal_ids = [
-            str(_as_int(g.get("id"), 0)) for g in goals if _as_int(g.get("id"), 0) > 0
-        ]
+        # The goals were already resolved by cycle and narrowed to the actor's
+        # ownership above; re-fetching them here would ask the same question twice.
+        goal_ids = list(allowed_goal_ids)
         if not goal_ids:
             return {"key_results": []}
 
@@ -446,9 +498,12 @@ def read_query_via_supabase_api(
         # Prefer one embedded PostgREST query over walking the hierarchy with
         # four sequential remote calls. Older projects may not expose these
         # FK relationships through PostgREST, so retain the fallback below.
+        allowed_goal_ids = _allowed_goal_ids_for_cycle(cycle_id=cycle_id, scope=scope)
+        if not allowed_goal_ids:
+            return {"tasks": []}
         nested_query: dict[str, str] = {
             "select": "*,key_result!inner(objective!inner(goal_id))",
-            "key_result.objective.goal_id": f"eq.{cycle_id}",
+            "key_result.objective.goal_id": f"in.({_in_clause_ids(allowed_goal_ids)})",
             "order": "id.asc",
         }
         if limit is not None:
@@ -464,15 +519,8 @@ def read_query_via_supabase_api(
                 row["__tablename__"] = "task"
             return {"tasks": nested_tasks}
 
-        status, goals = _rest_select(
-            "goal",
-            query={"cycle_id": f"eq.{cycle_id}", "select": "id", "order": "id.asc"},
-        )
-        if status >= 400:
-            raise ValueError(f"Supabase API error (tasks.by_cycle/goals): {status}")
-        goal_ids = [
-            str(_as_int(g.get("id"), 0)) for g in goals if _as_int(g.get("id"), 0) > 0
-        ]
+        # Already resolved by cycle and narrowed to the actor above.
+        goal_ids = list(allowed_goal_ids)
         if not goal_ids:
             return {"tasks": []}
 
