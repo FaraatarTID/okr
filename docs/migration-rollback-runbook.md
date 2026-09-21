@@ -57,30 +57,33 @@ commands against a live environment.
 
 ## Multi-tenant migration orchestration
 
-Authoritative tenant inventory: provisioned environments in
-`tmp/saas-environments.json` (via `LocalDisposableEnvironmentProvider`) or the
-control-plane state. Each tenant carries an opaque `database_resource_id`; the
-orchestrator never stores credential-bearing URLs.
+Tenant migrations are a controlled release operation. The orchestrator derives exactly one
+repository Alembic head, preflights each tenant to read its current revision, and checks the
+reported revision again after `alembic upgrade head`. A mismatch or incompatible schema is a
+non-retryable failure. Only runner/connectivity failures may be retried.
 
-- Dry run (lists targets, modifies nothing):
-  `just saas-migrate-dry-run` or
-  `uv run python scripts/migrate_tenant_databases.py --provisioning-state-file tmp/saas-environments.json --dry-run`.
-- Full run: `just saas-migrate`. Options: `--tenant <id>` (repeatable filter),
-  `--timeout-seconds`, `--max-retries`, `--fail-fast`,
-  `--database-urls-file <json>`, `--output <report.json>`.
-- The operator-controlled GitHub Actions workflow
-  `.github/workflows/saas-migrations.yml` runs the same fan-out with
-  `SAAS_PROVISIONING_STATE_JSON` and `SAAS_DATABASE_URLS_JSON` secrets and
-  uploads the report as a workflow artifact. Run it as a release gate before
-  promotion; it fails when either input is missing or any tenant fails.
-- Per-tenant execution runs idempotent `alembic upgrade head` with the tenant
-  database URL injected via `OKR_DATABASE_URL`/`DATABASE_URL`; reruns are safe.
-- The JSON report records per tenant: environment id, database resource,
-  revision, duration seconds, attempts, error. Exit code is nonzero when any
-  required tenant fails; with `--fail-fast` the run stops at the first failure.
-- Failure policy: mark the release failed/incomplete, preserve the report and
-  failed-container logs, and do not promote. Rerun after fixing the tenant.
-- Rollback on migration failure follows the downgrade/backup-restore path above.
+- **Dry run:** `just saas-migrate-dry-run`.
+- **Canary:** `just saas-migrate-canary tmp/saas-environments.json env-a tmp/saas-database-urls.json`.
+- **Full rollout:** `just saas-migrate-full tmp/saas-environments.json tmp/saas-database-urls.json`.
+  This example uses batches of 25 and bounded concurrency of 4; the script defaults to one
+  worker (sequential) unless `--max-concurrency` is explicitly set.
+- **Recovery after repair:** `just saas-migrate-recovery tmp/saas-environments.json tmp/saas-database-urls.json`.
+  Do not override wave stopping without incident-owner approval; `--continue-on-wave-failure`
+  is an explicit emergency override.
+- **Retention:** archive the complete JSON report with
+  `just saas-migrate-retain-report tmp/migration-full-report.json migration-evidence`.
+
+Canaries run first, followed by configured batches and then the remaining tenants. A failed
+preflight, migration, expected-head check, readiness/postflight probe, or timeout fails that
+tenant and stops subsequent waves by default. Skipped tenants are retained in the deterministic
+report ordering. `--health-probe-mode optional|required` invokes configured per-tenant BFF or
+application readiness URLs after the expected revision is confirmed.
+
+Every report includes release ID, migration artifact/version, report and tenant timestamps,
+wave, attempts, old/new/expected revisions, probe details, and sanitized failure class. Preserve
+it with release evidence and do not promote until every required tenant succeeds. The GitHub
+Actions dispatch requires `production_confirmation=MIGRATE_PRODUCTION`, exposes canary,
+concurrency, and probe controls, and uploads the report even on failure.
 
 ## Rehearsal record
 

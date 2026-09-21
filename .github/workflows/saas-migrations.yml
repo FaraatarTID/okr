@@ -7,8 +7,30 @@ on:
         description: Non-negative retries per tenant after a failed migration
         required: false
         default: "1"
-      fail_fast:
-        description: Stop after the first tenant failure
+      canary_tenants:
+        description: Comma-separated canary tenant environment IDs (first wave)
+        required: false
+        default: ""
+      max_concurrency:
+        description: Bounded migrations per later wave; 1 keeps sequential execution
+        required: false
+        default: "1"
+      batch_size:
+        description: Tenant count in each post-canary wave; 0 puts all remaining tenants in one bounded wave
+        required: false
+        default: "0"
+      health_probe_mode:
+        description: Readiness probe policy (off, optional, or required)
+        required: false
+        type: choice
+        options: [off, optional, required]
+        default: optional
+      production_confirmation:
+        description: Type MIGRATE_PRODUCTION to confirm this production migration
+        required: true
+        default: ""
+      continue_on_wave_failure:
+        description: Continue later waves after a failed wave (emergency override)
         required: false
         type: boolean
         default: false
@@ -35,6 +57,7 @@ jobs:
         env:
           SAAS_PROVISIONING_STATE_JSON: ${{ secrets.SAAS_PROVISIONING_STATE_JSON }}
           SAAS_DATABASE_URLS_JSON: ${{ secrets.SAAS_DATABASE_URLS_JSON }}
+          SAAS_READINESS_URLS_JSON: ${{ secrets.SAAS_READINESS_URLS_JSON }}
         run: |
           set -euo pipefail
           if [ -z "${SAAS_PROVISIONING_STATE_JSON:-}" ]; then
@@ -50,19 +73,36 @@ jobs:
           printf '%s' "$SAAS_DATABASE_URLS_JSON" > "$RUNNER_TEMP/okr-migrations/database-urls.json"
           python -m json.tool "$RUNNER_TEMP/okr-migrations/environments.json" >/dev/null
           python -m json.tool "$RUNNER_TEMP/okr-migrations/database-urls.json" >/dev/null
+          if [ -n "${SAAS_READINESS_URLS_JSON:-}" ]; then
+            printf '%s' "$SAAS_READINESS_URLS_JSON" > "$RUNNER_TEMP/okr-migrations/readiness-urls.json"
+            python -m json.tool "$RUNNER_TEMP/okr-migrations/readiness-urls.json" >/dev/null
+          fi
 
-      - name: Migrate all provisioned tenants
+      - name: Confirm production migration
+        run: |
+          test "${{ inputs.production_confirmation }}" = "MIGRATE_PRODUCTION" || {
+            echo "Production migration requires production_confirmation=MIGRATE_PRODUCTION" >&2
+            exit 1
+          }
+
+      - name: Migrate provisioned tenants in controlled waves
         run: |
           set -euo pipefail
           args=(
             --provisioning-state-file "$RUNNER_TEMP/okr-migrations/environments.json"
             --database-urls-file "$RUNNER_TEMP/okr-migrations/database-urls.json"
             --max-retries "${{ inputs.max_retries }}"
+            --max-concurrency "${{ inputs.max_concurrency }}"
+            --batch-size "${{ inputs.batch_size }}"
+            --health-probe-mode "${{ inputs.health_probe_mode }}"
+            --release-id "${{ github.run_id }}"
+            --migration-artifact "${{ github.sha }}"
             --output migration-report.json
           )
-          if [ "${{ inputs.fail_fast }}" = "true" ]; then
-            args+=(--fail-fast)
-          fi
+          IFS=',' read -ra canaries <<< "${{ inputs.canary_tenants }}"
+          for tenant in "${canaries[@]}"; do [ -n "$tenant" ] && args+=(--canary-tenant "$tenant"); done
+          if [ -f "$RUNNER_TEMP/okr-migrations/readiness-urls.json" ]; then args+=(--readiness-urls-file "$RUNNER_TEMP/okr-migrations/readiness-urls.json"); fi
+          if [ "${{ inputs.continue_on_wave_failure }}" = "true" ]; then args+=(--continue-on-wave-failure); fi
           uv run python scripts/migrate_tenant_databases.py "${args[@]}"
 
       - name: Upload migration report

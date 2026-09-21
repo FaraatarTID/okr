@@ -105,3 +105,16 @@ saas-migrate STATE_FILE="tmp/saas-environments.json":
 
 saas-migrate-dry-run STATE_FILE="tmp/saas-environments.json":
     uv run python scripts/migrate_tenant_databases.py --provisioning-state-file "{{STATE_FILE}}" --dry-run
+
+# Controlled tenant migration rollout examples. URL mappings are supplied separately.
+saas-migrate-canary STATE_FILE="tmp/saas-environments.json" CANARY="" URLS="tmp/saas-database-urls.json":
+    uv run python scripts/migrate_tenant_databases.py --provisioning-state-file "{{STATE_FILE}}" --database-urls-file "{{URLS}}" --canary-tenant "{{CANARY}}" --batch-size 1 --max-concurrency 1 --health-probe-mode optional --output tmp/migration-canary-report.json
+
+saas-migrate-full STATE_FILE="tmp/saas-environments.json" URLS="tmp/saas-database-urls.json":
+    uv run python scripts/migrate_tenant_databases.py --provisioning-state-file "{{STATE_FILE}}" --database-urls-file "{{URLS}}" --batch-size 25 --max-concurrency 4 --health-probe-mode optional --output tmp/migration-full-report.json
+
+saas-migrate-recovery STATE_FILE="tmp/saas-environments.json" URLS="tmp/saas-database-urls.json":
+    uv run python scripts/migrate_tenant_databases.py --provisioning-state-file "{{STATE_FILE}}" --database-urls-file "{{URLS}}" --max-concurrency 1 --output tmp/migration-recovery-report.json
+
+saas-migrate-retain-report REPORT="tmp/migration-report.json" ARCHIVE_DIR="tmp/migration-reports":
+    mkdir -p "{{ARCHIVE_DIR}}" && cp "{{REPORT}}" "{{ARCHIVE_DIR}}/migration-report-$(date -u +%Y%m%dT%H%M%SZ).json"
