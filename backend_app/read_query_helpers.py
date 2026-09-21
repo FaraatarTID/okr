@@ -89,7 +89,6 @@ _ROW_SCOPED_READ_KINDS = frozenset(
         "alignments.context",
         "mindmap.root",
         "krs.by_cycle",
-        "krs.needing_checkin",
         "tasks.by_cycle",
         "experiments.for_retro_window",
         "cycles.all",
@@ -100,6 +99,9 @@ _ROW_SCOPED_READ_KINDS = frozenset(
 )
 # `ritual.snapshot` resolves the actor inside the database function (`p_username`).
 _SELF_SCOPED_READ_KINDS = frozenset({"ritual.snapshot"})
+# `krs.needing_checkin` needs two predicates, in the order its TCP branch applies
+# them: the username (400 when absent, then authorized), then the cycle.
+_USERNAME_AND_CYCLE_READ_KINDS = frozenset({"krs.needing_checkin"})
 
 _READ_SCOPE_POLICY = frozenset(
     _ADMIN_ONLY_READ_KINDS
@@ -107,6 +109,7 @@ _READ_SCOPE_POLICY = frozenset(
     | _USERNAME_PARAM_READ_KINDS
     | _MANAGER_ID_PARAM_READ_KINDS
     | _ROW_SCOPED_READ_KINDS
+    | _USERNAME_AND_CYCLE_READ_KINDS
     | _SELF_SCOPED_READ_KINDS
 )
 
@@ -193,6 +196,23 @@ def _team_visible_for_scope(team: Any, scope: dict) -> bool:
         return False
 
 
+# Kinds that name a cycle and are therefore only meaningful for a cycle the actor
+# may use. On the HTTPS path nothing validated the cycle id, so a manager could ask
+# for `krs.by_cycle` on a cycle they do not own and receive its rows; the TCP
+# branches refuse that through `_resolve_effective_cycle_id_for_scope`.
+#
+# Deliberately excludes `cycles.all` / `cycles.active`: they take no cycle id, and
+# running the resolver for them would raise 404 for a member with no active cycle,
+# which the TCP branch does not do.
+_CYCLE_ID_PARAM_READ_KINDS = frozenset(
+    {
+        "krs.by_cycle",
+        "tasks.by_cycle",
+        "experiments.for_retro_window",
+    }
+)
+
+
 def _validate_read_scope(
     *, kind: str, params: dict, actor: str, main: Any
 ) -> dict[str, Any]:
@@ -235,6 +255,27 @@ def _validate_read_scope(
         main._require_allowed_user_id(
             scope,
             main._coerce_int(params.get("manager_id"), field_name="manager_id"),
+        )
+        return scope
+    if kind in _USERNAME_AND_CYCLE_READ_KINDS:
+        username = str(params.get("user_id") or "").strip()
+        if not username:
+            raise main.HTTPException(status_code=400, detail="user_id is required.")
+        main._require_allowed_username(scope, username)
+        if resolve_read_mode() == "supabase_api":
+            # HTTPS-only for the same reason as the branch below.
+            main._resolve_effective_cycle_id_for_scope(
+                scope,
+                main._coerce_int(params.get("cycle_id"), field_name="cycle_id"),
+            )
+        return scope
+    if kind in _CYCLE_ID_PARAM_READ_KINDS and resolve_read_mode() == "supabase_api":
+        # Confined to the HTTPS path because the TCP branches already resolve the
+        # cycle through this same helper, and calling it twice would double the
+        # cycle listing on the primary path.
+        main._resolve_effective_cycle_id_for_scope(
+            scope,
+            main._coerce_int(params.get("cycle_id"), field_name="cycle_id"),
         )
         return scope
     if kind in _HTTPS_NODE_OWNER_READ_KINDS and resolve_read_mode() == "supabase_api":

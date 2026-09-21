@@ -392,9 +392,29 @@ OUT_OF_SCOPE_REFUSALS: dict[str, dict] = {
     },
     "retros.user": {"user_id": 999},
     "retros.team": {"manager_id": 999},
+    # `krs.needing_checkin` authorizes `user_id` as a username on TCP before it
+    # reaches its cycle check; the HTTPS path checked neither.
+    "krs.needing_checkin": {"cycle_id": 7, "user_id": "mallory"},
+}
+
+# Out-of-scope cycle id per cycle-naming kind. `krs.needing_checkin` needs its
+# username supplied too, or it fails the earlier contract check with 400.
+OUT_OF_SCOPE_CYCLE_PARAMS: dict[str, dict] = {
+    "krs.by_cycle": {"cycle_id": 999},
+    "tasks.by_cycle": {"cycle_id": 999},
+    "experiments.for_retro_window": {"cycle_id": 999},
+    "krs.needing_checkin": {"cycle_id": 999, "user_id": "alice"},
 }
 
 MODES = ["database", "supabase_api"]
+
+# Kinds that name a cycle. Both paths must refuse a cycle the actor may not use.
+CYCLE_ID_KINDS = [
+    "krs.by_cycle",
+    "tasks.by_cycle",
+    "krs.needing_checkin",
+    "experiments.for_retro_window",
+]
 
 
 def _force_mode(monkeypatch, mode: str) -> None:
@@ -536,6 +556,45 @@ def test_supabase_teams_all_constrains_the_query(monkeypatch, scope, expected_id
 
     assert captured["table"] == "team"
     assert captured["query"].get("id") == expected_id
+
+
+@pytest.mark.parametrize("kind", CYCLE_ID_KINDS)
+@pytest.mark.parametrize("mode", MODES)
+def test_out_of_scope_cycle_is_refused_in_both_modes(monkeypatch, kind, mode):
+    """A cycle the actor may not use is refused on both paths, not just TCP.
+
+    The HTTPS path performed no cycle validation at all, so a manager could ask for
+    `krs.by_cycle` on a cycle they do not own and receive its rows, while the TCP
+    branch refused the identical request. The resolver is stubbed rather than hit,
+    because what is under test is that the HTTPS guard consults the same resolver the
+    TCP branch uses, not that the resolver itself works.
+    """
+    import backend_app.read_query_helpers as read_query_helpers
+    from fastapi import HTTPException
+
+    backend_main = _non_admin_main(monkeypatch)
+
+    def fake_resolve(scope, cycle_id, *, required=True):
+        if int(cycle_id) != 7:
+            raise HTTPException(
+                status_code=403, detail="Managers can only use their owned cycles."
+            )
+        return int(cycle_id)
+
+    monkeypatch.setattr(
+        backend_main, "_resolve_effective_cycle_id_for_scope", fake_resolve
+    )
+    _force_mode(monkeypatch, mode)
+
+    with pytest.raises(HTTPException) as excinfo:
+        read_query_helpers.read_query_payload(
+            kind=kind,
+            params=dict(OUT_OF_SCOPE_CYCLE_PARAMS[kind]),
+            actor="alice",
+            main=backend_main,
+        )
+
+    assert excinfo.value.status_code == 403
 
 
 def test_supabase_read_dispatch_is_always_scope_guarded():
