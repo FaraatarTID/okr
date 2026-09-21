@@ -31,6 +31,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Any, TypedDict
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -43,6 +44,13 @@ DECLARATION = ROOT / "docs" / "deploy" / "required-secrets.json"
 AUTOMATIC_SECRETS = frozenset({"GITHUB_TOKEN"})
 
 _SECRET_RE = re.compile(r"\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)")
+
+
+class SecretUsage(TypedDict):
+    """Which workflows reference a secret, and whether any can run on a pull request."""
+
+    workflows: list[str]
+    all_post_merge_only: bool
 
 
 def _without_comments(text: str) -> str:
@@ -82,25 +90,25 @@ def triggers_on_pull_request(text: str) -> bool:
     return False
 
 
-def scan(workflows_dir: Path) -> dict[str, dict[str, object]]:
+def scan(workflows_dir: Path) -> dict[str, SecretUsage]:
     """Map each secret name to the workflows referencing it and their triggers."""
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, SecretUsage] = {}
     for path in sorted(workflows_dir.glob("*.yml")):
         text = path.read_text(encoding="utf-8")
         pr_checkable = triggers_on_pull_request(text)
         for name in referenced_secrets(text):
             entry = result.setdefault(
-                name, {"workflows": [], "all_post_merge_only": True}
+                name, SecretUsage(workflows=[], all_post_merge_only=True)
             )
-            entry["workflows"].append(path.name)  # type: ignore[union-attr]
+            entry["workflows"].append(path.name)
             if pr_checkable:
-                entry["all_post_merge_only"] = False  # type: ignore[assignment]
+                entry["all_post_merge_only"] = False
     return result
 
 
-def load_declaration(path: Path) -> dict[str, dict[str, object]]:
+def load_declaration(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
-    declared: dict[str, dict[str, object]] = {}
+    declared: dict[str, Any] = {}
     for item in payload.get("secrets", []):
         name = str(item.get("name") or "").strip()
         if not name:
@@ -109,13 +117,11 @@ def load_declaration(path: Path) -> dict[str, dict[str, object]]:
     return declared
 
 
-def problems(
-    derived: dict[str, dict[str, object]], declared: dict[str, dict[str, object]]
-) -> list[str]:
+def problems(derived: dict[str, SecretUsage], declared: dict[str, Any]) -> list[str]:
     findings: list[str] = []
     for name in sorted(set(derived) - set(declared)):
         entry = derived[name]
-        workflows = ", ".join(entry["workflows"])  # type: ignore[arg-type]
+        workflows = ", ".join(entry["workflows"])
         findings.append(
             f"{name} is referenced by {workflows} but is not declared in "
             f"{DECLARATION.relative_to(ROOT)}. A workflow cannot run until an "
@@ -129,7 +135,7 @@ def problems(
     for name in sorted(set(derived) & set(declared)):
         entry = derived[name]
         if entry["all_post_merge_only"] and not declared[name].get("post_merge_only"):
-            workflows = ", ".join(entry["workflows"])  # type: ignore[arg-type]
+            workflows = ", ".join(entry["workflows"])
             findings.append(
                 f"{name} is referenced only by workflows that do not trigger on "
                 f"pull_request ({workflows}), so nothing can exercise it before "
