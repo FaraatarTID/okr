@@ -104,6 +104,77 @@ def _allowed_goal_ids_for_cycle(*, cycle_id: int, scope: Any) -> list[str]:
     return output
 
 
+def _owner_user_id_for_username(username: str) -> int:
+    """Resolve a username to its user id, mirroring the TCP owner predicate.
+
+    `_goal_owner_predicate_by_username` matches `Goal.owner_id` against the user id
+    found by username (`src/domain/authorization.py:55-58`). Returns 0 when the
+    username resolves to nobody, which matches no goal: an unknown user reads
+    nothing rather than everything.
+    """
+    if not username:
+        return 0
+    status, rows = _rest_select(
+        "user",
+        query={"username": f"eq.{username}", "select": "id", "limit": "1"},
+    )
+    if status >= 400:
+        raise ValueError(f"Supabase API error (user/by_username): {status}")
+    for row in rows:
+        if isinstance(row, dict):
+            user_id = _as_int(row.get("id"), 0)
+            if user_id > 0:
+                return user_id
+    return 0
+
+
+def _key_result_ids_for_cycle_scope(*, cycle_id: int, scope: Any) -> set[int]:
+    """Key result ids in a cycle whose goal the actor may read.
+
+    Mirrors the per-experiment authorization the TCP path performs
+    (`src/crud_experiment_helpers.py:376` calling `_authorize_goal_scoped_access`):
+    the goal's owner, that owner's manager, or an admin. `scope["owner_ids"]` is
+    exactly that set — self plus direct reports for a manager, every active user for
+    an admin (`backend_app/scope_resolution.py:55-69`) — so narrowing the cycle's
+    goals to it reproduces the rule without a per-row round trip.
+    """
+    goal_ids = _allowed_goal_ids_for_cycle(cycle_id=cycle_id, scope=scope)
+    if not goal_ids:
+        return set()
+    status, objectives = _rest_select(
+        "objective",
+        query={
+            "goal_id": f"in.({_in_clause_ids(goal_ids)})",
+            "select": "id",
+            "order": "id.asc",
+        },
+    )
+    if status >= 400:
+        raise ValueError(f"Supabase API error (objective/cycle): {status}")
+    objective_ids = [
+        str(_as_int(row.get("id"), 0))
+        for row in objectives
+        if isinstance(row, dict) and _as_int(row.get("id"), 0) > 0
+    ]
+    if not objective_ids:
+        return set()
+    status, krs = _rest_select(
+        "key_result",
+        query={
+            "objective_id": f"in.({_in_clause_ids(objective_ids)})",
+            "select": "id",
+            "order": "id.asc",
+        },
+    )
+    if status >= 400:
+        raise ValueError(f"Supabase API error (key_result/cycle): {status}")
+    return {
+        _as_int(row.get("id"), 0)
+        for row in krs
+        if isinstance(row, dict) and _as_int(row.get("id"), 0) > 0
+    }
+
+
 def read_query_via_supabase_api(
     *,
     kind: str,
@@ -663,9 +734,26 @@ def read_query_via_supabase_api(
         days_threshold = _as_int(params.get("days_threshold"), 7)
         now_utc = datetime.now(timezone.utc)
 
+        # TCP filters this kind by the *requested user's* goals — there is no admin
+        # bypass, because `get_krs_needing_checkin` always applies
+        # `_goal_owner_predicate_by_username` (`src/domain/analytics.py:253`) — and it
+        # also requires `KeyResult.state == ACTIVE` (`:254`). The HTTPS path applied
+        # neither, so it returned every user's key results in the cycle regardless of
+        # state and regardless of who was asked about.
+        owner_user_id = _owner_user_id_for_username(
+            str(params.get("user_id") or "").strip()
+        )
+        if owner_user_id <= 0:
+            return {"key_results": []}
+
         status, goals = _rest_select(
             "goal",
-            query={"cycle_id": f"eq.{cycle_id}", "select": "id", "order": "id.asc"},
+            query={
+                "cycle_id": f"eq.{cycle_id}",
+                "owner_id": f"eq.{owner_user_id}",
+                "select": "id",
+                "order": "id.asc",
+            },
         )
         if status >= 400:
             raise ValueError(
@@ -701,6 +789,7 @@ def read_query_via_supabase_api(
             "key_result",
             query={
                 "objective_id": f"in.({_in_clause_ids(objective_ids)})",
+                "state": "eq.ACTIVE",
                 "select": "*",
                 "order": "id.asc",
             },
@@ -801,6 +890,22 @@ def read_query_via_supabase_api(
             raise ValueError(
                 f"Supabase API error (experiments.for_retro_window): {status}"
             )
+        # TCP authorizes each experiment against its key result's goal, allowing the
+        # goal's owner, that owner's manager, and admins
+        # (`src/crud_experiment_helpers.py:373-384`). The HTTPS path returned every
+        # experiment in the cycle. Admins are left unfiltered because their scope
+        # already spans every active user and `_authorize_goal_scoped_access` admits
+        # them outright.
+        if not (isinstance(scope, dict) and bool(scope.get("is_admin", False))):
+            allowed_kr_ids = _key_result_ids_for_cycle_scope(
+                cycle_id=cycle_id, scope=scope
+            )
+            rows = [
+                row
+                for row in rows
+                if isinstance(row, dict)
+                and _as_int(row.get("key_result_id"), 0) in allowed_kr_ids
+            ]
         return {"experiments": rows}
 
     if normalized == "retros.user":
