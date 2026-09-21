@@ -35,8 +35,28 @@ def _rest_rpc(function_name: str, args: dict[str, Any]) -> tuple[int, Any]:
     )
 
 
+_UNRESTRICTED = object()
+
+
+def _team_scope_id(scope: dict[str, Any] | None) -> Any:
+    """Team the actor may read, or `_UNRESTRICTED` for an admin.
+
+    Returns 0 for an actor with no team, which matches no team row: a scopeless
+    actor reads nothing rather than everything. Teams are not global reference
+    data, so the Supabase path filters them the same way the TCP branch does.
+    """
+    if not isinstance(scope, dict) or bool(scope.get("is_admin", False)):
+        return _UNRESTRICTED
+    team_id = scope.get("team_id")
+    return int(team_id) if team_id is not None else 0
+
+
 def read_query_via_supabase_api(
-    *, kind: str, params: dict[str, Any], actor: str
+    *,
+    kind: str,
+    params: dict[str, Any],
+    actor: str,
+    scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized = str(kind or "").strip()
 
@@ -248,19 +268,25 @@ def read_query_via_supabase_api(
         return {"users": [_normalize_user_row_role(row) for row in rows]}
 
     if normalized == "teams.all":
-        status, rows = _rest_select(
-            "team",
-            query={
-                "select": "id,name,description,created_at",
-                "order": "id.asc",
-            },
-        )
+        team_scope = _team_scope_id(scope)
+        team_query: dict[str, Any] = {
+            "select": "id,name,description,created_at",
+            "order": "id.asc",
+        }
+        if team_scope is not _UNRESTRICTED:
+            team_query["id"] = f"eq.{team_scope}"
+        status, rows = _rest_select("team", query=team_query)
         if status >= 400:
             raise ValueError(f"Supabase API error (teams.all): {status}")
         return {"teams": rows}
 
     if normalized == "teams.by_id":
         team_id = int(params.get("team_id") or 0)
+        team_scope = _team_scope_id(scope)
+        if team_scope is not _UNRESTRICTED and int(team_scope) != team_id:
+            # Report it as absent rather than forbidden: a 403 would confirm that
+            # the team exists, which is the disclosure the filter is here to avoid.
+            return {"team": None}
         status, rows = _rest_select(
             "team",
             query={

@@ -148,6 +148,30 @@ its trigger.
 | E5 | Named operations owner and explicit real-data approval | EXTERNAL, human | `UNASSIGNED` in the roadmap, `docs/saas/phase-1-entry-evidence.md:64`, and `docs/saas/release-signoff.md:10`; `real_data_approval` is false. No engineering action closes these; the verifiers already reject `UNASSIGNED`. |
 | E6 | Phase 3 scope | DEFERRED | Per-environment SLOs and alert routing, tenant-aware audit tooling, rolling-version compatibility and expand/contract migrations, disaster-recovery drills, noisy-neighbor protection, data residency, and a cost and capacity model. |
 
+## Workstream F - Read-path authorization parity
+
+Raised on 2026-09-21 while verifying an external static-analysis review, which
+reported three unscoped read kinds. Verifying it widened the finding: the two data
+paths disagreed about actor scope for **thirteen** kinds, and the guard that was
+supposed to prevent that enumerated the kinds it checked, which made the list
+itself the defect. `_validate_read_scope` is now deny-by-default and runs before
+dispatch for both paths, so the class closes rather than the instances.
+
+Reachability, established from configuration rather than assumed: the HTTPS read
+path is **not** reachable in the enforced `single_tenant_saas` profile, because
+`src/saas/environment_config.py:51-67` rejects any `OKR_DATA_ACCESS_MODE` other
+than `database` and raises when `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, or
+`SUPABASE_ANON_KEY` is non-empty ("HTTPS Supabase fallback is disabled"). Both
+`resolve_read_mode()` triggers for HTTPS are therefore closed in that profile. The
+path **is** reachable in the alpha/self-hosted `supabase_api` compatibility mode,
+and the automatic DB-unreachable fallback would engage anywhere those credentials
+are configured. Severity is scored on the alpha/self-hosted configuration.
+
+| ID | Issue | Evidence | Deliverable | Acceptance | Size |
+| --- | --- | --- | --- | --- | --- |
+| F1 | The HTTPS read path served thirteen kinds with no actor scoping, including `audit.summary`, which returns 403 to a non-admin on the TCP path. | `read_query_helpers.py` returned over HTTPS at `:271` before any TCP branch ran, and the pre-dispatch guard covered 8 of the 26 allowed kinds; the remaining 18 were unchecked, of which 13 were scoped on TCP. The divergent kinds: `audit.summary`, `users.all`, `users.team_members`, `cycles.all`, `cycles.active`, `node.detect_type`, `krs.by_cycle`, `krs.needing_checkin`, `tasks.by_cycle`, `work_logs.by_task`, `experiments.for_retro_window`, `retros.team`, `alignments.context`, `mindmap.root`. Fail-first evidence: with a non-admin scope the HTTPS path raised nothing at all for `audit.summary` and `users.all` (`DID NOT RAISE`). The parity test could not catch this because its HTTPS half monkeypatched `read_query_via_supabase_api` to return the expected payload and then asserted that payload, over 2 of 26 kinds with an admin scope. | Replace the enumerating guard with a deny-by-default policy mapping every allowed kind to its scope rule; run it before dispatch for both paths; pass the resolved scope into `read_query_via_supabase_api` instead of `_ = actor`; scope `teams.all`/`teams.by_id` to the actor's team membership; remove the never-implemented `mindmap.children`; make `get_node`'s actor-optional fail-open an explicit `allow_unscoped` exception with a static call-site guard; rebuild the parity test over every allowed kind under a non-admin scope. | `get_read_scope_policy_kinds()` equals `get_read_query_allowed_kinds()`; an allow-listed kind with no rule is refused 403 on both paths; out-of-scope requests are refused 403 on both paths; `teams.all` filters to membership in the query; a made-up kind cannot execute. | M |
+| F2 | Six read kinds rely on `get_node(..., actor_username=...)` for their scope, and the TCP authorization inside `get_node` is conditional on the actor being present. | `src/crud_query_helpers.py:70` authorized only `if node and actor_username`. It now raises `UnscopedNodeReadError` unless `allow_unscoped=True`, and `tests/test_crud_authorization.py` asserts both the refusal and that no call site passes an empty actor. What is **not** yet audited is the surface behind the six kinds that depend on it (`node.get`, `node.detect_type`, `work_logs.by_task`, `experiments.for_kr`, `experiments.active_for_kr`, `alignments.context`, `mindmap.root` via `actorRequired: true` routes): whether a request can reach them with no actor, and what the BFF guarantees. | Audit that surface and either prove the actor is always present or make absence fail closed end to end. | Every one of those kinds is proven to refuse when no actor is present, or the invariant is enforced at the boundary with a test that fails if it is removed. | S |
+
 ## Sequencing
 
 The five suggestions from the repository review map onto these phases:

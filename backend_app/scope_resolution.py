@@ -112,6 +112,13 @@ def _resolve_actor_scope(
             if getattr(actor, "manager_id", None) is not None
             else None
         ),
+        # Team membership is part of the actor's authorization context because
+        # `teams.all` / `teams.by_id` return only the teams the actor belongs to.
+        "team_id": (
+            int(getattr(actor, "team_id"))
+            if getattr(actor, "team_id", None) is not None
+            else None
+        ),
         "owner_ids": owner_ids,
         "usernames": usernames,
         "admin_ids": admin_ids,
@@ -214,6 +221,8 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
 
     manager_id_raw = actor.get("manager_id")
     manager_id = int(manager_id_raw) if manager_id_raw is not None else None
+    team_id_raw = actor.get("team_id")
+    team_id = int(team_id_raw) if team_id_raw is not None else None
     return {
         "is_admin": role == "admin",
         "role": role,
@@ -221,6 +230,8 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
         "actor_username": str(actor.get("username") or actor_username),
         "display_name": str(actor.get("display_name") or ""),
         "manager_id": manager_id,
+        # See the TCP resolver: team membership scopes `teams.all` / `teams.by_id`.
+        "team_id": team_id,
         "owner_ids": owner_ids,
         "usernames": usernames,
         "admin_ids": admin_ids,

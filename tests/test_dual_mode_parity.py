@@ -351,74 +351,255 @@ def test_dual_mode_user_mutation_payload_parity(
     assert marker["calls"][1][0] == "supabase"
 
 
+# --- Read-query scope parity -------------------------------------------------
+#
+# The previous version of this test monkeypatched `read_query_via_supabase_api`
+# to *return the expected payload* and then asserted that payload, so its HTTPS
+# half could not fail, and it covered 2 of the 26 allowed kinds with an admin
+# scope. That is why a 13-kind scoping divergence between the two data paths
+# survived a file named for dual-mode parity.
+#
+# These tests state the contract instead of the current behaviour:
+#
+#   1. an unclassified read kind is refused in both modes, so a read kind added
+#      later cannot be served unscoped by omission (deny-by-default);
+#   2. a request naming a resource outside the actor's scope is refused in both
+#      modes, not just on the path that remembers to check.
+
+NON_ADMIN_SCOPE = {
+    "is_admin": False,
+    "owner_ids": {101},
+    "usernames": {"alice"},
+    "role": "member",
+    "team_id": 7,
+}
+
+# Kinds whose out-of-scope request must be refused outright. Row-filtered kinds
+# (`cycles.*`, `teams.*`) and self-scoped kinds (`ritual.snapshot`) are covered by
+# the payload-parity test below, because for those the correct behaviour is a
+# restricted 200 rather than a refusal.
+OUT_OF_SCOPE_REFUSALS: dict[str, dict] = {
+    "audit.summary": {},
+    "users.all": {},
+    "users.by_id": {"user_id": 999},
+    "users.by_username": {"username": "mallory"},
+    "users.team_members": {"manager_id": 999},
+    "weekly_plan.active": {"user_id": 999},
+    "work_logs.by_range": {
+        "user_id": 999,
+        "start_date": "2026-01-01",
+        "end_date": "2026-01-02",
+    },
+    "retros.user": {"user_id": 999},
+    "retros.team": {"manager_id": 999},
+}
+
+MODES = ["database", "supabase_api"]
+
+
+def _force_mode(monkeypatch, mode: str) -> None:
+    """Force the read path. `read_query_helpers` imports the resolver by name."""
+    import backend_app.read_query_helpers as read_query_helpers
+
+    monkeypatch.setattr(read_query_helpers, "resolve_read_mode", lambda: mode)
+
+
+def _non_admin_main(monkeypatch):
+    _, backend_main = _make_client(monkeypatch)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_scope_for_actor",
+        lambda *_args, **_kwargs: dict(NON_ADMIN_SCOPE),
+    )
+    return backend_main
+
+
+def test_read_scope_policy_covers_every_allowed_kind():
+    """Deny-by-default structure: no readable kind may lack a scope rule.
+
+    This is the assertion that would have caught the divergence directly. Thirteen
+    kinds were readable with no rule governing who could read them, and every one
+    of them was reachable over HTTPS.
+    """
+    import backend_app.read_query_helpers as read_query_helpers
+
+    allowed = read_query_helpers.get_read_query_allowed_kinds()
+    policy = set(read_query_helpers.get_read_scope_policy_kinds())
+
+    assert policy - allowed == set(), "scope policy names kinds that are not readable"
+    assert allowed - policy == set(), "readable kinds with no declared actor scope"
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_newly_allowed_read_kind_without_a_scope_rule_is_refused(monkeypatch, mode):
+    """Deny-by-default: allow-listing a kind must not be enough to serve it.
+
+    This models the actual defect mechanism. The 13 divergent kinds were all in
+    `get_read_query_allowed_kinds()` and were therefore readable; what they lacked
+    was a scope rule. Passing `allowed_kinds` explicitly is how a future read kind
+    enters the system, so it is the path the guard has to refuse.
+    """
+    import backend_app.read_query_helpers as read_query_helpers
+    from fastapi import HTTPException
+
+    backend_main = _non_admin_main(monkeypatch)
+    _force_mode(monkeypatch, mode)
+
+    with pytest.raises(HTTPException) as excinfo:
+        read_query_helpers.read_query_payload(
+            kind="orders.by_user",
+            params={},
+            actor="alice",
+            main=backend_main,
+            allowed_kinds={"orders.by_user"},
+        )
+
+    assert excinfo.value.status_code == 403
+
+
+def test_teams_all_is_scoped_to_the_actors_membership(monkeypatch):
+    """A member sees their own team and not others (TCP branch)."""
+    import backend_app.read_query_helpers as read_query_helpers
+
+    backend_main = _non_admin_main(monkeypatch)
+    monkeypatch.setattr(
+        backend_main,
+        "get_all_teams",
+        lambda: [
+            SimpleNamespace(id=7, name="Own team"),
+            SimpleNamespace(id=8, name="Other team"),
+        ],
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "_serialize_team",
+        lambda team: {"id": int(team.id), "name": str(team.name)} if team else None,
+    )
+    _force_mode(monkeypatch, "database")
+
+    payload = read_query_helpers.read_query_payload(
+        kind="teams.all", params={}, actor="alice", main=backend_main
+    )
+
+    assert payload == {"teams": [{"id": 7, "name": "Own team"}]}
+
+
+def test_teams_by_id_hides_a_team_the_actor_does_not_belong_to(monkeypatch):
+    """A non-member team reads as absent, not as forbidden."""
+    import backend_app.read_query_helpers as read_query_helpers
+
+    backend_main = _non_admin_main(monkeypatch)
+    monkeypatch.setattr(
+        backend_main,
+        "get_team_by_id",
+        lambda team_id: SimpleNamespace(id=int(team_id), name="Other team"),
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "_serialize_team",
+        lambda team: {"id": int(team.id), "name": str(team.name)} if team else None,
+    )
+    _force_mode(monkeypatch, "database")
+
+    payload = read_query_helpers.read_query_payload(
+        kind="teams.by_id", params={"team_id": 8}, actor="alice", main=backend_main
+    )
+
+    assert payload == {"team": None}
+
+
 @pytest.mark.parametrize(
-    ("kind", "params", "expected"),
+    ("scope", "expected_id"),
     [
-        (
-            "users.by_username",
-            {"username": "alice"},
-            {"user": {"id": 101, "username": "alice", "role": "member"}},
-        ),
-        (
-            "users.all",
-            {},
-            {"users": [{"id": 101, "username": "alice", "role": "member"}]},
-        ),
+        ({"is_admin": False, "team_id": 7, "owner_ids": {101}}, "eq.7"),
+        ({"is_admin": True, "team_id": 7, "owner_ids": {101}}, None),
+        ({"is_admin": False, "team_id": None, "owner_ids": {101}}, "eq.0"),
     ],
 )
-def test_dual_mode_read_query_payload_parity(monkeypatch, kind, params, expected):
-    client, backend_main = _make_client(monkeypatch)
-    actor_scope = {
-        "is_admin": True,
-        "owner_ids": {101},
-        "usernames": {"alice"},
-        "role": "admin",
-    }
+def test_supabase_teams_all_constrains_the_query(monkeypatch, scope, expected_id):
+    """The scope is pushed into the REST query rather than applied after fetching
+    every team, so a non-member's request never reads the other teams at all."""
+    from src.services import supabase_api_mode_read as supabase_read
 
-    def _serialize_user(user):
-        if user is None:
-            return None
-        return {
-            "id": int(getattr(user, "id", 0)),
-            "username": str(getattr(user, "username", "")),
-            "role": str(getattr(user, "role", "member")).lower(),
-        }
+    captured: dict = {}
 
-    monkeypatch.setattr(
-        backend_main, "_resolve_scope_for_actor", lambda *_args, **_kwargs: actor_scope
-    )
-    monkeypatch.setattr(backend_main, "_serialize_user", _serialize_user)
-    monkeypatch.setattr(
-        backend_main,
-        "get_all_users",
-        lambda: [SimpleNamespace(id=101, username="alice", role="member")],
-    )
-    monkeypatch.setattr(
-        backend_main,
-        "get_user_by_username",
-        lambda _username: SimpleNamespace(id=101, username="alice", role="member"),
-    )
-    monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: False)
-    db_response = client.post(
-        "/v1/read/query",
-        headers={"X-OKR-Actor": "alice"},
-        json={"kind": kind, "params": params},
+    def fake_rest_select(table, *, query=None, **kwargs):
+        captured["table"] = table
+        captured["query"] = dict(query or {})
+        return 200, []
+
+    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
+
+    supabase_read.read_query_via_supabase_api(
+        kind="teams.all", params={}, actor="alice", scope=scope
     )
 
-    monkeypatch.setattr(
-        backend_main,
-        "read_query_via_supabase_api",
-        lambda **_kwargs: expected,
-    )
-    monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: True)
+    assert captured["table"] == "team"
+    assert captured["query"].get("id") == expected_id
 
-    sup_response = client.post(
-        "/v1/read/query",
-        headers={"X-OKR-Actor": "alice"},
-        json={"kind": kind, "params": params},
-    )
 
-    assert db_response.status_code == 200
-    assert db_response.json() == expected
-    assert sup_response.status_code == 200
-    assert sup_response.json() == expected
+def test_supabase_read_dispatch_is_always_scope_guarded():
+    """Static guard: only guarded dispatches may call the Supabase implementation.
+
+    The `ritual.snapshot` HTTPS fan-out used to call it directly for all five of its
+    sub-queries, skipping the actor-scope guard entirely for four of them. That was
+    pre-existing rather than introduced by the guard inversion, and it was bounded
+    rather than exploitable: the outer `weekly_plan.active` check applies the same
+    `user_id` predicate the sub-queries would have been checked against. It is fixed
+    because the next sub-query added to that fan-out would have been silently
+    unguarded, which is exactly how this class of defect works.
+
+    The only legitimate direct call is the `ritual.snapshot` RPC, which carries the
+    actor inside its parameters (`p_username`).
+    """
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "backend_app" / "read_query_helpers.py").read_text(
+        encoding="utf-8"
+    )
+    call = re.compile(r"main\.read_query_via_supabase_api\s*\(")
+    unguarded: list[int] = []
+
+    for match in call.finditer(source):
+        depth, index = 1, match.end()
+        while index < len(source) and depth:
+            if source[index] == "(":
+                depth += 1
+            elif source[index] == ")":
+                depth -= 1
+            index += 1
+        arguments = source[match.end() : index]
+        if "scope=scope" in arguments or 'kind="ritual.snapshot"' in arguments:
+            continue
+        unguarded.append(source.count("\n", 0, match.start()) + 1)
+
+    assert unguarded == [], f"unguarded Supabase dispatch at line(s) {unguarded}"
+
+
+@pytest.mark.parametrize("kind", sorted(OUT_OF_SCOPE_REFUSALS))
+@pytest.mark.parametrize("mode", MODES)
+def test_out_of_scope_read_is_refused_in_both_modes(monkeypatch, kind, mode):
+    """A non-admin naming someone else's resource is refused on both paths.
+
+    Before the guard inversion this held only on the TCP path and only for the
+    kinds the Supabase pre-dispatch guard happened to enumerate, so the same
+    request succeeded over HTTPS for `audit.summary`, `users.all` and
+    `users.team_members`.
+    """
+    import backend_app.read_query_helpers as read_query_helpers
+    from fastapi import HTTPException
+
+    backend_main = _non_admin_main(monkeypatch)
+    _force_mode(monkeypatch, mode)
+
+    with pytest.raises(HTTPException) as excinfo:
+        read_query_helpers.read_query_payload(
+            kind=kind,
+            params=dict(OUT_OF_SCOPE_REFUSALS[kind]),
+            actor="alice",
+            main=backend_main,
+        )
+
+    assert excinfo.value.status_code == 403

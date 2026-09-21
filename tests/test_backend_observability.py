@@ -200,7 +200,11 @@ def test_supabase_read_timing_exposes_scope_and_handler_phases(monkeypatch):
         def _resolve_scope_for_actor(self, actor):
             return {"owner_ids": {1}, "usernames": {actor}, "is_admin": True}
 
-        def read_query_via_supabase_api(self, *, kind, params, actor):
+        def read_query_via_supabase_api(self, *, kind, params, actor, scope=None):
+            # The resolved scope has to reach the implementation, not stop at the
+            # guard: the Supabase path filters its rows with it.
+            assert scope is not None
+            assert scope["owner_ids"] == {1}
             return {"users": []}
 
         def _require_allowed_user_id(self, scope, user_id):

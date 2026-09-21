@@ -5,12 +5,25 @@ from __future__ import annotations
 from typing import Optional
 
 
+class UnscopedNodeReadError(RuntimeError):
+    """Raised when a node read would circumvent actor authorization.
+
+    `get_node_from_crud` previously authorized only `if node and actor_username`,
+    so a caller that omitted (or lost) the actor silently received an unscoped
+    node rather than an error. Omitting the actor is now refused unless the caller
+    says `allow_unscoped=True`, which makes the exception explicit and greppable at
+    the call site instead of an invisible default. `tests/test_crud_authorization.py`
+    asserts both the refusal and that no call site relies on it.
+    """
+
+
 def get_node_from_crud(
     *,
     crud_module,
     node_id: int,
     node_type: str,
     actor_username: Optional[str] = None,
+    allow_unscoped: bool = False,
 ):
     with crud_module.get_session_context() as session:
         nt = str(node_type or "KEY_RESULT").upper()
@@ -73,6 +86,12 @@ def get_node_from_crud(
                 node_type=nt,
                 node_id=node_id,
                 actor_username=actor_username,
+            )
+        elif node and not allow_unscoped:
+            raise UnscopedNodeReadError(
+                "get_node_from_crud requires actor_username so the node can be "
+                "authorized; pass allow_unscoped=True only for a deliberate, "
+                "reviewed unscoped read."
             )
 
         return node

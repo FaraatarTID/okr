@@ -26,6 +26,14 @@ def _timed_phase(name: str):
 
 
 def get_read_query_allowed_kinds() -> set[str]:
+    """Kinds the read endpoint will dispatch.
+
+    `mindmap.children` used to be listed here while being implemented on neither
+    data path: TCP fell through to "Unsupported read query kind" and HTTPS raised
+    NotImplementedError, so it was advertised surface area that could only fail.
+    It is removed rather than implemented speculatively; it should come back
+    together with a scoped implementation and a test that covers it.
+    """
     return {
         "audit.summary",
         "users.by_username",
@@ -52,47 +60,196 @@ def get_read_query_allowed_kinds() -> set[str]:
         "work_logs.by_task",
         "alignments.context",
         "mindmap.root",
-        "mindmap.children",
     }
 
 
-def _validate_supabase_read_scope(
-    *, kind: str, params: dict, actor: str, main: Any
+# --- Read scope policy (deny-by-default) ------------------------------------
+#
+# Every readable kind must declare how its actor scope is enforced. A kind missing
+# from this policy is refused, so a read kind cannot serve unscoped data by
+# omission. This is deliberately NOT an allow-list of kinds that do get checked:
+# that shape was the defect, because it made "forgot to register the kind" a
+# silent, reachable, unscoped read.
+_ADMIN_ONLY_READ_KINDS = frozenset({"audit.summary", "users.all"})
+_USER_ID_PARAM_READ_KINDS = frozenset(
+    {"users.by_id", "weekly_plan.active", "retros.user", "work_logs.by_range"}
+)
+_USERNAME_PARAM_READ_KINDS = frozenset({"users.by_username"})
+_MANAGER_ID_PARAM_READ_KINDS = frozenset({"users.team_members", "retros.team"})
+# Row-level scoping: the id in the request is not itself inside the actor's scope,
+# so the implementation filters the rows it returns. TCP already did this; the
+# Supabase implementation is handed the resolved scope and now does the same.
+_ROW_SCOPED_READ_KINDS = frozenset(
+    {
+        "node.get",
+        "node.detect_type",
+        "work_logs.by_task",
+        "experiments.for_kr",
+        "experiments.active_for_kr",
+        "alignments.context",
+        "mindmap.root",
+        "krs.by_cycle",
+        "krs.needing_checkin",
+        "tasks.by_cycle",
+        "experiments.for_retro_window",
+        "cycles.all",
+        "cycles.active",
+        "teams.all",
+        "teams.by_id",
+    }
+)
+# `ritual.snapshot` resolves the actor inside the database function (`p_username`).
+_SELF_SCOPED_READ_KINDS = frozenset({"ritual.snapshot"})
+
+_READ_SCOPE_POLICY = frozenset(
+    _ADMIN_ONLY_READ_KINDS
+    | _USER_ID_PARAM_READ_KINDS
+    | _USERNAME_PARAM_READ_KINDS
+    | _MANAGER_ID_PARAM_READ_KINDS
+    | _ROW_SCOPED_READ_KINDS
+    | _SELF_SCOPED_READ_KINDS
+)
+
+
+def get_read_scope_policy_kinds() -> frozenset:
+    """Kinds with a declared actor-scope rule.
+
+    Kept public so a test can assert it equals `get_read_query_allowed_kinds()`.
+    That equality is the deny-by-default guarantee: a read kind cannot be served
+    without a scope rule, because allow-listing it is not enough.
+    """
+    return _READ_SCOPE_POLICY
+
+
+# Kinds whose request carries a node id that is not itself part of the actor's
+# scope. On the HTTPS path the node has to be read to authorize it, so the check
+# lives here; the TCP branches authorize through `get_node(..., actor_username)`
+# instead, which is why this one is confined to the HTTPS path.
+#
+# kind -> (fixed node type or None, id param, not-found detail)
+_HTTPS_NODE_OWNER_READ_KINDS: dict[str, tuple[str | None, str, str]] = {
+    "node.get": (None, "node_id", "Node not found."),
+    "node.detect_type": (None, "node_id", "Node not found."),
+    "mindmap.root": (None, "node_id", "Node not found."),
+    "work_logs.by_task": ("TASK", "task_id", "Task not found."),
+    "experiments.for_kr": ("KEY_RESULT", "key_result_id", "Key result not found."),
+    "experiments.active_for_kr": (
+        "KEY_RESULT",
+        "key_result_id",
+        "Key result not found.",
+    ),
+    "alignments.context": ("OBJECTIVE", "objective_id", "Objective not found."),
+}
+
+# Tried in order when the request does not name the node type, mirroring the TCP
+# `node.detect_type` branch.
+_NODE_TYPE_CANDIDATES = ("GOAL", "OBJECTIVE", "KEY_RESULT", "TASK")
+
+
+def _require_node_owner_via_https(
+    *, kind: str, params: dict, actor: str, scope: dict, main: Any
 ) -> None:
-    """Apply actor scope before service-role REST reads are dispatched."""
+    """Authorize an HTTPS node read by resolving the owning goal's owner_id."""
+    fixed_type, id_param, detail = _HTTPS_NODE_OWNER_READ_KINDS[kind]
+    node_id = main._coerce_int(params.get(id_param), field_name=id_param)
+    if fixed_type is not None:
+        candidates: tuple[str, ...] = (fixed_type,)
+    elif kind == "node.get":
+        candidates = (str(params.get("node_type") or "").strip().upper(),)
+    else:
+        candidates = _NODE_TYPE_CANDIDATES
+
+    owner_id = None
+    for candidate in candidates:
+        if not candidate:
+            continue
+        owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
+            node_type=candidate,
+            node_id=node_id,
+            actor=actor,
+        )
+        if owner_id is not None:
+            break
+    if owner_id is None:
+        raise main.HTTPException(status_code=404, detail=detail)
+    main._require_allowed_user_id(scope, owner_id)
+
+
+def _team_visible_for_scope(team: Any, scope: dict) -> bool:
+    """Teams are scoped to the actor's own membership; admins see every team.
+
+    Teams are not global reference data: a member may read the team they belong to,
+    and nothing else.
+    """
+    if bool(scope.get("is_admin", False)):
+        return True
+    actor_team_id = scope.get("team_id")
+    if actor_team_id is None:
+        return False
+    team_id = team.get("id") if isinstance(team, dict) else getattr(team, "id", None)
+    try:
+        return int(team_id) == int(actor_team_id)
+    except (TypeError, ValueError):
+        return False
+
+
+def _validate_read_scope(
+    *, kind: str, params: dict, actor: str, main: Any
+) -> dict[str, Any]:
+    """Resolve the actor scope and refuse anything the policy does not permit.
+
+    Runs before dispatch for both data paths, so whether a request is refused
+    cannot depend on which path happens to be active.
+
+    This is deny-by-default on purpose. The previous version enumerated the kinds
+    it checked, which made the list itself the defect: a read kind reached
+    production readable and unscoped simply by not being added to it, and the two
+    data paths disagreed for thirteen kinds - including `audit.summary`, which is
+    admin-only on the TCP path and was not checked at all over HTTPS.
+
+    Row-scoped kinds are returned with their scope so the implementation can
+    filter rows. TCP filters in its branch; the Supabase implementation receives
+    the scope and now filters the same way.
+    """
     scope = main._resolve_scope_for_actor(actor)
-    user_id_kinds = {
-        "users.by_id",
-        "weekly_plan.active",
-        "retros.user",
-        "work_logs.by_range",
-    }
-    if kind in user_id_kinds:
+    if kind in _SELF_SCOPED_READ_KINDS:
+        # The database function takes `p_username`, so the actor is applied inside
+        # the query rather than by this layer.
+        return scope
+    if kind in _ADMIN_ONLY_READ_KINDS:
+        if not bool(scope.get("is_admin", False)):
+            raise main.HTTPException(
+                status_code=403, detail="Admin privileges required."
+            )
+        return scope
+    if kind in _USER_ID_PARAM_READ_KINDS:
         main._require_allowed_user_id(
-            scope, main._coerce_int(params.get("user_id"), field_name="user_id")
+            scope,
+            main._coerce_int(params.get("user_id"), field_name="user_id"),
         )
-    elif kind == "users.by_username":
+        return scope
+    if kind in _USERNAME_PARAM_READ_KINDS:
         main._require_allowed_username(scope, str(params.get("username") or "").strip())
-    elif kind in {"node.get"}:
-        owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
-            node_type=str(params.get("node_type") or "").strip(),
-            node_id=main._coerce_int(params.get("node_id"), field_name="node_id"),
-            actor=actor,
+        return scope
+    if kind in _MANAGER_ID_PARAM_READ_KINDS:
+        main._require_allowed_user_id(
+            scope,
+            main._coerce_int(params.get("manager_id"), field_name="manager_id"),
         )
-        if owner_id is None:
-            raise main.HTTPException(status_code=404, detail="Node not found.")
-        main._require_allowed_user_id(scope, owner_id)
-    elif kind in {"experiments.for_kr", "experiments.active_for_kr"}:
-        owner_id = main._resolve_goal_owner_id_for_node_via_supabase(
-            node_type="KEY_RESULT",
-            node_id=main._coerce_int(
-                params.get("key_result_id"), field_name="key_result_id"
-            ),
-            actor=actor,
+        return scope
+    if kind in _HTTPS_NODE_OWNER_READ_KINDS and resolve_read_mode() == "supabase_api":
+        _require_node_owner_via_https(
+            kind=kind, params=params, actor=actor, scope=scope, main=main
         )
-        if owner_id is None:
-            raise main.HTTPException(status_code=404, detail="Key result not found.")
-        main._require_allowed_user_id(scope, owner_id)
+        return scope
+    if kind in _ROW_SCOPED_READ_KINDS:
+        return scope
+    # No declared rule: refuse, rather than execute and return whatever the
+    # underlying query happens to select.
+    raise main.HTTPException(
+        status_code=403,
+        detail=f"Read query kind '{kind}' has no declared actor scope.",
+    )
 
 
 def read_query_payload(
@@ -114,12 +271,33 @@ def read_query_payload(
             detail=f"Unsupported read query kind: {kind}",
         )
 
+    # Actor scope is validated once, before any dispatch, for BOTH data paths.
+    #
+    # This used to run only on the HTTPS path, and that guard enumerated the kinds
+    # it checked, so thirteen kinds were scoped over TCP and served unscoped over
+    # HTTPS - including `audit.summary`, which is admin-only on the TCP branch and
+    # was not checked at all on this one.
+    scope: dict[str, Any] | None = None
+    scope_failure: Exception | None = None
+    try:
+        with _timed_phase("scope"):
+            scope = _validate_read_scope(
+                kind=kind,
+                params=params,
+                actor=actor,
+                main=main,
+            )
+    except main.HTTPException:
+        raise
+    except Exception as exc:  # scope resolution itself is unavailable
+        scope_failure = exc
+
     if kind == "ritual.snapshot":
         cycle_id = main._coerce_int(params.get("cycle_id"), field_name="cycle_id")
         user_id = params.get("user_id")
         use_https = resolve_read_mode() == "supabase_api"
         if use_https:
-            _validate_supabase_read_scope(
+            _validate_read_scope(
                 kind="weekly_plan.active",
                 params={"user_id": user_id},
                 actor=actor,
@@ -199,10 +377,20 @@ def read_query_payload(
 
             def _run_query(item: tuple[str, dict]) -> dict:
                 query_kind, query_values = item
-                return main.read_query_via_supabase_api(
+                # Deliberately through `read_query_payload` rather than
+                # `read_query_via_supabase_api` directly. The direct call skipped the
+                # actor-scope guard, so four of these five sub-queries (`retros.user`,
+                # `work_logs.by_range`, `krs.needing_checkin`,
+                # `experiments.for_retro_window`) were served unscoped over HTTPS
+                # whenever this RPC-missing fallback ran. The TCP fan-out below
+                # already goes through the guarded entry point, so this also makes
+                # the two paths structurally identical instead of merely similar.
+                return read_query_payload(
                     kind=query_kind,
                     params=query_values,
                     actor=actor,
+                    main=main,
+                    allowed_kinds=allowed,
                 )
 
             # Bound concurrency: one snapshot creates at most five upstream
@@ -259,19 +447,15 @@ def read_query_payload(
         }
 
     if resolve_read_mode() == "supabase_api":
-        with _timed_phase("scope"):
-            _validate_supabase_read_scope(
-                kind=kind,
-                params=params,
-                actor=actor,
-                main=main,
-            )
+        if scope_failure is not None:
+            raise scope_failure
         try:
             with _timed_phase("handler"):
                 return main.read_query_via_supabase_api(
                     kind=str(kind or "").strip(),
                     params=dict(params or {}),
                     actor=str(actor or "").strip(),
+                    scope=scope,
                 )
         except NotImplementedError as exc:
             raise main.HTTPException(status_code=501, detail=str(exc)) from exc
@@ -288,7 +472,10 @@ def read_query_payload(
             raise
 
     try:
-        scope = main._resolve_scope_for_actor(actor)
+        if scope is None:
+            # Scope resolution on the primary path failed above; retry it here so
+            # the HTTPS-fallback logic below still engages.
+            scope = main._resolve_scope_for_actor(actor)
     except Exception:
         # TCP scope resolution failed (e.g. connection refused); if HTTPS
         # fallback is available, retry the whole read over HTTPS.
@@ -405,14 +592,23 @@ def read_query_payload(
         return {
             "teams": [
                 payload
-                for payload in (main._serialize_team(team) for team in teams)
+                for payload in (
+                    main._serialize_team(team)
+                    for team in teams
+                    if _team_visible_for_scope(team, scope)
+                )
                 if payload is not None
             ]
         }
 
     if kind == "teams.by_id":
         team_id = main._coerce_int(params.get("team_id"), field_name="team_id")
-        return {"team": main._serialize_team(main.get_team_by_id(team_id))}
+        team = main.get_team_by_id(team_id)
+        if team is not None and not _team_visible_for_scope(team, scope):
+            # Report it as absent rather than forbidden: a 403 would confirm that
+            # the team exists, which is the disclosure the filter is here to avoid.
+            team = None
+        return {"team": main._serialize_team(team)}
 
     if kind == "cycles.all":
         cycles = main._visible_cycles_for_scope(
