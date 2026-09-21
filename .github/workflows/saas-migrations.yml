@@ -31,6 +31,15 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --locked --group dev
 
+      - name: Authorize production fleet migration revision
+        run: |
+          set -euo pipefail
+          # A fleet rollout is never an approved maintenance window. The safety
+          # gate refuses missing metadata and maintenance-window-only heads.
+          uv run python scripts/verify_migration_safety.py \
+            --selected-revision head \
+            --production-fleet
+
       - name: Materialize migration inputs
         env:
           SAAS_PROVISIONING_STATE_JSON: ${{ secrets.SAAS_PROVISIONING_STATE_JSON }}

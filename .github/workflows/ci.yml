@@ -127,6 +127,9 @@ jobs:
       - name: Migration Lint Gate
         run: uv run python scripts/verify_migration_lint.py --require-baseline
 
+      - name: Migration Safety Metadata Gate
+        run: uv run python scripts/verify_migration_safety.py
+
       - name: Apply migrations
         run: uv run python scripts/verify_migration_sequence.py
 

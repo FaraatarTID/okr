@@ -1,0 +1,9 @@
+{
+  "revision": "drop_global_cycle_index",
+  "status": "approved",
+  "approved_by": "repository migration owner",
+  "approved_on": "2026-08-31",
+  "maintenance_window": "Historical approved maintenance window; do not repeat as an unattended fleet rollout.",
+  "reason": "Removal of an obsolete global active-cycle index is destructive and may lock a production table.",
+  "rollback": "Restore the approved backup or apply a forward fix; downgrade is intentionally a no-op."
+}

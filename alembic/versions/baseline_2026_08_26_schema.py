@@ -19,6 +19,20 @@ down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+# Required by docs/migration-rollback-runbook.md.  The squashed baseline is an
+# additive starting point for a fresh database, not a production contract step.
+MIGRATION_METADATA = {
+    "additive": True,
+    "backfill": False,
+    "contract": False,
+    "destructive": False,
+    "locking_risk": False,
+    "reversible": True,
+    "compatible_with_previous_release": True,
+    "maintenance_window_only": False,
+    "exception_record": None,
+}
+
 
 def _all_tables() -> list[str]:
     from sqlalchemy import inspect

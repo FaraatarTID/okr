@@ -242,3 +242,96 @@ Current disposition:
 - Owners: repository owner accepts the pre-SaaS deferral; platform/operations owner: **UNASSIGNED**; each local rehearsal uses operator fixture `operator-a`.
 
 The current empty/mock-data pre-SaaS database does not justify production recovery closure. This is an intentional phase boundary, not evidence that production recovery is complete.
+
+## Migration compatibility policy (rolling deployments)
+
+This policy is mandatory for every new Alembic revision and is enforced by
+`scripts/verify_migration_safety.py` in CI. It applies to any schema change
+which can overlap a rolling application deployment. The review owner must
+validate the metadata against the actual Alembic operations; metadata is a
+release contract, not a substitute for review.
+
+### Required lifecycle: expand → migrate/backfill → contract
+
+1. **Expand (additive release).** Add new nullable columns, tables, indexes, or
+   compatible constraints without removing or changing an interface used by the
+   previous application release. Deploy code that can read both old and new
+   representations and dual-write when necessary.
+2. **Migrate/backfill (separate release or controlled job).** Populate the new
+   representation only after expand is deployed. The old application must
+   continue to work while the fleet is mixed-version.
+3. **Contract (later release).** Remove old reads/writes, then—only after the
+   compatibility window and data verification—drop old columns, tables,
+   indexes, or constraints. A contract revision is never bundled with the code
+   release that first stops using the old representation, except under the
+   approved maintenance-window exception below.
+
+Destructive column/table/index operations and database-wide blocking
+operations are prohibited in the same release as application code that removes
+their use. The sole exception is a documented, explicitly approved maintenance
+window record in `docs/migration-exceptions/`, with an owner, time window,
+rationale, and rollback/forward-fix decision. `maintenance_window_only` does
+not authorize a production fleet rollout: it requires a separately operated
+maintenance procedure.
+
+### Required revision metadata
+
+Each revision file declares a literal `MIGRATION_METADATA` mapping with all of
+the following boolean fields:
+
+```python
+MIGRATION_METADATA = {
+    "additive": True,             # exactly one of additive/backfill/contract
+    "backfill": False,
+    "contract": False,
+    "destructive": False,
+    "locking_risk": False,
+    "reversible": True,
+    "compatible_with_previous_release": True,
+    "maintenance_window_only": False,
+    "exception_record": None,     # approved JSON filename when required
+}
+```
+
+`destructive` must imply `contract` and cannot claim previous-release
+compatibility. A destructive, locking-risk, or maintenance-only revision must
+reference an approved exception record. The checker rejects missing fields,
+multiple lifecycle classifications, invalid destructive claims, and unsafe
+operations lacking that record. The actual metadata must state whether the
+revision is additive, backfill, contract/destructive, locking-risk, reversible,
+and compatible with the previous application release.
+
+### Indexes, locking, and transactions
+
+Reviewers must identify every index that can lock a production table. On
+PostgreSQL, use `CREATE INDEX CONCURRENTLY` / `DROP INDEX CONCURRENTLY` where
+supported; execute it outside Alembic's normal transaction block (for example,
+using an autocommit block). Use the corresponding online mechanism for the
+production database engine where it exists. If no online mechanism is
+available, mark `locking_risk: true`, make the revision maintenance-window-only,
+and attach an approved exception. Do not use database-wide blocking operations
+in an unattended rollout.
+
+### Backfill execution requirements
+
+A backfill must be idempotent, resumable, and batched. It must use a stable
+cursor or checkpoint, bounded transactions, retry-safe writes, and metrics for
+progress, lag/error count, and completion. The change plan must name its
+monitoring dashboard/alert and state the stop condition. Before execution, the
+owner records whether failure means **rollback** (only when safe and approved)
+or **forward fix** (the normal choice for data migrations); never improvise a
+downgrade after partial data mutation.
+
+### Review and CI / production-fleet enforcement
+
+- Reviewers verify lifecycle ordering, metadata truthfulness, index locking
+  strategy, backfill plan, compatibility window, and any exception record.
+- CI runs both `scripts/verify_migration_lint.py --require-baseline` and
+  `scripts/verify_migration_safety.py`.
+- The SaaS tenant migration workflow runs
+  `verify_migration_safety.py --selected-revision head --production-fleet`
+  before materializing credentials or running Alembic. It fails closed if the
+  selected revision has missing metadata or `maintenance_window_only: true`.
+- Approved exception records are auditable JSON files in
+  `docs/migration-exceptions/`; approval must include `status: "approved"`,
+  `approved_by`, and `maintenance_window`.
