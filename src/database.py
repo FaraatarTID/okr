@@ -28,6 +28,7 @@ from sqlalchemy.pool import NullPool
 from sqlmodel import SQLModel, Session, create_engine
 from sqlalchemy.sql.sqltypes import Integer, BigInteger, SmallInteger
 from src.config_runtime import get_bool_config, get_config_value
+from src.telemetry import configure_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +198,9 @@ def _create_engine(url: str):
         pool_pre_ping=True,
         **kwargs,
     )
+    # SQLAlchemy creates child spans from the active backend request context.
+    # Do not attach traceparent to SQL or enable SQL parameter capture.
+    configure_telemetry(engine=engine)
     if normalized.startswith("sqlite"):
         from sqlalchemy import event
 

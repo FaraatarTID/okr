@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { BffConfig } from "./config.js";
 import { buildBackendSecurityHeaders } from "./signing.js";
+import { injectSuppliedTraceContext, type TraceContext } from "./telemetry.js";
 
 export interface ProxyRequest {
   method: string;
@@ -10,6 +11,7 @@ export interface ProxyRequest {
   body: unknown;
   actor: string | null;
   incomingHeaders: Record<string, string | string[] | undefined>;
+  traceContext?: TraceContext;
 }
 
 export interface ProxyResult {
@@ -142,6 +144,7 @@ export async function proxyToBackend(
     signingKeyId: config.backendSigningKeyId,
   });
   Object.assign(outboundHeaders, securityHeaders);
+  injectSuppliedTraceContext(outboundHeaders, request.traceContext);
 
   const backendUrl = new URL(`${path}${queryString}`, `${config.backendApiUrl}/`).toString();
   const timeoutMs = resolveTimeoutMs(path, config.requestTimeoutMs);

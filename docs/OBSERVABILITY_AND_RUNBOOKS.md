@@ -187,3 +187,24 @@ Error-budget policy: any SLO breached twice in one week triggers a remediation
 task in the architecture backlog ledger before new feature work.
 
 Last updated: 2026-08-25
+
+## OpenTelemetry tracing design
+
+The BFF exports `okr-spa-bff` and the API exports `okr-backend` using OTLP HTTP/protobuf to the private, secret-managed `OTEL_EXPORTER_OTLP_ENDPOINT`. Deployments set `OTEL_SERVICE_NAME`, `OKR_RUNTIME_ENV`, and `OKR_RELEASE` for service, environment, and release resource attributes. The collector applies parent-based/tail sampling: retain all errors and slow requests and sample 10% of otherwise healthy traffic. BFF/API queues are bounded with `OTEL_BSP_MAX_QUEUE_SIZE`; exporter failures never fail requests and application shutdown flushes batches.
+
+Production sampled trace retention is 14 days in the restricted observability project. Incident responders have audited read access; SRE administers collector and retention, and application developers cannot change production retention. Store collector credentials only as workload secrets.
+
+Public callers are untrusted trace issuers. The BFF creates a new root and discards `traceparent`/`tracestate` unless `BFF_TRUSTED_TRACE_CONTEXT=true` is set behind authenticated mesh ingress; then it accepts only bounded, syntactically valid W3C values. BFF-to-backend requests inject the sanitized W3C context. Backend ASGI extraction and outbound HTTP instrumentation preserve it; SQLAlchemy and psycopg2 spans are children through process context only--HTTP headers are never passed to SQL.
+
+Never export authorization/cookie/service-token headers, raw bodies, raw URLs, user/request/tenant IDs, SQL text, or SQL parameters. Use route templates, fixed operations, method, and status only. Existing `x-request-id` and `x-correlation-id` remain unchanged; logs add trace/span IDs only when an active valid span exists.
+
+### Trace incident workflow
+
+1. Start with request/correlation ID in the existing redacted logs and copy the trace ID when available.
+2. Query the trace store by trace ID, or bounded service/route/status and a narrow time range--never customer identifiers.
+3. Inspect BFF → backend → database timing and error events; use redacted logs for request context.
+4. Escalate access/export gaps to SRE. Do not enable payload or SQL capture during an incident.
+
+### Offline readiness check
+
+`python scripts/check_observability_readiness.py` validates endpoint protocol and batch-queue bounds without making a network request. It passes when `OTEL_SDK_DISABLED=true` or no endpoint is intentionally configured for ordinary unit tests.

@@ -20,6 +20,7 @@ from src.observability_metrics import (
     log_payload as build_observability_log_payload,
     record_api_request,
 )
+from src.telemetry import trace_log_fields
 
 
 def _normalize_observability_id(value: str | None) -> str | None:
@@ -214,7 +215,7 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                         request_id=request_id,
                         duration_ms=round(duration_ms, 3),
                         error_code="UNHANDLED_EXCEPTION",
-                    )
+                    ) | trace_log_fields()
                 )
                 response = JSONResponse(
                     status_code=500,

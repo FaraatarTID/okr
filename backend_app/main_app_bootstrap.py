@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from backend_app.main_bootstrap_helpers import make_main_lifespan, register_main_routers
 from backend_app.observability_http import install_observability_handlers
+from src.telemetry import configure_telemetry, shutdown_telemetry
 
 
 def build_main_app(
@@ -36,5 +37,10 @@ def build_main_app(
         lifespan=lifespan,
     )
     install_observability_handlers(app, logger)
+    configure_telemetry(app=app)
+
+    @app.on_event("shutdown")
+    async def _flush_telemetry() -> None:
+        shutdown_telemetry()
     register_main_routers(app=app, main_module=main_module)
     return app

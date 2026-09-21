@@ -7,6 +7,7 @@ import type { BffConfig } from "./config.js";
 import { readConfig } from "./config.js";
 import { proxyToBackend } from "./proxy.js";
 import { buildBackendSecurityHeaders } from "./signing.js";
+import { extractPublicTraceContext, runWithTrace, startTelemetry, traceLogFields } from "./telemetry.js";
 import type { BackendLoginResponse, BackendSessionResponse } from "./backend-schema.js";
 import {
   clearSessionCookie,
@@ -131,6 +132,7 @@ function buildBffLogPayload(
     status,
     ts: new Date().toISOString(),
     ...opts,
+    ...traceLogFields(),
   };
   return payload;
 }
@@ -139,6 +141,7 @@ type BffRequestState = {
   _okrStartTs?: number;
   _okrCorrelationId?: string;
   _okrRequestId?: string;
+  _okrTrace?: ReturnType<typeof extractPublicTraceContext>;
 };
 
 function firstHeaderValue(raw: string | string[] | undefined): string {
@@ -243,6 +246,7 @@ export function createServer(
     trustProxy: true,
     bodyLimit: 50 * 1024 * 1024, // 50 MB — generous for backup uploads, prevents multi-GB abuse
   });
+  void startTelemetry();
 
   // Security headers on every response
   app.addHook("onSend", async (_request, reply) => {
@@ -260,6 +264,10 @@ export function createServer(
     state._okrCorrelationId = firstHeaderValue(request.headers["x-correlation-id"])
       || firstHeaderValue(request.headers["x-okr-correlation-id"])
       || state._okrRequestId;
+    // Store a sanitized/new context for all downstream work. Public context is
+    // ignored unless an explicitly trusted ingress has validated it.
+    const trace = extractPublicTraceContext(request.headers);
+    state._okrTrace = trace;
   });
 
   app.addHook("onResponse", async (request, reply) => {
@@ -330,6 +338,7 @@ export function createServer(
           body: request.body,
           actor: null,
           incomingHeaders: request.headers,
+          traceContext: (request as BffRequestState & typeof request)._okrTrace,
         },
         deps,
       );
@@ -604,6 +613,7 @@ export function createServer(
             body: request.body,
             actor,
             incomingHeaders: { ...request.headers, ...tokenVersionHeader },
+            traceContext: (request as BffRequestState & typeof request)._okrTrace,
           },
           deps,
         );
