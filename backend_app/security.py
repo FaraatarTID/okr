@@ -216,11 +216,18 @@ async def require_service_access(
     # a limit, whereas dropping the key entirely would drop the control. The login
     # lockout draws the opposite conclusion for the opposite reason - a shared bucket
     # there would lock out every user, so it stays unkeyed (see api_auth_login).
+    # Publish the trusted address for dependents that cannot re-derive it, such as the
+    # login lockout (see api_auth_login). Fail-closed: a request whose service token and
+    # signature were both unverified publishes None, so the lockout's IP dimension stays
+    # inert rather than keying on a value a caller can choose.
+    request.state.trusted_client_ip = None
+
     client_ip = request.client.host if request.client else "unknown"
     if service_token_valid:
         trusted_client_ip = (request.headers.get("x-okr-client-ip") or "").strip()
         if trusted_client_ip:
             client_ip = trusted_client_ip
+            request.state.trusted_client_ip = trusted_client_ip
 
     try:
         # This dependency is `async` because it awaits `request.body()`, and it is

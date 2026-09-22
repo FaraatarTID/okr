@@ -96,3 +96,47 @@ def test_login_body_cannot_choose_the_throttle_key(login_env):
         "request body, so a caller can deny service to that address; "
         f"recorded identifiers were {identifiers}"
     )
+
+
+def test_the_trusted_private_header_keys_the_lockout_dimension(login_env, monkeypatch):
+    """The positive half, without which the test above could describe an inert control.
+
+    Asserting only that a caller *cannot* choose the key is satisfied just as well by a
+    dimension that is never keyed at all. This asserts the reverse direction: when the
+    request carries a valid service token and the private header our edge sets, that
+    address must be what the lockout records.
+    """
+    from fastapi.testclient import TestClient
+
+    import backend_app.main as backend_main
+    from src.crud import create_user
+    from tests._test_credentials import test_password
+
+    token = "test-service-token"
+    monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "true")
+    monkeypatch.setenv("OKR_BACKEND_SERVICE_TOKEN", token)
+    trusted = "198.51.100.7"
+
+    create_user("throttle_trusted", test_password("login_throttle_correct"))
+
+    client = TestClient(backend_main.app)
+    for _ in range(2):
+        client.post(
+            "/v1/auth/login",
+            json={
+                "username": "throttle_trusted",
+                "password": test_password("login_throttle_wrong"),
+            },
+            headers={"x-okr-service-token": token, "x-okr-client-ip": trusted},
+        )
+
+    identifiers = _throttle_identifiers()
+    assert identifiers, (
+        "no throttle row was recorded, so the request never reached the auth path and "
+        "this test cannot observe the lockout key at all"
+    )
+    assert trusted in identifiers, (
+        "the trusted client address did not key the lockout's IP dimension, so the "
+        "dimension is inert on the real path and every user shares one bucket; "
+        f"recorded identifiers were {identifiers}"
+    )
