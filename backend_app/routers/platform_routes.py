@@ -43,7 +43,6 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         x_okr_timestamp: str | None = Header(default=None),
         x_okr_nonce: str | None = Header(default=None),
         x_okr_key_id: str | None = Header(default=None),
-        x_forwarded_for: str | None = Header(default=None),
     ) -> None:
         dependency_started_at = time.perf_counter()
         try:
@@ -57,7 +56,6 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                 x_okr_timestamp=x_okr_timestamp,
                 x_okr_nonce=x_okr_nonce,
                 x_okr_key_id=x_okr_key_id,
-                x_forwarded_for=x_forwarded_for,
             )
         finally:
             record_timing(

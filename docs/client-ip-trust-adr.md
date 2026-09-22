@@ -48,9 +48,15 @@ The rule set, in full:
    is load-bearing, not decorative.
 4. **`X-Forwarded-For` and `X-Real-IP` are not trusted anywhere.** Neither may key a control. They may
    be logged for diagnostics only.
-5. **Absent header means no IP key.** The control degrades to the per-user dimension; it must never
-   fall back to the peer address or to `X-Forwarded-For`. Falling back would silently restore the
-   shared-bucket failure mode while appearing to work.
+5. **An absent header means no IP key - for the login lockout.** A shared bucket would lock out every
+   user, so the lockout stays unkeyed and relies on its per-user dimension. It must never fall back
+   to the peer address or to `X-Forwarded-For`.
+6. **The rate limiter falls back to the peer, deliberately.** With no trusted address it degrades to
+   an aggregate limit over the proxy: undesirable, but still a limit, whereas dropping the key
+   entirely would drop the control. The two controls reach opposite conclusions from the same missing
+   input because their failure directions differ - a throughput control may degrade to aggregate; an
+   account-lockout control must not degrade to shared. An earlier draft of this ADR stated one rule
+   for both and was wrong.
 
 ## Rejected alternatives
 
