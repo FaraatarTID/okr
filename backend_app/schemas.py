@@ -645,10 +645,16 @@ class AdminDbRestoreRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=128)
     password: str = Field(..., min_length=1, max_length=512)
-    # NOTE: there is deliberately no `client_ip` field here. The login throttle key is
-    # resolved server-side (`require_service_access` -> request.state.client_ip);
-    # accepting an address from the body would let the caller choose its own throttle
-    # key and lock out any address it names.
+    # NOTE: there is deliberately no `client_ip` field here. A body-supplied address
+    # would be chosen by the caller, and the login lockout table is keyed
+    # (scope="ip", identifier), so honouring it would let a caller lock out any
+    # address it names.
+    #
+    # The throttle key is not taken from the request either: `api_auth_login` leaves
+    # the IP dimension unkeyed, because every address currently derivable is
+    # untrustworthy (the immediate peer is the shared BFF, and X-Forwarded-For[0] is
+    # the caller-controlled leftmost hop). See the note there for the full reasoning.
+    # This model must not grow such a field back.
 
 
 class AuthUserView(BaseModel):
