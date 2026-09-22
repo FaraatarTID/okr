@@ -47,10 +47,18 @@ def main() -> int:
     operator = resolve_operator_principal(credential_file=args.credential_file)
     if any(
         value is not None
-        for value in (args.fleet_control_plane_url, args.rollout_id, args.incident_reference)
+        for value in (
+            args.fleet_control_plane_url,
+            args.rollout_id,
+            args.incident_reference,
+        )
     ) and not all(
         value is not None
-        for value in (args.fleet_control_plane_url, args.rollout_id, args.incident_reference)
+        for value in (
+            args.fleet_control_plane_url,
+            args.rollout_id,
+            args.incident_reference,
+        )
     ):
         parser.error(
             "--fleet-control-plane-url, --rollout-id, and --incident-reference must be supplied together"

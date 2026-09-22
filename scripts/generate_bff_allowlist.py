@@ -101,7 +101,7 @@ def render_allowlist(policy: dict) -> str:
     def _rule_literal(route: dict) -> str:
         methods = ", ".join(f'"{m}"' for m in route["methods"])
         operation_ids = ", ".join(
-            f'{json.dumps(method)}: {json.dumps(operation_id)}'
+            f"{json.dumps(method)}: {json.dumps(operation_id)}"
             for method, operation_id in route["operationIds"].items()
         )
         return (

@@ -62,7 +62,12 @@ def run_batch(
             and health_check is not None
             and not health_check(task["environment_id"])
         ):
-            return int(task["id"]), revision, "post-migration health check failed", attempts
+            return (
+                int(task["id"]),
+                revision,
+                "post-migration health check failed",
+                attempts,
+            )
         return int(task["id"]), revision, error, attempts
 
     with ThreadPoolExecutor(max_workers=min(max_concurrency, len(tasks) or 1)) as pool:
@@ -74,7 +79,11 @@ def run_batch(
             )
             if incident_reference:
                 plane.record_audit(
-                    next(task["environment_id"] for task in tasks if task["id"] == task_id),
+                    next(
+                        task["environment_id"]
+                        for task in tasks
+                        if task["id"] == task_id
+                    ),
                     "MIGRATION_BATCH_RESULT",
                     owner,
                     {

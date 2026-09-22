@@ -182,13 +182,13 @@ def test_local_release_and_backup_persistence_use_shared_lock(
     monkeypatch.setattr(
         release_operations,
         "locked_file",
-        lambda _path, **kwargs: (seen.append(kwargs["label"]) or Guard()),
+        lambda _path, **kwargs: seen.append(kwargs["label"]) or Guard(),
     )
     LocalRuntimeAdapter(state_path=tmp_path / "release.json")._save()
     monkeypatch.setattr(
         backup_operations,
         "locked_file",
-        lambda _path, **kwargs: (seen.append(kwargs["label"]) or Guard()),
+        lambda _path, **kwargs: seen.append(kwargs["label"]) or Guard(),
     )
     LocalBackupProvider(tmp_path / "backup.json")._save()
     assert seen == ["release state lock", "backup state lock"]
