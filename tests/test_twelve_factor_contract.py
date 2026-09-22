@@ -195,3 +195,55 @@ def test_secret_like_values_are_not_echoed_in_failures(tmp_path: Path) -> None:
     failures = verify_repository(tmp_path)
 
     assert secret not in "\n".join(failures)
+
+
+def _k8s_manifests(root: Path) -> None:
+    """Create the manifests whose presence activates the release-renderer check.
+
+    They are what makes the branch at verify_twelve_factor_contract.py:114-121 reachable
+    at all. No test created them before, so that branch had never executed, and the
+    contract it encodes - a Kubernetes deployment must ship a renderer that validates
+    digests - was unverified in both directions.
+    """
+    _write(root, "deploy/k8s/deployment-backend-api.yaml", "kind: Deployment\n")
+    _write(root, "deploy/k8s/deployment-backend-worker.yaml", "kind: Deployment\n")
+
+
+def test_k8s_release_renderer_without_digest_validation_is_reported(
+    tmp_path: Path,
+) -> None:
+    _valid_repository(tmp_path)
+    _k8s_manifests(tmp_path)
+    _write(tmp_path, "scripts/render_k8s_release.py", "print('no validation here')\n")
+
+    failures = verify_repository(tmp_path)
+
+    assert any("digest validation" in failure for failure in failures), failures
+
+
+def test_k8s_manifests_without_a_renderer_are_reported(tmp_path: Path) -> None:
+    _valid_repository(tmp_path)
+    _k8s_manifests(tmp_path)
+
+    failures = verify_repository(tmp_path)
+
+    assert any("digest validation" in failure for failure in failures), failures
+
+
+def test_k8s_release_renderer_with_digest_validation_is_accepted(
+    tmp_path: Path,
+) -> None:
+    # The acceptance half. Without it, the two tests above pass just as well against a
+    # branch that reports a failure whenever the manifests exist, which would be a check
+    # that constrains nothing about the renderer.
+    _valid_repository(tmp_path)
+    _k8s_manifests(tmp_path)
+    _write(
+        tmp_path,
+        "scripts/render_k8s_release.py",
+        'PLACEHOLDER = "REPLACE_WITH_RELEASE_DIGEST"\nPATTERN = r"[0-9a-f]{64}"\n',
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert not any("digest validation" in failure for failure in failures), failures
