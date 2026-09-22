@@ -47,10 +47,21 @@ Optional:
 - `POST /v1/auth/login` is the only allowlisted route that does not require actor header.
 
 The BFF consumes type-only declarations generated from the backend OpenAPI
-artifact. Regenerate all repository artifacts with `just generate-api` after
+artifact. Every allowlisted method/path resolves to its generated OpenAPI
+`operationId`; generation fails when a policy route lacks a documented
+operation. Regenerate all repository artifacts with `just generate-api` after
 backend contract changes; `npm run gen:api` remains available for this package
 alone. The generated types do not replace runtime response validation or the
 secure proxy boundary.
+
+For the cross-layer workflow, artifact ownership, SPA typed transport, and CI
+gates, see [OpenAPI Contract Synchronization](../docs/openapi-contract-synchronization.md).
+
+The BFF preserves the browser's `Accept` preference when proxying an
+allowlisted operation (defaulting to `application/json` when absent), and
+passes safe upstream response headers and bytes through. This is required for
+the documented `application/octet-stream` database-backup download, including
+its `Content-Disposition` filename.
 
 ## Local Development
 

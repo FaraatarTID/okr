@@ -261,6 +261,7 @@ If you are a first-time reader, skip this section until after `Start Here`.
 - Quality gate baseline: [docs/QUALITY_GATE_BASELINE.md](docs/QUALITY_GATE_BASELINE.md)
 - Manager active-cycle plan: [docs/PLAN_PER_MANAGER_ACTIVE_CYCLES.md](docs/PLAN_PER_MANAGER_ACTIVE_CYCLES.md)
 - SPA BFF service guide: [spa-bff/README.md](spa-bff/README.md)
+- OpenAPI contract synchronization: [docs/openapi-contract-synchronization.md](docs/openapi-contract-synchronization.md)
 - Backend API and worker guide: [backend_app/README.md](backend_app/README.md)
 - SPA web service guide: [spa-web/README.md](spa-web/README.md)
 - User Guide (EN): [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
@@ -758,6 +759,5 @@ Install browser runtime once if needed:
 ```bash
 playwright install chromium
 ```
-
 
 

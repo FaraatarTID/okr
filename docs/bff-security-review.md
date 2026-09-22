@@ -18,12 +18,14 @@ is not a penetration test or an independent security audit.
 | Actor binding | `spa-bff` and backend API | Session actor replaces mismatched attempted actor; backend receives signed actor headers and rejects mismatched forwarded `X-OKR-Role` / `X-OKR-Roles` claims | Client cannot select a different actor or role through a conflicting header |
 | Session revocation handling | `spa-bff` | `/session/me` clears cookies and returns 401 on backend validation rejection | Revoked sessions fail closed |
 | Backend outage handling | `spa-bff` | `/session/me` returns bounded 503 and does not serve stale authenticated data | Availability failure is distinct from authorization success |
-| Route exposure | `spa-bff` | Generated allowlist and actor-required metadata | Unlisted browser paths are rejected before proxying |
+| Route exposure | `spa-bff` | Generated allowlist, actor-required metadata, and OpenAPI operation-ID mapping | Unlisted or undocumented browser paths are rejected before proxying |
+| Download contract preservation | `spa-bff` | Proxy preserves client `Accept`, upstream binary bytes, `Content-Type`, and `Content-Disposition` | Documented binary downloads remain usable through the BFF |
 
 ## Evidence captured
 
 - `npm run check:allowlist` passed with 44 routes.
-- `npm test` passed with 9 test files and 74 tests.
+- `npm test` passed with 9 test files and 77 tests.
+- OpenAPI drift, generated SPA/BFF types, BFF allowlist, SPA operation manifest, and direct-fetch boundary checks are enforced by the contract-quality CI lane. See [openapi-contract-synchronization.md](openapi-contract-synchronization.md).
 - Backend mutation API and dual-mode parity coverage passed with 128 tests.
 - Backend ingress security regression passed with 6 focused tests covering signed requests, replay protection, and forwarded role-claim enforcement.
 - Live Compose baseline showed the BFF and backend processes running independently.

@@ -14,6 +14,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
@@ -60,7 +61,10 @@ def _make_client(monkeypatch, *, advertise_key_id: bool = True) -> TestClient:
         lambda task_id, actor: SimpleNamespace(
             id=task_id,
             task_id=task_id,
-            start_time=None,
+            # Timer starts always produce a timestamp. Keep this signing-only
+            # fixture response-valid so it exercises key rotation rather than
+            # failing FastAPI's documented timer response contract.
+            start_time=datetime.now(timezone.utc),
         ),
     )
     return TestClient(backend_main.app)
