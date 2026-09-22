@@ -42,86 +42,69 @@ function csrfHeaders(): Record<string, string> {
   return { "x-xsrf-token": TEST_CSRF_TOKEN };
 }
 
-describe("Fix 2: x-forwarded-for proxy forwarding", () => {
-  it("forwards x-forwarded-for from client to backend", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ status: "ok" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
+function mockFetch() {
+  return vi.fn().mockResolvedValue(
+    new Response(JSON.stringify({ status: "ok" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+}
 
-    const app = createServer(baseConfig, { fetchFn });
-    const response = await app.inject({
-      method: "POST",
-      url: "/api/backend/v1/read/query",
-      headers: {
-        ...csrfHeaders(),
-        cookie: sessionCookie(),
-        "x-forwarded-for": "10.0.0.1",
-      },
-      payload: { kind: "node", params: {} },
-    });
-    await app.close();
+async function outboundHeaders(
+  fetchFn: ReturnType<typeof mockFetch>,
+  extraHeaders: Record<string, string>,
+): Promise<Record<string, string>> {
+  const app = createServer(baseConfig, { fetchFn });
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/backend/v1/read/query",
+    headers: {
+      ...csrfHeaders(),
+      cookie: sessionCookie(),
+      ...extraHeaders,
+    },
+    payload: { kind: "node", params: {} },
+  });
+  await app.close();
 
-    expect(response.statusCode).toBe(200);
+  expect(response.statusCode).toBe(200);
+  const [, options] = fetchFn.mock.calls[0] as [string, RequestInit];
+  return (options.headers ?? {}) as Record<string, string>;
+}
 
-    const [, options] = fetchFn.mock.calls[0] as [string, RequestInit];
-    const headers = (options.headers ?? {}) as Record<string, string>;
-    expect(headers["x-forwarded-for"]).toBe("10.0.0.1");
+describe("client IP forwarding to the backend", () => {
+  it("forwards the private client-IP header the edge set", async () => {
+    const fetchFn = mockFetch();
+
+    const headers = await outboundHeaders(fetchFn, { "x-okr-client-ip": "10.0.0.1" });
+
+    expect(headers["x-okr-client-ip"]).toBe("10.0.0.1");
   });
 
-  it("omits x-forwarded-for when not present in client request", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ status: "ok" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
+  it("omits the private header when the edge did not set it", async () => {
+    const fetchFn = mockFetch();
 
-    const app = createServer(baseConfig, { fetchFn });
-    const response = await app.inject({
-      method: "POST",
-      url: "/api/backend/v1/read/query",
-      headers: {
-        ...csrfHeaders(),
-        cookie: sessionCookie(),
-      },
-      payload: { kind: "node", params: {} },
+    const headers = await outboundHeaders(fetchFn, {});
+
+    expect(headers["x-okr-client-ip"]).toBeUndefined();
+  });
+
+  it("ignores x-forwarded-for and x-real-ip entirely", async () => {
+    // The behavioural half of the trust decision, and the reason the old tests in
+    // this file were wrong: they asserted that a client-supplied x-forwarded-for was
+    // forwarded to the backend. nginx sets that header with
+    // $proxy_add_x_forwarded_for, which appends to the client-supplied chain, so
+    // forwarding it let the caller choose the backend's rate-limit key. It must now
+    // be dropped, even when present.
+    const fetchFn = mockFetch();
+
+    const headers = await outboundHeaders(fetchFn, {
+      "x-forwarded-for": "10.0.0.1",
+      "x-real-ip": "192.168.1.1",
     });
-    await app.close();
 
-    expect(response.statusCode).toBe(200);
-
-    const [, options] = fetchFn.mock.calls[0] as [string, RequestInit];
-    const headers = (options.headers ?? {}) as Record<string, string>;
     expect(headers["x-forwarded-for"]).toBeUndefined();
-  });
-
-  it("prefers x-forwarded-for over x-real-ip", async () => {
-    const fetchFn = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ status: "ok" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-
-    const app = createServer(baseConfig, { fetchFn });
-    await app.inject({
-      method: "POST",
-      url: "/api/backend/v1/read/query",
-      headers: {
-        ...csrfHeaders(),
-        cookie: sessionCookie(),
-        "x-forwarded-for": "10.0.0.1",
-        "x-real-ip": "192.168.1.1",
-      },
-      payload: { kind: "node", params: {} },
-    });
-    await app.close();
-
-    const [, options] = fetchFn.mock.calls[0] as [string, RequestInit];
-    const headers = (options.headers ?? {}) as Record<string, string>;
-    expect(headers["x-forwarded-for"]).toBe("10.0.0.1");
+    expect(headers["x-okr-client-ip"]).toBeUndefined();
   });
 });
