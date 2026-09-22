@@ -1,4 +1,11 @@
-"""Tests for Fix 5: Race condition in concurrent timer stop and start."""
+"""Tests for Fix 5: Race condition in concurrent timer stop and start.
+
+The row-locking guarantee is now covered behaviourally, against real PostgreSQL, in
+`tests/test_application_lock_paths_postgres.py`. The check that used to live here
+inspected `stop_all_active_timers_from_crud` for the substring `with_for_update`, which
+passed even with the lock deleted; and because the caller's own UPDATE blocks on the row
+regardless, only a real concurrent transaction can distinguish the two.
+"""
 
 from src.database import get_session_context
 
@@ -72,18 +79,6 @@ def test_stop_timer_correctly_credits_time(isolated_db):
         t = session.get(type(task), task.id)
         assert t.total_time_spent >= 0  # Timer was very short
         assert t.timer_started_at is None
-
-
-def test_stop_all_active_timers_uses_select_for_update(isolated_db):
-    """Verify the query in stop_all_active_timers includes with_for_update."""
-    import inspect
-    from src.crud_timer_helpers import stop_all_active_timers_from_crud
-
-    source = inspect.getsource(stop_all_active_timers_from_crud)
-    assert "with_for_update" in source, (
-        "stop_all_active_timers should use with_for_update() to prevent "
-        "double-crediting under concurrent timer stop/start"
-    )
 
 
 def test_start_timer_prevents_double_counting(isolated_db):
