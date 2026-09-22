@@ -115,9 +115,11 @@ def test_dry_run_without_inventory_uses_empty_report(monkeypatch, tmp_path) -> N
     monkeypatch.setattr(
         migration,
         "Path",
-        lambda value: missing
-        if value == "tmp/saas-environments.json"
-        else __import__("pathlib").Path(value),
+        lambda value: (
+            missing
+            if value == "tmp/saas-environments.json"
+            else __import__("pathlib").Path(value)
+        ),
     )
     report = migration.migrate_tenants([], dry_run=True)
     assert report.ok is True
@@ -144,6 +146,24 @@ def test_current_revision_failure_is_reported(monkeypatch) -> None:
 
     assert revision is None
     assert error == "alembic current failed: database unavailable"
+
+
+def test_default_runner_passes_tenant_lock_id_to_alembic(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    observed = []
+    monkeypatch.setattr(
+        "scripts.migrate_tenant_databases.subprocess.run",
+        lambda *args, **kwargs: (
+            observed.append(kwargs["env"].get("OKR_MIGRATION_LOCK_ID"))
+            or SimpleNamespace(returncode=0, stdout="head", stderr="")
+        ),
+    )
+    revision, error = _default_runner(
+        database_url="sqlite:///a.db", timeout_seconds=1, lock_id="env-a"
+    )
+    assert (revision, error) == ("head", None)
+    assert observed == ["env-a", "env-a"]
 
 
 def test_retry_succeeds_after_transient_failure() -> None:

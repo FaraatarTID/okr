@@ -9,7 +9,7 @@ from contextlib import contextmanager
 import json
 from pathlib import Path
 import re
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from src.saas.control_plane import AuditEvent
 from src.saas.file_lock import locked_file
@@ -258,6 +258,7 @@ class ReleaseManager:
         *,
         operator: OperatorCredential | None = None,
         control_plane: Any | None = None,
+        release_gate: Callable[[str, ReleaseArtifact], None] | None = None,
     ) -> None:
         self.environment_provider = environment_provider
         self.runtime = runtime
@@ -266,6 +267,7 @@ class ReleaseManager:
         self.operator = operator.principal
         self.records = getattr(runtime, "deployment_records", [])
         self.control_plane = control_plane
+        self.release_gate = release_gate
 
     def deploy(
         self, environment_id: str, release_artifact: ReleaseArtifact
@@ -273,6 +275,8 @@ class ReleaseManager:
         environment = self._require_ready(environment_id)
         if release_artifact.environment_id != environment_id:
             raise ValueError("release artifact belongs to a different environment")
+        if self.release_gate is not None:
+            self.release_gate(environment_id, release_artifact)
         previous = self.runtime.current(environment_id)
         previous_version = (
             previous.version if previous else environment.application_version

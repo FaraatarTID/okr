@@ -20,6 +20,10 @@ jobs:
     timeout-minutes: 5
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
+      migration: ${{ steps.filter.outputs.migration }}
+      runtime: ${{ steps.filter.outputs.runtime }}
+      contracts: ${{ steps.filter.outputs.contracts }}
+      topology: ${{ steps.filter.outputs.topology }}
       frontend: ${{ steps.filter.outputs.frontend }}
       shared: ${{ steps.filter.outputs.shared }}
       docs: ${{ steps.filter.outputs.docs }}
@@ -38,6 +42,32 @@ jobs:
               - 'scripts/**'
               - 'alembic.ini'
               - 'alembic/**'
+            migration:
+              - 'alembic.ini'
+              - 'alembic/**'
+              - 'scripts/migrate_tenant_databases.py'
+              - 'scripts/run_fleet_rollout.py'
+              - 'scripts/verify_migration_*.py'
+              - 'tests/test_migrate_tenant_databases.py'
+              - 'tests/test_fleet_control_plane.py'
+            runtime:
+              - 'backend_app/**'
+              - 'src/**'
+              # Operational scripts are executable production code. Keep them
+              # on the runtime lane unless they have the dedicated migration lane.
+              - 'scripts/**'
+              - 'tests/**'
+              - '!tests/test_migrate_tenant_databases.py'
+              - '!tests/test_fleet_control_plane.py'
+            contracts:
+              - 'scripts/check_*.py'
+              - 'scripts/generate_bff_allowlist.py'
+              - 'scripts/export_openapi.py'
+              - 'spa-web/src/lib/api/openapi.json'
+              - 'spa-bff/src/generated/**'
+            topology:
+              - 'deploy/**'
+              - '.github/workflows/**'
             frontend:
               - 'spa-web/**'
               - 'spa-bff/**'
@@ -76,11 +106,11 @@ jobs:
               - '!pyproject.toml'
               - '!uv.lock'
 
-  postgrest-exposure-gate:
+  migration-quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: changes
-    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true' }}
+    if: ${{ needs.changes.outputs.migration == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true' }}
 
     services:
       postgres:
@@ -137,7 +167,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: changes
-    if: ${{ needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true' }}
+    if: ${{ needs.changes.outputs.runtime == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true' }}
 
     # A real PostgreSQL for the read-path budgets. Without it
     # `tests/test_read_path_budget_postgres.py` skips, and because SQLite does not use
@@ -454,6 +484,12 @@ jobs:
       - name: Install SPA dependencies
         run: npm ci --include=optional
 
+      - name: Restore Playwright browser cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('uv.lock') }}
+
       - name: Install Playwright Browser (Chromium)
         run: |
           set -o pipefail
@@ -496,6 +532,56 @@ jobs:
       - name: Documentation HQ Link Check
         run: python scripts/check_docs_hq_links.py
 
+  contracts-quality:
+    name: Contract and tooling quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: changes
+    if: ${{ needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: uv.lock
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --include=optional
+      - run: |
+          uv run python scripts/check_openapi_drift.py
+          uv run python scripts/generate_bff_allowlist.py --check
+          npm --prefix spa-web run check:gen:api
+          npm --prefix spa-bff run check:gen:api
+
+  deployment-topology-quality:
+    name: Deployment topology quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: changes
+    if: ${{ needs.changes.outputs.topology == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true' }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - run: uv sync --locked --group dev
+      - run: |
+          uv run python scripts/check_deployment_topology.py
+          uv run python scripts/check_deploy_config.py --mode template
+          uv run python scripts/check_deploy_runtime_matrix.py --require-docker
+          uv run python scripts/check_immutable_deploy_config.py
+
   workflow-secret-prerequisites:
     name: Workflow secret prerequisites
     runs-on: ubuntu-latest
@@ -516,26 +602,30 @@ jobs:
     if: always()
     needs:
       - changes
-      - postgrest-exposure-gate
+      - migration-quality
       - backend-quality
       - spa-quality
       - spa-e2e
       - docs-quality
+      - contracts-quality
+      - deployment-topology-quality
       - workflow-secret-prerequisites
     steps:
       - name: Require all executed checks to pass
         shell: bash
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
-          POSTGREST_EXPOSURE_RESULT: ${{ needs.postgrest-exposure-gate.result }}
+          MIGRATION_RESULT: ${{ needs.migration-quality.result }}
           BACKEND_RESULT: ${{ needs.backend-quality.result }}
           SPA_RESULT: ${{ needs.spa-quality.result }}
           E2E_RESULT: ${{ needs.spa-e2e.result }}
           DOCS_RESULT: ${{ needs.docs-quality.result }}
+          CONTRACTS_RESULT: ${{ needs.contracts-quality.result }}
+          TOPOLOGY_RESULT: ${{ needs.deployment-topology-quality.result }}
           SECRET_PREREQ_RESULT: ${{ needs.workflow-secret-prerequisites.result }}
         run: |
           set -euo pipefail
-          for result in "$CHANGES_RESULT" "$POSTGREST_EXPOSURE_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT" "$DOCS_RESULT" "$SECRET_PREREQ_RESULT"; do
+          for result in "$CHANGES_RESULT" "$MIGRATION_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT" "$DOCS_RESULT" "$CONTRACTS_RESULT" "$TOPOLOGY_RESULT" "$SECRET_PREREQ_RESULT"; do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               echo "CI result failed because a required job returned: $result"
               exit 1

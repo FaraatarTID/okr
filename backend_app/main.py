@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from typing import Any, Optional
 
@@ -394,8 +395,15 @@ app = create_app()
 
 from backend_app.routers.control_plane_routes import register_control_plane_routes
 from src.saas.control_plane import ControlPlane
+from src.saas.fleet_control_plane import SqlControlPlane
 
 control_plane = ControlPlane()
+# Production fleet state is deliberately separate from customer databases. The
+# legacy in-memory registry remains for local/runtime compatibility only.
+_fleet_control_plane_url = os.getenv("OKR_CONTROL_PLANE_DATABASE_URL", "").strip()
+fleet_control_plane = (
+    SqlControlPlane(_fleet_control_plane_url) if _fleet_control_plane_url else None
+)
 _control_plane_router = APIRouter()
 register_control_plane_routes(_control_plane_router, sys.modules[__name__])
 app.include_router(_control_plane_router)

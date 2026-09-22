@@ -22,6 +22,7 @@ ALLOWLIST_PATH = ROOT_DIR / "spa-bff" / "src" / "allowlist.ts"
 EXCLUDED_PATHS = {
     "/healthz",
     "/v1/admin/observability/metrics",
+    "/control-plane/v1/rollouts/{rollout_id}",
 }
 
 # These tighter expressions preserve existing BFF validation for enumerated path values.
@@ -69,12 +70,24 @@ def build_policy(schema: dict, policy: dict) -> dict:
             raise ValueError(
                 f"BFF policy methods missing from OpenAPI for {path_template}: {missing}"
             )
+        operation_ids = {
+            method: str(path_item[method.lower()].get("operationId") or "")
+            for method in methods
+        }
+        if missing_operation_ids := [
+            method for method, operation_id in operation_ids.items() if not operation_id
+        ]:
+            raise ValueError(
+                f"BFF policy methods lack OpenAPI operation IDs for {path_template}: "
+                f"{missing_operation_ids}"
+            )
         routes.append(
             {
                 "pathTemplate": path_template,
                 "methods": methods,
                 "pathPattern": _path_regex(path_template),
                 "actorRequired": bool(route["actorRequired"]),
+                "operationIds": operation_ids,
             }
         )
     return {
@@ -87,6 +100,10 @@ def build_policy(schema: dict, policy: dict) -> dict:
 def render_allowlist(policy: dict) -> str:
     def _rule_literal(route: dict) -> str:
         methods = ", ".join(f'"{m}"' for m in route["methods"])
+        operation_ids = ", ".join(
+            f'{json.dumps(method)}: {json.dumps(operation_id)}'
+            for method, operation_id in route["operationIds"].items()
+        )
         return (
             "  { pathTemplate: "
             + json.dumps(route["pathTemplate"], ensure_ascii=False)
@@ -96,6 +113,9 @@ def render_allowlist(policy: dict) -> str:
             + json.dumps(route["pathPattern"], ensure_ascii=False)
             + "), actorRequired: "
             + ("true" if route["actorRequired"] else "false")
+            + ", operationIds: {"
+            + operation_ids
+            + "}"
             + " },"
         )
 
@@ -111,6 +131,7 @@ def render_allowlist(policy: dict) -> str:
         "  methods: readonly HttpMethod[];",
         "  pathRegex: RegExp;",
         "  actorRequired: boolean;",
+        "  operationIds: Readonly<Partial<Record<HttpMethod, string>>>;",
         "}",
         "",
         "export const ALLOWLIST_POLICY_ROUTES: readonly AllowlistRule[] = [",

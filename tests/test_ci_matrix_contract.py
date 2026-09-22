@@ -98,11 +98,13 @@ def test_cosign_health_workflow_exercises_the_same_installer_contract() -> None:
 def test_heavy_jobs_escalate_shared_changes_and_skip_unrelated_areas() -> None:
     text = _workflow_text()
 
-    backend_condition = "needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true'"
+    migration_condition = "needs.changes.outputs.migration == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true'"
+    runtime_condition = "needs.changes.outputs.runtime == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true'"
     frontend_condition = "needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.unclassified == 'true'"
 
     assert text.count("needs: changes") >= 3
-    assert text.count(backend_condition) >= 2
+    assert text.count(migration_condition) >= 1
+    assert text.count(runtime_condition) >= 1
     assert text.count(frontend_condition) >= 2
     assert "  ci-result:" in text
     assert "if: always()" in text

@@ -24,6 +24,7 @@ from src.saas.environment_contract import EnvironmentManifest
 class FakeMain:
     control_plane: ControlPlane
     authenticated_actor: str = "operator"
+    fleet_control_plane: object | None = None
 
     async def require_service_access(self) -> None:
         return None
@@ -67,9 +68,7 @@ def _client(environments=None, actor: str | None = "operator") -> TestClient:
     app = FastAPI()
     router = APIRouter()
     fake = FakeMain(service)
-    fake.require_authenticated_principal = lambda: (
-        {"username": actor} if actor else {}
-    )
+    fake.require_authenticated_principal = lambda: {"username": actor} if actor else {}
     register_control_plane_routes(router, fake)
     app.include_router(router)
     return TestClient(app)
@@ -125,6 +124,26 @@ def test_unknown_environment_returns_not_found() -> None:
     )
 
     assert response.status_code == 404
+
+
+def test_versioned_fleet_rollout_route_is_operator_only_and_metadata_only() -> None:
+    class Fleet:
+        @staticmethod
+        def status(rollout_id: int):
+            assert rollout_id == 7
+            return {"rollout_id": rollout_id, "state": "canary", "tasks": {}}
+
+    from backend_app.routers.control_plane_routes import register_control_plane_routes
+
+    app = FastAPI()
+    router = APIRouter()
+    main = FakeMain(ControlPlane(), fleet_control_plane=Fleet())
+    register_control_plane_routes(router, main)
+    app.include_router(router)
+    response = TestClient(app).get("/control-plane/v1/rollouts/7")
+    assert response.status_code == 200
+    assert response.json()["api_version"] == "v1"
+    assert response.json()["rollout"]["state"] == "canary"
 
 
 def test_control_plane_contract_keeps_customer_domain_imports_out() -> None:

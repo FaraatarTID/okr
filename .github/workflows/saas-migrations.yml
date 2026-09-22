@@ -12,6 +12,18 @@ on:
         required: false
         type: boolean
         default: false
+      max_concurrency:
+        description: Maximum tenant migrations running in parallel (1-10)
+        required: false
+        default: "10"
+      tenant:
+        description: Optional environment ID to migrate; leave empty for the fleet
+        required: false
+        default: ""
+      incident_reference:
+        description: Required incident or change reference for this rollout
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -58,17 +70,29 @@ jobs:
             --provisioning-state-file "$RUNNER_TEMP/okr-migrations/environments.json"
             --database-urls-file "$RUNNER_TEMP/okr-migrations/database-urls.json"
             --max-retries "${{ inputs.max_retries }}"
+            --max-concurrency "${{ inputs.max_concurrency }}"
             --output migration-report.json
           )
+          if [ -n "${{ inputs.tenant }}" ]; then
+            args+=(--tenant "${{ inputs.tenant }}")
+          fi
           if [ "${{ inputs.fail_fast }}" = "true" ]; then
             args+=(--fail-fast)
           fi
           uv run python scripts/migrate_tenant_databases.py "${args[@]}"
+
+      - name: Write rollout evidence
+        if: always()
+        run: |
+          jq --arg incident "${{ inputs.incident_reference }}" \
+             --arg run_id "${{ github.run_id }}" \
+             '. + {incident_reference: $incident, workflow_run_id: $run_id}' \
+             migration-report.json > migration-report-with-evidence.json
 
       - name: Upload migration report
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: saas-migration-report-${{ github.run_id }}
-          path: migration-report.json
+          path: migration-report-with-evidence.json
           if-no-files-found: warn

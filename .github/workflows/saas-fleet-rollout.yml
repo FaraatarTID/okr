@@ -1,0 +1,76 @@
+name: Execute SaaS fleet rollout batch
+
+on:
+  workflow_dispatch:
+    inputs:
+      rollout_id:
+        description: SQL control-plane rollout ID
+        required: true
+        type: string
+      action:
+        description: Run a migration batch, pause, resume, or inspect the rollout
+        required: true
+        default: run
+        type: choice
+        options: [run, pause, resume, status]
+      max_concurrency:
+        description: Bounded migration concurrency, from 1 through 10
+        required: false
+        default: "10"
+      max_retries:
+        description: Per-tenant retries after a transient migration failure
+        required: false
+        default: "1"
+      incident_reference:
+        description: Change or incident reference
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  rollout:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --group dev
+      - name: Lease and execute one migration batch
+        if: ${{ inputs.action == 'run' }}
+        env:
+          SAAS_CONTROL_PLANE_URL: ${{ secrets.SAAS_CONTROL_PLANE_URL }}
+          SAAS_DATABASE_URLS_JSON: ${{ secrets.SAAS_DATABASE_URLS_JSON }}
+          SAAS_TENANT_HEALTH_URLS_JSON: ${{ secrets.SAAS_TENANT_HEALTH_URLS_JSON }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$SAAS_DATABASE_URLS_JSON" > "$RUNNER_TEMP/database-urls.json"
+          printf '%s' "$SAAS_TENANT_HEALTH_URLS_JSON" > "$RUNNER_TEMP/health-urls.json"
+          uv run python scripts/run_fleet_rollout.py \
+            --control-plane-url "$SAAS_CONTROL_PLANE_URL" \
+            --rollout-id "${{ inputs.rollout_id }}" \
+            --owner "github-${{ github.run_id }}" \
+            --database-urls-file "$RUNNER_TEMP/database-urls.json" \
+            --health-urls-file "$RUNNER_TEMP/health-urls.json" \
+            --max-concurrency "${{ inputs.max_concurrency }}" \
+            --max-retries "${{ inputs.max_retries }}" \
+            --incident-reference "${{ inputs.incident_reference }}" \
+            > fleet-rollout-report.json
+      - name: Manage rollout state
+        if: ${{ inputs.action != 'run' }}
+        env:
+          SAAS_CONTROL_PLANE_URL: ${{ secrets.SAAS_CONTROL_PLANE_URL }}
+          OKR_OPERATOR_TOKEN: ${{ secrets.OKR_OPERATOR_TOKEN }}
+        run: |
+          uv run python scripts/manage_fleet_rollout.py "${{ inputs.action }}" \
+            --control-plane-url "$SAAS_CONTROL_PLANE_URL" \
+            --rollout-id "${{ inputs.rollout_id }}" \
+            > fleet-rollout-report.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: saas-fleet-rollout-${{ github.run_id }}
+          path: fleet-rollout-report.json
+          if-no-files-found: warn
