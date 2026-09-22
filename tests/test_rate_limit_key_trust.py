@@ -5,10 +5,11 @@ which *appends* to the client-supplied chain, so its leftmost entry is caller
 controlled. Keying the limiter on that entry let a caller rotate the key per
 request and so bypass the limit while appearing to respect it.
 
-Two tests, deliberately paired. The first asserts the caller cannot choose the
-key; the second asserts that the trusted private header *does* choose it. Without
-the second, the first could pass because the limiter was never reached at all -
-the vacuous-pass failure this repository has repeatedly shipped.
+Three tests. The first asserts the caller cannot choose the key; the second asserts
+that the trusted private header *does* choose it; the third asserts the fallback when
+neither is available. Without the second, the first could pass because the limiter was
+never reached at all - the vacuous-pass failure this repository has repeatedly shipped.
+Without the third, a limiter that silently dropped the key entirely would satisfy both.
 """
 
 import pytest
@@ -75,4 +76,31 @@ def test_the_trusted_private_header_does_choose_the_key(rate_limit_keys):
     )
     assert f"ip:{trusted}" in keys, (
         f"the trusted private header did not become the rate-limit key: {keys}"
+    )
+
+
+def test_without_the_private_header_the_key_falls_back_to_the_peer(rate_limit_keys):
+    """The other direction again: no trusted header means the peer, not no limit.
+
+    With no verified address the limiter could drop the key or fall back to the peer.
+    Dropping it would remove the control, so it degrades to an aggregate limit over the
+    proxy - undesirable, but still a limit. That is the opposite of the login lockout,
+    which stays unkeyed rather than share one bucket across every user, because there a
+    shared bucket is a lockout of everyone.
+    """
+    client, keys = rate_limit_keys
+
+    _post(client, extra_headers={"x-forwarded-for": "203.0.113.10"})
+
+    assert keys, (
+        "the rate limiter was never consulted, so this test cannot observe the key "
+        "and must not be treated as a pass"
+    )
+    # "testclient" is the peer address Starlette's TestClient reports. The assertion is
+    # exact because the point is that the key is the peer and that a key still exists:
+    # a caller-supplied header must not appear, and the key must not be missing.
+    assert keys == ["ip:testclient"], (
+        "with no trusted private header the limiter must key on the peer address so a "
+        f"limit stays in force, and must ignore caller-supplied forwarding headers; "
+        f"got {keys}"
     )
