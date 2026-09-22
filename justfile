@@ -62,6 +62,14 @@ ci-preflight:
     uv run python scripts/export_requirements.py --check
     uv run python scripts/check_dependency_manifest.py
     uv run python scripts/check_docs_hq_links.py
+    # The five gates below were missing from this target, and their absence is why a
+    # commit reached CI red: removing one schema field changes the OpenAPI artifact
+    # AND both generated TypeScript type files, and each of those has its own gate.
+    uv run python scripts/check_openapi_drift.py
+    uv run python scripts/check_generated_artifacts.py
+    uv run python scripts/check_spa_api_contract_boundary.py
+    npm --prefix spa-web run check:gen:api
+    npm --prefix spa-bff run check:gen:api
     uv run python scripts/verify_module_design_efficiency.py
     uv run python scripts/verify_twelve_factor_contract.py
     uv run python scripts/verify_process_contract.py
