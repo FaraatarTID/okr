@@ -6,7 +6,7 @@ import {
   forcedPasswordChangeLocation,
   logoutSession,
   type AdminAiHealthResponse,
-  type AuditSummaryResponse,
+  type AuditSummaryView,
   type AdminPdfHealthResponse,
   type AuthUser,
 } from "@/lib/api";
@@ -23,7 +23,7 @@ type UseShellAccessControlInput = {
   setAdminTab: Dispatch<SetStateAction<AdminTab>>;
   adminAiHealth: AdminAiHealthResponse | null;
   adminPdfHealth: AdminPdfHealthResponse | null;
-  adminAuditSummary: AuditSummaryResponse | null;
+  adminAuditSummary: AuditSummaryView | null;
   routerReplace: (href: string) => void;
   handleSidebarModeSelect: (nextMode: string) => void;
   loadAdminResources: (activeUser: AuthUser) => Promise<void>;

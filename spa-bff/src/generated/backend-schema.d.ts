@@ -866,6 +866,81 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminAiHealthResponse */
+        AdminAiHealthResponse: {
+            /** Config Message */
+            config_message?: string | null;
+            /** Configured */
+            configured?: boolean | null;
+            /** External Ai Allowed */
+            external_ai_allowed?: boolean | null;
+            /** Live Probe Enabled */
+            live_probe_enabled?: boolean | null;
+            /** Probe Message */
+            probe_message?: string | null;
+            /** Probe Ok */
+            probe_ok?: boolean | null;
+            /** Probe Payload */
+            probe_payload?: {
+                [key: string]: unknown;
+            } | null;
+            /** Provider */
+            provider?: string | null;
+            /** Status */
+            status?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * AdminDbRestoreRequest
+         * @description Validated envelope for an operator-supplied database backup.
+         */
+        AdminDbRestoreRequest: {
+            /** Format */
+            format: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AdminDbRestoreResponse */
+        AdminDbRestoreResponse: {
+            /** Exported At */
+            exported_at?: string | null;
+            /** Format */
+            format?: string | null;
+            /** Restored Counts */
+            restored_counts?: {
+                [key: string]: number;
+            } | null;
+            /** Unknown Tables */
+            unknown_tables?: string[] | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AdminPdfHealthResponse */
+        AdminPdfHealthResponse: {
+            /** Chromium Executable Detected */
+            chromium_executable_detected?: boolean | null;
+            /** Chromium Executable Path */
+            chromium_executable_path?: string | null;
+            /** Environment */
+            environment?: string | null;
+            /** Managed Cloud Runtime */
+            managed_cloud_runtime?: boolean | null;
+            /** Method */
+            method?: string | null;
+            /** Pdfshift Api Key Configured */
+            pdfshift_api_key_configured?: boolean | null;
+            /** Pdfshift Available */
+            pdfshift_available?: boolean | null;
+            /** Platform */
+            platform?: string | null;
+            /** Playwright Available */
+            playwright_available?: boolean | null;
+            /** Supported Method */
+            supported_method?: boolean | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** AiAnalyzeNodeRequest */
         AiAnalyzeNodeRequest: {
             /** Actor Username */
@@ -878,6 +953,31 @@ export interface components {
              * @enum {string}
              */
             node_type: "GOAL" | "OBJECTIVE" | "KEY_RESULT" | "TASK";
+        };
+        /** AiAnalyzeNodeResponse */
+        AiAnalyzeNodeResponse: {
+            /** Analyzed At */
+            analyzed_at?: string | null;
+            /** Deadline Warnings */
+            deadline_warnings?: string[] | null;
+            /** Effectiveness Score */
+            effectiveness_score?: number | null;
+            /** Efficiency Score */
+            efficiency_score?: number | null;
+            /** Gap Analysis */
+            gap_analysis?: string | null;
+            /** Overall Score */
+            overall_score?: number | null;
+            /** Proposed Tasks */
+            proposed_tasks?: (string | {
+                [key: string]: unknown;
+            })[] | null;
+            /** Quality Assessment */
+            quality_assessment?: string | null;
+            /** Summary */
+            summary?: string | null;
+        } & {
+            [key: string]: unknown;
         };
         /** AiStrategyPulseRequest */
         AiStrategyPulseRequest: {
@@ -895,6 +995,33 @@ export interface components {
             /** Subject Username */
             subject_username?: string | null;
         };
+        /** AiStrategyPulseResponse */
+        AiStrategyPulseResponse: {
+            /** Burnout Risk */
+            burnout_risk?: string | null;
+            /** Burnout Snapshot */
+            burnout_snapshot?: {
+                [key: string]: unknown;
+            } | null;
+            /** Cycle Id */
+            cycle_id?: number | null;
+            /** Gap Signals */
+            gap_signals?: string[] | null;
+            /** Portfolio Actions */
+            portfolio_actions?: string[] | null;
+            /** Predictive Outlook */
+            predictive_outlook?: {
+                [key: string]: unknown;
+            } | null;
+            /** Strategy Gaps */
+            strategy_gaps?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Subject Username */
+            subject_username?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** AiTeamCoachRequest */
         AiTeamCoachRequest: {
             /** Actor Username */
@@ -903,6 +1030,15 @@ export interface components {
             team_data?: {
                 [key: string]: unknown;
             };
+        };
+        /** AiTeamCoachResponse */
+        AiTeamCoachResponse: {
+            /** Coaching */
+            coaching?: {
+                [key: string]: unknown;
+            } | null;
+        } & {
+            [key: string]: unknown;
         };
         /** AlignmentCreateRequest */
         AlignmentCreateRequest: {
@@ -940,6 +1076,107 @@ export interface components {
             /** Parent Id */
             parent_id: number;
         };
+        /** AtlasGoalSnapshotResponse */
+        AtlasGoalSnapshotResponse: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: number;
+            /** Objectives */
+            objectives?: components["schemas"]["AtlasObjectiveSnapshotResponse"][];
+            /**
+             * Owner Id
+             * @default 0
+             */
+            owner_id: number;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AtlasKeyResultSnapshotResponse */
+        AtlasKeyResultSnapshotResponse: {
+            /** Ai Analysis */
+            ai_analysis?: string | null;
+            /** Ai Deadline State */
+            ai_deadline_state?: string | null;
+            /** Ai Overall Score */
+            ai_overall_score?: number | null;
+            /** Analysis Updated At */
+            analysis_updated_at?: string | null;
+            /** Current Value */
+            current_value?: number | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: number;
+            /** Metric Type */
+            metric_type?: string | null;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /** Start Value */
+            start_value?: number | null;
+            /** Target Value */
+            target_value?: number | null;
+            /** Tasks */
+            tasks?: components["schemas"]["AtlasTaskSnapshotResponse"][];
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Unit */
+            unit?: string | null;
+            /** Weight */
+            weight?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** AtlasObjectiveSnapshotResponse */
+        AtlasObjectiveSnapshotResponse: {
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /** Id */
+            id: number;
+            /** Key Results */
+            key_results?: components["schemas"]["AtlasKeyResultSnapshotResponse"][];
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /** Score Mode */
+            score_mode?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /** Weight */
+            weight?: number | null;
+        } & {
+            [key: string]: unknown;
+        };
         /** AtlasSnapshotRequest */
         AtlasSnapshotRequest: {
             /** Actor Username */
@@ -953,6 +1190,58 @@ export interface components {
             include_analysis: boolean;
             /** Owner Ids */
             owner_ids?: number[] | null;
+        };
+        /** AtlasSnapshotResponse */
+        AtlasSnapshotResponse: {
+            /** Goals */
+            goals?: components["schemas"]["AtlasGoalSnapshotResponse"][];
+            /** Users Map */
+            users_map?: {
+                [key: string]: string;
+            };
+        };
+        /** AtlasTaskSnapshotResponse */
+        AtlasTaskSnapshotResponse: {
+            /** Assignee Id */
+            assignee_id?: number | null;
+            /** Deadline */
+            deadline?: string | null;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Estimated Minutes
+             * @default 0
+             */
+            estimated_minutes: number;
+            /** Id */
+            id: number;
+            /**
+             * Progress
+             * @default 0
+             */
+            progress: number;
+            /**
+             * Status
+             * @default
+             */
+            status: string;
+            /** Timer Started At */
+            timer_started_at?: string | null;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
+            /**
+             * Total Time Spent
+             * @default 0
+             */
+            total_time_spent: number;
+        } & {
+            [key: string]: unknown;
         };
         /** AuthLoginResponse */
         AuthLoginResponse: {
@@ -1340,6 +1629,35 @@ export interface components {
             cycle_id: number;
             /** Usernames */
             usernames?: string[] | null;
+        };
+        /** LeadershipMetricsResponse */
+        LeadershipMetricsResponse: {
+            /** At Risk */
+            at_risk?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** At Risk Count */
+            at_risk_count?: number | null;
+            /** Avg Confidence */
+            avg_confidence?: number | null;
+            /** Heatmap Data */
+            heatmap_data?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Hygiene Pct */
+            hygiene_pct?: number | null;
+            /** Member Deadlines */
+            member_deadlines?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Member Progress */
+            member_progress?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Total Krs */
+            total_krs?: number | null;
+        } & {
+            [key: string]: unknown;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -1833,6 +2151,18 @@ export interface components {
             /** User Id */
             user_id?: string | null;
         };
+        /** TimerStartResponse */
+        TimerStartResponse: {
+            /**
+             * Start Time
+             * Format: date-time
+             */
+            start_time: string;
+            /** Task Id */
+            task_id: number;
+            /** Work Log Id */
+            work_log_id: number;
+        };
         /** TimerStopRequest */
         TimerStopRequest: {
             /** Summary */
@@ -1841,6 +2171,21 @@ export interface components {
             task_id: number;
             /** User Id */
             user_id?: string | null;
+        };
+        /** TimerStopResponse */
+        TimerStopResponse: {
+            /** Duration Minutes */
+            duration_minutes: number;
+            /** End Time */
+            end_time?: string | null;
+            /** Start Time */
+            start_time?: string | null;
+            /** Summary */
+            summary?: string | null;
+            /** Task Id */
+            task_id: number;
+            /** Work Log Id */
+            work_log_id?: number | null;
         };
         /** UserCreateRequest */
         UserCreateRequest: {
@@ -1926,10 +2271,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -2228,9 +2569,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AdminAiHealthResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2263,13 +2602,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description Database backup export. */
             200: {
                 headers: {
+                    /** @description Suggested attachment filename. */
+                    "Content-Disposition"?: string;
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/octet-stream": string;
                 };
             };
             /** @description Validation Error */
@@ -2300,7 +2641,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminDbRestoreRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -2308,9 +2653,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AdminDbRestoreResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2390,9 +2733,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AdminPdfHealthResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2435,9 +2776,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AiAnalyzeNodeResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2481,9 +2820,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AiStrategyPulseResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2527,9 +2864,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AiTeamCoachResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3644,9 +3979,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["AtlasSnapshotResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3689,9 +4022,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["LeadershipMetricsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4080,9 +4411,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TimerStartResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4125,9 +4454,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["TimerStopResponse"];
                 };
             };
             /** @description Validation Error */

@@ -7,8 +7,11 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 
 from backend_app.schemas import (
+    AiAnalyzeNodeResponse,
     AiAnalyzeNodeRequest,
+    AiStrategyPulseResponse,
     AiStrategyPulseRequest,
+    AiTeamCoachResponse,
     AiTeamCoachRequest,
 )
 
@@ -18,6 +21,7 @@ def register_ai_routes(router: APIRouter, main: Any) -> None:
 
     @router.post(
         "/v1/ai/analyze-node",
+        response_model=AiAnalyzeNodeResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     def api_ai_analyze_node(
@@ -152,6 +156,7 @@ def register_ai_routes(router: APIRouter, main: Any) -> None:
 
     @router.post(
         "/v1/ai/team-coach",
+        response_model=AiTeamCoachResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     def api_ai_team_coach(
@@ -178,6 +183,7 @@ def register_ai_routes(router: APIRouter, main: Any) -> None:
 
     @router.post(
         "/v1/ai/strategy-pulse",
+        response_model=AiStrategyPulseResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     def api_ai_strategy_pulse(

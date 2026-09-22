@@ -1,6 +1,64 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { jsonHeaders, retryWithFetch } from "@/lib/api/http";
+import {
+  backendBlobRequest,
+  backendJsonRequest,
+  backendNoContentRequest,
+  jsonHeaders,
+  retryWithFetch,
+} from "@/lib/api/http";
+
+function compileTimeOperationPathChecks(): void {
+  void backendJsonRequest({
+    operation: "api_submit_job_v1_jobs_post",
+    path: "/v1/jobs",
+    label: "valid typed path",
+    body: { kind: "pdf.weekly", payload: {}, max_attempts: 2 },
+  });
+  void backendJsonRequest({
+    // @ts-expect-error This documented backend operation is not BFF-public.
+    operation: "api_admin_observability_metrics_v1_admin_observability_metrics_get",
+    path: "/v1/admin/observability/metrics" as never,
+    label: "non-public operation",
+  });
+  void backendNoContentRequest({
+    operation: "api_delete_job_v1_jobs__job_id__delete",
+    path: "/v1/jobs/job-1",
+    label: "valid no-content operation",
+  });
+  void backendBlobRequest({
+    operation: "api_admin_db_backup_v1_admin_db_backup_get",
+    path: "/v1/admin/db-backup",
+    label: "valid binary download",
+  });
+  void backendBlobRequest({
+    // @ts-expect-error JSON operations cannot use the binary download helper.
+    operation: "api_admin_ai_health_v1_admin_ai_health_get",
+    path: "/v1/admin/ai-health" as never,
+    label: "invalid binary download",
+  });
+  void backendJsonRequest({
+    // @ts-expect-error A 204 response must use backendNoContentRequest.
+    operation: "api_delete_job_v1_jobs__job_id__delete",
+    path: "/v1/jobs/job-1" as never,
+    label: "invalid JSON operation",
+  });
+  // @ts-expect-error Job submission has an OpenAPI-required request body.
+  void backendJsonRequest({
+    operation: "api_submit_job_v1_jobs_post",
+    path: "/v1/jobs",
+    label: "missing required body",
+  });
+  void backendJsonRequest({
+    operation: "api_submit_job_v1_jobs_post",
+    // @ts-expect-error Job submission cannot be paired with the teams route.
+    path: "/v1/teams",
+    label: "invalid typed path",
+    body: { kind: "pdf.weekly", payload: {}, max_attempts: 2 },
+  });
+}
+
+void compileTimeOperationPathChecks;
 
 describe("jsonHeaders", () => {
   it("omits JSON content type when includeJsonContentType is false", () => {
@@ -14,6 +72,91 @@ describe("jsonHeaders", () => {
       "content-type": "application/json",
       "x-okr-actor": "admin",
     });
+  });
+});
+
+describe("backendJsonRequest", () => {
+  const originalFetch = globalThis.fetch;
+
+  it("forwards a generated-operation request through the backend boundary", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ id: "job-1" }), { status: 200 }),
+    );
+    globalThis.fetch = fetchMock;
+    const job = await backendJsonRequest({
+      operation: "api_submit_job_v1_jobs_post",
+      path: "/v1/jobs",
+      actor: "alice",
+      label: "Job submit",
+      body: { actor_username: "alice", kind: "pdf.weekly", payload: {}, max_attempts: 2 },
+    });
+    expect(job.id).toBe("job-1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/backend/v1/jobs",
+      expect.objectContaining({ method: "POST" }),
+    );
+    globalThis.fetch = originalFetch;
+  });
+
+  it("serializes generated query parameters while preserving the operation method", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ status: "ok" }), { status: 200 }),
+    );
+    globalThis.fetch = fetchMock;
+    await backendJsonRequest({
+      operation: "api_admin_ai_health_v1_admin_ai_health_get",
+      path: "/v1/admin/ai-health",
+      query: { live_probe: true },
+      label: "AI health",
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/backend/v1/admin/ai-health?live_probe=true",
+      expect.objectContaining({ method: "GET" }),
+    );
+    globalThis.fetch = originalFetch;
+  });
+
+  it("accepts a documented no-content response without parsing JSON", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    globalThis.fetch = fetchMock;
+    await expect(
+      backendNoContentRequest({
+        operation: "api_delete_job_v1_jobs__job_id__delete",
+        path: "/v1/jobs/job-1",
+        label: "Delete job",
+      }),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/backend/v1/jobs/job-1",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    globalThis.fetch = originalFetch;
+  });
+});
+
+describe("backendBlobRequest", () => {
+  const originalFetch = globalThis.fetch;
+
+  it("only downloads the documented binary backup operation", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response("backup", {
+        status: 200,
+        headers: { "content-type": "application/octet-stream" },
+      }),
+    );
+    globalThis.fetch = fetchMock;
+    await expect(
+      backendBlobRequest({
+        operation: "api_admin_db_backup_v1_admin_db_backup_get",
+        path: "/v1/admin/db-backup",
+        label: "DB backup export",
+      }),
+    ).resolves.toBeInstanceOf(Blob);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/backend/v1/admin/db-backup",
+      expect.objectContaining({ method: "GET" }),
+    );
+    globalThis.fetch = originalFetch;
   });
 });
 

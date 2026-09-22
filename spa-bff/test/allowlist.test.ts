@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isAllowlistedRoute, normalizeBackendPath, requiresActorHeader } from "../src/allowlist.js";
+import { isAllowlistedRoute, normalizeBackendPath, requiresActorHeader, resolveAllowlistedOperation } from "../src/allowlist.js";
 
 describe("normalizeBackendPath", () => {
   it("normalizes a valid path", () => {
@@ -52,6 +52,18 @@ describe("isAllowlistedRoute", () => {
     expect(isAllowlistedRoute("GET", "/v1/auth/login")).toBe(false);
     expect(isAllowlistedRoute("POST", "/v1/healthz")).toBe(false);
     expect(isAllowlistedRoute("OPTIONS", "/v1/read/query")).toBe(false);
+  });
+});
+
+describe("resolveAllowlistedOperation", () => {
+  it("returns the generated OpenAPI operation for an allowed method and path", () => {
+    expect(resolveAllowlistedOperation("POST", "/v1/jobs")).toBe("api_submit_job_v1_jobs_post");
+    expect(resolveAllowlistedOperation("DELETE", "/v1/teams/42")).toBe("api_delete_team_v1_teams__team_id__delete");
+  });
+
+  it("does not resolve undocumented routes or methods", () => {
+    expect(resolveAllowlistedOperation("GET", "/v1/jobs")).toBeNull();
+    expect(resolveAllowlistedOperation("POST", "/v1/not-documented")).toBeNull();
   });
 });
 

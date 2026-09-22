@@ -26,6 +26,21 @@ class TimerStopRequest(BaseModel):
     user_id: Optional[str] = None
 
 
+class TimerStartResponse(BaseModel):
+    work_log_id: int
+    task_id: int
+    start_time: datetime
+
+
+class TimerStopResponse(BaseModel):
+    work_log_id: Optional[int] = None
+    task_id: int
+    duration_minutes: int
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    summary: Optional[str] = None
+
+
 class JobSubmitRequest(BaseModel):
     kind: Literal["pdf.weekly", "ai.generate_json"]
     payload: Dict[str, Any]
@@ -505,6 +520,128 @@ class LeadershipMetricsRequest(BaseModel):
     actor_username: Optional[str] = None
 
 
+class AtlasTaskSnapshotResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    title: str = ""
+    description: str = ""
+    progress: float = 0
+    deadline: Optional[datetime] = None
+    timer_started_at: Optional[datetime] = None
+    status: str = ""
+    total_time_spent: int = 0
+    estimated_minutes: int = 0
+    assignee_id: Optional[int] = None
+
+
+class AtlasKeyResultSnapshotResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    title: str = ""
+    description: str = ""
+    progress: float = 0
+    ai_overall_score: Optional[float] = None
+    ai_deadline_state: Optional[str] = None
+    start_value: Optional[float] = None
+    target_value: Optional[float] = None
+    current_value: Optional[float] = None
+    metric_type: Optional[str] = None
+    weight: Optional[float] = None
+    unit: Optional[str] = None
+    ai_analysis: Optional[str] = None
+    analysis_updated_at: Optional[datetime] = None
+    tasks: List[AtlasTaskSnapshotResponse] = Field(default_factory=list)
+
+
+class AtlasObjectiveSnapshotResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    title: str = ""
+    description: str = ""
+    progress: float = 0
+    score_mode: Optional[str] = None
+    weight: Optional[float] = None
+    key_results: List[AtlasKeyResultSnapshotResponse] = Field(default_factory=list)
+
+
+class AtlasGoalSnapshotResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    id: int
+    title: str = ""
+    description: str = ""
+    progress: float = 0
+    owner_id: int = 0
+    objectives: List[AtlasObjectiveSnapshotResponse] = Field(default_factory=list)
+
+
+class AtlasSnapshotResponse(BaseModel):
+    goals: List[AtlasGoalSnapshotResponse] = Field(default_factory=list)
+    users_map: Dict[Union[str, int], str] = Field(default_factory=dict)
+
+
+class LeadershipMetricsResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    hygiene_pct: Optional[float] = None
+    avg_confidence: Optional[float] = None
+    at_risk_count: Optional[int] = None
+    total_krs: Optional[int] = None
+    at_risk: Optional[List[Dict[str, Any]]] = None
+    member_progress: Optional[List[Dict[str, Any]]] = None
+    member_deadlines: Optional[List[Dict[str, Any]]] = None
+    heatmap_data: Optional[List[Dict[str, Any]]] = None
+
+
+class AdminAiHealthResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    status: Optional[str] = None
+    provider: Optional[str] = None
+    external_ai_allowed: Optional[bool] = None
+    configured: Optional[bool] = None
+    config_message: Optional[str] = None
+    live_probe_enabled: Optional[bool] = None
+    probe_ok: Optional[bool] = None
+    probe_message: Optional[str] = None
+    probe_payload: Optional[Dict[str, Any]] = None
+
+
+class AdminPdfHealthResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    environment: Optional[str] = None
+    platform: Optional[str] = None
+    method: Optional[str] = None
+    supported_method: Optional[bool] = None
+    pdfshift_available: Optional[bool] = None
+    playwright_available: Optional[bool] = None
+    pdfshift_api_key_configured: Optional[bool] = None
+    chromium_executable_detected: Optional[bool] = None
+    chromium_executable_path: Optional[str] = None
+    managed_cloud_runtime: Optional[bool] = None
+
+
+class AdminDbRestoreResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    format: Optional[str] = None
+    exported_at: Optional[str] = None
+    restored_counts: Optional[Dict[str, int]] = None
+    unknown_tables: Optional[List[str]] = None
+
+
+class AdminDbRestoreRequest(BaseModel):
+    """Validated envelope for an operator-supplied database backup."""
+
+    model_config = ConfigDict(extra="allow")
+
+    format: str = Field(..., min_length=1)
+
+
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=128)
     password: str = Field(..., min_length=1, max_length=512)
@@ -700,3 +837,36 @@ class AiStrategyPulseRequest(BaseModel):
     cycle_title: Optional[str] = Field(default=None, max_length=255)
     days: int = Field(default=14, ge=7, le=90)
     actor_username: Optional[str] = None
+
+
+class AiAnalyzeNodeResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    efficiency_score: Optional[float] = None
+    effectiveness_score: Optional[float] = None
+    overall_score: Optional[float] = None
+    deadline_warnings: Optional[List[str]] = None
+    gap_analysis: Optional[str] = None
+    quality_assessment: Optional[str] = None
+    proposed_tasks: Optional[List[Union[str, Dict[str, Any]]]] = None
+    summary: Optional[str] = None
+    analyzed_at: Optional[str] = None
+
+
+class AiTeamCoachResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    coaching: Optional[Dict[str, Any]] = None
+
+
+class AiStrategyPulseResponse(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    subject_username: Optional[str] = None
+    cycle_id: Optional[int] = None
+    burnout_snapshot: Optional[Dict[str, Any]] = None
+    strategy_gaps: Optional[List[Dict[str, Any]]] = None
+    predictive_outlook: Optional[Dict[str, Any]] = None
+    burnout_risk: Optional[str] = None
+    gap_signals: Optional[List[str]] = None
+    portfolio_actions: Optional[List[str]] = None

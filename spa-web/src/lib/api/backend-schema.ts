@@ -5,9 +5,90 @@
  * `scripts/export_openapi.py`). Regenerate with `npm run gen:api`.
  * CI fails when the committed artifact drifts from the live schema.
  */
-import type { components } from "./generated/schema";
+import type { components, operations, paths } from "./generated/schema";
 
 export type BackendSchemas = components["schemas"];
+export type BackendOperations = operations;
+export type BackendPaths = paths;
+export type BackendOperationId = keyof BackendOperations;
+
+type JsonContent<T> = T extends { content: { "application/json": infer Value } }
+  ? Value
+  : never;
+
+type BinaryContent<T> = T extends { content: infer Content }
+  ? Content extends Record<string, unknown>
+    ? {
+        [MediaType in keyof Content]: MediaType extends "application/json" ? never : Content[MediaType];
+      }[keyof Content]
+    : never
+  : never;
+
+type JsonResponseForStatus<Responses, Status extends number> = Status extends number
+  ? Responses extends Record<Status, infer Response>
+    ? JsonContent<Response>
+    : never
+  : never;
+
+type BinaryResponseForStatus<Responses, Status extends number> = Status extends number
+  ? Responses extends Record<Status, infer Response>
+    ? BinaryContent<Response>
+    : never
+  : never;
+
+/** Generated JSON request payload for a documented backend operation. */
+export type BackendRequestBody<Operation extends BackendOperationId> =
+  BackendOperations[Operation] extends { requestBody: infer Body }
+    ? JsonContent<Body>
+    : never;
+
+/** Whether OpenAPI requires the JSON request body for an operation. */
+export type BackendRequestBodyRequired<Operation extends BackendOperationId> =
+  BackendOperations[Operation] extends { requestBody: unknown } ? true : false;
+
+/** Generated successful JSON response for a documented backend operation. */
+export type BackendSuccessResponse<Operation extends BackendOperationId> =
+  BackendOperations[Operation] extends { responses: infer Responses }
+    ? JsonResponseForStatus<Responses, 200 | 201 | 202 | 203 | 204 | 205 | 206 | 207 | 208 | 226>
+    : never;
+
+/** Generated successful non-JSON response for a documented backend operation. */
+export type BackendBinarySuccess<Operation extends BackendOperationId> =
+  BackendOperations[Operation] extends { responses: infer Responses }
+    ? BinaryResponseForStatus<Responses, 200 | 201 | 202 | 203 | 206 | 207 | 208 | 226>
+    : never;
+
+/** `void` for an operation whose documented successful response has no body. */
+export type BackendNoContentSuccess<Operation extends BackendOperationId> =
+  BackendOperations[Operation] extends { responses: infer Responses }
+    ? Responses extends { 204: unknown } | { 205: unknown }
+      ? void
+      : never
+    : never;
+
+/** Generated path parameters for a documented backend operation. */
+export type BackendPathParameters<Operation extends BackendOperationId> =
+  BackendOperations[Operation] extends { parameters: { path?: infer Parameters } }
+    ? Parameters
+    : never;
+
+/** Generated query parameters for a documented backend operation. */
+export type BackendQueryParameters<Operation extends BackendOperationId> =
+  BackendOperations[Operation] extends { parameters: { query?: infer Parameters } }
+    ? Parameters
+    : never;
+
+/** Generated documented validation response for a backend operation. */
+export type BackendValidationError<Operation extends BackendOperationId> =
+  BackendOperations[Operation] extends { responses: infer Responses }
+    ? JsonContent<Responses extends { 422: infer Response } ? Response : never>
+    : never;
+
+/** Union of generated, documented non-success JSON responses for an operation. */
+export type BackendErrorResponse<Operation extends BackendOperationId> =
+  BackendOperations[Operation] extends { responses: infer Responses }
+    ? JsonResponseForStatus<Responses, 400 | 401 | 403 | 404 | 409 | 413 | 422 | 429 | 500 | 503>
+    : never;
 
 /** Request contract for the typed Atlas snapshot endpoint. */
 export type AtlasSnapshotRequest = BackendSchemas["AtlasSnapshotRequest"];

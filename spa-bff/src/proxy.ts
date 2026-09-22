@@ -96,6 +96,11 @@ export async function proxyToBackend(
   );
   const sessionRole = firstHeaderValue(request.incomingHeaders["x-okr-role"]);
   const sessionRoles = firstHeaderValue(request.incomingHeaders["x-okr-roles"]);
+  // Content negotiation belongs to the documented backend operation. Preserve
+  // the browser's safe Accept preference so binary downloads do not become
+  // impossible through the BFF; JSON remains the safe default for callers
+  // that omit it.
+  const accept = firstHeaderValue(request.incomingHeaders.accept) || "application/json";
 
   // Forward the real client IP for backend rate limiting.
   // The backend trusts this header only when the service token is valid,
@@ -105,7 +110,7 @@ export async function proxyToBackend(
     || "";
 
   const outboundHeaders: Record<string, string> = {
-    accept: "application/json",
+    accept,
     "x-correlation-id": readCorrelationId(request.incomingHeaders),
     "x-request-id": readRequestId(request.incomingHeaders),
   };

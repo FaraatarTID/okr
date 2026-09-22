@@ -6,10 +6,16 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from backend_app.schemas import (
+    AdminAiHealthResponse,
+    AdminDbRestoreRequest,
+    AdminDbRestoreResponse,
+    AdminPdfHealthResponse,
     AtlasSnapshotRequest,
+    AtlasSnapshotResponse,
     AuthLoginResponse,
     AuthSessionResponse,
     LeadershipMetricsRequest,
+    LeadershipMetricsResponse,
     LoginRequest,
     ReadQueryRequest,
     ReadQueryResponse,
@@ -234,6 +240,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
 
     @router.get(
         "/v1/admin/ai-health",
+        response_model=AdminAiHealthResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     def api_admin_ai_health(
@@ -246,6 +253,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
 
     @router.get(
         "/v1/admin/pdf-health",
+        response_model=AdminPdfHealthResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     def api_admin_pdf_health(
@@ -268,6 +276,23 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
 
     @router.get(
         "/v1/admin/db-backup",
+        response_class=Response,
+        responses={
+            200: {
+                "description": "Database backup export.",
+                "content": {
+                    "application/octet-stream": {
+                        "schema": {"type": "string", "format": "binary"}
+                    }
+                },
+                "headers": {
+                    "Content-Disposition": {
+                        "description": "Suggested attachment filename.",
+                        "schema": {"type": "string"},
+                    }
+                },
+            }
+        },
         dependencies=[Depends(main.require_service_access)],
     )
     def api_admin_db_backup(
@@ -276,14 +301,22 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
         main._require_admin_actor_scope(actor)
         backup_bytes = main.export_database_backup()
-        return Response(content=backup_bytes, media_type="application/json")
+        return Response(
+            content=backup_bytes,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": 'attachment; filename="okr-db-backup.json"'
+            },
+        )
 
     @router.post(
         "/v1/admin/db-restore",
+        response_model=AdminDbRestoreResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     async def api_admin_db_restore(
         request: Request,
+        payload: AdminDbRestoreRequest,
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> dict:
         actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
@@ -317,12 +350,8 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                     detail="Request body too large. Maximum 50 MB.",
                 )
 
-        payload = await request.json()
-        if not isinstance(payload, dict):
-            raise HTTPException(
-                status_code=400, detail="Backup restore payload must be a JSON object."
-            )
-        if str(payload.get("format") or "").strip() != main.BACKUP_FORMAT_VERSION:
+        payload_data = payload.model_dump()
+        if str(payload_data.get("format") or "").strip() != main.BACKUP_FORMAT_VERSION:
             raise HTTPException(
                 status_code=400, detail="Unsupported backup format version."
             )
@@ -333,13 +362,13 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
             "database",
             actor=actor,
             details={
-                "format": payload.get("format"),
-                "tables": list(payload.keys())[:10],
+                "format": payload_data.get("format"),
+                "tables": list(payload_data.keys())[:10],
             },
         )
 
         try:
-            return dict(main.import_database_backup(payload))
+            return dict(main.import_database_backup(payload_data))
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -386,6 +415,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
 
     @router.post(
         "/v1/read/atlas/snapshot",
+        response_model=AtlasSnapshotResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     def api_read_atlas_snapshot(
@@ -428,6 +458,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
 
     @router.post(
         "/v1/read/leadership/metrics",
+        response_model=LeadershipMetricsResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     def api_read_leadership_metrics(

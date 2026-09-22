@@ -1,3 +1,19 @@
+import type {
+  BackendOperationId,
+  BackendNoContentSuccess,
+  BackendBinarySuccess,
+  BackendQueryParameters,
+  BackendRequestBody,
+  BackendRequestBodyRequired,
+  BackendSuccessResponse,
+} from "@/lib/api/backend-schema";
+import {
+  OPERATION_ROUTES,
+  type BackendOperationPath,
+  type BackendOperationRouteId,
+  type BffPublicOperationId,
+} from "@/lib/api/generated/operation-routes";
+
 function readableError(value: unknown): string {
   if (typeof value === "string") {
     return value;
@@ -18,6 +34,153 @@ function readableError(value: unknown): string {
     }
   }
   return String(value ?? "");
+}
+
+type TypedBackendOperation = Extract<
+  BackendOperationRouteId,
+  BackendOperationId & BffPublicOperationId
+>;
+
+type BackendRequestOptionsBase<Operation extends TypedBackendOperation> = {
+  operation: Operation;
+  path: BackendOperationPath<Operation>;
+  query?: BackendQueryParameters<Operation>;
+  actor?: string;
+  label: string;
+  cache?: RequestCache;
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+  credentials?: RequestCredentials;
+};
+
+type BackendRequestBodyOption<Operation extends TypedBackendOperation> =
+  BackendRequestBodyRequired<Operation> extends true
+    ? { body: BackendRequestBody<Operation> }
+    : { body?: BackendRequestBody<Operation> };
+
+export type BackendJsonRequestOptions<Operation extends TypedBackendOperation> =
+  BackendRequestOptionsBase<Operation> & BackendRequestBodyOption<Operation>;
+
+type JsonTypedBackendOperation = {
+  [Operation in TypedBackendOperation]: BackendSuccessResponse<Operation> extends never
+    ? never
+    : Operation;
+}[TypedBackendOperation];
+
+type BinaryTypedBackendOperation = {
+  [Operation in TypedBackendOperation]: BackendBinarySuccess<Operation> extends never
+    ? never
+    : Operation;
+}[TypedBackendOperation];
+
+type NoContentTypedBackendOperation = {
+  [Operation in TypedBackendOperation]: BackendNoContentSuccess<Operation> extends never
+    ? never
+    : Operation;
+}[TypedBackendOperation];
+
+/**
+ * Sole browser boundary for documented backend JSON endpoints. The operation
+ * parameter ties request payloads and successful responses to OpenAPI types.
+ */
+export async function backendJsonRequest<Operation extends JsonTypedBackendOperation>(
+  options: BackendJsonRequestOptions<Operation>,
+): Promise<BackendSuccessResponse<Operation>> {
+  const response = await fetch(backendUrl(options.path, options.query), {
+    method: operationMethod(options.operation),
+    cache: options.cache,
+    signal: options.signal,
+    credentials: options.credentials,
+    headers: { ...jsonHeaders(options.actor, options.body !== undefined), ...options.headers },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  if (!response.ok) {
+    throw new Error(`${options.label} failed: ${await responseDetail(response)}`);
+  }
+  return (await response.json()) as BackendSuccessResponse<Operation>;
+}
+
+/** Typed boundary for documented successful responses with no body (204/205). */
+export async function backendNoContentRequest<Operation extends NoContentTypedBackendOperation>(
+  options: BackendJsonRequestOptions<Operation>,
+): Promise<BackendNoContentSuccess<Operation>> {
+  const response = await fetch(backendUrl(options.path, options.query), {
+    method: operationMethod(options.operation),
+    cache: options.cache,
+    signal: options.signal,
+    credentials: options.credentials,
+    headers: { ...jsonHeaders(options.actor, options.body !== undefined), ...options.headers },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  if (!response.ok) {
+    throw new Error(`${options.label} failed: ${await responseDetail(response)}`);
+  }
+  return undefined as BackendNoContentSuccess<Operation>;
+}
+
+/**
+ * Typed JSON request with the existing retry/abort behaviour used by long
+ * read queries. The operation still owns the method, body, and result type.
+ */
+export function retryBackendJsonRequest<Operation extends JsonTypedBackendOperation>(
+  options: BackendJsonRequestOptions<Operation> & RetryWithFetchOptions,
+): Promise<BackendSuccessResponse<Operation>> {
+  return retryWithFetch(
+    (signal) =>
+      fetch(backendUrl(options.path, options.query), {
+        method: operationMethod(options.operation),
+        cache: options.cache,
+        signal,
+        credentials: options.credentials,
+        headers: { ...jsonHeaders(options.actor, options.body !== undefined), ...options.headers },
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      }),
+    async (response) => (await response.json()) as BackendSuccessResponse<Operation>,
+    options,
+  );
+}
+
+/** Typed binary download boundary for documented non-JSON backend responses. */
+export async function backendBlobRequest<Operation extends BinaryTypedBackendOperation>(
+  options: BackendJsonRequestOptions<Operation>,
+): Promise<Blob> {
+  const response = await fetch(backendUrl(options.path, options.query), {
+    method: operationMethod(options.operation),
+    cache: options.cache,
+    signal: options.signal,
+    credentials: options.credentials,
+    headers: { ...jsonHeaders(options.actor, options.body !== undefined), ...options.headers },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  if (!response.ok) {
+    throw new Error(`${options.label} failed: ${await responseDetail(response)}`);
+  }
+  return response.blob();
+}
+
+function operationMethod(operation: TypedBackendOperation): string {
+  return OPERATION_ROUTES[operation].method;
+}
+
+function backendUrl(path: string, query: unknown): string {
+  if (!query || typeof query !== "object") {
+    return `/api/backend${path}`;
+  }
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === undefined || value === null) {
+      continue;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        search.append(key, String(item));
+      }
+    } else {
+      search.set(key, String(value));
+    }
+  }
+  const suffix = search.toString();
+  return `/api/backend${path}${suffix ? `?${suffix}` : ""}`;
 }
 
 export async function responseDetail(response: Response): Promise<string> {
