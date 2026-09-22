@@ -71,6 +71,19 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         )
 
         username = str(payload.username or "").strip()
+        # The IP dimension of the login throttle is deliberately left unkeyed, and the
+        # address is NOT taken from `payload`: a body-supplied address is chosen by the
+        # caller, and the lockout table is keyed (scope="ip", identifier), so honouring
+        # it hands the caller the ability to lock out any address it names.
+        #
+        # It is not taken from the request yet either. The address available here is
+        # either the immediate peer - the shared BFF, which would put every user in one
+        # bucket and let a single attacker lock out all of them - or, when a verified
+        # service token is present, X-Forwarded-For[0], the leftmost hop, which nginx
+        # appends to and which is therefore still caller-controlled. Keying a lockout
+        # on either is worse than an inert dimension, so this stays None until the
+        # trust question is settled (P0-4 in docs/REMAINING_ENGINEERING_PLAN.md).
+        client_ip = None
         try:
             enforce_enterprise_login_policy(username)
         except ValueError as exc:
@@ -86,17 +99,13 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                 auth = main.authenticate_user_detailed_via_supabase_api(
                     username=str(payload.username or "").strip(),
                     password=payload.password,
-                    client_ip=(
-                        str(payload.client_ip).strip() if payload.client_ip else None
-                    ),
+                    client_ip=client_ip,
                 )
             else:
                 auth = main.authenticate_user_detailed(
                     username=str(payload.username or "").strip(),
                     password=payload.password,
-                    client_ip=(
-                        str(payload.client_ip).strip() if payload.client_ip else None
-                    ),
+                    client_ip=client_ip,
                 )
         except Exception:
             if not use_https:
@@ -105,11 +114,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                     auth = main.authenticate_user_detailed_via_supabase_api(
                         username=str(payload.username or "").strip(),
                         password=payload.password,
-                        client_ip=(
-                            str(payload.client_ip).strip()
-                            if payload.client_ip
-                            else None
-                        ),
+                        client_ip=client_ip,
                     )
                 else:
                     raise

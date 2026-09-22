@@ -175,7 +175,6 @@ def _do_login(client: OpenerDirector, *, bff_url: str) -> str:
             payload={
                 "username": username,
                 "password": password,
-                "client_ip": "127.0.0.1",
             },
         )
     except HTTPError as exc:

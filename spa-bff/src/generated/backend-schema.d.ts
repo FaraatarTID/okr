@@ -1323,8 +1323,6 @@ export interface components {
         };
         /** LoginRequest */
         LoginRequest: {
-            /** Client Ip */
-            client_ip?: string | null;
             /** Password */
             password: string;
             /** Username */
@@ -1908,6 +1906,10 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */

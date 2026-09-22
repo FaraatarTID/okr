@@ -1489,18 +1489,6 @@
       },
       "LoginRequest": {
         "properties": {
-          "client_ip": {
-            "anyOf": [
-              {
-                "maxLength": 128,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Client Ip"
-          },
           "password": {
             "maxLength": 512,
             "minLength": 1,
@@ -3601,6 +3589,13 @@
       },
       "ValidationError": {
         "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
           "loc": {
             "items": {
               "anyOf": [
