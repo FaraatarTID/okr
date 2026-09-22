@@ -67,8 +67,11 @@ def test_login_body_cannot_choose_the_throttle_key(login_env):
 
     import backend_app.main as backend_main
     from src.crud import create_user
+    from tests._test_credentials import test_password
 
-    create_user("throttle_target", "correct-pass")
+    # Credentials come from the shared helper rather than literals, because the
+    # Secret Hygiene Gate rejects hardcoded credential values in tests.
+    create_user("throttle_target", test_password("login_throttle_correct"))
     sentinel = "203.0.113.10"
 
     client = TestClient(backend_main.app)
@@ -77,7 +80,7 @@ def test_login_body_cannot_choose_the_throttle_key(login_env):
             "/v1/auth/login",
             json={
                 "username": "throttle_target",
-                "password": "wrong-pass",
+                "password": test_password("login_throttle_wrong"),
                 # An address the caller has no authority over.
                 "client_ip": sentinel,
             },
