@@ -176,7 +176,7 @@ describe("useAdminActions", () => {
     const { result, loadAdminResources, refreshSessionCycles } = renderAdminHook();
 
     const file = new File(
-      [JSON.stringify({ users: [{ id: 1 }] })],
+      [JSON.stringify({ format: "okr-backup-v1", users: [{ id: 1 }] })],
       "backup.json",
       { type: "application/json" },
     );

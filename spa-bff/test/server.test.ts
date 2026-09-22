@@ -264,6 +264,38 @@ describe("spa-bff server", () => {
     expect(outboundHeaders["x-okr-roles"]).toBe("atlas-admin,atlas-manager");
   });
 
+  it("proxies documented binary downloads without changing negotiation, bytes, or download headers", async () => {
+    const backupBytes = Buffer.from([0, 255, 1, 2, 3]);
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(backupBytes, {
+        status: 200,
+        headers: {
+          "content-type": "application/octet-stream",
+          "content-disposition": 'attachment; filename="okr-db-backup.json"',
+        },
+      }),
+    );
+    const app = createServer(baseConfig, { fetchFn });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/backend/v1/admin/db-backup",
+      headers: {
+        accept: "application/octet-stream",
+        cookie: sessionCookie({ ...DEFAULT_USER, role: "admin" }),
+      },
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-type"]).toContain("application/octet-stream");
+    expect(response.headers["content-disposition"]).toBe(
+      'attachment; filename="okr-db-backup.json"',
+    );
+    expect(response.rawPayload).toEqual(backupBytes);
+    const outboundHeaders = fetchFn.mock.calls[0][1].headers as Record<string, string>;
+    expect(outboundHeaders.accept).toBe("application/octet-stream");
+  });
+
   it("returns invalid-credentials response when backend login is unsuccessful", async () => {
     const fetchFn = vi.fn().mockResolvedValue(
       new Response(

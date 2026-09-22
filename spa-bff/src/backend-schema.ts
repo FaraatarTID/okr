@@ -1,4 +1,8 @@
 import type { components, paths } from "./generated/backend-schema.js";
+import type { operations } from "./generated/backend-schema.js";
+
+export type BackendOperations = operations;
+export type BackendOperationId = keyof BackendOperations;
 
 export type BackendAuthUser = components["schemas"]["AuthUserView"];
 export type BackendLoginResponse = components["schemas"]["AuthLoginResponse"];

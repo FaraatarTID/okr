@@ -8,7 +8,7 @@ import {
   readAdminPdfHealth,
   type AdminAiHealthResponse,
   type AdminPdfHealthResponse,
-  type AuditSummaryResponse,
+  type AuditSummaryView,
   type AuthUser,
   type CycleSummary,
   type ReadQueryTeam,
@@ -31,7 +31,7 @@ export default function useAdminResources() {
   const [adminAiHealth, setAdminAiHealth] = useState<AdminAiHealthResponse | null>(null);
   const [adminPdfHealth, setAdminPdfHealth] = useState<AdminPdfHealthResponse | null>(null);
   const [adminHealthPending, setAdminHealthPending] = useState(false);
-  const [adminAuditSummary, setAdminAuditSummary] = useState<AuditSummaryResponse | null>(null);
+  const [adminAuditSummary, setAdminAuditSummary] = useState<AuditSummaryView | null>(null);
   const [adminAuditSummaryPending, setAdminAuditSummaryPending] = useState(false);
   const [adminAuditSummaryError, setAdminAuditSummaryError] = useState("");
 

@@ -5,12 +5,7 @@ import type {
   ReadQueryResponse,
 } from "@/lib/api/backend-schema";
 
-import {
-  jsonHeaders,
-  normalizeBackendDateTime,
-  responseDetail,
-  retryWithFetch,
-} from "@/lib/api/http";
+import { backendJsonRequest, normalizeBackendDateTime, retryBackendJsonRequest } from "@/lib/api/http";
 import type {
   AlignmentDeleteResponse,
   AlignmentMutationResponse,
@@ -39,16 +34,50 @@ export async function readAtlasSnapshot(input: {
     ...(input.owner_ids ? { owner_ids: input.owner_ids } : {}),
     include_analysis: Boolean(input.include_analysis),
   };
-  const response = await fetch("/api/backend/v1/read/atlas/snapshot", {
-    method: "POST",
+  const snapshot = await backendJsonRequest({
+    operation: "api_read_atlas_snapshot_v1_read_atlas_snapshot_post",
+    path: "/v1/read/atlas/snapshot",
+    actor: input.actor_username,
+    label: "Atlas snapshot",
     cache: "no-store",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify(requestBody),
+    body: requestBody,
   });
-  if (!response.ok) {
-    throw new Error(`Atlas snapshot failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as AtlasSnapshotResponse;
+  return {
+    goals: (snapshot.goals || []).map((goal) => ({
+      ...goal,
+      title: goal.title || "",
+      description: goal.description || "",
+      progress: goal.progress || 0,
+      owner_id: goal.owner_id || 0,
+      objectives: (goal.objectives || []).map((objective) => ({
+        ...objective,
+        title: objective.title || "",
+        description: objective.description || "",
+        progress: objective.progress || 0,
+        key_results: (objective.key_results || []).map((keyResult) => ({
+          ...keyResult,
+          title: keyResult.title || "",
+          description: keyResult.description || "",
+          progress: keyResult.progress || 0,
+          tasks: (keyResult.tasks || []).map((task) => ({
+            ...task,
+            title: task.title || "",
+            description: task.description || "",
+            progress: task.progress || 0,
+            status: task.status || "",
+            total_time_spent: task.total_time_spent || 0,
+            estimated_minutes: task.estimated_minutes || 0,
+            deadline: task.deadline ?? null,
+            timer_started_at: task.timer_started_at ?? null,
+            assignee_id: task.assignee_id ?? null,
+          })),
+        })),
+      })),
+    })),
+    users_map: Object.fromEntries(
+      Object.entries(snapshot.users_map || {}).map(([id, name]) => [String(id), String(name || "")]),
+    ),
+  };
 }
 
 export async function startTaskTimer(input: {
@@ -56,18 +85,16 @@ export async function startTaskTimer(input: {
   task_id: number;
   user_id?: string;
 }): Promise<TimerStartResponse> {
-  const response = await fetch("/api/backend/v1/timer/start", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  const payload = await backendJsonRequest({
+    operation: "api_start_timer_v1_timer_start_post",
+    path: "/v1/timer/start",
+    actor: input.actor_username,
+    label: "Timer start",
+    body: {
       task_id: input.task_id,
       user_id: input.user_id || input.actor_username,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Timer start failed: ${await responseDetail(response)}`);
-  }
-  const payload = (await response.json()) as TimerStartResponse;
   return {
     ...payload,
     start_time: normalizeBackendDateTime(payload.start_time),
@@ -80,19 +107,17 @@ export async function stopTaskTimer(input: {
   summary?: string;
   user_id?: string;
 }): Promise<TimerStopResponse> {
-  const response = await fetch("/api/backend/v1/timer/stop", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  const payload = await backendJsonRequest({
+    operation: "api_stop_timer_v1_timer_stop_post",
+    path: "/v1/timer/stop",
+    actor: input.actor_username,
+    label: "Timer stop",
+    body: {
       task_id: input.task_id,
       summary: input.summary || "",
       user_id: input.user_id || input.actor_username,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Timer stop failed: ${await responseDetail(response)}`);
-  }
-  const payload = (await response.json()) as TimerStopResponse;
   return {
     ...payload,
     start_time: normalizeBackendDateTime(payload.start_time),
@@ -106,18 +131,16 @@ export async function updateNodeMutation(input: {
   node_id: number;
   updates: Record<string, unknown>;
 }): Promise<NodeMutationResponse> {
-  const response = await fetch(`/api/backend/v1/nodes/${input.node_type}/${input.node_id}`, {
-    method: "PATCH",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_update_node_v1_nodes__node_type___node_id__patch",
+    path: `/v1/nodes/${input.node_type}/${input.node_id}`,
+    actor: input.actor_username,
+    label: "Node update",
+    body: {
       actor_username: input.actor_username,
       updates: input.updates,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Node update failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as NodeMutationResponse;
 }
 
 export async function createNodeMutation(input: {
@@ -125,18 +148,113 @@ export async function createNodeMutation(input: {
   create_type: NodeTypePath;
   payload: Record<string, unknown>;
 }): Promise<NodeMutationResponse> {
-  const response = await fetch(`/api/backend/v1/nodes/${input.create_type}`, {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
-      ...input.payload,
-      actor_username: input.actor_username,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(`Node create failed: ${await responseDetail(response)}`);
+  const title = requiredText(input.payload, "title");
+  const description = requiredText(input.payload, "description");
+  if (input.create_type === "goal") {
+    return backendJsonRequest({
+      operation: "api_create_goal_v1_nodes_goal_post",
+      path: "/v1/nodes/goal",
+      actor: input.actor_username,
+      label: "Goal create",
+      body: {
+        actor_username: input.actor_username,
+        user_id: requiredText(input.payload, "user_id"),
+        title,
+        description,
+        cycle_id: optionalNumber(input.payload, "cycle_id"),
+        strategy_tags: optionalStringList(input.payload, "strategy_tags"),
+      },
+    });
   }
-  return (await response.json()) as NodeMutationResponse;
+  if (input.create_type === "objective") {
+    return backendJsonRequest({
+      operation: "api_create_objective_v1_nodes_objective_post",
+      path: "/v1/nodes/objective",
+      actor: input.actor_username,
+      label: "Objective create",
+      body: {
+        actor_username: input.actor_username,
+        goal_id: requiredPositiveInteger(input.payload, "goal_id"),
+        title,
+        description,
+      },
+    });
+  }
+  if (input.create_type === "key_result") {
+    return backendJsonRequest({
+      operation: "api_create_key_result_v1_nodes_key_result_post",
+      path: "/v1/nodes/key_result",
+      actor: input.actor_username,
+      label: "Key result create",
+      body: {
+        actor_username: input.actor_username,
+        objective_id: requiredPositiveInteger(input.payload, "objective_id"),
+        title,
+        description,
+        target_value: requiredNumber(input.payload, "target_value"),
+        unit: requiredText(input.payload, "unit"),
+        initiative_tags: optionalStringList(input.payload, "initiative_tags"),
+      },
+    });
+  }
+  return backendJsonRequest({
+    operation: "api_create_task_v1_nodes_task_post",
+    path: "/v1/nodes/task",
+    actor: input.actor_username,
+    label: "Task create",
+    body: {
+      actor_username: input.actor_username,
+      key_result_id: requiredPositiveInteger(input.payload, "key_result_id"),
+      title,
+      description,
+      estimated_minutes: requiredNumber(input.payload, "estimated_minutes"),
+      deadline: optionalText(input.payload, "deadline"),
+    },
+  });
+}
+
+function requiredText(payload: Record<string, unknown>, field: string): string {
+  const value = typeof payload[field] === "string" ? payload[field].trim() : "";
+  if (!value) {
+    throw new Error(`Node create requires ${field}.`);
+  }
+  return value;
+}
+
+function optionalText(payload: Record<string, unknown>, field: string): string | undefined {
+  const value = payload[field];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function requiredNumber(payload: Record<string, unknown>, field: string): number {
+  const value = payload[field];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`Node create requires numeric ${field}.`);
+  }
+  return value;
+}
+
+function requiredPositiveInteger(payload: Record<string, unknown>, field: string): number {
+  const value = requiredNumber(payload, field);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`Node create requires positive integer ${field}.`);
+  }
+  return value;
+}
+
+function optionalNumber(payload: Record<string, unknown>, field: string): number | undefined {
+  const value = payload[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalStringList(
+  payload: Record<string, unknown>,
+  field: string,
+): string[] | undefined {
+  const value = payload[field];
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? value
+    : undefined;
 }
 
 export async function deleteNodeMutation(input: {
@@ -144,56 +262,42 @@ export async function deleteNodeMutation(input: {
   node_type: NodeTypePath;
   node_id: number;
 }): Promise<NodeDeleteResponse> {
-  const response = await fetch(`/api/backend/v1/nodes/${input.node_type}/${input.node_id}`, {
-    method: "DELETE",
-    headers: jsonHeaders(input.actor_username, false),
+  return backendJsonRequest({
+    operation: "api_delete_node_v1_nodes__node_type___node_id__delete",
+    path: `/v1/nodes/${input.node_type}/${input.node_id}`,
+    actor: input.actor_username,
+    label: "Node delete",
   });
-  if (!response.ok) {
-    throw new Error(`Node delete failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as NodeDeleteResponse;
 }
 
 export async function deleteWorkLogMutation(input: {
   actor_username: string;
   work_log_id: number;
 }): Promise<WorkLogDeleteResponse> {
-  const response = await fetch(`/api/backend/v1/work-logs/${input.work_log_id}`, {
-    method: "DELETE",
-    headers: jsonHeaders(input.actor_username, false),
+  return backendJsonRequest({
+    operation: "api_delete_work_log_v1_work_logs__work_log_id__delete",
+    path: `/v1/work-logs/${input.work_log_id}`,
+    actor: input.actor_username,
+    label: "Work log delete",
   });
-  if (!response.ok) {
-    throw new Error(`Work log delete failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as WorkLogDeleteResponse;
 }
 
 export async function readCyclesQuery(input: {
   actor_username: string;
   kind: "cycles.active" | "cycles.all";
 }): Promise<CycleSummary[]> {
-  return retryWithFetch(
-    (signal) =>
-      fetch("/api/backend/v1/read/query", {
-        method: "POST",
-        cache: "no-store",
-        headers: jsonHeaders(input.actor_username),
-        body: JSON.stringify({
-          kind: input.kind,
-          params: {},
-          actor_username: input.actor_username,
-        }),
-        signal,
-      }),
-    async (response) => {
-      const payload = (await response.json()) as ReadQueryResponse;
-      return Array.isArray(payload.cycles) ? payload.cycles : [];
-    },
+  const payload = await retryBackendJsonRequest({
+    operation: "api_read_query_v1_read_query_post",
+    path: "/v1/read/query",
+    actor: input.actor_username,
+    body: { kind: input.kind, params: {}, actor_username: input.actor_username },
     // Supabase free-tier wake-up and pooler latency can exceed 8 seconds for
     // Check-In's multi-query workspace load, so the budget stays explicit at
     // 120s rather than falling back to the helper's 8s default.
-    { label: "Cycle query", perAttemptTimeoutMs: 120_000 },
-  );
+    label: "Cycle query",
+    perAttemptTimeoutMs: 120_000,
+  });
+  return Array.isArray(payload.cycles) ? payload.cycles : [];
 }
 
 export async function createCycleMutation(input: {
@@ -204,22 +308,20 @@ export async function createCycleMutation(input: {
   is_active: boolean;
   owner_manager_id?: number;
 }): Promise<CycleSummary> {
-  const response = await fetch("/api/backend/v1/cycles", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_create_cycle_v1_cycles_post",
+    path: "/v1/cycles",
+    actor: input.actor_username,
+    label: "Cycle create",
+    body: {
       actor_username: input.actor_username,
       title: input.title,
       start_date: input.start_date,
       end_date: input.end_date,
       is_active: input.is_active,
       owner_manager_id: input.owner_manager_id,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Cycle create failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as CycleSummary;
 }
 
 export async function updateCycleMutation(input: {
@@ -231,36 +333,32 @@ export async function updateCycleMutation(input: {
   is_active: boolean;
   owner_manager_id?: number;
 }): Promise<CycleSummary> {
-  const response = await fetch(`/api/backend/v1/cycles/${input.cycle_id}`, {
-    method: "PATCH",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_update_cycle_v1_cycles__cycle_id__patch",
+    path: `/v1/cycles/${input.cycle_id}`,
+    actor: input.actor_username,
+    label: "Cycle update",
+    body: {
       actor_username: input.actor_username,
       title: input.title,
       start_date: input.start_date,
       end_date: input.end_date,
       is_active: input.is_active,
       owner_manager_id: input.owner_manager_id,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Cycle update failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as CycleSummary;
 }
 
 export async function deleteCycleMutation(input: {
   actor_username: string;
   cycle_id: number;
 }): Promise<CycleDeleteResponse> {
-  const response = await fetch(`/api/backend/v1/cycles/${input.cycle_id}`, {
-    method: "DELETE",
-    headers: jsonHeaders(input.actor_username, false),
+  return backendJsonRequest({
+    operation: "api_delete_cycle_v1_cycles__cycle_id__delete",
+    path: `/v1/cycles/${input.cycle_id}`,
+    actor: input.actor_username,
+    label: "Cycle delete",
   });
-  if (!response.ok) {
-    throw new Error(`Cycle delete failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as CycleDeleteResponse;
 }
 
 export async function readBackendQuery(input: {
@@ -273,19 +371,15 @@ export async function readBackendQuery(input: {
     kind: input.kind,
     params: input.params || {},
   };
-  return retryWithFetch(
-    (signal) =>
-      fetch("/api/backend/v1/read/query", {
-        method: "POST",
-        cache: "no-store",
-        headers: jsonHeaders(input.actor_username),
-        body: JSON.stringify(requestBody),
-        signal,
-      }),
-    async (response) => (await response.json()) as Record<string, unknown>,
+  return retryBackendJsonRequest({
+    operation: "api_read_query_v1_read_query_post",
+    path: "/v1/read/query",
+    actor: input.actor_username,
+    body: requestBody,
     // Keep the browser timeout aligned with the BFF's read-query budget.
-    { label: "Read query", perAttemptTimeoutMs: 120_000 },
-  );
+    label: "Read query",
+    perAttemptTimeoutMs: 120_000,
+  });
 }
 
 export async function readLeadershipMetrics(input: {
@@ -293,20 +387,18 @@ export async function readLeadershipMetrics(input: {
   cycle_id: number;
   usernames?: string[];
 }): Promise<LeadershipMetricsResponse> {
-  const response = await fetch("/api/backend/v1/read/leadership/metrics", {
-    method: "POST",
+  return backendJsonRequest({
+    operation: "api_read_leadership_metrics_v1_read_leadership_metrics_post",
+    path: "/v1/read/leadership/metrics",
+    actor: input.actor_username,
+    label: "Leadership metrics read",
     cache: "no-store",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+    body: {
       actor_username: input.actor_username,
       cycle_id: input.cycle_id,
       usernames: input.usernames || undefined,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Leadership metrics read failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as LeadershipMetricsResponse;
 }
 
 export async function createAlignmentMutation(input: {
@@ -315,70 +407,62 @@ export async function createAlignmentMutation(input: {
   child_id: number;
   alignment_type?: string;
 }): Promise<AlignmentMutationResponse> {
-  const response = await fetch("/api/backend/v1/alignments", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_create_alignment_v1_alignments_post",
+    path: "/v1/alignments",
+    actor: input.actor_username,
+    label: "Alignment create",
+    body: {
       actor_username: input.actor_username,
       parent_id: input.parent_id,
       child_id: input.child_id,
       alignment_type: input.alignment_type || "SUPPORTS",
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Alignment create failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as AlignmentMutationResponse;
 }
 
 export async function deleteAlignmentMutation(input: {
   actor_username: string;
   edge_id: number;
 }): Promise<AlignmentDeleteResponse> {
-  const response = await fetch(`/api/backend/v1/alignments/${input.edge_id}`, {
-    method: "DELETE",
-    headers: jsonHeaders(input.actor_username, false),
+  return backendJsonRequest({
+    operation: "api_delete_alignment_v1_alignments__edge_id__delete",
+    path: `/v1/alignments/${input.edge_id}`,
+    actor: input.actor_username,
+    label: "Alignment delete",
   });
-  if (!response.ok) {
-    throw new Error(`Alignment delete failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as AlignmentDeleteResponse;
 }
 
 export async function createObjectiveAlignmentLinkMutation(input: {
   actor_username: string;
   objective_id: number;
-  linked_entity_type: string;
+  linked_entity_type: "goal" | "key_result";
   linked_entity_id: number;
-  direction: string;
+  direction: "parent" | "child";
 }): Promise<ObjectiveAlignmentLinkMutationResponse> {
-  const response = await fetch("/api/backend/v1/objective-alignment-links", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_create_objective_alignment_link_v1_objective_alignment_links_post",
+    path: "/v1/objective-alignment-links",
+    actor: input.actor_username,
+    label: "Alignment link create",
+    body: {
       actor_username: input.actor_username,
       objective_id: input.objective_id,
       linked_entity_type: input.linked_entity_type,
       linked_entity_id: input.linked_entity_id,
       direction: input.direction,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Alignment link create failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as ObjectiveAlignmentLinkMutationResponse;
 }
 
 export async function deleteObjectiveAlignmentLinkMutation(input: {
   actor_username: string;
   link_id: number;
 }): Promise<ObjectiveAlignmentLinkDeleteResponse> {
-  const response = await fetch(`/api/backend/v1/objective-alignment-links/${input.link_id}`, {
-    method: "DELETE",
-    headers: jsonHeaders(input.actor_username, false),
+  return backendJsonRequest({
+    operation: "api_delete_objective_alignment_link_v1_objective_alignment_links__link_id__delete",
+    path: `/v1/objective-alignment-links/${input.link_id}`,
+    actor: input.actor_username,
+    label: "Alignment link delete",
   });
-  if (!response.ok) {
-    throw new Error(`Alignment link delete failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as ObjectiveAlignmentLinkDeleteResponse;
 }

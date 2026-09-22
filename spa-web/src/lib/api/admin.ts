@@ -1,15 +1,103 @@
-import { jsonHeaders, responseDetail } from "@/lib/api/http";
+import { backendBlobRequest, backendJsonRequest } from "@/lib/api/http";
 import type {
   AdminAiHealthResponse,
   AdminDbRestoreResponse,
   AdminPdfHealthResponse,
-  AuditSummaryResponse,
+  AuditEventSummaryView,
+  AuditSummaryBucketView,
+  AuditSummaryView,
   TeamDeleteResponse,
   TeamMutationResponse,
   UserMutationResponse,
   UserPasswordResetResponse,
 } from "@/lib/api/types";
 import { readBackendQuery } from "@/lib/api/atlas";
+import type { ReadQueryResponse } from "@/lib/api/backend-schema";
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalText(value: unknown): string | null | undefined {
+  return typeof value === "string" || value === null ? value : undefined;
+}
+
+function auditBuckets(value: unknown): AuditSummaryBucketView[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.flatMap((entry) => {
+    const bucket = asRecord(entry);
+    const count = optionalNumber(bucket?.count);
+    const bucketValue = bucket?.value;
+    if (
+      !bucket ||
+      count === undefined ||
+      !(
+        typeof bucketValue === "string" ||
+        typeof bucketValue === "number" ||
+        bucketValue === null
+      )
+    ) {
+      return [];
+    }
+    return [{ value: bucketValue, count }];
+  });
+}
+
+function auditEvents(value: unknown): AuditEventSummaryView[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value.flatMap((entry) => {
+    const event = asRecord(entry);
+    const id = optionalNumber(event?.id);
+    if (!event || id === undefined) {
+      return [];
+    }
+    return [{
+      id,
+      actor: optionalText(event.actor),
+      actor_user_id: optionalNumber(event.actor_user_id),
+      actor_role: optionalText(event.actor_role),
+      actor_team_id: optionalNumber(event.actor_team_id),
+      action: optionalText(event.action),
+      entity: optionalText(event.entity),
+      result: optionalText(event.result),
+      target_type: optionalText(event.target_type),
+      target_id: optionalNumber(event.target_id),
+      target_owner_id: optionalNumber(event.target_owner_id),
+      target_team_id: optionalNumber(event.target_team_id),
+      correlation_id: optionalText(event.correlation_id),
+      request_id: optionalText(event.request_id),
+      created_at: optionalText(event.created_at),
+    }];
+  });
+}
+
+/** Project the broad generated read-query contract into the admin screen model. */
+export function toAuditSummaryView(payload: ReadQueryResponse): AuditSummaryView {
+  return {
+    window_days: optionalNumber(payload.window_days),
+    recent_limit: optionalNumber(payload.recent_limit),
+    total_events: optionalNumber(payload.total_events),
+    success_events: optionalNumber(payload.success_events),
+    failure_events: optionalNumber(payload.failure_events),
+    latest_event_at: optionalText(payload.latest_event_at),
+    by_actor_role: auditBuckets(payload.by_actor_role),
+    by_actor_team_id: auditBuckets(payload.by_actor_team_id),
+    by_target_type: auditBuckets(payload.by_target_type),
+    by_entity: auditBuckets(payload.by_entity),
+    by_action: auditBuckets(payload.by_action),
+    recent_events: auditEvents(payload.recent_events),
+  };
+}
 
 export async function createUserMutation(input: {
   actor_username: string;
@@ -21,10 +109,12 @@ export async function createUserMutation(input: {
   team_id?: number;
   must_change_password?: boolean;
 }): Promise<UserMutationResponse> {
-  const response = await fetch("/api/backend/v1/users", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_create_user_v1_users_post",
+    path: "/v1/users",
+    actor: input.actor_username,
+    label: "User create",
+    body: {
       actor_username: input.actor_username,
       username: input.username,
       password: input.password,
@@ -33,12 +123,8 @@ export async function createUserMutation(input: {
       manager_id: input.manager_id,
       team_id: input.team_id,
       must_change_password: Boolean(input.must_change_password),
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`User create failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as UserMutationResponse;
 }
 
 export async function updateUserMutation(input: {
@@ -50,22 +136,20 @@ export async function updateUserMutation(input: {
   team_id?: number;
   is_active?: boolean;
 }): Promise<UserMutationResponse> {
-  const response = await fetch(`/api/backend/v1/users/${input.user_id}`, {
-    method: "PATCH",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_update_user_v1_users__user_id__patch",
+    path: `/v1/users/${input.user_id}`,
+    actor: input.actor_username,
+    label: "User update",
+    body: {
       actor_username: input.actor_username,
       display_name: input.display_name,
       role: input.role,
       manager_id: input.manager_id,
       team_id: input.team_id,
       is_active: input.is_active,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`User update failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as UserMutationResponse;
 }
 
 export async function resetUserPasswordMutation(input: {
@@ -74,19 +158,17 @@ export async function resetUserPasswordMutation(input: {
   new_password: string;
   require_change?: boolean;
 }): Promise<UserPasswordResetResponse> {
-  const response = await fetch(`/api/backend/v1/users/${input.user_id}/reset-password`, {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_reset_user_password_v1_users__user_id__reset_password_post",
+    path: `/v1/users/${input.user_id}/reset-password`,
+    actor: input.actor_username,
+    label: "Password reset",
+    body: {
       actor_username: input.actor_username,
       new_password: input.new_password,
       require_change: Boolean(input.require_change),
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Password reset failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as UserPasswordResetResponse;
 }
 
 export async function createTeamMutation(input: {
@@ -94,19 +176,17 @@ export async function createTeamMutation(input: {
   name: string;
   description?: string;
 }): Promise<TeamMutationResponse> {
-  const response = await fetch("/api/backend/v1/teams", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_create_team_v1_teams_post",
+    path: "/v1/teams",
+    actor: input.actor_username,
+    label: "Team create",
+    body: {
       actor_username: input.actor_username,
       name: input.name,
       description: input.description || null,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Team create failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as TeamMutationResponse;
 }
 
 export async function updateTeamMutation(input: {
@@ -115,70 +195,62 @@ export async function updateTeamMutation(input: {
   name?: string;
   description?: string;
 }): Promise<TeamMutationResponse> {
-  const response = await fetch(`/api/backend/v1/teams/${input.team_id}`, {
-    method: "PATCH",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_update_team_v1_teams__team_id__patch",
+    path: `/v1/teams/${input.team_id}`,
+    actor: input.actor_username,
+    label: "Team update",
+    body: {
       actor_username: input.actor_username,
       name: input.name,
       description: input.description,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Team update failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as TeamMutationResponse;
 }
 
 export async function deleteTeamMutation(input: {
   actor_username: string;
   team_id: number;
 }): Promise<TeamDeleteResponse> {
-  const response = await fetch(`/api/backend/v1/teams/${input.team_id}`, {
-    method: "DELETE",
-    headers: jsonHeaders(input.actor_username, false),
+  return backendJsonRequest({
+    operation: "api_delete_team_v1_teams__team_id__delete",
+    path: `/v1/teams/${input.team_id}`,
+    actor: input.actor_username,
+    label: "Team delete",
   });
-  if (!response.ok) {
-    throw new Error(`Team delete failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as TeamDeleteResponse;
 }
 
 export async function readAdminAiHealth(input: {
   actor_username: string;
   live_probe?: boolean;
 }): Promise<AdminAiHealthResponse> {
-  const probeParam = input.live_probe ? "?live_probe=true" : "?live_probe=false";
-  const response = await fetch(`/api/backend/v1/admin/ai-health${probeParam}`, {
-    method: "GET",
+  return backendJsonRequest({
+    operation: "api_admin_ai_health_v1_admin_ai_health_get",
+    path: "/v1/admin/ai-health",
+    query: { live_probe: Boolean(input.live_probe) },
+    actor: input.actor_username,
+    label: "AI health read",
     cache: "no-store",
-    headers: jsonHeaders(input.actor_username),
   });
-  if (!response.ok) {
-    throw new Error(`AI health read failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as AdminAiHealthResponse;
 }
 
 export async function readAdminPdfHealth(input: {
   actor_username: string;
 }): Promise<AdminPdfHealthResponse> {
-  const response = await fetch("/api/backend/v1/admin/pdf-health", {
-    method: "GET",
+  return backendJsonRequest({
+    operation: "api_admin_pdf_health_v1_admin_pdf_health_get",
+    path: "/v1/admin/pdf-health",
+    actor: input.actor_username,
+    label: "PDF health read",
     cache: "no-store",
-    headers: jsonHeaders(input.actor_username),
   });
-  if (!response.ok) {
-    throw new Error(`PDF health read failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as AdminPdfHealthResponse;
 }
 
 export async function readAuditSummary(input: {
   actor_username: string;
   days?: number;
   recent_limit?: number;
-}): Promise<AuditSummaryResponse> {
+}): Promise<AuditSummaryView> {
   const payload = await readBackendQuery({
     actor_username: input.actor_username,
     kind: "audit.summary",
@@ -187,34 +259,30 @@ export async function readAuditSummary(input: {
       recent_limit: input.recent_limit,
     },
   });
-  return payload as AuditSummaryResponse;
+  return toAuditSummaryView(payload);
 }
 
 export async function readAdminDbBackup(input: {
   actor_username: string;
 }): Promise<Blob> {
-  const response = await fetch("/api/backend/v1/admin/db-backup", {
-    method: "GET",
+  return backendBlobRequest({
+    operation: "api_admin_db_backup_v1_admin_db_backup_get",
+    path: "/v1/admin/db-backup",
+    actor: input.actor_username,
+    label: "DB backup export",
     cache: "no-store",
-    headers: jsonHeaders(input.actor_username),
   });
-  if (!response.ok) {
-    throw new Error(`DB backup export failed: ${await responseDetail(response)}`);
-  }
-  return await response.blob();
 }
 
 export async function restoreAdminDbBackup(input: {
   actor_username: string;
-  payload: Record<string, unknown>;
+  payload: { format: string } & Record<string, unknown>;
 }): Promise<AdminDbRestoreResponse> {
-  const response = await fetch("/api/backend/v1/admin/db-restore", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify(input.payload),
+  return backendJsonRequest({
+    operation: "api_admin_db_restore_v1_admin_db_restore_post",
+    path: "/v1/admin/db-restore",
+    actor: input.actor_username,
+    label: "DB backup restore",
+    body: input.payload,
   });
-  if (!response.ok) {
-    throw new Error(`DB backup restore failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as AdminDbRestoreResponse;
 }

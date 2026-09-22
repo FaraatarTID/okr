@@ -9,6 +9,8 @@
     "typecheck": "tsc --noEmit",
     "gen:api": "openapi-typescript src/lib/api/openapi.json -o src/lib/api/generated/schema.d.ts",
     "check:gen:api": "node scripts/check-generated-api.mjs",
+    "gen:operation-routes": "python ../scripts/generate_spa_operation_routes.py",
+    "check:operation-routes": "python ../scripts/generate_spa_operation_routes.py --check",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

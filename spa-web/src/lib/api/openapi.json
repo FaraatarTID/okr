@@ -1,6 +1,303 @@
 {
   "components": {
     "schemas": {
+      "AdminAiHealthResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "config_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Config Message"
+          },
+          "configured": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Configured"
+          },
+          "external_ai_allowed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Ai Allowed"
+          },
+          "live_probe_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Probe Enabled"
+          },
+          "probe_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probe Message"
+          },
+          "probe_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probe Ok"
+          },
+          "probe_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probe Payload"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "AdminAiHealthResponse",
+        "type": "object"
+      },
+      "AdminDbRestoreRequest": {
+        "additionalProperties": true,
+        "description": "Validated envelope for an operator-supplied database backup.",
+        "properties": {
+          "format": {
+            "minLength": 1,
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "AdminDbRestoreRequest",
+        "type": "object"
+      },
+      "AdminDbRestoreResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "exported_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exported At"
+          },
+          "format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Format"
+          },
+          "restored_counts": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restored Counts"
+          },
+          "unknown_tables": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unknown Tables"
+          }
+        },
+        "title": "AdminDbRestoreResponse",
+        "type": "object"
+      },
+      "AdminPdfHealthResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "chromium_executable_detected": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chromium Executable Detected"
+          },
+          "chromium_executable_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chromium Executable Path"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "managed_cloud_runtime": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Managed Cloud Runtime"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "pdfshift_api_key_configured": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdfshift Api Key Configured"
+          },
+          "pdfshift_available": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdfshift Available"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "playwright_available": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playwright Available"
+          },
+          "supported_method": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supported Method"
+          }
+        },
+        "title": "AdminPdfHealthResponse",
+        "type": "object"
+      },
       "AiAnalyzeNodeRequest": {
         "properties": {
           "actor_username": {
@@ -35,6 +332,126 @@
           "node_id"
         ],
         "title": "AiAnalyzeNodeRequest",
+        "type": "object"
+      },
+      "AiAnalyzeNodeResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "analyzed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analyzed At"
+          },
+          "deadline_warnings": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline Warnings"
+          },
+          "effectiveness_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effectiveness Score"
+          },
+          "efficiency_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Efficiency Score"
+          },
+          "gap_analysis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap Analysis"
+          },
+          "overall_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Overall Score"
+          },
+          "proposed_tasks": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": true,
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed Tasks"
+          },
+          "quality_assessment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality Assessment"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "title": "AiAnalyzeNodeResponse",
         "type": "object"
       },
       "AiStrategyPulseRequest": {
@@ -94,6 +511,113 @@
         "title": "AiStrategyPulseRequest",
         "type": "object"
       },
+      "AiStrategyPulseResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "burnout_risk": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Burnout Risk"
+          },
+          "burnout_snapshot": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Burnout Snapshot"
+          },
+          "cycle_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cycle Id"
+          },
+          "gap_signals": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap Signals"
+          },
+          "portfolio_actions": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Portfolio Actions"
+          },
+          "predictive_outlook": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predictive Outlook"
+          },
+          "strategy_gaps": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Gaps"
+          },
+          "subject_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Username"
+          }
+        },
+        "title": "AiStrategyPulseResponse",
+        "type": "object"
+      },
       "AiTeamCoachRequest": {
         "properties": {
           "actor_username": {
@@ -114,6 +638,25 @@
           }
         },
         "title": "AiTeamCoachRequest",
+        "type": "object"
+      },
+      "AiTeamCoachResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "coaching": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coaching"
+          }
+        },
+        "title": "AiTeamCoachResponse",
         "type": "object"
       },
       "AlignmentCreateRequest": {
@@ -223,6 +766,252 @@
         "title": "AlignmentMutationView",
         "type": "object"
       },
+      "AtlasGoalSnapshotResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "objectives": {
+            "items": {
+              "$ref": "#/components/schemas/AtlasObjectiveSnapshotResponse"
+            },
+            "title": "Objectives",
+            "type": "array"
+          },
+          "owner_id": {
+            "default": 0,
+            "title": "Owner Id",
+            "type": "integer"
+          },
+          "progress": {
+            "default": 0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AtlasGoalSnapshotResponse",
+        "type": "object"
+      },
+      "AtlasKeyResultSnapshotResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "ai_analysis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Analysis"
+          },
+          "ai_deadline_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Deadline State"
+          },
+          "ai_overall_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Overall Score"
+          },
+          "analysis_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Updated At"
+          },
+          "current_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Value"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "metric_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Type"
+          },
+          "progress": {
+            "default": 0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "start_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Value"
+          },
+          "target_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Value"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/AtlasTaskSnapshotResponse"
+            },
+            "title": "Tasks",
+            "type": "array"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AtlasKeyResultSnapshotResponse",
+        "type": "object"
+      },
+      "AtlasObjectiveSnapshotResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "key_results": {
+            "items": {
+              "$ref": "#/components/schemas/AtlasKeyResultSnapshotResponse"
+            },
+            "title": "Key Results",
+            "type": "array"
+          },
+          "progress": {
+            "default": 0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "score_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score Mode"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AtlasObjectiveSnapshotResponse",
+        "type": "object"
+      },
       "AtlasSnapshotRequest": {
         "properties": {
           "actor_username": {
@@ -266,6 +1055,105 @@
           "cycle_id"
         ],
         "title": "AtlasSnapshotRequest",
+        "type": "object"
+      },
+      "AtlasSnapshotResponse": {
+        "properties": {
+          "goals": {
+            "items": {
+              "$ref": "#/components/schemas/AtlasGoalSnapshotResponse"
+            },
+            "title": "Goals",
+            "type": "array"
+          },
+          "users_map": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Users Map",
+            "type": "object"
+          }
+        },
+        "title": "AtlasSnapshotResponse",
+        "type": "object"
+      },
+      "AtlasTaskSnapshotResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
+          "deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "estimated_minutes": {
+            "default": 0,
+            "title": "Estimated Minutes",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "progress": {
+            "default": 0,
+            "title": "Progress",
+            "type": "number"
+          },
+          "status": {
+            "default": "",
+            "title": "Status",
+            "type": "string"
+          },
+          "timer_started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timer Started At"
+          },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
+          "total_time_spent": {
+            "default": 0,
+            "title": "Total Time Spent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "AtlasTaskSnapshotResponse",
         "type": "object"
       },
       "AuthLoginResponse": {
@@ -1485,6 +2373,117 @@
           "cycle_id"
         ],
         "title": "LeadershipMetricsRequest",
+        "type": "object"
+      },
+      "LeadershipMetricsResponse": {
+        "additionalProperties": true,
+        "properties": {
+          "at_risk": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Risk"
+          },
+          "at_risk_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "At Risk Count"
+          },
+          "avg_confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avg Confidence"
+          },
+          "heatmap_data": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heatmap Data"
+          },
+          "hygiene_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hygiene Pct"
+          },
+          "member_deadlines": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Deadlines"
+          },
+          "member_progress": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Member Progress"
+          },
+          "total_krs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Krs"
+          }
+        },
+        "title": "LeadershipMetricsResponse",
         "type": "object"
       },
       "LoginRequest": {
@@ -3266,6 +4265,30 @@
         "title": "TimerStartRequest",
         "type": "object"
       },
+      "TimerStartResponse": {
+        "properties": {
+          "start_time": {
+            "format": "date-time",
+            "title": "Start Time",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "integer"
+          },
+          "work_log_id": {
+            "title": "Work Log Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "work_log_id",
+          "task_id",
+          "start_time"
+        ],
+        "title": "TimerStartResponse",
+        "type": "object"
+      },
       "TimerStopRequest": {
         "properties": {
           "summary": {
@@ -3301,6 +4324,70 @@
           "task_id"
         ],
         "title": "TimerStopRequest",
+        "type": "object"
+      },
+      "TimerStopResponse": {
+        "properties": {
+          "duration_minutes": {
+            "title": "Duration Minutes",
+            "type": "integer"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "integer"
+          },
+          "work_log_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Log Id"
+          }
+        },
+        "required": [
+          "task_id",
+          "duration_minutes"
+        ],
+        "title": "TimerStopResponse",
         "type": "object"
       },
       "UserCreateRequest": {
@@ -3589,13 +4676,6 @@
       },
       "ValidationError": {
         "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
           "loc": {
             "items": {
               "anyOf": [
@@ -4723,9 +5803,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Admin Ai Health V1 Admin Ai Health Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AdminAiHealthResponse"
                 }
               }
             },
@@ -4897,11 +5975,22 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Database backup export.",
+            "headers": {
+              "Content-Disposition": {
+                "description": "Suggested attachment filename.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "422": {
             "content": {
@@ -5066,14 +6155,22 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminDbRestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Admin Db Restore V1 Admin Db Restore Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AdminDbRestoreResponse"
                 }
               }
             },
@@ -5423,9 +6520,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Admin Pdf Health V1 Admin Pdf Health Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AdminPdfHealthResponse"
                 }
               }
             },
@@ -5609,9 +6704,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Ai Analyze Node V1 Ai Analyze Node Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AiAnalyzeNodeResponse"
                 }
               }
             },
@@ -5811,9 +6904,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Ai Strategy Pulse V1 Ai Strategy Pulse Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AiStrategyPulseResponse"
                 }
               }
             },
@@ -6013,9 +7104,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Ai Team Coach V1 Ai Team Coach Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AiTeamCoachResponse"
                 }
               }
             },
@@ -10968,9 +12057,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Read Atlas Snapshot V1 Read Atlas Snapshot Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/AtlasSnapshotResponse"
                 }
               }
             },
@@ -11154,9 +12241,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Read Leadership Metrics V1 Read Leadership Metrics Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/LeadershipMetricsResponse"
                 }
               }
             },
@@ -12827,9 +13912,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Start Timer V1 Timer Start Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TimerStartResponse"
                 }
               }
             },
@@ -13013,9 +14096,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Api Stop Timer V1 Timer Stop Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/TimerStopResponse"
                 }
               }
             },

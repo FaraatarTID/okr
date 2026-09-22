@@ -10,7 +10,9 @@ from backend_app.schemas import (
     JobCancelResponse,
     JobSubmitRequest,
     JobView,
+    TimerStartResponse,
     TimerStartRequest,
+    TimerStopResponse,
     TimerStopRequest,
 )
 
@@ -31,6 +33,7 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
 
     @router.post(
         "/v1/timer/start",
+        response_model=TimerStartResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     def api_start_timer(
@@ -73,6 +76,7 @@ def register_operations_routes(router: APIRouter, main: Any) -> None:
 
     @router.post(
         "/v1/timer/stop",
+        response_model=TimerStopResponse,
         dependencies=[Depends(main.require_service_access)],
     )
     def api_stop_timer(

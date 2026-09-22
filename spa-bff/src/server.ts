@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
-import { isAllowlistedRoute, normalizeBackendPath, requiresActorHeader } from "./allowlist.js";
+import { isAllowlistedRoute, normalizeBackendPath, requiresActorHeader, resolveAllowlistedOperation } from "./allowlist.js";
 import type { BffConfig } from "./config.js";
 import { readConfig } from "./config.js";
 import { proxyToBackend } from "./proxy.js";
@@ -516,6 +516,12 @@ export function createServer(
             "Route not allowlisted by spa-bff policy.",
             readRequestId(request.headers),
           ),
+        );
+      }
+      const operationId = resolveAllowlistedOperation(request.method, backendPath);
+      if (!operationId) {
+        return reply.code(500).send(
+          buildErrorEnvelope("OPENAPI_OPERATION_MISSING", "Allowlisted route lacks an OpenAPI operation mapping.", readRequestId(request.headers)),
         );
       }
 

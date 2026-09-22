@@ -6,9 +6,9 @@ import type {
   AdminAiHealthResponse,
   AdminDbRestoreResponse,
   AdminPdfHealthResponse,
-  AuditEventSummary,
-  AuditSummaryBucket,
-  AuditSummaryResponse,
+  AuditEventSummaryView,
+  AuditSummaryBucketView,
+  AuditSummaryView,
   CycleSummary,
   ReadQueryTeam,
   ReadQueryUser,
@@ -83,7 +83,7 @@ type AdminModePanelProps = {
   adminHealthPending: boolean;
   onLoadAdminHealthConfig: () => void;
   onLoadAdminHealthLive: () => void;
-  adminAuditSummary: AuditSummaryResponse | null;
+  adminAuditSummary: AuditSummaryView | null;
   adminAuditSummaryPending: boolean;
   adminAuditSummaryError: string;
   onLoadAdminAuditSummary: () => void;
@@ -197,13 +197,13 @@ export default function AdminModePanel({
     }
     return map;
   }, [adminTeams]);
-  const formatBucketValue = (bucket: AuditSummaryBucket): string => {
+  const formatBucketValue = (bucket: AuditSummaryBucketView): string => {
     if (bucket.value === null || bucket.value === undefined || bucket.value === "") {
       return "Unassigned";
     }
     return String(bucket.value);
   };
-  const renderBuckets = (label: string, buckets: AuditSummaryBucket[] | undefined) => (
+  const renderBuckets = (label: string, buckets: AuditSummaryBucketView[] | undefined) => (
     <div style={{ marginTop: "0.55rem", border: "1px solid var(--line)", borderRadius: 10, padding: "0.55rem" }}>
       <div style={{ fontSize: "0.84rem", color: "var(--ink-soft)" }}>{label}</div>
       {buckets && buckets.length ? (
@@ -828,7 +828,7 @@ export default function AdminModePanel({
   );
 }
 
-function AuditEventRow({ event }: { event: AuditEventSummary }) {
+function AuditEventRow({ event }: { event: AuditEventSummaryView }) {
   return (
     <article className="report-list-row compact">
       <strong>

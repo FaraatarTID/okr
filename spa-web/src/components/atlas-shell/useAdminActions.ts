@@ -166,9 +166,12 @@ export default function useAdminActions({
     try {
       const raw = await adminBackupFile.text();
       const payload = JSON.parse(raw) as Record<string, unknown>;
+      if (typeof payload.format !== "string" || !payload.format.trim()) {
+        throw new Error("Backup JSON must include a non-empty format field.");
+      }
       const result = await restoreAdminDbBackup({
         actor_username: user.username,
-        payload,
+        payload: { ...payload, format: payload.format },
       });
       setAdminBackupRestoreResult(result);
       setAdminCycleMessage("Backup restored.");

@@ -1,4 +1,4 @@
-import { jsonHeaders, jsonHeadersWithIdempotency, responseDetail } from "@/lib/api/http";
+import { backendJsonRequest, jsonHeadersWithIdempotency } from "@/lib/api/http";
 import type {
   AiAnalyzeNodeResponse,
   AiStrategyPulseResponse,
@@ -17,37 +17,33 @@ export async function analyzeNodeAi(input: {
   node_id: number;
   node_type: "GOAL" | "OBJECTIVE" | "KEY_RESULT" | "TASK";
 }): Promise<AiAnalyzeNodeResponse> {
-  const response = await fetch("/api/backend/v1/ai/analyze-node", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_ai_analyze_node_v1_ai_analyze_node_post",
+    path: "/v1/ai/analyze-node",
+    actor: input.actor_username,
+    label: "AI node analysis",
+    body: {
       actor_username: input.actor_username,
       node_id: input.node_id,
       node_type: input.node_type,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`AI node analysis failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as AiAnalyzeNodeResponse;
 }
 
 export async function analyzeTeamCoachAi(input: {
   actor_username: string;
   team_data: Record<string, unknown>;
 }): Promise<AiTeamCoachResponse> {
-  const response = await fetch("/api/backend/v1/ai/team-coach", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_ai_team_coach_v1_ai_team_coach_post",
+    path: "/v1/ai/team-coach",
+    actor: input.actor_username,
+    label: "AI team coach",
+    body: {
       actor_username: input.actor_username,
       team_data: input.team_data,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`AI team coach failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as AiTeamCoachResponse;
 }
 
 export async function readStrategyPulseAi(input: {
@@ -57,21 +53,19 @@ export async function readStrategyPulseAi(input: {
   cycle_title?: string;
   days?: number;
 }): Promise<AiStrategyPulseResponse> {
-  const response = await fetch("/api/backend/v1/ai/strategy-pulse", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_ai_strategy_pulse_v1_ai_strategy_pulse_post",
+    path: "/v1/ai/strategy-pulse",
+    actor: input.actor_username,
+    label: "AI strategy pulse",
+    body: {
       actor_username: input.actor_username,
       cycle_id: input.cycle_id,
       subject_username: input.subject_username || input.actor_username,
       cycle_title: input.cycle_title,
-      days: input.days,
-    }),
+      days: input.days ?? 14,
+    },
   });
-  if (!response.ok) {
-    throw new Error(`AI strategy pulse failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as AiStrategyPulseResponse;
 }
 
 export async function createWeeklyPlanMutation(input: {
@@ -83,10 +77,12 @@ export async function createWeeklyPlanMutation(input: {
   p2?: string;
   p3?: string;
 }): Promise<WeeklyPlanMutationResponse> {
-  const response = await fetch("/api/backend/v1/weekly-plans", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_create_weekly_plan_v1_weekly_plans_post",
+    path: "/v1/weekly-plans",
+    actor: input.actor_username,
+    label: "Weekly plan create",
+    body: {
       actor_username: input.actor_username,
       user_id: input.user_id,
       start_date: input.start_date,
@@ -94,12 +90,8 @@ export async function createWeeklyPlanMutation(input: {
       p1: input.p1,
       p2: input.p2 || null,
       p3: input.p3 || null,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Weekly plan create failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as WeeklyPlanMutationResponse;
 }
 
 export async function createRetrospectiveMutation(input: {
@@ -110,22 +102,20 @@ export async function createRetrospectiveMutation(input: {
   content: string;
   sentiment?: string;
 }): Promise<RetrospectiveMutationResponse> {
-  const response = await fetch("/api/backend/v1/retrospectives", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_create_retrospective_v1_retrospectives_post",
+    path: "/v1/retrospectives",
+    actor: input.actor_username,
+    label: "Retrospective create",
+    body: {
       actor_username: input.actor_username,
       user_id: input.user_id,
       cycle_id: input.cycle_id,
       week_start_date: input.week_start_date,
       content: input.content,
       sentiment: input.sentiment || null,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Retrospective create failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as RetrospectiveMutationResponse;
 }
 
 export async function createCheckInMutation(input: {
@@ -138,10 +128,12 @@ export async function createCheckInMutation(input: {
   special_cause_note?: string;
   experiment_id?: number;
 }): Promise<CheckInMutationResponse> {
-  const response = await fetch("/api/backend/v1/check-ins", {
-    method: "POST",
-    headers: jsonHeaders(input.actor_username),
-    body: JSON.stringify({
+  return backendJsonRequest({
+    operation: "api_create_check_in_v1_check_ins_post",
+    path: "/v1/check-ins",
+    actor: input.actor_username,
+    label: "Check-in create",
+    body: {
       actor_username: input.actor_username,
       kr_id: input.kr_id,
       value: input.value,
@@ -150,12 +142,8 @@ export async function createCheckInMutation(input: {
       variation_type: input.variation_type || "COMMON_CAUSE",
       special_cause_note: input.special_cause_note || null,
       experiment_id: input.experiment_id,
-    }),
+    },
   });
-  if (!response.ok) {
-    throw new Error(`Check-in create failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as CheckInMutationResponse;
 }
 
 export async function createExperimentMutation(input: {
@@ -178,19 +166,18 @@ export async function createExperimentMutation(input: {
     expected_effect_direction: input.expected_effect_direction || null,
     expected_effect_size: input.expected_effect_size,
   };
-  const response = await fetch("/api/backend/v1/experiments", {
-    method: "POST",
+  return backendJsonRequest({
+    operation: "api_create_experiment_v1_experiments_post",
+    path: "/v1/experiments",
+    actor: input.actor_username,
+    label: "Experiment create",
     headers: jsonHeadersWithIdempotency(
       input.actor_username,
       "experiments.create",
       requestPayload,
     ),
-    body: JSON.stringify(requestPayload),
+    body: requestPayload,
   });
-  if (!response.ok) {
-    throw new Error(`Experiment create failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as ExperimentMutationResponse;
 }
 
 export async function updateExperimentMutation(input: {
@@ -202,19 +189,18 @@ export async function updateExperimentMutation(input: {
     actor_username: input.actor_username,
     updates: input.updates,
   };
-  const response = await fetch(`/api/backend/v1/experiments/${input.experiment_id}`, {
-    method: "PATCH",
+  return backendJsonRequest({
+    operation: "api_update_experiment_v1_experiments__experiment_id__patch",
+    path: `/v1/experiments/${input.experiment_id}`,
+    actor: input.actor_username,
+    label: "Experiment update",
     headers: jsonHeadersWithIdempotency(
       input.actor_username,
       `experiments.update.${input.experiment_id}`,
       requestPayload,
     ),
-    body: JSON.stringify(requestPayload),
+    body: requestPayload,
   });
-  if (!response.ok) {
-    throw new Error(`Experiment update failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as ExperimentMutationResponse;
 }
 
 export async function closeExperimentMutation(input: {
@@ -228,17 +214,16 @@ export async function closeExperimentMutation(input: {
     decision: input.decision,
     rationale: input.rationale || "",
   };
-  const response = await fetch(`/api/backend/v1/experiments/${input.experiment_id}/close`, {
-    method: "POST",
+  return backendJsonRequest({
+    operation: "api_close_experiment_v1_experiments__experiment_id__close_post",
+    path: `/v1/experiments/${input.experiment_id}/close`,
+    actor: input.actor_username,
+    label: "Experiment close",
     headers: jsonHeadersWithIdempotency(
       input.actor_username,
       `experiments.close.${input.experiment_id}`,
       requestPayload,
     ),
-    body: JSON.stringify(requestPayload),
+    body: requestPayload,
   });
-  if (!response.ok) {
-    throw new Error(`Experiment close failed: ${await responseDetail(response)}`);
-  }
-  return (await response.json()) as ExperimentMutationResponse;
 }

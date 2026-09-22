@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import useShellAccessControl from "@/components/atlas-shell/useShellAccessControl";
 import type { AdminTab } from "@/components/atlas-shell/AdminModePanel";
-import { logoutSession, type AuditSummaryResponse, type AuthUser } from "@/lib/api";
+import { logoutSession, type AuditSummaryView, type AuthUser } from "@/lib/api";
 
 vi.mock("@/lib/api", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api")>("@/lib/api");
@@ -24,7 +24,7 @@ type HarnessProps = {
   setAdminTab: Dispatch<SetStateAction<AdminTab>>;
   adminAiHealth: Record<string, unknown> | null;
   adminPdfHealth: Record<string, unknown> | null;
-  adminAuditSummary: AuditSummaryResponse | null;
+  adminAuditSummary: AuditSummaryView | null;
 };
 
 const ACTIVE_USER: AuthUser = {
@@ -291,4 +291,3 @@ describe("useShellAccessControl", () => {
     });
   });
 });
-

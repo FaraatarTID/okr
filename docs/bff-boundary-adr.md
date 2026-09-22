@@ -36,7 +36,7 @@ to a concrete value and must not duplicate backend business rules:
 | Authentication bridging | Converts browser login/session state into authenticated internal API calls | Session and backend-auth contract tests |
 | Actor binding | Prevents clients from selecting another actor through request payloads or headers | Actor-rewrite rejection tests |
 | Request signing and service token | Authenticates the BFF-to-backend hop and detects tampering | Signing and replay-protection tests |
-| Route allowlisting | Exposes only approved browser routes while keeping operator/internal APIs private | Generated allowlist drift gate |
+| Route allowlisting | Exposes only approved browser routes while keeping operator/internal APIs private | Generated allowlist drift gate and OpenAPI operation-ID mapping |
 | CSRF protection | Rejects state-changing browser requests that lack a valid double-submit token | CSRF request tests and [bff-security-review.md](bff-security-review.md) |
 | Error shaping | Prevents internal error leakage by returning bounded error envelopes | Sanitized error contracts |
 
@@ -243,9 +243,10 @@ Rejected because it would encourage business logic duplication and make future c
 
 ## Evidence required for closure
 
-- BFF policy check passed: `npm run check:allowlist` reports 44 routes up to date.
+- BFF policy check passed: `npm run check:allowlist` reports 44 routes up to date, each mapped to a generated OpenAPI operation ID.
 - The package does not define `npm run check`; the intended allowlist control is `npm run check:allowlist`.
-- BFF test suite passed: `npm test` completed 9 test files and 74 tests successfully.
+- BFF test suite passed: `npm test` completed 9 test files and 77 tests successfully.
+- The cross-layer OpenAPI contract workflow and CI gates are documented in [openapi-contract-synchronization.md](openapi-contract-synchronization.md).
 - Initial live health baseline captured on 2026-08-31: backend HTTP 200 in approximately 1146 ms and BFF HTTP 200 in approximately 7 ms for single local requests. This is a local baseline sample, not a production performance conclusion.
 - Route and responsibility inventory for `spa-bff/src/server.ts`.
 - API contract mapping for every BFF-to-backend call.
