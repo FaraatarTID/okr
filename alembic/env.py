@@ -3,7 +3,7 @@ from logging.config import fileConfig
 import os
 import sys
 
-from sqlalchemy import engine_from_config
+from sqlalchemy import engine_from_config, text
 from sqlalchemy import pool
 
 from alembic import context
@@ -91,14 +91,33 @@ def run_migrations_online() -> None:
 
     try:
         with connectable.connect() as connection:
+            # Fleet workers identify a tenant by an opaque environment ID. Hold
+            # a PostgreSQL advisory lock for the entire Alembic transaction so a
+            # retry, another runner, or a second rollout cannot migrate that
+            # tenant concurrently. SQLite local smoke runs intentionally skip it.
+            lock_id = os.getenv("OKR_MIGRATION_LOCK_ID", "").strip()
+            advisory_lock_held = False
+            if lock_id and connection.dialect.name == "postgresql":
+                connection.execute(
+                    text("SELECT pg_advisory_lock(hashtext(:lock_id))"),
+                    {"lock_id": lock_id},
+                )
+                advisory_lock_held = True
             context.configure(
                 connection=connection,
                 target_metadata=target_metadata,
                 render_as_batch=True,
             )
 
-            with context.begin_transaction():
-                context.run_migrations()
+            try:
+                with context.begin_transaction():
+                    context.run_migrations()
+            finally:
+                if advisory_lock_held:
+                    connection.execute(
+                        text("SELECT pg_advisory_unlock(hashtext(:lock_id))"),
+                        {"lock_id": lock_id},
+                    )
     finally:
         connectable.dispose()
 

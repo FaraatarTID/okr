@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/control-plane/v1/rollouts/{rollout_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fleet Rollout
+         * @description Read SQL-backed fleet state without exposing customer connection data.
+         */
+        get: operations["get_fleet_rollout_control_plane_v1_rollouts__rollout_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -2096,6 +2116,49 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fleet_rollout_control_plane_v1_rollouts__rollout_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-okr-actor"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
+                "x-okr-service-token"?: string | null;
+                "x-okr-signature"?: string | null;
+                "x-okr-timestamp"?: string | null;
+                "x-okr-nonce"?: string | null;
+                "x-okr-key-id"?: string | null;
+                "x-forwarded-for"?: string | null;
+            };
+            path: {
+                rollout_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

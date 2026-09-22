@@ -91,3 +91,22 @@ def register_control_plane_routes(router: APIRouter, main: Any) -> None:
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return {"audit_event": audit_event_mapping(saved)}
+
+    @router.get(
+        "/control-plane/v1/rollouts/{rollout_id}",
+        dependencies=[Depends(main.require_service_access)],
+    )
+    def get_fleet_rollout(
+        rollout_id: int, _: str = Depends(require_operator)
+    ) -> dict[str, Any]:
+        """Read SQL-backed fleet state without exposing customer connection data."""
+        service = getattr(main, "fleet_control_plane", None)
+        if service is None:
+            raise HTTPException(
+                status_code=503,
+                detail="SQL fleet control plane is not configured.",
+            )
+        try:
+            return {"api_version": "v1", "rollout": service.status(rollout_id)}
+        except Exception as exc:  # noqa: BLE001 - normalize provider/database errors
+            raise HTTPException(status_code=404, detail="Rollout not found.") from exc

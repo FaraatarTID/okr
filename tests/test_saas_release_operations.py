@@ -24,9 +24,9 @@ def environment_provider():
         state=EnvironmentState.READY,
     )
     return SimpleNamespace(
-        get_environment=lambda environment_id: record
-        if environment_id == record.environment_id
-        else None
+        get_environment=lambda environment_id: (
+            record if environment_id == record.environment_id else None
+        )
     )
 
 

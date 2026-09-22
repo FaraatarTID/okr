@@ -1,0 +1,47 @@
+name: Register verified SaaS tenant
+
+on:
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: Repository-relative single-tenant manifest path
+        required: true
+        type: string
+      provider_resource_id:
+        description: Opaque Darkube application resource ID
+        required: true
+        type: string
+      health_evidence_path:
+        description: Repository-relative JSON health-evidence path with status PASSED
+        required: true
+        type: string
+      incident_reference:
+        description: Change or incident reference
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - run: uv sync --locked --group dev
+      - name: Register health-verified tenant and signed provider action
+        env:
+          SAAS_CONTROL_PLANE_URL: ${{ secrets.SAAS_CONTROL_PLANE_URL }}
+          OKR_SAAS_ATTESTATION_SECRET: ${{ secrets.OKR_SAAS_ATTESTATION_SECRET }}
+          OKR_OPERATOR_TOKEN: ${{ secrets.OKR_OPERATOR_TOKEN }}
+        run: |
+          set -euo pipefail
+          uv run python scripts/provision_fleet_tenant.py \
+            --manifest "${{ inputs.manifest_path }}" \
+            --control-plane-url "$SAAS_CONTROL_PLANE_URL" \
+            --provider-resource-id "${{ inputs.provider_resource_id }}" \
+            --incident-reference "${{ inputs.incident_reference }}" \
+            --health-evidence "${{ inputs.health_evidence_path }}" \
+            --signing-secret "$OKR_SAAS_ATTESTATION_SECRET"

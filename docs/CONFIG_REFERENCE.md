@@ -28,6 +28,17 @@ Database
   - `OKR_ALLOW_SUPABASE_DIRECT_CONNECTION` (default: `0`)
     - Only relevant when strict mode is enabled.
     - `1` allows direct/non-pooler Supabase hosts.
+
+Fleet control plane
+
+- `OKR_CONTROL_PLANE_DATABASE_URL` (operator API only): dedicated PostgreSQL
+  connection URL for SQL-backed tenant inventory and rollout status. It must
+  never reference a customer database and is intentionally separate from
+  `OKR_DATABASE_URL`.
+- The operator workflows use the equivalent protected
+  `SAAS_CONTROL_PLANE_URL` secret. Bootstrap that dedicated database with
+  `scripts/bootstrap_fleet_control_plane.py` before registering tenants; do not
+  apply the tenant application's Alembic chain to the control plane.
   - `OKR_ALLOW_SUPABASE_SUPERUSER` (default: `0`)
     - Only relevant when strict mode is enabled.
     - `1` permits `postgres*` usernames in DSN (not recommended for production).

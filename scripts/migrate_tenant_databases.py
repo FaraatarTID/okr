@@ -15,6 +15,7 @@ import os
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Mapping, Sequence
@@ -81,7 +82,7 @@ def _resolve_database_url(
 
 
 def _default_runner(
-    *, database_url: str, timeout_seconds: float
+    *, database_url: str, timeout_seconds: float, lock_id: str | None = None
 ) -> tuple[str | None, str | None]:
     """Run ``alembic upgrade head`` then report the current revision."""
     upgrade = subprocess.run(
@@ -93,6 +94,7 @@ def _default_runner(
             **os.environ,
             "OKR_DATABASE_URL": database_url,
             "DATABASE_URL": database_url,
+            **({"OKR_MIGRATION_LOCK_ID": lock_id} if lock_id else {}),
         },
         check=False,
     )
@@ -111,6 +113,7 @@ def _default_runner(
             **os.environ,
             "OKR_DATABASE_URL": database_url,
             "DATABASE_URL": database_url,
+            **({"OKR_MIGRATION_LOCK_ID": lock_id} if lock_id else {}),
         },
         check=False,
     )
@@ -179,48 +182,46 @@ def migrate_tenants(
     runner: Callable[[TenantTarget, str], tuple[str | None, str | None]] | None = None,
     timeout_seconds: float = 300.0,
     max_retries: int = 0,
+    max_concurrency: int = 10,
     fail_fast: bool = False,
     dry_run: bool = False,
 ) -> MigrationReport:
     """Migrate every target; idempotent reruns are safe (alembic upgrade head)."""
+    if max_concurrency < 1:
+        raise ValueError("max_concurrency must be at least one")
     report = MigrationReport(dry_run=dry_run)
     execute = runner or (
         lambda target, url: _default_runner(
-            database_url=url, timeout_seconds=timeout_seconds
+            database_url=url,
+            timeout_seconds=timeout_seconds,
+            lock_id=target.environment_id,
         )
     )
-    for target in targets:
+
+    def migrate_target(target: TenantTarget) -> TenantMigrationResult:
         started = time.monotonic()
         if dry_run:
-            report.results.append(
-                TenantMigrationResult(
-                    environment_id=target.environment_id,
-                    database_resource_id=target.database_resource_id,
-                    revision=None,
-                    success=True,
-                    duration_seconds=0.0,
-                    attempts=0,
-                )
+            return TenantMigrationResult(
+                environment_id=target.environment_id,
+                database_resource_id=target.database_resource_id,
+                revision=None,
+                success=True,
+                duration_seconds=0.0,
+                attempts=0,
             )
-            continue
         database_url = _resolve_database_url(
             resource_id=target.database_resource_id, url_resolver=url_resolver
         )
         if not database_url:
-            report.results.append(
-                TenantMigrationResult(
-                    environment_id=target.environment_id,
-                    database_resource_id=target.database_resource_id,
-                    revision=None,
-                    success=False,
-                    duration_seconds=time.monotonic() - started,
-                    attempts=0,
-                    error=f"no database URL for resource {target.database_resource_id}",
-                )
+            return TenantMigrationResult(
+                environment_id=target.environment_id,
+                database_resource_id=target.database_resource_id,
+                revision=None,
+                success=False,
+                duration_seconds=time.monotonic() - started,
+                attempts=0,
+                error=f"no database URL for resource {target.database_resource_id}",
             )
-            if fail_fast:
-                break
-            continue
         revision: str | None = None
         error: str | None = None
         attempts = 0
@@ -232,19 +233,36 @@ def migrate_tenants(
                 revision, error = None, str(exc)
             if error is None:
                 break
-        report.results.append(
-            TenantMigrationResult(
-                environment_id=target.environment_id,
-                database_resource_id=target.database_resource_id,
-                revision=revision,
-                success=error is None,
-                duration_seconds=time.monotonic() - started,
-                attempts=attempts,
-                error=error,
-            )
+        return TenantMigrationResult(
+            environment_id=target.environment_id,
+            database_resource_id=target.database_resource_id,
+            revision=revision,
+            success=error is None,
+            duration_seconds=time.monotonic() - started,
+            attempts=attempts,
+            error=error,
         )
-        if error is not None and fail_fast:
-            break
+
+    # A bounded pool prevents a large fleet from exhausting the runner or the
+    # provider's connection limits. Results are sorted below so reports remain
+    # deterministic even though work completes out of order.
+    if fail_fast:
+        for target in targets:
+            result = migrate_target(target)
+            report.results.append(result)
+            if not result.success:
+                break
+    else:
+        with ThreadPoolExecutor(
+            max_workers=min(max_concurrency, len(targets) or 1)
+        ) as pool:
+            futures = [pool.submit(migrate_target, target) for target in targets]
+            for future in as_completed(futures):
+                report.results.append(future.result())
+    # Concurrent reports are normalized for stable output. Fail-fast intentionally
+    # preserves execution order so operators can see the exact stopping point.
+    if not fail_fast:
+        report.results.sort(key=lambda item: item.environment_id)
     return report
 
 
@@ -264,6 +282,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--timeout-seconds", type=float, default=300.0)
     parser.add_argument("--max-retries", type=int, default=0)
+    parser.add_argument(
+        "--max-concurrency",
+        type=int,
+        default=10,
+        help="Maximum tenant migrations to execute in parallel (default: 10).",
+    )
     parser.add_argument(
         "--fail-fast", action="store_true", help="Stop after the first tenant failure."
     )
@@ -320,6 +344,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         url_resolver=url_resolver,
         timeout_seconds=args.timeout_seconds,
         max_retries=args.max_retries,
+        max_concurrency=args.max_concurrency,
         fail_fast=args.fail_fast,
         dry_run=args.dry_run,
     )

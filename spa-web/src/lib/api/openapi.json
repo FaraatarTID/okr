@@ -4353,6 +4353,192 @@
         "summary": "Record Lifecycle Event"
       }
     },
+    "/control-plane/v1/rollouts/{rollout_id}": {
+      "get": {
+        "description": "Read SQL-backed fleet state without exposing customer connection data.",
+        "operationId": "get_fleet_rollout_control_plane_v1_rollouts__rollout_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "rollout_id",
+            "required": true,
+            "schema": {
+              "title": "Rollout Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Actor"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Role"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-roles",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Roles"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-service-token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Service-Token"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-signature",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Signature"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-timestamp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Timestamp"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-nonce",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Nonce"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-okr-key-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Okr-Key-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-forwarded-for",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Forwarded-For"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Fleet Rollout Control Plane V1 Rollouts  Rollout Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Fleet Rollout"
+      }
+    },
     "/healthz": {
       "get": {
         "operationId": "healthz_healthz_get",

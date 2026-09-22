@@ -18,6 +18,7 @@ from src.saas.release_operations import (
     ReleaseManager,
 )
 from src.saas.operator_credentials import resolve_operator_principal
+from src.saas.fleet_control_plane import FleetReleaseGate, SqlControlPlane
 
 
 def _artifact(path: str) -> ReleaseArtifact:
@@ -37,14 +38,47 @@ def main() -> int:
     parser.add_argument(
         "--control-plane-state-file", default="tmp/saas-control-plane.json"
     )
+    parser.add_argument("--fleet-control-plane-url")
+    parser.add_argument("--rollout-id", type=int)
+    parser.add_argument("--incident-reference")
     args = parser.parse_args()
 
     provider = LocalDisposableEnvironmentProvider(args.provisioning_state_file)
+    operator = resolve_operator_principal(credential_file=args.credential_file)
+    if any(
+        value is not None
+        for value in (
+            args.fleet_control_plane_url,
+            args.rollout_id,
+            args.incident_reference,
+        )
+    ) and not all(
+        value is not None
+        for value in (
+            args.fleet_control_plane_url,
+            args.rollout_id,
+            args.incident_reference,
+        )
+    ):
+        parser.error(
+            "--fleet-control-plane-url, --rollout-id, and --incident-reference must be supplied together"
+        )
+    release_gate = (
+        FleetReleaseGate(
+            SqlControlPlane(args.fleet_control_plane_url),
+            args.rollout_id,
+            actor=operator.principal,
+            incident_reference=args.incident_reference,
+        )
+        if args.fleet_control_plane_url is not None
+        else None
+    )
     manager = ReleaseManager(
         provider,
         LocalRuntimeAdapter(state_path=args.state_file),
-        operator=resolve_operator_principal(credential_file=args.credential_file),
+        operator=operator,
         control_plane=ControlPlane(state_path=args.control_plane_state_file),
+        release_gate=release_gate,
     )
     target = _artifact(args.artifact)
     if args.action == "compose-env":

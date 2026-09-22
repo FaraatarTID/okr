@@ -108,9 +108,7 @@ def test_team_create_payload_includes_required_columns(capture_insert):
 def test_timer_start_payload_includes_required_columns(capture_insert, monkeypatch):
     monkeypatch.setattr(
         "src.services.supabase_api_mode_operations._rest_select",
-        lambda table, query=None: (
-            (200, [{"id": 1}]) if table == "task" else (200, [])
-        ),
+        lambda table, query=None: (200, [{"id": 1}]) if table == "task" else (200, []),
     )
     from src.services.supabase_api_mode_operations import start_timer_via_supabase_api
 
