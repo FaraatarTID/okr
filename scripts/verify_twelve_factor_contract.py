@@ -8,14 +8,30 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 
 _SENSITIVE_NAMES = re.compile(
     r"(?:PASSWORD|TOKEN|SECRET|API_KEY|DATABASE_URL|PRIVATE_KEY)", re.IGNORECASE
 )
 _ENV_ASSIGNMENT = re.compile(r"^\s*([^#\s=]+)\s*=\s*(.*)$")
+
+_RENDERER_RELATIVE = "scripts/render_k8s_release.py"
+_RENDER_TIMEOUT_SECONDS = 120.0
+# Distinct digests so that substituting one input into the other manifest is visible.
+_VALID_DIGESTS = {"api_digest": "1" * 64, "worker_digest": "2" * 64}
+_MANIFEST_FOR_LABEL = {
+    "api_digest": "deployment-backend-api.yaml",
+    "worker_digest": "deployment-backend-worker.yaml",
+}
+_INVALID_DIGEST = "not-a-sha256-digest"
+# Matched against RENDERED OUTPUT only. The check never reads the renderer's source, so a
+# module that merely mentions the right strings cannot satisfy it.
+_PLACEHOLDER = "REPLACE_WITH_RELEASE_DIGEST"
 
 
 def _is_secret_key(name: str) -> bool:
@@ -84,6 +100,178 @@ def _check_config(root: Path) -> str | None:
     return None
 
 
+# The digest must appear in a container image value, not merely somewhere in the file. A
+# digest quoted in a comment or parked in an unrelated field pins no image, so searching
+# the whole manifest for that hex string would accept a manifest that deploys nothing the
+# caller asked for.
+_IMAGE_VALUE = re.compile(r"^\s*(?:-\s+)?image:\s*(\S+)\s*$", re.MULTILINE)
+_IMAGE_DIGEST = re.compile(r"@sha256:([0-9a-fA-F]{64})$")
+
+
+def _image_digests(rendered: str) -> list[str]:
+    """Return the digests that appear inside an ``image:`` value, and only those."""
+
+    found: list[str] = []
+    for match in _IMAGE_VALUE.finditer(rendered):
+        pinned = _IMAGE_DIGEST.search(match.group(1))
+        if pinned:
+            found.append(pinned.group(1).lower())
+    return found
+
+
+class _RenderOutcome(NamedTuple):
+    """One bounded renderer invocation.
+
+    ``executed`` is False when the interpreter did not run the renderer to completion,
+    which includes a timeout. That case must never be read as "the renderer rejected this
+    input", because an unrelated execution failure would then masquerade as a successful
+    rejection of an invalid digest.
+    """
+
+    executed: bool
+    returncode: int
+    output: str
+
+
+def _summarise(output: str, limit: int = 200) -> str:
+    """Reduce renderer output to one bounded line, without echoing manifest contents."""
+
+    for line in reversed(output.splitlines()):
+        stripped = line.strip()
+        if stripped:
+            return stripped[:limit]
+    return "no output"
+
+
+def _run_release_renderer(
+    root: Path, *, api_digest: str, worker_digest: str, output_dir: Path
+) -> _RenderOutcome:
+    """Render release manifests in a bounded subprocess and report what happened.
+
+    This executes trusted repository code with the running interpreter. It is NOT a
+    security sandbox: the renderer runs with the permissions of this check process and can
+    read and write whatever it can, so it must never be pointed at untrusted code. The
+    subprocess exists to observe the renderer's real behaviour - and to keep import-time
+    side effects out of this process - not to contain it.
+    """
+
+    command = (
+        sys.executable,
+        str(root / _RENDERER_RELATIVE),
+        "--api-digest",
+        api_digest,
+        "--worker-digest",
+        worker_digest,
+        "--output-dir",
+        str(output_dir),
+    )
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=_RENDER_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return _RenderOutcome(False, 124, "renderer timed out")
+    except OSError as exc:
+        return _RenderOutcome(False, 125, f"renderer could not be started: {exc}")
+    return _RenderOutcome(
+        True, completed.returncode, completed.stdout + completed.stderr
+    )
+
+
+def _check_release_renderer(root: Path) -> str | None:
+    """Exercise the release renderer and judge it by what it does, not what it declares.
+
+    The previous check read the renderer's source and searched it for the substrings "64"
+    and "REPLACE_WITH_RELEASE_DIGEST". A module holding those two constants and rendering
+    nothing satisfied it, so it certified a renderer that could neither validate a digest
+    nor emit a manifest. Every judgement below comes from running the renderer and
+    inspecting the files it produced, so comments and string constants cannot affect the
+    outcome.
+    """
+
+    if not (root / _RENDERER_RELATIVE).is_file():
+        return "Kubernetes release renderer is missing digest validation"
+
+    with tempfile.TemporaryDirectory(prefix="okr-release-render-") as directory:
+        workspace = Path(directory)
+
+        valid = _run_release_renderer(
+            root,
+            api_digest=_VALID_DIGESTS["api_digest"],
+            worker_digest=_VALID_DIGESTS["worker_digest"],
+            output_dir=workspace / "valid",
+        )
+        if not valid.executed:
+            return (
+                "Kubernetes release renderer could not be executed, so its digest "
+                f"validation is unverified: {_summarise(valid.output)}"
+            )
+        if valid.returncode != 0:
+            return (
+                "Kubernetes release renderer rejected a valid pair of digests, so it "
+                f"does not implement digest validation: {_summarise(valid.output)}"
+            )
+        for label, digest in _VALID_DIGESTS.items():
+            filename = _MANIFEST_FOR_LABEL[label]
+            rendered = _read(workspace / "valid", filename)
+            if rendered is None:
+                return (
+                    f"Kubernetes release renderer did not produce {filename}, so it is "
+                    "not a functioning release renderer"
+                )
+            if _PLACEHOLDER.lower() in rendered.lower():
+                return (
+                    f"rendered {filename} still contains an unresolved digest "
+                    "placeholder, so the renderer can emit an unrenderable manifest"
+                )
+            if digest not in _image_digests(rendered):
+                return (
+                    f"rendered {filename} does not pin the validated digest in a "
+                    "container image value, so the manifest does not deploy the digest "
+                    "it was given"
+                )
+
+        # Each invalid input is checked with the other input valid, so a renderer that
+        # validates only one of the two labels is reported rather than passing on the
+        # strength of the other.
+        for label in _VALID_DIGESTS:
+            inputs = dict(_VALID_DIGESTS)
+            inputs[label] = _INVALID_DIGEST
+            rejected = _run_release_renderer(
+                root,
+                api_digest=inputs["api_digest"],
+                worker_digest=inputs["worker_digest"],
+                output_dir=workspace / f"invalid-{label}",
+            )
+            if not rejected.executed:
+                return (
+                    f"Kubernetes release renderer could not be executed while checking "
+                    f"{label}, so digest validation is unverified: "
+                    f"{_summarise(rejected.output)}"
+                )
+            if rejected.returncode == 0:
+                return (
+                    f"Kubernetes release renderer accepted an invalid {label}, so it "
+                    "does not enforce digest validation"
+                )
+            if label not in rejected.output:
+                # A non-zero exit for any other reason - a crash, a missing file, a syntax
+                # error - is not evidence that the digest was rejected. Requiring the
+                # failure to name the offending input is what stops an unrelated execution
+                # failure from masquerading as a successful rejection.
+                return (
+                    f"Kubernetes release renderer failed while checking {label} without "
+                    "naming it, so the rejection cannot be attributed to digest "
+                    f"validation: {_summarise(rejected.output)}"
+                )
+    return None
+
+
 def _check_immutable_images(root: Path) -> str | None:
     deployment_files = tuple(
         path
@@ -112,13 +300,9 @@ def _check_immutable_images(root: Path) -> str | None:
         if _exists(root, path)
     )
     if k8s_files:
-        renderer = _read(root, "scripts/render_k8s_release.py")
-        if (
-            renderer is None
-            or "64" not in renderer
-            or "REPLACE_WITH_RELEASE_DIGEST" not in renderer
-        ):
-            return "Kubernetes release renderer is missing digest validation"
+        renderer_failure = _check_release_renderer(root)
+        if renderer_failure:
+            return renderer_failure
     release_overlay = _read(root, "deploy/docker/docker-compose.release.yml")
     if release_overlay is None:
         return "release Compose overlay is missing"
