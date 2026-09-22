@@ -432,19 +432,17 @@ def test_job_polling_query_budget_guard(isolated_db, monkeypatch):
     q_poll = _count_queries(engine, lambda: get_job(job.id))
     assert q_poll <= 1
 
-    async def _allow_service_access(**kwargs):
-        return None
-
-    # WARNING: this patch is a NO-OP, and copying it into a new test will silently
-    # fail to isolate anything. Routes bind the dependency at router-construction
-    # time via `dependencies=[Depends(main.require_service_access)]`, so rebinding the
-    # module attribute changes nothing and the REAL dependency still runs. It is
-    # harmless here only because these tests separately patch `_resolve_scope_for_actor`
-    # (which does work, because main_runtime_helpers re-reads the module attribute) and
-    # their requests carry no role headers. To genuinely relax or tighten the
-    # dependency use `app.dependency_overrides[backend_main.require_service_access]`,
-    # as tests/test_control_plane_environment_routes.py:325 does.
-    monkeypatch.setattr(backend_main, "require_service_access", _allow_service_access)
+    # No patch of `require_service_access` here, deliberately. Routes bind it at
+    # router-construction time via `dependencies=[Depends(main.require_service_access)]`
+    # (see backend_app/routers/operations_routes.py:196), so rebinding the module
+    # attribute changes nothing and the REAL dependency runs regardless. A previous
+    # version of this test patched it anyway, appearing to relax a check while doing
+    # nothing - worse than no patch, because it turns an open question into a settled
+    # one. The dependency passes here because enforcement is off in the test
+    # environment. To genuinely relax or tighten it use
+    # `app.dependency_overrides[backend_main.require_service_access]`, as
+    # tests/test_control_plane_environment_routes.py:325 does - and clear the override
+    # afterwards, because `backend_main.app` is a session-wide singleton.
     monkeypatch.setattr(
         backend_main,
         "_resolve_actor",
@@ -498,19 +496,10 @@ def test_performance_query_budgets_for_read_endpoints(isolated_db, monkeypatch):
 
     client = TestClient(backend_main.app)
 
-    async def _allow_service_access(**kwargs):
-        return None
-
-    # WARNING: this patch is a NO-OP, and copying it into a new test will silently
-    # fail to isolate anything. Routes bind the dependency at router-construction
-    # time via `dependencies=[Depends(main.require_service_access)]`, so rebinding the
-    # module attribute changes nothing and the REAL dependency still runs. It is
-    # harmless here only because these tests separately patch `_resolve_scope_for_actor`
-    # (which does work, because main_runtime_helpers re-reads the module attribute) and
-    # their requests carry no role headers. To genuinely relax or tighten the
-    # dependency use `app.dependency_overrides[backend_main.require_service_access]`,
-    # as tests/test_control_plane_environment_routes.py:325 does.
-    monkeypatch.setattr(backend_main, "require_service_access", _allow_service_access)
+    # See the note on the other budget test: patching `require_service_access` through
+    # the module attribute is a no-op, because the route binds the dependency at
+    # construction time. Removed rather than reworked, since the real dependency already
+    # runs and passes here.
     monkeypatch.setattr(backend_main, "is_supabase_api_mode_enabled", lambda: False)
     monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", _admin_scope)
     monkeypatch.setattr(backend_main, "_resolve_actor", _dummy_actor)
