@@ -37,6 +37,12 @@ def export_schema(out_path: Path) -> int:
     out_path.write_text(
         json.dumps(schema, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
         encoding="utf-8",
+        # `.gitattributes` declares `*.json text eol=lf`. `Path.write_text` opens in
+        # text mode with the platform default newline translation, so on Windows this
+        # wrote CRLF and produced an artifact that violated the declared attribute -
+        # while the drift gate still passed, because it compares parsed content.
+        # Pin the newline so the emitted bytes do not depend on the host platform.
+        newline="\n",
     )
     path_count = len(schema.get("paths", {}))
     print(f"OpenAPI schema exported: {out_path} ({path_count} paths)")

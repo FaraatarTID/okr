@@ -508,7 +508,10 @@ class LeadershipMetricsRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=1, max_length=128)
     password: str = Field(..., min_length=1, max_length=512)
-    client_ip: Optional[str] = Field(default=None, max_length=128)
+    # NOTE: there is deliberately no `client_ip` field here. The login throttle key is
+    # resolved server-side (`require_service_access` -> request.state.client_ip);
+    # accepting an address from the body would let the caller choose its own throttle
+    # key and lock out any address it names.
 
 
 class AuthUserView(BaseModel):
