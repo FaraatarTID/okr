@@ -4,6 +4,20 @@ const SESSION_COOKIE_NAME = "okr_spa_session";
 const CSRF_COOKIE_NAME = "okr_csrf_token";
 const SESSION_VERSION = "v1";
 
+/**
+ * In-process session registry.
+ *
+ * MEMORY LIMITATION, deliberate and documented: entries are released by EXPIRY ONLY
+ * (see pruneExpiredSessions). A record for a session that is never presented again is
+ * therefore held until its credential expires, and one that is never looked up after
+ * expiry is only reclaimed by the next issuance. There is deliberately no size cap,
+ * because evicting an unexpired record would discard revocation state while the signed
+ * credential is still acceptable - and an unknown id is reported as ACTIVE below, so that
+ * would recreate the replay defect. A cap cannot be added without first changing the
+ * unknown-id policy, which this fix does not do.
+ *
+ * The registry is per-process, so it provides no revocation across instances or restarts.
+ */
 const ACTIVE_SESSION_REGISTRY = new Map<string, { revoked: boolean; expiresAt: number; externalSubject?: string }>();
 
 export interface SessionUser {
@@ -57,6 +71,9 @@ export function issueSessionToken(input: {
       : Math.floor(Date.now() / 1000);
 
   const sessionId = randomBytes(16).toString("hex");
+  // Opportunistic, expiry-only sweep. Issuance is the natural low-frequency point for it,
+  // and it keeps the retained-record growth bounded without ever evicting a live one.
+  pruneExpiredSessions(nowEpochSeconds);
   const payload: SessionPayload = {
     v: SESSION_VERSION,
     iat: nowEpochSeconds,
@@ -129,6 +146,22 @@ export function revokeSessionsForIdentity(externalSubject: string): number {
   return revoked;
 }
 
+/**
+ * Release records whose credential can no longer be accepted.
+ *
+ * Expiry-only, on purpose. The boundary must match verifySessionToken, which accepts while
+ * `exp >= now`, so a record is releasable only once `expiresAt < now`. Pruning at
+ * `expiresAt <= now` would drop revocation state during the boundary second in which the
+ * token is still acceptable, and the next request would find no record and be allowed.
+ */
+function pruneExpiredSessions(nowEpochSeconds: number): void {
+  for (const [sessionId, record] of ACTIVE_SESSION_REGISTRY) {
+    if (record.expiresAt < nowEpochSeconds) {
+      ACTIVE_SESSION_REGISTRY.delete(sessionId);
+    }
+  }
+}
+
 function isSessionRegistryActive(sessionId: string | null | undefined, nowEpochSeconds?: number): boolean {
   if (!sessionId) {
     return true;
@@ -137,13 +170,19 @@ function isSessionRegistryActive(sessionId: string | null | undefined, nowEpochS
   if (!record) {
     return true;
   }
-  if (record.revoked) {
+  const currentTime = Number.isFinite(nowEpochSeconds) ? Math.floor(Number(nowEpochSeconds)) : Math.floor(Date.now() / 1000);
+
+  // Same boundary as verifySessionToken's own `exp` check: the credential is acceptable
+  // while `exp >= now`, so the record must survive until `expiresAt < now`. Releasing it
+  // any earlier leaves the "unknown id" branch above - which reports the session ACTIVE -
+  // to answer the next request.
+  if (record.expiresAt < currentTime) {
     ACTIVE_SESSION_REGISTRY.delete(sessionId);
     return false;
   }
-  const currentTime = Number.isFinite(nowEpochSeconds) ? Math.floor(Number(nowEpochSeconds)) : Math.floor(Date.now() / 1000);
-  if (record.expiresAt <= currentTime) {
-    ACTIVE_SESSION_REGISTRY.delete(sessionId);
+  // Revoked and still within the credential's lifetime: RETAINED, so every replay is
+  // rejected rather than only the first. This must not delete the record.
+  if (record.revoked) {
     return false;
   }
   return true;
