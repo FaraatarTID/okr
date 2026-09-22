@@ -1,5 +1,7 @@
 # Single-Tenant Fleet Rollout Runbook
 
+Documentation HQ: [README](../../README.md)
+
 Use the `Migrate SaaS tenant databases` workflow only after a release has passed
 the compatibility gate. Supply an incident/change reference for every run.
 
