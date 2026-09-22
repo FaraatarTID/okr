@@ -43,7 +43,6 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         x_okr_timestamp: str | None = Header(default=None),
         x_okr_nonce: str | None = Header(default=None),
         x_okr_key_id: str | None = Header(default=None),
-        x_forwarded_for: str | None = Header(default=None),
     ) -> None:
         dependency_started_at = time.perf_counter()
         try:
@@ -57,7 +56,6 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                 x_okr_timestamp=x_okr_timestamp,
                 x_okr_nonce=x_okr_nonce,
                 x_okr_key_id=x_okr_key_id,
-                x_forwarded_for=x_forwarded_for,
             )
         finally:
             record_timing(
@@ -70,26 +68,26 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         response_model=AuthLoginResponse,
         response_model_exclude_unset=True,
     )
-    def api_auth_login(payload: LoginRequest) -> dict:
+    def api_auth_login(request: Request, payload: LoginRequest) -> dict:
         from backend_app.data_access_mode import (
             notify_tcp_db_failure,
             resolve_read_mode,
         )
 
         username = str(payload.username or "").strip()
-        # The IP dimension of the login throttle is deliberately left unkeyed, and the
-        # address is NOT taken from `payload`: a body-supplied address is chosen by the
-        # caller, and the lockout table is keyed (scope="ip", identifier), so honouring
-        # it hands the caller the ability to lock out any address it names.
+        # The IP dimension of the login throttle keys on the trusted client address
+        # published by `require_service_access`, which this route already depends on, so
+        # the check is not repeated here.
         #
-        # It is not taken from the request yet either. The address available here is
-        # either the immediate peer - the shared BFF, which would put every user in one
-        # bucket and let a single attacker lock out all of them - or, when a verified
-        # service token is present, X-Forwarded-For[0], the leftmost hop, which nginx
-        # appends to and which is therefore still caller-controlled. Keying a lockout
-        # on either is worse than an inert dimension, so this stays None until the
-        # trust question is settled (P0-4 in docs/REMAINING_ENGINEERING_PLAN.md).
-        client_ip = None
+        # The address is never taken from `payload`: a body-supplied address is chosen by
+        # the caller, and the lockout table is keyed (scope="ip", identifier), so
+        # honouring it would hand the caller the ability to lock out any address it
+        # names. The peer address is not used either - it is the shared BFF, so every
+        # user would land in one bucket and a single attacker could lock out all of
+        # them. When no verified address is available the dimension stays inert, which
+        # is the intended failure direction: a missing lockout dimension is visible,
+        # whereas a wrong key is not. See docs/client-ip-trust-adr.md.
+        client_ip = getattr(request.state, "trusted_client_ip", None)
         try:
             enforce_enterprise_login_policy(username)
         except ValueError as exc:

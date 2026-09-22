@@ -2271,6 +2271,10 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -2356,7 +2360,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2397,7 +2400,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 environment_id: string;
@@ -2440,7 +2442,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 environment_id: string;
@@ -2489,7 +2490,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 rollout_id: number;
@@ -2556,7 +2556,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2595,7 +2594,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2636,7 +2634,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2679,7 +2676,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2720,7 +2716,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2759,7 +2754,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2803,7 +2797,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2847,7 +2840,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2890,7 +2882,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -2933,7 +2924,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 edge_id: number;
@@ -2974,7 +2964,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3018,7 +3007,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3057,7 +3045,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3100,7 +3087,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3143,7 +3129,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 cycle_id: number;
@@ -3184,7 +3169,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 cycle_id: number;
@@ -3230,7 +3214,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3274,7 +3257,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 experiment_id: number;
@@ -3320,7 +3302,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 experiment_id: number;
@@ -3366,7 +3347,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3411,7 +3391,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3452,7 +3431,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 job_id: string;
@@ -3493,7 +3471,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 job_id: string;
@@ -3532,7 +3509,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 job_id: string;
@@ -3573,7 +3549,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 job_id: string;
@@ -3615,7 +3590,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3659,7 +3633,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3703,7 +3676,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3747,7 +3719,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3790,7 +3761,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 node_type: string;
@@ -3832,7 +3802,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 node_type: string;
@@ -3878,7 +3847,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3921,7 +3889,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 link_id: number;
@@ -3962,7 +3929,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4005,7 +3971,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4048,7 +4013,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4091,7 +4055,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4134,7 +4097,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 retrospective_id: number;
@@ -4179,7 +4141,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 key: string;
@@ -4222,7 +4183,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 key: string;
@@ -4265,7 +4225,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4308,7 +4267,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 team_id: number;
@@ -4349,7 +4307,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 team_id: number;
@@ -4394,7 +4351,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4437,7 +4393,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4480,7 +4435,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4523,7 +4477,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 user_id: number;
@@ -4568,7 +4521,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 user_id: number;
@@ -4613,7 +4565,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -4656,7 +4607,6 @@ export interface operations {
                 "x-okr-timestamp"?: string | null;
                 "x-okr-nonce"?: string | null;
                 "x-okr-key-id"?: string | null;
-                "x-forwarded-for"?: string | null;
             };
             path: {
                 work_log_id: number;

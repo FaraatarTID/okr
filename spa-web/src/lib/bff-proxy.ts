@@ -92,6 +92,10 @@ export async function proxyToBff(
     "x-xsrf-token",
     "x-request-id",
     "x-correlation-id",
+    // The private client-IP header set by our edge. Without this the BFF has no
+    // client address to pass on, so every user shares one throttle bucket. See
+    // docs/client-ip-trust-adr.md.
+    "x-okr-client-ip",
     "cookie",
   ];
   for (const headerName of forwardHeaders) {

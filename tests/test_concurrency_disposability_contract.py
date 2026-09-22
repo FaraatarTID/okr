@@ -47,9 +47,11 @@ def test_compose_declares_independent_scaling_and_single_job_worker_process() ->
 
 
 def test_job_claim_contract_remains_atomic_and_postgres_safe() -> None:
+    # The SKIP LOCKED guarantee is asserted behaviourally, against real PostgreSQL, in
+    # tests/test_application_lock_paths_postgres.py. It is no longer checked here by
+    # looking for the string in the source, which passed even when the locking was gone.
     source = (ROOT / "backend_app" / "jobs.py").read_text(encoding="utf-8")
 
-    assert "with_for_update(skip_locked=True)" in source
     assert ".where(AsyncJob.status == AsyncJobStatus.PENDING)" in source
     assert "status=AsyncJobStatus.RUNNING" in source
 

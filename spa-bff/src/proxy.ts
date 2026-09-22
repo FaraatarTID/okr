@@ -102,12 +102,15 @@ export async function proxyToBackend(
   // that omit it.
   const accept = firstHeaderValue(request.incomingHeaders.accept) || "application/json";
 
-  // Forward the real client IP for backend rate limiting.
-  // The backend trusts this header only when the service token is valid,
-  // preventing direct spoofing by untrusted clients.
-  const clientIp = firstHeaderValue(request.incomingHeaders["x-forwarded-for"])
-    || firstHeaderValue(request.incomingHeaders["x-real-ip"])
-    || "";
+  // Forward the client IP for backend rate limiting and login throttling.
+  //
+  // The value comes from the private, always-overwritten X-OKR-Client-IP header set
+  // by our edge. X-Forwarded-For and X-Real-IP are deliberately NOT used: nginx sets
+  // X-Forwarded-For with $proxy_add_x_forwarded_for, which APPENDS to whatever the
+  // client sent, so its leftmost entry is caller-controlled - keying a control on it
+  // let the caller choose its own key. The backend honours this header only when the
+  // service token is valid. See docs/client-ip-trust-adr.md.
+  const clientIp = firstHeaderValue(request.incomingHeaders["x-okr-client-ip"]) || "";
 
   const outboundHeaders: Record<string, string> = {
     accept,
@@ -116,7 +119,7 @@ export async function proxyToBackend(
   };
 
   if (clientIp) {
-    outboundHeaders["x-forwarded-for"] = clientIp;
+    outboundHeaders["x-okr-client-ip"] = clientIp;
   }
 
   if (bodyBytes) {

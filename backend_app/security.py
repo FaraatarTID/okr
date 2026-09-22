@@ -164,7 +164,6 @@ async def require_service_access(
     x_okr_timestamp: str | None = Header(default=None),
     x_okr_nonce: str | None = Header(default=None),
     x_okr_key_id: str | None = Header(default=None),
-    x_forwarded_for: str | None = Header(default=None),
 ) -> None:
     settings = get_backend_settings()
     # This dependency is the first thing every protected request runs, so it is the
@@ -202,17 +201,33 @@ async def require_service_access(
         )
         service_token_valid = True
 
-    # Rate limit by client IP. Use x-forwarded-for when the request originates
-    # from a trusted BFF proxy (verified by service token or request signing).
-    # This prevents a single proxy IP from triggering a platform-wide DoS.
+    # Rate limit by client IP, taken only from a source the caller cannot choose.
+    #
+    # `X-Forwarded-For` is deliberately NOT read here. `deploy/nginx.conf` sets it with
+    # `$proxy_add_x_forwarded_for`, which APPENDS to whatever the client sent, so its
+    # leftmost entry is caller-supplied. Keying on that entry let a caller rotate the
+    # rate-limit key per request and so bypass the limit while appearing to respect it.
+    # The private header below is overwritten at every hop and is honoured only on a
+    # request already authenticated as originating from the BFF. See
+    # docs/client-ip-trust-adr.md.
+    #
+    # The peer address stays as the fallback on purpose: with no trusted address this
+    # degrades to an aggregate limit over the proxy, which is undesirable but is still
+    # a limit, whereas dropping the key entirely would drop the control. The login
+    # lockout draws the opposite conclusion for the opposite reason - a shared bucket
+    # there would lock out every user, so it stays unkeyed (see api_auth_login).
+    # Publish the trusted address for dependents that cannot re-derive it, such as the
+    # login lockout (see api_auth_login). Fail-closed: a request whose service token and
+    # signature were both unverified publishes None, so the lockout's IP dimension stays
+    # inert rather than keying on a value a caller can choose.
+    request.state.trusted_client_ip = None
+
     client_ip = request.client.host if request.client else "unknown"
-    if service_token_valid and x_forwarded_for:
-        # Use the first IP in the chain (original client)
-        forwarded_ips = [
-            ip.strip() for ip in str(x_forwarded_for).split(",") if ip.strip()
-        ]
-        if forwarded_ips:
-            client_ip = forwarded_ips[0]
+    if service_token_valid:
+        trusted_client_ip = (request.headers.get("x-okr-client-ip") or "").strip()
+        if trusted_client_ip:
+            client_ip = trusted_client_ip
+            request.state.trusted_client_ip = trusted_client_ip
 
     try:
         # This dependency is `async` because it awaits `request.body()`, and it is
