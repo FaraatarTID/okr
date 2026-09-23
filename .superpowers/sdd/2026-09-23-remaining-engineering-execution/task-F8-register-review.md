@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # F8 canonical register reconciliation — independent review
 
 Verdict: **PASS**. No findings requiring correction.

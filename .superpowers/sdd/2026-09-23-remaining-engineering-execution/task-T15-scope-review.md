@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T15 / C6 scope reconciliation review
 
 **Verdict: PASS**

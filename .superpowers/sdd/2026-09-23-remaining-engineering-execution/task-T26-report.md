@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T26 Control-Plane Runtime Contract — Implementation Report
 
 Date: 2026-09-23  

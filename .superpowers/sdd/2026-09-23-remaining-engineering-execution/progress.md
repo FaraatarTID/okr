@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # Remaining Engineering Execution — SDD Progress Ledger
 
 Plan: `docs/superpowers/plans/2026-09-23-remaining-engineering-execution.md`

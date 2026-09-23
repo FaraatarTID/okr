@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T07 independent review
 
 Verdict: **PASS with one low-severity report correction**. No blocking implementation findings.

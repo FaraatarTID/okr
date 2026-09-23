@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T15 canonical C6 scope reconciliation
 
 ## Finding

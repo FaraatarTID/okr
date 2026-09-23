@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T07 mypy follow-up report
 
 Status: implementation ready for independent review.

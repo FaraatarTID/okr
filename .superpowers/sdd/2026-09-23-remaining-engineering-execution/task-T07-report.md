@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T07 implementation report — script enforcement inventory
 
 Status: implementation ready for independent review; packet not marked complete.

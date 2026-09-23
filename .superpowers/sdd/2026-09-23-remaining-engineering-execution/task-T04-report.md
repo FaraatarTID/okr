@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T04 — Phase 1 evidence gate verification
 
 ## Scope and disposition

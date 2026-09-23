@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T19 — Provisioned identity resolution
 
 Status: production integration BLOCKED pending current target evidence and explicit ownership/authorization. This brief records safe preparation only.

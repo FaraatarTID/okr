@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T13 canonical C3 acceptance reconciliation
 
 ## Finding

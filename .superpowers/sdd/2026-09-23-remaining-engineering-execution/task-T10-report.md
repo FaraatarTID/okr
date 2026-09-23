@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T10 implementation report — test and script mypy slice
 
 ## Scope and result

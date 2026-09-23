@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T10 follow-up — clear remaining full-scope mypy diagnostics
 
 ## Objective and ownership

@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T33 brief — SPA-to-BFF private client-IP boundary
 
 ## Objective

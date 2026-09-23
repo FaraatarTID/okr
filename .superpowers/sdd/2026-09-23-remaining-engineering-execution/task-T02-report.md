@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T02 — Read-path payload parity report
 
 Status: complete locally after independent review PASS.

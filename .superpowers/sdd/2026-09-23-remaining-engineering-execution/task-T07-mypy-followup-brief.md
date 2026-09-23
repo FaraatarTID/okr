@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T07 follow-up — type the repository readiness workflow test
 
 ## Objective and exact ownership

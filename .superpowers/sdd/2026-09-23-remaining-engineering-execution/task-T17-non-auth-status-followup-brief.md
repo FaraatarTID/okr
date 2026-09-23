@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T17 Follow-up — Preserve BFF cookies on transient backend status
 
 ## Trigger

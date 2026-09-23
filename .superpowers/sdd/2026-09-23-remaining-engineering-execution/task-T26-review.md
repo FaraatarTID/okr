@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T26 Independent Review
 
 ## Verdict: PASS

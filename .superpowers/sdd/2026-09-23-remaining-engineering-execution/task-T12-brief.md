@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T12 — Route streaming and code splitting
 
 ## Objective

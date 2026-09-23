@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T16 execution snapshot
 
 Date: 2026-09-23

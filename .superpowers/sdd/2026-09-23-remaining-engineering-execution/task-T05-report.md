@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T05 implementation report — roadmap and backlog truth
 
 Status: implementation ready for independent review; packet not marked complete.

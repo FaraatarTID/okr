@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T15 follow-up — Alignment Inspector read API defect
 
 Status: narrowly authorized backend support fix to unblock T15's required rendered alignment E2E state. Systematic-debugging Phase 1 is complete; see `task-T15-report.md` for the exact failing traceback and same-database reproduction.

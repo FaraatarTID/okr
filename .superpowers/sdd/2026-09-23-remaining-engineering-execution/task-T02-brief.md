@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T02 — Read-path payload parity
 
 Status: implementation brief. T03 actor-presence audit is complete. T32 may edit the read-budget PostgreSQL harness but not the read visibility helpers or `tests/test_dual_mode_parity.py`; serialize any overlapping test edits.

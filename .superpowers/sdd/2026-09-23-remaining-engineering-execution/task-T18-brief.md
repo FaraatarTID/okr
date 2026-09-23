@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T18 — ID-token verification gate
 
 Status: READY for isolated verifier implementation. T06 is complete and its three-file Fastify repair is integrated and independently reviewed. T18 may add the audited JOSE dependency in its own serialized npm pass; no other packet may edit npm lockfiles concurrently.

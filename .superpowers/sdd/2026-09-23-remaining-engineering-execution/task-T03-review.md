@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T03 independent review
 
 Verdict: **PASS** for the actor-presence audit. No blocking T03 findings. Deferred minors: none.

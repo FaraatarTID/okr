@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # Execution plan reconciliation brief (T01 findings)
 
 Update only `docs/superpowers/plans/2026-09-23-remaining-engineering-execution.md` to make it cover the active work in authoritative `docs/REMAINING_ENGINEERING_PLAN.md`; do not change application code. Follow T01 audit `.superpowers/sdd/2026-09-23-remaining-engineering-execution/task-T01-report.md`, its independent review, and `p0-scope-audit.md`. Keep README Docs HQ plan link.

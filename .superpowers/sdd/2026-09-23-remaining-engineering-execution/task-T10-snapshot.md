@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T10 review snapshot
 
 Base: shared checkout before T10 edits, without Git writes. Review only the 13 test diffs listed below plus `task-T10-report.md`. T10 made no production or script changes and did not edit the shared progress ledger.

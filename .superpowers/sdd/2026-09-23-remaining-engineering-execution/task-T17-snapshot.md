@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T17 evidence snapshot
 
 Date: 2026-09-23

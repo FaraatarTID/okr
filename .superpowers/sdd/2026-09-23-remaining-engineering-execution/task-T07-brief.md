@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T07 — Script enforcement inventory
 
 ## Objective

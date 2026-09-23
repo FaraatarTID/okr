@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T06 — Fastify advisory and lockfile repair report
 
 Status: BLOCKED before implementation. No npm manifests or lockfiles were edited.

@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # Task T01 brief — Independent baseline audit
 
 Independently audit the T00 reconciliation report (`.superpowers/sdd/2026-09-23-remaining-engineering-execution/task-T00-report.md`) against every row/progress table in `docs/REMAINING_ENGINEERING_PLAN.md`, and audit the execution plan at `docs/superpowers/plans/2026-09-23-remaining-engineering-execution.md`.

@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T26 Control-Plane Runtime Contract — Read-Only Packet Brief
 
 Date: 2026-09-23  

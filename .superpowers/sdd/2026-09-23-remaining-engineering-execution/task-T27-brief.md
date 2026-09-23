@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T27 — Strict rollback execution evidence verification
 
 Status: authorized narrow hardening after read-only inspection found that the strict verifier accepts an arbitrary nonempty `execution.observed_at` string.

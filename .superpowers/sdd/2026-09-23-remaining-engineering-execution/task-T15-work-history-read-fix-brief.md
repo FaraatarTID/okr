@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T15 follow-up — Work History read API defect
 
 Status: narrowly authorized backend support fix for the required rendered Inspector work-history/RTL acceptance.

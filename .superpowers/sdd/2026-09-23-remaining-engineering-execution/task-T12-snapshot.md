@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T12 re-review snapshot
 
 Base: current shared checkout. Scope is T12 only; the shared progress ledger is

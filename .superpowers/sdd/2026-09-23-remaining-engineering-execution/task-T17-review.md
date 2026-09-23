@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T17 — Independent review
 
 ## Verdict: PASS

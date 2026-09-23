@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T09 — Mypy burn-down: runtime core
 
 ## Objective and baseline

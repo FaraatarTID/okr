@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T05 scoped independent re-review
 
 Verdict: **PASS**

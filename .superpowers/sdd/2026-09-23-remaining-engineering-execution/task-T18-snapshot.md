@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T18 implementation snapshot
 
 - `spa-bff/src/oidc-token-verifier.ts`: isolated verifier module; no route wiring.

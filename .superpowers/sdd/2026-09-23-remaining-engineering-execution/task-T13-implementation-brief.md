@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T13 Frontend Performance Budget — Implementation Brief
 
 Date: 2026-09-23  

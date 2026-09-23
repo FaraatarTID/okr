@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T07 scoped re-review
 
 Verdict: **PASS**. The prior LOW report finding is resolved.

@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T10 — Mypy burn-down: tests and scripts
 
 ## Objective and baseline

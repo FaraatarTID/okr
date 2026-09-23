@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T15 — Role-parameterized route and surface E2E
 
 ## Objective

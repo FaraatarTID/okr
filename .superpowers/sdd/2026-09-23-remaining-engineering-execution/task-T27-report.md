@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T27 — Strict rollback execution evidence verification
 
 ## Result

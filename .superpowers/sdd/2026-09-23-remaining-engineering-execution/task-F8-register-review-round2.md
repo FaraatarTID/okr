@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # F8 durability update — scoped independent re-review
 
 Verdict: **PASS for the documentation durability update**, with an explicit Git delivery limitation below. No wording correction is required.

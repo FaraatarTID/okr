@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # Phase 1 P0 scope audit (read only, 2026-09-23)
 
 Source: `docs/REMAINING_ENGINEERING_PLAN.md:195-237`, especially the Phase 1 Progress rows at lines 230-237. This is the live status register: `docs/architecture-status.md:6-19` calls itself historical and explicitly distinguishes its `P0-00`…`P0-06` IDs from the register's `P0-1`…`P0-8`. The active execution plan says the register is authoritative, but its 32-packet T00–T31 map names no P0 row. T00/T01's A–F-only scope consequently omits these live items. No test or runtime check was run for this audit.

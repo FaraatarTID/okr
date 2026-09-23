@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T09 implementation report — runtime core mypy slice
 
 ## Scope and result

@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T03 review snapshot
 
 Base: current shared checkout, without Git writes. The implementation consists only of the two new test files and `task-T03-report.md`; all production, contract, generated, and shared-ledger files stayed untouched by T03.

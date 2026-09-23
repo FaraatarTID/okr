@@ -1,3 +1,5 @@
+Documentation HQ: [README](../../../README.md)
+
 # T03 — Actor-presence audit implementation report
 
 Status: implementation complete, awaiting independent task review. No production or generated files changed.
