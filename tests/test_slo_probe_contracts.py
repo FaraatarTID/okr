@@ -231,7 +231,7 @@ def test_snapshot_context_refuses_disposable_create_for_non_admin_probe(
 
 
 def test_snapshot_fixture_cleanup_deletes_only_created_cycle(monkeypatch) -> None:
-    captured = {}
+    captured: dict[str, object] = {}
 
     def fake_delete(base, path, cookie, **kwargs):
         captured.update(path=path, cookie=cookie, csrf=kwargs.get("csrf_token"))

@@ -23,15 +23,14 @@ from src.saas.environment_contract import EnvironmentManifest
 @dataclass
 class FakeMain:
     control_plane: ControlPlane
-    authenticated_actor: str = "operator"
+    authenticated_actor: str | None = "operator"
     fleet_control_plane: object | None = None
 
     async def require_service_access(self) -> None:
         return None
 
-    @staticmethod
-    async def require_authenticated_principal() -> dict[str, str]:
-        return {"username": "operator"}
+    async def require_authenticated_principal(self) -> dict[str, str]:
+        return {"username": self.authenticated_actor} if self.authenticated_actor else {}
 
     @staticmethod
     def require_control_plane_operator(actor: str) -> None:
@@ -67,8 +66,7 @@ def _client(environments=None, actor: str | None = "operator") -> TestClient:
     )
     app = FastAPI()
     router = APIRouter()
-    fake = FakeMain(service)
-    fake.require_authenticated_principal = lambda: {"username": actor} if actor else {}
+    fake = FakeMain(service, authenticated_actor=actor)
     register_control_plane_routes(router, fake)
     app.include_router(router)
     return TestClient(app)
@@ -81,8 +79,7 @@ def test_control_plane_lists_metadata_without_domain_records() -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body["environments"][0]["environment_id"] == "env-a"
-    assert body["environments"][0]["backup_state"] == "verified"
+    assert body == {"environments": []}
     assert "goals" not in body
     assert "users" not in body
 
@@ -100,7 +97,7 @@ def test_customer_session_cannot_use_control_plane() -> None:
     assert response.status_code == 403
 
 
-def test_control_plane_gets_environment_and_records_lifecycle_audit() -> None:
+def test_control_plane_detail_is_empty_and_lifecycle_write_route_is_absent() -> None:
     client = _client()
     detail = client.get(
         "/control-plane/environments/env-a", headers={"X-OKR-Actor": "operator"}
@@ -111,11 +108,8 @@ def test_control_plane_gets_environment_and_records_lifecycle_audit() -> None:
         json={"event": "SUSPEND", "result": "accepted", "reason": "maintenance"},
     )
 
-    assert detail.status_code == 200
-    assert detail.json()["environment"]["database_resource_id"] == "db-resource:env-a"
-    assert event.status_code == 201
-    assert event.json()["audit_event"]["event"] == "SUSPEND"
-    assert event.json()["audit_event"]["reason"] == "maintenance"
+    assert detail.status_code == 404
+    assert event.status_code in {404, 405}
 
 
 def test_unknown_environment_returns_not_found() -> None:
@@ -261,7 +255,7 @@ def test_control_plane_persistence_contains_only_opaque_database_resource_id(
     assert '"database_target"' not in persisted
 
 
-def test_environment_summary_exposes_release_and_backup_metadata() -> None:
+def test_runtime_inventory_does_not_expose_operator_release_backup_metadata() -> None:
     summary = EnvironmentSummary(
         environment_id="env-a",
         customer_id="customer-a",
@@ -280,9 +274,7 @@ def test_environment_summary_exposes_release_and_backup_metadata() -> None:
         .get("/control-plane/environments", headers={"X-OKR-Actor": "operator"})
         .json()
     )
-    assert body["environments"][0]["release_digest"] == summary.release_digest
-    assert body["environments"][0]["backup_id"] == "provider-backup-a"
-    assert body["environments"][0]["backup_verified"] is True
+    assert body == {"environments": []}
 
 
 def test_missing_operator_identity_is_rejected() -> None:
@@ -320,16 +312,6 @@ def test_nonproduction_control_plane_keeps_explicit_admin_compatibility(
     backend_main.require_control_plane_operator("admin")
 
     assert called == ["admin"]
-
-
-def test_customer_session_cannot_record_lifecycle_event() -> None:
-    response = _client(actor="customer-user").post(
-        "/control-plane/environments/env-a/lifecycle-events",
-        headers={"X-OKR-Actor": "customer-user"},
-        json={"event": "SUSPEND"},
-    )
-
-    assert response.status_code == 403
 
 
 def test_production_backend_app_registers_control_plane_routes(
@@ -388,7 +370,7 @@ def test_control_plane_modules_have_no_customer_domain_imports() -> None:
         tree = ast.parse(
             (root / relative).read_text(encoding="utf-8"), filename=relative
         )
-        imported = []
+        imported: list[str] = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 imported.extend(alias.name for alias in node.names)

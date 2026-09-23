@@ -165,7 +165,9 @@ def test_deployment_records_reload_atomically(tmp_path: Path):
     second_runtime = LocalRuntimeAdapter(state_path=state_path)
     assert len(second_runtime.deployment_records) == 1
     assert second_runtime.deployment_records[0].target_version == "2026.09.1"
-    assert second_runtime.current("env-acme").version == "2026.09.1"
+    current = second_runtime.current("env-acme")
+    assert current is not None
+    assert current.version == "2026.09.1"
 
 
 def test_deployment_exception_returns_rollback_result_and_clears_candidate():

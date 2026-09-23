@@ -307,6 +307,16 @@ def test_oidc_session_token_is_signed_and_verifiable():
     assert payload["role"] == "member"
 
 
+def test_python_session_token_pair_is_marked_deprecated_and_non_authoritative():
+    issue_doc = EnterpriseIdentityConfig.issue_app_session_token.__doc__ or ""
+    verify_doc = EnterpriseIdentityConfig.verify_app_session_token.__doc__ or ""
+
+    assert "deprecated" in issue_doc.lower()
+    assert "non-authoritative" in issue_doc.lower()
+    assert "deprecated" in verify_doc.lower()
+    assert "non-authoritative" in verify_doc.lower()
+
+
 def test_oidc_session_claims_include_role_binding_from_idp_groups():
     config = EnterpriseIdentityConfig(
         enabled=True,

@@ -274,6 +274,17 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 These paths now have explicit query-count budgets and a reproducible benchmark script.
 
+## Control-plane runtime boundary
+
+The operator-only `/control-plane/environments` list and detail routes expose an
+ephemeral, process-local API inventory. They do not load or report the operator
+CLI state file, are empty in the normal backend runtime, and are not an
+authoritative environment or lifecycle record. Provisioning, release, and
+backup operator commands retain their explicit file-backed lifecycle state.
+The API has no lifecycle-event write route. The separate
+`/control-plane/v1/rollouts/{rollout_id}` endpoint reads SQL-backed fleet
+rollout state and is not part of this in-memory inventory.
+
 ## Contract Governance
 
 - The backend OpenAPI schema (49 paths, OpenAPI 3.1) is exported to `spa-web/src/lib/api/openapi.json` via `scripts/export_openapi.py`.
@@ -329,4 +340,3 @@ customer's rows away from another's, which
 [ADR-001](../ADR-001-multitenant-data-access-boundary.md) rejects as an isolation
 model. The job id is also the GitHub status-check name, so a branch-protection
 rule that still references the former `rls-gate` id must be updated.
-

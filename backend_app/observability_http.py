@@ -181,27 +181,16 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                     )
             except Exception:
                 duration_ms = (time.perf_counter() - start_time) * 1000
+                data_access = current_data_access_context()
                 record_api_request(
                     method=request.method,
                     route=route,
                     status_code=500,
                     duration_ms=duration_ms,
                     actor=actor,
-                    strategy=(
-                        current_data_access_context().effective_mode
-                        if current_data_access_context()
-                        else None
-                    ),
-                    fallback_reason=(
-                        current_data_access_context().fallback_reason
-                        if current_data_access_context()
-                        else None
-                    ),
-                    resolver_state=(
-                        current_data_access_context().resolver_state
-                        if current_data_access_context()
-                        else None
-                    ),
+                    strategy=data_access.effective_mode if data_access else None,
+                    fallback_reason=data_access.fallback_reason if data_access else None,
+                    resolver_state=data_access.resolver_state if data_access else None,
                 )
                 logger.exception(
                     build_observability_log_payload(
@@ -229,27 +218,16 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                 response.headers["X-Request-ID"] = request_id
                 status_code = 500
         duration_ms = (time.perf_counter() - start_time) * 1000
+        data_access = current_data_access_context()
         record_api_request(
             method=request.method,
             route=route,
             status_code=status_code,
             duration_ms=duration_ms,
             actor=actor,
-            strategy=(
-                current_data_access_context().effective_mode
-                if current_data_access_context()
-                else None
-            ),
-            fallback_reason=(
-                current_data_access_context().fallback_reason
-                if current_data_access_context()
-                else None
-            ),
-            resolver_state=(
-                current_data_access_context().resolver_state
-                if current_data_access_context()
-                else None
-            ),
+            strategy=data_access.effective_mode if data_access else None,
+            fallback_reason=data_access.fallback_reason if data_access else None,
+            resolver_state=data_access.resolver_state if data_access else None,
         )
         logger.info(
             build_observability_log_payload(

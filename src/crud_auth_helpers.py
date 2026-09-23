@@ -167,7 +167,11 @@ def new_auth_throttle_state_from_crud(
 def remaining_lockout_seconds_from_crud(*, crud_module, state, now) -> int:
     if not state or not state.locked_until:
         return 0
-    delta = ensure_utc(state.locked_until) - ensure_utc(now)
+    locked_until = ensure_utc(state.locked_until)
+    checked_at = ensure_utc(now)
+    if locked_until is None or checked_at is None:
+        raise ValueError("auth throttle timestamps are required")
+    delta = locked_until - checked_at
     remaining = int(delta.total_seconds())
     return remaining if remaining > 0 else 0
 
@@ -191,7 +195,11 @@ def prepare_throttle_state_for_check_from_crud(
         return 0
 
     window_started = state.window_started_at or now
-    if (ensure_utc(now) - ensure_utc(window_started)).total_seconds() >= window_seconds:
+    checked_at = ensure_utc(now)
+    window_start = ensure_utc(window_started)
+    if checked_at is None or window_start is None:
+        raise ValueError("auth throttle timestamps are required")
+    if (checked_at - window_start).total_seconds() >= window_seconds:
         state.failed_attempts = 0
         state.window_started_at = now
         state.updated_at = now

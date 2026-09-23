@@ -38,23 +38,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/control-plane/environments/{environment_id}/lifecycle-events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Record Lifecycle Event */
-        post: operations["record_lifecycle_event_control_plane_environments__environment_id__lifecycle_events_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/control-plane/v1/rollouts/{rollout_id}": {
         parameters: {
             query?: never;
@@ -2271,10 +2254,6 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -2410,54 +2389,6 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    record_lifecycle_event_control_plane_environments__environment_id__lifecycle_events_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-okr-actor"?: string | null;
-                "x-okr-role"?: string | null;
-                "x-okr-roles"?: string | null;
-                "x-okr-service-token"?: string | null;
-                "x-okr-signature"?: string | null;
-                "x-okr-timestamp"?: string | null;
-                "x-okr-nonce"?: string | null;
-                "x-okr-key-id"?: string | null;
-            };
-            path: {
-                environment_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
                 headers: {
                     [name: string]: unknown;
                 };

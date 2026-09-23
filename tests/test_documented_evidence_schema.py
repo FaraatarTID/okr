@@ -46,6 +46,12 @@ OPERATOR_SUPPLIED = (
 )
 
 
+def _section(evidence: dict[str, object], name: str) -> dict[str, object]:
+    value = evidence[name]
+    assert isinstance(value, dict)
+    return value
+
+
 def _documented_json(path: Path) -> dict[str, object]:
     text = path.read_text(encoding="utf-8")
     matches = re.findall(r"```json\s*\n(\{.*?\})\s*\n```", text, re.DOTALL)
@@ -64,12 +70,13 @@ def _digest(payload: dict[str, object]) -> str:
 def _completed_example() -> dict[str, object]:
     """Fill the documented placeholders the way the document tells an operator to."""
     evidence = copy.deepcopy(_documented_json(BACKUP_ONBOARDING))
-    backup = evidence["backup"]
-    checksum = _digest(backup["checksum_payload"])
+    backup = _section(evidence, "backup")
+    checksum_payload = _section(backup, "checksum_payload")
+    checksum = _digest(checksum_payload)
     backup["checksum"] = checksum
-    evidence["restore"]["restored_checksum"] = checksum
+    _section(evidence, "restore")["restored_checksum"] = checksum
     unsigned = {key: value for key, value in evidence.items() if key != "attestation"}
-    attestation = evidence["attestation"]
+    attestation = _section(evidence, "attestation")
     attestation["signed_payload_sha256"] = _digest(unsigned)
     attestation["signature"] = (
         "hmac-sha256:"
@@ -92,7 +99,7 @@ def test_documented_backup_example_leaves_operator_values_as_placeholders() -> N
     evidence = _documented_json(BACKUP_ONBOARDING)
 
     for parent, member in OPERATOR_SUPPLIED:
-        value = evidence[parent][member]
+        value = _section(evidence, parent)[member]
         assert isinstance(value, str), f"{parent}.{member} must be a documented string"
         assert value.startswith("<") and value.endswith(">"), (
             f"{parent}.{member} must stay an angle-bracketed placeholder"
@@ -102,7 +109,8 @@ def test_documented_backup_example_leaves_operator_values_as_placeholders() -> N
 def test_renaming_backup_id_to_id_breaks_the_documented_example() -> None:
     """The drift B1 fixed: the guide documented `backup.id` instead of `backup_id`."""
     evidence = _completed_example()
-    evidence["backup"]["id"] = evidence["backup"].pop("backup_id")
+    backup = _section(evidence, "backup")
+    backup["id"] = backup.pop("backup_id")
 
     with pytest.raises(RecoveryEvidenceError, match="backup.backup_id"):
         verify_recovery_evidence(evidence, secret=SECRET)

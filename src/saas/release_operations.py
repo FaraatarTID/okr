@@ -231,6 +231,7 @@ class LocalRuntimeAdapter:
             self._write_unlocked()
 
     def _write_unlocked(self) -> None:
+        assert self._state_path is not None
         payload = {
             "artifacts": {
                 "\0".join(key): value.to_mapping()
@@ -307,10 +308,12 @@ class ReleaseManager:
         return result
 
     def _reconcile_failure(self, environment_id: str, record: DeploymentRecord) -> None:
-        self.control_plane.update_environment_metadata(
+        control_plane = self.control_plane
+        assert control_plane is not None
+        control_plane.update_environment_metadata(
             environment_id, health_state="degraded"
         )
-        self.control_plane.record_lifecycle_event(
+        control_plane.record_lifecycle_event(
             AuditEvent(
                 environment_id,
                 "RELEASE",

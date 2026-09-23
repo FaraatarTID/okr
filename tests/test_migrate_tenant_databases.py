@@ -151,13 +151,15 @@ def test_current_revision_failure_is_reported(monkeypatch) -> None:
 def test_default_runner_passes_tenant_lock_id_to_alembic(monkeypatch) -> None:
     from types import SimpleNamespace
 
-    observed = []
+    observed: list[str | None] = []
+
+    def fake_run(*args, **kwargs) -> SimpleNamespace:
+        observed.append(kwargs["env"].get("OKR_MIGRATION_LOCK_ID"))
+        return SimpleNamespace(returncode=0, stdout="head", stderr="")
+
     monkeypatch.setattr(
         "scripts.migrate_tenant_databases.subprocess.run",
-        lambda *args, **kwargs: (
-            observed.append(kwargs["env"].get("OKR_MIGRATION_LOCK_ID"))
-            or SimpleNamespace(returncode=0, stdout="head", stderr="")
-        ),
+        fake_run,
     )
     revision, error = _default_runner(
         database_url="sqlite:///a.db", timeout_seconds=1, lock_id="env-a"

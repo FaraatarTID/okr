@@ -79,7 +79,7 @@ class EnvironmentManifest(BaseModel):
     """Versioned, serializable description of one application environment."""
 
     model_config = ConfigDict(extra="forbid")
-    CONTRACT_VERSION: ClassVar[str] = "v1"
+    CONTRACT_VERSION: ClassVar[Literal["v1"]] = "v1"
 
     contract_version: Literal["v1"] = CONTRACT_VERSION
     environment_id: str

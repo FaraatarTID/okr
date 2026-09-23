@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { type ComponentProps, type ReactNode, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -29,18 +30,17 @@ import {
   nearestAncestorId,
 } from "@/components/atlas-shell/nodeMutation";
 import { selectedNodeDetails } from "@/components/atlas-shell/inspectorDetails";
-import AdminModePanel, {
-  type AdminTab,
-} from "@/components/atlas-shell/AdminModePanel";
-import DashboardLeadershipPanel from "@/components/atlas-shell/DashboardLeadershipPanel";
-import TimelineModePanel from "@/components/atlas-shell/TimelineModePanel";
-import WeeklyModePanel from "@/components/atlas-shell/WeeklyModePanel";
-import DailyModePanel from "@/components/atlas-shell/DailyModePanel";
-import RitualModePanel from "@/components/atlas-shell/RitualModePanel";
-import RetroboxModePanel from "@/components/atlas-shell/RetroboxModePanel";
-import AtlasFocusMapPanel from "@/components/atlas-shell/AtlasFocusMapPanel";
-import AtlasModeControlsPanel from "@/components/atlas-shell/AtlasModeControlsPanel";
-import InspectorAiAssistPanel from "@/components/atlas-shell/InspectorAiAssistPanel";
+import type AdminModePanelComponent from "@/components/atlas-shell/AdminModePanel";
+import type { AdminTab } from "@/components/atlas-shell/AdminModePanel";
+import type DashboardLeadershipPanelComponent from "@/components/atlas-shell/DashboardLeadershipPanel";
+import type TimelineModePanelComponent from "@/components/atlas-shell/TimelineModePanel";
+import type WeeklyModePanelComponent from "@/components/atlas-shell/WeeklyModePanel";
+import type DailyModePanelComponent from "@/components/atlas-shell/DailyModePanel";
+import type RitualModePanelComponent from "@/components/atlas-shell/RitualModePanel";
+import type RetroboxModePanelComponent from "@/components/atlas-shell/RetroboxModePanel";
+import type AtlasFocusMapPanelComponent from "@/components/atlas-shell/AtlasFocusMapPanel";
+import type AtlasModeControlsPanelComponent from "@/components/atlas-shell/AtlasModeControlsPanel";
+import type InspectorAiAssistPanelComponent from "@/components/atlas-shell/InspectorAiAssistPanel";
 import InspectorEditAnalysisPanel from "@/components/atlas-shell/InspectorEditAnalysisPanel";
 import InspectorManageNodesPanel from "@/components/atlas-shell/InspectorManageNodesPanel";
 import InspectorTaskWorkHistoryPanel from "@/components/atlas-shell/InspectorTaskWorkHistoryPanel";
@@ -129,6 +129,77 @@ const TYPE_TAG: Record<AtlasIndexNode["type"], string> = {
   KEY_RESULT: "KR",
   TASK: "T",
 };
+
+function PanelLoading() {
+  return (
+    <div role="status" className="panel" style={{ padding: "0.8rem", marginTop: "0.6rem" }}>
+      Loading workspace panel…
+    </div>
+  );
+}
+
+const AdminModePanel = dynamic<ComponentProps<typeof AdminModePanelComponent>>(
+  () => import("@/components/atlas-shell/AdminModePanel"),
+  { loading: PanelLoading },
+);
+const DashboardLeadershipPanel = dynamic<ComponentProps<typeof DashboardLeadershipPanelComponent>>(
+  () => import("@/components/atlas-shell/DashboardLeadershipPanel"),
+  { loading: PanelLoading },
+);
+const TimelineModePanel = dynamic<ComponentProps<typeof TimelineModePanelComponent>>(
+  () => import("@/components/atlas-shell/TimelineModePanel"),
+  { loading: PanelLoading },
+);
+const WeeklyModePanel = dynamic<ComponentProps<typeof WeeklyModePanelComponent>>(
+  () => import("@/components/atlas-shell/WeeklyModePanel"),
+  { loading: PanelLoading },
+);
+const DailyModePanel = dynamic<ComponentProps<typeof DailyModePanelComponent>>(
+  () => import("@/components/atlas-shell/DailyModePanel"),
+  { loading: PanelLoading },
+);
+const RitualModePanel = dynamic<ComponentProps<typeof RitualModePanelComponent>>(
+  () => import("@/components/atlas-shell/RitualModePanel"),
+  { loading: PanelLoading },
+);
+const RetroboxModePanel = dynamic<ComponentProps<typeof RetroboxModePanelComponent>>(
+  () => import("@/components/atlas-shell/RetroboxModePanel"),
+  { loading: PanelLoading },
+);
+const AtlasFocusMapPanel = dynamic<ComponentProps<typeof AtlasFocusMapPanelComponent>>(
+  () => import("@/components/atlas-shell/AtlasFocusMapPanel"),
+  { loading: PanelLoading },
+);
+const AtlasModeControlsPanel = dynamic<ComponentProps<typeof AtlasModeControlsPanelComponent>>(
+  () => import("@/components/atlas-shell/AtlasModeControlsPanel"),
+  { loading: PanelLoading },
+);
+const InspectorAiAssistPanel = dynamic<ComponentProps<typeof InspectorAiAssistPanelComponent>>(
+  () => import("@/components/atlas-shell/InspectorAiAssistPanel"),
+  { loading: PanelLoading },
+);
+
+export function ShellAccessGate({
+  accessReady,
+  pendingMessage = "Checking workspace access...",
+  children,
+}: {
+  accessReady: boolean;
+  pendingMessage?: string;
+  children?: ReactNode;
+}) {
+  if (!accessReady) {
+    return (
+      <main className="page-shell">
+        <section className="panel" role="status" aria-live="polite" style={{ padding: "1rem" }}>
+          <p className="kicker">Atlas SPA</p>
+          <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>{pendingMessage}</p>
+        </section>
+      </main>
+    );
+  }
+  return <>{children}</>;
+}
 
 export default function AtlasShell() {
   const router = useRouter();
@@ -1209,7 +1280,7 @@ export default function AtlasShell() {
     return baseTitle || `${nodeTypeLabel(selectedMeta.type)} ${selectedMeta.id}`;
   }, [mindmapTree, selectedMeta]);
 
-  const { handleSignOut } = useShellAccessControl({
+  const { accessReady, handleSignOut } = useShellAccessControl({
     authHydrated,
     user,
     isAdmin,
@@ -1260,44 +1331,32 @@ export default function AtlasShell() {
     );
   }
 
-  if (!authHydrated) {
+  if (!accessReady || !user) {
     return (
-      <main className="page-shell">
-        <section className="panel" style={{ padding: "1rem" }}>
-          <p className="kicker">Atlas SPA</p>
-          <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>Loading session...</p>
-        </section>
-      </main>
-    );
-  }
-
-  if (!user) {
-    return (
-      <main className="page-shell">
-        <section className="panel" style={{ padding: "1rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.62rem" }}>
-            <img
-              src="/okr-logo.webp"
-              alt="OKR logo"
-              width={30}
-              height={54}
-              style={{ display: "block", width: "30px", height: "54px", objectFit: "contain" }}
-            />
-            <h2 style={{ margin: 0, fontSize: "1.5rem" }}>OKR</h2>
-          </div>
-          <p style={{ margin: 0, color: "var(--ink-soft)" }}>
-            Redirecting to login.{" "}
-            <a href="/login" style={{ textDecoration: "underline" }}>
-              Open login page
-            </a>
-            .
-          </p>
-        </section>
-      </main>
+      <ShellAccessGate
+        accessReady={false}
+        pendingMessage={
+          !authHydrated
+            ? "Loading session..."
+            : !user
+              ? "Redirecting to login..."
+              : "Checking workspace access..."
+        }
+      />
     );
   }
 
   return (
+    <ShellAccessGate
+      accessReady={accessReady}
+      pendingMessage={
+        !authHydrated
+          ? "Loading session..."
+          : !user
+            ? "Redirecting to login..."
+            : "Checking workspace access..."
+      }
+    >
     <main className="page-shell">
       <div className="spa-shell-layout">
         <aside className="panel spa-shell-sidebar">
@@ -1478,11 +1537,11 @@ export default function AtlasShell() {
           filteredRefs={filteredRefs}
           atlasIndex={atlasRuntime?.index || null}
           selectedRef={selectedRef}
-          onSelectRef={(ref) => {
+          onSelectRef={(ref: string) => {
             setSelectedRef(ref);
             setInspectorModalOpen(true);
           }}
-          onAddChild={(parentRef) => {
+          onAddChild={(parentRef: string) => {
             const parentMeta = atlasRuntime?.index[parentRef];
             if (parentMeta) {
               setCreateDraft((prev) => ({
@@ -1506,7 +1565,7 @@ export default function AtlasShell() {
           nodeQuery={nodeQuery}
           onNodeQueryChange={setNodeQuery}
           hasSnapshotPayload={Boolean(snapshotPayload)}
-          nodeTagForType={(type) => TYPE_TAG[type as keyof typeof TYPE_TAG] || "N"}
+          nodeTagForType={(type: string) => TYPE_TAG[type as keyof typeof TYPE_TAG] || "N"}
         />
 
         <InspectorAiAssistPanel
@@ -1835,7 +1894,7 @@ export default function AtlasShell() {
             reportAiPending={reportAiPending}
             reportExportError={reportExportError}
             reportAiError={reportAiError}
-            onReportExport={(format) => {
+            onReportExport={(format: "pdf" | "html") => {
               void handleReportExport(format);
             }}
             onGenerateAiSummary={() => {
@@ -1868,7 +1927,7 @@ export default function AtlasShell() {
             reportAiPending={reportAiPending}
             reportExportError={reportExportError}
             reportAiError={reportAiError}
-            onReportExport={(format) => {
+            onReportExport={(format: "pdf" | "html") => {
               void handleReportExport(format);
             }}
             onGenerateAiSummary={() => {
@@ -1937,7 +1996,7 @@ export default function AtlasShell() {
         {mode === "retrobox" ? (
           <RetroboxModePanel
             retroDraft={retroDraft}
-            onRetroDraftChange={(patch) => {
+            onRetroDraftChange={(patch: Partial<{ content: string; sentiment: string }>) => {
               setRetroDraft((prev) => ({ ...prev, ...patch }));
             }}
             modeActionPending={modeActionPending}
@@ -2215,5 +2274,6 @@ export default function AtlasShell() {
         </div>
       ) : null}
     </main>
+    </ShellAccessGate>
   );
 }

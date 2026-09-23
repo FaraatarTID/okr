@@ -82,6 +82,115 @@ function renderAccessHook(initialProps: HarnessProps) {
 }
 
 describe("useShellAccessControl", () => {
+  it("keeps shell access closed until auth hydrates", () => {
+    const { result } = renderAccessHook({
+      authHydrated: false,
+      user: ACTIVE_USER,
+      isAdmin: true,
+      isManager: false,
+      mode: "atlas",
+      adminTab: "cycles",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab: vi.fn(),
+    });
+
+    expect(result.current.accessReady).toBe(false);
+  });
+
+  it("keeps shell access closed for anonymous and forced-password users", () => {
+    const anonymous = renderAccessHook({
+      authHydrated: true,
+      user: null,
+      isAdmin: false,
+      isManager: false,
+      mode: "atlas",
+      adminTab: "cycles",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab: vi.fn(),
+    });
+    const forcedPassword = renderAccessHook({
+      authHydrated: true,
+      user: { ...ACTIVE_USER, must_change_password: true },
+      isAdmin: true,
+      isManager: false,
+      mode: "atlas",
+      adminTab: "cycles",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab: vi.fn(),
+    });
+
+    expect(anonymous.result.current.accessReady).toBe(false);
+    expect(forcedPassword.result.current.accessReady).toBe(false);
+  });
+
+  it("keeps non-manager access closed for admin mode while preserving allowed access", () => {
+    const deniedAdmin = renderAccessHook({
+      authHydrated: true,
+      user: { ...ACTIVE_USER, role: "member" },
+      isAdmin: false,
+      isManager: false,
+      mode: "admin",
+      adminTab: "cycles",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab: vi.fn(),
+    });
+    const allowedAdmin = renderAccessHook({
+      authHydrated: true,
+      user: { ...ACTIVE_USER, role: "manager" },
+      isAdmin: false,
+      isManager: true,
+      mode: "admin",
+      adminTab: "cycles",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab: vi.fn(),
+    });
+    const allowedWorkspace = renderAccessHook({
+      authHydrated: true,
+      user: ACTIVE_USER,
+      isAdmin: true,
+      isManager: false,
+      mode: "atlas",
+      adminTab: "cycles",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab: vi.fn(),
+    });
+
+    expect(deniedAdmin.result.current.accessReady).toBe(false);
+    expect(allowedAdmin.result.current.accessReady).toBe(true);
+    expect(allowedWorkspace.result.current.accessReady).toBe(true);
+  });
+
+  it("keeps manager shell access closed until the admin tab is Cycles", () => {
+    const setAdminTab = vi.fn();
+    const { result } = renderAccessHook({
+      authHydrated: true,
+      user: { ...ACTIVE_USER, role: "manager" },
+      isAdmin: false,
+      isManager: true,
+      mode: "admin",
+      adminTab: "ai",
+      adminAiHealth: null,
+      adminPdfHealth: null,
+      adminAuditSummary: null,
+      setAdminTab,
+    });
+
+    expect(result.current.accessReady).toBe(false);
+    expect(setAdminTab).toHaveBeenCalledWith("cycles");
+  });
+
   it("redirects hydrated anonymous users to login", async () => {
     const { routerReplace } = renderAccessHook({
       authHydrated: true,
@@ -109,7 +218,7 @@ describe("useShellAccessControl", () => {
       user: { ...ACTIVE_USER, must_change_password: true },
       isAdmin: true,
       isManager: false,
-      mode: "atlas",
+      mode: "admin",
       adminTab: "cycles",
       adminAiHealth: null,
       adminPdfHealth: null,

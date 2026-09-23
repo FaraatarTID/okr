@@ -111,6 +111,57 @@ def test_workflow_validates_configuration_and_sanitizes_evidence() -> None:
     assert "darkube-deployment-verification" in text
 
 
+def test_frontend_budget_probe_is_dispatch_only_and_kept_as_separate_artifact() -> None:
+    workflow = _workflow()
+    verify_private = workflow["jobs"]["verify_private"]
+    assert "github.event_name == 'workflow_dispatch'" in verify_private["if"]
+    assert verify_private["environment"] == "darkube-prerelease"
+    assert verify_private["env"]["WEB_BUILD_ID"] == "${{ inputs.web_build_id }}"
+    steps = verify_private["steps"]
+    probe_indices = [
+        index
+        for index, step in enumerate(steps)
+        if "scripts.probe_frontend_budget" in step.get("run", "")
+    ]
+    journey_indices = [
+        index
+        for index, step in enumerate(steps)
+        if "Run existing login-to-Atlas journey" in step.get("name", "")
+    ]
+    assert len(probe_indices) == 1
+    assert len(journey_indices) == 1
+    probe = steps[probe_indices[0]]
+    assert journey_indices[0] < probe_indices[0]
+    assert probe["env"]["PRERELEASE_SMOKE_USERNAME"] == "${{ secrets.PRERELEASE_SMOKE_USERNAME }}"
+    assert probe["env"]["PRERELEASE_SMOKE_PASSWORD"] == "${{ secrets.PRERELEASE_SMOKE_PASSWORD }}"
+    assert probe["env"]["DATA_ACCESS_MODE"] == "database"
+    probe_run = probe["run"]
+    for argument in (
+        "--base-url",
+        "--username-env PRERELEASE_SMOKE_USERNAME",
+        "--password-env PRERELEASE_SMOKE_PASSWORD",
+        "--build-id",
+        "--commit-sha",
+        "--data-access-mode",
+        "--output frontend-performance.json",
+    ):
+        assert argument in probe_run
+    assert "$GITHUB_SHA" in probe_run
+    assert '"$WEB_BUILD_ID"' in probe_run
+    assert '"$DATA_ACCESS_MODE"' in probe_run
+
+    uploads = [
+        step
+        for step in steps
+        if step.get("uses", "").startswith("actions/upload-artifact@")
+        and step.get("with", {}).get("name") == "darkube-prerelease-frontend-budget"
+    ]
+    assert len(uploads) == 1
+    assert uploads[0]["if"] == "always()"
+    assert uploads[0]["with"]["path"] == "frontend-performance.json"
+    assert uploads[0]["with"]["retention-days"] == "7"
+
+
 def test_manual_verification_requires_explicit_non_production_inputs() -> None:
     workflow = _workflow()
     inputs = _on(workflow)["workflow_dispatch"]["inputs"]

@@ -5,12 +5,13 @@ import { proxyToBff } from "@/lib/bff-proxy";
 
 const TARGET = "https://bff.internal/session/me";
 
-function makeRequest(): NextRequest {
+function makeRequest(headers: Record<string, string> = {}): NextRequest {
   return new NextRequest("https://app.local/api/session/me?token=QUERY_SECRET", {
     method: "POST",
     headers: {
       cookie: "okr_session=COOKIE_SECRET",
       authorization: "Bearer AUTH_SECRET",
+      ...headers,
     },
   });
 }
@@ -92,5 +93,45 @@ describe("proxyToBff", () => {
 
     expect(response.status).toBe(200);
     expect(logged).toHaveLength(0);
+  });
+
+  it("forwards the private client IP header when it is present", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    globalThis.fetch = fetchMock;
+
+    await proxyToBff(makeRequest({ "x-okr-client-ip": "203.0.113.10" }), TARGET);
+
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(new Headers(init?.headers).get("x-okr-client-ip")).toBe("203.0.113.10");
+  });
+
+  it("keeps the private client IP header absent when the request does not include it", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    globalThis.fetch = fetchMock;
+
+    await proxyToBff(makeRequest(), TARGET);
+
+    const init = fetchMock.mock.calls[0]?.[1];
+    expect(new Headers(init?.headers).has("x-okr-client-ip")).toBe(false);
+  });
+
+  it("does not forward caller-supplied X-Forwarded-For or X-Real-IP headers", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}"));
+    globalThis.fetch = fetchMock;
+
+    await proxyToBff(
+      makeRequest({
+        "x-okr-client-ip": "203.0.113.10",
+        "x-forwarded-for": "198.51.100.77",
+        "x-real-ip": "192.0.2.44",
+      }),
+      TARGET,
+    );
+
+    const init = fetchMock.mock.calls[0]?.[1];
+    const forwardedHeaders = new Headers(init?.headers);
+    expect(forwardedHeaders.get("x-okr-client-ip")).toBe("203.0.113.10");
+    expect(forwardedHeaders.has("x-forwarded-for")).toBe(false);
+    expect(forwardedHeaders.has("x-real-ip")).toBe(false);
   });
 });

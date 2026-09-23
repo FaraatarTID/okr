@@ -20,6 +20,12 @@ RESTORE_COMPLETED = "2026-09-01T10:16:00+00:00"
 SECRET = "recovery-attestation-test-secret"
 
 
+def _section(evidence: dict[str, object], name: str) -> dict[str, object]:
+    value = evidence[name]
+    assert isinstance(value, dict)
+    return value
+
+
 @pytest.fixture(autouse=True)
 def _attestation_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     """An attestation is only verifiable against a configured key."""
@@ -39,7 +45,7 @@ def _signature(payload: dict[str, object]) -> str:
 
 
 def valid_evidence() -> dict[str, object]:
-    checksum_payload = {
+    checksum_payload: dict[str, object] = {
         "backup_id": "backup-20260901-001",
         "database_identity": "db-env-a-primary",
         "environment_id": "env-a",
@@ -113,17 +119,17 @@ def test_verifies_sanitized_successful_recovery_evidence() -> None:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (lambda e: e["backup"].update({"checksum": "sha256:" + "0" * 64}), "checksum"),
-        (lambda e: e["restore"]["target"].update({"isolation": "shared"}), "isolated"),
-        (lambda e: e["restore"]["target"].update({"live": True}), "live"),
+        (lambda e: _section(e, "backup").update({"checksum": "sha256:" + "0" * 64}), "checksum"),
+        (lambda e: _section(_section(e, "restore"), "target").update({"isolation": "shared"}), "isolated"),
+        (lambda e: _section(_section(e, "restore"), "target").update({"live": True}), "live"),
         (
-            lambda e: e["restore"]["target"].update({"identity": "db-env-a-primary"}),
+            lambda e: _section(_section(e, "restore"), "target").update({"identity": "db-env-a-primary"}),
             "different",
         ),
         (lambda e: e.update({"measured_rto_seconds": 1801}), "RTO"),
         (lambda e: e.update({"measured_rpo_seconds": 3601}), "RPO"),
         (
-            lambda e: e["restore"].update(
+            lambda e: _section(e, "restore").update(
                 {"completed_at": "2026-09-01T10:00:59+00:00"}
             ),
             "timestamp",
@@ -142,10 +148,10 @@ def test_rejects_failed_status_even_with_failure_reasons_and_complete_timestamps
     None
 ):
     evidence = valid_evidence()
-    evidence["backup"].update(
+    _section(evidence, "backup").update(
         {"status": "FAILED", "failure_reason": "provider timeout"}
     )
-    evidence["restore"].update(
+    _section(evidence, "restore").update(
         {"status": "FAILED", "failure_reason": "restore aborted"}
     )
     evidence.update(
@@ -162,7 +168,7 @@ def test_rejects_unsigned_or_incomplete_evidence(field: str) -> None:
     if field == "attestation":
         evidence.pop("attestation")
     else:
-        evidence[field].pop("status")
+        _section(evidence, field).pop("status")
 
     with pytest.raises(RecoveryEvidenceError):
         verify_recovery_evidence(evidence)
@@ -170,7 +176,7 @@ def test_rejects_unsigned_or_incomplete_evidence(field: str) -> None:
 
 def test_rejects_synthetic_provider_evidence() -> None:
     evidence = valid_evidence()
-    evidence["attestation"]["provider"] = "local-test-provider"
+    _section(evidence, "attestation")["provider"] = "local-test-provider"
 
     with pytest.raises(RecoveryEvidenceError, match="real provider"):
         verify_recovery_evidence(evidence)
@@ -178,7 +184,7 @@ def test_rejects_synthetic_provider_evidence() -> None:
 
 def test_rejects_failed_status_without_reason() -> None:
     evidence = valid_evidence()
-    evidence["restore"].update({"status": "FAILED"})
+    _section(evidence, "restore").update({"status": "FAILED"})
 
     with pytest.raises(RecoveryEvidenceError, match="failed evidence"):
         verify_recovery_evidence(evidence)
@@ -196,10 +202,10 @@ def test_cli_writes_deterministic_verification_artifact(tmp_path) -> None:
 def test_rejects_fabricated_signature_with_a_valid_self_digest() -> None:
     """The defect A5 closed: a self-consistent digest used to be enough to pass."""
     evidence = valid_evidence()
-    evidence["attestation"]["signature"] = (
+    _section(evidence, "attestation")["signature"] = (
         "provider-signature-value-with-more-than-32-bytes"
     )
-    assert evidence["attestation"]["signed_payload_sha256"] == _checksum(
+    assert _section(evidence, "attestation")["signed_payload_sha256"] == _checksum(
         {key: value for key, value in evidence.items() if key != "attestation"}
     )
 
@@ -211,7 +217,7 @@ def test_rejects_payload_tampered_after_signing_even_with_a_fresh_digest() -> No
     """The signature must bind the content, not merely accompany a recomputed digest."""
     evidence = valid_evidence()
     evidence["measured_rpo_seconds"] = 1
-    evidence["attestation"]["signed_payload_sha256"] = _checksum(
+    _section(evidence, "attestation")["signed_payload_sha256"] = _checksum(
         {key: value for key, value in evidence.items() if key != "attestation"}
     )
 

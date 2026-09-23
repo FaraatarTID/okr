@@ -175,6 +175,96 @@ def _key_result_ids_for_cycle_scope(*, cycle_id: int, scope: Any) -> set[int]:
     }
 
 
+def _filter_supabase_tasks_for_scope(
+    rows: list[Any],
+    *,
+    scope: dict[str, Any] | None,
+    allowed_goal_ids: set[int],
+    goal_id_by_key_result: dict[int, int] | None = None,
+) -> list[dict[str, Any]]:
+    """Apply the TCP task visibility union to rows returned for one cycle.
+
+    The query is cycle-bounded. Applying the union in-process avoids depending on
+    PostgREST's cross-resource OR/empty-embed semantics and returns only authorized
+    rows to the caller.
+    """
+    if isinstance(scope, dict) and bool(scope.get("is_admin", False)):
+        admin_rows: list[dict[str, Any]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError("Unable to evaluate task visibility.")
+            admin_rows.append(row)
+        return admin_rows
+
+    owner_ids: set[int] = set()
+    if isinstance(scope, dict):
+        raw_owner_ids = scope.get("owner_ids")
+        if isinstance(raw_owner_ids, (set, frozenset, list, tuple)):
+            owner_ids = {
+                owner_id
+                for value in raw_owner_ids
+                if (owner_id := _as_int(value, 0)) > 0
+            }
+
+    visible: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("Unable to evaluate task visibility.")
+        assignee_id = _as_int(row.get("assignee_id"), 0)
+        key_result_id = _as_int(row.get("key_result_id"), 0)
+        if goal_id_by_key_result is None:
+            key_result = row.get("key_result")
+            objective = (
+                key_result.get("objective") if isinstance(key_result, dict) else None
+            )
+            if not isinstance(objective, dict):
+                raise ValueError("Unable to evaluate task visibility.")
+            goal_id = _as_int(objective.get("goal_id"), 0)
+        else:
+            if key_result_id not in goal_id_by_key_result:
+                raise ValueError("Unable to evaluate task visibility.")
+            goal_id = goal_id_by_key_result[key_result_id]
+
+        if goal_id in allowed_goal_ids or assignee_id in owner_ids:
+            visible.append(row)
+    return visible
+
+
+def _serialize_supabase_task_context(
+    row: dict[str, Any], *, minimal_parent_context: bool
+) -> dict[str, Any]:
+    """Normalize embedded task parents and trim them for assignee-only access."""
+    row["__tablename__"] = "task"
+    key_result = row.get("key_result")
+    if not isinstance(key_result, dict):
+        raise ValueError("Unable to serialize task context.")
+    objective = key_result.get("objective")
+    if not isinstance(objective, dict):
+        raise ValueError("Unable to serialize task context.")
+    goal = objective.get("goal")
+    if not isinstance(goal, dict):
+        raise ValueError("Unable to serialize task context.")
+
+    if minimal_parent_context:
+        row["key_result"] = {
+            "id": _as_int(key_result.get("id"), 0),
+            "title": str(key_result.get("title") or ""),
+            "objective": {
+                "id": _as_int(objective.get("id"), 0),
+                "title": str(objective.get("title") or ""),
+                "goal": {
+                    "id": _as_int(goal.get("id"), 0),
+                    "title": str(goal.get("title") or ""),
+                },
+            },
+        }
+    else:
+        key_result["__tablename__"] = "key_result"
+        objective["__tablename__"] = "objective"
+        goal["__tablename__"] = "goal"
+    return row
+
+
 def read_query_via_supabase_api(
     *,
     kind: str,
@@ -569,37 +659,86 @@ def read_query_via_supabase_api(
         # Prefer one embedded PostgREST query over walking the hierarchy with
         # four sequential remote calls. Older projects may not expose these
         # FK relationships through PostgREST, so retain the fallback below.
-        allowed_goal_ids = _allowed_goal_ids_for_cycle(cycle_id=cycle_id, scope=scope)
-        if not allowed_goal_ids:
+        status, cycle_goals = _rest_select(
+            "goal",
+            query={
+                "cycle_id": f"eq.{int(cycle_id)}",
+                "select": "id,owner_id,title",
+                "order": "id.asc",
+            },
+        )
+        if status >= 400:
+            raise ValueError(f"Supabase API error (goal/cycle): {status}")
+
+        is_admin = isinstance(scope, dict) and bool(scope.get("is_admin", False))
+        owner_ids: set[int] = set()
+        if not is_admin and isinstance(scope, dict):
+            raw_owner_ids = scope.get("owner_ids")
+            if isinstance(raw_owner_ids, (set, frozenset, list, tuple)):
+                owner_ids = {
+                    owner_id
+                    for value in raw_owner_ids
+                    if (owner_id := _as_int(value, 0)) > 0
+                }
+
+        cycle_goal_ids: list[str] = []
+        task_allowed_goal_ids: list[str] = []
+        for goal in cycle_goals:
+            if not isinstance(goal, dict):
+                continue
+            goal_id = _as_int(goal.get("id"), 0)
+            if goal_id <= 0:
+                continue
+            goal_id_str = str(goal_id)
+            cycle_goal_ids.append(goal_id_str)
+            goal_owner_id = _as_int(goal.get("owner_id"), 0)
+            if is_admin or goal_owner_id in owner_ids:
+                task_allowed_goal_ids.append(goal_id_str)
+
+        if not cycle_goal_ids or (not is_admin and not owner_ids):
             return {"tasks": []}
-        nested_query: dict[str, str] = {
-            "select": "*,key_result!inner(objective!inner(goal_id))",
-            "key_result.objective.goal_id": f"in.({_in_clause_ids(allowed_goal_ids)})",
+        task_nested_query: dict[str, str] = {
+            "select": "*,key_result!inner(*,objective!inner(*,goal(*)))",
+            # Fetch candidates only from this cycle, then apply the visibility
+            # union in-process before returning rows.
+            "key_result.objective.goal_id": f"in.({_in_clause_ids(cycle_goal_ids)})",
             "order": "id.asc",
         }
         if limit is not None:
-            nested_query["limit"] = str(_as_int(limit, 0))
+            task_nested_query["limit"] = str(_as_int(limit, 0))
         if offset > 0:
-            nested_query["offset"] = str(offset)
-        status, nested_tasks = _rest_select("task", query=nested_query)
+            task_nested_query["offset"] = str(offset)
+        status, nested_tasks = _rest_select("task", query=task_nested_query)
         if status < 400:
-            for row in nested_tasks:
-                # The embedded relation is only a filter carrier; preserve
-                # the established task response shape for callers.
-                row.pop("key_result", None)
-                row["__tablename__"] = "task"
-            return {"tasks": nested_tasks}
+            visible_tasks = _filter_supabase_tasks_for_scope(
+                nested_tasks,
+                scope=scope,
+                allowed_goal_ids={_as_int(value, 0) for value in task_allowed_goal_ids},
+            )
+            for row in visible_tasks:
+                key_result = row["key_result"]
+                objective = key_result["objective"]
+                goal_id = _as_int(objective.get("goal_id"), 0)
+                _serialize_supabase_task_context(
+                    row,
+                    minimal_parent_context=(
+                        not is_admin
+                        and goal_id
+                        not in {_as_int(value, 0) for value in task_allowed_goal_ids}
+                    ),
+                )
+            return {"tasks": visible_tasks}
 
-        # Already resolved by cycle and narrowed to the actor above.
-        goal_ids = list(allowed_goal_ids)
-        if not goal_ids:
-            return {"tasks": []}
+        # The fallback walks all of the cycle hierarchy so assigned tasks under
+        # a foreign goal remain discoverable. Its final query applies the same
+        # owner-or-assignee predicate as the embedded query.
+        goal_ids = list(cycle_goal_ids)
 
         status, objectives = _rest_select(
             "objective",
             query={
                 "goal_id": f"in.({_in_clause_ids(goal_ids)})",
-                "select": "id",
+                "select": "id,goal_id,title",
                 "order": "id.asc",
             },
         )
@@ -607,11 +746,12 @@ def read_query_via_supabase_api(
             raise ValueError(
                 f"Supabase API error (tasks.by_cycle/objectives): {status}"
             )
-        objective_ids = [
-            str(_as_int(o.get("id"), 0))
-            for o in objectives
-            if _as_int(o.get("id"), 0) > 0
-        ]
+        objective_goal_by_id = {
+            _as_int(row.get("id"), 0): row
+            for row in objectives
+            if isinstance(row, dict) and _as_int(row.get("id"), 0) > 0
+        }
+        objective_ids = [str(objective_id) for objective_id in objective_goal_by_id]
         if not objective_ids:
             return {"tasks": []}
 
@@ -619,7 +759,7 @@ def read_query_via_supabase_api(
             "key_result",
             query={
                 "objective_id": f"in.({','.join(objective_ids)})",
-                "select": "id",
+                "select": "*",
                 "order": "id.asc",
             },
         )
@@ -627,11 +767,29 @@ def read_query_via_supabase_api(
             raise ValueError(
                 f"Supabase API error (tasks.by_cycle/key_result): {status}"
             )
-        kr_ids = [
-            str(_as_int(k.get("id"), 0)) for k in krs if _as_int(k.get("id"), 0) > 0
-        ]
+        key_result_by_id = {
+            _as_int(row.get("id"), 0): row
+            for row in krs
+            if isinstance(row, dict) and _as_int(row.get("id"), 0) > 0
+        }
+        kr_ids = [str(key_result_id) for key_result_id in key_result_by_id]
         if not kr_ids:
             return {"tasks": []}
+
+        goal_id_by_key_result = {
+            key_result_id: _as_int(
+                objective_goal_by_id.get(_as_int(row.get("objective_id"), 0), {}).get(
+                    "goal_id"
+                ),
+                0,
+            )
+            for key_result_id, row in key_result_by_id.items()
+        }
+        goal_by_id = {
+            _as_int(row.get("id"), 0): row
+            for row in cycle_goals
+            if isinstance(row, dict) and _as_int(row.get("id"), 0) > 0
+        }
 
         task_query = {
             "key_result_id": f"in.({','.join(kr_ids)})",
@@ -645,9 +803,27 @@ def read_query_via_supabase_api(
         status, tasks = _rest_select("task", query=task_query)
         if status >= 400:
             raise ValueError(f"Supabase API error (tasks.by_cycle/task): {status}")
-        for row in tasks:
-            row["__tablename__"] = "task"
-        return {"tasks": tasks}
+        visible_tasks = _filter_supabase_tasks_for_scope(
+            tasks,
+            scope=scope,
+            allowed_goal_ids={_as_int(value, 0) for value in task_allowed_goal_ids},
+            goal_id_by_key_result=goal_id_by_key_result,
+        )
+        for row in visible_tasks:
+            key_result = key_result_by_id[_as_int(row.get("key_result_id"), 0)]
+            objective = objective_goal_by_id[_as_int(key_result.get("objective_id"), 0)]
+            goal = goal_by_id[_as_int(objective.get("goal_id"), 0)]
+            row["key_result"] = {**key_result, "objective": {**objective, "goal": goal}}
+            goal_id = _as_int(objective.get("goal_id"), 0)
+            _serialize_supabase_task_context(
+                row,
+                minimal_parent_context=(
+                    not is_admin
+                    and goal_id
+                    not in {_as_int(value, 0) for value in task_allowed_goal_ids}
+                ),
+            )
+        return {"tasks": visible_tasks}
 
     if normalized == "weekly_plan.active":
         user_id = _as_int(params.get("user_id"), 0)

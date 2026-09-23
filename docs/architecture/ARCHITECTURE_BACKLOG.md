@@ -1,21 +1,51 @@
-# Phase 0 Backlog - Multi-Tenant Security and Domain Foundation
+# Historical Phase 0 Backlog and Performance Carry-Forward
 
 Documentation HQ: [README](../../README.md)
 
 > **SUPERSEDED — historical record. Do not start work from this document.**
-> This backlog's premise is shared-database multi-tenant SaaS, which
+> The tenancy packages in this backlog assumed shared-database multi-tenant SaaS, which
 > [ADR-001](../ADR-001-multitenant-data-access-boundary.md) rejects as
 > *"Rejected - permanently out of product scope"*; a dedicated single-tenant
 > environment per customer is the only supported model. Current work, its status,
 > and its order are tracked in
 > [REMAINING_ENGINEERING_PLAN.md](../REMAINING_ENGINEERING_PLAN.md), which is
-> authoritative. The status values below are a historical snapshot of this
-> initiative and are not maintained.
+> authoritative. The status values, estimates, task lists, sequence, and exit
+> gate below are a historical snapshot of this rejected initiative; they are
+> not maintained or scheduled. Only the performance problem carries forward,
+> under the current register's C1-C3 work and execution packet T13.
 
-Status: SUPERSEDED (recorded as `ACTIVE - P0-00 performance recovery in progress` at the time)  
-Scope: tenant model, authorization boundary, data isolation, and migration safety  
-Planning horizon: 8-17 weeks at 12-16 focused hours per week  
-Owner model: one primary maintainer, with an independent named security reviewer at the exit gate
+- Status: SUPERSEDED historical proposal (recorded as `ACTIVE - P0-00 performance recovery in progress` at the time)
+- Historical scope: tenant model, authorization boundary, data isolation, and migration safety
+- Historical planning horizon: 8-17 weeks at 12-16 focused hours per week
+- Historical owner model: one primary maintainer, with an independent named security reviewer at the exit gate
+
+## Current performance carry-forward
+
+The page-load problem documented in P0-00 below remains relevant, but this
+backlog is not its execution ledger. The authoritative
+[Remaining Engineering Plan](../REMAINING_ENGINEERING_PLAN.md) defines the
+performance work and its disposition: C1 caching for cycle and admin data is
+implemented (session caching deliberately excluded); C2 shell streaming and
+panel splitting and C3's repeatable page-load budget probe remain open. C8's
+shell-remount implementation still needs its warmed-stack drill. The
+[execution plan](../superpowers/plans/2026-09-23-remaining-engineering-execution.md)
+assigns the budget probe to T13. That probe and its production-readiness status
+must be established with implementation and measured evidence; this historical
+document is not evidence that it exists or gates production today.
+
+The recorded P0-00 observations remain useful hypotheses and context. Its
+original task list, budgets, estimate, and definition of done are preserved
+below as history; current scope and acceptance come from the register.
+
+## Historical proposal
+
+The original purpose, P0-01 through P0-07, sequence, and exit gate below
+describe the rejected shared-database design. P0-00 records the original
+performance formulation, whose current disposition is above. The imperative
+language is preserved as a record of what was proposed, not as instructions to
+execute.
+[ADR-001](../ADR-001-multitenant-data-access-boundary.md) is the controlling
+decision for customer isolation.
 
 ## Purpose
 
@@ -116,7 +146,7 @@ designed from scratch for tenant propagation.
 
 ## Work packages
 
-### P0-00 - Performance baseline and load-time recovery
+### P0-00 - Performance baseline and load-time recovery (historical formulation)
 
 Finding: The application can take approximately 10 seconds to load page data,
 which is unacceptable when individual Supabase calls are expected to be below
@@ -185,10 +215,10 @@ Definition of done:
 - Goal and Objective rollups are read from maintained values on the critical path, with reconciliation coverage.
 - The BFF performs no page-specific aggregation or response transformation beyond its boundary responsibilities.
 - Independent bootstrap work is parallelized, stable reference data is cached, and the shell is usable before the full data payload resolves.
-- The performance probe is part of the production-readiness gate and fails on material regression.
+- A performance probe was proposed for the production-readiness gate; none was implemented under this package. Current probe scope and acceptance are C3 in the [remaining-work register](../REMAINING_ENGINEERING_PLAN.md) and T13 in its execution plan.
 
-This package must complete before P0-01. Tenant filters and RLS should not be
-introduced while the system's request critical path is still unexplained.
+The original proposal made this package a prerequisite to P0-01. That
+dependency ended when ADR-001 rejected the tenancy packages.
 
 ### P0-01 - Tenant and membership domain model
 
@@ -429,15 +459,14 @@ gate.
 - Threat model has no open critical/high isolation findings.
 - ADR, runbook, test evidence, and residual risks are recorded in the Phase 0 handoff.
 
-## Tracking rules
+## Historical tracking rules (superseded)
 
-- Update status in this document at the work-package level; do not recreate a second active ledger.
-- Record implementation evidence, decisions, and incidents in `docs/WORKLOG.md` only after the fresh Phase 0 worklog is created.
-- Reassess estimates after P0-02; do not silently carry uncertainty into P0-04.
-- Any scope change affecting tenant isolation requires a new decision record and security review.
+These were the proposed rules for the rejected initiative. They are retained
+for context only. Record current status and acceptance in the
+[Remaining Engineering Plan](../REMAINING_ENGINEERING_PLAN.md); ADR-001 governs
+any proposed change to the supported isolation model.
 
 ## Archived predecessor records
 
 The previous architecture backlog, status ledger, and worklog are preserved in
 the [architecture archive](../archive/architecture-2026-08-31/README.md).
-

@@ -186,3 +186,9 @@ def test_post_deployment_workflow_validates_the_completed_record() -> None:
     assert "workflow_dispatch" in (workflow.get("on") or {})
     verifier_steps = _verifier_steps(workflow)
     assert any("--record" in _run(step) for step in verifier_steps)
+    attach_step = next(
+        step
+        for step in _steps(workflow)
+        if step.get("name") == "Attach the provider execution outcome"
+    )
+    assert ".execution = $execution" in _run(attach_step)

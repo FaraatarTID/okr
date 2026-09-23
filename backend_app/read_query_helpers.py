@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
+from datetime import datetime
 import time
 from typing import Any
 
@@ -12,6 +13,7 @@ from src.services.app_shell_runtime import (
     serialize_weekly_plan,
 )
 from src.observability import record_timing
+from src.serialization_helpers import _enum_value
 
 _RPC_FALLBACK_WARNED = False
 
@@ -857,6 +859,9 @@ def read_query_payload(
                         task,
                         include_key_result=True,
                         include_work_logs=False,
+                        minimal_parent_context=not main._task_goal_owner_in_scope(
+                            task, scope
+                        ),
                     )
                     for task in tasks
                 )
@@ -903,7 +908,7 @@ def read_query_payload(
             return {"work_logs": []}
         work_logs = sorted(
             list(getattr(task_node, "work_logs", []) or []),
-            key=lambda row: getattr(row, "start_time", main.datetime.min),
+            key=lambda row: getattr(row, "start_time", datetime.min),
             reverse=True,
         )
         return {
@@ -1244,7 +1249,7 @@ def read_query_payload(
                     "parent_id": int(getattr(edge, "parent_id")),
                     "child_id": int(getattr(edge, "child_id")),
                     "alignment_type": str(
-                        main._enum_value(getattr(edge, "alignment_type", "SUPPORTS"))
+                        _enum_value(getattr(edge, "alignment_type", "SUPPORTS"))
                     ),
                 }
                 for edge in edge_rows

@@ -11,6 +11,7 @@ from typing import (
     Hashable,
     Iterable,
     Mapping,
+    Protocol,
     Sequence,
     TypeVar,
 )
@@ -98,10 +99,14 @@ class KeyedSnapshotCache(Generic[T]):
         self._values.clear()
 
 
+class ClearableCache(Protocol):
+    def clear(self) -> None: ...
+
+
 class SnapshotCacheRegistry:
     """Coordinate invalidation for related runtime snapshot caches."""
 
-    def __init__(self, caches: Iterable[SnapshotCache[Any]] = ()) -> None:
+    def __init__(self, caches: Iterable[ClearableCache] = ()) -> None:
         self._caches = tuple(caches)
 
     def clear(self) -> None:
@@ -243,12 +248,15 @@ def create_runtime_snapshot_caches(
     load_weekly_plan: Callable[[], Any],
 ) -> dict[str, Any]:
     """Create the app-shell caches and their shared invalidation registry."""
+    cycles = create_cycle_snapshot_cache(load_cycles)
+    user = create_user_snapshot_cache(load_user)
+    weekly_plan = create_weekly_plan_snapshot_cache(load_weekly_plan)
     caches = {
-        "cycles": create_cycle_snapshot_cache(load_cycles),
-        "user": create_user_snapshot_cache(load_user),
-        "weekly_plan": create_weekly_plan_snapshot_cache(load_weekly_plan),
+        "cycles": cycles,
+        "user": user,
+        "weekly_plan": weekly_plan,
+        "registry": SnapshotCacheRegistry((cycles, user, weekly_plan)),
     }
-    caches["registry"] = SnapshotCacheRegistry(caches.values())
     return caches
 
 
@@ -259,14 +267,17 @@ def create_keyed_runtime_snapshot_caches(
     load_weekly_plan: Callable[[Hashable], Any],
 ) -> dict[str, Any]:
     """Create runtime caches with user-scoped snapshots keyed by identity."""
+    cycles = create_cycle_snapshot_cache(load_cycles)
+    user = KeyedSnapshotCache(
+        lambda user_id: serialize_user_snapshot(load_user(user_id))
+    )
+    weekly_plan = KeyedSnapshotCache(
+        lambda user_id: serialize_weekly_plan_snapshot(load_weekly_plan(user_id))
+    )
     caches = {
-        "cycles": create_cycle_snapshot_cache(load_cycles),
-        "user": KeyedSnapshotCache(
-            lambda user_id: serialize_user_snapshot(load_user(user_id))
-        ),
-        "weekly_plan": KeyedSnapshotCache(
-            lambda user_id: serialize_weekly_plan_snapshot(load_weekly_plan(user_id))
-        ),
+        "cycles": cycles,
+        "user": user,
+        "weekly_plan": weekly_plan,
+        "registry": SnapshotCacheRegistry((cycles, user, weekly_plan)),
     }
-    caches["registry"] = SnapshotCacheRegistry(caches.values())
     return caches

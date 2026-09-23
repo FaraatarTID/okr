@@ -114,14 +114,14 @@ def test_update_cycle_uses_atomic_rpc_when_available(
     rpc_calls: list[tuple[str, dict]] = []
     rest_updates: list[tuple[dict, dict]] = []
 
+    def fake_rpc(name: str, args: dict) -> tuple[int, dict[str, object]]:
+        rpc_calls.append((name, args))
+        return 200, {"id": args["p_cycle_id"], "title": "Q1", "is_active": True}
+
     monkeypatch.setattr(
         ops,
         "_rest_rpc",
-        lambda name, args: (
-            rpc_calls.append((name, args)),
-            200,
-            {"id": args["p_cycle_id"], "title": "Q1", "is_active": True},
-        )[1:],
+        fake_rpc,
     )
 
     def fake_rest_update(table, *, match_query=None, payload=None):

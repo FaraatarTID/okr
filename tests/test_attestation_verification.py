@@ -27,6 +27,12 @@ from scripts.attestation_verification import (
 SECRET = "shared-attestation-test-secret"
 
 
+def _attestation(evidence: dict[str, object]) -> dict[str, object]:
+    value = evidence["attestation"]
+    assert isinstance(value, dict)
+    return value
+
+
 def _canonical(payload: dict[str, object]) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -102,7 +108,7 @@ def _rsa_signature(key: rsa.RSAPrivateKey, payload: dict[str, object]) -> str:
 
 def test_verifies_provider_signed_attestation_against_the_configured_secret() -> None:
     evidence = _evidence("provider-signed", "")
-    evidence["attestation"]["signature"] = _hmac_signature(_unsigned(evidence))
+    _attestation(evidence)["signature"] = _hmac_signature(_unsigned(evidence))
 
     assert verify_attestation_signature(evidence, secret=SECRET) == "provider-signed"
 
@@ -112,14 +118,14 @@ def test_reads_the_secret_from_the_environment(
 ) -> None:
     monkeypatch.setenv(ATTESTATION_SECRET_ENV, SECRET)
     evidence = _evidence("provider-signed", "")
-    evidence["attestation"]["signature"] = _hmac_signature(_unsigned(evidence))
+    _attestation(evidence)["signature"] = _hmac_signature(_unsigned(evidence))
 
     assert verify_attestation_signature(evidence) == "provider-signed"
 
 
 def test_rejects_attestation_signed_with_a_different_secret() -> None:
     evidence = _evidence("provider-signed", "")
-    evidence["attestation"]["signature"] = _hmac_signature(
+    _attestation(evidence)["signature"] = _hmac_signature(
         _unsigned(evidence), "a-different-secret"
     )
 
@@ -132,7 +138,7 @@ def test_rejects_attestation_when_no_secret_is_configured(
 ) -> None:
     monkeypatch.delenv(ATTESTATION_SECRET_ENV, raising=False)
     evidence = _evidence("provider-signed", "")
-    evidence["attestation"]["signature"] = _hmac_signature(_unsigned(evidence))
+    _attestation(evidence)["signature"] = _hmac_signature(_unsigned(evidence))
 
     with pytest.raises(AttestationError, match="cannot be verified"):
         verify_attestation_signature(evidence)
@@ -140,7 +146,7 @@ def test_rejects_attestation_when_no_secret_is_configured(
 
 def test_rejects_attestation_when_the_payload_changed_after_signing() -> None:
     evidence = _evidence("provider-signed", "")
-    evidence["attestation"]["signature"] = _hmac_signature(_unsigned(evidence))
+    _attestation(evidence)["signature"] = _hmac_signature(_unsigned(evidence))
     evidence["environment_id"] = "env-b"
 
     with pytest.raises(AttestationError, match="does not verify"):
@@ -150,7 +156,7 @@ def test_rejects_attestation_when_the_payload_changed_after_signing() -> None:
 def test_verifies_ed25519_attestation_against_a_configured_public_key() -> None:
     key, pem = _ed25519_pair()
     evidence = _evidence("ed25519", "")
-    evidence["attestation"]["signature"] = _ed25519_signature(key, _unsigned(evidence))
+    _attestation(evidence)["signature"] = _ed25519_signature(key, _unsigned(evidence))
 
     assert verify_attestation_signature(evidence, public_key_pem=pem) == "ed25519"
 
@@ -161,7 +167,7 @@ def test_reads_the_public_key_from_the_environment(
     key, pem = _ed25519_pair()
     monkeypatch.setenv(ATTESTATION_PUBLIC_KEY_ENV, pem)
     evidence = _evidence("ed25519", "")
-    evidence["attestation"]["signature"] = _ed25519_signature(key, _unsigned(evidence))
+    _attestation(evidence)["signature"] = _ed25519_signature(key, _unsigned(evidence))
 
     assert verify_attestation_signature(evidence) == "ed25519"
 
@@ -170,7 +176,7 @@ def test_rejects_ed25519_attestation_signed_by_a_different_key() -> None:
     _, pem = _ed25519_pair()
     other, _ = _ed25519_pair()
     evidence = _evidence("ed25519", "")
-    evidence["attestation"]["signature"] = _ed25519_signature(
+    _attestation(evidence)["signature"] = _ed25519_signature(
         other, _unsigned(evidence)
     )
 
@@ -181,7 +187,7 @@ def test_rejects_ed25519_attestation_signed_by_a_different_key() -> None:
 def test_rejects_ed25519_attestation_when_the_payload_changed_after_signing() -> None:
     key, pem = _ed25519_pair()
     evidence = _evidence("ed25519", "")
-    evidence["attestation"]["signature"] = _ed25519_signature(key, _unsigned(evidence))
+    _attestation(evidence)["signature"] = _ed25519_signature(key, _unsigned(evidence))
     evidence["status"] = "FAILED"
 
     with pytest.raises(AttestationError, match="does not verify"):
@@ -195,7 +201,7 @@ def test_rejects_asymmetric_attestation_when_no_public_key_is_configured(
     monkeypatch.delenv("OKR_SAAS_ATTESTATION_PUBLIC_KEY_PATH", raising=False)
     key, _ = _ed25519_pair()
     evidence = _evidence("ed25519", "")
-    evidence["attestation"]["signature"] = _ed25519_signature(key, _unsigned(evidence))
+    _attestation(evidence)["signature"] = _ed25519_signature(key, _unsigned(evidence))
 
     with pytest.raises(AttestationError, match="cannot be verified"):
         verify_attestation_signature(evidence)
@@ -204,7 +210,7 @@ def test_rejects_asymmetric_attestation_when_no_public_key_is_configured(
 def test_verifies_rsa_pss_attestation_against_a_configured_public_key() -> None:
     key, pem = _rsa_pair()
     evidence = _evidence("rsa-pss-sha256", "")
-    evidence["attestation"]["signature"] = _rsa_signature(key, _unsigned(evidence))
+    _attestation(evidence)["signature"] = _rsa_signature(key, _unsigned(evidence))
 
     assert (
         verify_attestation_signature(evidence, public_key_pem=pem) == "rsa-pss-sha256"
@@ -215,7 +221,7 @@ def test_rejects_ed25519_attestation_presented_with_an_rsa_key() -> None:
     ed_key, _ = _ed25519_pair()
     _, rsa_pem = _rsa_pair()
     evidence = _evidence("ed25519", "")
-    evidence["attestation"]["signature"] = _ed25519_signature(
+    _attestation(evidence)["signature"] = _ed25519_signature(
         ed_key, _unsigned(evidence)
     )
 
@@ -234,7 +240,7 @@ def test_rejects_asymmetric_signature_without_the_algorithm_prefix() -> None:
     key, pem = _ed25519_pair()
     evidence = _evidence("ed25519", "")
     raw = base64.b64encode(key.sign(_canonical(_unsigned(evidence)))).decode("ascii")
-    evidence["attestation"]["signature"] = raw
+    _attestation(evidence)["signature"] = raw
 
     with pytest.raises(AttestationError, match="prefix"):
         verify_attestation_signature(evidence, public_key_pem=pem)

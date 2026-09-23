@@ -12,6 +12,13 @@ migrations.
 
 ## Manifest
 
+Operator provisioning, release, and backup commands record lifecycle metadata
+in their explicit file-backed control-plane state. The backend's operator-only
+environment inventory API is intentionally process-local and non-authoritative:
+it does not load that file, so the normal API process returns an empty list and
+unknown detail records. The API does not accept lifecycle-event writes. Fleet
+rollout reads use a separate SQL-backed control plane.
+
 `src.saas.environment_contract.EnvironmentManifest` is the typed source of
 truth. Only contract version `v1` is supported. Its fields are:
 

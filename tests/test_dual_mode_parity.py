@@ -635,6 +635,9 @@ def test_cycles_are_row_filtered_identically_in_both_modes(
 
     backend_main = _non_admin_main(monkeypatch)
     scope = MANAGER_SCOPE if scope_fixture == "manager" else NON_ADMIN_SCOPE
+    monkeypatch.setattr(
+        backend_main, "_resolve_scope_for_actor", lambda *_args, **_kwargs: dict(scope)
+    )
     cycles = [dict(cycle) for cycle in FAKE_CYCLES]
     active = [cycle for cycle in cycles if cycle["is_active"]]
 
@@ -646,7 +649,8 @@ def test_cycles_are_row_filtered_identically_in_both_modes(
     )
 
     def fake_supabase(*, kind, params, actor, scope):
-        return {"cycles": [dict(cycle) for cycle in cycles]}
+        rows = active if kind == "cycles.active" else cycles
+        return {"cycles": [dict(cycle) for cycle in rows]}
 
     monkeypatch.setattr(
         backend_main, "read_query_via_supabase_api", fake_supabase, raising=False
@@ -732,3 +736,636 @@ def test_out_of_scope_read_is_refused_in_both_modes(monkeypatch, kind, mode):
         )
 
     assert excinfo.value.status_code == 403
+
+
+def test_task_scope_includes_in_scope_assignee_and_excludes_foreign_rows():
+    """Task assignment independently grants visibility across goal ownership."""
+    from backend_app.response_scope_helpers import _filter_tasks_for_scope
+
+    owner_visible = SimpleNamespace(
+        id=1,
+        assignee_id=999,
+        key_result=SimpleNamespace(
+            objective=SimpleNamespace(goal=SimpleNamespace(owner_id=101))
+        ),
+    )
+    assignee_visible = SimpleNamespace(
+        id=2,
+        assignee_id=101,
+        key_result=SimpleNamespace(
+            objective=SimpleNamespace(goal=SimpleNamespace(owner_id=999))
+        ),
+    )
+    foreign = SimpleNamespace(
+        id=3,
+        assignee_id=999,
+        key_result=SimpleNamespace(
+            objective=SimpleNamespace(goal=SimpleNamespace(owner_id=998))
+        ),
+    )
+
+    visible = _filter_tasks_for_scope(
+        [owner_visible, assignee_visible, foreign], NON_ADMIN_SCOPE
+    )
+
+    assert [task.id for task in visible] == [1, 2]
+
+
+def test_task_scope_evaluation_failure_is_explicit_and_sanitized():
+    """A broken ORM relation cannot silently remove a row or expose internals."""
+    from fastapi import HTTPException
+    from backend_app.response_scope_helpers import _filter_tasks_for_scope
+
+    class BrokenTask:
+        id = 44
+
+        @property
+        def key_result(self):
+            raise RuntimeError("database-secret-details")
+
+    with pytest.raises(HTTPException) as excinfo:
+        _filter_tasks_for_scope([BrokenTask()], NON_ADMIN_SCOPE)
+
+    assert excinfo.value.status_code == 500
+    assert "database-secret-details" not in str(excinfo.value.detail)
+
+
+def test_task_parent_visibility_recheck_is_explicit_and_sanitized():
+    from fastapi import HTTPException
+    from backend_app.response_scope_helpers import _task_goal_owner_in_scope
+
+    class BrokenTask:
+        @property
+        def key_result(self):
+            raise RuntimeError("private-parent-error")
+
+    with pytest.raises(HTTPException) as excinfo:
+        _task_goal_owner_in_scope(BrokenTask(), NON_ADMIN_SCOPE)
+
+    assert excinfo.value.status_code == 500
+    assert excinfo.value.detail == "Unable to evaluate task visibility."
+    assert "private-parent-error" not in str(excinfo.value.detail)
+
+
+def test_task_scope_admin_sees_all_rows_without_evaluating_relationships():
+    from backend_app.response_scope_helpers import _filter_tasks_for_scope
+
+    class BrokenTask:
+        @property
+        def key_result(self):
+            raise AssertionError("admins do not need row-level visibility checks")
+
+    task = BrokenTask()
+    assert _filter_tasks_for_scope([task], {"is_admin": True}) == [task]
+
+
+def test_tasks_by_cycle_owner_assignee_payload_parity(monkeypatch):
+    """Both read modes return owner and assignee rows, excluding foreign tasks."""
+    import backend_app.read_query_helpers as read_query_helpers
+    from src.services import supabase_api_mode_read as supabase_read
+
+    backend_main = _non_admin_main(monkeypatch)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_effective_cycle_id_for_scope",
+        lambda *_args, **_kwargs: 7,
+    )
+
+    database_rows = [
+        SimpleNamespace(
+            id=1,
+            key_result_id=301,
+            title="Owner visible",
+            description=None,
+            progress=0,
+            status="OPEN",
+            start_date=None,
+            deadline=None,
+            estimated_minutes=0,
+            total_time_spent=0,
+            timer_started_at=None,
+            assignee_id=999,
+            created_at=None,
+            updated_at=None,
+            key_result=SimpleNamespace(
+                id=301,
+                objective_id=201,
+                title="Owner KR",
+                description=None,
+                progress=0,
+                start_value=0,
+                target_value=100,
+                current_value=0,
+                unit="%",
+                metric_type="NUMERIC",
+                weight=1,
+                initiative_tags="[]",
+                state="ACTIVE",
+                final_reflection=None,
+                ai_analysis=None,
+                created_at=None,
+                updated_at=None,
+                objective=SimpleNamespace(
+                    id=201,
+                    goal_id=7,
+                    title="Owner objective",
+                    description=None,
+                    progress=0,
+                    score_mode="UNWEIGHTED",
+                    weight=1,
+                    state="ACTIVE",
+                    final_reflection=None,
+                    created_by=None,
+                    created_at=None,
+                    updated_at=None,
+                    goal=SimpleNamespace(
+                        id=7,
+                        title="Owner goal",
+                        description=None,
+                        progress=0,
+                        owner_id=101,
+                        created_by=None,
+                        cycle_id=7,
+                        strategy_tags=None,
+                        created_at=None,
+                        updated_at=None,
+                        state="ACTIVE",
+                    ),
+                ),
+            ),
+        ),
+        SimpleNamespace(
+            id=2,
+            key_result_id=302,
+            title="Assignee visible",
+            description=None,
+            progress=0,
+            status="OPEN",
+            start_date=None,
+            deadline=None,
+            estimated_minutes=0,
+            total_time_spent=0,
+            timer_started_at=None,
+            assignee_id=101,
+            created_at=None,
+            updated_at=None,
+            key_result=SimpleNamespace(
+                id=302,
+                objective_id=202,
+                title="Assignee KR",
+                description="sensitive KR description",
+                progress=10,
+                start_value=0,
+                target_value=100,
+                current_value=10,
+                unit="%",
+                metric_type="NUMERIC",
+                weight=1,
+                initiative_tags="[]",
+                state="ACTIVE",
+                final_reflection="sensitive reflection",
+                ai_analysis="sensitive analysis",
+                created_at=None,
+                updated_at=None,
+                objective=SimpleNamespace(
+                    id=202,
+                    goal_id=8,
+                    title="Assignee objective",
+                    description="sensitive objective description",
+                    progress=15,
+                    score_mode="UNWEIGHTED",
+                    weight=1,
+                    state="ACTIVE",
+                    final_reflection="sensitive objective reflection",
+                    created_by="sensitive creator",
+                    created_at=None,
+                    updated_at=None,
+                    goal=SimpleNamespace(
+                        id=8,
+                        title="Assignee goal",
+                        description="sensitive goal description",
+                        progress=20,
+                        owner_id=999,
+                        created_by="sensitive goal creator",
+                        cycle_id=7,
+                        strategy_tags="sensitive tags",
+                        created_at=None,
+                        updated_at=None,
+                        state="ACTIVE",
+                    ),
+                ),
+            ),
+        ),
+        SimpleNamespace(
+            id=3,
+            title="Foreign",
+            assignee_id=999,
+            key_result=SimpleNamespace(
+                objective=SimpleNamespace(goal=SimpleNamespace(owner_id=998))
+            ),
+        ),
+    ]
+    monkeypatch.setattr(
+        backend_main, "get_all_tasks_by_cycle", lambda *_args, **_kwargs: database_rows
+    )
+
+    def fake_rest_select(table, *, query=None):
+        if table == "goal":
+            return 200, [
+                {"id": 7, "owner_id": 101},
+                {"id": 8, "owner_id": 999},
+            ]
+        if table == "task":
+            return 200, [
+                {
+                    "id": 1,
+                    "key_result_id": 301,
+                    "title": "Owner visible",
+                    "description": None,
+                    "progress": 0,
+                    "status": "OPEN",
+                    "start_date": None,
+                    "deadline": None,
+                    "estimated_minutes": 0,
+                    "total_time_spent": 0,
+                    "timer_started_at": None,
+                    "assignee_id": 999,
+                    "created_at": None,
+                    "updated_at": None,
+                    "key_result": {
+                        "id": 301,
+                        "objective_id": 201,
+                        "title": "Owner KR",
+                        "description": None,
+                        "progress": 0,
+                        "start_value": 0,
+                        "target_value": 100,
+                        "current_value": 0,
+                        "unit": "%",
+                        "metric_type": "NUMERIC",
+                        "weight": 1,
+                        "initiative_tags": "[]",
+                        "state": "ACTIVE",
+                        "final_reflection": None,
+                        "ai_analysis": None,
+                        "created_at": None,
+                        "updated_at": None,
+                        "objective": {
+                            "id": 201,
+                            "goal_id": 7,
+                            "title": "Owner objective",
+                            "description": None,
+                            "progress": 0,
+                            "score_mode": "UNWEIGHTED",
+                            "weight": 1,
+                            "state": "ACTIVE",
+                            "final_reflection": None,
+                            "created_by": None,
+                            "created_at": None,
+                            "updated_at": None,
+                            "goal": {
+                                "id": 7,
+                                "title": "Owner goal",
+                                "description": None,
+                                "progress": 0,
+                                "owner_id": 101,
+                                "created_by": None,
+                                "cycle_id": 7,
+                                "strategy_tags": None,
+                                "created_at": None,
+                                "updated_at": None,
+                                "state": "ACTIVE",
+                            },
+                        },
+                    },
+                },
+                {
+                    "id": 2,
+                    "key_result_id": 302,
+                    "title": "Assignee visible",
+                    "description": None,
+                    "progress": 0,
+                    "status": "OPEN",
+                    "start_date": None,
+                    "deadline": None,
+                    "estimated_minutes": 0,
+                    "total_time_spent": 0,
+                    "timer_started_at": None,
+                    "assignee_id": 101,
+                    "created_at": None,
+                    "updated_at": None,
+                    "key_result": {
+                        "id": 302,
+                        "objective_id": 202,
+                        "title": "Assignee KR",
+                        "description": "sensitive KR description",
+                        "progress": 10,
+                        "start_value": 0,
+                        "target_value": 100,
+                        "current_value": 10,
+                        "unit": "%",
+                        "metric_type": "NUMERIC",
+                        "weight": 1,
+                        "initiative_tags": "[]",
+                        "state": "ACTIVE",
+                        "final_reflection": "sensitive reflection",
+                        "ai_analysis": "sensitive analysis",
+                        "objective": {
+                            "id": 202,
+                            "goal_id": 8,
+                            "title": "Assignee objective",
+                            "description": "sensitive objective description",
+                            "progress": 15,
+                            "score_mode": "UNWEIGHTED",
+                            "weight": 1,
+                            "state": "ACTIVE",
+                            "final_reflection": "sensitive objective reflection",
+                            "created_by": "sensitive creator",
+                            "created_at": None,
+                            "updated_at": None,
+                            "goal": {
+                                "id": 8,
+                                "title": "Assignee goal",
+                                "description": "sensitive goal description",
+                                "progress": 20,
+                                "owner_id": 999,
+                                "created_by": "sensitive goal creator",
+                                "cycle_id": 7,
+                                "strategy_tags": "sensitive tags",
+                                "created_at": None,
+                                "updated_at": None,
+                                "state": "ACTIVE",
+                            },
+                        },
+                    },
+                },
+                {
+                    "id": 3,
+                    "title": "Foreign",
+                    "assignee_id": 999,
+                    "key_result": {
+                        "id": 303,
+                        "title": "Foreign KR",
+                        "objective": {
+                            "id": 203,
+                            "goal_id": 9,
+                            "title": "Foreign objective",
+                            "goal": {"id": 9, "title": "Foreign goal"},
+                        },
+                    },
+                },
+            ]
+        raise AssertionError(f"unexpected table: {table}")
+
+    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
+
+    def payload_for(mode):
+        _force_mode(monkeypatch, mode)
+        return read_query_helpers.read_query_payload(
+            kind="tasks.by_cycle",
+            params={"cycle_id": 7},
+            actor="alice",
+            main=backend_main,
+        )
+
+    database_payload = payload_for("database")
+    https_payload = payload_for("supabase_api")
+
+    assert https_payload == database_payload
+    assert [task["id"] for task in https_payload["tasks"]] == [1, 2]
+    assigned = next(task for task in https_payload["tasks"] if task["id"] == 2)
+    assert assigned["key_result"]["title"] == "Assignee KR"
+    assert assigned["key_result"]["objective"]["title"] == "Assignee objective"
+    assert assigned["key_result"]["objective"]["goal"]["title"] == "Assignee goal"
+    assert set(assigned["key_result"]) <= {
+        "__tablename__",
+        "id",
+        "objective_id",
+        "title",
+        "objective",
+    }
+    assert set(assigned["key_result"]["objective"]) <= {
+        "__tablename__",
+        "id",
+        "goal_id",
+        "title",
+        "goal",
+    }
+    assert set(assigned["key_result"]["objective"]["goal"]) <= {
+        "__tablename__",
+        "id",
+        "title",
+    }
+
+
+def test_krs_by_cycle_owner_filter_payload_parity(monkeypatch):
+    import backend_app.read_query_helpers as read_query_helpers
+    from src.services import supabase_api_mode_read as supabase_read
+
+    backend_main = _non_admin_main(monkeypatch)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_effective_cycle_id_for_scope",
+        lambda *_args, **_kwargs: 7,
+    )
+    database_rows = [
+        SimpleNamespace(
+            id=1,
+            objective=SimpleNamespace(goal=SimpleNamespace(owner_id=101)),
+        ),
+        SimpleNamespace(
+            id=2,
+            objective=SimpleNamespace(goal=SimpleNamespace(owner_id=999)),
+        ),
+    ]
+    monkeypatch.setattr(
+        backend_main, "get_all_krs_by_cycle", lambda *_args, **_kwargs: database_rows
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "_serialize_key_result",
+        lambda row, **_kwargs: {"__tablename__": "keyresult", "id": row.id},
+    )
+
+    def fake_rest_select(table, *, query=None):
+        if table == "goal":
+            return 200, [
+                {"id": 7, "owner_id": 101},
+                {"id": 8, "owner_id": 999},
+                {"id": 9, "owner_id": 998},
+            ]
+        if table == "key_result":
+            assert query["objective.goal_id"] == "in.(7)"
+            return 200, [{"id": 1, "objective": {"goal_id": 7}}]
+        raise AssertionError(f"unexpected table: {table}")
+
+    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
+    _force_mode(monkeypatch, "database")
+    database_payload = read_query_helpers.read_query_payload(
+        kind="krs.by_cycle",
+        params={"cycle_id": 7},
+        actor="alice",
+        main=backend_main,
+    )
+    _force_mode(monkeypatch, "supabase_api")
+    https_payload = read_query_helpers.read_query_payload(
+        kind="krs.by_cycle",
+        params={"cycle_id": 7},
+        actor="alice",
+        main=backend_main,
+    )
+
+    assert (
+        https_payload
+        == database_payload
+        == {"key_results": [{"__tablename__": "keyresult", "id": 1}]}
+    )
+
+
+def test_krs_needing_checkin_scope_filter_payload_parity(monkeypatch):
+    import backend_app.read_query_helpers as read_query_helpers
+    from src.services import supabase_api_mode_read as supabase_read
+
+    backend_main = _non_admin_main(monkeypatch)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_effective_cycle_id_for_scope",
+        lambda *_args, **_kwargs: 7,
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "get_krs_needing_checkin",
+        lambda **_kwargs: [SimpleNamespace(id=1, objective_id=70, state="ACTIVE")],
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "_serialize_key_result",
+        lambda row, **_kwargs: {
+            "__tablename__": "keyresult",
+            "id": row.id,
+            "objective_id": row.objective_id,
+            "state": row.state,
+        },
+    )
+
+    def fake_rest_select(table, *, query=None):
+        if table == "user":
+            return 200, [{"id": 101}, {"id": 202}]
+        if table == "goal":
+            assert query["owner_id"] == "eq.101"
+            candidates = [
+                {"id": 7, "owner_id": 101},
+                {"id": 8, "owner_id": 202},
+            ]
+            return 200, [
+                row
+                for row in candidates
+                if f"eq.{row['owner_id']}" == query["owner_id"]
+            ]
+        if table == "objective":
+            assert query["goal_id"] == "in.(7)"
+            return 200, [{"id": 70, "goal_id": 7}]
+        if table == "key_result":
+            assert query["state"] == "eq.ACTIVE"
+            candidates = [
+                {"id": 1, "objective_id": 70, "state": "ACTIVE"},
+                {"id": 2, "objective_id": 70, "state": "INACTIVE"},
+                {"id": 3, "objective_id": 80, "state": "ACTIVE"},
+            ]
+            return 200, [
+                row
+                for row in candidates
+                if row["objective_id"] == 70 and row["state"] == "ACTIVE"
+            ]
+        if table == "check_in":
+            return 200, []
+        raise AssertionError(f"unexpected table: {table}")
+
+    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
+    params = {"cycle_id": 7, "user_id": "alice"}
+    _force_mode(monkeypatch, "database")
+    database_payload = read_query_helpers.read_query_payload(
+        kind="krs.needing_checkin", params=params, actor="alice", main=backend_main
+    )
+    _force_mode(monkeypatch, "supabase_api")
+    https_payload = read_query_helpers.read_query_payload(
+        kind="krs.needing_checkin", params=params, actor="alice", main=backend_main
+    )
+
+    assert (
+        https_payload
+        == database_payload
+        == {
+            "key_results": [
+                {
+                    "__tablename__": "keyresult",
+                    "id": 1,
+                    "objective_id": 70,
+                    "state": "ACTIVE",
+                }
+            ]
+        }
+    )
+
+
+def test_experiments_for_retro_window_scope_filter_payload_parity(monkeypatch):
+    import backend_app.read_query_helpers as read_query_helpers
+    from src.services import supabase_api_mode_read as supabase_read
+
+    backend_main = _non_admin_main(monkeypatch)
+    monkeypatch.setattr(
+        backend_main,
+        "_resolve_effective_cycle_id_for_scope",
+        lambda *_args, **_kwargs: 7,
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "list_experiments_for_retro_window",
+        lambda **_kwargs: [SimpleNamespace(id=1, key_result_id=30)],
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "_serialize_experiment",
+        lambda row: {"id": row.id, "key_result_id": row.key_result_id},
+    )
+
+    def fake_rest_select(table, *, query=None):
+        if table == "experiment":
+            return 200, [
+                {"id": 1, "key_result_id": 30},
+                {"id": 2, "key_result_id": 99},
+            ]
+        if table == "goal":
+            return 200, [{"id": 10, "owner_id": 101}]
+        if table == "objective":
+            return 200, [{"id": 20}]
+        if table == "key_result":
+            return 200, [{"id": 30}]
+        raise AssertionError(f"unexpected table: {table}")
+
+    monkeypatch.setattr(supabase_read, "_rest_select", fake_rest_select)
+    params = {
+        "cycle_id": 7,
+        "window_start": "2026-01-01T00:00:00+00:00",
+        "window_end": "2026-01-08T00:00:00+00:00",
+    }
+    _force_mode(monkeypatch, "database")
+    database_payload = read_query_helpers.read_query_payload(
+        kind="experiments.for_retro_window",
+        params=params,
+        actor="alice",
+        main=backend_main,
+    )
+    _force_mode(monkeypatch, "supabase_api")
+    https_payload = read_query_helpers.read_query_payload(
+        kind="experiments.for_retro_window",
+        params=params,
+        actor="alice",
+        main=backend_main,
+    )
+
+    assert (
+        https_payload
+        == database_payload
+        == {"experiments": [{"id": 1, "key_result_id": 30}]}
+    )

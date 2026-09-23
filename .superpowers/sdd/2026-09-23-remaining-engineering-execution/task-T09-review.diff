@@ -1,0 +1,427 @@
+diff --git a/src/crud_auth_helpers.py b/src/crud_auth_helpers.py
+index 21e3782..622e3a1 100644
+--- a/src/crud_auth_helpers.py
++++ b/src/crud_auth_helpers.py
+@@ -167,7 +167,11 @@ def new_auth_throttle_state_from_crud(
+ def remaining_lockout_seconds_from_crud(*, crud_module, state, now) -> int:
+     if not state or not state.locked_until:
+         return 0
+-    delta = ensure_utc(state.locked_until) - ensure_utc(now)
++    locked_until = ensure_utc(state.locked_until)
++    checked_at = ensure_utc(now)
++    if locked_until is None or checked_at is None:
++        raise ValueError("auth throttle timestamps are required")
++    delta = locked_until - checked_at
+     remaining = int(delta.total_seconds())
+     return remaining if remaining > 0 else 0
+ 
+@@ -191,7 +195,11 @@ def prepare_throttle_state_for_check_from_crud(
+         return 0
+ 
+     window_started = state.window_started_at or now
+-    if (ensure_utc(now) - ensure_utc(window_started)).total_seconds() >= window_seconds:
++    checked_at = ensure_utc(now)
++    window_start = ensure_utc(window_started)
++    if checked_at is None or window_start is None:
++        raise ValueError("auth throttle timestamps are required")
++    if (checked_at - window_start).total_seconds() >= window_seconds:
+         state.failed_attempts = 0
+         state.window_started_at = now
+         state.updated_at = now
+diff --git a/src/saas/backup_operations.py b/src/saas/backup_operations.py
+index 8f8c896..4efe825 100644
+--- a/src/saas/backup_operations.py
++++ b/src/saas/backup_operations.py
+@@ -10,7 +10,7 @@ import json
+ from pathlib import Path
+ import re
+ import time
+-from typing import Any, Callable, Protocol
++from typing import Any, Callable, Protocol, runtime_checkable
+ import uuid
+ from src.saas.file_lock import locked_file
+ from src.saas.operator_credentials import OperatorCredential
+@@ -172,9 +172,15 @@ class BackupProvider(Protocol):
+     def verify_backup(self, backup_id: str) -> dict[str, Any]: ...
+     def get_backup_record(self, backup_id: str) -> dict[str, Any]: ...
+     def record_status(self, backup_id: str, status: dict[str, Any]) -> None: ...
++
++
++class RestoreBackupProvider(BackupProvider, Protocol):
++    """Backup metadata source with registered-target checks for restore."""
++
+     def is_target_registered(self, target: RestoreTarget) -> bool: ...
+ 
+ 
++@runtime_checkable
+ class RestoreProvider(Protocol):
+     """Production restore contract; duration must come from the provider adapter."""
+ 
+@@ -303,6 +309,7 @@ class LocalBackupProvider:
+             self._write_unlocked()
+ 
+     def _write_unlocked(self) -> None:
++        assert self._state_path is not None
+         temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
+         temporary.write_text(
+             json.dumps(
+@@ -330,7 +337,7 @@ class BackupManager:
+         self,
+         provider: BackupProvider,
+         *,
+-        operator: str | None = None,
++        operator: OperatorCredential | None = None,
+         retention_class: str = "standard",
+         rpo_seconds: int = 86400,
+         rto_seconds: int = 86400,
+@@ -469,9 +476,9 @@ class BackupManager:
+                 ),
+             )
+         except BackupVerificationError as failure:
+-            now = self._clock()
++            checked_at = self._clock()
+             created = datetime.fromisoformat(raw["created_at"])
+-            age = max(0, int((now - created).total_seconds()))
++            age = max(0, int((checked_at - created).total_seconds()))
+             self.provider.record_status(
+                 backup_id,
+                 {
+@@ -482,7 +489,7 @@ class BackupManager:
+                     "created_at": raw.get("created_at"),
+                     "checksum": raw.get("checksum"),
+                     "operator": prior_status.get("operator", self.operator),
+-                    "last_failure_at": now.isoformat(),
++                    "last_failure_at": checked_at.isoformat(),
+                     "failure_reason": "checksum mismatch",
+                     "freshness_seconds": age,
+                 },
+@@ -491,10 +498,10 @@ class BackupManager:
+                 raw.get("environment_id", ""), "backup", "checksum mismatch"
+             )
+             raise failure
+-        now = self._clock()
++        checked_at = self._clock()
+         created = datetime.fromisoformat(raw["created_at"])
+-        age = max(0, int((now - created).total_seconds()))
+-        if self.max_age is not None and now - created > self.max_age:
++        age = max(0, int((checked_at - created).total_seconds()))
++        if self.max_age is not None and checked_at - created > self.max_age:
+             self.provider.record_status(
+                 backup_id,
+                 {
+@@ -504,7 +511,7 @@ class BackupManager:
+                     "created_at": raw["created_at"],
+                     "checksum": raw["checksum"],
+                     "operator": prior_status.get("operator", self.operator),
+-                    "last_failure_at": now.isoformat(),
++                    "last_failure_at": checked_at.isoformat(),
+                     "failure_reason": "backup is stale",
+                     "freshness_seconds": age,
+                 },
+@@ -520,7 +527,7 @@ class BackupManager:
+                 "created_at": raw["created_at"],
+                 "checksum": raw["checksum"],
+                 "operator": prior_status.get("operator", self.operator),
+-                "last_success_at": now.isoformat(),
++                "last_success_at": checked_at.isoformat(),
+                 "last_failure_at": None,
+                 "failure_reason": None,
+                 "freshness_seconds": age,
+@@ -545,7 +552,7 @@ class BackupManager:
+             backup_id=backup_id,
+             verified=True,
+             checksum=raw["checksum"],
+-            checked_at=now.isoformat(),
++            checked_at=checked_at.isoformat(),
+             age_seconds=age,
+         )
+ 
+@@ -590,19 +597,21 @@ class BackupManager:
+ class RestoreManager:
+     def __init__(
+         self,
+-        backup_provider: BackupProvider,
++        backup_provider: RestoreBackupProvider,
+         restore_provider: RestoreProvider | None = None,
+         *,
+-        operator: str | None = None,
++        operator: OperatorCredential | None = None,
+         control_plane: Any | None = None,
+         production: bool = False,
+     ) -> None:
+         _validate_provider_for_environment(backup_provider, production=production)
+-        _validate_provider_for_environment(
+-            restore_provider or backup_provider, production=production
+-        )
++        if restore_provider is None:
++            if not isinstance(backup_provider, RestoreProvider):
++                raise ProviderContractError("restore provider is required")
++            restore_provider = backup_provider
++        _validate_provider_for_environment(restore_provider, production=production)
+         self.backup_provider = backup_provider
+-        self.restore_provider = restore_provider or backup_provider
++        self.restore_provider = restore_provider
+         self.operator = _require_operator(operator).principal
+         self.control_plane = control_plane
+ 
+diff --git a/src/saas/environment_contract.py b/src/saas/environment_contract.py
+index ad86922..d49d22e 100644
+--- a/src/saas/environment_contract.py
++++ b/src/saas/environment_contract.py
+@@ -79,7 +79,7 @@ class EnvironmentManifest(BaseModel):
+     """Versioned, serializable description of one application environment."""
+ 
+     model_config = ConfigDict(extra="forbid")
+-    CONTRACT_VERSION: ClassVar[str] = "v1"
++    CONTRACT_VERSION: ClassVar[Literal["v1"]] = "v1"
+ 
+     contract_version: Literal["v1"] = CONTRACT_VERSION
+     environment_id: str
+diff --git a/src/saas/file_lock.py b/src/saas/file_lock.py
+index f2eaf9c..f1d88ee 100644
+--- a/src/saas/file_lock.py
++++ b/src/saas/file_lock.py
+@@ -6,6 +6,7 @@ from contextlib import contextmanager
+ import json
+ import os
+ from pathlib import Path
++import sys
+ import time
+ 
+ 
+@@ -23,7 +24,7 @@ def locked_file(
+             os.write(handle, b" ")
+         while not acquired:
+             try:
+-                if os.name == "nt":
++                if sys.platform == "win32":
+                     import msvcrt
+ 
+                     os.lseek(handle, 0, os.SEEK_SET)
+@@ -45,7 +46,7 @@ def locked_file(
+         yield
+     finally:
+         if acquired:
+-            if os.name == "nt":
++            if sys.platform == "win32":
+                 import msvcrt
+ 
+                 os.lseek(handle, 0, os.SEEK_SET)
+diff --git a/src/saas/operator_credentials.py b/src/saas/operator_credentials.py
+index 8132974..7505b63 100644
+--- a/src/saas/operator_credentials.py
++++ b/src/saas/operator_credentials.py
+@@ -41,8 +41,8 @@ def resolve_operator_principal(
+     environ: Mapping[str, str] | None = None,
+ ) -> OperatorCredential:
+     env = environ or os.environ
+-    supplied_token = token or env.get("OKR_OPERATOR_TOKEN", "")
+-    path = credential_file or env.get("OKR_OPERATOR_CREDENTIAL_FILE", "")
++    supplied_token = token or env.get("OKR_OPERATOR_TOKEN", "") or ""
++    path = credential_file or env.get("OKR_OPERATOR_CREDENTIAL_FILE", "") or ""
+     if not supplied_token.strip():
+         raise OperatorCredentialError("authenticated operator token is required")
+     if not str(path).strip():
+diff --git a/src/saas/provisioning.py b/src/saas/provisioning.py
+index 69dcd76..da5acbb 100644
+--- a/src/saas/provisioning.py
++++ b/src/saas/provisioning.py
+@@ -27,7 +27,7 @@ from src.saas.environment_contract import (
+     EnvironmentState,
+     transition,
+ )
+-from src.saas.control_plane import AuditEvent, now_utc
++from src.saas.control_plane import AuditEvent, ControlPlane, now_utc
+ from src.saas.file_lock import locked_file
+ from src.saas.operator_credentials import OperatorCredential
+ 
+@@ -309,9 +309,9 @@ class Provisioner:
+         if not isinstance(operator, OperatorCredential):
+             raise ValueError("authenticated operator credential is required")
+         self.operator = operator.principal
+-        self.control_plane = None
++        self.control_plane: ControlPlane | None = None
+ 
+-    def with_control_plane(self, control_plane: object) -> "Provisioner":
++    def with_control_plane(self, control_plane: ControlPlane) -> "Provisioner":
+         self.control_plane = control_plane
+         return self
+ 
+@@ -411,7 +411,7 @@ class Provisioner:
+                 except Exception as cleanup_error:
+                     cleanup_errors.append(f"{kind}: {cleanup_error}")
+             if cleanup_errors:
+-                orphan = {
++                orphan: dict[str, object] = {
+                     "environment_id": manifest.environment_id,
+                     "customer_id": manifest.customer_id,
+                     "resources": [resource for _, resource in created],
+@@ -473,6 +473,8 @@ class Provisioner:
+     def _audit(
+         self, environment_id: str, event: str, result: str, reason: str | None = None
+     ) -> None:
+-        self.control_plane.record_lifecycle_event(
++        control_plane = self.control_plane
++        assert control_plane is not None
++        control_plane.record_lifecycle_event(
+             AuditEvent(environment_id, event, self.operator, now_utc(), result, reason)
+         )
+diff --git a/src/saas/release_operations.py b/src/saas/release_operations.py
+index e26e9ea..d10b810 100644
+--- a/src/saas/release_operations.py
++++ b/src/saas/release_operations.py
+@@ -231,6 +231,7 @@ class LocalRuntimeAdapter:
+             self._write_unlocked()
+ 
+     def _write_unlocked(self) -> None:
++        assert self._state_path is not None
+         payload = {
+             "artifacts": {
+                 "\0".join(key): value.to_mapping()
+@@ -307,10 +308,12 @@ class ReleaseManager:
+         return result
+ 
+     def _reconcile_failure(self, environment_id: str, record: DeploymentRecord) -> None:
+-        self.control_plane.update_environment_metadata(
++        control_plane = self.control_plane
++        assert control_plane is not None
++        control_plane.update_environment_metadata(
+             environment_id, health_state="degraded"
+         )
+-        self.control_plane.record_lifecycle_event(
++        control_plane.record_lifecycle_event(
+             AuditEvent(
+                 environment_id,
+                 "RELEASE",
+diff --git a/src/services/app_shell_runtime.py b/src/services/app_shell_runtime.py
+index 0cd21cb..c36db05 100644
+--- a/src/services/app_shell_runtime.py
++++ b/src/services/app_shell_runtime.py
+@@ -11,6 +11,7 @@ from typing import (
+     Hashable,
+     Iterable,
+     Mapping,
++    Protocol,
+     Sequence,
+     TypeVar,
+ )
+@@ -98,10 +99,14 @@ class KeyedSnapshotCache(Generic[T]):
+         self._values.clear()
+ 
+ 
++class ClearableCache(Protocol):
++    def clear(self) -> None: ...
++
++
+ class SnapshotCacheRegistry:
+     """Coordinate invalidation for related runtime snapshot caches."""
+ 
+-    def __init__(self, caches: Iterable[SnapshotCache[Any]] = ()) -> None:
++    def __init__(self, caches: Iterable[ClearableCache] = ()) -> None:
+         self._caches = tuple(caches)
+ 
+     def clear(self) -> None:
+@@ -243,12 +248,15 @@ def create_runtime_snapshot_caches(
+     load_weekly_plan: Callable[[], Any],
+ ) -> dict[str, Any]:
+     """Create the app-shell caches and their shared invalidation registry."""
++    cycles = create_cycle_snapshot_cache(load_cycles)
++    user = create_user_snapshot_cache(load_user)
++    weekly_plan = create_weekly_plan_snapshot_cache(load_weekly_plan)
+     caches = {
+-        "cycles": create_cycle_snapshot_cache(load_cycles),
+-        "user": create_user_snapshot_cache(load_user),
+-        "weekly_plan": create_weekly_plan_snapshot_cache(load_weekly_plan),
++        "cycles": cycles,
++        "user": user,
++        "weekly_plan": weekly_plan,
++        "registry": SnapshotCacheRegistry((cycles, user, weekly_plan)),
+     }
+-    caches["registry"] = SnapshotCacheRegistry(caches.values())
+     return caches
+ 
+ 
+@@ -259,14 +267,17 @@ def create_keyed_runtime_snapshot_caches(
+     load_weekly_plan: Callable[[Hashable], Any],
+ ) -> dict[str, Any]:
+     """Create runtime caches with user-scoped snapshots keyed by identity."""
++    cycles = create_cycle_snapshot_cache(load_cycles)
++    user = KeyedSnapshotCache(
++        lambda user_id: serialize_user_snapshot(load_user(user_id))
++    )
++    weekly_plan = KeyedSnapshotCache(
++        lambda user_id: serialize_weekly_plan_snapshot(load_weekly_plan(user_id))
++    )
+     caches = {
+-        "cycles": create_cycle_snapshot_cache(load_cycles),
+-        "user": KeyedSnapshotCache(
+-            lambda user_id: serialize_user_snapshot(load_user(user_id))
+-        ),
+-        "weekly_plan": KeyedSnapshotCache(
+-            lambda user_id: serialize_weekly_plan_snapshot(load_weekly_plan(user_id))
+-        ),
++        "cycles": cycles,
++        "user": user,
++        "weekly_plan": weekly_plan,
++        "registry": SnapshotCacheRegistry((cycles, user, weekly_plan)),
+     }
+-    caches["registry"] = SnapshotCacheRegistry(caches.values())
+     return caches
+diff --git a/src/utils/sync.py b/src/utils/sync.py
+index 9e21cf7..8743192 100644
+--- a/src/utils/sync.py
++++ b/src/utils/sync.py
+@@ -26,7 +26,8 @@ def sync_data_to_db(username: str, payload: dict[str, Any]) -> None:
+     root_ids: list[str] = payload.get("rootIds") or []
+ 
+     user = get_user_by_username(username)
+-    owner_id = int(user.id) if user and user.id is not None else 0
++    user_id = getattr(user, "id", None)
++    owner_id = int(user_id) if user_id is not None else 0
+ 
+     with get_session_context() as session:
+         for root_id in root_ids:
+diff --git a/tests/test_restore_provider_truthiness.py b/tests/test_restore_provider_truthiness.py
+new file mode 100644
+index 0000000..7008340
+--- /dev/null
++++ b/tests/test_restore_provider_truthiness.py
+@@ -0,0 +1,38 @@
++"""Restore adapter selection must match provider validation."""
++
++import pytest
++
++from src.saas.backup_operations import (
++    LocalBackupProvider,
++    ProviderContractError,
++    RestoreManager,
++)
++from src.saas.operator_credentials import OperatorCredential
++
++
++class ProductionBackup(LocalBackupProvider):
++    provider_name = "production"
++
++
++class FalseyLocalRestore(LocalBackupProvider):
++    def __bool__(self) -> bool:
++        return False
++
++
++def test_falsey_explicit_restore_provider_is_selected_and_validated() -> None:
++    backup_provider = ProductionBackup()
++    restore_provider = FalseyLocalRestore()
++    credential = OperatorCredential.for_test("operator-a")
++
++    manager = RestoreManager(
++        backup_provider, restore_provider, operator=credential
++    )
++    assert manager.restore_provider is restore_provider
++
++    with pytest.raises(ProviderContractError, match="production provider"):
++        RestoreManager(
++            backup_provider,
++            restore_provider,
++            operator=credential,
++            production=True,
++        )

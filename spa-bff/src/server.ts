@@ -222,7 +222,7 @@ async function fetchFreshSessionUser(
     signal: AbortSignal.timeout(config.requestTimeoutMs),
   });
   if (!response.ok) {
-    throw new Error(`Backend session validation failed: ${response.status}`);
+    throw new BackendSessionValidationError(response.status);
   }
   const data = (await response.json()) as BackendSessionResponse;
   const user = normalizeSessionUser(data);
@@ -230,6 +230,13 @@ async function fetchFreshSessionUser(
     throw new Error("Backend returned invalid user data.");
   }
   return user;
+}
+
+class BackendSessionValidationError extends Error {
+  constructor(readonly statusCode: number) {
+    super(`Backend session validation failed: ${statusCode}`);
+    this.name = "BackendSessionValidationError";
+  }
 }
 
 export function createServer(
@@ -448,13 +455,14 @@ export function createServer(
       );
       return reply.send({ user: freshUser });
     } catch (error) {
-      // Fail closed: if the backend cannot confirm the session (unavailable or
-      // validation/revocation failure), do NOT serve stale cookie data. A
-      // revoked session must not keep rendering an authenticated UI.
+      // Fail closed when the backend cannot confirm the session. Only explicit
+      // authentication rejections invalidate the browser session; throttling,
+      // server errors, and transport failures must not clear a still-valid cookie.
       const isAuthRejection =
-        error instanceof Error && error.message.includes("validation failed");
+        error instanceof BackendSessionValidationError &&
+        (error.statusCode === 401 || error.statusCode === 403);
       app.log.warn(
-        buildBffLogPayload("bff_session_validation_failed", request, 401, {
+        buildBffLogPayload("bff_session_validation_failed", request, isAuthRejection ? 401 : 503, {
           request_id: requestId,
           error_code: isAuthRejection ? "SESSION_REVOKED" : "BACKEND_UNAVAILABLE",
           error_type: error instanceof Error ? error.name : "Error",

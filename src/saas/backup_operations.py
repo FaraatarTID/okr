@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import re
 import time
-from typing import Any, Callable, Protocol
+from typing import Any, Callable, Protocol, runtime_checkable
 import uuid
 from src.saas.file_lock import locked_file
 from src.saas.operator_credentials import OperatorCredential
@@ -172,9 +172,15 @@ class BackupProvider(Protocol):
     def verify_backup(self, backup_id: str) -> dict[str, Any]: ...
     def get_backup_record(self, backup_id: str) -> dict[str, Any]: ...
     def record_status(self, backup_id: str, status: dict[str, Any]) -> None: ...
+
+
+class RestoreBackupProvider(BackupProvider, Protocol):
+    """Backup metadata source with registered-target checks for restore."""
+
     def is_target_registered(self, target: RestoreTarget) -> bool: ...
 
 
+@runtime_checkable
 class RestoreProvider(Protocol):
     """Production restore contract; duration must come from the provider adapter."""
 
@@ -303,6 +309,7 @@ class LocalBackupProvider:
             self._write_unlocked()
 
     def _write_unlocked(self) -> None:
+        assert self._state_path is not None
         temporary = self._state_path.with_suffix(self._state_path.suffix + ".tmp")
         temporary.write_text(
             json.dumps(
@@ -330,7 +337,7 @@ class BackupManager:
         self,
         provider: BackupProvider,
         *,
-        operator: str | None = None,
+        operator: OperatorCredential | None = None,
         retention_class: str = "standard",
         rpo_seconds: int = 86400,
         rto_seconds: int = 86400,
@@ -469,9 +476,9 @@ class BackupManager:
                 ),
             )
         except BackupVerificationError as failure:
-            now = self._clock()
+            checked_at = self._clock()
             created = datetime.fromisoformat(raw["created_at"])
-            age = max(0, int((now - created).total_seconds()))
+            age = max(0, int((checked_at - created).total_seconds()))
             self.provider.record_status(
                 backup_id,
                 {
@@ -482,7 +489,7 @@ class BackupManager:
                     "created_at": raw.get("created_at"),
                     "checksum": raw.get("checksum"),
                     "operator": prior_status.get("operator", self.operator),
-                    "last_failure_at": now.isoformat(),
+                    "last_failure_at": checked_at.isoformat(),
                     "failure_reason": "checksum mismatch",
                     "freshness_seconds": age,
                 },
@@ -491,10 +498,10 @@ class BackupManager:
                 raw.get("environment_id", ""), "backup", "checksum mismatch"
             )
             raise failure
-        now = self._clock()
+        checked_at = self._clock()
         created = datetime.fromisoformat(raw["created_at"])
-        age = max(0, int((now - created).total_seconds()))
-        if self.max_age is not None and now - created > self.max_age:
+        age = max(0, int((checked_at - created).total_seconds()))
+        if self.max_age is not None and checked_at - created > self.max_age:
             self.provider.record_status(
                 backup_id,
                 {
@@ -504,7 +511,7 @@ class BackupManager:
                     "created_at": raw["created_at"],
                     "checksum": raw["checksum"],
                     "operator": prior_status.get("operator", self.operator),
-                    "last_failure_at": now.isoformat(),
+                    "last_failure_at": checked_at.isoformat(),
                     "failure_reason": "backup is stale",
                     "freshness_seconds": age,
                 },
@@ -520,7 +527,7 @@ class BackupManager:
                 "created_at": raw["created_at"],
                 "checksum": raw["checksum"],
                 "operator": prior_status.get("operator", self.operator),
-                "last_success_at": now.isoformat(),
+                "last_success_at": checked_at.isoformat(),
                 "last_failure_at": None,
                 "failure_reason": None,
                 "freshness_seconds": age,
@@ -545,7 +552,7 @@ class BackupManager:
             backup_id=backup_id,
             verified=True,
             checksum=raw["checksum"],
-            checked_at=now.isoformat(),
+            checked_at=checked_at.isoformat(),
             age_seconds=age,
         )
 
@@ -590,19 +597,21 @@ class BackupManager:
 class RestoreManager:
     def __init__(
         self,
-        backup_provider: BackupProvider,
+        backup_provider: RestoreBackupProvider,
         restore_provider: RestoreProvider | None = None,
         *,
-        operator: str | None = None,
+        operator: OperatorCredential | None = None,
         control_plane: Any | None = None,
         production: bool = False,
     ) -> None:
         _validate_provider_for_environment(backup_provider, production=production)
-        _validate_provider_for_environment(
-            restore_provider or backup_provider, production=production
-        )
+        if restore_provider is None:
+            if not isinstance(backup_provider, RestoreProvider):
+                raise ProviderContractError("restore provider is required")
+            restore_provider = backup_provider
+        _validate_provider_for_environment(restore_provider, production=production)
         self.backup_provider = backup_provider
-        self.restore_provider = restore_provider or backup_provider
+        self.restore_provider = restore_provider
         self.operator = _require_operator(operator).principal
         self.control_plane = control_plane
 

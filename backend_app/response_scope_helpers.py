@@ -208,6 +208,7 @@ def _serialize_task(
     *,
     include_key_result: bool = False,
     include_work_logs: bool = False,
+    minimal_parent_context: bool = False,
 ):
     if not task:
         return None
@@ -232,12 +233,32 @@ def _serialize_task(
         "updated_at": getattr(task, "updated_at", None),
     }
     if include_key_result:
-        payload["key_result"] = _serialize_key_result(
-            getattr(task, "key_result", None),
-            include_tasks=False,
-            include_check_ins=False,
-            include_objective=True,
-        )
+        key_result = getattr(task, "key_result", None)
+        if minimal_parent_context:
+            objective = getattr(key_result, "objective", None)
+            goal = getattr(objective, "goal", None)
+            if key_result and objective and goal:
+                payload["key_result"] = {
+                    "id": int(getattr(key_result, "id")),
+                    "title": str(getattr(key_result, "title", "") or ""),
+                    "objective": {
+                        "id": int(getattr(objective, "id")),
+                        "title": str(getattr(objective, "title", "") or ""),
+                        "goal": {
+                            "id": int(getattr(goal, "id")),
+                            "title": str(getattr(goal, "title", "") or ""),
+                        },
+                    },
+                }
+            else:
+                payload["key_result"] = None
+        else:
+            payload["key_result"] = _serialize_key_result(
+                key_result,
+                include_tasks=False,
+                include_check_ins=False,
+                include_objective=True,
+            )
     if include_work_logs:
         serialized_logs = []
         for work_log in list(getattr(task, "work_logs", []) or []):
@@ -466,6 +487,29 @@ def _require_allowed_username(scope: dict[str, Any], username: str) -> None:
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
 
 
+def _task_goal_owner_in_scope(task: Any, scope: dict[str, Any]) -> bool:
+    if bool(scope.get("is_admin", False)):
+        return True
+    try:
+        owner_ids = {int(value) for value in (scope.get("owner_ids") or set())}
+        goal_obj = getattr(
+            getattr(getattr(task, "key_result", None), "objective", None),
+            "goal",
+            None,
+        )
+        owner_id = getattr(goal_obj, "owner_id", None)
+        return owner_id is not None and int(owner_id) in owner_ids
+    except Exception:
+        _LOGGER.warning(
+            "Failed to evaluate task parent visibility",
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to evaluate task visibility.",
+        ) from None
+
+
 def _filter_tasks_for_scope(tasks: list[Any], scope: dict[str, Any]) -> list[Any]:
     if bool(scope.get("is_admin", False)):
         return list(tasks)
@@ -473,25 +517,23 @@ def _filter_tasks_for_scope(tasks: list[Any], scope: dict[str, Any]) -> list[Any
     visible_tasks: list[Any] = []
     for task in tasks:
         try:
-            goal_obj = getattr(
-                getattr(getattr(task, "key_result", None), "objective", None),
-                "goal",
-                None,
-            )
-            owner_id = getattr(goal_obj, "owner_id", None)
-            if owner_id is not None and int(owner_id) in owner_ids:
+            if _task_goal_owner_in_scope(task, scope):
                 visible_tasks.append(task)
                 continue
             assignee_id = getattr(task, "assignee_id", None)
             if assignee_id is not None and int(assignee_id) in owner_ids:
                 visible_tasks.append(task)
+        except HTTPException:
+            raise
         except Exception:
             _LOGGER.warning(
-                "Failed to evaluate task visibility (task_id=%s); skipping",
-                getattr(task, "id", "?"),
+                "Failed to evaluate task visibility; refusing task read",
                 exc_info=True,
             )
-            continue
+            raise HTTPException(
+                status_code=500,
+                detail="Unable to evaluate task visibility.",
+            )
     return visible_tasks
 
 
@@ -514,5 +556,6 @@ __all__ = [
     "_read_node_row_via_supabase",
     "_resolve_goal_owner_id_for_node_via_supabase",
     "_require_allowed_username",
+    "_task_goal_owner_in_scope",
     "_filter_tasks_for_scope",
 ]

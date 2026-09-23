@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -28,6 +28,12 @@ _E2E_ROLES: dict[str, tuple[str, str]] = {
     "manager": ("e2e_manager", _TEST_PASSWORD),
     "member": ("e2e_member", _TEST_PASSWORD),
 }
+
+
+class _JobResponse(TypedDict):
+    status: int
+    status_text: str
+    url: str
 
 
 def _truthy(raw: str | None) -> bool:
@@ -128,12 +134,54 @@ def _wait_for_http_and_process(
 def _terminate_process(process: subprocess.Popen[Any] | None) -> None:
     if process is None or process.poll() is not None:
         return
+    if os.name == "nt":
+        # npm.cmd is a wrapper; terminating only its Popen handle can leave the
+        # Next.js node child alive and lock the next serial E2E run.
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
+        return
     process.terminate()
     try:
         process.wait(timeout=12)
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
+
+
+def _terminate_port_listener(port: int) -> None:
+    """Stop a fixture-owned child process left listening on its unique port."""
+    if os.name != "nt":
+        return
+    result = subprocess.run(
+        ["netstat", "-ano", "-p", "tcp"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) < 5 or fields[0].upper() != "TCP":
+            continue
+        local_address, state, raw_pid = fields[1], fields[-2], fields[-1]
+        if not local_address.endswith(f":{port}") or state.upper() != "LISTENING":
+            continue
+        if not raw_pid.isdigit():
+            continue
+        subprocess.run(
+            ["taskkill", "/PID", raw_pid, "/T", "/F"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
 
 
 def _read_log_tail(path: Path, *, max_chars: int = 4000) -> str:
@@ -151,7 +199,19 @@ from sqlmodel import Session
 
 import src.crud as crud
 import src.database as database
-from src.models import Cycle, Goal, KeyResult, Objective, Task, TaskStatus, User, UserRole
+from src.models import (
+    AlignmentEdge,
+    Cycle,
+    ExperimentDecision,
+    Goal,
+    KeyResult,
+    Objective,
+    Task,
+    TaskStatus,
+    User,
+    UserRole,
+    WorkLog,
+)
 
 database.DATABASE_URL = None
 database._engine = None
@@ -313,6 +373,24 @@ with Session(engine, expire_on_commit=False) as session:
     session.add(admin_task)
     session.add(manager_task)
     session.add(member_task)
+    session.flush()
+    session.add(
+        AlignmentEdge(
+            parent_id=manager_objective.id,
+            child_id=admin_objective.id,
+            created_by='e2e_admin',
+        )
+    )
+    session.add(
+        WorkLog(
+            task_id=admin_task.id,
+            start_time=now - timedelta(minutes=30),
+            end_time=now - timedelta(minutes=5),
+            duration_minutes=25,
+            summary='\\u062c\\u0644\\u0633\\u0647\\u0654 \\u062a\\u0645\\u0631\\u06a9\\u0632 \\u0628\\u0631\\u0627\\u06cc \\u0647\\u062f\\u0641 \\u062a\\u06cc\\u0645',
+            decision=ExperimentDecision.UNKNOWN,
+        )
+    )
     session.commit()
 """
     result = subprocess.run(
@@ -332,6 +410,7 @@ with Session(engine, expire_on_commit=False) as session:
 @dataclass(frozen=True)
 class E2EStack:
     app_url: str
+    backend_log_path: Path
 
 
 @pytest.fixture(scope="module")
@@ -380,7 +459,11 @@ def e2e_stack(
             "OKR_BACKEND_SERVICE_TOKEN": service_token,
             "OKR_BACKEND_ENFORCE_TOKEN": "true",
             "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
+            # This packet exercises role-route behavior, not rate limiting. All
+            # simulated users share the fixture's trusted loopback client IP.
+            "OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS": "10000",
             "OKR_ALEMBIC_UPGRADE_TARGET": "heads",
+            "OKR_WORKER_HEARTBEAT_PATH": str(tmp_dir / "worker-heartbeat"),
             "PYTHONUNBUFFERED": "1",
         }
     )
@@ -525,12 +608,18 @@ def e2e_stack(
                     f"spa.log tail:\\n{_read_log_tail(spa_log_path)}"
                 )
 
-            yield E2EStack(app_url=f"http://127.0.0.1:{app_port}")
+            yield E2EStack(
+                app_url=f"http://127.0.0.1:{app_port}",
+                backend_log_path=backend_log_path,
+            )
         finally:
             _terminate_process(spa_process)
             _terminate_process(bff_process)
             _terminate_process(backend_process)
             _terminate_process(worker_process)
+            _terminate_port_listener(app_port)
+            _terminate_port_listener(bff_port)
+            _terminate_port_listener(backend_port)
 
 
 def _login(page, username: str, password: str) -> None:
@@ -775,7 +864,7 @@ def _run_check_in_path(page) -> None:
 def _run_weekly_job_path(page) -> None:
     from playwright.sync_api import expect
 
-    job_events: list[dict[str, object]] = []
+    job_events: list[_JobResponse] = []
 
     def _capture_job_response(response) -> None:
         url = str(response.url or "")
@@ -812,7 +901,7 @@ def _run_weekly_job_path(page) -> None:
             "If this mode does not use backend job API in current build, capture backend path explicitly."
         )
     last_event = job_events[-1]
-    if int(last_event.get("status", 0)) >= 400:
+    if last_event["status"] >= 400:
         raise AssertionError(
             f"Weekly export request failed with status={last_event.get('status')}, "
             f"url={last_event.get('url')}, status_text={last_event.get('status_text')}"
@@ -851,6 +940,285 @@ def _run_admin_mutation_path(page) -> None:
     owner_select.select_option(label="E2E Admin")
     page.get_by_role("button", name="Create cycle").click()
     expect(page.get_by_text("Cycle created.")).to_be_visible(timeout=90_000)
+
+
+def _assert_mode_content(page, mode: str) -> None:
+    """Assert rendered content unique to the requested route mode."""
+    from playwright.sync_api import expect
+
+    expected = {
+        "dashboard": ("heading", "Dashboard Workspace"),
+        "daily": ("paragraph", "Daily Report"),
+        "timeline": ("heading", "Recent work logs"),
+        "retrobox": ("label", "Retro content"),
+    }
+    locator_kind, label = expected[mode]
+    if locator_kind == "heading":
+        locator = page.get_by_role("heading", name=label, exact=True)
+    elif locator_kind == "paragraph":
+        locator = page.locator("p.kicker").filter(has_text=label).first
+    elif locator_kind == "label":
+        locator = page.get_by_text(label, exact=True)
+    else:
+        locator = page.get_by_text(label, exact=True)
+    expect(locator).to_be_visible(timeout=90_000)
+
+    # Assert each route's own substantive panel too; URL alone is not evidence
+    # that the intended route UI mounted.
+    detail = {
+        "dashboard": page.get_by_text("Execution Completion", exact=True),
+        "daily": page.get_by_role("heading", name="Time Distribution", exact=True),
+        "timeline": page.get_by_placeholder(
+            "Filter timeline by task, owner, objective, goal, or status"
+        ),
+        "retrobox": page.get_by_role("button", name="Add retrospective", exact=True),
+    }[mode]
+    expect(detail).to_be_visible(timeout=90_000)
+
+
+def _exercise_route_surfaces(page, app_url: str) -> None:
+    from playwright.sync_api import expect
+
+    route_paths = {
+        "dashboard": "/dashboard",
+        "daily": "/daily",
+        "timeline": "/timeline",
+        "retrobox": "/retrobox",
+    }
+    for mode, route_path in route_paths.items():
+        page.goto(f"{app_url}{route_path}", wait_until="domcontentloaded", timeout=90_000)
+        _assert_mode_content(page, mode)
+
+    page.goto(f"{app_url}/admin", wait_until="domcontentloaded", timeout=90_000)
+    expect(page.get_by_role("heading", name="Platform Controls", exact=True)).to_be_visible(
+        timeout=90_000
+    )
+
+    page.get_by_role("button", name="Users", exact=True).click()
+    expect(page.locator("strong").filter(has_text="E2E Manager")).to_be_visible(
+        timeout=90_000
+    )
+
+    page.get_by_role("button", name="Teams", exact=True).click()
+    expect(page.get_by_text("No teams found.", exact=True)).to_be_visible(timeout=90_000)
+
+    page.get_by_role("button", name="Backup", exact=True).click()
+    expect(page.get_by_role("button", name="Download Backup JSON", exact=True)).to_be_visible(
+        timeout=90_000
+    )
+    expect(page.get_by_role("button", name="Restore Backup", exact=True)).to_be_visible(
+        timeout=90_000
+    )
+
+    page.get_by_role("button", name="Audit", exact=True).click()
+    expect(page.get_by_text("Audit summary", exact=True)).to_be_visible(timeout=90_000)
+    expect(page.get_by_role("button", name="Refresh Summary", exact=True)).to_be_visible(
+        timeout=90_000
+    )
+
+
+def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
+    from playwright.sync_api import Error, expect, sync_playwright
+
+    chromium_path = _resolve_chromium_executable()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if chromium_path:
+        launch_kwargs["executable_path"] = chromium_path
+    with sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(**launch_kwargs)
+        except Error as exc:
+            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+
+        try:
+            for role in ("admin", "manager", "member"):
+                context = browser.new_context(viewport={"width": 1600, "height": 1000})
+                page = context.new_page()
+                username, password = _E2E_ROLES[role]
+                page.goto(
+                    f"{e2e_stack.app_url}/login",
+                    wait_until="domcontentloaded",
+                    timeout=90_000,
+                )
+                _login(page, username=username, password=password)
+
+                for mode, route_path in {
+                    "dashboard": "/dashboard",
+                    "daily": "/daily",
+                    "timeline": "/timeline",
+                    "retrobox": "/retrobox",
+                }.items():
+                    page.goto(
+                        f"{e2e_stack.app_url}{route_path}",
+                        wait_until="domcontentloaded",
+                        timeout=90_000,
+                    )
+                    _assert_mode_content(page, mode)
+
+                if role == "admin":
+                    page.goto(
+                        f"{e2e_stack.app_url}/admin",
+                        wait_until="domcontentloaded",
+                        timeout=90_000,
+                    )
+                    _exercise_route_surfaces(page, e2e_stack.app_url)
+                elif role == "manager":
+                    page.goto(
+                        f"{e2e_stack.app_url}/admin",
+                        wait_until="domcontentloaded",
+                        timeout=90_000,
+                    )
+                    expect(page.get_by_role("heading", name="Cycles", exact=True)).to_be_visible(
+                        timeout=90_000
+                    )
+                    for restricted_tab in ("Users", "Teams", "Backup", "Audit"):
+                        expect(
+                            page.get_by_role("button", name=restricted_tab, exact=True)
+                        ).to_have_count(0)
+                else:
+                    page.goto(
+                        f"{e2e_stack.app_url}/admin",
+                        wait_until="domcontentloaded",
+                        timeout=90_000,
+                    )
+                    expect(
+                        page.get_by_role("heading", name="Platform Controls", exact=True)
+                    ).to_have_count(0, timeout=15_000)
+                    expect(page.get_by_role("heading", name="Cycles", exact=True)).to_have_count(
+                        0, timeout=15_000
+                    )
+                    expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
+                        timeout=90_000
+                    )
+                context.close()
+        finally:
+            browser.close()
+
+
+def test_atlas_deep_link_and_rendered_alignment(e2e_stack: E2EStack) -> None:
+    from playwright.sync_api import Error, expect, sync_playwright
+
+    chromium_path = _resolve_chromium_executable()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if chromium_path:
+        launch_kwargs["executable_path"] = chromium_path
+    with sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(**launch_kwargs)
+        except Error as exc:
+            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+
+        try:
+            page = browser.new_page(viewport={"width": 1600, "height": 1000})
+            page.goto(
+                f"{e2e_stack.app_url}/login",
+                wait_until="domcontentloaded",
+                timeout=90_000,
+            )
+            _login(page, *_E2E_ROLES["admin"])
+
+            # Load a supported cycle/node deep link directly, then reload it.
+            deep_link = f"{e2e_stack.app_url}/?cycle=1&sel=goal_1"
+            page.goto(deep_link, wait_until="domcontentloaded", timeout=90_000)
+            selected_goal = page.locator("button.atlas-node-item.is-active")
+            expect(selected_goal).to_contain_text("E2E Admin Goal", timeout=90_000)
+            page.reload(wait_until="domcontentloaded", timeout=90_000)
+            expect(page.locator("button.atlas-node-item.is-active")).to_contain_text(
+                "E2E Admin Goal", timeout=90_000
+            )
+
+            # Alignment is asserted within the rendered Inspector, using the
+            # objective's seeded parent and child hierarchy.
+            page.goto(
+                f"{e2e_stack.app_url}/?cycle=1&sel=objective_1",
+                wait_until="domcontentloaded",
+                timeout=90_000,
+            )
+            alignment_statuses: list[int] = []
+
+            def _capture_alignment_response(response) -> None:
+                if not response.url.endswith("/api/backend/v1/read/query"):
+                    return
+                try:
+                    payload = response.request.post_data_json
+                except Exception:
+                    return
+                if isinstance(payload, dict) and payload.get("kind") == "alignments.context":
+                    alignment_statuses.append(int(response.status))
+
+            page.on("response", _capture_alignment_response)
+            page.locator("button.atlas-node-item").filter(
+                has_text="E2E Admin Objective"
+            ).click()
+            inspector = page.get_by_role("dialog", name="Inspector")
+            expect(inspector).to_be_visible(timeout=15_000)
+            expect(inspector.get_by_text("Alignment", exact=True)).to_be_visible(
+                timeout=15_000
+            )
+            rendered_alignment_edge = inspector.get_by_text(
+                "2 -> 1 (SUPPORTS)", exact=False
+            )
+            try:
+                expect(rendered_alignment_edge).to_be_visible(timeout=15_000)
+            except AssertionError as exc:
+                raise AssertionError(
+                    "The Inspector did not render the seeded objective alignment edge. "
+                    f"alignments.context response statuses={alignment_statuses!r}; "
+                    f"Inspector text={inspector.inner_text()!r}; "
+                    f"backend.log tail:\n{_read_log_tail(e2e_stack.backend_log_path)}"
+                ) from exc
+        finally:
+            browser.close()
+
+
+def test_inspector_work_history_rtl(e2e_stack: E2EStack) -> None:
+    from playwright.sync_api import Error, expect, sync_playwright
+
+    chromium_path = _resolve_chromium_executable()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if chromium_path:
+        launch_kwargs["executable_path"] = chromium_path
+    with sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(**launch_kwargs)
+        except Error as exc:
+            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+
+        try:
+            page = browser.new_page(viewport={"width": 1600, "height": 1000})
+            page.goto(
+                f"{e2e_stack.app_url}/login",
+                wait_until="domcontentloaded",
+                timeout=90_000,
+            )
+            _login(page, *_E2E_ROLES["admin"])
+
+            # The work-history summary is an actual rendered Inspector row,
+            # exercising the application's RTL direction/alignment behavior.
+            page.goto(
+                f"{e2e_stack.app_url}/?cycle=1&sel=task_1",
+                wait_until="domcontentloaded",
+                timeout=90_000,
+            )
+            page.locator("button.atlas-node-item").filter(
+                has_text="E2E Admin Focus Task"
+            ).click()
+            inspector = page.get_by_role("dialog", name="Inspector")
+            expect(inspector).to_be_visible(timeout=90_000)
+            work_history = inspector.get_by_text("Work History", exact=True)
+            expect(work_history).to_be_visible(timeout=90_000)
+            rtl_summary = "جلسهٔ تمرکز برای هدف تیم"
+            rtl_entry = inspector.locator("details").filter(has_text=rtl_summary)
+            expect(rtl_entry).to_be_visible(timeout=90_000)
+            rtl_entry.locator("summary").click()
+            rtl_content = rtl_entry.locator("p").filter(has_text=rtl_summary)
+            expect(rtl_content).to_be_visible(timeout=90_000)
+            rendered_rtl_style = rtl_content.evaluate(
+                "element => ({ direction: getComputedStyle(element).direction, textAlign: getComputedStyle(element).textAlign })"
+            )
+            assert rendered_rtl_style == {"direction": "rtl", "textAlign": "right"}
+        finally:
+            browser.close()
 
 
 @pytest.mark.parametrize(
@@ -910,3 +1278,197 @@ def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
 
         context.close()
         browser.close()
+
+
+def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
+    """Pin deterministic shell request relations without imposing timing budgets."""
+    from urllib.parse import urlsplit
+
+    from playwright.sync_api import Error, expect, sync_playwright
+
+    chromium_path = _resolve_chromium_executable()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if chromium_path:
+        launch_kwargs["executable_path"] = chromium_path
+
+    safe_read_kinds = {"cycles.all", "cycles.active", "users.all", "teams.all"}
+    event_rows: list[tuple[int, str, str]] = []
+    request_identities: dict[int, str] = {}
+
+    with sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(**launch_kwargs)
+        except Error as exc:
+            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+
+        try:
+            context = browser.new_context(viewport={"width": 1600, "height": 1000})
+            page = context.new_page()
+            sequence = 0
+
+            def _safe_identity(request) -> str | None:
+                parsed_url = urlsplit(request.url)
+                if parsed_url.path == "/api/session/me" and request.method == "GET":
+                    return "session.me"
+                if (
+                    parsed_url.path == "/api/backend/v1/read/query"
+                    and request.method == "POST"
+                ):
+                    try:
+                        payload = request.post_data_json
+                    except Exception:
+                        return None
+                    if isinstance(payload, dict) and payload.get("kind") in safe_read_kinds:
+                        # Record only this allowlisted operation name. Do not retain
+                        # the request body, query string, headers, or credentials.
+                        return str(payload["kind"])
+                return None
+
+            def _record(phase: str, identity: str) -> None:
+                nonlocal sequence
+                sequence += 1
+                event_rows.append((sequence, phase, identity))
+
+            def _request_started(request) -> None:
+                identity = _safe_identity(request)
+                if identity is None:
+                    return
+                request_identities[id(request)] = identity
+                _record("start", identity)
+
+            def _request_finished(request) -> None:
+                identity = request_identities.get(id(request))
+                if identity is not None:
+                    _record("finish", identity)
+
+            def _request_failed(request) -> None:
+                identity = request_identities.get(id(request))
+                if identity is not None:
+                    _record("failed", identity)
+
+            page.on("request", _request_started)
+            page.on("requestfinished", _request_finished)
+            page.on("requestfailed", _request_failed)
+
+            page.goto(
+                f"{e2e_stack.app_url}/login",
+                wait_until="domcontentloaded",
+                timeout=90_000,
+            )
+            _login(page, *_E2E_ROLES["admin"])
+            expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
+                timeout=90_000
+            )
+
+            def _count(phase: str, identity: str) -> int:
+                return sum(
+                    1
+                    for _, observed_phase, observed_identity in event_rows
+                    if observed_phase == phase and observed_identity == identity
+                )
+
+            def _wait_for_finishes(identities: tuple[str, ...]) -> None:
+                # This is only a bounded readiness wait; elapsed time is never
+                # measured or compared as part of the waterfall contract.
+                for _ in range(1800):
+                    if all(_count("finish", identity) >= 1 for identity in identities):
+                        return
+                    page.wait_for_timeout(50)
+                raise AssertionError(
+                    "Expected browser requests did not finish: "
+                    f"{identities!r}; observed safe events={event_rows!r}"
+                )
+
+            def _assert_parallel_pair(first: str, second: str) -> None:
+                first_start = [
+                    ordinal
+                    for ordinal, phase, identity in event_rows
+                    if phase == "start" and identity == first
+                ]
+                second_start = [
+                    ordinal
+                    for ordinal, phase, identity in event_rows
+                    if phase == "start" and identity == second
+                ]
+                first_finish = [
+                    ordinal
+                    for ordinal, phase, identity in event_rows
+                    if phase == "finish" and identity == first
+                ]
+                second_finish = [
+                    ordinal
+                    for ordinal, phase, identity in event_rows
+                    if phase == "finish" and identity == second
+                ]
+                assert len(first_start) == len(first_finish) == 1, event_rows
+                assert len(second_start) == len(second_finish) == 1, event_rows
+                assert max(first_start[0], second_start[0]) < min(
+                    first_finish[0], second_finish[0]
+                ), f"{first} and {second} should both start before either finishes: {event_rows!r}"
+
+            _wait_for_finishes(("cycles.all", "cycles.active"))
+            assert _count("start", "cycles.all") == 1, event_rows
+            assert _count("finish", "cycles.all") == 1, event_rows
+            assert _count("start", "cycles.active") == 1, event_rows
+            assert _count("finish", "cycles.active") == 1, event_rows
+            _assert_parallel_pair("cycles.all", "cycles.active")
+            initial_session_reads = _count("finish", "session.me")
+            assert initial_session_reads >= 1, event_rows
+
+            # Entering admin asks for the same cycle pair plus users/teams.
+            # The cycle pair is already warm and shared with shell bootstrap;
+            # independent admin reads should start in parallel.
+            page.get_by_role("button", name="Admin", exact=True).click()
+            expect(page.get_by_role("heading", name="Platform Controls", exact=True)).to_be_visible(
+                timeout=90_000
+            )
+            _wait_for_finishes(("users.all", "teams.all"))
+            assert _count("start", "cycles.all") == 1, event_rows
+            assert _count("finish", "cycles.all") == 1, event_rows
+            assert _count("start", "cycles.active") == 1, event_rows
+            assert _count("finish", "cycles.active") == 1, event_rows
+            assert _count("start", "users.all") == 1, event_rows
+            assert _count("finish", "users.all") == 1, event_rows
+            assert _count("start", "teams.all") == 1, event_rows
+            assert _count("finish", "teams.all") == 1, event_rows
+            _assert_parallel_pair("users.all", "teams.all")
+
+            warm_counts = {
+                identity: _count("start", identity)
+                for identity in (
+                    "session.me",
+                    "cycles.all",
+                    "cycles.active",
+                    "users.all",
+                    "teams.all",
+                )
+            }
+            assert warm_counts["session.me"] == initial_session_reads, event_rows
+
+            # Use the in-shell buttons, not document reloads, to prove that warm
+            # navigation does not refetch session or cached shell resources.
+            page.get_by_role("button", name="Dashboard", exact=True).click()
+            expect(page.get_by_role("heading", name="Dashboard Workspace", exact=True)).to_be_visible(
+                timeout=90_000
+            )
+            page.get_by_role("button", name="Admin", exact=True).click()
+            expect(page.get_by_role("heading", name="Platform Controls", exact=True)).to_be_visible(
+                timeout=90_000
+            )
+            page.get_by_role("button", name="Dashboard", exact=True).click()
+            expect(page.get_by_role("heading", name="Dashboard Workspace", exact=True)).to_be_visible(
+                timeout=90_000
+            )
+            page.wait_for_timeout(250)
+
+            final_counts = {
+                identity: _count("start", identity) for identity in warm_counts
+            }
+            assert final_counts == warm_counts, (
+                "warm client-side navigation refetched shared shell resources: "
+                f"before={warm_counts!r}, after={final_counts!r}, events={event_rows!r}"
+            )
+            assert all(_count("failed", identity) == 0 for identity in final_counts), event_rows
+            context.close()
+        finally:
+            browser.close()

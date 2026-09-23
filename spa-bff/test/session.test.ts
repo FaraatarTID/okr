@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -33,6 +34,42 @@ describe("session token helpers", () => {
     });
     expect(verified?.username).toBe("admin");
     expect(verified?.role).toBe("admin");
+  });
+
+  it("rejects a validly signed Python oidc-session-v1 token", () => {
+    // Mirrors identity_contract.py's flat oidc-session-v1 payload and HMAC format.
+    // Its signature is valid; the BFF must still reject it as a different authority.
+    const pythonPayload = {
+      actor: "user@example.com",
+      aud: "atlas-client",
+      email: "user@example.com",
+      email_verified: true,
+      exp: 1_700_003_600,
+      expires_at: 1_700_003_600,
+      iat: 1_700_000_000,
+      issuer: "https://idp.example.com/realms/acme",
+      name: "Example User",
+      provider: "oidc",
+      role: "member",
+      roles: [],
+      subject: "user-42",
+      username: "user@example.com",
+      v: "oidc-session-v1",
+    };
+    const payloadB64 = Buffer.from(JSON.stringify(pythonPayload), "utf-8")
+      .toString("base64url");
+    const signature = createHmac("sha256", "session-secret")
+      .update(payloadB64)
+      .digest("hex");
+    const pythonToken = `${payloadB64}.${signature}`;
+
+    expect(
+      verifySessionToken({
+        token: pythonToken,
+        secret: "session-secret",
+        nowEpochSeconds: 1_700_000_300,
+      }),
+    ).toBeNull();
   });
 
   it("preserves the derived role list in the browser session payload", () => {
