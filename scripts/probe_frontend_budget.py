@@ -8,6 +8,7 @@ timings but deliberately has no pass/fail performance threshold.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 from datetime import datetime, timezone
 import importlib.metadata
 import json
@@ -18,7 +19,7 @@ import re
 import statistics
 import sys
 import time
-from typing import Any, Mapping
+from typing import Any, NoReturn
 from urllib.parse import urlsplit
 
 
@@ -58,7 +59,7 @@ def parse_server_timing(value: str | None) -> dict[str, float]:
     return result
 
 
-def _fail(field: str, message: str) -> None:
+def _fail(field: str, message: str) -> NoReturn:
     raise MeasurementValidationError(f"{field} {message}")
 
 
