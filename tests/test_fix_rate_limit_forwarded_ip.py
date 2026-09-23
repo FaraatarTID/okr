@@ -1,15 +1,33 @@
-"""Rate-limit key isolation, and the BFF's session-header forwarding.
+"""Rate-limit key isolation, and the record of the source-substring tests removed here.
 
-Three source-substring tests were removed from this file. Two asserted that
-`backend_app/security.py` mentions `x_forwarded_for` and `forwarded`/`client_ip`; the
-third asserted that `spa-bff/src/proxy.ts` mentions `x-forwarded-for`. After the
-behaviour they described was deliberately removed, all three still passed - on comment
-text, since the comments explaining that those headers are NOT read are what contained
-the strings. They therefore certified the inverse of the shipped design, which is worse
-than certifying nothing.
+Four source-substring tests have been removed from this file. The first three are
+described first; the fourth, a token-version forwarding assertion, is recorded last.
 
-Their intended properties are covered behaviourally, and were checked before deletion
-rather than assumed:
+Two asserted that `backend_app/security.py` mentions `x_forwarded_for` and
+`forwarded`/`client_ip`; the third asserted that `spa-bff/src/proxy.ts` mentions
+`x-forwarded-for`. After the behaviour they described was deliberately removed, all three
+still passed - on comment text, since the comments explaining that those headers are NOT
+read are what contained the strings. They therefore certified the inverse of the shipped
+design, which is worse than certifying nothing.
+
+A fourth, `test_bff_server_forwards_token_version`, asserted only that
+`spa-bff/src/server.ts` contains the string `token_version`. It was the weaker case: the
+token does occur in executable code, so it did not certify an inverted design. It still
+did not prove forwarding, though - deleting the header write while keeping the mapping, or
+the reverse, left it green. Its own docstring asked whether the property it named was
+already covered behaviourally elsewhere; that question is now answered, and it is. Each of
+these was read and confirmed before the assertion was deleted, not assumed:
+
+- `spa-bff/test/token_version.test.ts:36-73` asserts the outbound
+  `x-okr-token-version` header equals the session's version on a proxied POST;
+- `:75-110` asserts the header is absent when the session carries no version;
+- `:112-146` asserts the login response preserves the value that `server.ts` maps, and
+  `:148-182` covers the missing-field case.
+
+So the mapping and the header write are both pinned by behaviour, and the substring
+assertion added nothing a behavioural test did not already cover.
+
+The remaining intended properties are covered behaviourally:
 - a caller-supplied forwarding header cannot choose the rate-limit key, while the
   trusted private header does, and an absent private header falls back to the peer:
   `tests/test_rate_limit_key_trust.py`;
@@ -21,15 +39,11 @@ rather than assumed:
   did not set it, and drops X-Forwarded-For and X-Real-IP even when present:
   `spa-bff/test/forwarded_ip.test.ts`.
 
-Neither test kept below is a substring check of the kind that was removed.
+The one test kept below is not a substring check of that kind: it exercises the limiter's
+keying directly, so it asserts the behaviour rather than the presence of a symbol.
 """
 
-from pathlib import Path
-
 from backend_app.rate_limiter import check_rate_limit
-
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_SERVER_TS = _PROJECT_ROOT / "spa-bff" / "src" / "server.ts"
 
 
 def test_rate_limit_uses_forwarded_ip_for_isolation():
@@ -41,22 +55,3 @@ def test_rate_limit_uses_forwarded_ip_for_isolation():
 
     # Different IP should have its own limit
     assert check_rate_limit(key="ip:10.0.0.2", limit=2, window_seconds=300) is True
-
-
-def test_bff_server_forwards_token_version():
-    """BFF server should forward token_version in normalizeSessionUser.
-
-    WEAKNESS, recorded here rather than fixed or silently accepted: this is still a
-    source-token assertion. It is not the same defect as the tests removed above,
-    because the token does occur in executable code (`spa-bff/src/server.ts` maps
-    `token_version` and writes the `x-okr-token-version` header), so it is not
-    certifying an inverted design. It nonetheless does not prove forwarding: deleting
-    the header write while leaving the mapping, or the reverse, keeps it green. Real
-    coverage would assert the outbound header on a state-changing route, which is what
-    `spa-bff/test/forwarded_ip.test.ts` does for the client-IP header. Whether its own
-    property is already covered behaviourally elsewhere was not established here.
-    """
-    source = _SERVER_TS.read_text(encoding="utf-8")
-    assert "token_version" in source, (
-        "normalizeSessionUser should include token_version"
-    )
