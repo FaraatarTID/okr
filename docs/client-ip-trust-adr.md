@@ -2,7 +2,9 @@
 
 Documentation HQ: [README](../README.md)
 
-Status: `IN-PROGRESS` for P0-4 (decision recorded; implementation and deployed-topology verification open).
+Status: `APPLIED` in-repository for P0-4 — the decision below is settled and is not reopened —
+implemented at `8820e5d`, `3034cdd`, and `cfcd513`. The deployed network path is **not verified**,
+and one in-repository test gap remains; both are recorded under *Verification status*.
 
 ## Context
 
@@ -11,8 +13,10 @@ Two controls key on the client IP:
 - the request rate limiter, keyed `ip:<client_ip>` (`backend_app/security.py:226`);
 - the login lockout, keyed `(scope="ip", identifier)` in `src/crud_auth_helpers.py`.
 
-The address is currently derived in `backend_app/security.py:208-215`: the immediate peer
-(`request.client.host`), upgraded to `X-Forwarded-For`[0] when a service token is valid.
+The address was derived, at the time of this decision, in `backend_app/security.py`: the immediate
+peer (`request.client.host`), upgraded to `X-Forwarded-For`[0] when a service token is valid. That
+derivation has since been replaced by the decision below; it is described here because it is the
+state the decision was made against.
 
 Every part of that is wrong for the job:
 
@@ -85,10 +89,30 @@ as the fallback only if a private header proves infeasible in the deployed edge 
 - This ADR does not verify the deployed network path. It asserts a rule that the deployed
   configuration must satisfy, and that assertion is **not verifiable from CI**.
 
-## Verification required before this is trustworthy
+## Verification status
 
-- A fail-first test proving that a caller-supplied `X-Forwarded-For`, `X-Real-IP`, **and**
-  `X-OKR-Client-IP` each fail to change the throttle key, and that absent-header leaves it unkeyed.
-- A test that the backend ignores the private header when no service token is presented.
-- Confirmation, outside CI, that requests can reach the BFF only through the edge that sets the
-  header. If the BFF is directly reachable, rule 3 alone stands between a caller and a forged key.
+- **A fail-first test proving that a caller-supplied `X-Forwarded-For`, `X-Real-IP`, and
+  `X-OKR-Client-IP` each fail to change the throttle key, and that absent-header leaves it unkeyed.**
+  **Satisfied.** `tests/test_login_throttle_key.py` sends a valid service token together with
+  `x-forwarded-for` and `x-real-ip` sentinels (parametrized over both) and asserts that no `ip`
+  bucket is created, while asserting the account dimension still records the attempt so an
+  unreached auth path cannot pass vacuously; it also covers the absent-header direction and the
+  body-field direction. `tests/test_rate_limit_key_trust.py` covers the request limiter with a
+  positive control — the trusted header must become the key — so a limiter that was never reached
+  cannot satisfy the negative case.
+- **A test that the backend ignores the private header when no service token is presented.**
+  **Satisfied.** The header is read only inside the `service_token_valid` branch of
+  `backend_app/security.py`, and that gate is asserted rather than assumed: the lockout's
+  inert-when-untrusted direction is covered directly.
+- **Confirmation, outside CI, that requests can reach the BFF only through the edge that sets the
+  header.** **Outstanding.** This cannot be satisfied from CI, because it is a property of the
+  deployed network path rather than of this repository. If the BFF is directly reachable, rule 3
+  alone stands between a caller and a forged key. No deployment has been verified.
+
+One in-repository gap remains, and it is a test rather than a control. `spa-web/src/lib/bff-proxy.ts`
+adds `x-okr-client-ip` to the forwarded allowlist, but nothing covers that boundary:
+`spa-web/src/lib/bff-proxy.test.ts` has five cases and all of them are about log redaction. The P0-4
+row asked for exactly this test, so it is still owed. The BFF-side hop
+(`spa-bff/test/forwarded_ip.test.ts`, three cases: the header is forwarded, it is omitted when the
+edge did not set it, and `x-forwarded-for`/`x-real-ip` are ignored) and the backend-side key
+derivation are both covered.
