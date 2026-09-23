@@ -89,7 +89,7 @@ Primary data/control flow:
   - `backend-api` authenticates service calls using `OKR_BACKEND_SERVICE_TOKEN`.
   - Optional cryptographic request signing (`OKR_BACKEND_SIGNING_SECRET`) enforces signed/replay-protected internal calls.
   - Key rotation: when `OKR_BACKEND_SIGNING_KEY_ID` is advertised, callers must send `x-okr-key-id`; unknown IDs are rejected. During rotation, `OKR_BACKEND_SIGNING_SECRET_PREVIOUS` keeps old-secret signatures valid (overlap window). See runbook in `DEPLOYMENT.md`; tests in `tests/test_signing_key_rotation.py`.
-  - IP-based rate limiting protects API endpoints. When `spa-bff` proxies requests with a valid service token, the backend uses `x-forwarded-for` for per-user rate limiting instead of the proxy IP.
+  - IP-based rate limiting protects API endpoints. When `spa-bff` proxies requests with a valid service token, the backend keys per-user rate limiting on the application-private `x-okr-client-ip` header instead of the proxy IP. `x-forwarded-for` and `x-real-ip` are deliberately not read, because `deploy/nginx.conf` appends to the former and a caller can prepend to that chain. See [client-ip-trust-adr.md](../client-ip-trust-adr.md).
 - Network boundary:
   - Public ingress should expose only reverse proxy/app paths.
   - `backend-api` should remain private (loopback/internal bind in compose by default).

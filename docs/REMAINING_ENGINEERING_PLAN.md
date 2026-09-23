@@ -7,10 +7,12 @@ Scope: every recognized open engineering issue, its sequencing, and its acceptan
 Companion: [Working Guide](WORKING_GUIDE.md) (how to start work)
 Date: 2026-09-19
 
-This is the single register of open engineering work. The
+This is the single register of open engineering work and the **authoritative
+source for both current status and sequencing**. The
 [Enterprise SaaS Roadmap](architecture/ENTERPRISE_SAAS_ROADMAP.md) is the source
-of intent, [Architecture Status Ledger](architecture-status.md) is the source of
-truth for current state, and this document is the source of sequence.
+of intent. The [Architecture Status Ledger](architecture-status.md) is retained
+as a **historical** record of the earlier pre-SaaS packages and uses a separate
+ID namespace (`P0-00`…`P0-06`); it is not a second current source of truth.
 
 This plan deliberately separates work an engineer can start today from work that
 is blocked outside the repository. Provider-backed backup, measured RPO/RTO, a

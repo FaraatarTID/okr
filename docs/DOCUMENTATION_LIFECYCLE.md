@@ -2,6 +2,11 @@ Documentation HQ: [README](../README.md)
 
 # Documentation Lifecycle
 
+**This document is the policy reference** for documentation lifecycle categories
+and the current registry. The implementation and history record of the control
+pass that established this policy is
+[documentation-lifecycle-control.md](documentation-lifecycle-control.md).
+
 This registry keeps enterprise documentation discoverable without presenting
 historical or compatibility material as current operational guidance.
 
@@ -20,10 +25,14 @@ historical or compatibility material as current operational guidance.
 | Area | Category | Canonical entry |
 | --- | --- | --- |
 | System architecture and code ownership | Canonical | `docs/architecture/ARCHITECTURE.md`, `docs/architecture/CODEBASE_MAP.md` |
-| Architecture execution and evidence | Canonical | `docs/architecture/ARCHITECTURE_BACKLOG.md`, `docs/architecture-status.md`, `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` |
-| CI gate semantics and enforcement surfaces | Operational | `docs/architecture/ARCHITECTURE.md` (what each gate actually checks), `docs/architecture-status.md` (item-level evidence) |
-| Remaining engineering work and sequence | Canonical | `docs/REMAINING_ENGINEERING_PLAN.md`, `docs/WORKING_GUIDE.md` |
-| Pre-SaaS architecture simplification | Canonical | `docs/architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md` |
+| Architecture delivery process | Canonical | `docs/ARCHITECTURE_DELIVERY_SYSTEM.md` |
+| Current work, status, and sequence | Canonical | `docs/REMAINING_ENGINEERING_PLAN.md` (authoritative), `docs/WORKING_GUIDE.md` |
+| CI gate semantics and enforcement surfaces | Operational | `docs/architecture/ARCHITECTURE.md` (what each gate actually checks), `docs/REMAINING_ENGINEERING_PLAN.md` (item-level evidence) |
+| Documentation lifecycle implementation and history | Historical | `docs/documentation-lifecycle-control.md` |
+| Pre-SaaS architecture status ledger (separate `P0-00`…`P0-06` namespace) | Historical | `docs/architecture-status.md` |
+| Phase 0 multi-tenant backlog (superseded by ADR-001) | Historical | `docs/architecture/ARCHITECTURE_BACKLOG.md` |
+| Pre-SaaS architecture simplification backlog | Historical | `docs/architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md` |
+| Completed twelve-factor and single-tenant SaaS plans and progress records | Historical | `docs/superpowers/plans/2026-09-02-twelve-factor-compliance-plan.md`, `docs/superpowers/plans/2026-09-02-twelve-factor-hardening-plan.md`, `docs/superpowers/plans/2026-09-01-single-tenant-saas-plan.md`, `.superpowers/sdd/2026-09-02-twelve-factor-compliance-plan/progress.md`, `.superpowers/sdd/2026-09-01-single-tenant-saas-plan/progress.md` |
 | Enterprise SaaS strategy | Canonical | `docs/architecture/ENTERPRISE_SAAS_ROADMAP.md` |
 | Enterprise deployment | Operational | `DEPLOYMENT.md` |
 | Runtime configuration | Operational | `docs/CONFIG_REFERENCE.md` |

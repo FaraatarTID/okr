@@ -2,6 +2,15 @@
 
 Documentation HQ: [README](../../../README.md)
 
+> **HISTORICAL — completed. Not current execution instructions.**
+> This plan was executed; its SDD ledger records the final review as
+> "Scoped re-review: PASS". The checkboxes and agent instructions below are
+> preserved as the original record; they are not a work order and should not be
+> re-run. Current work, status, and order are tracked in
+> [REMAINING_ENGINEERING_PLAN.md](../../../docs/REMAINING_ENGINEERING_PLAN.md).
+> The production-evidence items this plan leaves intentionally blocked remain
+> open there.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the first enterprise SaaS capability as repeatable, isolated customer environments around the existing on-premise application.

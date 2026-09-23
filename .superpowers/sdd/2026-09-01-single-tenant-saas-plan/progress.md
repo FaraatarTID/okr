@@ -2,6 +2,17 @@
 
 Documentation HQ: [README](../../../README.md)
 
+> **HISTORICAL — completed record. Not current execution instructions.**
+> This ledger records the subagent-driven execution of
+> [the single-tenant SaaS plan](../../../docs/superpowers/plans/2026-09-01-single-tenant-saas-plan.md),
+> which is complete (its final review records "Scoped re-review: PASS"). It is
+> retained as evidence of how the work was sequenced and reviewed; it is not a
+> work order and should not be resumed. Current work, status, and order are
+> tracked in
+> [REMAINING_ENGINEERING_PLAN.md](../../../docs/REMAINING_ENGINEERING_PLAN.md);
+> the production-evidence items it leaves intentionally blocked remain open
+> there.
+
 Task 1: complete (focused tests 22 passed; review clean after fix round 1)
 Task 1: fix round 1/5 (4 addressed, 0 open; environment contract, documentation, and tests)
 Ruling: control plane is modeled as an external management boundary, not a customer-environment deployment profile - this preserves the approved control-plane separation; if wrong, a later contract revision is required.

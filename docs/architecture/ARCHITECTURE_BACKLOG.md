@@ -2,7 +2,17 @@
 
 Documentation HQ: [README](../../README.md)
 
-Status: ACTIVE - P0-00 performance recovery in progress  
+> **SUPERSEDED — historical record. Do not start work from this document.**
+> This backlog's premise is shared-database multi-tenant SaaS, which
+> [ADR-001](../ADR-001-multitenant-data-access-boundary.md) rejects as
+> *"Rejected - permanently out of product scope"*; a dedicated single-tenant
+> environment per customer is the only supported model. Current work, its status,
+> and its order are tracked in
+> [REMAINING_ENGINEERING_PLAN.md](../REMAINING_ENGINEERING_PLAN.md), which is
+> authoritative. The status values below are a historical snapshot of this
+> initiative and are not maintained.
+
+Status: SUPERSEDED (recorded as `ACTIVE - P0-00 performance recovery in progress` at the time)  
 Scope: tenant model, authorization boundary, data isolation, and migration safety  
 Planning horizon: 8-17 weeks at 12-16 focused hours per week  
 Owner model: one primary maintainer, with an independent named security reviewer at the exit gate

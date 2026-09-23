@@ -2,6 +2,15 @@
 
 Documentation HQ: [README](../../README.md)
 
+> **HISTORICAL — retained as evidence, not current guidance.**
+> This backlog was archived on completion and is not an executable work list. The
+> status snapshot below records the state of the pre-SaaS initiative at the time
+> it closed and is not maintained. Current work, status, and order are tracked in
+> [REMAINING_ENGINEERING_PLAN.md](../REMAINING_ENGINEERING_PLAN.md); the SaaS
+> direction this work led to is governed by
+> [ENTERPRISE_SAAS_ROADMAP.md](ENTERPRISE_SAAS_ROADMAP.md) and
+> [ADR-001](../ADR-001-multitenant-data-access-boundary.md).
+
 Status: ARCHIVED - COMPLETED HANDOFF  
 Scope: historical record of architecture clarity, runtime canonicalization, and complexity control  
 Position: completed prerequisite to `ENTERPRISE_SAAS_ROADMAP.md` Phase 0  
@@ -30,6 +39,9 @@ All items must follow `PLANNED -> IN-PROGRESS -> IMPLEMENTED -> VERIFIED -> CLOS
 `CLOSED` requires the purpose-drill evidence and a one-line retrospective note.
 
 ## Tracking status snapshot
+
+> **Historical snapshot.** The lifecycle values below record this initiative's
+> state when it was archived. They are not current status and are not maintained.
 
 | Item | Lifecycle status | Evidence | Verified | Retro note |
 |---|---|---|---|---|
@@ -391,11 +403,16 @@ This backlog is the prerequisite architecture simplification phase. After its
 promotion gate, execution continues in:
 
 - [Enterprise SaaS Roadmap](ENTERPRISE_SAAS_ROADMAP.md)
-- [Phase 0 Multi-Tenant Backlog](../../ARCHITECTURE_BACKLOG.md)
+- [Phase 0 Multi-Tenant Backlog](ARCHITECTURE_BACKLOG.md)
 
 The tenant backlog remains the authority for tenant identity, ownership,
 authorization, RLS, jobs, exports, and audit isolation. This document must not
 duplicate those implementation tasks.
+
+> *Superseded:* the tenant backlog was rejected by
+> [ADR-001](../ADR-001-multitenant-data-access-boundary.md); see the notice at the
+> top of this file and [REMAINING_ENGINEERING_PLAN.md](../REMAINING_ENGINEERING_PLAN.md).
+
 ## Signed review follow-up: 2026-09-01
 
 P0-06 remains `IN-PROGRESS`. The actual runtime compatibility database is at `drop_global_cycle_index (head)`. A PostgreSQL 17-compatible backup of the live runtime database was successfully restored into an isolated rehearsal instance, with no live data change. The remaining condition is an application release rollback rehearsal using a prior deployable artifact before tenant/RLS schema work begins.

@@ -2,6 +2,15 @@
 
 Documentation HQ: [README](../../../README.md)
 
+> **HISTORICAL — completed. Not current execution instructions.**
+> This plan was executed and its repository-side work is done. The checkboxes and
+> the agent instructions below are preserved as the original record; they are not
+> a work order and should not be re-run. Current work, status, and order are
+> tracked in
+> [REMAINING_ENGINEERING_PLAN.md](../../../docs/REMAINING_ENGINEERING_PLAN.md).
+> Provider-dependent evidence (live staging parity, rollback rehearsal,
+> backup/restore execution) remains open there, not here.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the dedicated-server-per-customer OKR deployment demonstrably compliant with all twelve factors of the Twelve-Factor App methodology.
