@@ -1,7 +1,9 @@
 """Verify repository evidence for the Twelve-Factor runtime contract.
 
 This is intentionally a static, secret-safe check. It does not load dotenv
-files, invoke Compose, contact a registry, or print manifest contents.
+files, invoke Compose, contact a registry, or print manifest contents. Rendered
+manifests are parsed with a SafeLoader-based reader, and a parse failure is
+reported by its problem and position so that a rejection never echoes content.
 """
 
 from __future__ import annotations
@@ -14,6 +16,10 @@ import tempfile
 from pathlib import Path
 from typing import NamedTuple
 
+# PyYAML ships no type information and the project does not depend on a stub package, so the
+# import is ignored for typing only. The loader used below is SafeLoader-based regardless.
+import yaml  # type: ignore[import-untyped]
+
 
 _SENSITIVE_NAMES = re.compile(
     r"(?:PASSWORD|TOKEN|SECRET|API_KEY|DATABASE_URL|PRIVATE_KEY)", re.IGNORECASE
@@ -24,9 +30,39 @@ _RENDERER_RELATIVE = "scripts/render_k8s_release.py"
 _RENDER_TIMEOUT_SECONDS = 120.0
 # Distinct digests so that substituting one input into the other manifest is visible.
 _VALID_DIGESTS = {"api_digest": "1" * 64, "worker_digest": "2" * 64}
-_MANIFEST_FOR_LABEL = {
-    "api_digest": "deployment-backend-api.yaml",
-    "worker_digest": "deployment-backend-worker.yaml",
+
+
+# Each input digest belongs to a declared workload *and* container. The binding is explicit
+# because the renderer cannot supply it: it substitutes the placeholder wherever it occurs,
+# so a manifest carrying the validated digest on a sidecar - or on an initContainer, which
+# is not the workload at all - still satisfies a search across every image value in the
+# file. Guessing the target from the first container, or from whichever image happens to
+# hold the digest, is exactly what allowed that to pass. The workload identity is stated
+# here rather than taken from the file name, because a file name proves nothing about the
+# object inside it.
+class _ImageTarget(NamedTuple):
+    filename: str
+    api_version: str
+    kind: str
+    workload: str
+    container: str
+
+
+_IMAGE_TARGETS = {
+    "api_digest": _ImageTarget(
+        "deployment-backend-api.yaml",
+        "apps/v1",
+        "Deployment",
+        "okr-backend-api",
+        "backend-api",
+    ),
+    "worker_digest": _ImageTarget(
+        "deployment-backend-worker.yaml",
+        "apps/v1",
+        "Deployment",
+        "okr-backend-worker",
+        "backend-worker",
+    ),
 }
 _INVALID_DIGEST = "not-a-sha256-digest"
 # Matched against RENDERED OUTPUT only. The check never reads the renderer's source, so a
@@ -100,23 +136,167 @@ def _check_config(root: Path) -> str | None:
     return None
 
 
-# The digest must appear in a container image value, not merely somewhere in the file. A
-# digest quoted in a comment or parked in an unrelated field pins no image, so searching
-# the whole manifest for that hex string would accept a manifest that deploys nothing the
-# caller asked for.
-_IMAGE_VALUE = re.compile(r"^\s*(?:-\s+)?image:\s*(\S+)\s*$", re.MULTILINE)
+# The digest must be pinned by the target container's own image. A digest quoted in a
+# comment, carried by a sidecar, or parked in an unrelated field pins nothing the caller
+# asked for, so the manifest is parsed and the target container is located structurally.
 _IMAGE_DIGEST = re.compile(r"@sha256:([0-9a-fA-F]{64})$")
 
 
-def _image_digests(rendered: str) -> list[str]:
-    """Return the digests that appear inside an ``image:`` value, and only those."""
+def _construct_mapping(
+    loader: yaml.SafeLoader, node: yaml.MappingNode, deep: bool = False
+) -> dict:
+    """Build a mapping, refusing a repeated key instead of letting the last one win.
 
-    found: list[str] = []
-    for match in _IMAGE_VALUE.finditer(rendered):
-        pinned = _IMAGE_DIGEST.search(match.group(1))
-        if pinned:
-            found.append(pinned.group(1).lower())
-    return found
+    The default constructor keeps the last value for a duplicated key, so a manifest could
+    declare the expected image once and override it afterwards while the check happened to
+    read the other occurrence. Container identity is security-relevant here, so a repeat is
+    reported rather than silently resolved.
+    """
+
+    seen: set = set()
+    for key_node, _ in node.value:
+        try:
+            key = loader.construct_object(key_node, deep=True)
+            duplicate = key in seen
+        except TypeError:
+            raise yaml.constructor.ConstructorError(
+                None, None, "mapping key is not a scalar", key_node.start_mark
+            ) from None
+        if duplicate:
+            raise yaml.constructor.ConstructorError(
+                None, None, "duplicate mapping key", key_node.start_mark
+            )
+        seen.add(key)
+    return yaml.constructor.SafeConstructor.construct_mapping(loader, node, deep=deep)
+
+
+class _ManifestLoader(yaml.SafeLoader):
+    """SafeLoader restricted to plain YAML types, with duplicate keys rejected.
+
+    Subclassing SafeLoader - never FullLoader and never the unsafe loader - keeps
+    construction to standard YAML tags, so a manifest cannot name a Python object for the
+    reader to build.
+    """
+
+
+_ManifestLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_mapping
+)
+
+
+def _yaml_problem(exc: yaml.YAMLError) -> str:
+    """Describe a YAML failure by its problem and position, never by its content.
+
+    ``str(exc)`` embeds the offending line, which would echo manifest content into the
+    failure list; the problem description and the mark do not.
+    """
+
+    problem = getattr(exc, "problem", None) or type(exc).__name__
+    mark = getattr(exc, "problem_mark", None)
+    if mark is None:
+        return str(problem).splitlines()[0]
+    return f"{problem} (line {mark.line + 1}, column {mark.column + 1})"
+
+
+def _load_manifest(rendered: str) -> tuple[object | None, str | None]:
+    """Parse exactly one YAML document, or explain why it cannot be read.
+
+    ``yaml.load`` is given a SafeLoader subclass, so only standard YAML tags construct.
+    More than one document in the stream is a compose error and is reported as such; it is
+    never resolved by taking the first document and ignoring the rest.
+    """
+
+    try:
+        document = yaml.load(rendered, Loader=_ManifestLoader)
+    except yaml.YAMLError as exc:
+        return None, f"is not valid YAML: {_yaml_problem(exc)}"
+    if document is None:
+        return None, "is empty"
+    return document, None
+
+
+def _pod_containers(document: dict) -> tuple[list | None, str | None]:
+    """Return the pod's ``spec.template.spec.containers`` list, or why it is unreadable.
+
+    The path is walked rather than searched. A ``containers`` key anywhere else in the
+    document - under ``metadata.annotations``, say, or directly under ``spec`` - is not the
+    pod's container list and must not be read as one.
+    """
+
+    spec = document.get("spec")
+    if not isinstance(spec, dict):
+        return None, "does not declare 'spec' as a mapping"
+    template = spec.get("template")
+    if not isinstance(template, dict):
+        return None, "does not declare 'spec.template' as a mapping"
+    pod_spec = template.get("spec")
+    if not isinstance(pod_spec, dict):
+        return None, "does not declare 'spec.template.spec' as a mapping"
+    containers = pod_spec.get("containers")
+    if containers is None:
+        return None, "does not declare 'spec.template.spec.containers'"
+    if not isinstance(containers, list):
+        return None, "does not declare 'spec.template.spec.containers' as a list"
+    if not containers:
+        return None, "declares an empty 'spec.template.spec.containers' list"
+    return containers, None
+
+
+def _workload_image_digest(
+    rendered: str, target: _ImageTarget
+) -> tuple[str | None, str | None]:
+    """Return the digest pinned by the target workload's own container image.
+
+    Returns ``(digest, None)``, or ``(None, reason)`` when the target cannot be identified.
+    The workload identity - apiVersion, kind, and metadata.name - is verified before the pod
+    spec is read, so a correctly named file holding a different object cannot satisfy the
+    check. The image is read only from the one entry in ``containers`` whose name matches,
+    so a digest carried by a sidecar or an ``initContainers`` entry, or a ``containers``
+    fragment inside a string, is never mistaken for the workload's own image.
+    """
+
+    document, reason = _load_manifest(rendered)
+    if reason is not None or not isinstance(document, dict):
+        return None, reason or "is not a YAML mapping at the top level"
+
+    if document.get("apiVersion") != target.api_version:
+        return None, f"does not declare 'apiVersion: {target.api_version}'"
+    if document.get("kind") != target.kind:
+        return None, f"does not declare 'kind: {target.kind}'"
+    metadata = document.get("metadata")
+    if not isinstance(metadata, dict):
+        return None, "does not declare a 'metadata' mapping"
+    if metadata.get("name") != target.workload:
+        return None, f"is not the workload named '{target.workload}'"
+
+    containers, reason = _pod_containers(document)
+    if reason is not None:
+        return None, reason
+
+    named: list[dict] = []
+    for index, container in enumerate(containers or []):
+        if not isinstance(container, dict):
+            return None, f"'spec.template.spec.containers[{index}]' is not a mapping"
+        if container.get("name") == target.container:
+            named.append(container)
+    if not named:
+        return None, f"the pod declares no container named '{target.container}'"
+    if len(named) > 1:
+        return None, (
+            f"the pod declares more than one container named '{target.container}', so its "
+            "image is ambiguous"
+        )
+
+    image = named[0].get("image")
+    if not isinstance(image, str):
+        return (
+            None,
+            f"the container named '{target.container}' declares no string image",
+        )
+    pinned = _IMAGE_DIGEST.search(image)
+    if pinned is None:
+        return None, f"the '{target.container}' image is not pinned to a sha256 digest"
+    return pinned.group(1).lower(), None
 
 
 class _RenderOutcome(NamedTuple):
@@ -217,7 +397,8 @@ def _check_release_renderer(root: Path) -> str | None:
                 f"does not implement digest validation: {_summarise(valid.output)}"
             )
         for label, digest in _VALID_DIGESTS.items():
-            filename = _MANIFEST_FOR_LABEL[label]
+            target = _IMAGE_TARGETS[label]
+            filename = target.filename
             rendered = _read(workspace / "valid", filename)
             if rendered is None:
                 return (
@@ -229,11 +410,20 @@ def _check_release_renderer(root: Path) -> str | None:
                     f"rendered {filename} still contains an unresolved digest "
                     "placeholder, so the renderer can emit an unrenderable manifest"
                 )
-            if digest not in _image_digests(rendered):
+            pinned, reason = _workload_image_digest(rendered, target)
+            if reason is not None:
                 return (
-                    f"rendered {filename} does not pin the validated digest in a "
-                    "container image value, so the manifest does not deploy the digest "
-                    "it was given"
+                    f"rendered {filename} does not pin the validated digest in the "
+                    f"'{target.container}' container image of workload "
+                    f"'{target.workload}', so the manifest does not deploy the digest it "
+                    f"was given: {reason}"
+                )
+            if pinned != digest:
+                return (
+                    f"rendered {filename} does not pin the validated digest in the "
+                    f"'{target.container}' container image of workload "
+                    f"'{target.workload}', so the manifest does not deploy the digest it "
+                    "was given"
                 )
 
         # Each invalid input is checked with the other input valid, so a renderer that

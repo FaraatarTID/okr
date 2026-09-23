@@ -3,10 +3,20 @@ from __future__ import annotations
 from pathlib import Path
 
 from scripts.verify_twelve_factor_contract import (
-    _image_digests,
+    _IMAGE_TARGETS,
     _run_release_renderer,
+    _workload_image_digest,
     verify_repository,
 )
+
+
+_API_TARGET = _IMAGE_TARGETS["api_digest"]
+_API_WORKLOAD = _API_TARGET.workload
+_API_CONTAINER = _API_TARGET.container
+_WORKER_WORKLOAD = _IMAGE_TARGETS["worker_digest"].workload
+_WORKER_CONTAINER = _IMAGE_TARGETS["worker_digest"].container
+# The unresolved placeholder the shipped manifests carry until the renderer substitutes it.
+_PLACEHOLDER_IMAGE = "ghcr.io/example/okr@sha256:REPLACE_WITH_RELEASE_DIGEST"
 
 
 def _write(root: Path, relative: str, content: str) -> None:
@@ -204,23 +214,19 @@ def test_secret_like_values_are_not_echoed_in_failures(tmp_path: Path) -> None:
 def _k8s_manifests(root: Path) -> None:
     """Create the manifests whose presence activates the release-renderer check.
 
-    Each carries the unresolved digest placeholder, as the shipped manifests do, so a
-    renderer that never substitutes anything cannot pass by accident.
+    Each declares the workload identity the contract expects - apiVersion, kind, and
+    metadata.name - and carries the unresolved digest placeholder on the container the
+    checker expects for that workload, so a renderer that never substitutes anything cannot
+    pass by accident and the target container is identifiable by name.
     """
-    for name in (
-        "deployment-backend-api.yaml",
-        "deployment-backend-worker.yaml",
+    for name, workload, container in (
+        ("deployment-backend-api.yaml", _API_WORKLOAD, _API_CONTAINER),
+        ("deployment-backend-worker.yaml", _WORKER_WORKLOAD, _WORKER_CONTAINER),
     ):
         _write(
             root,
             f"deploy/k8s/{name}",
-            "kind: Deployment\n"
-            "spec:\n"
-            "  template:\n"
-            "    spec:\n"
-            "      containers:\n"
-            "        - image: ghcr.io/example/okr-backend@sha256:"
-            "REPLACE_WITH_RELEASE_DIGEST\n",
+            _deployment(workload, [(container, _PLACEHOLDER_IMAGE)]),
         )
 
 
@@ -697,9 +703,13 @@ def test_a_digest_quoted_only_in_a_comment_does_not_satisfy_the_contract(
         encoding="utf-8"
     )
     # Premise, asserted rather than assumed: the requested digest IS in the file text, so a
-    # whole-file substring search would have accepted this manifest.
+    # whole-file substring search would have accepted this manifest, while the target
+    # container's own image pins a different digest.
     assert requested in rendered
-    assert requested not in _image_digests(rendered)
+    target_digest, target_reason = _workload_image_digest(rendered, _API_TARGET)
+    assert target_reason is None
+    assert target_digest == "0" * 64
+    assert target_digest != requested
 
     failures = verify_repository(tmp_path)
 
@@ -733,3 +743,681 @@ def test_the_negative_input_is_malformed_content_not_a_missing_argument(
     assert outcome.returncode != 2, "argparse rejected the argument, not validation"
     assert "are required" not in outcome.output
     assert "api_digest" in outcome.output
+
+
+def _manifest(
+    workload: str,
+    spec: str,
+    *,
+    api_version: str = "apps/v1",
+    kind: str = "Deployment",
+) -> str:
+    """Render a workload with the identity the contract expects, plus the given ``spec``."""
+
+    return (
+        f"apiVersion: {api_version}\n"
+        f"kind: {kind}\n"
+        "metadata:\n"
+        f"  name: {workload}\n"
+        "spec:\n"
+        f"{spec}"
+    )
+
+
+def _pod_spec(
+    containers: list[tuple[str, str]],
+    init_containers: list[tuple[str, str]] | None = None,
+) -> str:
+    """Render the ``spec`` subtree holding ``template.spec.containers``, shipped shape."""
+
+    lines = ["  template:", "    spec:"]
+    if init_containers:
+        lines.append("      initContainers:")
+        for name, image in init_containers:
+            lines.append(f"        - name: {name}")
+            lines.append(f"          image: {image}")
+    lines.append("      containers:")
+    for name, image in containers:
+        lines.append(f"        - name: {name}")
+        lines.append(f"          image: {image}")
+    return "\n".join(lines) + "\n"
+
+
+def _deployment(
+    workload: str,
+    containers: list[tuple[str, str]],
+    init_containers: list[tuple[str, str]] | None = None,
+) -> str:
+    """Render a Deployment in the shipped manifests' shape, one entry per container."""
+
+    return _manifest(workload, _pod_spec(containers, init_containers))
+
+
+def _pinned(workload: str, container: str) -> str:
+    return _deployment(workload, [(container, _PLACEHOLDER_IMAGE)])
+
+
+_PINNED_API = _pinned(_API_WORKLOAD, _API_CONTAINER)
+_PINNED_WORKER = _pinned(_WORKER_WORKLOAD, _WORKER_CONTAINER)
+
+
+def _install_manifests(root: Path, api: str, worker: str) -> None:
+    _valid_repository(root)
+    _install_real_renderer(root)
+    _write(root, "deploy/k8s/deployment-backend-api.yaml", api)
+    _write(root, "deploy/k8s/deployment-backend-worker.yaml", worker)
+
+
+def _pinning_failures(failures: list[str]) -> list[str]:
+    return [
+        failure
+        for failure in failures
+        if failure.startswith("immutable image references")
+    ]
+
+
+def test_a_digest_on_a_sidecar_does_not_pin_the_workload_container(
+    tmp_path: Path,
+) -> None:
+    """The bypass the file-wide search could not catch.
+
+    The requested digest IS present in an image value, so a search across every image in
+    the file accepts this manifest - but it pins the sidecar, and the workload the digest
+    was minted for stays on a mutable tag.
+    """
+    _install_manifests(
+        tmp_path,
+        _deployment(
+            _API_WORKLOAD,
+            [
+                ("backend-api", "ghcr.io/example/okr-backend:latest"),
+                (
+                    "log-shipper",
+                    "ghcr.io/example/log-shipper@sha256:REPLACE_WITH_RELEASE_DIGEST",
+                ),
+            ],
+        ),
+        _PINNED_WORKER,
+    )
+
+    # Premise, asserted rather than assumed: the old whole-file search would have passed.
+    outcome = _run_release_renderer(
+        tmp_path,
+        api_digest="1" * 64,
+        worker_digest="2" * 64,
+        output_dir=tmp_path / "out",
+    )
+    assert outcome.executed
+    assert outcome.returncode == 0
+    rendered = (tmp_path / "out" / "deployment-backend-api.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert f"log-shipper@sha256:{'1' * 64}" in rendered
+    assert "ghcr.io/example/okr-backend:latest" in rendered
+    # The requested digest pins the sidecar while the target container's own image is not
+    # pinned at all, which is the state a search across every image value cannot tell apart.
+    target_digest, target_reason = _workload_image_digest(rendered, _API_TARGET)
+    assert target_digest is None
+    assert target_reason is not None
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "does not pin the validated digest" in failure and "'backend-api'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_digest_on_an_init_container_does_not_pin_the_workload_container(
+    tmp_path: Path,
+) -> None:
+    """An initContainer is not the workload, so its digest must not satisfy the contract."""
+
+    _install_manifests(
+        tmp_path,
+        _deployment(
+            _API_WORKLOAD,
+            [("backend-api", "ghcr.io/example/okr-backend:latest")],
+            init_containers=[
+                (
+                    "migrate",
+                    "ghcr.io/example/okr-backend@sha256:REPLACE_WITH_RELEASE_DIGEST",
+                )
+            ],
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "does not pin the validated digest" in failure and "'backend-api'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_unrelated_sidecars_leave_a_correctly_pinned_workload_accepted(
+    tmp_path: Path,
+) -> None:
+    """Binding to the declared container must not reject an ordinary multi-container pod."""
+
+    _install_manifests(
+        tmp_path,
+        _deployment(
+            _API_WORKLOAD,
+            [
+                (
+                    "backend-api",
+                    "ghcr.io/example/okr-backend@sha256:REPLACE_WITH_RELEASE_DIGEST",
+                ),
+                ("log-shipper", "ghcr.io/example/log-shipper:1.2.3"),
+                ("metrics", "ghcr.io/example/metrics@sha256:" + "9" * 64),
+            ],
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert _pinning_failures(failures) == [], failures
+
+
+def test_a_manifest_without_the_expected_container_is_reported_clearly(
+    tmp_path: Path,
+) -> None:
+    """A differently named container holding the digest must not be read as the target."""
+
+    _install_manifests(
+        tmp_path,
+        _deployment(
+            _API_WORKLOAD,
+            [
+                (
+                    "some-other-container",
+                    "ghcr.io/example/okr-backend@sha256:REPLACE_WITH_RELEASE_DIGEST",
+                )
+            ],
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "no container named 'backend-api'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_manifest_with_two_same_named_containers_is_reported_clearly(
+    tmp_path: Path,
+) -> None:
+    """Duplicate identities are ambiguous, so they are reported rather than resolved."""
+
+    _install_manifests(
+        tmp_path,
+        _deployment(
+            _API_WORKLOAD,
+            [
+                (
+                    "backend-api",
+                    "ghcr.io/example/okr-backend@sha256:REPLACE_WITH_RELEASE_DIGEST",
+                ),
+                ("backend-api", "ghcr.io/example/okr-backend:latest"),
+            ],
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "more than one container named 'backend-api'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_manifest_without_a_pod_containers_list_is_reported_clearly(
+    tmp_path: Path,
+) -> None:
+    _install_manifests(
+        tmp_path,
+        _manifest(
+            _API_WORKLOAD, "  template:\n    spec:\n      restartPolicy: Always\n"
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "does not declare 'spec.template.spec.containers'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_the_worker_target_is_verified_independently_of_the_api(tmp_path: Path) -> None:
+    """A correct api manifest must not cover for a worker pinned only on a sidecar."""
+
+    _install_manifests(
+        tmp_path,
+        _pinned(_API_WORKLOAD, _API_CONTAINER),
+        _deployment(
+            _WORKER_WORKLOAD,
+            [
+                ("backend-worker", "ghcr.io/example/okr-worker:latest"),
+                (
+                    "log-shipper",
+                    "ghcr.io/example/log-shipper@sha256:REPLACE_WITH_RELEASE_DIGEST",
+                ),
+            ],
+        ),
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "deployment-backend-worker.yaml" in failure
+        and "'backend-worker'" in failure
+        and "does not pin the validated digest" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+    assert not [
+        failure
+        for failure in _pinning_failures(failures)
+        if "deployment-backend-api.yaml" in failure
+    ], failures
+
+
+# The shipped manifests' shape: nested mappings and nested lists inside the container.
+_NESTED_MAPPINGS = _manifest(
+    _API_WORKLOAD,
+    "  template:\n"
+    "    spec:\n"
+    "      containers:\n"
+    "        - name: backend-api\n"
+    "          image: ghcr.io/example/okr-backend@sha256:REPLACE_WITH_RELEASE_DIGEST\n"
+    "          imagePullPolicy: Always\n"
+    "          ports:\n"
+    "            - containerPort: 8100\n"
+    "          env:\n"
+    "            - name: OKR_DATABASE_URL\n"
+    "              valueFrom:\n"
+    "                secretKeyRef:\n"
+    "                  name: okr-db\n"
+    "                  key: OKR_DATABASE_URL\n"
+    "          resources:\n"
+    "            requests:\n"
+    "              cpu: 100m\n",
+)
+
+
+def test_nested_mappings_inside_the_target_container_are_not_read_as_its_identity(
+    tmp_path: Path,
+) -> None:
+    """`valueFrom.secretKeyRef.name` is not the container's name.
+
+    The shipped manifests nest a `name:` under `env[].valueFrom.secretKeyRef`, so a reader
+    that credited nested mapping keys to the container would invent a second name and fail
+    the real repository.
+    """
+    _install_manifests(tmp_path, _NESTED_MAPPINGS, _PINNED_WORKER)
+
+    failures = verify_repository(tmp_path)
+
+    assert _pinning_failures(failures) == [], failures
+
+
+# The workload identity the contract states, so a correctly *named* file holding another
+# object cannot satisfy the check. Each case below pins the right container correctly, so
+# only the identity or the path under test can explain the rejection.
+def _pinned_pod_spec() -> str:
+    return _pod_spec([(_API_CONTAINER, _PLACEHOLDER_IMAGE)])
+
+
+def test_a_wrong_workload_kind_is_rejected(tmp_path: Path) -> None:
+    _install_manifests(
+        tmp_path,
+        _manifest(_API_WORKLOAD, _pinned_pod_spec(), kind="ConfigMap"),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "does not declare 'kind: Deployment'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_wrong_api_version_is_rejected(tmp_path: Path) -> None:
+    _install_manifests(
+        tmp_path,
+        _manifest(_API_WORKLOAD, _pinned_pod_spec(), api_version="v1"),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "does not declare 'apiVersion: apps/v1'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_wrong_workload_name_is_rejected(tmp_path: Path) -> None:
+    _install_manifests(
+        tmp_path,
+        _manifest("some-other-workload", _pinned_pod_spec()),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "is not the workload named 'okr-backend-api'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_containers_list_outside_the_pod_spec_is_rejected(tmp_path: Path) -> None:
+    """A `containers` key in an unrelated mapping is not the pod's container list.
+
+    The digest sits on a container of the expected name, inside a correctly named file, so
+    only walking the real `spec.template.spec` path distinguishes this from a valid
+    manifest.
+    """
+
+    api = (
+        "apiVersion: apps/v1\n"
+        "kind: Deployment\n"
+        "metadata:\n"
+        "  name: okr-backend-api\n"
+        "  annotations:\n"
+        "    containers:\n"
+        f"      - name: {_API_CONTAINER}\n"
+        f"        image: {_PLACEHOLDER_IMAGE}\n"
+        "spec:\n"
+        "  template:\n"
+        "    spec:\n"
+        "      restartPolicy: Always\n"
+    )
+    # Premise, asserted rather than assumed: the file does carry a containers list, with the
+    # expected container name and the placeholder, so only the path check can reject it.
+    assert f"image: {_PLACEHOLDER_IMAGE}" in api
+
+    _install_manifests(tmp_path, api, _PINNED_WORKER)
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "does not declare 'spec.template.spec.containers'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_containers_list_directly_under_spec_is_rejected(tmp_path: Path) -> None:
+    """`spec.containers` is not `spec.template.spec.containers`."""
+
+    _install_manifests(
+        tmp_path,
+        "apiVersion: apps/v1\n"
+        "kind: Deployment\n"
+        "metadata:\n"
+        "  name: okr-backend-api\n"
+        "spec:\n"
+        "  containers:\n"
+        f"    - name: {_API_CONTAINER}\n"
+        f"      image: {_PLACEHOLDER_IMAGE}\n",
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "does not declare 'spec.template'" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_malformed_manifest_is_rejected_as_invalid_yaml(tmp_path: Path) -> None:
+    _install_manifests(
+        tmp_path,
+        _manifest(
+            _API_WORKLOAD,
+            "  template:\n"
+            "    spec:\n"
+            "      containers: [\n"
+            f"        {{name: {_API_CONTAINER}, image: {_PLACEHOLDER_IMAGE}}}\n",
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "is not valid YAML" in failure for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_tab_indented_manifest_is_rejected(tmp_path: Path) -> None:
+    """YAML forbids tabs as indentation, so this must not be read as structure.
+
+    A reader that counted tab characters as indentation would accept this manifest while
+    every YAML tooling the cluster uses would refuse to parse it.
+    """
+
+    _install_manifests(
+        tmp_path,
+        "apiVersion: apps/v1\n"
+        "kind: Deployment\n"
+        "metadata:\n"
+        "  name: okr-backend-api\n"
+        "spec:\n"
+        "\ttemplate:\n"
+        "\t\tspec:\n"
+        "\t\t\tcontainers:\n"
+        f"\t\t\t\t- name: {_API_CONTAINER}\n"
+        f"\t\t\t\t  image: {_PLACEHOLDER_IMAGE}\n",
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "is not valid YAML" in failure for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_manifest_with_several_documents_is_rejected(tmp_path: Path) -> None:
+    """Two documents leave the deployed object ambiguous, so neither may be assumed."""
+
+    _install_manifests(
+        tmp_path,
+        _manifest(_API_WORKLOAD, _pinned_pod_spec())
+        + "---\n"
+        + _manifest(_API_WORKLOAD, _pinned_pod_spec()),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "is not valid YAML" in failure for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_duplicate_mapping_key_is_rejected(tmp_path: Path) -> None:
+    """A repeated `image` key must not be resolved by keeping one of the two values.
+
+    The placeholder is last, so a last-value-wins reader would have accepted a manifest whose
+    intended image is genuinely ambiguous.
+    """
+
+    api = _manifest(
+        _API_WORKLOAD,
+        "  template:\n"
+        "    spec:\n"
+        "      containers:\n"
+        f"        - name: {_API_CONTAINER}\n"
+        "          image: ghcr.io/example/okr-backend:latest\n"
+        f"          image: {_PLACEHOLDER_IMAGE}\n",
+    )
+    # Premise: the expected value is the *last* one, so last-wins would have passed.
+    assert api.index("latest") < api.index(_PLACEHOLDER_IMAGE)
+
+    _install_manifests(tmp_path, api, _PINNED_WORKER)
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "duplicate mapping key" in failure for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_an_image_inside_a_block_scalar_does_not_pin_the_container(
+    tmp_path: Path,
+) -> None:
+    """A pinned image written into a string is text, not the container's image."""
+
+    api = _manifest(
+        _API_WORKLOAD,
+        "  template:\n"
+        "    spec:\n"
+        "      containers:\n"
+        f"        - name: {_API_CONTAINER}\n"
+        "          image: ghcr.io/example/okr-backend:latest\n"
+        "          notes: |\n"
+        f"            image: {_PLACEHOLDER_IMAGE}\n",
+    )
+    # Premise: the placeholder is in the file, so only reading it as a string rejects this.
+    assert _PLACEHOLDER_IMAGE in api
+
+    _install_manifests(tmp_path, api, _PINNED_WORKER)
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "is not pinned to a sha256 digest" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_containers_fragment_inside_a_block_scalar_is_not_read_as_a_list(
+    tmp_path: Path,
+) -> None:
+    """A `containers:` line inside a string is a string, not a second container list.
+
+    The target container is pinned correctly, so reading the string as another list would
+    reject a manifest that is exactly right.
+    """
+
+    _install_manifests(
+        tmp_path,
+        _manifest(
+            _API_WORKLOAD,
+            "  template:\n"
+            "    spec:\n"
+            "      containers:\n"
+            f"        - name: {_API_CONTAINER}\n"
+            f"          image: {_PLACEHOLDER_IMAGE}\n"
+            "      notes: |\n"
+            "        containers:\n"
+            "          - name: decoy\n",
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert _pinning_failures(failures) == [], failures
+
+
+def test_flow_style_containers_are_read_structurally(tmp_path: Path) -> None:
+    """Valid YAML the hand-written reader could not parse is now interpreted, not refused."""
+
+    _install_manifests(
+        tmp_path,
+        _manifest(
+            _API_WORKLOAD,
+            "  template:\n"
+            "    spec:\n"
+            f'      containers: [{{name: {_API_CONTAINER}, image: "{_PLACEHOLDER_IMAGE}"}}]\n',
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert _pinning_failures(failures) == [], failures
+
+
+def test_a_container_entry_that_is_not_a_mapping_is_rejected(tmp_path: Path) -> None:
+    _install_manifests(
+        tmp_path,
+        _manifest(
+            _API_WORKLOAD,
+            "  template:\n    spec:\n      containers: [backend-api]\n",
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "containers[0]' is not a mapping" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_containers_that_is_not_a_list_is_rejected(tmp_path: Path) -> None:
+    _install_manifests(
+        tmp_path,
+        _manifest(_API_WORKLOAD, "  template:\n    spec:\n      containers: {}\n"),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "does not declare 'spec.template.spec.containers' as a list" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_an_empty_containers_list_is_rejected(tmp_path: Path) -> None:
+    _install_manifests(
+        tmp_path,
+        _manifest(_API_WORKLOAD, "  template:\n    spec:\n      containers: []\n"),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "empty 'spec.template.spec.containers' list" in failure
+        for failure in _pinning_failures(failures)
+    ), failures
+
+
+def test_a_rejection_does_not_echo_manifest_content(tmp_path: Path) -> None:
+    """Parse failures are reported by problem and position, never by reproducing a line."""
+
+    _install_manifests(
+        tmp_path,
+        _manifest(
+            _API_WORKLOAD,
+            "  template:\n"
+            "    spec:\n"
+            "      containers: [\n"
+            "        {name: backend-api, image: okr-database-url-secret-value}\n",
+        ),
+        _PINNED_WORKER,
+    )
+
+    failures = verify_repository(tmp_path)
+
+    assert any(
+        "is not valid YAML" in failure for failure in _pinning_failures(failures)
+    )
+    assert "okr-database-url-secret-value" not in "\n".join(failures)
