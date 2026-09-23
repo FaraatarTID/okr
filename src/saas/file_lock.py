@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import json
 import os
 from pathlib import Path
+import sys
 import time
 
 
@@ -23,7 +24,7 @@ def locked_file(
             os.write(handle, b" ")
         while not acquired:
             try:
-                if os.name == "nt":
+                if sys.platform == "win32":
                     import msvcrt
 
                     os.lseek(handle, 0, os.SEEK_SET)
@@ -45,7 +46,7 @@ def locked_file(
         yield
     finally:
         if acquired:
-            if os.name == "nt":
+            if sys.platform == "win32":
                 import msvcrt
 
                 os.lseek(handle, 0, os.SEEK_SET)

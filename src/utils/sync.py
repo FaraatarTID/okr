@@ -26,7 +26,8 @@ def sync_data_to_db(username: str, payload: dict[str, Any]) -> None:
     root_ids: list[str] = payload.get("rootIds") or []
 
     user = get_user_by_username(username)
-    owner_id = int(user.id) if user and user.id is not None else 0
+    user_id = getattr(user, "id", None)
+    owner_id = int(user_id) if user_id is not None else 0
 
     with get_session_context() as session:
         for root_id in root_ids:

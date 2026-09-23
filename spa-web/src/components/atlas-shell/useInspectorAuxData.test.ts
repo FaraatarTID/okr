@@ -223,7 +223,7 @@ describe("useInspectorAuxData", () => {
     const readBackendQueryMock = vi.mocked(api.readBackendQuery);
     const deleteWorkLogMutationMock = vi.mocked(api.deleteWorkLogMutation);
     const loadSnapshotForUser = vi.fn().mockResolvedValue(undefined);
-    if (!("confirm" in window)) {
+    if (typeof window.confirm !== "function") {
       Object.defineProperty(window, "confirm", {
         value: () => true,
         writable: true,

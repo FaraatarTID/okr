@@ -25,6 +25,12 @@ from scripts.check_saas_phase1_evidence import check
 ATTESTATION_SECRET = "phase1-test-secret"
 
 
+def _section(evidence: dict[str, object], name: str) -> dict[str, object]:
+    value = evidence[name]
+    assert isinstance(value, dict)
+    return value
+
+
 def credential(principal: str = "operator-a") -> OperatorCredential:
     return OperatorCredential(
         principal=principal,
@@ -74,9 +80,11 @@ def test_database_metadata_rejects_credential_bearing_url() -> None:
         "db/resource",
     ],
 )
-def test_provider_database_resource_id_must_be_strictly_opaque(resource: str) -> None:
+def test_provider_database_resource_id_must_be_strictly_opaque(
+    resource: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     provider = LocalDisposableEnvironmentProvider()
-    provider.create_database = lambda _manifest: resource
+    monkeypatch.setattr(provider, "create_database", lambda _manifest: resource)
     with pytest.raises(ValueError, match="opaque"):
         Provisioner(provider, operator=credential()).provision(manifest())
 
@@ -154,14 +162,19 @@ def test_concurrent_provisioning_creates_one_environment() -> None:
     assert provider.create_calls == 1
 
 
-def test_cleanup_failure_is_preserved_for_reconciliation() -> None:
+def test_cleanup_failure_is_preserved_for_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     provider = LocalDisposableEnvironmentProvider()
-    provider.create_database = lambda _manifest: (_ for _ in ()).throw(
-        RuntimeError("database failed")
-    )
-    provider.delete_application = lambda _resource: (_ for _ in ()).throw(
-        RuntimeError("cleanup failed")
-    )
+
+    def fail_database(_manifest: EnvironmentManifest) -> str:
+        raise RuntimeError("database failed")
+
+    def fail_cleanup(_resource: str) -> None:
+        raise RuntimeError("cleanup failed")
+
+    monkeypatch.setattr(provider, "create_database", fail_database)
+    monkeypatch.setattr(provider, "delete_application", fail_cleanup)
     with pytest.raises(RuntimeError, match="database failed"):
         Provisioner(provider, operator=credential()).provision(manifest())
     assert provider.orphans[0]["cleanup_errors"] == ["application: cleanup failed"]
@@ -179,16 +192,20 @@ def test_local_release_and_backup_persistence_use_shared_lock(
         def __exit__(self, *_):
             return False
 
+    def record_lock(_path: Path, **kwargs: str) -> Guard:
+        seen.append(kwargs["label"])
+        return Guard()
+
     monkeypatch.setattr(
         release_operations,
         "locked_file",
-        lambda _path, **kwargs: seen.append(kwargs["label"]) or Guard(),
+        record_lock,
     )
     LocalRuntimeAdapter(state_path=tmp_path / "release.json")._save()
     monkeypatch.setattr(
         backup_operations,
         "locked_file",
-        lambda _path, **kwargs: seen.append(kwargs["label"]) or Guard(),
+        record_lock,
     )
     LocalBackupProvider(tmp_path / "backup.json")._save()
     assert seen == ["release state lock", "backup state lock"]
@@ -375,38 +392,24 @@ def test_phase_evidence_checker_rejects_transplanted_bound_values(
             "signature": "",
         },
     }
-    payload[section][field] = value
-    payload["attestation"]["signature"] = sign_attestation(payload["attestation"])
+    _section(payload, section)[field] = value
+    attestation = _section(payload, "attestation")
+    attestation["signature"] = sign_attestation(attestation)
     evidence.write_text("```json\n" + json.dumps(payload) + "\n```", encoding="utf-8")
     assert check(evidence, secret=ATTESTATION_SECRET)
 
 
 def test_backup_manager_rejects_provider_response_for_different_environment() -> None:
-    class MismatchedProvider:
-        provider_name = "provider"
-
-        def __init__(self) -> None:
-            self.statuses: list[dict[str, object]] = []
-
+    class MismatchedProvider(LocalBackupProvider):
         def create_backup(
             self, _environment_id: str, retention_class: str
         ) -> dict[str, object]:
-            return {
-                "environment_id": "env-other",
-                "provider": self.provider_name,
-                "backup_id": "backup-1",
-                "checksum": "checksum",
-                "created_at": "2026-09-01T00:00:00+00:00",
-                "retention_class": retention_class,
-            }
-
-        def record_status(self, _backup_id: str, status: dict[str, object]) -> None:
-            self.statuses.append(status)
+            return super().create_backup("env-other", retention_class)
 
     provider = MismatchedProvider()
     with pytest.raises(ValueError, match="different environment"):
         BackupManager(provider, operator=credential()).create("env-a")
-    assert provider.statuses == []
+    assert provider.status == {}
 
 
 def test_phase_evidence_checker_rejects_forged_attestation_signature(
@@ -487,17 +490,18 @@ def test_phase_evidence_checker_rejects_synthetic_attestation_values(
 
 
 def test_lifecycle_service_apis_reject_forged_operator_strings() -> None:
+    # These calls intentionally violate the credential type to test runtime refusal.
     with pytest.raises(ValueError, match="credential"):
-        Provisioner(LocalDisposableEnvironmentProvider(), operator="operator-a")
+        Provisioner(LocalDisposableEnvironmentProvider(), operator="operator-a")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="credential"):
         ReleaseManager(
             SimpleNamespace(get_environment=lambda _environment_id: None),
             LocalRuntimeAdapter(),
-            operator="operator-a",
+            operator="operator-a",  # type: ignore[arg-type]
         )
     with pytest.raises(ValueError, match="credential"):
-        BackupManager(LocalBackupProvider(), operator="operator-a")
+        BackupManager(LocalBackupProvider(), operator="operator-a")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="credential"):
         from src.saas.backup_operations import RestoreManager
 
-        RestoreManager(LocalBackupProvider(), operator="operator-a")
+        RestoreManager(LocalBackupProvider(), operator="operator-a")  # type: ignore[arg-type]

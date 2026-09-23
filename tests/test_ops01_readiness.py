@@ -5,7 +5,7 @@ import sys
 
 def test_ops01_readiness_script_runs():
     result = subprocess.run(
-        [sys.executable, "scripts/verify_ops01_readiness.py"],
+        [sys.executable, "-m", "scripts.verify_ops01_readiness"],
         check=False,
         capture_output=True,
         text=True,

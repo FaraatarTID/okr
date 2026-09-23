@@ -300,6 +300,7 @@ jobs:
     needs: build
     env:
       WEB_URL: ${{ vars.DARKUBE_WEB_URL }}
+      WEB_BUILD_ID: ${{ inputs.web_build_id }}
       API_HEALTH_URL: ${{ vars.DARKUBE_API_HEALTH_URL }}
       WORKER_EVIDENCE: ${{ inputs.worker_evidence }}
       MIGRATION_HEAD: ${{ inputs.migration_head }}
@@ -383,11 +384,38 @@ jobs:
               expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(timeout=90_000)
               browser.close()
           PY
+      - name: Measure authenticated frontend performance (unscored)
+        env:
+          PRERELEASE_SMOKE_USERNAME: ${{ secrets.PRERELEASE_SMOKE_USERNAME }}
+          PRERELEASE_SMOKE_PASSWORD: ${{ secrets.PRERELEASE_SMOKE_PASSWORD }}
+          # The protected runtime-config verifier above enforces this exact mode.
+          DATA_ACCESS_MODE: database
+        run: |
+          set -euo pipefail
+          test -n "$WEB_URL"
+          test -n "$WEB_BUILD_ID"
+          test -n "$PRERELEASE_SMOKE_USERNAME"
+          test -n "$PRERELEASE_SMOKE_PASSWORD"
+          python -m scripts.probe_frontend_budget \
+            --base-url "$WEB_URL" \
+            --username-env PRERELEASE_SMOKE_USERNAME \
+            --password-env PRERELEASE_SMOKE_PASSWORD \
+            --build-id "$WEB_BUILD_ID" \
+            --commit-sha "$GITHUB_SHA" \
+            --data-access-mode "$DATA_ACCESS_MODE" \
+            --output frontend-performance.json
       - if: always()
         uses: actions/upload-artifact@v7
         with:
           name: darkube-prerelease-private-smoke
           path: private-smoke.json
+          if-no-files-found: ignore
+          retention-days: 7
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: darkube-prerelease-frontend-budget
+          path: frontend-performance.json
           if-no-files-found: ignore
           retention-days: 7
 

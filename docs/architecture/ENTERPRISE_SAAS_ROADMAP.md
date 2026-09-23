@@ -6,6 +6,7 @@ Status: ACTIVE
 Decision: single-tenant enterprise SaaS first
 Source design: [Single-Tenant Enterprise SaaS Design](../superpowers/specs/2026-09-01-single-tenant-saas-design.md)
 Historical prerequisite: [Pre-SaaS Architecture Simplification Backlog](PRE_SAAS_ARCHITECTURE_BACKLOG.md)
+Current work and acceptance: [Remaining Engineering Plan](../REMAINING_ENGINEERING_PLAN.md)
 
 ## Product direction
 
@@ -21,7 +22,7 @@ Customer environment B: spa-web -> spa-bff -> backend-api -> database
                                              -> backend-worker -> queue/storage
 ```
 
-The current on-premise deployment remains supported and must not depend on the control plane. Shared-database SaaS and PostgreSQL RLS are deferred until a separate decision proves that dedicated environments are insufficient.
+The current on-premise deployment remains supported and must not depend on the control plane. [ADR-001](../ADR-001-multitenant-data-access-boundary.md) rejects shared-database SaaS and PostgreSQL RLS as a customer-isolation model. They are outside the supported product scope.
 
 ## Non-negotiable principles
 
@@ -31,7 +32,7 @@ The current on-premise deployment remains supported and must not depend on the c
 4. Application artifacts are immutable; configuration and secrets are external.
 5. Provisioning, upgrade, backup, restore, and retirement are repeatable and auditable.
 6. Database backup and application rollback are mandatory before real customer data is introduced.
-7. RLS and shared-database tenancy are future options, not Phase 0 scope.
+7. Shared-database tenancy and tenant-isolation RLS are rejected by ADR-001.
 
 ## Phase gates
 
@@ -44,15 +45,13 @@ The current on-premise deployment remains supported and must not depend on the c
 
 Calendar time never promotes a phase. Missing evidence is work, not permission to skip the gate.
 
-## Current implementation status (2026-09-14)
+## Current implementation status (2026-09-23)
 
-The repository-side SaaS foundation is now materially complete for its intended scope:
+The repository contains parts of the dedicated-environment foundation, including the environment contract, lifecycle metadata, and isolated provisioning guardrails. Local evidence for those parts does not close the remaining implementation or production gates. The [Remaining Engineering Plan](../REMAINING_ENGINEERING_PLAN.md) is authoritative for their current status, order, and acceptance tests.
 
-- The browser -> BFF -> backend trust boundary is verified for actor binding and fail-closed session handling.
-- The backend now rejects forwarded `X-OKR-Role` and `X-OKR-Roles` claims that do not match the resolved actor scope.
-- The single-tenant environment contract, lifecycle metadata, and isolated provisioning guardrails are implemented and locally evidenced.
-- The remaining blockers are operational verification, not repo-implementation gaps: confirmation of provider backup/restore evidence, measured RPO/RTO, paired rollback rehearsal, and a named platform/operations owner.
-- Real customer data onboarding remains explicitly blocked until those provider-side gates are completed and recorded.
+- Repository work remains in release and recovery integrity (A), documentation and governance (B), frontend quality and performance (C), and enterprise identity and session security (D). The Phase 2 identity flow, including OIDC login, is not yet implemented. Read-path parity and the current P0 items also remain in the register.
+- Provider-backed backup and restore, measured RPO/RTO, a live paired rollback rehearsal, a named platform/operations owner, and explicit real-data approval require evidence or decisions outside this repository (E).
+- Real customer data onboarding remains blocked until those external gates and the applicable implementation gates are completed and recorded.
 
 ## Phase 0: SaaS environment foundation
 
@@ -66,7 +65,7 @@ Deliverables:
 - Operator access and lifecycle audit-event contract.
 - Backup, restore, retention, ownership, RPO, and RTO requirements.
 - ADR recording single-tenant SaaS as the first deployment model.
-- Explicit trigger and comparison criteria for any future shared-database/RLS ADR.
+- A record of the single-tenant decision and its rejected shared-database alternative.
 
 Exit criteria:
 
@@ -123,7 +122,7 @@ Goal: operate the service predictably across many dedicated environments.
 Deliverables:
 
 - Per-environment and platform-wide SLOs and alert routing.
-- Tenant-aware audit and security investigation tooling.
+- Per-environment audit and security investigation tooling.
 - Rolling-version compatibility and expand/contract migration process.
 - Backup, restore, export, deletion, and disaster-recovery drills.
 - Rate limits and noisy-neighbor protection.
@@ -148,8 +147,6 @@ On-premise deployments continue to use the existing supported deployment profile
 
 ## Deferred decisions
 
-- Shared-database multi-tenancy and PostgreSQL RLS.
-- Tenant identifiers in the current pre-SaaS domain schema.
 - Database-per-tenant automation beyond the dedicated-environment contract.
 - Regional deployment and data residency.
 - Billing and self-service provisioning.
@@ -164,7 +161,7 @@ On-premise deployments continue to use the existing supported deployment profile
 4. Add versioned deployment, health-gated promotion, and application rollback.
 5. Execute the [Hamravesh/Darkube provider evidence handoff](../saas/provider-evidence-handoff.md), add provider-backed backup/restore, and document measured RPO/RTO before onboarding real data.
 6. Add control-plane lifecycle automation only after one environment works manually and repeatably.
- 
+
 ## Task 7 - Phase 1 entry-gate evidence and handoff (2026-09-14)
 
 **Status: REPOSITORY EVIDENCE ASSEMBLED; PRODUCTION PROMOTION PENDING EXTERNAL VERIFICATION**
@@ -177,7 +174,7 @@ Entry-gate disposition:
 - The repository contains a signed, reviewable evidence package, but it is not by itself proof of a live provider drill or a production deployment.
 - Operations must verify the Hamravesh/Darkube backup/restore identifiers, artifact provenance, rollback rehearsal, checksum/integrity results, retention, measured RPO/RTO, and accountable ownership before promotion.
 - Real-data onboarding remains prohibited until that external verification is recorded and `just saas-evidence` passes with the configured attestation secret.
-- Shared-database tenancy, tenant identifiers, RLS, and cross-customer schema remain deferred.
+- Shared-database tenancy, tenant identifiers for customer isolation, tenant-isolation RLS, and a cross-customer schema remain rejected under ADR-001.
 
 Required owners before production entry:
 
@@ -196,8 +193,8 @@ only at explicitly tested legacy boundaries.
 
 ## Production persistence gate
 
-No customer-data onboarding, tenant/RLS work, or production SaaS persistence
-may begin until the `just saas-evidence` contract passes against externally
+No customer-data onboarding or production SaaS persistence may begin until the
+`just saas-evidence` contract passes against externally
 verified evidence. A passing bundle must
 prove, for the target environment and customer, a provider-supported verified
 backup, a successful isolated restore with provider-issued identity and

@@ -13,7 +13,10 @@ export default defineConfig({
     environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],
     css: true,
-    pool: "vmThreads",
+    // The VM-thread pool leaks mocked module instances between files with this
+    // suite's shared hook mocks. Use fork isolation so each test file gets a
+    // fresh module registry on the single-worker CI runner.
+    pool: "forks",
     maxWorkers: 1,
     coverage: {
       provider: "v8",

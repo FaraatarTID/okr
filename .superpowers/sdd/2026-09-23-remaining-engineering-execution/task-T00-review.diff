@@ -1,0 +1,32 @@
+# Task T00 review package
+
+Base is the current tracked HEAD snapshot. Git commits are unavailable because .git/index.lock writes are denied by the managed filesystem.
+
+## Scoped tracked diff
+
+diff --git a/docs/REMAINING_ENGINEERING_PLAN.md b/docs/REMAINING_ENGINEERING_PLAN.md
+index 4d6f635..fee107f 100644
+--- a/docs/REMAINING_ENGINEERING_PLAN.md
++++ b/docs/REMAINING_ENGINEERING_PLAN.md
+@@ -160,14 +160,13 @@ itself the defect. `_validate_read_scope` is now deny-by-default and runs before
+ dispatch for both paths, so the **omission** class is closed: a read kind can no
+ longer be served unscoped merely by not being registered.
+ 
+-That is not the same as the two paths agreeing about every kind, and the
+-difference is recorded rather than rounded off. The kinds whose scope the guard can
+-establish directly from the request are now enforced on both paths. Six
+-cycle-scoped kinds still filter rows on TCP and not over HTTPS, so an **in-scope**
+-request for them returns a wider row set over HTTPS than TCP; that is F3, and it is
+-open. The guard being deny-by-default means they are now *classified* rather than
+-silently unguarded, which is what prevents the next kind from joining them
+-invisibly — it does not by itself make their rows agree.
++The guard enforces directly decidable scope rules on both paths. The six
++cycle-scoped HTTPS row filters were subsequently corrected under F3, whose row
++below records the individual fixes and their fail-first tests. F1's broader
++payload-level parity acceptance remains open: its row still requires a single
++non-admin cross-path check over all six kinds. The deny-by-default guard
++classifies these kinds and prevents a newly added kind from being served without
++a scope rule; that guard alone is not evidence of payload parity.
+ 
+ Reachability, established from configuration rather than assumed: the HTTPS read
+ path is **not** reachable in the enforced `single_tenant_saas` profile, because

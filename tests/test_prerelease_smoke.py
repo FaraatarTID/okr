@@ -4,7 +4,7 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import pytest
 
@@ -17,10 +17,10 @@ from scripts.verify_prerelease_smoke import (
 
 
 class _SmokeHandler(BaseHTTPRequestHandler):
-    responses: dict[str, tuple[int, bytes, str]] = {}
+    smoke_responses: dict[str, tuple[int, bytes, str]] = {}
 
     def do_GET(self) -> None:  # noqa: N802
-        status, body, content_type = self.responses.get(
+        status, body, content_type = self.smoke_responses.get(
             self.path, (404, b"not found", "text/plain")
         )
         self.send_response(status)
@@ -34,8 +34,8 @@ class _SmokeHandler(BaseHTTPRequestHandler):
 
 
 @pytest.fixture()
-def smoke_server() -> tuple[str, ThreadingHTTPServer]:
-    _SmokeHandler.responses = {
+def smoke_server() -> Iterator[tuple[str, ThreadingHTTPServer]]:
+    _SmokeHandler.smoke_responses = {
         "/": (200, b"<html><title>pre-release</title></html>", "text/html"),
         "/bff/healthz": (200, b'{"status":"ok"}', "application/json"),
         "/api/healthz": (200, b'{"status":"ok"}', "application/json"),
@@ -101,7 +101,7 @@ def test_smoke_failure_does_not_include_response_body(
     from tests._test_credentials import test_password
 
     fixture_password = test_password("prerelease_smoke")
-    _SmokeHandler.responses["/bff/healthz"] = (
+    _SmokeHandler.smoke_responses["/bff/healthz"] = (
         503,
         f'{{"status":"down","password":"{test_password("prerelease_smoke")}"}}'.encode(),
         "application/json",
@@ -134,7 +134,7 @@ def test_missing_worker_and_migration_evidence_fail_independently(
 def test_health_endpoint_requires_json_status_ok(
     smoke_server: tuple[str, ThreadingHTTPServer],
 ) -> None:
-    _SmokeHandler.responses["/api/healthz"] = (200, b"healthy", "text/plain")
+    _SmokeHandler.smoke_responses["/api/healthz"] = (200, b"healthy", "text/plain")
     base_url, _server = smoke_server
     result = verify_prerelease_smoke(**_kwargs(base_url))
     api_check = next(check for check in result.checks if check.name == "api")

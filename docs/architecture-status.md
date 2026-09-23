@@ -2,6 +2,22 @@
 
 Documentation HQ: [README](../README.md)
 
+> **Historical ledger — superseded for current status (noted 2026-09-23).**
+> This ledger records the pre-SaaS architecture packages (2026-08-31 to
+> 2026-09-14) and is retained as evidence of that initiative. It is no longer
+> maintained and is **not** a current status source: for what is open and in what
+> order to take it, use
+> [REMAINING_ENGINEERING_PLAN.md](REMAINING_ENGINEERING_PLAN.md), which is
+> authoritative.
+>
+> **Separate ID namespace.** The items here are numbered `P0-00`…`P0-06`
+> (architecture inventory, package boundary, runtime entrypoint, BFF topology,
+> compatibility surface, documentation lifecycle, governance). Those identifiers
+> are unrelated to the plan's `P0-1`…`P0-8`, which are integrity and security
+> items. `P0-04` here is "Root script and compatibility surface cleanup", whereas
+> `P0-4` in the plan is the rate-limiter and client-IP trust item. Always say
+> which namespace is meant.
+
 | Item | Status | Evidence | Verified | Retro note |
 |---|---|---|---|---|
 | P0-00 - Architecture inventory and target topology | VERIFIED | [pre-saas-architecture-inventory.md](pre-saas-architecture-inventory.md); [architecture-boundaries.md](architecture-boundaries.md) | 2026-09-02 | Runtime inventory and target service topology are recorded; the promoted pre-SaaS baseline uses the canonical backend, BFF, SPA, API, and worker boundaries. |

@@ -52,6 +52,15 @@ export default function useShellAccessControl({
   setUser,
   clearSnapshot,
 }: UseShellAccessControlInput) {
+  const canManageCycles = isAdmin || isManager;
+  const canAccessCurrentAdminTab = isAdmin || (isManager && adminTab === "cycles");
+  const accessReady = Boolean(
+    authHydrated &&
+      user &&
+      !user.must_change_password &&
+      (mode !== "admin" || canAccessCurrentAdminTab),
+  );
+
   useEffect(() => {
     if (!authHydrated) {
       return;
@@ -74,7 +83,6 @@ export default function useShellAccessControl({
     }
     // Managers may enter admin mode but are restricted to the cycles tab
     // (per-manager active cycles). Members are redirected out entirely.
-    const canManageCycles = isAdmin || isManager;
     if (!canManageCycles && mode === "admin") {
       handleSidebarModeSelect("atlas");
       return;
@@ -93,32 +101,31 @@ export default function useShellAccessControl({
   useEffect(() => {
     // Managers also need admin resources (users list feeds the cycle-owner
     // dropdown on their Cycles panel), so gate on canManageCycles, not isAdmin.
-    const canManageCycles = isAdmin || isManager;
-    if (!user || !canManageCycles || mode !== "admin") {
+    if (!accessReady || !user || !canManageCycles || mode !== "admin") {
       return;
     }
     void loadAdminResources(user);
-  }, [isAdmin, isManager, loadAdminResources, mode, user]);
+  }, [accessReady, canManageCycles, loadAdminResources, mode, user]);
 
   useEffect(() => {
-    if (!user || !isAdmin || mode !== "admin" || adminTab !== "ai") {
+    if (!accessReady || !user || !isAdmin || mode !== "admin" || adminTab !== "ai") {
       return;
     }
     if (adminAiHealth && adminPdfHealth) {
       return;
     }
     void loadAdminHealth(user, false);
-  }, [adminAiHealth, adminPdfHealth, adminTab, isAdmin, loadAdminHealth, mode, user]);
+  }, [accessReady, adminAiHealth, adminPdfHealth, adminTab, isAdmin, loadAdminHealth, mode, user]);
 
   useEffect(() => {
-    if (!user || !isAdmin || mode !== "admin" || adminTab !== "audit") {
+    if (!accessReady || !user || !isAdmin || mode !== "admin" || adminTab !== "audit") {
       return;
     }
     if (adminAuditSummary) {
       return;
     }
     void loadAdminAuditSummary(user);
-  }, [adminAuditSummary, adminTab, isAdmin, loadAdminAuditSummary, mode, user]);
+  }, [accessReady, adminAuditSummary, adminTab, isAdmin, loadAdminAuditSummary, mode, user]);
 
   const handleSignOut = useCallback((): void => {
     void (async () => {
@@ -138,6 +145,7 @@ export default function useShellAccessControl({
   }, [clearSnapshot, routerReplace, setUser]);
 
   return {
+    accessReady,
     handleSignOut,
   };
 }

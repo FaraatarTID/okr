@@ -27,7 +27,7 @@ from src.saas.environment_contract import (
     EnvironmentState,
     transition,
 )
-from src.saas.control_plane import AuditEvent, now_utc
+from src.saas.control_plane import AuditEvent, ControlPlane, now_utc
 from src.saas.file_lock import locked_file
 from src.saas.operator_credentials import OperatorCredential
 
@@ -309,9 +309,9 @@ class Provisioner:
         if not isinstance(operator, OperatorCredential):
             raise ValueError("authenticated operator credential is required")
         self.operator = operator.principal
-        self.control_plane = None
+        self.control_plane: ControlPlane | None = None
 
-    def with_control_plane(self, control_plane: object) -> "Provisioner":
+    def with_control_plane(self, control_plane: ControlPlane) -> "Provisioner":
         self.control_plane = control_plane
         return self
 
@@ -411,7 +411,7 @@ class Provisioner:
                 except Exception as cleanup_error:
                     cleanup_errors.append(f"{kind}: {cleanup_error}")
             if cleanup_errors:
-                orphan = {
+                orphan: dict[str, object] = {
                     "environment_id": manifest.environment_id,
                     "customer_id": manifest.customer_id,
                     "resources": [resource for _, resource in created],
@@ -473,6 +473,8 @@ class Provisioner:
     def _audit(
         self, environment_id: str, event: str, result: str, reason: str | None = None
     ) -> None:
-        self.control_plane.record_lifecycle_event(
+        control_plane = self.control_plane
+        assert control_plane is not None
+        control_plane.record_lifecycle_event(
             AuditEvent(environment_id, event, self.operator, now_utc(), result, reason)
         )

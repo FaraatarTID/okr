@@ -1,0 +1,668 @@
+diff --git a/spa-web/src/components/AtlasShell.tsx b/spa-web/src/components/AtlasShell.tsx
+index 7e232b8..6383337 100644
+--- a/spa-web/src/components/AtlasShell.tsx
++++ b/spa-web/src/components/AtlasShell.tsx
+@@ -1,6 +1,7 @@
+ "use client";
+ 
+-import { useMemo, useState } from "react";
++import dynamic from "next/dynamic";
++import { type ComponentProps, type ReactNode, useMemo, useState } from "react";
+ import { useRouter } from "next/navigation";
+ 
+ import {
+@@ -29,18 +30,17 @@ import {
+   nearestAncestorId,
+ } from "@/components/atlas-shell/nodeMutation";
+ import { selectedNodeDetails } from "@/components/atlas-shell/inspectorDetails";
+-import AdminModePanel, {
+-  type AdminTab,
+-} from "@/components/atlas-shell/AdminModePanel";
+-import DashboardLeadershipPanel from "@/components/atlas-shell/DashboardLeadershipPanel";
+-import TimelineModePanel from "@/components/atlas-shell/TimelineModePanel";
+-import WeeklyModePanel from "@/components/atlas-shell/WeeklyModePanel";
+-import DailyModePanel from "@/components/atlas-shell/DailyModePanel";
+-import RitualModePanel from "@/components/atlas-shell/RitualModePanel";
+-import RetroboxModePanel from "@/components/atlas-shell/RetroboxModePanel";
+-import AtlasFocusMapPanel from "@/components/atlas-shell/AtlasFocusMapPanel";
+-import AtlasModeControlsPanel from "@/components/atlas-shell/AtlasModeControlsPanel";
+-import InspectorAiAssistPanel from "@/components/atlas-shell/InspectorAiAssistPanel";
++import type AdminModePanelComponent from "@/components/atlas-shell/AdminModePanel";
++import type { AdminTab } from "@/components/atlas-shell/AdminModePanel";
++import type DashboardLeadershipPanelComponent from "@/components/atlas-shell/DashboardLeadershipPanel";
++import type TimelineModePanelComponent from "@/components/atlas-shell/TimelineModePanel";
++import type WeeklyModePanelComponent from "@/components/atlas-shell/WeeklyModePanel";
++import type DailyModePanelComponent from "@/components/atlas-shell/DailyModePanel";
++import type RitualModePanelComponent from "@/components/atlas-shell/RitualModePanel";
++import type RetroboxModePanelComponent from "@/components/atlas-shell/RetroboxModePanel";
++import type AtlasFocusMapPanelComponent from "@/components/atlas-shell/AtlasFocusMapPanel";
++import type AtlasModeControlsPanelComponent from "@/components/atlas-shell/AtlasModeControlsPanel";
++import type InspectorAiAssistPanelComponent from "@/components/atlas-shell/InspectorAiAssistPanel";
+ import InspectorEditAnalysisPanel from "@/components/atlas-shell/InspectorEditAnalysisPanel";
+ import InspectorManageNodesPanel from "@/components/atlas-shell/InspectorManageNodesPanel";
+ import InspectorTaskWorkHistoryPanel from "@/components/atlas-shell/InspectorTaskWorkHistoryPanel";
+@@ -130,6 +130,77 @@ const TYPE_TAG: Record<AtlasIndexNode["type"], string> = {
+   TASK: "T",
+ };
+ 
++function PanelLoading() {
++  return (
++    <div role="status" className="panel" style={{ padding: "0.8rem", marginTop: "0.6rem" }}>
++      Loading workspace panel…
++    </div>
++  );
++}
++
++const AdminModePanel = dynamic<ComponentProps<typeof AdminModePanelComponent>>(
++  () => import("@/components/atlas-shell/AdminModePanel"),
++  { loading: PanelLoading },
++);
++const DashboardLeadershipPanel = dynamic<ComponentProps<typeof DashboardLeadershipPanelComponent>>(
++  () => import("@/components/atlas-shell/DashboardLeadershipPanel"),
++  { loading: PanelLoading },
++);
++const TimelineModePanel = dynamic<ComponentProps<typeof TimelineModePanelComponent>>(
++  () => import("@/components/atlas-shell/TimelineModePanel"),
++  { loading: PanelLoading },
++);
++const WeeklyModePanel = dynamic<ComponentProps<typeof WeeklyModePanelComponent>>(
++  () => import("@/components/atlas-shell/WeeklyModePanel"),
++  { loading: PanelLoading },
++);
++const DailyModePanel = dynamic<ComponentProps<typeof DailyModePanelComponent>>(
++  () => import("@/components/atlas-shell/DailyModePanel"),
++  { loading: PanelLoading },
++);
++const RitualModePanel = dynamic<ComponentProps<typeof RitualModePanelComponent>>(
++  () => import("@/components/atlas-shell/RitualModePanel"),
++  { loading: PanelLoading },
++);
++const RetroboxModePanel = dynamic<ComponentProps<typeof RetroboxModePanelComponent>>(
++  () => import("@/components/atlas-shell/RetroboxModePanel"),
++  { loading: PanelLoading },
++);
++const AtlasFocusMapPanel = dynamic<ComponentProps<typeof AtlasFocusMapPanelComponent>>(
++  () => import("@/components/atlas-shell/AtlasFocusMapPanel"),
++  { loading: PanelLoading },
++);
++const AtlasModeControlsPanel = dynamic<ComponentProps<typeof AtlasModeControlsPanelComponent>>(
++  () => import("@/components/atlas-shell/AtlasModeControlsPanel"),
++  { loading: PanelLoading },
++);
++const InspectorAiAssistPanel = dynamic<ComponentProps<typeof InspectorAiAssistPanelComponent>>(
++  () => import("@/components/atlas-shell/InspectorAiAssistPanel"),
++  { loading: PanelLoading },
++);
++
++export function ShellAccessGate({
++  accessReady,
++  pendingMessage = "Checking workspace access...",
++  children,
++}: {
++  accessReady: boolean;
++  pendingMessage?: string;
++  children?: ReactNode;
++}) {
++  if (!accessReady) {
++    return (
++      <main className="page-shell">
++        <section className="panel" role="status" aria-live="polite" style={{ padding: "1rem" }}>
++          <p className="kicker">Atlas SPA</p>
++          <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>{pendingMessage}</p>
++        </section>
++      </main>
++    );
++  }
++  return <>{children}</>;
++}
++
+ export default function AtlasShell() {
+   const router = useRouter();
+   const [cycleId, setCycleId] = useState("");
+@@ -1209,7 +1280,7 @@ export default function AtlasShell() {
+     return baseTitle || `${nodeTypeLabel(selectedMeta.type)} ${selectedMeta.id}`;
+   }, [mindmapTree, selectedMeta]);
+ 
+-  const { handleSignOut } = useShellAccessControl({
++  const { accessReady, handleSignOut } = useShellAccessControl({
+     authHydrated,
+     user,
+     isAdmin,
+@@ -1260,44 +1331,32 @@ export default function AtlasShell() {
+     );
+   }
+ 
+-  if (!authHydrated) {
++  if (!accessReady || !user) {
+     return (
+-      <main className="page-shell">
+-        <section className="panel" style={{ padding: "1rem" }}>
+-          <p className="kicker">Atlas SPA</p>
+-          <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>Loading session...</p>
+-        </section>
+-      </main>
+-    );
+-  }
+-
+-  if (!user) {
+-    return (
+-      <main className="page-shell">
+-        <section className="panel" style={{ padding: "1rem" }}>
+-          <div style={{ display: "flex", alignItems: "center", gap: "0.62rem" }}>
+-            <img
+-              src="/okr-logo.webp"
+-              alt="OKR logo"
+-              width={30}
+-              height={54}
+-              style={{ display: "block", width: "30px", height: "54px", objectFit: "contain" }}
+-            />
+-            <h2 style={{ margin: 0, fontSize: "1.5rem" }}>OKR</h2>
+-          </div>
+-          <p style={{ margin: 0, color: "var(--ink-soft)" }}>
+-            Redirecting to login.{" "}
+-            <a href="/login" style={{ textDecoration: "underline" }}>
+-              Open login page
+-            </a>
+-            .
+-          </p>
+-        </section>
+-      </main>
++      <ShellAccessGate
++        accessReady={false}
++        pendingMessage={
++          !authHydrated
++            ? "Loading session..."
++            : !user
++              ? "Redirecting to login..."
++              : "Checking workspace access..."
++        }
++      />
+     );
+   }
+ 
+   return (
++    <ShellAccessGate
++      accessReady={accessReady}
++      pendingMessage={
++        !authHydrated
++          ? "Loading session..."
++          : !user
++            ? "Redirecting to login..."
++            : "Checking workspace access..."
++      }
++    >
+     <main className="page-shell">
+       <div className="spa-shell-layout">
+         <aside className="panel spa-shell-sidebar">
+@@ -1478,11 +1537,11 @@ export default function AtlasShell() {
+           filteredRefs={filteredRefs}
+           atlasIndex={atlasRuntime?.index || null}
+           selectedRef={selectedRef}
+-          onSelectRef={(ref) => {
++          onSelectRef={(ref: string) => {
+             setSelectedRef(ref);
+             setInspectorModalOpen(true);
+           }}
+-          onAddChild={(parentRef) => {
++          onAddChild={(parentRef: string) => {
+             const parentMeta = atlasRuntime?.index[parentRef];
+             if (parentMeta) {
+               setCreateDraft((prev) => ({
+@@ -1506,7 +1565,7 @@ export default function AtlasShell() {
+           nodeQuery={nodeQuery}
+           onNodeQueryChange={setNodeQuery}
+           hasSnapshotPayload={Boolean(snapshotPayload)}
+-          nodeTagForType={(type) => TYPE_TAG[type as keyof typeof TYPE_TAG] || "N"}
++          nodeTagForType={(type: string) => TYPE_TAG[type as keyof typeof TYPE_TAG] || "N"}
+         />
+ 
+         <InspectorAiAssistPanel
+@@ -1835,7 +1894,7 @@ export default function AtlasShell() {
+             reportAiPending={reportAiPending}
+             reportExportError={reportExportError}
+             reportAiError={reportAiError}
+-            onReportExport={(format) => {
++            onReportExport={(format: "pdf" | "html") => {
+               void handleReportExport(format);
+             }}
+             onGenerateAiSummary={() => {
+@@ -1868,7 +1927,7 @@ export default function AtlasShell() {
+             reportAiPending={reportAiPending}
+             reportExportError={reportExportError}
+             reportAiError={reportAiError}
+-            onReportExport={(format) => {
++            onReportExport={(format: "pdf" | "html") => {
+               void handleReportExport(format);
+             }}
+             onGenerateAiSummary={() => {
+@@ -1937,7 +1996,7 @@ export default function AtlasShell() {
+         {mode === "retrobox" ? (
+           <RetroboxModePanel
+             retroDraft={retroDraft}
+-            onRetroDraftChange={(patch) => {
++            onRetroDraftChange={(patch: Partial<{ content: string; sentiment: string }>) => {
+               setRetroDraft((prev) => ({ ...prev, ...patch }));
+             }}
+             modeActionPending={modeActionPending}
+@@ -2215,5 +2274,6 @@ export default function AtlasShell() {
+         </div>
+       ) : null}
+     </main>
++    </ShellAccessGate>
+   );
+ }
+
+diff --git a/spa-web/src/components/atlas-shell/useShellAccessControl.ts b/spa-web/src/components/atlas-shell/useShellAccessControl.ts
+index b2d032a..26c41ac 100644
+--- a/spa-web/src/components/atlas-shell/useShellAccessControl.ts
++++ b/spa-web/src/components/atlas-shell/useShellAccessControl.ts
+@@ -52,6 +52,15 @@ export default function useShellAccessControl({
+   setUser,
+   clearSnapshot,
+ }: UseShellAccessControlInput) {
++  const canManageCycles = isAdmin || isManager;
++  const canAccessCurrentAdminTab = isAdmin || (isManager && adminTab === "cycles");
++  const accessReady = Boolean(
++    authHydrated &&
++      user &&
++      !user.must_change_password &&
++      (mode !== "admin" || canAccessCurrentAdminTab),
++  );
++
+   useEffect(() => {
+     if (!authHydrated) {
+       return;
+@@ -74,7 +83,6 @@ export default function useShellAccessControl({
+     }
+     // Managers may enter admin mode but are restricted to the cycles tab
+     // (per-manager active cycles). Members are redirected out entirely.
+-    const canManageCycles = isAdmin || isManager;
+     if (!canManageCycles && mode === "admin") {
+       handleSidebarModeSelect("atlas");
+       return;
+@@ -93,32 +101,31 @@ export default function useShellAccessControl({
+   useEffect(() => {
+     // Managers also need admin resources (users list feeds the cycle-owner
+     // dropdown on their Cycles panel), so gate on canManageCycles, not isAdmin.
+-    const canManageCycles = isAdmin || isManager;
+-    if (!user || !canManageCycles || mode !== "admin") {
++    if (!accessReady || !user || !canManageCycles || mode !== "admin") {
+       return;
+     }
+     void loadAdminResources(user);
+-  }, [isAdmin, isManager, loadAdminResources, mode, user]);
++  }, [accessReady, canManageCycles, loadAdminResources, mode, user]);
+ 
+   useEffect(() => {
+-    if (!user || !isAdmin || mode !== "admin" || adminTab !== "ai") {
++    if (!accessReady || !user || !isAdmin || mode !== "admin" || adminTab !== "ai") {
+       return;
+     }
+     if (adminAiHealth && adminPdfHealth) {
+       return;
+     }
+     void loadAdminHealth(user, false);
+-  }, [adminAiHealth, adminPdfHealth, adminTab, isAdmin, loadAdminHealth, mode, user]);
++  }, [accessReady, adminAiHealth, adminPdfHealth, adminTab, isAdmin, loadAdminHealth, mode, user]);
+ 
+   useEffect(() => {
+-    if (!user || !isAdmin || mode !== "admin" || adminTab !== "audit") {
++    if (!accessReady || !user || !isAdmin || mode !== "admin" || adminTab !== "audit") {
+       return;
+     }
+     if (adminAuditSummary) {
+       return;
+     }
+     void loadAdminAuditSummary(user);
+-  }, [adminAuditSummary, adminTab, isAdmin, loadAdminAuditSummary, mode, user]);
++  }, [accessReady, adminAuditSummary, adminTab, isAdmin, loadAdminAuditSummary, mode, user]);
+ 
+   const handleSignOut = useCallback((): void => {
+     void (async () => {
+@@ -138,6 +145,7 @@ export default function useShellAccessControl({
+   }, [clearSnapshot, routerReplace, setUser]);
+ 
+   return {
++    accessReady,
+     handleSignOut,
+   };
+ }
+
+diff --git a/spa-web/src/components/atlas-shell/useShellAccessControl.test.ts b/spa-web/src/components/atlas-shell/useShellAccessControl.test.ts
+index 482e350..f1b9156 100644
+--- a/spa-web/src/components/atlas-shell/useShellAccessControl.test.ts
++++ b/spa-web/src/components/atlas-shell/useShellAccessControl.test.ts
+@@ -82,6 +82,115 @@ function renderAccessHook(initialProps: HarnessProps) {
+ }
+ 
+ describe("useShellAccessControl", () => {
++  it("keeps shell access closed until auth hydrates", () => {
++    const { result } = renderAccessHook({
++      authHydrated: false,
++      user: ACTIVE_USER,
++      isAdmin: true,
++      isManager: false,
++      mode: "atlas",
++      adminTab: "cycles",
++      adminAiHealth: null,
++      adminPdfHealth: null,
++      adminAuditSummary: null,
++      setAdminTab: vi.fn(),
++    });
++
++    expect(result.current.accessReady).toBe(false);
++  });
++
++  it("keeps shell access closed for anonymous and forced-password users", () => {
++    const anonymous = renderAccessHook({
++      authHydrated: true,
++      user: null,
++      isAdmin: false,
++      isManager: false,
++      mode: "atlas",
++      adminTab: "cycles",
++      adminAiHealth: null,
++      adminPdfHealth: null,
++      adminAuditSummary: null,
++      setAdminTab: vi.fn(),
++    });
++    const forcedPassword = renderAccessHook({
++      authHydrated: true,
++      user: { ...ACTIVE_USER, must_change_password: true },
++      isAdmin: true,
++      isManager: false,
++      mode: "atlas",
++      adminTab: "cycles",
++      adminAiHealth: null,
++      adminPdfHealth: null,
++      adminAuditSummary: null,
++      setAdminTab: vi.fn(),
++    });
++
++    expect(anonymous.result.current.accessReady).toBe(false);
++    expect(forcedPassword.result.current.accessReady).toBe(false);
++  });
++
++  it("keeps non-manager access closed for admin mode while preserving allowed access", () => {
++    const deniedAdmin = renderAccessHook({
++      authHydrated: true,
++      user: { ...ACTIVE_USER, role: "member" },
++      isAdmin: false,
++      isManager: false,
++      mode: "admin",
++      adminTab: "cycles",
++      adminAiHealth: null,
++      adminPdfHealth: null,
++      adminAuditSummary: null,
++      setAdminTab: vi.fn(),
++    });
++    const allowedAdmin = renderAccessHook({
++      authHydrated: true,
++      user: { ...ACTIVE_USER, role: "manager" },
++      isAdmin: false,
++      isManager: true,
++      mode: "admin",
++      adminTab: "cycles",
++      adminAiHealth: null,
++      adminPdfHealth: null,
++      adminAuditSummary: null,
++      setAdminTab: vi.fn(),
++    });
++    const allowedWorkspace = renderAccessHook({
++      authHydrated: true,
++      user: ACTIVE_USER,
++      isAdmin: true,
++      isManager: false,
++      mode: "atlas",
++      adminTab: "cycles",
++      adminAiHealth: null,
++      adminPdfHealth: null,
++      adminAuditSummary: null,
++      setAdminTab: vi.fn(),
++    });
++
++    expect(deniedAdmin.result.current.accessReady).toBe(false);
++    expect(allowedAdmin.result.current.accessReady).toBe(true);
++    expect(allowedWorkspace.result.current.accessReady).toBe(true);
++  });
++
++  it("keeps manager shell access closed until the admin tab is Cycles", () => {
++    const setAdminTab = vi.fn();
++    const { result } = renderAccessHook({
++      authHydrated: true,
++      user: { ...ACTIVE_USER, role: "manager" },
++      isAdmin: false,
++      isManager: true,
++      mode: "admin",
++      adminTab: "ai",
++      adminAiHealth: null,
++      adminPdfHealth: null,
++      adminAuditSummary: null,
++      setAdminTab,
++    });
++
++    expect(result.current.accessReady).toBe(false);
++    expect(setAdminTab).toHaveBeenCalledWith("cycles");
++  });
++
+   it("redirects hydrated anonymous users to login", async () => {
+     const { routerReplace } = renderAccessHook({
+       authHydrated: true,
+@@ -109,7 +218,7 @@ describe("useShellAccessControl", () => {
+       user: { ...ACTIVE_USER, must_change_password: true },
+       isAdmin: true,
+       isManager: false,
+-      mode: "atlas",
++      mode: "admin",
+       adminTab: "cycles",
+       adminAiHealth: null,
+       adminPdfHealth: null,
+
+diff --git a/spa-web/src/app/(shell)/error.tsx b/spa-web/src/app/(shell)/error.tsx
+new file mode 100644
+--- /dev/null
++++ b/spa-web/src/app/(shell)/error.tsx
+@@ -0,0 +1,25 @@
++"use client";
++
++type ShellErrorProps = {
++  error: Error & { digest?: string };
++  reset: () => void;
++};
++
++/** Catches page/child-segment failures; the parent `app/error.tsx` catches this layout. */
++export default function ShellError({ error, reset }: ShellErrorProps) {
++  return (
++    <main className="page-shell">
++      <section className="panel" role="alert" style={{ padding: "1rem" }}>
++        <p className="kicker">Atlas SPA</p>
++        <h1 style={{ margin: "0.2rem 0" }}>This workspace view could not load</h1>
++        <p style={{ color: "var(--ink-soft)" }}>
++          Try the current route again.
++          {error.digest ? <span> Reference: {error.digest}</span> : null}
++        </p>
++        <button className="primary-button" type="button" onClick={reset}>
++          Try again
++        </button>
++      </section>
++    </main>
++  );
++}
+diff --git a/spa-web/src/app/(shell)/loading.tsx b/spa-web/src/app/(shell)/loading.tsx
+new file mode 100644
+--- /dev/null
++++ b/spa-web/src/app/(shell)/loading.tsx
+@@ -0,0 +1,12 @@
++export default function ShellLoading() {
++  return (
++    <main className="page-shell">
++      <section className="panel" role="status" aria-live="polite" style={{ padding: "1rem" }}>
++        <p className="kicker">Atlas SPA</p>
++        <p style={{ margin: "0.2rem 0 0", color: "var(--ink-soft)" }}>
++          Loading workspace…
++        </p>
++      </section>
++    </main>
++  );
++}
+diff --git a/spa-web/src/app/error.tsx b/spa-web/src/app/error.tsx
+new file mode 100644
+--- /dev/null
++++ b/spa-web/src/app/error.tsx
+@@ -0,0 +1,25 @@
++"use client";
++
++type AppErrorProps = {
++  error: Error & { digest?: string };
++  reset: () => void;
++};
++
++/** Parent boundary: this wraps route-group layouts, including `(shell)/layout.tsx`. */
++export default function AppError({ error, reset }: AppErrorProps) {
++  return (
++    <main className="page-shell">
++      <section className="panel" role="alert" style={{ padding: "1rem" }}>
++        <p className="kicker">Atlas SPA</p>
++        <h1 style={{ margin: "0.2rem 0" }}>Workspace could not load</h1>
++        <p style={{ color: "var(--ink-soft)" }}>
++          Something interrupted this page. Try loading it again.
++          {error.digest ? <span> Reference: {error.digest}</span> : null}
++        </p>
++        <button className="primary-button" type="button" onClick={reset}>
++          Try again
++        </button>
++      </section>
++    </main>
++  );
++}
+diff --git a/spa-web/src/app/not-found.tsx b/spa-web/src/app/not-found.tsx
+new file mode 100644
+--- /dev/null
++++ b/spa-web/src/app/not-found.tsx
+@@ -0,0 +1,14 @@
++export default function NotFound() {
++  return (
++    <main className="page-shell">
++      <section className="panel" style={{ padding: "1rem" }}>
++        <p className="kicker">Atlas SPA</p>
++        <h1 style={{ margin: "0.2rem 0" }}>Page not found</h1>
++        <p style={{ color: "var(--ink-soft)" }}>That workspace route does not exist.</p>
++        <a className="primary-button" href="/">
++          Go to workspace
++        </a>
++      </section>
++    </main>
++  );
++}
+diff --git a/spa-web/src/app/route-ui.test.tsx b/spa-web/src/app/route-ui.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/spa-web/src/app/route-ui.test.tsx
+@@ -0,0 +1,40 @@
++import { fireEvent, render, screen } from "@testing-library/react";
++import { describe, expect, it, vi } from "vitest";
++
++import RootError from "@/app/error";
++import ShellError from "@/app/(shell)/error";
++import ShellLoading from "@/app/(shell)/loading";
++import NotFound from "@/app/not-found";
++
++describe("App Router recovery UI", () => {
++  it("offers reset recovery for an application error", () => {
++    const reset = vi.fn();
++    render(<RootError error={new Error("shell failure")} reset={reset} />);
++
++    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
++
++    expect(reset).toHaveBeenCalledOnce();
++  });
++
++  it("offers reset recovery for a shell page error", () => {
++    const reset = vi.fn();
++    render(<ShellError error={new Error("page failure")} reset={reset} />);
++
++    fireEvent.click(screen.getByRole("button", { name: /try again/i }));
++
++    expect(reset).toHaveBeenCalledOnce();
++  });
++
++  it("shows an accessible pending state for shell route transitions", () => {
++    render(<ShellLoading />);
++
++    expect(screen.getByRole("status")).toHaveTextContent(/loading workspace/i);
++  });
++
++  it("explains an unknown route and offers a home recovery path", () => {
++    render(<NotFound />);
++
++    expect(screen.getByRole("heading", { name: /page not found/i })).toBeInTheDocument();
++    expect(screen.getByRole("link", { name: /go to workspace/i })).toHaveAttribute("href", "/");
++  });
++});
+diff --git a/spa-web/src/components/atlas-shell/ShellAccessGate.test.tsx b/spa-web/src/components/atlas-shell/ShellAccessGate.test.tsx
+new file mode 100644
+--- /dev/null
++++ b/spa-web/src/components/atlas-shell/ShellAccessGate.test.tsx
+@@ -0,0 +1,62 @@
++import { act, render, screen } from "@testing-library/react";
++import dynamic from "next/dynamic";
++import type { ReactElement } from "react";
++import { describe, expect, it } from "vitest";
++
++import { ShellAccessGate } from "@/components/AtlasShell";
++
++describe("ShellAccessGate", () => {
++  it.each(["anonymous", "forced password change", "denied admin mode"])(
++    "does not render protected chrome while access is closed for %s",
++    () => {
++      render(
++        <ShellAccessGate accessReady={false}>
++          <nav aria-label="Workspace navigation">Protected navigation</nav>
++        </ShellAccessGate>,
++      );
++
++      expect(screen.queryByRole("navigation", { name: "Workspace navigation" })).toBeNull();
++      expect(screen.getByRole("status")).toBeInTheDocument();
++    },
++  );
++
++  it("renders protected chrome after the access decision allows the user", () => {
++    render(
++      <ShellAccessGate accessReady={true}>
++        <nav aria-label="Workspace navigation">Protected navigation</nav>
++      </ShellAccessGate>,
++    );
++
++    expect(screen.getByRole("navigation", { name: "Workspace navigation" })).toBeInTheDocument();
++  });
++
++  it("keeps shell navigation usable while a deferred panel chunk resolves", async () => {
++    let resolvePanel: (module: { default: () => ReactElement }) => void = () => undefined;
++    const panelModule = new Promise<{ default: () => ReactElement }>((resolve) => {
++      resolvePanel = resolve;
++    });
++    const DeferredPanel = dynamic(() => panelModule, {
++      loading: () => <div role="status">Loading panel chunk…</div>,
++    });
++
++    render(
++      <ShellAccessGate accessReady={true}>
++        <nav aria-label="Workspace navigation">
++          <button type="button">Open another workspace mode</button>
++        </nav>
++        <DeferredPanel />
++      </ShellAccessGate>,
++    );
++
++    expect(screen.getByRole("button", { name: "Open another workspace mode" })).toBeInTheDocument();
++    expect(screen.getByRole("status")).toHaveTextContent(/loading panel chunk/i);
++
++    await act(async () => {
++      resolvePanel({ default: () => <section>Deferred timeline panel</section> });
++      await panelModule;
++    });
++
++    expect(await screen.findByText("Deferred timeline panel")).toBeInTheDocument();
++    expect(screen.getByRole("button", { name: "Open another workspace mode" })).toBeInTheDocument();
++  });
++});

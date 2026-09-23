@@ -89,7 +89,7 @@ Primary data/control flow:
   - `backend-api` authenticates service calls using `OKR_BACKEND_SERVICE_TOKEN`.
   - Optional cryptographic request signing (`OKR_BACKEND_SIGNING_SECRET`) enforces signed/replay-protected internal calls.
   - Key rotation: when `OKR_BACKEND_SIGNING_KEY_ID` is advertised, callers must send `x-okr-key-id`; unknown IDs are rejected. During rotation, `OKR_BACKEND_SIGNING_SECRET_PREVIOUS` keeps old-secret signatures valid (overlap window). See runbook in `DEPLOYMENT.md`; tests in `tests/test_signing_key_rotation.py`.
-  - IP-based rate limiting protects API endpoints. When `spa-bff` proxies requests with a valid service token, the backend uses `x-forwarded-for` for per-user rate limiting instead of the proxy IP.
+  - IP-based rate limiting protects API endpoints. When `spa-bff` proxies requests with a valid service token, the backend keys per-user rate limiting on the application-private `x-okr-client-ip` header instead of the proxy IP. `x-forwarded-for` and `x-real-ip` are deliberately not read, because `deploy/nginx.conf` appends to the former and a caller can prepend to that chain. See [client-ip-trust-adr.md](../client-ip-trust-adr.md).
 - Network boundary:
   - Public ingress should expose only reverse proxy/app paths.
   - `backend-api` should remain private (loopback/internal bind in compose by default).
@@ -274,6 +274,17 @@ Interaction model is intentionally split into control-plane and work-plane:
 
 These paths now have explicit query-count budgets and a reproducible benchmark script.
 
+## Control-plane runtime boundary
+
+The operator-only `/control-plane/environments` list and detail routes expose an
+ephemeral, process-local API inventory. They do not load or report the operator
+CLI state file, are empty in the normal backend runtime, and are not an
+authoritative environment or lifecycle record. Provisioning, release, and
+backup operator commands retain their explicit file-backed lifecycle state.
+The API has no lifecycle-event write route. The separate
+`/control-plane/v1/rollouts/{rollout_id}` endpoint reads SQL-backed fleet
+rollout state and is not part of this in-memory inventory.
+
 ## Contract Governance
 
 - The backend OpenAPI schema (49 paths, OpenAPI 3.1) is exported to `spa-web/src/lib/api/openapi.json` via `scripts/export_openapi.py`.
@@ -329,4 +340,3 @@ customer's rows away from another's, which
 [ADR-001](../ADR-001-multitenant-data-access-boundary.md) rejects as an isolation
 model. The job id is also the GitHub status-check name, so a branch-protection
 rule that still references the former `rls-gate` id must be updated.
-

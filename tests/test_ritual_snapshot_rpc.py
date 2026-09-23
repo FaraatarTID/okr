@@ -207,13 +207,14 @@ def test_snapshot_falls_back_on_missing_function_only(
             )
         fanout_calls.append(kind)
         # Minimal per-kind payloads for the fallback path.
-        return {
+        payloads: dict[str, dict[str, object]] = {
             "krs.needing_checkin": {"key_results": [{"id": 10}]},
             "weekly_plan.active": {"weekly_plan": None},
             "retros.user": {"retros": []},
             "work_logs.by_range": {"work_logs": []},
             "experiments.for_retro_window": {"experiments": []},
-        }.get(kind, {})
+        }
+        return payloads.get(kind, {})
 
     main = _make_main()
     main.read_query_via_supabase_api = _dispatch

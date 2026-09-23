@@ -302,6 +302,17 @@ def verify_rollback_record(
         "observed_at",
     ):
         _required_string(execution.get(field), f"rollback record.execution.{field}")
+    observed_at = execution["observed_at"]
+    try:
+        observed_at_parsed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise RollbackEvidenceError(
+            "rollback record.execution.observed_at must be an ISO-8601 timestamp"
+        ) from exc
+    if observed_at_parsed.tzinfo is None:
+        raise RollbackEvidenceError(
+            "rollback record.execution.observed_at must include a timezone"
+        )
     if execution.get("healthcheck") != "PASSED":
         raise RollbackEvidenceError(
             "rollback record.execution.healthcheck must be PASSED"

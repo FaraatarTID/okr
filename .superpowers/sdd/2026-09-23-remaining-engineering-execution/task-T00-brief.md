@@ -1,0 +1,7 @@
+Documentation HQ: [README](../../../README.md)
+
+# Task T00 brief — Register reconciliation
+
+Read `docs/REMAINING_ENGINEERING_PLAN.md` as the authoritative status register and `docs/superpowers/plans/2026-09-23-remaining-engineering-execution.md` for the mapping and execution constraints. Reconcile every A1–A6, B1–B8, C1–C9, D1–D10, E1–E6, F1–F8, and current-register P0-1–P0-8 item with the current checkout and available CI/PR evidence. P0-1–P0-8 are distinct from the historical P0-00…P0-06 namespace in `docs/architecture-status.md`. Record `landed`, `open`, `blocked`, or `deferred` with register-row reference and evidence path/link. Do not infer completion from commit subjects or from this execution plan. In particular D1, D2, D5, D7 are not started; D3a only closes same-process replay; D4 must be coupled to D2; F5 previously failed due a lockfile issue requiring a fresh clone.
+
+Update only authoritative register progress notes if fresh repo evidence supports correction, and include a concise evidence table with exact paths/test targets. Preserve history and acceptance contracts. No Git writes are available in this workspace, so do not attempt branch/commit operations. Write a complete report to `.superpowers/sdd/2026-09-23-remaining-engineering-execution/task-T00-report.md`. Follow TDD only if behavior changes; this is a read-first reconciliation task. Before reporting, cite each item’s source row and repository evidence, enumerate unknown external CI/PR evidence as unknown rather than claiming pass.

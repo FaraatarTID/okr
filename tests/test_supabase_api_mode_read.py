@@ -131,7 +131,20 @@ def test_tasks_by_cycle_uses_one_nested_postgrest_query(monkeypatch):
         if table == "goal":
             return 200, [{"id": 7, "owner_id": 7}]
         return 200, [
-            {"id": 31, "title": "Task", "key_result": {"objective": {"goal_id": 7}}}
+            {
+                "id": 31,
+                "title": "Task",
+                "key_result": {
+                    "id": 301,
+                    "title": "KR",
+                    "objective": {
+                        "id": 201,
+                        "title": "Objective",
+                        "goal_id": 7,
+                        "goal": {"id": 7, "title": "Goal"},
+                    },
+                },
+            }
         ]
 
     monkeypatch.setattr(read, "_rest_select", fake_select)
@@ -145,11 +158,261 @@ def test_tasks_by_cycle_uses_one_nested_postgrest_query(monkeypatch):
 
     assert calls[0] == (
         "goal",
-        {"cycle_id": "eq.7", "select": "id,owner_id", "order": "id.asc"},
+        {
+            "cycle_id": "eq.7",
+            "select": "id,owner_id,title",
+            "order": "id.asc",
+        },
     )
     assert calls[1][0] == "task"
     assert calls[1][1]["key_result.objective.goal_id"] == "in.(7)"
-    assert result == {"tasks": [{"id": 31, "title": "Task", "__tablename__": "task"}]}
+    assert result == {
+        "tasks": [
+            {
+                "id": 31,
+                "title": "Task",
+                "__tablename__": "task",
+                "key_result": {
+                    "id": 301,
+                    "title": "KR",
+                    "__tablename__": "key_result",
+                    "objective": {
+                        "id": 201,
+                        "title": "Objective",
+                        "goal_id": 7,
+                        "__tablename__": "objective",
+                        "goal": {"id": 7, "title": "Goal", "__tablename__": "goal"},
+                    },
+                },
+            }
+        ]
+    }
+
+
+def test_tasks_by_cycle_query_includes_assigned_work_across_goal_ownership(
+    monkeypatch,
+):
+    from src.services import supabase_api_mode_read as read
+
+    calls: list[tuple[str, dict[str, str] | None]] = []
+
+    def fake_select(table: str, *, query=None):
+        calls.append((table, query))
+        if table == "goal":
+            return 200, [
+                {"id": 7, "owner_id": 999},
+                {"id": 8, "owner_id": 101},
+            ]
+        if table == "task":
+            return 200, [
+                {
+                    "id": 31,
+                    "assignee_id": 101,
+                    "key_result": {
+                        "id": 301,
+                        "title": "Foreign goal KR",
+                        "objective": {
+                            "id": 201,
+                            "goal_id": 7,
+                            "title": "Foreign goal objective",
+                            "goal": {"id": 7, "title": "Foreign goal"},
+                        },
+                    },
+                },
+                {
+                    "id": 32,
+                    "assignee_id": 999,
+                    "key_result": {
+                        "id": 302,
+                        "title": "Owned goal KR",
+                        "objective": {
+                            "id": 202,
+                            "goal_id": 8,
+                            "title": "Owned goal objective",
+                            "goal": {"id": 8, "title": "Owned goal"},
+                        },
+                    },
+                },
+                {
+                    "id": 33,
+                    "assignee_id": 999,
+                    "key_result": {
+                        "id": 303,
+                        "title": "Foreign task KR",
+                        "objective": {
+                            "id": 203,
+                            "goal_id": 7,
+                            "title": "Foreign task objective",
+                            "goal": {"id": 7, "title": "Foreign goal"},
+                        },
+                    },
+                },
+            ]
+        raise AssertionError(f"unexpected table: {table}")
+
+    monkeypatch.setattr(read, "_rest_select", fake_select)
+
+    result = read.read_query_via_supabase_api(
+        kind="tasks.by_cycle",
+        params={"cycle_id": 7},
+        actor="alice",
+        scope={"is_admin": False, "owner_ids": {101}},
+    )
+
+    task_query = next(query for table, query in calls if table == "task")
+    assert task_query["key_result.objective.goal_id"] == "in.(7,8)"
+    assert [task["id"] for task in result["tasks"]] == [31, 32]
+
+
+def test_tasks_by_cycle_fallback_includes_assignee_without_owned_goal(monkeypatch):
+    from src.services import supabase_api_mode_read as read
+
+    calls: list[tuple[str, dict[str, str] | None]] = []
+
+    def fake_select(table: str, *, query=None):
+        calls.append((table, query))
+        if table == "goal":
+            return 200, [{"id": 7, "owner_id": 999, "title": "Out of scope goal"}]
+        if table == "task":
+            if "key_result.objective.goal_id" in query:
+                return 400, []
+            return 200, [
+                {"id": 31, "key_result_id": 700, "assignee_id": 101},
+                {"id": 33, "key_result_id": 700, "assignee_id": 999},
+            ]
+        if table == "objective":
+            return 200, [{"id": 70, "goal_id": 7, "title": "Parent objective"}]
+        if table == "key_result":
+            return 200, [{"id": 700, "objective_id": 70, "title": "Parent KR"}]
+        raise AssertionError(f"unexpected table: {table}")
+
+    monkeypatch.setattr(read, "_rest_select", fake_select)
+
+    result = read.read_query_via_supabase_api(
+        kind="tasks.by_cycle",
+        params={"cycle_id": 7},
+        actor="alice",
+        scope={"is_admin": False, "owner_ids": {101}},
+    )
+
+    task_query = [query for table, query in calls if table == "task"][-1]
+    assert task_query["key_result_id"] == "in.(700)"
+    assert "or" not in task_query
+    goal_query = next(query for table, query in calls if table == "goal")
+    objective_query = next(query for table, query in calls if table == "objective")
+    assert goal_query["select"] == "id,owner_id,title"
+    assert objective_query["select"] == "id,goal_id,title"
+    assert [task["id"] for task in result["tasks"]] == [31]
+    context = result["tasks"][0]["key_result"]
+    assert context["title"] == "Parent KR"
+    assert context["objective"]["title"] == "Parent objective"
+    assert context["objective"]["goal"]["title"] == "Out of scope goal"
+
+
+def test_tasks_by_cycle_includes_assignee_when_cycle_has_no_owned_goals(monkeypatch):
+    from src.services import supabase_api_mode_read as read
+
+    calls: list[tuple[str, dict[str, str] | None]] = []
+
+    def fake_select(table: str, *, query=None):
+        calls.append((table, query))
+        if table == "goal":
+            return 200, [{"id": 7, "owner_id": 999}]
+        if table == "task":
+            return 200, [
+                {
+                    "id": 31,
+                    "assignee_id": 101,
+                    "key_result": {
+                        "id": 301,
+                        "title": "KR",
+                        "objective": {
+                            "id": 201,
+                            "goal_id": 7,
+                            "title": "Objective",
+                            "goal": {"id": 7, "title": "Goal"},
+                        },
+                    },
+                }
+            ]
+        raise AssertionError(f"unexpected table: {table}")
+
+    monkeypatch.setattr(read, "_rest_select", fake_select)
+
+    result = read.read_query_via_supabase_api(
+        kind="tasks.by_cycle",
+        params={"cycle_id": 7},
+        actor="alice",
+        scope={"is_admin": False, "owner_ids": {101}},
+    )
+
+    task_query = next(query for table, query in calls if table == "task")
+    assert task_query["key_result.objective.goal_id"] == "in.(7)"
+    assert result["tasks"][0]["id"] == 31
+
+
+def test_tasks_by_cycle_visibility_failure_is_explicit_and_sanitized(monkeypatch):
+    import pytest
+
+    from src.services import supabase_api_mode_read as read
+
+    def fake_select(table: str, *, query=None):
+        if table == "goal":
+            return 200, [{"id": 7, "owner_id": 999}]
+        if table == "task":
+            return 200, [{"id": 31, "assignee_id": 999, "private": "secret"}]
+        raise AssertionError(f"unexpected table: {table}")
+
+    monkeypatch.setattr(read, "_rest_select", fake_select)
+
+    with pytest.raises(ValueError) as excinfo:
+        read.read_query_via_supabase_api(
+            kind="tasks.by_cycle",
+            params={"cycle_id": 7},
+            actor="alice",
+            scope={"is_admin": False, "owner_ids": {101}},
+        )
+
+    assert str(excinfo.value) == "Unable to evaluate task visibility."
+    assert "secret" not in str(excinfo.value)
+
+
+def test_tasks_by_cycle_postgrest_failure_is_explicit_and_sanitized(monkeypatch):
+    import pytest
+
+    from src.services import supabase_api_mode_read as read
+    from src.services import supabase_api_mode_transport as transport
+
+    calls: list[tuple[str, dict[str, str] | None]] = []
+
+    def fake_request_json(path: str, *, query=None):
+        calls.append((path, query))
+        if path == "/rest/v1/goal":
+            return 200, [{"id": 7, "owner_id": 101}]
+        if path == "/rest/v1/task":
+            if query and "key_result.objective.goal_id" in query:
+                return 400, {"message": "private-schema-detail"}
+            return 503, {"message": "private-schema-detail"}
+        if path == "/rest/v1/objective":
+            return 200, [{"id": 70, "goal_id": 7}]
+        if path == "/rest/v1/key_result":
+            return 200, [{"id": 700, "objective_id": 70}]
+        raise AssertionError(f"unexpected PostgREST path: {path}")
+
+    monkeypatch.setattr(transport, "_request_json", fake_request_json)
+
+    with pytest.raises(ValueError) as excinfo:
+        read.read_query_via_supabase_api(
+            kind="tasks.by_cycle",
+            params={"cycle_id": 7},
+            actor="alice",
+            scope={"is_admin": False, "owner_ids": {101}},
+        )
+
+    assert str(excinfo.value) == "Supabase API error (tasks.by_cycle/task): 503"
+    assert "private-schema-detail" not in str(excinfo.value)
+    assert [path for path, _query in calls].count("/rest/v1/task") == 2
+    assert calls[-1][0] == "/rest/v1/task"
 
 
 def test_tasks_by_cycle_falls_back_when_nested_relationship_is_unavailable(monkeypatch):
@@ -165,11 +428,11 @@ def test_tasks_by_cycle_falls_back_when_nested_relationship_is_unavailable(monke
             # The embedded form fails; the hierarchy walk that follows must not.
             if "key_result.objective.goal_id" in query:
                 return 400, []
-            return 200, [{"id": 4}]
+            return 200, [{"id": 4, "key_result_id": 3}]
         if table == "objective":
-            return 200, [{"id": 2}]
+            return 200, [{"id": 2, "goal_id": 1}]
         if table == "key_result":
-            return 200, [{"id": 3}]
+            return 200, [{"id": 3, "objective_id": 2}]
         raise AssertionError(f"unexpected table: {table}")
 
     monkeypatch.setattr(read, "_rest_select", fake_select)
@@ -182,7 +445,26 @@ def test_tasks_by_cycle_falls_back_when_nested_relationship_is_unavailable(monke
     )
 
     assert len(calls) == 5
-    assert result == {"tasks": [{"id": 4, "__tablename__": "task"}]}
+    assert result == {
+        "tasks": [
+            {
+                "id": 4,
+                "key_result_id": 3,
+                "__tablename__": "task",
+                "key_result": {
+                    "id": 3,
+                    "__tablename__": "key_result",
+                    "objective_id": 2,
+                    "objective": {
+                        "id": 2,
+                        "goal_id": 1,
+                        "__tablename__": "objective",
+                        "goal": {"id": 1, "owner_id": 1, "__tablename__": "goal"},
+                    },
+                },
+            }
+        ]
+    }
 
 
 def test_experiments_for_retro_window_narrows_to_the_actors_goals(monkeypatch):

@@ -180,10 +180,42 @@ def test_verifies_final_production_rollback_record() -> None:
         ("rollback_from_manifest_run_id", "", "manifest run ID"),
         ("approved_by", "", "approved by"),
         ("approved_at", "not-a-timestamp", "approved at"),
+        (
+            "execution",
+            {
+                "status": "SUCCESS",
+                "target_environment_id": "env-acme",
+                "provider_operation_id": "darkube-rollback-20260902-001",
+                "healthcheck": "PASSED",
+                "observed_at": "not-a-timestamp",
+            },
+            "observed_at",
+        ),
+        (
+            "execution",
+            {
+                "status": "SUCCESS",
+                "target_environment_id": "env-acme",
+                "provider_operation_id": "darkube-rollback-20260902-001",
+                "healthcheck": "PASSED",
+                "observed_at": "2026-09-02T10:21:00",
+            },
+            "timezone",
+        ),
+        (
+            "execution",
+            {
+                "status": "SUCCESS",
+                "target_environment_id": "env-acme",
+                "provider_operation_id": "darkube-rollback-20260902-001",
+                "healthcheck": "PASSED",
+            },
+            "observed_at",
+        ),
     ],
 )
 def test_rejects_invalid_final_production_rollback_record(
-    field: str, value: str, message: str
+    field: str, value: object, message: str
 ) -> None:
     manifest = valid_manifest()
     record = {

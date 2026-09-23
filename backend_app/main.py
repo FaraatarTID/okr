@@ -63,6 +63,7 @@ from backend_app.response_scope_helpers import (
     _serialize_objective,  # noqa: F401
     _serialize_retro,  # noqa: F401
     _serialize_task,  # noqa: F401
+    _task_goal_owner_in_scope,  # noqa: F401
     _serialize_team,  # noqa: F401
     _serialize_user,  # noqa: F401
     _serialize_weekly_plan,  # noqa: F401
@@ -330,34 +331,56 @@ def _coerce_int(value: Any, *, field_name: str) -> int:
 
 
 def _atomic_idempotent_check(
-    *, session, actor: str, scope_id: Optional[str], payload: Any
-) -> tuple[bool, bool]:
+    *, scope: str, actor: str, idempotency_key: Optional[str], payload: Any
+) -> Optional[dict]:
     """Compatibility wrapper for request dedupe/idempotency checks."""
     return _atomic_idempotent_check_impl(
-        session=session, actor=actor, scope_id=scope_id, payload=payload
+        scope=scope,
+        actor=actor,
+        idempotency_key=idempotency_key,
+        payload=payload,
     )
 
 
 def _complete_idempotent_response(
-    *, actor: str, response_payload: Any, status_code: int
-) -> Any:
+    *, scope: str, actor: str, idempotency_key: Optional[str], response_payload: dict
+) -> None:
     """Compatibility wrapper for idempotent response shaping."""
     return _complete_idempotent_response_impl(
-        actor=actor, response_payload=response_payload, status_code=status_code
+        scope=scope,
+        actor=actor,
+        idempotency_key=idempotency_key,
+        response_payload=response_payload,
     )
 
 
-def _load_idempotent_response(*, actor: str, scope_id: str | None = None) -> Any:
+def _load_idempotent_response(
+    *, scope: str, actor: str, idempotency_key: Optional[str], payload: Any
+) -> Optional[dict]:
     """Compatibility wrapper for idempotent response load."""
-    return _load_idempotent_response_impl(actor=actor, scope_id=scope_id)
+    return _load_idempotent_response_impl(
+        scope=scope,
+        actor=actor,
+        idempotency_key=idempotency_key,
+        payload=payload,
+    )
 
 
 def _store_idempotent_response(
-    *, actor: str, response_payload: Any, status_code: int
+    *,
+    scope: str,
+    actor: str,
+    idempotency_key: Optional[str],
+    payload: Any,
+    response_payload: dict,
 ) -> None:
     """Compatibility wrapper for idempotent response storage."""
     return _store_idempotent_response_impl(
-        actor=actor, response_payload=response_payload, status_code=status_code
+        scope=scope,
+        actor=actor,
+        idempotency_key=idempotency_key,
+        payload=payload,
+        response_payload=response_payload,
     )
 
 

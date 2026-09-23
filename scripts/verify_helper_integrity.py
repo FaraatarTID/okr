@@ -50,8 +50,13 @@ EXPECTED_CALLABLE_SIGNATURES: dict[Path, dict[str, list[str]]] = {
         "_coerce_owner_ids": ["values"],
         "_coerce_string_list": ["values"],
         "_read_query_payload": ["kind", "params", "actor"],
-        "_atomic_idempotent_check": ["session", "actor", "scope_id", "payload"],
-        "_complete_idempotent_response": ["actor", "response_payload", "status_code"],
+        "_atomic_idempotent_check": ["scope", "actor", "idempotency_key", "payload"],
+        "_complete_idempotent_response": [
+            "scope",
+            "actor",
+            "idempotency_key",
+            "response_payload",
+        ],
         "create_app": [],
     },
     ROOT / "backend_app" / "main_bootstrap_helpers.py": {

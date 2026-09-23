@@ -1,0 +1,52 @@
+# T00 fix round 2 review package
+
+Scoped tracked changes to canonical register; untracked task brief/report are also required review artifacts. `.git` remains read-only; package is based on the current tracked HEAD snapshot.
+
+## Register diff
+
+diff --git a/docs/REMAINING_ENGINEERING_PLAN.md b/docs/REMAINING_ENGINEERING_PLAN.md
+index 4d6f635..5d5c032 100644
+--- a/docs/REMAINING_ENGINEERING_PLAN.md
++++ b/docs/REMAINING_ENGINEERING_PLAN.md
+@@ -160,14 +160,13 @@ itself the defect. `_validate_read_scope` is now deny-by-default and runs before
+ dispatch for both paths, so the **omission** class is closed: a read kind can no
+ longer be served unscoped merely by not being registered.
+ 
+-That is not the same as the two paths agreeing about every kind, and the
+-difference is recorded rather than rounded off. The kinds whose scope the guard can
+-establish directly from the request are now enforced on both paths. Six
+-cycle-scoped kinds still filter rows on TCP and not over HTTPS, so an **in-scope**
+-request for them returns a wider row set over HTTPS than TCP; that is F3, and it is
+-open. The guard being deny-by-default means they are now *classified* rather than
+-silently unguarded, which is what prevents the next kind from joining them
+-invisibly — it does not by itself make their rows agree.
++The guard enforces directly decidable scope rules on both paths. The six
++cycle-scoped HTTPS row filters were subsequently corrected under F3, whose row
++below records the individual fixes and their fail-first tests. F1's broader
++payload-level parity acceptance remains open: its row still requires a single
++non-admin cross-path check over all six kinds. The deny-by-default guard
++classifies these kinds and prevents a newly added kind from being served without
++a scope rule; that guard alone is not evidence of payload parity.
+ 
+ Reachability, established from configuration rather than assumed: the HTTPS read
+ path is **not** reachable in the enforced `single_tenant_saas` profile, because
+@@ -434,11 +433,11 @@ sufficient. These are the drills for this plan.
+ 
+ ## Status tracking
+ 
+-Register each item as a row in `docs/architecture-status.md` using the existing
+-five-column format and the `PLANNED -> IN-PROGRESS -> IMPLEMENTED -> VERIFIED ->
+-CLOSED` lifecycle. `IMPLEMENTED` means merged with CI green. `VERIFIED` requires
+-the matching drill above. Do not create a second active ledger; this register
+-feeds the existing one.
++Track current A–F and P0-1…P0-8 status in this register. The lifecycle distinction
++still applies: `IMPLEMENTED` means merged with CI green, and `VERIFIED` requires
++the matching drill above. `docs/architecture-status.md` remains a historical
++record of the separate pre-SaaS P0-00…P0-06 namespace; preserve its rows and do
++not add current items there or treat it as a second active ledger.
+ 
+ Append one entry per working session to `docs/WORKLOG.md`, always with a `Next:`
+ line and an explicit `Blockers:` line, per
+
+## Review scope
+Read task-T00-brief.md and task-T00-report.md. Verify 47 A-F plus 8 P0 entries, especially P0 statuses/evidence, current versus historical status destinations, B5 current CI wording, and prior D5/D8/E2 findings. T01 report contains independent audit findings and paths. No application behavior changed.

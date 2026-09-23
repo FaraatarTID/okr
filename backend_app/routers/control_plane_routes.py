@@ -7,15 +7,17 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from src.saas.control_plane import (
-    AuditEvent,
+    ControlPlane,
     EnvironmentNotFound,
-    audit_event_mapping,
-    now_utc,
     summary_mapping,
 )
 
 
 def register_control_plane_routes(router: APIRouter, main: Any) -> None:
+    # The API inventory is deliberately process-local and empty. Operator CLI
+    # state files are not a durable API database and must not be loaded here.
+    api_inventory = ControlPlane(state_path="")
+
     def require_operator(
         principal: Any = Depends(main.require_authenticated_principal),
     ) -> str:
@@ -41,7 +43,7 @@ def register_control_plane_routes(router: APIRouter, main: Any) -> None:
     def list_environments(_: str = Depends(require_operator)) -> dict[str, Any]:
         return {
             "environments": [
-                summary_mapping(item) for item in main.control_plane.list_environments()
+                summary_mapping(item) for item in api_inventory.list_environments()
             ]
         }
 
@@ -53,44 +55,12 @@ def register_control_plane_routes(router: APIRouter, main: Any) -> None:
         environment_id: str, _: str = Depends(require_operator)
     ) -> dict[str, Any]:
         try:
-            summary = main.control_plane.get_environment(environment_id)
+            summary = api_inventory.get_environment(environment_id)
         except EnvironmentNotFound as exc:
             raise HTTPException(
                 status_code=404, detail="Environment not found."
             ) from exc
         return {"environment": summary_mapping(summary)}
-
-    @router.post(
-        "/control-plane/environments/{environment_id}/lifecycle-events",
-        status_code=201,
-        dependencies=[Depends(main.require_service_access)],
-    )
-    def record_lifecycle_event(
-        environment_id: str,
-        payload: dict[str, Any],
-        actor: str = Depends(require_operator),
-    ) -> dict[str, Any]:
-        event = AuditEvent(
-            environment_id=environment_id,
-            event=str(payload.get("event") or "").strip(),
-            actor=actor,
-            recorded_at=str(payload.get("recorded_at") or now_utc()),
-            result=str(payload.get("result") or "accepted").strip(),
-            reason=(
-                str(payload["reason"]).strip()
-                if payload.get("reason") is not None
-                else None
-            ),
-        )
-        try:
-            saved = main.control_plane.record_lifecycle_event(event)
-        except EnvironmentNotFound as exc:
-            raise HTTPException(
-                status_code=404, detail="Environment not found."
-            ) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        return {"audit_event": audit_event_mapping(saved)}
 
     @router.get(
         "/control-plane/v1/rollouts/{rollout_id}",

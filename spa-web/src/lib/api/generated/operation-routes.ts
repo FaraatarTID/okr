@@ -57,7 +57,6 @@ export const OPERATION_ROUTES = {
   "get_fleet_rollout_control_plane_v1_rollouts__rollout_id__get": { method: "GET", pathTemplate: "/control-plane/v1/rollouts/{rollout_id}" },
   "healthz_healthz_get": { method: "GET", pathTemplate: "/healthz" },
   "list_environments_control_plane_environments_get": { method: "GET", pathTemplate: "/control-plane/environments" },
-  "record_lifecycle_event_control_plane_environments__environment_id__lifecycle_events_post": { method: "POST", pathTemplate: "/control-plane/environments/{environment_id}/lifecycle-events" },
 } as const;
 
 export const BFF_PUBLIC_OPERATION_IDS = [
@@ -169,7 +168,6 @@ export interface BackendOperationPaths {
   "get_fleet_rollout_control_plane_v1_rollouts__rollout_id__get": `/control-plane/v1/rollouts/${number}`;
   "healthz_healthz_get": `/healthz`;
   "list_environments_control_plane_environments_get": `/control-plane/environments`;
-  "record_lifecycle_event_control_plane_environments__environment_id__lifecycle_events_post": `/control-plane/environments/${string}/lifecycle-events`;
 }
 
 export type BackendOperationRouteId = keyof typeof OPERATION_ROUTES;

@@ -41,8 +41,8 @@ def resolve_operator_principal(
     environ: Mapping[str, str] | None = None,
 ) -> OperatorCredential:
     env = environ or os.environ
-    supplied_token = token or env.get("OKR_OPERATOR_TOKEN", "")
-    path = credential_file or env.get("OKR_OPERATOR_CREDENTIAL_FILE", "")
+    supplied_token = token or env.get("OKR_OPERATOR_TOKEN", "") or ""
+    path = credential_file or env.get("OKR_OPERATOR_CREDENTIAL_FILE", "") or ""
     if not supplied_token.strip():
         raise OperatorCredentialError("authenticated operator token is required")
     if not str(path).strip():

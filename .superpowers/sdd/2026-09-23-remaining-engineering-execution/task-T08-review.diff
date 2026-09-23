@@ -1,0 +1,139 @@
+diff --git a/backend_app/main.py b/backend_app/main.py
+index b5e6ca1..4cd088e 100644
+--- a/backend_app/main.py
++++ b/backend_app/main.py
+@@ -330,34 +330,56 @@ def _coerce_int(value: Any, *, field_name: str) -> int:
+ 
+ 
+ def _atomic_idempotent_check(
+-    *, session, actor: str, scope_id: Optional[str], payload: Any
+-) -> tuple[bool, bool]:
++    *, scope: str, actor: str, idempotency_key: Optional[str], payload: Any
++) -> Optional[dict]:
+     """Compatibility wrapper for request dedupe/idempotency checks."""
+     return _atomic_idempotent_check_impl(
+-        session=session, actor=actor, scope_id=scope_id, payload=payload
++        scope=scope,
++        actor=actor,
++        idempotency_key=idempotency_key,
++        payload=payload,
+     )
+ 
+ 
+ def _complete_idempotent_response(
+-    *, actor: str, response_payload: Any, status_code: int
+-) -> Any:
++    *, scope: str, actor: str, idempotency_key: Optional[str], response_payload: dict
++) -> None:
+     """Compatibility wrapper for idempotent response shaping."""
+     return _complete_idempotent_response_impl(
+-        actor=actor, response_payload=response_payload, status_code=status_code
++        scope=scope,
++        actor=actor,
++        idempotency_key=idempotency_key,
++        response_payload=response_payload,
+     )
+ 
+ 
+-def _load_idempotent_response(*, actor: str, scope_id: str | None = None) -> Any:
++def _load_idempotent_response(
++    *, scope: str, actor: str, idempotency_key: Optional[str], payload: Any
++) -> Optional[dict]:
+     """Compatibility wrapper for idempotent response load."""
+-    return _load_idempotent_response_impl(actor=actor, scope_id=scope_id)
++    return _load_idempotent_response_impl(
++        scope=scope,
++        actor=actor,
++        idempotency_key=idempotency_key,
++        payload=payload,
++    )
+ 
+ 
+ def _store_idempotent_response(
+-    *, actor: str, response_payload: Any, status_code: int
++    *,
++    scope: str,
++    actor: str,
++    idempotency_key: Optional[str],
++    payload: Any,
++    response_payload: dict,
+ ) -> None:
+     """Compatibility wrapper for idempotent response storage."""
+     return _store_idempotent_response_impl(
+-        actor=actor, response_payload=response_payload, status_code=status_code
++        scope=scope,
++        actor=actor,
++        idempotency_key=idempotency_key,
++        payload=payload,
++        response_payload=response_payload,
+     )
+ 
+ 
+diff --git a/backend_app/observability_http.py b/backend_app/observability_http.py
+index 9ebdd8d..ce3a87a 100644
+--- a/backend_app/observability_http.py
++++ b/backend_app/observability_http.py
+@@ -181,27 +181,16 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
+                     )
+             except Exception:
+                 duration_ms = (time.perf_counter() - start_time) * 1000
++                data_access = current_data_access_context()
+                 record_api_request(
+                     method=request.method,
+                     route=route,
+                     status_code=500,
+                     duration_ms=duration_ms,
+                     actor=actor,
+-                    strategy=(
+-                        current_data_access_context().effective_mode
+-                        if current_data_access_context()
+-                        else None
+-                    ),
+-                    fallback_reason=(
+-                        current_data_access_context().fallback_reason
+-                        if current_data_access_context()
+-                        else None
+-                    ),
+-                    resolver_state=(
+-                        current_data_access_context().resolver_state
+-                        if current_data_access_context()
+-                        else None
+-                    ),
++                    strategy=data_access.effective_mode if data_access else None,
++                    fallback_reason=data_access.fallback_reason if data_access else None,
++                    resolver_state=data_access.resolver_state if data_access else None,
+                 )
+                 logger.exception(
+                     build_observability_log_payload(
+@@ -229,27 +218,16 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
+                 response.headers["X-Request-ID"] = request_id
+                 status_code = 500
+         duration_ms = (time.perf_counter() - start_time) * 1000
++        data_access = current_data_access_context()
+         record_api_request(
+             method=request.method,
+             route=route,
+             status_code=status_code,
+             duration_ms=duration_ms,
+             actor=actor,
+-            strategy=(
+-                current_data_access_context().effective_mode
+-                if current_data_access_context()
+-                else None
+-            ),
+-            fallback_reason=(
+-                current_data_access_context().fallback_reason
+-                if current_data_access_context()
+-                else None
+-            ),
+-            resolver_state=(
+-                current_data_access_context().resolver_state
+-                if current_data_access_context()
+-                else None
+-            ),
++            strategy=data_access.effective_mode if data_access else None,
++            fallback_reason=data_access.fallback_reason if data_access else None,
++            resolver_state=data_access.resolver_state if data_access else None,
+         )
+         logger.info(
+             build_observability_log_payload(

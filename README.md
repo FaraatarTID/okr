@@ -238,63 +238,43 @@ If you want a zero-decision start:
 
 ## Documentation HQ
 
-Use this section as the primary index for all project docs.
-If you are a first-time reader, skip this section until after `Start Here`.
+Use this index to find the current source of truth. First-time product readers
+can start with [Start Here](#start-here).
 
-### Core Product Guides
+### 1. Orientation
 
-- Architecture (system): [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)
-- Maintainer map: [CODEBASE_MAP.md](docs/architecture/CODEBASE_MAP.md)
-- Architecture backlog: [ARCHITECTURE_BACKLOG.md](docs/architecture/ARCHITECTURE_BACKLOG.md)
-- Archived architecture status ledger: [docs/archive/architecture-2026-08-31/architecture-status_2026-08-31.md](docs/archive/architecture-2026-08-31/architecture-status_2026-08-31.md)
-- Architecture delivery system: [docs/ARCHITECTURE_DELIVERY_SYSTEM.md](docs/ARCHITECTURE_DELIVERY_SYSTEM.md)
-- Remaining engineering plan: [docs/REMAINING_ENGINEERING_PLAN.md](docs/REMAINING_ENGINEERING_PLAN.md)
-- Working guide (start here to continue work): [docs/WORKING_GUIDE.md](docs/WORKING_GUIDE.md)
-- Documentation lifecycle registry: [docs/DOCUMENTATION_LIFECYCLE.md](docs/DOCUMENTATION_LIFECYCLE.md)
-- Task-graph evaluation: [docs/TASK_GRAPH_EVALUATION.md](docs/TASK_GRAPH_EVALUATION.md)
-- Enterprise SaaS roadmap: [ENTERPRISE_SAAS_ROADMAP.md](docs/architecture/ENTERPRISE_SAAS_ROADMAP.md)
-- Pre-SaaS architecture simplification: [PRE_SAAS_ARCHITECTURE_BACKLOG.md](docs/architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md)
-- Multi-tenant data access ADR: [docs/ADR-001-multitenant-data-access-boundary.md](docs/ADR-001-multitenant-data-access-boundary.md)
-- Archived reliability roadmap: [ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md](docs/architecture/ENTERPRISE_RELIABILITY_ROADMAP_REWRITABLE.md)
-- Production readiness runbooks and dashboards: [docs/OBSERVABILITY_AND_RUNBOOKS.md](docs/OBSERVABILITY_AND_RUNBOOKS.md)
-- Operations readiness and recovery: [docs/OPS_READINESS_AND_RECOVERY_GUIDE.md](docs/OPS_READINESS_AND_RECOVERY_GUIDE.md)
-- Quality gate baseline: [docs/QUALITY_GATE_BASELINE.md](docs/QUALITY_GATE_BASELINE.md)
-- Manager active-cycle plan: [docs/PLAN_PER_MANAGER_ACTIVE_CYCLES.md](docs/PLAN_PER_MANAGER_ACTIVE_CYCLES.md)
-- SPA BFF service guide: [spa-bff/README.md](spa-bff/README.md)
-- OpenAPI contract synchronization: [docs/openapi-contract-synchronization.md](docs/openapi-contract-synchronization.md)
-- Backend API and worker guide: [backend_app/README.md](backend_app/README.md)
-- SPA web service guide: [spa-web/README.md](spa-web/README.md)
-- User Guide (EN): [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
-- Manager Playbook (EN): [docs/MANAGER_PLAYBOOK.md](docs/MANAGER_PLAYBOOK.md)
-- Admin Guide (EN): [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md)
-- AI Features (EN): [docs/AI_FEATURES_GUIDE.md](docs/AI_FEATURES_GUIDE.md)
-- OKR Lifecycle (EN): [docs/OKR_LIFECYCLE_GUIDE.md](docs/OKR_LIFECYCLE_GUIDE.md)
-- OKR vs BAU Boundary (EN): [docs/OKR_BAU_BOUNDARY_GUIDE.md](docs/OKR_BAU_BOUNDARY_GUIDE.md)
-- OKR Rollout (EN): [docs/OKR_ROLLOUT_GUIDE.md](docs/OKR_ROLLOUT_GUIDE.md)
-- Learning Loop workflow: [docs/learning-loop.md](docs/learning-loop.md)
+- [Working Guide](docs/WORKING_GUIDE.md) — project posture, workstreams, and local environment.
 
-### Rollout Templates
+### 2. Open Engineering Work
 
-All templates in this section are external governance documents, not app data-entry screens.
+- [Remaining Engineering Plan](docs/REMAINING_ENGINEERING_PLAN.md) — **authoritative** register of open work, its order, dependencies, and acceptance tests.
+- [Remaining Engineering Execution Plan](docs/superpowers/plans/2026-09-23-remaining-engineering-execution.md) — Superpowers task packets, parallel work boundaries, and integration gates.
 
-- Charter (EN): [docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE.md](docs/templates/OKR_ROLLOUT_CHARTER_TEMPLATE.md)
-- Readiness checklist (EN): [docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md](docs/templates/OKR_ROLLOUT_READINESS_CHECKLIST.md)
-- Pilot retro survey (EN): [docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE.md](docs/templates/OKR_PILOT_RETRO_SURVEY_TEMPLATE.md)
-- BAU release log (EN): [docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md](docs/templates/OKR_BAU_RELEASE_LOG_TEMPLATE.md)
+### 3. Architecture
 
-### Ops and Deployment
+- [Architecture](docs/architecture/ARCHITECTURE.md) — how the system fits together.
+- [Codebase Map](docs/architecture/CODEBASE_MAP.md) — where code lives and ownership boundaries.
 
-- Enterprise deployment (EN, detailed): [DEPLOYMENT.md](DEPLOYMENT.md)
-- Troubleshooting (EN): [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
-- Config reference (EN): [docs/CONFIG_REFERENCE.md](docs/CONFIG_REFERENCE.md)
-- Compatibility redirect: [docs/DEPLOYMENT_OPERATIONS_GUIDE.md](docs/DEPLOYMENT_OPERATIONS_GUIDE.md)
-- Compatibility redirect: [docs/DOCKER_COMPOSE.md](docs/DOCKER_COMPOSE.md)
-- Compatibility redirect: [docs/KUBERNETES.md](docs/KUBERNETES.md)
-- Compatibility redirect: [docs/REVERSE_PROXY.md](docs/REVERSE_PROXY.md)
+### 4. Targeted References
 
-### Planning and Performance
+- [BFF Security Review](docs/bff-security-review.md)
+- [BFF Boundary ADR](docs/bff-boundary-adr.md)
+- [Client IP Trust ADR](docs/client-ip-trust-adr.md)
+- [Configuration Reference](docs/CONFIG_REFERENCE.md)
+- [Deployment Guide](DEPLOYMENT.md)
 
-- Performance baselines: [performance.md](docs/architecture/performance.md)
+### 5. History (Read Only When Needed)
+
+- [Architecture status ledger](docs/architecture-status.md) — historical `P0-00`…`P0-06` namespace; current status is in the engineering plan.
+- [Architecture backlog](docs/architecture/ARCHITECTURE_BACKLOG.md) — superseded as a work plan by [ADR-001](docs/ADR-001-multitenant-data-access-boundary.md); relevant open performance work is carried into the authoritative engineering plan.
+- [Pre-SaaS architecture backlog](docs/architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md) — archived completion record.
+- [Earlier architecture cycle archive](docs/archive/architecture-2026-08-31/README.md) — prior backlog, status ledger, and worklog.
+- [Completed plan records](docs/superpowers/plans/) and [SDD progress records](.superpowers/sdd/) — implementation history, not current work instructions.
+
+### 6. Documentation Policy
+
+- [Documentation Lifecycle](docs/DOCUMENTATION_LIFECYCLE.md) — policy and current document registry.
+- [Documentation Lifecycle Control](docs/documentation-lifecycle-control.md) — historical record of the policy implementation.
 
 ## Deployment Intent
 
@@ -759,5 +739,3 @@ Install browser runtime once if needed:
 ```bash
 playwright install chromium
 ```
-
-

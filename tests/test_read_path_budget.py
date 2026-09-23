@@ -143,9 +143,11 @@ def _build_tree(username: str, cycle_id: int, kr_count: int = 1) -> None:
     goal = create_goal(
         username, title=f"{username} goal", cycle_id=cycle_id, actor_username=username
     )
+    assert goal.id is not None
     objective = create_objective(
         goal.id, f"{username} objective", actor_username=username
     )
+    assert objective.id is not None
     for index in range(kr_count):
         kr = create_key_result(
             objective.id,
@@ -153,6 +155,7 @@ def _build_tree(username: str, cycle_id: int, kr_count: int = 1) -> None:
             target_value=100.0,
             actor_username=username,
         )
+        assert kr.id is not None
         create_task(kr.id, f"{username} task {index}", actor_username=username)
     update_objective(objective.id, state=LifecycleState.ACTIVE, actor_username=username)
 

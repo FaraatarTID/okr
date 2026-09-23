@@ -462,7 +462,13 @@ class EnterpriseIdentityConfig(BaseModel):
         ttl_seconds: int,
         now_epoch_seconds: int | None = None,
     ) -> str:
-        """Issue a signed application session token from validated enterprise IdP claims."""
+        """Deprecated, non-authoritative compatibility issuer for ``oidc-session-v1``.
+
+        The SPA BFF is the only supported session minter and verifier. This Python
+        format remains unchanged only for compatibility characterization while
+        external consumers are inventoried; it must not be used as an application
+        session authority and is a candidate for removal after that inventory.
+        """
 
         if not secret:
             raise ValueError("secret is required to issue an app session token")
@@ -507,7 +513,13 @@ class EnterpriseIdentityConfig(BaseModel):
         secret: str,
         now_epoch_seconds: int | None = None,
     ) -> dict[str, object]:
-        """Verify a signed app session token and return its claims."""
+        """Deprecated, non-authoritative verifier for ``oidc-session-v1``.
+
+        The SPA BFF is the only supported session minter and verifier. This Python
+        verifier is retained only for compatibility characterization while external
+        consumers are inventoried; it must not authorize application sessions and
+        is a candidate for removal after that inventory.
+        """
 
         if not token:
             raise ValueError("token is required")

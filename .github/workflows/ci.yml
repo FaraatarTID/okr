@@ -80,6 +80,7 @@ jobs:
             frontend:
               - 'spa-web/**'
               - 'spa-bff/**'
+              - 'tests/test_e2e_playwright_spa_login_to_atlas.py'
               - 'package.json'
               - 'package-lock.json'
             docs:
@@ -607,6 +608,18 @@ jobs:
       - name: Check workflow secret prerequisites
         run: python scripts/check_workflow_secret_prerequisites.py
 
+  repository-readiness:
+    name: Repository readiness contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Verify observability and runbook contract
+        run: python -m scripts.verify_observability_readiness
+      - name: Verify OPS-01 artifact contract
+        run: python -m scripts.verify_ops01_readiness
+
   ci-result:
     name: CI result
     runs-on: ubuntu-latest
@@ -621,6 +634,7 @@ jobs:
       - contracts-quality
       - deployment-topology-quality
       - workflow-secret-prerequisites
+      - repository-readiness
     steps:
       - name: Require all executed checks to pass
         shell: bash
@@ -634,9 +648,10 @@ jobs:
           CONTRACTS_RESULT: ${{ needs.contracts-quality.result }}
           TOPOLOGY_RESULT: ${{ needs.deployment-topology-quality.result }}
           SECRET_PREREQ_RESULT: ${{ needs.workflow-secret-prerequisites.result }}
+          READINESS_RESULT: ${{ needs.repository-readiness.result }}
         run: |
           set -euo pipefail
-          for result in "$CHANGES_RESULT" "$MIGRATION_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT" "$DOCS_RESULT" "$CONTRACTS_RESULT" "$TOPOLOGY_RESULT" "$SECRET_PREREQ_RESULT"; do
+          for result in "$CHANGES_RESULT" "$MIGRATION_RESULT" "$BACKEND_RESULT" "$SPA_RESULT" "$E2E_RESULT" "$DOCS_RESULT" "$CONTRACTS_RESULT" "$TOPOLOGY_RESULT" "$SECRET_PREREQ_RESULT" "$READINESS_RESULT"; do
             if [[ "$result" == "failure" || "$result" == "cancelled" ]]; then
               echo "CI result failed because a required job returned: $result"
               exit 1

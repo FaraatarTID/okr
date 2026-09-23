@@ -2,6 +2,14 @@
 
 Documentation HQ: [README](../../../README.md)
 
+> **HISTORICAL — completed record. Not current execution instructions.**
+> This ledger records the subagent-driven execution of
+> [the twelve-factor compliance plan](../../../docs/superpowers/plans/2026-09-02-twelve-factor-compliance-plan.md),
+> which is complete. It is retained as evidence of how the work was sequenced and
+> reviewed; it is not a work order and should not be resumed. Current work,
+> status, and order are tracked in
+> [REMAINING_ENGINEERING_PLAN.md](../../../docs/REMAINING_ENGINEERING_PLAN.md).
+
 ## Preflight
 
 | Task | Shared files/interfaces | Result |

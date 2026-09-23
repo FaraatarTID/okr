@@ -2,19 +2,25 @@
 
 Documentation HQ: [README](../README.md)
 
-Status: `IN-PROGRESS` for P0-05.
+Status: `HISTORICAL` — the P0-05 control pass this document records is closed
+(`VERIFIED` in the status ledger on 2026-09-01). It is retained as the
+implementation and history record of that pass, not as a live contract.
 
-This document defines how the architecture backlog, delivery system, status ledger, worklog, and decision records stay synchronized. It is the working control contract for architecture documentation during the pre-SaaS transition.
+The **policy reference** for lifecycle categories and the current registry is
+[DOCUMENTATION_LIFECYCLE.md](DOCUMENTATION_LIFECYCLE.md); this document records
+how that policy was established and what it changed.
+
+This document defined how the architecture backlog, delivery system, status ledger, worklog, and decision records stay synchronized. It was the working control contract for architecture documentation during the pre-SaaS transition.
 
 ## Documentation HQ
 
-[README.md](README.md) is the navigation hub for architecture and delivery documentation. The hub should point readers to the current source of truth instead of duplicating decisions across independent notes.
+[README.md](../README.md) is the navigation hub for architecture and delivery documentation. The hub should point readers to the current source of truth instead of duplicating decisions across independent notes.
 
 | Artifact | Role | Update rule | Owner candidate |
 |---|---|---|---|
-| [PRE_SAAS_ARCHITECTURE_BACKLOG.md](architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md) | Work package scope and sequencing | Update lifecycle status and evidence link when a package changes state | Architecture |
-| [ARCHITECTURE_DELIVERY_SYSTEM.md](ARCHITECTURE_DELIVERY_SYSTEM.md) | Delivery process and verification model | Change only when the operating model changes | Architecture and delivery |
-| [architecture-status.md](architecture-status.md) | Current status ledger | Keep synchronized with the backlog snapshot | Architecture |
+| [PRE_SAAS_ARCHITECTURE_BACKLOG.md](architecture/PRE_SAAS_ARCHITECTURE_BACKLOG.md) | Work package scope and sequencing (archived historical record) | Frozen; superseded by [REMAINING_ENGINEERING_PLAN.md](REMAINING_ENGINEERING_PLAN.md) | Architecture |
+| [ARCHITECTURE_DELIVERY_SYSTEM.md](ARCHITECTURE_DELIVERY_SYSTEM.md) | Delivery process and verification model; describes the process that was used, and the backlog it tracked is superseded | Frozen | Architecture and delivery |
+| [architecture-status.md](architecture-status.md) | Status ledger for the pre-SaaS packages (now historical) | Superseded by [REMAINING_ENGINEERING_PLAN.md](REMAINING_ENGINEERING_PLAN.md) for current status | Architecture |
 | [WORKLOG.md](WORKLOG.md) | Append-only execution record | Add a dated entry for every material state change | Delivery owner |
 | `docs/*-adr.md` | Architecture decision record | Record context, decision, alternatives, and evidence | Decision owner |
 | `docs/*-inventory.md` | Evidence and discovery artifact | Mark observed facts separately from proposals | Work package owner |
@@ -84,5 +90,5 @@ The initial control pass exposed that architecture work can accumulate valid doc
 - Repository documentation-link checks pass.
 - A short retro note records remaining documentation debt and its owner.
 
-P0-05 should move to `VERIFIED` only after the navigation and link evidence is attached to the status ledger.
+P0-05 moved to `VERIFIED` on 2026-09-01 once the navigation and link evidence was attached to the status ledger. That ledger is now historical; current status lives in [REMAINING_ENGINEERING_PLAN.md](REMAINING_ENGINEERING_PLAN.md).
 

@@ -1,0 +1,7 @@
+Documentation HQ: [README](../../../README.md)
+
+# Task T01 brief — Independent baseline audit
+
+Independently audit the T00 reconciliation report (`.superpowers/sdd/2026-09-23-remaining-engineering-execution/task-T00-report.md`) against every row/progress table in `docs/REMAINING_ENGINEERING_PLAN.md`, and audit the execution plan at `docs/superpowers/plans/2026-09-23-remaining-engineering-execution.md`.
+
+Acceptance: (a) verify all 47 A1–F8 report entries against their cited register rows and local paths; especially D1–D10 and F5–F8; (b) verify exact 32 packets T00–T31, unique numbering, and all register-to-packet mappings; (c) verify hard D1-before-login and D2+D4 atomic gate; D3 owner-choice gate; F5 fresh clone; F8 positive/negative fixtures and workflow wiring; (d) independently check shared-file/interface pair matrix completeness and every packet's self-consistency table in `progress.md`; (e) list all remote CI/PR, provider, IdP, deployment, live-drill and owner facts that cannot be verified locally. Do not infer facts from commit subjects or the execution plan itself. Report discrepancies with exact source rows/paths and severity. No production code changes. If a material discrepancy appears, recommend the smallest correction; do not silently edit the canonical register. `.git` is read-only: no commits/branches/worktrees. Write the full audit to `.superpowers/sdd/2026-09-23-remaining-engineering-execution/task-T01-report.md` and return under 15 lines with status, report path, and discrepancies/gates.

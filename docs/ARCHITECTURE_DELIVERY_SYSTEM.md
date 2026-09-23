@@ -3,9 +3,18 @@
 Documentation HQ: [README](../README.md)
 
 This document defines the system used to track execution of
-[ARCHITECTURE_BACKLOG.md](../ARCHITECTURE_BACKLOG.md) — not just marking items
-done, but verifying each fix actually fulfills its purpose in the running
-system.
+[ARCHITECTURE_BACKLOG.md](architecture/ARCHITECTURE_BACKLOG.md) — not just
+marking items done, but verifying each fix actually fulfills its purpose in the
+running system.
+
+> **Historical note.** The backlog this system was built for is superseded. The
+> Phase 0 multi-tenant backlog was rejected by
+> [ADR-001](ADR-001-multitenant-data-access-boundary.md), and current work is
+> tracked in [REMAINING_ENGINEERING_PLAN.md](REMAINING_ENGINEERING_PLAN.md),
+> which is authoritative for status and sequence. The
+> [status ledger](architecture-status.md) is retained as a historical record and
+> uses a different ID namespace. Read this document as a description of the
+> process that was used; it is not a set of current instructions.
 
 ## Why this exists
 
@@ -18,8 +27,8 @@ system closes both gaps with a **status ledger** (where things stand) and a
 
 | File | Purpose | Lifetime |
 |---|---|---|
-| `ARCHITECTURE_BACKLOG.md` | The plan: what/why/DoD per item | Permanent |
-| `docs/architecture-status.md` | The ledger: per-item status, evidence links, verification results | Permanent (living) |
+| `ARCHITECTURE_BACKLOG.md` | The plan: what/why/DoD per item. Superseded by [ADR-001](ADR-001-multitenant-data-access-boundary.md) | Historical |
+| `docs/architecture-status.md` | The ledger: per-item status, evidence links, verification results. Retained as a historical record; not current status | Retained |
 | `docs/WORKLOG.md` | The journal: dated entries of what was done each session | Append-only (gitignored) |
 
 ## Item lifecycle

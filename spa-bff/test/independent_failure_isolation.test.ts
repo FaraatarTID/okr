@@ -60,6 +60,52 @@ describe("independent service failure isolation", () => {
       code: "BACKEND_UNAVAILABLE",
       message: "Cannot verify session right now. Try again shortly.",
     });
+    expect(protectedRequest.headers["set-cookie"]).toBeUndefined();
     expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([429, 503])(
+    "preserves the browser session when backend session validation returns %i",
+    async (status) => {
+      const fetchFn = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "temporarily unavailable" }), {
+          status,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+      const app = createServer(config, { fetchFn });
+
+      const response = await app.inject({
+        method: "GET",
+        url: "/session/me",
+        headers: sessionHeaders(),
+      });
+      await app.close();
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({ code: "BACKEND_UNAVAILABLE" });
+      expect(response.headers["set-cookie"]).toBeUndefined();
+    },
+  );
+
+  it("clears the browser session when the backend explicitly rejects it", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "session invalidated" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const app = createServer(config, { fetchFn });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/session/me",
+      headers: sessionHeaders(),
+    });
+    await app.close();
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ code: "SESSION_REVOKED" });
+    expect(String(response.headers["set-cookie"])).toContain("Max-Age=0");
   });
 });

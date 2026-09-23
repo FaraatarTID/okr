@@ -80,7 +80,7 @@ def test_backup_record_requires_provider_identifier_and_checksum() -> None:
             retention_class="standard",
             rpo_seconds=3600,
             rto_seconds=7200,
-            operator=OperatorCredential.for_test("operator-a"),
+            operator="operator-a",
         )
 
 
@@ -115,7 +115,9 @@ def test_local_provider_requires_explicit_test_selection() -> None:
     assert isinstance(select_backup_provider(test_only=True), LocalBackupProvider)
 
 
-def test_backup_creation_rejects_provider_identity_mismatch() -> None:
+def test_backup_creation_rejects_provider_identity_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     provider = LocalBackupProvider()
     manager = BackupManager(
         provider, operator=OperatorCredential.for_test("operator-a")
@@ -128,7 +130,7 @@ def test_backup_creation_rejects_provider_identity_mismatch() -> None:
         record["provider"] = "other-provider"
         return record
 
-    provider.create_backup = mismatched_create
+    monkeypatch.setattr(provider, "create_backup", mismatched_create)
     with pytest.raises(ProviderContractError, match="provider identity"):
         manager.create("env-a")
 
@@ -293,10 +295,11 @@ def test_backup_status_persists_success_freshness_and_retention(tmp_path) -> Non
 
 
 def test_operator_identity_is_required() -> None:
+    # Deliberately pass values outside the typed credential contract.
     with pytest.raises(ValueError, match="operator"):
-        BackupManager(LocalBackupProvider(), operator="")
+        BackupManager(LocalBackupProvider(), operator="")  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="operator"):
-        RestoreManager(LocalBackupProvider(), operator=" ")
+        RestoreManager(LocalBackupProvider(), operator=" ")  # type: ignore[arg-type]
 
 
 def test_create_provider_failure_persists_complete_failed_status(tmp_path) -> None:

@@ -1,0 +1,19 @@
+# T00 fix round 1 re-review package
+
+Git-backed commit ranges are unavailable because the managed filesystem denies `.git` writes. Fix scope was limited to report rows D5, D8, E2 and the appended fix record. The authoritative register itself was not changed in the fix round.
+
+## Findings from original review
+
+1. Medium — D5 lacked “not started”; preserve the canonical Phase 3 status alongside its scheduling deferral.
+2. Medium — D8 and E2 lacked local evidence paths/search scopes; D8 must distinguish historical database evidence from current target deployment facts.
+
+## Current report text
+
+See `task-T00-report.md`, D5/D8/E2 rows and “Review fix, round 1”. D5 now reads “open; not started (scheduling deferred)”. D8 references `src/models.py:125-155`, `backend_app/routers/platform_routes.py:131-153`, and searched `alembic/versions/` + `backend_app/routers/`. E2 references `src/saas/release_operations.py:106-123`, `scripts/deploy_saas_release.py:16,78`, and the `src/saas/` implementation search.
+
+## Fix validation reported
+
+`python scripts/check_docs_hq_links.py`: PASS, 91 markdown files scanned.
+`python scripts/check_quality_gate_baseline.py`: PASS, baseline QG-002 output retained in report.
+
+The implementer reports no other scope changed.
