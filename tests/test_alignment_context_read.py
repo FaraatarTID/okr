@@ -56,8 +56,12 @@ def read_alignment_client(monkeypatch, isolated_db):
         cycle_id=cycle.id,
         actor_username="alignment_reader",
     )
-    parent = create_objective(goal.id, "Parent objective", actor_username="alignment_reader")
-    child = create_objective(goal.id, "Child objective", actor_username="alignment_reader")
+    parent = create_objective(
+        goal.id, "Parent objective", actor_username="alignment_reader"
+    )
+    child = create_objective(
+        goal.id, "Child objective", actor_username="alignment_reader"
+    )
     with get_session_context() as session:
         session.add(
             AlignmentEdge(

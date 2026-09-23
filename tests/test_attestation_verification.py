@@ -176,9 +176,7 @@ def test_rejects_ed25519_attestation_signed_by_a_different_key() -> None:
     _, pem = _ed25519_pair()
     other, _ = _ed25519_pair()
     evidence = _evidence("ed25519", "")
-    _attestation(evidence)["signature"] = _ed25519_signature(
-        other, _unsigned(evidence)
-    )
+    _attestation(evidence)["signature"] = _ed25519_signature(other, _unsigned(evidence))
 
     with pytest.raises(AttestationError, match="does not verify"):
         verify_attestation_signature(evidence, public_key_pem=pem)

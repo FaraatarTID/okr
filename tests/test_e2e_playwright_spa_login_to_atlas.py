@@ -986,13 +986,15 @@ def _exercise_route_surfaces(page, app_url: str) -> None:
         "retrobox": "/retrobox",
     }
     for mode, route_path in route_paths.items():
-        page.goto(f"{app_url}{route_path}", wait_until="domcontentloaded", timeout=90_000)
+        page.goto(
+            f"{app_url}{route_path}", wait_until="domcontentloaded", timeout=90_000
+        )
         _assert_mode_content(page, mode)
 
     page.goto(f"{app_url}/admin", wait_until="domcontentloaded", timeout=90_000)
-    expect(page.get_by_role("heading", name="Platform Controls", exact=True)).to_be_visible(
-        timeout=90_000
-    )
+    expect(
+        page.get_by_role("heading", name="Platform Controls", exact=True)
+    ).to_be_visible(timeout=90_000)
 
     page.get_by_role("button", name="Users", exact=True).click()
     expect(page.locator("strong").filter(has_text="E2E Manager")).to_be_visible(
@@ -1000,21 +1002,23 @@ def _exercise_route_surfaces(page, app_url: str) -> None:
     )
 
     page.get_by_role("button", name="Teams", exact=True).click()
-    expect(page.get_by_text("No teams found.", exact=True)).to_be_visible(timeout=90_000)
-
-    page.get_by_role("button", name="Backup", exact=True).click()
-    expect(page.get_by_role("button", name="Download Backup JSON", exact=True)).to_be_visible(
+    expect(page.get_by_text("No teams found.", exact=True)).to_be_visible(
         timeout=90_000
     )
+
+    page.get_by_role("button", name="Backup", exact=True).click()
+    expect(
+        page.get_by_role("button", name="Download Backup JSON", exact=True)
+    ).to_be_visible(timeout=90_000)
     expect(page.get_by_role("button", name="Restore Backup", exact=True)).to_be_visible(
         timeout=90_000
     )
 
     page.get_by_role("button", name="Audit", exact=True).click()
     expect(page.get_by_text("Audit summary", exact=True)).to_be_visible(timeout=90_000)
-    expect(page.get_by_role("button", name="Refresh Summary", exact=True)).to_be_visible(
-        timeout=90_000
-    )
+    expect(
+        page.get_by_role("button", name="Refresh Summary", exact=True)
+    ).to_be_visible(timeout=90_000)
 
 
 def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
@@ -1068,9 +1072,9 @@ def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
                         wait_until="domcontentloaded",
                         timeout=90_000,
                     )
-                    expect(page.get_by_role("heading", name="Cycles", exact=True)).to_be_visible(
-                        timeout=90_000
-                    )
+                    expect(
+                        page.get_by_role("heading", name="Cycles", exact=True)
+                    ).to_be_visible(timeout=90_000)
                     for restricted_tab in ("Users", "Teams", "Backup", "Audit"):
                         expect(
                             page.get_by_role("button", name=restricted_tab, exact=True)
@@ -1082,14 +1086,16 @@ def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
                         timeout=90_000,
                     )
                     expect(
-                        page.get_by_role("heading", name="Platform Controls", exact=True)
+                        page.get_by_role(
+                            "heading", name="Platform Controls", exact=True
+                        )
                     ).to_have_count(0, timeout=15_000)
-                    expect(page.get_by_role("heading", name="Cycles", exact=True)).to_have_count(
-                        0, timeout=15_000
-                    )
-                    expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
-                        timeout=90_000
-                    )
+                    expect(
+                        page.get_by_role("heading", name="Cycles", exact=True)
+                    ).to_have_count(0, timeout=15_000)
+                    expect(
+                        page.get_by_role("button", name="Sign out", exact=True)
+                    ).to_be_visible(timeout=90_000)
                 context.close()
         finally:
             browser.close()
@@ -1143,7 +1149,10 @@ def test_atlas_deep_link_and_rendered_alignment(e2e_stack: E2EStack) -> None:
                     payload = response.request.post_data_json
                 except Exception:
                     return
-                if isinstance(payload, dict) and payload.get("kind") == "alignments.context":
+                if (
+                    isinstance(payload, dict)
+                    and payload.get("kind") == "alignments.context"
+                ):
                     alignment_statuses.append(int(response.status))
 
             page.on("response", _capture_alignment_response)
@@ -1318,7 +1327,10 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                         payload = request.post_data_json
                     except Exception:
                         return None
-                    if isinstance(payload, dict) and payload.get("kind") in safe_read_kinds:
+                    if (
+                        isinstance(payload, dict)
+                        and payload.get("kind") in safe_read_kinds
+                    ):
                         # Record only this allowlisted operation name. Do not retain
                         # the request body, query string, headers, or credentials.
                         return str(payload["kind"])
@@ -1356,9 +1368,9 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                 timeout=90_000,
             )
             _login(page, *_E2E_ROLES["admin"])
-            expect(page.get_by_role("button", name="Sign out", exact=True)).to_be_visible(
-                timeout=90_000
-            )
+            expect(
+                page.get_by_role("button", name="Sign out", exact=True)
+            ).to_be_visible(timeout=90_000)
 
             def _count(phase: str, identity: str) -> int:
                 return sum(
@@ -1404,7 +1416,9 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                 assert len(second_start) == len(second_finish) == 1, event_rows
                 assert max(first_start[0], second_start[0]) < min(
                     first_finish[0], second_finish[0]
-                ), f"{first} and {second} should both start before either finishes: {event_rows!r}"
+                ), (
+                    f"{first} and {second} should both start before either finishes: {event_rows!r}"
+                )
 
             _wait_for_finishes(("cycles.all", "cycles.active"))
             assert _count("start", "cycles.all") == 1, event_rows
@@ -1419,9 +1433,9 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
             # The cycle pair is already warm and shared with shell bootstrap;
             # independent admin reads should start in parallel.
             page.get_by_role("button", name="Admin", exact=True).click()
-            expect(page.get_by_role("heading", name="Platform Controls", exact=True)).to_be_visible(
-                timeout=90_000
-            )
+            expect(
+                page.get_by_role("heading", name="Platform Controls", exact=True)
+            ).to_be_visible(timeout=90_000)
             _wait_for_finishes(("users.all", "teams.all"))
             assert _count("start", "cycles.all") == 1, event_rows
             assert _count("finish", "cycles.all") == 1, event_rows
@@ -1448,17 +1462,17 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
             # Use the in-shell buttons, not document reloads, to prove that warm
             # navigation does not refetch session or cached shell resources.
             page.get_by_role("button", name="Dashboard", exact=True).click()
-            expect(page.get_by_role("heading", name="Dashboard Workspace", exact=True)).to_be_visible(
-                timeout=90_000
-            )
+            expect(
+                page.get_by_role("heading", name="Dashboard Workspace", exact=True)
+            ).to_be_visible(timeout=90_000)
             page.get_by_role("button", name="Admin", exact=True).click()
-            expect(page.get_by_role("heading", name="Platform Controls", exact=True)).to_be_visible(
-                timeout=90_000
-            )
+            expect(
+                page.get_by_role("heading", name="Platform Controls", exact=True)
+            ).to_be_visible(timeout=90_000)
             page.get_by_role("button", name="Dashboard", exact=True).click()
-            expect(page.get_by_role("heading", name="Dashboard Workspace", exact=True)).to_be_visible(
-                timeout=90_000
-            )
+            expect(
+                page.get_by_role("heading", name="Dashboard Workspace", exact=True)
+            ).to_be_visible(timeout=90_000)
             page.wait_for_timeout(250)
 
             final_counts = {
@@ -1468,7 +1482,9 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                 "warm client-side navigation refetched shared shell resources: "
                 f"before={warm_counts!r}, after={final_counts!r}, events={event_rows!r}"
             )
-            assert all(_count("failed", identity) == 0 for identity in final_counts), event_rows
+            assert all(_count("failed", identity) == 0 for identity in final_counts), (
+                event_rows
+            )
             context.close()
         finally:
             browser.close()

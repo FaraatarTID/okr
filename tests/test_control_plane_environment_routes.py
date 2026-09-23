@@ -30,7 +30,9 @@ class FakeMain:
         return None
 
     async def require_authenticated_principal(self) -> dict[str, str]:
-        return {"username": self.authenticated_actor} if self.authenticated_actor else {}
+        return (
+            {"username": self.authenticated_actor} if self.authenticated_actor else {}
+        )
 
     @staticmethod
     def require_control_plane_operator(actor: str) -> None:

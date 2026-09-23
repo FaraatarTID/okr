@@ -97,7 +97,9 @@ def _utc_timestamp(value: object, field: str) -> str:
     try:
         parsed = datetime.fromisoformat(text[:-1] + "+00:00")
     except ValueError as error:
-        raise MeasurementValidationError(f"{field} is not a valid UTC timestamp") from error
+        raise MeasurementValidationError(
+            f"{field} is not a valid UTC timestamp"
+        ) from error
     if parsed.utcoffset() != timezone.utc.utcoffset(parsed):
         _fail(field, "must be UTC")
     return text
@@ -140,8 +142,13 @@ def _percentile(values: list[float], percentile: float) -> float:
     return round(ordered[index], 3)
 
 
-def _expected_summary(samples: list[Mapping[str, Any]]) -> tuple[dict[str, float], dict[str, float]]:
-    durations = [_number(sample.get("duration_ms"), "duration_ms", positive=True) for sample in samples]
+def _expected_summary(
+    samples: list[Mapping[str, Any]],
+) -> tuple[dict[str, float], dict[str, float]]:
+    durations = [
+        _number(sample.get("duration_ms"), "duration_ms", positive=True)
+        for sample in samples
+    ]
     summary = {
         "p50": round(statistics.median(durations), 3),
         "p95": _percentile(durations, 0.95),
@@ -211,20 +218,30 @@ def validate_measurement_artifact(payload: object) -> None:
         _fail("conditions.browser.engine", "must be chromium")
     _string(browser["version"], "conditions.browser.version")
     _string(browser["playwright_version"], "conditions.browser.playwright_version")
-    viewport = _mapping(browser["viewport"], "conditions.browser.viewport", {"width", "height"})
+    viewport = _mapping(
+        browser["viewport"], "conditions.browser.viewport", {"width", "height"}
+    )
     if dict(viewport) != VIEWPORT:
         _fail("conditions.browser.viewport", "does not match the pinned viewport")
 
     readiness = _mapping(
         conditions["stack_readiness"],
         "conditions.stack_readiness",
-        {"ready", "web_status", "bff_status", "authenticated_route_status", "checked_at_utc"},
+        {
+            "ready",
+            "web_status",
+            "bff_status",
+            "authenticated_route_status",
+            "checked_at_utc",
+        },
     )
     if readiness["ready"] is not True or any(
         readiness[name] != 200
         for name in ("web_status", "bff_status", "authenticated_route_status")
     ):
-        _fail("stack_readiness", "must prove web, BFF, and authenticated route readiness")
+        _fail(
+            "stack_readiness", "must prove web, BFF, and authenticated route readiness"
+        )
     _utc_timestamp(readiness["checked_at_utc"], "stack_readiness.checked_at_utc")
 
     if conditions["data_access_mode"] not in DATA_ACCESS_MODES:
@@ -234,7 +251,10 @@ def validate_measurement_artifact(payload: object) -> None:
         "conditions.cache",
         {"browser_http_cache", "application_resource_cache", "warmup_route"},
     )
-    if cache["browser_http_cache"] != "warm" or cache["application_resource_cache"] != "warm":
+    if (
+        cache["browser_http_cache"] != "warm"
+        or cache["application_resource_cache"] != "warm"
+    ):
         _fail("conditions.cache", "must record both caches as warm")
     _safe_path(cache["warmup_route"], "conditions.cache.warmup_route", {"/dashboard"})
 
@@ -270,10 +290,21 @@ def validate_measurement_artifact(payload: object) -> None:
             request = _mapping(
                 raw_request,
                 request_field,
-                {"sequence", "method", "path", "status", "duration_ms", "server_timing_ms"},
+                {
+                    "sequence",
+                    "method",
+                    "path",
+                    "status",
+                    "duration_ms",
+                    "server_timing_ms",
+                },
             )
             sequence = request["sequence"]
-            if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+            if (
+                isinstance(sequence, bool)
+                or not isinstance(sequence, int)
+                or sequence < 1
+            ):
                 _fail(f"{request_field}.sequence", "must be a positive integer")
             sequences.append(sequence)
             method = _string(request["method"], f"{request_field}.method")
@@ -281,7 +312,11 @@ def validate_measurement_artifact(payload: object) -> None:
                 _fail(f"{request_field}.method", "is invalid")
             _safe_path(request["path"], f"{request_field}.path")
             status = request["status"]
-            if isinstance(status, bool) or not isinstance(status, int) or not 200 <= status < 400:
+            if (
+                isinstance(status, bool)
+                or not isinstance(status, int)
+                or not 200 <= status < 400
+            ):
                 _fail(f"{request_field}.status", "must be a successful HTTP status")
             _number(request["duration_ms"], f"{request_field}.duration_ms")
             timing = _mapping(
@@ -299,7 +334,9 @@ def validate_measurement_artifact(payload: object) -> None:
             _fail(f"{field}.requests", "must preserve contiguous request order")
 
     expected_summary, expected_timing = _expected_summary(samples)
-    summary = _mapping(measurement["summary_ms"], "measurement.summary_ms", {"p50", "p95"})
+    summary = _mapping(
+        measurement["summary_ms"], "measurement.summary_ms", {"p50", "p95"}
+    )
     for name, expected in expected_summary.items():
         if _number(summary[name], f"measurement.summary_ms.{name}") != expected:
             _fail("measurement.summary_ms", "does not match raw samples")
@@ -309,6 +346,8 @@ def validate_measurement_artifact(payload: object) -> None:
     if set(timing_summary) != set(expected_timing):
         _fail("measurement.server_timing_p50_ms", "does not match raw samples")
     for name, expected in expected_timing.items():
-        if _number(timing_summary[name], f"measurement.server_timing_p50_ms.{name}") != expected:
+        if (
+            _number(timing_summary[name], f"measurement.server_timing_p50_ms.{name}")
+            != expected
+        ):
             _fail("measurement.server_timing_p50_ms", "does not match raw samples")
-

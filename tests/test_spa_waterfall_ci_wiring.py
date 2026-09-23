@@ -21,7 +21,9 @@ def test_spa_e2e_waterfall_test_is_classified_and_scheduled() -> None:
     changes = workflow["jobs"]["changes"]
     detect = next(step for step in changes["steps"] if step.get("id") == "filter")
     filters = yaml_load_filters(detect["with"]["filters"])
-    frontend_patterns = [pattern for pattern in filters["frontend"] if not pattern.startswith("!")]
+    frontend_patterns = [
+        pattern for pattern in filters["frontend"] if not pattern.startswith("!")
+    ]
 
     assert any(fnmatchcase(E2E_TEST_PATH, pattern) for pattern in frontend_patterns), (
         "the browser waterfall test is test-only, so its path must match the frontend "

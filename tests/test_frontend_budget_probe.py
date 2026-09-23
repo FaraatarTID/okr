@@ -117,25 +117,39 @@ def test_valid_unscored_measurement_artifact_is_accepted() -> None:
     [
         (lambda report: report.pop("build"), "build"),
         (lambda report: report.__setitem__("score_status", "pass"), "score_status"),
-        (lambda report: report["conditions"].__setitem__("data_access_mode", "unknown"), "data_access_mode"),
-        (lambda report: report["measurement"].__setitem__("sample_count", 0), "sample_count"),
         (
-            lambda report: report["measurement"]["samples"][0].__setitem__("duration_ms", math.nan),
+            lambda report: report["conditions"].__setitem__(
+                "data_access_mode", "unknown"
+            ),
+            "data_access_mode",
+        ),
+        (
+            lambda report: report["measurement"].__setitem__("sample_count", 0),
+            "sample_count",
+        ),
+        (
+            lambda report: report["measurement"]["samples"][0].__setitem__(
+                "duration_ms", math.nan
+            ),
             "duration_ms",
         ),
         (
-            lambda report: report["measurement"]["samples"][0]["requests"][0].__setitem__(
-                "path", "/api/read?token=do-not-record"
-            ),
+            lambda report: report["measurement"]["samples"][0]["requests"][
+                0
+            ].__setitem__("path", "/api/read?token=do-not-record"),
             "path",
         ),
         (
-            lambda report: report["conditions"]["stack_readiness"].__setitem__("bff_status", 503),
+            lambda report: report["conditions"]["stack_readiness"].__setitem__(
+                "bff_status", 503
+            ),
             "stack_readiness",
         ),
     ],
 )
-def test_invalid_or_sensitive_measurement_artifact_is_rejected(mutate, message: str) -> None:
+def test_invalid_or_sensitive_measurement_artifact_is_rejected(
+    mutate, message: str
+) -> None:
     probe = _probe_module()
     report = _report()
     mutate(report)
@@ -148,7 +162,7 @@ def test_server_timing_parser_keeps_only_safe_finite_duration_metrics() -> None:
     probe = _probe_module()
 
     assert probe.parse_server_timing(
-        'app;dur=8.25, data;dur=5, bff-upstream;dur=30.125, secret;dur=4, app;dur=NaN'
+        "app;dur=8.25, data;dur=5, bff-upstream;dur=30.125, secret;dur=4, app;dur=NaN"
     ) == {"app": 8.25, "data": 5.0, "bff-upstream": 30.125}
 
 
@@ -163,4 +177,6 @@ def test_summary_builder_does_not_score_measured_timing() -> None:
 def test_utc_timestamp_fixture_is_timezone_aware() -> None:
     parsed = datetime.fromisoformat(_report()["captured_at_utc"].replace("Z", "+00:00"))
 
-    assert parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(parsed)
+    assert parsed.tzinfo is not None and parsed.utcoffset() == timezone.utc.utcoffset(
+        parsed
+    )

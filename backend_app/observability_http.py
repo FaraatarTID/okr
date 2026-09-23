@@ -189,7 +189,9 @@ def install_observability_handlers(app: FastAPI, logger) -> None:
                     duration_ms=duration_ms,
                     actor=actor,
                     strategy=data_access.effective_mode if data_access else None,
-                    fallback_reason=data_access.fallback_reason if data_access else None,
+                    fallback_reason=data_access.fallback_reason
+                    if data_access
+                    else None,
                     resolver_state=data_access.resolver_state if data_access else None,
                 )
                 logger.exception(

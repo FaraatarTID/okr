@@ -13,7 +13,11 @@ READ_CASES = (
     ("node.detect_type", "node_type", lambda ids: {"node_id": ids["task"]}),
     ("work_logs.by_task", "work_logs", lambda ids: {"task_id": ids["task"]}),
     ("experiments.for_kr", "experiments", lambda ids: {"key_result_id": ids["kr"]}),
-    ("experiments.active_for_kr", "experiments", lambda ids: {"key_result_id": ids["kr"]}),
+    (
+        "experiments.active_for_kr",
+        "experiments",
+        lambda ids: {"key_result_id": ids["kr"]},
+    ),
     ("alignments.context", "parents", lambda ids: {"objective_id": ids["objective"]}),
     (
         "mindmap.root",
@@ -158,12 +162,12 @@ def test_authorized_actor_reaches_real_read_dispatch(
             assert node.id == ids["task"]
             return {
                 "id": node.id,
-                "key_result": {
-                    "objective": {"goal": {"owner_id": ids["user"]}}
-                },
+                "key_result": {"objective": {"goal": {"owner_id": ids["user"]}}},
             }
 
-        monkeypatch.setattr(backend_main, "_serialize_node_for_type", serialize_authorized_task)
+        monkeypatch.setattr(
+            backend_main, "_serialize_node_for_type", serialize_authorized_task
+        )
     response = client.post(
         "/v1/read/query",
         headers={"X-OKR-Actor": "f2_reader"},

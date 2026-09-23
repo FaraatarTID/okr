@@ -24,9 +24,7 @@ def test_falsey_explicit_restore_provider_is_selected_and_validated() -> None:
     restore_provider = FalseyLocalRestore()
     credential = OperatorCredential.for_test("operator-a")
 
-    manager = RestoreManager(
-        backup_provider, restore_provider, operator=credential
-    )
+    manager = RestoreManager(backup_provider, restore_provider, operator=credential)
     assert manager.restore_provider is restore_provider
 
     with pytest.raises(ProviderContractError, match="production provider"):

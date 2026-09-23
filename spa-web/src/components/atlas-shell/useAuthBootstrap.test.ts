@@ -21,6 +21,7 @@ describe("useAuthBootstrap", () => {
     const { result } = renderHook(() => useAuthBootstrap());
     await waitFor(() => {
       expect(result.current.authHydrated).toBe(true);
+      expect(result.current.user?.username).toBe("alice");
     });
     expect(result.current.user?.username).toBe("alice");
   });

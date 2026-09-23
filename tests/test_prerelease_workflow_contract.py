@@ -132,8 +132,14 @@ def test_frontend_budget_probe_is_dispatch_only_and_kept_as_separate_artifact() 
     assert len(journey_indices) == 1
     probe = steps[probe_indices[0]]
     assert journey_indices[0] < probe_indices[0]
-    assert probe["env"]["PRERELEASE_SMOKE_USERNAME"] == "${{ secrets.PRERELEASE_SMOKE_USERNAME }}"
-    assert probe["env"]["PRERELEASE_SMOKE_PASSWORD"] == "${{ secrets.PRERELEASE_SMOKE_PASSWORD }}"
+    assert (
+        probe["env"]["PRERELEASE_SMOKE_USERNAME"]
+        == "${{ secrets.PRERELEASE_SMOKE_USERNAME }}"
+    )
+    assert (
+        probe["env"]["PRERELEASE_SMOKE_PASSWORD"]
+        == "${{ secrets.PRERELEASE_SMOKE_PASSWORD }}"
+    )
     assert probe["env"]["DATA_ACCESS_MODE"] == "database"
     probe_run = probe["run"]
     for argument in (

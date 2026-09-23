@@ -119,11 +119,24 @@ def test_verifies_sanitized_successful_recovery_evidence() -> None:
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        (lambda e: _section(e, "backup").update({"checksum": "sha256:" + "0" * 64}), "checksum"),
-        (lambda e: _section(_section(e, "restore"), "target").update({"isolation": "shared"}), "isolated"),
-        (lambda e: _section(_section(e, "restore"), "target").update({"live": True}), "live"),
         (
-            lambda e: _section(_section(e, "restore"), "target").update({"identity": "db-env-a-primary"}),
+            lambda e: _section(e, "backup").update({"checksum": "sha256:" + "0" * 64}),
+            "checksum",
+        ),
+        (
+            lambda e: _section(_section(e, "restore"), "target").update(
+                {"isolation": "shared"}
+            ),
+            "isolated",
+        ),
+        (
+            lambda e: _section(_section(e, "restore"), "target").update({"live": True}),
+            "live",
+        ),
+        (
+            lambda e: _section(_section(e, "restore"), "target").update(
+                {"identity": "db-env-a-primary"}
+            ),
             "different",
         ),
         (lambda e: e.update({"measured_rto_seconds": 1801}), "RTO"),
