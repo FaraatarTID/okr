@@ -89,7 +89,6 @@ describe("useAuthBootstrap", () => {
           adminPdfHealth: null,
           adminAuditSummary: null,
           routerReplace: gate,
-          handleSidebarModeSelect: gate,
           loadAdminResources: vi.fn(async () => undefined),
           loadAdminHealth: vi.fn(async () => undefined),
           loadAdminAuditSummary: vi.fn(async () => undefined),
@@ -114,7 +113,7 @@ describe("useAuthBootstrap", () => {
     await waitFor(() => expect(secondMount.result.current.user?.role).toBe("member"));
     expect(secondMount.result.current.user?.role).toBe("member");
     expect(secondMount.result.current.accessReady).toBe(false);
-    expect(gate).toHaveBeenCalledWith("atlas");
+    expect(gate).toHaveBeenCalledWith("/");
     expect(readSessionUserMock.mock.calls.length).toBeGreaterThan(readsAfterFirstMount);
   });
 
@@ -130,7 +129,7 @@ describe("useAuthBootstrap", () => {
         isAdmin: auth.user?.role === "admin", isManager: false,
         mode, adminTab: "cycles", setAdminTab: vi.fn(),
         adminAiHealth: null, adminPdfHealth: null, adminAuditSummary: null,
-        routerReplace: vi.fn(), handleSidebarModeSelect: gate,
+        routerReplace: gate,
         loadAdminResources: vi.fn(async () => undefined),
         loadAdminHealth: vi.fn(async () => undefined),
         loadAdminAuditSummary: vi.fn(async () => undefined),
@@ -146,7 +145,7 @@ describe("useAuthBootstrap", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(result.current.user?.role).toBe("member");
     expect(result.current.accessReady).toBe(false);
-    expect(gate).toHaveBeenCalledWith("atlas");
+    expect(gate).toHaveBeenCalledWith("/");
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
     expect(result.current.user?.role).toBe("admin");
     expect(result.current.accessReady).toBe(true);
