@@ -226,7 +226,10 @@ export default function useDeepLinkCycleBootstrap({
   ]);
 
   useEffect(() => {
-    if (!deepLinkReady || typeof window === "undefined") {
+    // When the session is cleared, the shell is leaving for the login route.
+    // Do not let the last authenticated deep-link state rewrite that pending
+    // navigation back onto the shell URL.
+    if (!user || !deepLinkReady || typeof window === "undefined") {
       return;
     }
     const nextSearch = deepLinkQuery ? `?${deepLinkQuery}` : "";
@@ -235,7 +238,7 @@ export default function useDeepLinkCycleBootstrap({
     }
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
     window.history.replaceState(null, "", nextUrl);
-  }, [deepLinkQuery, deepLinkReady]);
+  }, [deepLinkQuery, deepLinkReady, user]);
 
   useEffect(() => {
     // Re-derive the mode whenever the route changes. This is what makes the

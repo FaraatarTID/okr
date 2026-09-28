@@ -337,6 +337,48 @@ describe("useDeepLinkCycleBootstrap", () => {
     });
   });
 
+  it("does not rewrite a shell URL after the session has been cleared", async () => {
+    const authenticatedQuery = "cycle=1&mode=admin&sel=goal_1&ft=task_1";
+    const postLogoutQuery = "cycle=1&mode=admin";
+    window.history.replaceState(null, "", `/admin?${authenticatedQuery}`);
+    mockCyclePair([{ id: 1, title: "Q1" }] as CycleSummary[], []);
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    const setters = createSetters();
+
+    const { rerender } = renderHook(
+      ({ user, deepLinkQuery }: { user: AuthUser | null; deepLinkQuery: string }) =>
+        useDeepLinkCycleBootstrap({
+          user,
+          canManageCycleSelection: true,
+          parsedCycleId: 1,
+          resolvedCycle: { id: 1, title: "Q1" },
+          sessionCycles: [],
+          deepLinkReady: true,
+          deepLinkQuery,
+          ...setters,
+        }),
+      {
+        initialProps: { user: baseUser, deepLinkQuery: authenticatedQuery },
+      },
+    );
+
+    await waitFor(() => {
+      expect(setters.setMode).toHaveBeenCalledWith("admin");
+    });
+    expect(replaceState).not.toHaveBeenCalled();
+
+    rerender({ user: null, deepLinkQuery: postLogoutQuery });
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(window.location.pathname).toBe("/admin");
+    expect(window.location.search).toBe(`?${authenticatedQuery}`);
+
+    rerender({ user: baseUser, deepLinkQuery: postLogoutQuery });
+    await waitFor(() => {
+      expect(replaceState).toHaveBeenCalledTimes(1);
+    });
+    expect(window.location.search).toBe(`?${postLogoutQuery}`);
+  });
+
   it("ignores an unknown mode parameter and falls back to the path", async () => {
     window.history.replaceState(null, "", "/daily?mode=not-a-mode");
     pathnameHolder.value = "/daily";

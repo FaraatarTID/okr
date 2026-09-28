@@ -1578,6 +1578,10 @@ def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
             )
 
         page.get_by_role("button", name="Sign out", exact=True).click()
+        expect(page).to_have_url(
+            re.compile(rf"^{re.escape(e2e_stack.app_url)}/login(?:\?.*)?$"),
+            timeout=30_000,
+        )
         expect(page.get_by_role("button", name="Sign in", exact=True)).to_be_visible(
             timeout=90_000
         )
