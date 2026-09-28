@@ -37,3 +37,13 @@ def test_verify_secret_hygiene_allows_hashed_password_fixture(tmp_path: Path) ->
 
     findings = verify_secret_hygiene._scan_file(sample)
     assert findings == []
+
+
+def test_password_change_api_fixtures_pass_secret_hygiene() -> None:
+    sample = verify_secret_hygiene.ROOT / "tests" / "test_password_change_api.py"
+
+    findings = verify_secret_hygiene._scan_file(sample)
+    if findings:
+        raise AssertionError(
+            f"Unexpected secret-hygiene finding count: {len(findings)}"
+        )

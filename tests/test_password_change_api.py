@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 import pytest
+from tests._test_credentials import credential_password as _test_password
 
 
 def _client(monkeypatch):
@@ -38,7 +39,7 @@ def test_password_change_requires_current_password(isolated_db, monkeypatch):
         headers={"X-OKR-Actor": username},
         json={
             "current_password": "WrongPassword123!",
-            "new_password": "NewPassword456!",
+            "new_password": _test_password("password_change_case_1"),
         },
     )
 
@@ -66,7 +67,7 @@ def test_password_change_updates_only_authenticated_users_password(
         headers={"X-OKR-Actor": username},
         json={
             "current_password": "OldPassword123!",
-            "new_password": "NewPassword456!",
+            "new_password": _test_password("password_change_case_2"),
             "user_id": target_auth["user"].id,
         },
     )
@@ -74,7 +75,9 @@ def test_password_change_updates_only_authenticated_users_password(
     assert response.status_code == 200, response.text
     assert response.json() == {"updated": True}
     assert authenticate_user_detailed(username, "OldPassword123!")["success"] is False
-    updated_auth = authenticate_user_detailed(username, "NewPassword456!")
+    updated_auth = authenticate_user_detailed(
+        username, _test_password("password_change_case_2")
+    )
     assert updated_auth["success"] is True
     assert updated_auth["user"].token_version == old_token_version
     assert updated_auth["user"].must_change_password is False
@@ -99,7 +102,7 @@ def test_password_change_cannot_be_called_without_a_session_actor(
         "/v1/auth/change-password",
         json={
             "current_password": "OldPassword123!",
-            "new_password": "NewPassword456!",
+            "new_password": _test_password("password_change_case_3"),
         },
     )
 
@@ -135,7 +138,7 @@ def test_supabase_password_change_rate_limits_by_session_actor(
         headers={"X-OKR-Actor": "password-change-member"},
         json={
             "current_password": "OldPassword123!",
-            "new_password": "NewPassword456!",
+            "new_password": _test_password("password_change_case_4"),
         },
     )
 
@@ -173,7 +176,7 @@ def test_supabase_password_change_fails_closed_when_rate_limit_state_is_unavaila
         headers={"X-OKR-Actor": "password-change-member"},
         json={
             "current_password": "OldPassword123!",
-            "new_password": "NewPassword456!",
+            "new_password": _test_password("password_change_case_5"),
         },
     )
 
@@ -211,7 +214,7 @@ def test_tcp_auth_failure_fallback_is_rate_limited_before_supabase_verification(
         headers={"X-OKR-Actor": "password-change-member"},
         json={
             "current_password": "OldPassword123!",
-            "new_password": "NewPassword456!",
+            "new_password": _test_password("password_change_case_6"),
         },
     )
 
@@ -258,7 +261,7 @@ def test_supabase_password_change_rejects_a_revoked_session_and_audits_success(
         headers={"X-OKR-Actor": "password-change-member", "X-OKR-Token-Version": "7"},
         json={
             "current_password": "OldPassword123!",
-            "new_password": "NewPassword456!",
+            "new_password": _test_password("password_change_case_7"),
         },
     )
     assert revoked.status_code == 401
@@ -279,7 +282,7 @@ def test_supabase_password_change_rejects_a_revoked_session_and_audits_success(
         headers={"X-OKR-Actor": "password-change-member", "X-OKR-Token-Version": "7"},
         json={
             "current_password": "OldPassword123!",
-            "new_password": "NewPassword456!",
+            "new_password": _test_password("password_change_case_8"),
         },
     )
 
