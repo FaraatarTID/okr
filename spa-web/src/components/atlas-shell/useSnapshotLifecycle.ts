@@ -29,6 +29,8 @@ export default function useSnapshotLifecycle({
   ownerIdsError,
 }: UseSnapshotLifecycleInput) {
   const snapshotPollIntervalMs = resolveSnapshotPollIntervalMs();
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   const [snapshotPending, setSnapshotPending] = useState(false);
   const [snapshotError, setSnapshotError] = useState("");
   const [snapshotPayload, setSnapshotPayload] = useState<AtlasSnapshotResponse | null>(null);
@@ -51,19 +53,14 @@ export default function useSnapshotLifecycle({
         // Raw AI analysis is only needed by the Atlas inspector. Keeping it
         // out of dashboard/timeline/weekly payloads avoids serializing and
         // transferring large JSON blobs on every navigation.
-        include_analysis: mode === "atlas",
+        include_analysis: modeRef.current === "atlas",
         owner_ids: ownerIds,
       });
       if (snapshotRequestIdRef.current === requestId) {
         setSnapshotPayload(payload);
       }
     },
-    // `mode` belongs here: it selects `include_analysis` above, so leaving it
-    // out left the callback closing over the previous mode. Switching dashboard
-    // to atlas then loaded a snapshot with no analysis, and switching the other
-    // way kept sending the large analysis payload the comment above says is
-    // only wanted by the inspector.
-    [mode, ownerIds, ownerIdsError, parsedCycleId],
+    [ownerIds, ownerIdsError, parsedCycleId],
   );
 
   useEffect(() => {
@@ -110,15 +107,18 @@ export default function useSnapshotLifecycle({
       snapshotRequestIdRef.current += 1;
       window.clearTimeout(bootstrapTimer);
     };
-  }, [loadSnapshotForUser, ownerIds, ownerIdsError, parsedCycleId, user]);
+  }, [loadSnapshotForUser, mode, ownerIds, ownerIdsError, parsedCycleId, user]);
 
   useEffect(() => {
-    if (!user || mode !== "atlas" || !parsedCycleId || ownerIdsError) {
+    if (!user || !parsedCycleId || ownerIdsError) {
       return;
     }
 
     let active = true;
     const pollTimer = window.setInterval(() => {
+      if (modeRef.current !== "atlas") {
+        return;
+      }
       void (async () => {
         try {
           await loadSnapshotForUser(user);
@@ -138,7 +138,7 @@ export default function useSnapshotLifecycle({
       active = false;
       window.clearInterval(pollTimer);
     };
-  }, [loadSnapshotForUser, mode, ownerIds, ownerIdsError, parsedCycleId, snapshotPollIntervalMs, user]);
+  }, [loadSnapshotForUser, ownerIds, ownerIdsError, parsedCycleId, snapshotPollIntervalMs, user]);
 
   return {
     snapshotPending,

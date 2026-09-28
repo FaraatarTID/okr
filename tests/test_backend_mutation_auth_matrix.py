@@ -12,6 +12,8 @@ from backend_app.main import BACKUP_FORMAT_VERSION
 
 
 def _make_client(monkeypatch):
+    import backend_app.security as backend_security
+
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "false")
     monkeypatch.setenv("OKR_ENV", "development")
@@ -20,7 +22,21 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS", "10000")
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
-    return TestClient(backend_main.app), backend_main
+    monkeypatch.setattr(
+        backend_security,
+        "_resolve_current_actor_scope",
+        lambda actor, token_version: {
+            "actor_id": 1,
+            "actor_username": actor,
+            "role": "member",
+        },
+    )
+    client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    from tests.session_registry_test_support import attach_registered_test_session
+
+    attach_registered_test_session(client)
+    return client, backend_main
 
 
 def _deny_forbidden(*_args, **_kwargs):
@@ -233,6 +249,7 @@ _MUTATION_AUTH_MATRIX_ROUTES = [
 
 _MUTATION_ROUTE_ALLOWLIST = {
     ("POST", "/v1/auth/login"),
+    ("POST", "/v1/auth/change-password"),
     ("POST", "/v1/read/query"),
     ("POST", "/v1/read/atlas/snapshot"),
     ("POST", "/v1/read/leadership/metrics"),
@@ -355,11 +372,35 @@ def _mutating_v1_routes_from_app() -> set[tuple[str, str]]:
         if not isinstance(route, APIRoute):
             continue
         for method in route.methods or ():
-            if method in {"POST", "PUT", "PATCH", "DELETE"} and (
-                route.path.startswith("/v1/") or route.path.startswith("/api/v1/")
+            if (
+                method in {"POST", "PUT", "PATCH", "DELETE"}
+                and (route.path.startswith("/v1/") or route.path.startswith("/api/v1/"))
+                and route.path not in _INTERNAL_SERVICE_MUTATION_ROUTES
             ):
                 mutation_routes.add((method, route.path))
     return mutation_routes
+
+
+_INTERNAL_SERVICE_MUTATION_ROUTES = {
+    "/v1/internal/session-registry/register",
+    "/v1/internal/session-registry/revoke",
+    "/v1/internal/cache-invalidation",
+}
+
+
+def test_internal_service_routes_are_openapi_only_not_public_bff_routes():
+    import backend_app.main as backend_main
+    import json
+
+    schema_paths = backend_main.app.openapi()["paths"]
+    policy_path = (
+        Path(__file__).resolve().parents[1] / "spa-bff" / "src" / "route-policy.json"
+    )
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    public_paths = {route["pathTemplate"] for route in policy["routes"]}
+
+    assert _INTERNAL_SERVICE_MUTATION_ROUTES <= set(schema_paths)
+    assert _INTERNAL_SERVICE_MUTATION_ROUTES.isdisjoint(public_paths)
 
 
 def test_mutation_route_matrix_covers_all_v1_mutation_routes():

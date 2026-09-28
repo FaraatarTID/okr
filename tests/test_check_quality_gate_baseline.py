@@ -18,23 +18,29 @@ sys.modules["check_quality_gate_baseline"] = check_quality_gate_baseline
 SPEC.loader.exec_module(check_quality_gate_baseline)
 
 
-def test_validate_baseline_expiry_passes_before_deadline():
-    errors = check_quality_gate_baseline.validate_baseline_expiry(
-        today=date(2026, 2, 24)
-    )
+def test_empty_baseline_has_no_expiry_errors():
+    errors = check_quality_gate_baseline.validate_baseline_expiry()
     assert errors == []
 
 
-def test_validate_baseline_expiry_fails_after_deadline():
+def test_validate_baseline_expiry_rejects_injected_expired_item(monkeypatch):
+    expired_item = check_quality_gate_baseline.BaselineItem(
+        id="TEST-EXPIRED",
+        scope="injected expired item",
+        rationale="the generic expiry rule must keep applying after QG-002 closes",
+        expires_on=date(2026, 11, 30),
+    )
+    monkeypatch.setattr(check_quality_gate_baseline, "BASELINE_ITEMS", (expired_item,))
+
     errors = check_quality_gate_baseline.validate_baseline_expiry(
         today=date(2026, 12, 1)
     )
-    assert errors
-    assert any("QG-002" in err for err in errors)
+    assert len(errors) == 1
+    assert "TEST-EXPIRED" in errors[0]
 
 
-def test_qg_001_is_retired_by_repo_wide_format_coverage():
-    """QG-001 was closed on 2026-09-20 by expanding the Ruff format check to repo scope."""
+def test_closed_quality_gates_are_not_active_baseline_items():
+    """QG-001 and QG-002 must stay out of the active expiry registry."""
     ids = [item.id for item in check_quality_gate_baseline.BASELINE_ITEMS]
     assert "QG-001" not in ids
-    assert "QG-002" in ids
+    assert "QG-002" not in ids

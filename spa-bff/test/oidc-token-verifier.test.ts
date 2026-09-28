@@ -43,11 +43,14 @@ async function signedToken(options: {
   issuedAt?: number;
   expiresAt?: number;
   subject?: string;
+  emailVerified?: unknown;
+  includeEmailVerified?: boolean;
 } = {}): Promise<string> {
   const privateKey = options.privateKey ?? rsaPrivate;
   const alg = options.alg ?? "RS256";
   const claims: Record<string, unknown> = options.includeNonce === false ? {} : { nonce: options.nonce ?? NONCE };
   if (options.includeSubject !== false) claims.sub = options.subject ?? "user-123";
+  if (options.includeEmailVerified !== false) claims.email_verified = options.emailVerified === undefined ? true : options.emailVerified;
   if (options.azp !== undefined) claims.azp = options.azp;
   return new SignJWT(claims)
     .setProtectedHeader({ alg, kid: options.kid ?? "rsa-key" })
@@ -75,6 +78,38 @@ function verifierFor(keys: JWK[], now = NOW, fetcher?: () => Promise<{ keys: JWK
 }
 
 describe("createOidcTokenVerifier", () => {
+  it("returns a signed token only when email_verified is boolean true", async () => {
+    const { verifier } = verifierFor([rsaPublicJwk]);
+    await expect(verifier.verify(await signedToken({ emailVerified: true }), NONCE))
+      .resolves.toMatchObject({ sub: "user-123", email_verified: true });
+  });
+
+  it("rejects a signed token with no email_verified claim using the missing code", async () => {
+    const { verifier } = verifierFor([rsaPublicJwk]);
+    await expect(verifier.verify(await signedToken({ includeEmailVerified: false }), NONCE))
+      .rejects.toMatchObject({ code: "EMAIL_VERIFICATION_MISSING" });
+  });
+
+  it("rejects a signed token with email_verified false using the unverified code", async () => {
+    const { verifier } = verifierFor([rsaPublicJwk]);
+    await expect(verifier.verify(await signedToken({ emailVerified: false }), NONCE))
+      .rejects.toMatchObject({ code: "EMAIL_NOT_VERIFIED" });
+  });
+
+  it.each(["true", 1, null, []])("rejects non-boolean email_verified %j using the invalid code", async (emailVerified) => {
+    const { verifier } = verifierFor([rsaPublicJwk]);
+    await expect(verifier.verify(await signedToken({ emailVerified }), NONCE))
+      .rejects.toMatchObject({ code: "EMAIL_VERIFICATION_INVALID" });
+  });
+
+  it("checks the signature before reporting a missing email_verified claim", async () => {
+    const { verifier } = verifierFor([rsaPublicJwk]);
+    const token = await signedToken({ includeEmailVerified: false });
+    const [header, payload, signature] = token.split(".");
+    const tampered = `${header}.${payload}.${signature!.startsWith("A") ? "B" : "A"}${signature!.slice(1)}`;
+    await expect(verifier.verify(tampered, NONCE)).rejects.not.toMatchObject({ code: "EMAIL_VERIFICATION_MISSING" });
+  });
+
   it("verifies RS256 and ES256 signatures and only returns claims after verification", async () => {
     const { verifier } = verifierFor([rsaPublicJwk, ecPublicJwk]);
     const rsa = await verifier.verify(await signedToken(), NONCE);
@@ -198,7 +233,7 @@ describe("createOidcTokenVerifier", () => {
     let now = NOW;
     let calls = 0;
     const rotatedRsa = await generateKeyPair("RS256", { modulusLength: 2048 });
-    const rotatedToken = await new SignJWT({ nonce: NONCE })
+    const rotatedToken = await new SignJWT({ nonce: NONCE, email_verified: true })
       .setProtectedHeader({ alg: "RS256", kid: "rotated-key" })
       .setIssuer(ISSUER).setAudience(AUDIENCE).setSubject("rotated-user")
       .setIssuedAt(Math.floor(NOW.getTime() / 1000) - 5)

@@ -158,6 +158,21 @@ Do not implement co-location by disabling the BFF, exposing the backend API,
 sharing public credentials, or combining the applications into a single
 runtime image/process.
 
+### Per-session revocation cutover — future release gate
+
+The shared per-session registry cutover has not been released. Defer rollout
+until T24's canonical Origin/CSRF and coupled D2+D4 protections meet their
+acceptance gates, and confirm the configured shared durable security-state
+provider is ready for all backend workers. Deploy the backend registry and BFF
+registration/check/revocation behavior together as one coordinated release.
+
+Expect a one-time sign-in impact: cookies issued before the cutover have no
+registry entry, so `/session/me` rejects them as unauthenticated, clears the
+obsolete session and CSRF cookies, and requires the user to sign in again. Do
+not backfill sessions manually or register an old session on its first request.
+If the shared provider is temporarily unavailable, `/session/me` returns 503
+and preserves the cookies so the user can retry after service recovers.
+
 ---
 
 Path A (recommended): Docker Compose + Postgres + Nginx + TLS

@@ -45,8 +45,9 @@ The rule set, in full:
 
 1. **Overwrite, never append.** Each hop that sets the header replaces any existing value. Appending
    is what made `X-Forwarded-For` unusable, and it is impossible to get wrong if no hop appends.
-2. **Written only by our edge and internal components.** `deploy/nginx.conf` sets it from
-   `$remote_addr`; the SPA's server-side boundary forwards it; the BFF forwards it. Nothing else sets it.
+2. **Written only by our edge and internal components.** Both repository Nginx examples,
+   `deploy/nginx.conf` and `deploy/nginx.okr.mycompany.com.conf`, set it from `$remote_addr`;
+   the SPA's server-side boundary forwards it; the BFF forwards it. Nothing else sets it.
 3. **Read only under service-token authentication.** The backend ignores the header unless
    `service_token_valid`, so a caller able to reach the backend directly cannot forge it. This gate
    is load-bearing, not decorative.
@@ -90,6 +91,13 @@ as the fallback only if a private header proves infeasible in the deployed edge 
   configuration must satisfy, and that assertion is **not verifiable from CI**.
 
 ## Verification status
+
+- **Nginx edge overwrite behavior.** The opt-in local Docker/Nginx harness
+  `tests/test_nginx_client_ip_overwrite.py` exercised `deploy/nginx.conf` with a forged private
+  header and confirmed the capture upstream received the edge's overwritten address. A regression
+  test pins the active proxy block in both Nginx examples to `proxy_set_header
+  X-OKR-Client-IP $remote_addr;`. This is local config evidence only; it does not prove that a
+  deployment uses either file or that the BFF cannot be reached around the edge.
 
 - **A fail-first test proving that a caller-supplied `X-Forwarded-For`, `X-Real-IP`, and
   `X-OKR-Client-IP` each fail to change the throttle key, and that absent-header leaves it unkeyed.**

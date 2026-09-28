@@ -245,6 +245,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/change-password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Api Change Own Password */
+        post: operations["api_change_own_password_v1_auth_change_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/login": {
         parameters: {
             query?: never;
@@ -376,6 +393,64 @@ export interface paths {
         put?: never;
         /** Api Close Experiment */
         post: operations["api_close_experiment_v1_experiments__experiment_id__close_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/internal/cache-invalidation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cache Invalidation Timestamp */
+        get: operations["get_cache_invalidation_timestamp_v1_internal_cache_invalidation_get"];
+        put?: never;
+        /** Set Cache Invalidation Timestamp */
+        post: operations["set_cache_invalidation_timestamp_v1_internal_cache_invalidation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/internal/session-registry/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Internal Session
+         * @description Private service operation; requires service-token and request-signature headers.
+         */
+        post: operations["register_internal_session_v1_internal_session_registry_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/internal/session-registry/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Internal Session
+         * @description Private service operation; requires service-token and request-signature headers.
+         */
+        post: operations["revoke_internal_session_v1_internal_session_registry_revoke_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1240,6 +1315,18 @@ export interface components {
             success: boolean;
             user?: components["schemas"]["AuthUserView"] | null;
         };
+        /** AuthPasswordChangeRequest */
+        AuthPasswordChangeRequest: {
+            /** Current Password */
+            current_password: string;
+            /** New Password */
+            new_password: string;
+        };
+        /** AuthPasswordChangeResponse */
+        AuthPasswordChangeResponse: {
+            /** Updated */
+            updated: boolean;
+        };
         /** AuthSessionResponse */
         AuthSessionResponse: {
             /** Display Name */
@@ -1283,6 +1370,11 @@ export interface components {
             token_version?: number | null;
             /** Username */
             username: string;
+        };
+        /** CacheInvalidationRequest */
+        CacheInvalidationRequest: {
+            /** Timestamp */
+            timestamp: string;
         };
         /** CheckInCreateRequest */
         CheckInCreateRequest: {
@@ -1508,6 +1600,31 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** InternalSessionRegisterRequest */
+        InternalSessionRegisterRequest: {
+            /** Actor Id */
+            actor_id: number;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Session Id */
+            session_id: string;
+        };
+        /** InternalSessionRegistryResponse */
+        InternalSessionRegistryResponse: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "registered" | "revoked";
+        };
+        /** InternalSessionRevokeRequest */
+        InternalSessionRevokeRequest: {
+            /** Session Id */
+            session_id: string;
         };
         /** JobCancelResponse */
         JobCancelResponse: {
@@ -2254,6 +2371,10 @@ export interface components {
         };
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
@@ -2883,6 +3004,49 @@ export interface operations {
             };
         };
     };
+    api_change_own_password_v1_auth_change_password_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-okr-actor"?: string | null;
+                "x-okr-token-version"?: string | null;
+                "x-okr-role"?: string | null;
+                "x-okr-roles"?: string | null;
+                "x-okr-service-token"?: string | null;
+                "x-okr-signature"?: string | null;
+                "x-okr-timestamp"?: string | null;
+                "x-okr-nonce"?: string | null;
+                "x-okr-key-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AuthPasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthPasswordChangeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     api_auth_login_v1_auth_login_post: {
         parameters: {
             query?: never;
@@ -3252,6 +3416,162 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExperimentMutationView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cache_invalidation_timestamp_v1_internal_cache_invalidation_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-okr-service-token"?: string | null;
+                "x-okr-signature"?: string | null;
+                "x-okr-timestamp"?: string | null;
+                "x-okr-nonce"?: string | null;
+                "x-okr-key-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_cache_invalidation_timestamp_v1_internal_cache_invalidation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-okr-service-token"?: string | null;
+                "x-okr-signature"?: string | null;
+                "x-okr-timestamp"?: string | null;
+                "x-okr-nonce"?: string | null;
+                "x-okr-key-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CacheInvalidationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_internal_session_v1_internal_session_registry_register_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-okr-service-token"?: string | null;
+                "x-okr-signature"?: string | null;
+                "x-okr-timestamp"?: string | null;
+                "x-okr-nonce"?: string | null;
+                "x-okr-key-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InternalSessionRegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InternalSessionRegistryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_internal_session_v1_internal_session_registry_revoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-okr-service-token"?: string | null;
+                "x-okr-signature"?: string | null;
+                "x-okr-timestamp"?: string | null;
+                "x-okr-nonce"?: string | null;
+                "x-okr-key-id"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InternalSessionRevokeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InternalSessionRegistryResponse"];
                 };
             };
             /** @description Validation Error */

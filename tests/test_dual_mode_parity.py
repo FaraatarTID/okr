@@ -10,6 +10,7 @@ import backend_app.main_mutation_handlers as main_mutation_handlers
 
 def _make_client(monkeypatch):
     import backend_app.main as backend_main
+    import backend_app.security as backend_security
 
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_TOKEN", "false")
     monkeypatch.setenv("OKR_BACKEND_ENFORCE_REQUEST_SIGNING", "false")
@@ -19,7 +20,21 @@ def _make_client(monkeypatch):
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS", "10000")
     monkeypatch.setenv("OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS", "3600")
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
-    return TestClient(backend_main.app), backend_main
+    monkeypatch.setattr(
+        backend_security,
+        "_resolve_current_actor_scope",
+        lambda actor, token_version: {
+            "actor_id": 1,
+            "actor_username": actor,
+            "role": "member",
+        },
+    )
+    client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    from tests.session_registry_test_support import attach_registered_test_session
+
+    attach_registered_test_session(client)
+    return client, backend_main
 
 
 def _run_mutation_mode(
@@ -475,6 +490,94 @@ def test_newly_allowed_read_kind_without_a_scope_rule_is_refused(monkeypatch, mo
         )
 
     assert excinfo.value.status_code == 403
+
+
+def test_https_read_fails_closed_when_scope_resolution_returns_no_scope(monkeypatch):
+    """A missing HTTPS actor scope must not reach the upstream read dispatcher."""
+    import backend_app.read_query_helpers as read_query_helpers
+    from fastapi import HTTPException
+
+    backend_main = _non_admin_main(monkeypatch)
+    monkeypatch.setattr(read_query_helpers, "resolve_read_mode", lambda: "supabase_api")
+    monkeypatch.setattr(
+        read_query_helpers, "_validate_read_scope", lambda **_kwargs: None
+    )
+
+    def unexpected_dispatch(**_kwargs):
+        pytest.fail("HTTPS dispatcher received a request without an actor scope")
+
+    monkeypatch.setattr(
+        backend_main, "read_query_via_supabase_api", unexpected_dispatch
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        read_query_helpers.read_query_payload(
+            kind="krs.by_cycle",
+            params={"cycle_id": 12},
+            actor="alice",
+            main=backend_main,
+        )
+
+    assert excinfo.value.status_code == 503
+    assert excinfo.value.detail == "Actor scope is unavailable."
+
+
+@pytest.mark.parametrize(
+    "scopes",
+    [
+        [None, {"owner_ids": {101}}],
+        [{"owner_ids": {101}}, None],
+    ],
+)
+def test_https_ritual_snapshot_fails_closed_without_both_scopes(monkeypatch, scopes):
+    """Neither snapshot authorization check may return no scope before RPC dispatch."""
+    import backend_app.read_query_helpers as read_query_helpers
+    from fastapi import HTTPException
+
+    backend_main = _non_admin_main(monkeypatch)
+    monkeypatch.setattr(read_query_helpers, "resolve_read_mode", lambda: "supabase_api")
+    remaining_scopes = iter(scopes)
+    monkeypatch.setattr(
+        read_query_helpers,
+        "_validate_read_scope",
+        lambda **_kwargs: next(remaining_scopes),
+    )
+
+    def unexpected_dispatch(**_kwargs):
+        pytest.fail("snapshot RPC received a request without a complete actor scope")
+
+    monkeypatch.setattr(
+        backend_main, "read_query_via_supabase_api", unexpected_dispatch
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        read_query_helpers.read_query_payload(
+            kind="ritual.snapshot",
+            params={
+                "cycle_id": 12,
+                "user_id": 101,
+                "date": "2026-09-26",
+                "window_start": "2026-09-19",
+                "window_end": "2026-09-26",
+            },
+            actor="alice",
+            main=backend_main,
+        )
+
+    assert excinfo.value.status_code == 503
+    assert excinfo.value.detail == "Actor scope is unavailable."
+
+
+def test_team_scope_excludes_rows_with_missing_team_id():
+    """A malformed team ID must not be coerced into an authorized team match."""
+    import backend_app.read_query_helpers as read_query_helpers
+
+    assert (
+        read_query_helpers._team_visible_for_scope(
+            {"id": None}, {"is_admin": False, "team_id": 7}
+        )
+        is False
+    )
 
 
 def test_teams_all_is_scoped_to_the_actors_membership(monkeypatch):

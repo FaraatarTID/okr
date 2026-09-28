@@ -1,4 +1,4 @@
-import { jsonHeaders, responseDetail } from "@/lib/api/http";
+import { backendJsonRequest, jsonHeaders, responseDetail } from "@/lib/api/http";
 
 export interface AuthUser {
   id: number;
@@ -19,6 +19,23 @@ export interface AuthResponse {
 
 export interface SessionMeResponse {
   user: AuthUser;
+}
+
+export async function changeOwnPassword(input: {
+  username: string;
+  current_password: string;
+  new_password: string;
+}): Promise<{ updated: boolean }> {
+  return backendJsonRequest({
+    operation: "api_change_own_password_v1_auth_change_password_post",
+    path: "/v1/auth/change-password",
+    actor: input.username,
+    label: "Password change",
+    body: {
+      current_password: input.current_password,
+      new_password: input.new_password,
+    },
+  });
 }
 
 export async function bffLogin(input: {

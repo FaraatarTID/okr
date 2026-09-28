@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import secrets
 import time
+from datetime import datetime, timezone
 from fastapi import Header, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
@@ -13,6 +14,7 @@ from backend_app.config import get_backend_settings
 from backend_app.rate_limiter import check_rate_limit
 from backend_app.security_state import (
     SecurityStateUnavailableError,
+    check_session,
     register_nonce_once,
     reset_security_state_for_tests,
 )
@@ -27,6 +29,8 @@ def _expected_signature(
     nonce: str,
     body: bytes,
     secret: str,
+    session_id: str | None = None,
+    session_actor: str | None = None,
 ) -> str:
     payload = canonical_signing_payload(
         method=method,
@@ -34,6 +38,8 @@ def _expected_signature(
         timestamp=timestamp,
         nonce=nonce,
         body_digest=body_digest_hex(body),
+        session_id=session_id,
+        session_actor=session_actor,
     )
     return hmac.new(
         str(secret).encode("utf-8"),
@@ -112,6 +118,8 @@ async def _verify_request_signature(
         raise HTTPException(status_code=401, detail="Request signature expired.")
 
     body = await request.body()
+    session_id = request.headers.get("x-okr-session-id")
+    session_actor = request.headers.get("x-okr-session-actor")
 
     def _try_signature(candidate_secret: str) -> bool:
         expected = _expected_signature(
@@ -121,6 +129,8 @@ async def _verify_request_signature(
             nonce=nonce,
             body=body,
             secret=candidate_secret,
+            session_id=session_id,
+            session_actor=session_actor,
         )
         return secrets.compare_digest(signature, expected)
 
@@ -159,6 +169,7 @@ async def require_service_access(
     x_okr_actor: str | None = Header(default=None),
     x_okr_role: str | None = Header(default=None),
     x_okr_roles: str | None = Header(default=None),
+    x_okr_token_version: str | None = Header(default=None, include_in_schema=False),
     x_okr_service_token: str | None = Header(default=None),
     x_okr_signature: str | None = Header(default=None),
     x_okr_timestamp: str | None = Header(default=None),
@@ -250,12 +261,109 @@ async def require_service_access(
     if not rl_ok:
         raise HTTPException(status_code=429, detail="Rate limit exceeded.")
 
+    route = request.scope.get("route")
+    route_path = str(getattr(route, "path", "") or request.url.path or "")
+    is_login = route_path in {"/v1/auth/login", "/api/v1/auth/login"}
+    is_versioned_api = route_path.startswith(("/v1/", "/api/v1/"))
+    actor_header = str(x_okr_actor or "").strip()
+    actor_bound = bool(actor_header) or (
+        is_versioned_api
+        and not is_login
+        and not bool(getattr(request.state, "actorless_service_access", False))
+    )
+    if actor_bound and not actor_header:
+        raise HTTPException(
+            status_code=401, detail="Actor-bound route requires a signed actor."
+        )
+
+    current_scope = None
+    if actor_header:
+        supplied_version = str(x_okr_token_version or "").strip()
+        if (
+            not supplied_version.isascii()
+            or not supplied_version.isdecimal()
+            or supplied_version.startswith("0")
+        ):
+            raise HTTPException(
+                status_code=401, detail="Valid session token version required."
+            )
+        token_version = int(supplied_version)
+        if token_version <= 0:
+            raise HTTPException(
+                status_code=401, detail="Valid session token version required."
+            )
+        try:
+            current_scope = await run_in_threadpool(
+                _resolve_current_actor_scope,
+                actor_header,
+                token_version,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503, detail="Current account state is unavailable."
+            ) from exc
+
+        raw_session_id = str(request.headers.get("x-okr-session-id") or "")
+        session_id = raw_session_id
+        raw_session_actor = str(request.headers.get("x-okr-session-actor") or "")
+        session_actor = raw_session_actor
+        if (
+            len(session_id) < 16
+            or len(session_id) > 512
+            or not session_id.isascii()
+            or any(ord(char) < 0x21 or ord(char) > 0x7E for char in session_id)
+            or raw_session_actor != raw_session_actor.strip()
+            or not session_actor
+        ):
+            raise HTTPException(
+                status_code=401, detail="Valid signed session assertions required."
+            )
+        actor_id = current_scope.get("actor_id") if current_scope else None
+        if actor_id is None:
+            raise HTTPException(
+                status_code=503, detail="Current account state is unavailable."
+            )
+        try:
+            resolved_actor_id = int(actor_id)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=503, detail="Current account state is unavailable."
+            ) from exc
+        if resolved_actor_id <= 0 or session_actor != str(resolved_actor_id):
+            raise HTTPException(status_code=401, detail="Session actor mismatch.")
+        try:
+            session_status = await run_in_threadpool(
+                check_session,
+                session_digest=hashlib.sha256(session_id.encode("utf-8")).hexdigest(),
+                actor_id=str(resolved_actor_id),
+                now=datetime.now(timezone.utc),
+            )
+        except SecurityStateUnavailableError as exc:
+            raise HTTPException(
+                status_code=503, detail="Session verification is unavailable."
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503, detail="Session verification is unavailable."
+            ) from exc
+        if session_status != "active":
+            raise HTTPException(status_code=401, detail="Session is not active.")
+
     await run_in_threadpool(
         validate_forwarded_role_claims,
         actor=x_okr_actor,
         x_okr_role=x_okr_role,
         x_okr_roles=x_okr_roles,
+        scope=current_scope,
     )
+
+
+def _resolve_current_actor_scope(actor: str, token_version: int) -> dict:
+    from backend_app import main as backend_main
+
+    return backend_main._resolve_scope_for_actor(actor, token_version=token_version)
 
 
 def _normalize_forwarded_role_claim(value: str | None) -> set[str]:
@@ -281,6 +389,7 @@ def validate_forwarded_role_claims(
     actor: str | None,
     x_okr_role: str | None,
     x_okr_roles: str | None,
+    scope: dict | None = None,
 ) -> None:
     if not actor:
         return
@@ -290,12 +399,13 @@ def validate_forwarded_role_claims(
     if not x_okr_role and not x_okr_roles:
         return
 
-    try:
-        from backend_app import main as backend_main
+    if scope is None:
+        try:
+            from backend_app import main as backend_main
 
-        scope = backend_main._resolve_scope_for_actor(actor_name)
-    except Exception:
-        return
+            scope = backend_main._resolve_scope_for_actor(actor_name)
+        except Exception:
+            return
 
     expected_role = str(scope.get("role") or "").strip().lower()
     if not expected_role:

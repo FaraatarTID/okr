@@ -117,12 +117,6 @@ export default function useAdminActions({
       ),
     [user],
   );
-  /** Managers may mutate only their own cycles; admins may mutate any. */
-  const canMutateCycle = useCallback(
-    (cycle: CycleSummary): boolean => isAdmin || ownsCycle(cycle),
-    [isAdmin, ownsCycle],
-  );
-
   const handleAdminBackupExport = useCallback(async (): Promise<void> => {
     if (!user || !isAdmin) {
       return;

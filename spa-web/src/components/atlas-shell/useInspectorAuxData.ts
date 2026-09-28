@@ -209,6 +209,7 @@ export default function useInspectorAuxData({
       return;
     }
     const linkedEntityType = objLinkDirection === "parent" ? "goal" : "key_result";
+    setObjLinkPending(true);
     try {
       await createObjectiveAlignmentLinkMutation({
         actor_username: user.username,
@@ -222,6 +223,8 @@ export default function useInspectorAuxData({
       setObjLinkError("");
     } catch (error) {
       setObjLinkError(String(error instanceof Error ? error.message : error));
+    } finally {
+      setObjLinkPending(false);
     }
   }, [objLinkDirection, objLinkTargetId, loadAlignmentContext, selectedMeta, user]);
 

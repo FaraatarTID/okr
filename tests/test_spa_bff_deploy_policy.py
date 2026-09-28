@@ -44,6 +44,27 @@ def test_nginx_templates_do_not_proxy_public_traffic_to_backend_api() -> None:
         assert ":8100" not in payload
 
 
+def test_nginx_proxy_templates_overwrite_private_client_ip_from_peer() -> None:
+    directive = "proxy_set_header X-OKR-Client-IP $remote_addr;"
+    for path in (
+        "deploy/nginx.conf",
+        "deploy/nginx.okr.mycompany.com.conf",
+    ):
+        configuration = _read(path)
+        lines = configuration.splitlines()
+        location_start = next(
+            index for index, line in enumerate(lines) if line.strip() == "location / {"
+        )
+        location_end = next(
+            index
+            for index in range(location_start + 1, len(lines))
+            if lines[index].strip() == "}"
+        )
+        assert any(
+            line.strip() == directive for line in lines[location_start:location_end]
+        )
+
+
 def test_k8s_backend_api_service_remains_internal() -> None:
     service = _read("deploy/k8s/service-backend-api.yaml")
     assert "type: ClusterIP" in service

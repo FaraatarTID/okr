@@ -7,7 +7,10 @@ from threading import Lock
 import time
 from typing import Optional
 
-from src.services.backend_client import _request_json
+from src.services.backend_client import (
+    _request_json,
+    request_internal_cache_invalidation,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _BROADCAST_LOCK = Lock()
@@ -25,6 +28,14 @@ def get_distributed_state(key: str, actor_username: str = "system") -> Optional[
     internal coordination primitives, not user-facing application endpoints.
     """
     try:
+        if key == KEY_CACHE_INVALIDATION_TS:
+            response = request_internal_cache_invalidation(method="GET")
+            if "error" in response:
+                _LOGGER.debug(
+                    "Failed to get distributed state '%s': %s", key, response["error"]
+                )
+                return None
+            return response.get("value")
         response = _request_json(
             method="GET",
             path=f"/v1/state/{key}",
@@ -49,6 +60,16 @@ def set_distributed_state(key: str, value: str, actor_username: str = "system") 
     See `get_distributed_state()` for why this bypasses the BFF proxy.
     """
     try:
+        if key == KEY_CACHE_INVALIDATION_TS:
+            response = request_internal_cache_invalidation(
+                method="POST", timestamp=str(value)
+            )
+            if "error" in response:
+                _LOGGER.warning(
+                    "Failed to set distributed state '%s': %s", key, response["error"]
+                )
+                return False
+            return True
         response = _request_json(
             method="POST",
             path=f"/v1/state/{key}",

@@ -167,6 +167,57 @@ def test_control_plane_service_audit_event_requires_environment() -> None:
         )
 
 
+def test_session_registry_state_namespace_is_reserved_over_admin_state_api(
+    monkeypatch, tmp_path
+):
+    import backend_app.security_state as security_state
+    from backend_app.routers.platform_routes import register_platform_routes
+
+    store = security_state.DatabaseSecurityStateStore(
+        database_url=f"sqlite:///{tmp_path / 'reserved-state-api.db'}"
+    )
+    monkeypatch.setattr(security_state, "_get_store", lambda: store)
+
+    class StateApiMain:
+        @staticmethod
+        async def require_service_access() -> None:
+            return None
+
+        @staticmethod
+        def _require_admin_actor_scope(actor: str) -> None:
+            if actor != "operator":
+                raise HTTPException(403, detail="Admin privileges required.")
+
+        get_app_state = staticmethod(security_state.get_app_state)
+        set_app_state = staticmethod(security_state.set_app_state)
+
+    app = FastAPI()
+    router = APIRouter()
+    register_platform_routes(router, StateApiMain())
+    app.include_router(router)
+    client = TestClient(app)
+    headers = {"X-OKR-Actor": "operator"}
+    registry_key = "session-registry:" + "a" * 64
+
+    read = client.get(f"/v1/state/{registry_key}", headers=headers)
+    write = client.post(
+        f"/v1/state/{registry_key}", headers=headers, content="attacker-value"
+    )
+    ordinary_write = client.post(
+        "/v1/state/ordinary-state", headers=headers, content="ordinary-value"
+    )
+    ordinary_read = client.get("/v1/state/ordinary-state", headers=headers)
+
+    assert read.status_code == 400
+    assert "reserved" in read.json()["detail"].lower()
+    assert write.status_code == 400
+    assert "reserved" in write.json()["detail"].lower()
+    assert ordinary_write.status_code == 200
+    assert ordinary_read.status_code == 200
+    assert ordinary_read.json()["value"] == "ordinary-value"
+    store.dispose()
+
+
 def test_control_plane_persists_and_reloads_audit_events(tmp_path: Path) -> None:
     state_path = tmp_path / "control-plane.json"
     summary = EnvironmentSummary(

@@ -9,6 +9,9 @@ export interface ProxyRequest {
   queryString: string;
   body: unknown;
   actor: string | null;
+  tokenVersion?: number;
+  sessionId?: string;
+  sessionActor?: string;
   incomingHeaders: Record<string, string | string[] | undefined>;
 }
 
@@ -91,9 +94,7 @@ export async function proxyToBackend(
   const idempotencyKey = firstHeaderValue(
     request.incomingHeaders["x-okr-idempotency-key"],
   );
-  const tokenVersion = firstHeaderValue(
-    request.incomingHeaders["x-okr-token-version"],
-  );
+  const tokenVersion = request.tokenVersion;
   const sessionRole = firstHeaderValue(request.incomingHeaders["x-okr-role"]);
   const sessionRoles = firstHeaderValue(request.incomingHeaders["x-okr-roles"]);
   // Content negotiation belongs to the documented backend operation. Preserve
@@ -128,11 +129,17 @@ export async function proxyToBackend(
   if (actor) {
     outboundHeaders["x-okr-actor"] = actor;
   }
+  if (request.sessionId !== undefined) {
+    outboundHeaders["x-okr-session-id"] = request.sessionId;
+  }
+  if (request.sessionActor !== undefined) {
+    outboundHeaders["x-okr-session-actor"] = request.sessionActor;
+  }
   if (idempotencyKey) {
     outboundHeaders["x-okr-idempotency-key"] = idempotencyKey;
   }
-  if (tokenVersion) {
-    outboundHeaders["x-okr-token-version"] = tokenVersion;
+  if (actor && Number.isSafeInteger(tokenVersion) && (tokenVersion ?? 0) > 0) {
+    outboundHeaders["x-okr-token-version"] = String(tokenVersion);
   }
   if (sessionRole) {
     outboundHeaders["x-okr-role"] = sessionRole;
@@ -148,6 +155,8 @@ export async function proxyToBackend(
     serviceToken: config.backendServiceToken,
     signingSecret: config.backendSigningSecret,
     signingKeyId: config.backendSigningKeyId,
+    sessionId: request.sessionId,
+    sessionActor: request.sessionActor,
   });
   Object.assign(outboundHeaders, securityHeaders);
 

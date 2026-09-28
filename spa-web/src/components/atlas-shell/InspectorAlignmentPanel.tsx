@@ -174,6 +174,16 @@ export default function InspectorAlignmentPanel({
         </p>
         <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
           <select
+            aria-label="Objective link direction"
+            className="input"
+            value={alignmentDirection}
+            onChange={(event) => onAlignmentDirectionChange(event.target.value as "parent" | "child")}
+            style={{ maxWidth: 180 }}
+          >
+            <option value="parent">Add parent objective</option>
+            <option value="child">Add child objective</option>
+          </select>
+          <select
             className="input"
             value={alignmentTargetObjectiveId}
             onChange={(event) => onAlignmentTargetObjectiveIdChange(event.target.value)}

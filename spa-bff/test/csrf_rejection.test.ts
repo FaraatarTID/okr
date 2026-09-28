@@ -18,6 +18,7 @@ const baseConfig: BffConfig = {
 };
 
 const DEFAULT_USER: SessionUser = {
+  token_version: 1,
   id: 1,
   username: "member-1",
   display_name: "Member One",

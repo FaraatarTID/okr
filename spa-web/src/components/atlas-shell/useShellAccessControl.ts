@@ -96,7 +96,7 @@ export default function useShellAccessControl({
     // Listed anyway: the sibling effects below include it, and the correctness
     // of the admin gate should not depend on how `isManager` happens to be
     // derived at the call site.
-  }, [adminTab, handleSidebarModeSelect, isAdmin, isManager, mode, setAdminTab, user]);
+  }, [adminTab, canManageCycles, handleSidebarModeSelect, isAdmin, isManager, mode, setAdminTab, user]);
 
   useEffect(() => {
     // Managers also need admin resources (users list feeds the cycle-owner

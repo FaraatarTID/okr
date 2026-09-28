@@ -9,6 +9,8 @@ export interface BackendSecurityHeaderInput {
   signingKeyId?: string;
   nowEpochSeconds?: number;
   nonce?: string;
+  sessionId?: string;
+  sessionActor?: string;
 }
 
 export function bodyDigestHex(bodyBytes: Uint8Array | null): string {
@@ -25,14 +27,26 @@ export function canonicalSigningPayload(input: {
   timestamp: string;
   nonce: string;
   bodyDigest: string;
+  sessionId?: string;
+  sessionActor?: string;
 }): string {
-  return [
+  const parts = [
     String(input.method || "").trim().toUpperCase(),
     String(input.path || "/").trim() || "/",
     String(input.timestamp || "").trim(),
     String(input.nonce || "").trim(),
     String(input.bodyDigest || "").trim(),
-  ].join("\n");
+  ];
+  if (input.sessionId !== undefined || input.sessionActor !== undefined) {
+    const sessionId = input.sessionId === undefined
+      ? "-"
+      : Buffer.from(String(input.sessionId), "utf-8").toString("hex");
+    const sessionActor = input.sessionActor === undefined
+      ? "-"
+      : Buffer.from(String(input.sessionActor), "utf-8").toString("hex");
+    parts.push(`session_id:${sessionId}`, `session_actor:${sessionActor}`);
+  }
+  return parts.join("\n");
 }
 
 export function requestSignatureHex(input: {
@@ -42,6 +56,8 @@ export function requestSignatureHex(input: {
   nonce: string;
   bodyBytes: Uint8Array | null;
   signingSecret: string;
+  sessionId?: string;
+  sessionActor?: string;
 }): string {
   const payload = canonicalSigningPayload({
     method: input.method,
@@ -49,6 +65,8 @@ export function requestSignatureHex(input: {
     timestamp: input.timestamp,
     nonce: input.nonce,
     bodyDigest: bodyDigestHex(input.bodyBytes),
+    sessionId: input.sessionId,
+    sessionActor: input.sessionActor,
   });
 
   return createHmac("sha256", String(input.signingSecret))
@@ -81,6 +99,8 @@ export function buildBackendSecurityHeaders(
     nonce,
     bodyBytes: input.bodyBytes,
     signingSecret,
+    sessionId: input.sessionId,
+    sessionActor: input.sessionActor,
   });
 
   headers["x-okr-timestamp"] = timestamp;

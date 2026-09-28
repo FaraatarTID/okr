@@ -11,15 +11,19 @@ import type { BackendLoginResponse, BackendSessionResponse } from "./backend-sch
 import {
   clearSessionCookie,
   clearCsrfCookie,
+  createSessionCredential,
   generateCsrfToken,
   issueCsrfCookie,
   issueSessionCookie,
-  issueSessionToken,
-  readSessionUserFromCookie,
-  revokeSessionFromCookieHeader,
+  readSessionCredentialFromCookie,
   validateCsrfToken,
+  type SessionCredential,
   type SessionUser,
 } from "./session.js";
+import {
+  registerBackendSession,
+  revokeBackendSession,
+} from "./session-registry.js";
 
 type WildcardParams = { "*": string };
 
@@ -175,15 +179,15 @@ function normalizeSessionUser(value: unknown): SessionUser | null {
     team_id: user.team_id == null ? null : Number(user.team_id),
     manager_id: user.manager_id == null ? null : Number(user.manager_id),
     must_change_password: Boolean(user.must_change_password),
-    token_version: user.token_version == null ? undefined : Number(user.token_version),
+    token_version: typeof user.token_version === "number" ? user.token_version : undefined,
   };
 }
 
-function readSessionUserFromRequest(
+function readSessionCredentialFromRequest(
   config: BffConfig,
   headers: Record<string, string | string[] | undefined>,
-): SessionUser | null {
-  return readSessionUserFromCookie({
+): SessionCredential | null {
+  return readSessionCredentialFromCookie({
     cookieHeader: firstHeaderValue(headers.cookie),
     secret: config.sessionSecret,
   });
@@ -191,14 +195,17 @@ function readSessionUserFromRequest(
 
 async function fetchFreshSessionUser(
   config: BffConfig,
-  sessionUser: SessionUser,
+  credential: SessionCredential,
   fetchFn: typeof fetch = globalThis.fetch,
 ): Promise<SessionUser> {
+  const sessionUser = credential.user;
   const headers: Record<string, string> = {
     "x-okr-actor": sessionUser.username,
+    "x-okr-session-id": credential.sessionId,
+    "x-okr-session-actor": String(sessionUser.id),
     "x-okr-service-token": config.backendServiceToken,
   };
-  if (sessionUser.token_version != null) {
+  if (Number.isSafeInteger(sessionUser.token_version) && (sessionUser.token_version ?? 0) > 0) {
     headers["x-okr-token-version"] = String(sessionUser.token_version);
   }
   // The backend enforces HMAC request signing in production; this direct call
@@ -212,6 +219,8 @@ async function fetchFreshSessionUser(
       signingSecret: config.backendSigningSecret,
       signingKeyId: config.backendSigningKeyId,
       bodyBytes: null,
+      sessionId: credential.sessionId,
+      sessionActor: String(sessionUser.id),
     }),
   );
   const response = await fetchFn(`${config.backendApiUrl}/v1/auth/me`, {
@@ -394,15 +403,40 @@ export function createServer(
         });
       }
 
-      const sessionToken = issueSessionToken({
+      const credential = createSessionCredential({
         user,
         secret: config.sessionSecret,
         ttlSeconds: config.sessionTtlSeconds,
       });
+      try {
+        await registerBackendSession(
+          config,
+          {
+            sessionId: credential.sessionId,
+            actorId: user.id,
+            expiresAtEpochSeconds: credential.expiresAtEpochSeconds,
+          },
+          deps?.fetchFn,
+        );
+      } catch {
+        app.log.warn(
+          buildBffLogPayload("bff_session_registration_failed", request, 503, {
+            request_id: requestId,
+            error_code: "SESSION_REGISTRY_UNAVAILABLE",
+          }),
+        );
+        return reply.code(503).send(
+          buildErrorEnvelope(
+            "SESSION_REGISTRY_UNAVAILABLE",
+            "Cannot establish a session right now. Try again shortly.",
+            requestId,
+          ),
+        );
+      }
       const csrfToken = generateCsrfToken();
       reply.header("set-cookie", [
         issueSessionCookie({
-          token: sessionToken,
+          token: credential.token,
           ttlSeconds: config.sessionTtlSeconds,
           secure: config.cookieSecure,
         }),
@@ -440,9 +474,9 @@ export function createServer(
   });
 
   app.get("/session/me", async (request, reply) => {
-    const sessionUser = readSessionUserFromRequest(config, request.headers);
+    const credential = readSessionCredentialFromRequest(config, request.headers);
     const requestId = readRequestId(request.headers);
-    if (!sessionUser) {
+    if (!credential) {
       return reply.code(401).send({
         ...buildErrorEnvelope("MISSING_SESSION", "Missing or invalid session.", requestId),
       });
@@ -450,7 +484,7 @@ export function createServer(
     try {
       const freshUser = await fetchFreshSessionUser(
         config,
-        sessionUser,
+        credential,
         deps?.fetchFn,
       );
       return reply.send({ user: freshUser });
@@ -496,8 +530,27 @@ export function createServer(
   });
 
   app.post("/session/logout", async (request, reply) => {
-    const cookieHeader = firstHeaderValue(request.headers.cookie);
-    revokeSessionFromCookieHeader(cookieHeader);
+    const credential = readSessionCredentialFromRequest(config, request.headers);
+    if (credential) {
+      try {
+        await revokeBackendSession(config, credential.sessionId, deps?.fetchFn);
+      } catch {
+        const requestId = readRequestId(request.headers);
+        app.log.warn(
+          buildBffLogPayload("bff_session_revocation_failed", request, 503, {
+            request_id: requestId,
+            error_code: "SESSION_REGISTRY_UNAVAILABLE",
+          }),
+        );
+        return reply.code(503).send(
+          buildErrorEnvelope(
+            "SESSION_REGISTRY_UNAVAILABLE",
+            "Cannot confirm logout right now. Retry shortly.",
+            requestId,
+          ),
+        );
+      }
+    }
     reply.header("set-cookie", [
       clearSessionCookie({ secure: config.cookieSecure }),
       clearCsrfCookie({ secure: config.cookieSecure }),
@@ -536,10 +589,11 @@ export function createServer(
       const actorRequired = requiresActorHeader(request.method, backendPath);
       let actor: string | null = null;
       let sessionUser: SessionUser | null = null;
+      let sessionCredential: SessionCredential | null = null;
       const isReadRoute = backendPath.startsWith("/v1/read/");
       if (actorRequired) {
-        sessionUser = readSessionUserFromRequest(config, request.headers);
-        if (!sessionUser) {
+        sessionCredential = readSessionCredentialFromRequest(config, request.headers);
+        if (!sessionCredential) {
           return reply.code(401).send({
             ...buildErrorEnvelope(
               "MISSING_SESSION",
@@ -547,6 +601,14 @@ export function createServer(
               readRequestId(request.headers),
             ),
           });
+        }
+        sessionUser = sessionCredential.user;
+        if (!Number.isSafeInteger(sessionUser.token_version) || (sessionUser.token_version ?? 0) <= 0) {
+          return reply.code(401).send(buildErrorEnvelope(
+            "INVALID_TOKEN_VERSION",
+            "Session must be renewed before accessing this operation.",
+            readRequestId(request.headers),
+          ));
         }
         actor = sessionUser.username;
 
@@ -597,16 +659,12 @@ export function createServer(
       const queryString = queryIndex >= 0 ? request.url.slice(queryIndex) : "";
 
       try {
-        // Forward token_version header for session revocation validation
-        const tokenVersionHeader: Record<string, string> = {};
-        if (sessionUser?.token_version != null) {
-          tokenVersionHeader["x-okr-token-version"] = String(sessionUser.token_version);
-        }
+        const sessionRoleHeaders: Record<string, string> = {};
         if (sessionUser?.role) {
-          tokenVersionHeader["x-okr-role"] = sessionUser.role;
+          sessionRoleHeaders["x-okr-role"] = sessionUser.role;
         }
         if (sessionUser?.roles && sessionUser.roles.length > 0) {
-          tokenVersionHeader["x-okr-roles"] = sessionUser.roles.join(",");
+          sessionRoleHeaders["x-okr-roles"] = sessionUser.roles.join(",");
         }
 
         const result = await proxyToBackend(
@@ -617,7 +675,10 @@ export function createServer(
             queryString,
             body: request.body,
             actor,
-            incomingHeaders: { ...request.headers, ...tokenVersionHeader },
+            tokenVersion: sessionUser?.token_version,
+            sessionId: sessionCredential?.sessionId,
+            sessionActor: sessionCredential ? String(sessionUser?.id) : undefined,
+            incomingHeaders: { ...request.headers, ...sessionRoleHeaders },
           },
           deps,
         );

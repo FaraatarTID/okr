@@ -134,14 +134,16 @@ describe("InspectorAlignmentPanel", () => {
     expect(screen.getByText("Parents: 1 | Children: 2")).toBeInTheDocument();
     const selects = screen.getAllByRole("combobox");
     // selects[0] = cross-hierarchy direction, selects[1] = cross-hierarchy target
-    // selects[2] = objective-to-objective target, selects[3] = alignment type
-    await user.selectOptions(selects[2], "5");
+    // selects[2] = objective link direction, selects[3] = target, selects[4] = alignment type
+    await user.selectOptions(selects[2], "child");
+    await user.selectOptions(selects[3], "5");
     const addButtons = screen.getAllByRole("button", { name: "Add link" });
     await user.click(addButtons[1]);
     const removeButtons = screen.getAllByRole("button", { name: "Remove" });
     await user.click(removeButtons[0]);
 
     expect(onTargetChange).toHaveBeenCalledWith("5");
+    expect(onDirectionChange).toHaveBeenCalledWith("child");
     expect(onCreate).toHaveBeenCalledTimes(1);
     expect(onDelete).toHaveBeenCalledWith(77);
   });

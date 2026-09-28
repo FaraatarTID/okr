@@ -13,6 +13,7 @@ export const OPERATION_ROUTES = {
   "api_ai_team_coach_v1_ai_team_coach_post": { method: "POST", pathTemplate: "/v1/ai/team-coach" },
   "api_auth_login_v1_auth_login_post": { method: "POST", pathTemplate: "/v1/auth/login" },
   "api_cancel_job_v1_jobs__job_id__cancel_post": { method: "POST", pathTemplate: "/v1/jobs/{job_id}/cancel" },
+  "api_change_own_password_v1_auth_change_password_post": { method: "POST", pathTemplate: "/v1/auth/change-password" },
   "api_close_experiment_v1_experiments__experiment_id__close_post": { method: "POST", pathTemplate: "/v1/experiments/{experiment_id}/close" },
   "api_create_alignment_v1_alignments_post": { method: "POST", pathTemplate: "/v1/alignments" },
   "api_create_check_in_v1_check_ins_post": { method: "POST", pathTemplate: "/v1/check-ins" },
@@ -57,6 +58,8 @@ export const OPERATION_ROUTES = {
   "get_fleet_rollout_control_plane_v1_rollouts__rollout_id__get": { method: "GET", pathTemplate: "/control-plane/v1/rollouts/{rollout_id}" },
   "healthz_healthz_get": { method: "GET", pathTemplate: "/healthz" },
   "list_environments_control_plane_environments_get": { method: "GET", pathTemplate: "/control-plane/environments" },
+  "register_internal_session_v1_internal_session_registry_register_post": { method: "POST", pathTemplate: "/v1/internal/session-registry/register" },
+  "revoke_internal_session_v1_internal_session_registry_revoke_post": { method: "POST", pathTemplate: "/v1/internal/session-registry/revoke" },
 } as const;
 
 export const BFF_PUBLIC_OPERATION_IDS = [
@@ -69,6 +72,7 @@ export const BFF_PUBLIC_OPERATION_IDS = [
   "api_ai_team_coach_v1_ai_team_coach_post",
   "api_auth_login_v1_auth_login_post",
   "api_cancel_job_v1_jobs__job_id__cancel_post",
+  "api_change_own_password_v1_auth_change_password_post",
   "api_close_experiment_v1_experiments__experiment_id__close_post",
   "api_create_alignment_v1_alignments_post",
   "api_create_check_in_v1_check_ins_post",
@@ -124,6 +128,7 @@ export interface BackendOperationPaths {
   "api_ai_team_coach_v1_ai_team_coach_post": `/v1/ai/team-coach`;
   "api_auth_login_v1_auth_login_post": `/v1/auth/login`;
   "api_cancel_job_v1_jobs__job_id__cancel_post": `/v1/jobs/${string}/cancel`;
+  "api_change_own_password_v1_auth_change_password_post": `/v1/auth/change-password`;
   "api_close_experiment_v1_experiments__experiment_id__close_post": `/v1/experiments/${number}/close`;
   "api_create_alignment_v1_alignments_post": `/v1/alignments`;
   "api_create_check_in_v1_check_ins_post": `/v1/check-ins`;
@@ -168,6 +173,8 @@ export interface BackendOperationPaths {
   "get_fleet_rollout_control_plane_v1_rollouts__rollout_id__get": `/control-plane/v1/rollouts/${number}`;
   "healthz_healthz_get": `/healthz`;
   "list_environments_control_plane_environments_get": `/control-plane/environments`;
+  "register_internal_session_v1_internal_session_registry_register_post": `/v1/internal/session-registry/register`;
+  "revoke_internal_session_v1_internal_session_registry_revoke_post": `/v1/internal/session-registry/revoke`;
 }
 
 export type BackendOperationRouteId = keyof typeof OPERATION_ROUTES;

@@ -9,6 +9,7 @@ import useInspectorAuxData from "@/components/atlas-shell/useInspectorAuxData";
 vi.mock("@/lib/api", () => ({
   readBackendQuery: vi.fn(),
   createAlignmentMutation: vi.fn(),
+  createObjectiveAlignmentLinkMutation: vi.fn(),
   deleteAlignmentMutation: vi.fn(),
   deleteWorkLogMutation: vi.fn(),
 }));
@@ -217,6 +218,69 @@ describe("useInspectorAuxData", () => {
       edge_id: 123,
     });
     expect(readBackendQueryMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(["success", "failure"])("tracks objective link create pending through %s", async (outcome) => {
+    const readBackendQueryMock = vi.mocked(api.readBackendQuery);
+    const createLinkMock = vi.mocked(api.createObjectiveAlignmentLinkMutation);
+    readBackendQueryMock.mockResolvedValue({
+      parents: [],
+      children: [],
+      all_objectives: [],
+      edges: [],
+    });
+    let resolveCreate!: (value: never) => void;
+    let rejectCreate!: (reason: Error) => void;
+    createLinkMock.mockReturnValue(new Promise<never>((resolve, reject) => {
+      resolveCreate = resolve;
+      rejectCreate = reject;
+    }));
+    const selectedMeta = buildMeta("OBJECTIVE", 77);
+    const { result } = renderHook(() =>
+      useInspectorAuxData({
+        user: baseUser,
+        selectedMeta,
+        parsedCycleId: null,
+        loadSnapshotForUser: vi.fn().mockResolvedValue(undefined),
+      }),
+    );
+    await waitFor(() => expect(result.current.alignmentPending).toBe(false));
+
+    await act(async () => {
+      await result.current.handleObjectiveAlignmentLinkCreate();
+    });
+    expect(result.current.objLinkPending).toBe(false);
+    expect(createLinkMock).not.toHaveBeenCalled();
+
+    act(() => result.current.setObjLinkTargetId("9"));
+    let createAction!: Promise<void>;
+    act(() => {
+      createAction = result.current.handleObjectiveAlignmentLinkCreate();
+    });
+    expect(result.current.objLinkPending).toBe(true);
+    expect(createLinkMock).toHaveBeenCalledWith({
+      actor_username: "alice",
+      objective_id: 77,
+      linked_entity_type: "goal",
+      linked_entity_id: 9,
+      direction: "parent",
+    });
+
+    await act(async () => {
+      if (outcome === "failure") {
+        rejectCreate(new Error("link failed"));
+      } else {
+        resolveCreate(undefined as never);
+      }
+      await createAction;
+    });
+    expect(result.current.objLinkPending).toBe(false);
+    if (outcome === "failure") {
+      expect(result.current.objLinkError).toContain("link failed");
+    } else {
+      expect(result.current.objLinkError).toBe("");
+      expect(result.current.objLinkTargetId).toBe("");
+    }
   });
 
   it("deletes task work log when confirmed and refreshes snapshot", async () => {

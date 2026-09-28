@@ -54,7 +54,6 @@ const baseUser: AuthUser = {
 function createSetters() {
   return {
     setResolvedCycle: vi.fn(),
-    setCycleResolvePending: vi.fn(),
     setCycleResolveError: vi.fn(),
     setSessionCycles: vi.fn(),
     setCycleId: vi.fn(),
@@ -153,8 +152,6 @@ describe("useDeepLinkCycleBootstrap", () => {
       expect(setters.setResolvedCycle).toHaveBeenCalledWith(
         expect.objectContaining({ id: 12, title: "Q2" }),
       );
-      expect(setters.setCycleResolvePending).toHaveBeenCalledWith(true);
-      expect(setters.setCycleResolvePending).toHaveBeenLastCalledWith(false);
     });
   });
 

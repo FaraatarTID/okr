@@ -204,6 +204,11 @@ jobs:
       # Deliberately not OKR_DATABASE_URL: tests/conftest.py:19-20 overwrites that with
       # sqlite:///:memory: at import, so it can never carry a DSN to the tests.
       OKR_TEST_POSTGRES_URL: postgresql+psycopg2://okr:okr@localhost:5432/okr
+      # This job promises real PostgreSQL coverage, so missing service wiring must fail
+      # the budget tests instead of silently turning their measurement into a skip.
+      OKR_REQUIRE_TEST_POSTGRES_URL: "true"
+      OKR_TEST_PGBOUNCER_URL: postgresql+psycopg2://okr:okr@localhost:6543/okr
+      OKR_REQUIRE_TEST_PGBOUNCER_URL: "true"
 
     steps:
       - name: Checkout
@@ -224,6 +229,26 @@ jobs:
         run: |
           uv sync --locked --group dev
           echo "$GITHUB_WORKSPACE/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Start PgBouncer
+        run: |
+          set -euo pipefail
+          docker network create okr-ci-pgbouncer
+          docker network connect --alias postgres okr-ci-pgbouncer "${{ job.services.postgres.id }}"
+          docker run -d --name okr-ci-pgbouncer \
+            --network okr-ci-pgbouncer \
+            -p 127.0.0.1:6543:6432 \
+            -v "$GITHUB_WORKSPACE/tests/support/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro" \
+            --entrypoint /opt/pgbouncer/pgbouncer \
+            pgbouncer/pgbouncer:1.25.2@sha256:c0c55b277858ca308eb5df7baf8b83fbaea60b2c666604f29d8fe25e9decac68 \
+            /etc/pgbouncer/pgbouncer.ini
+          for attempt in {1..30}; do
+            if python -c 'import os, psycopg2; c=psycopg2.connect(os.environ["OKR_TEST_PGBOUNCER_URL"].replace("postgresql+psycopg2://", "postgresql://")); c.cursor().execute("SELECT 1"); c.close()' 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          python -c 'import os, psycopg2; c=psycopg2.connect(os.environ["OKR_TEST_PGBOUNCER_URL"].replace("postgresql+psycopg2://", "postgresql://")); c.cursor().execute("SELECT 1"); c.close()'
 
       - name: Install Python security tooling
         run: uv pip install --python "$GITHUB_WORKSPACE/.venv/bin/python" pip-audit
@@ -330,12 +355,8 @@ jobs:
 
       - name: Type Check (Mypy)
         run: |
-          python -m mypy --ignore-missing-imports --follow-imports=skip \
-            scripts \
-            backend_app/config.py \
-            backend_app/worker.py \
-            backend_app/run_api.py \
-            backend_app/path_setup.py
+          python -m mypy --no-incremental --ignore-missing-imports --follow-imports=skip \
+            backend_app src scripts tests
 
       - name: RBAC Regression Gate
         run: |
@@ -347,7 +368,7 @@ jobs:
       - name: Python Test Suite
         run: |
           set -o pipefail
-          python -m pytest -q --junitxml=pytest-results.xml || {
+          python -m pytest -q -o junit_logging=all --junitxml=pytest-results.xml || {
             echo "Initial pytest run failed. Re-running with verbose diagnostics..."
             python -m pytest -vv -ra --tb=long --full-trace --durations=50 --maxfail=1
             exit 1

@@ -73,6 +73,14 @@
       "pathTemplate": "/v1/alignments/{edge_id}"
     },
     {
+      "actorRequired": true,
+      "methods": [
+        "POST"
+      ],
+      "pathPattern": "^/v1/auth/change-password$",
+      "pathTemplate": "/v1/auth/change-password"
+    },
+    {
       "actorRequired": false,
       "methods": [
         "POST"

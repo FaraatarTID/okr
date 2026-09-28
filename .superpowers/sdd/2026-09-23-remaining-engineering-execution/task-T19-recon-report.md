@@ -20,3 +20,6 @@ No current target account-shape evidence is available locally. The register's on
 ## Disposition
 
 Safe work is limited to an acceptance outline: verified `(iss, sub)` link to exactly one existing provisioned account; unlinked or ambiguous identities reject; no email fallback; no just-in-time users. Keep schema/cardinality/uniqueness decisions open pending target counts and owner authorization. Production migration, backfill, exchange route, and API artifact chain remain blocked.
+## 2026-09-26 status — target evidence gate remains open
+
+The current checkout still contains only the historical 2026-09-20 aggregate count; no current target database was queried. The T19 integration/migration work remains blocked until current non-identifying target aggregates confirm username/email shapes and issuer/subject link uniqueness, and the identity/migration owners provide an approved freeze resolution and bootstrap/backfill path. The coordinating agent requested those aggregate facts and approvals from the user without credentials or raw account rows. Until supplied, do not add schema, migrate/backfill users, or expose exchange integration. The verified issuer/subject link acceptance outline above remains the safe design preparation.

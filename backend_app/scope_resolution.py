@@ -70,7 +70,11 @@ def _resolve_actor_scope(
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
 
     if token_version is not None:
-        current_version = getattr(actor, "token_version", 1)
+        current_version = getattr(actor, "token_version", None)
+        if type(current_version) is not int or current_version <= 0:
+            raise HTTPException(
+                status_code=503, detail="Current account state is unavailable."
+            )
         if token_version != current_version:
             raise HTTPException(
                 status_code=401, detail="Session invalidated. Please log in again."
@@ -175,7 +179,9 @@ def _resolve_actor_scope(
     }
 
 
-def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]:
+def _resolve_actor_scope_via_supabase_api(
+    actor_username: str, token_version: Optional[int] = None
+) -> dict[str, Any]:
     normalized_actor_username = str(actor_username or "").strip()
     all_users_rows = list(
         (
@@ -206,6 +212,17 @@ def _resolve_actor_scope_via_supabase_api(actor_username: str) -> dict[str, Any]
         actor = dict((actor_resp or {}).get("user") or {})
     if not actor or not bool(actor.get("is_active", True)):
         raise HTTPException(status_code=403, detail="Actor is not authorized.")
+
+    if token_version is not None:
+        current_version = actor.get("token_version")
+        if type(current_version) is not int or current_version <= 0:
+            raise HTTPException(
+                status_code=503, detail="Current account state is unavailable."
+            )
+        if token_version != current_version:
+            raise HTTPException(
+                status_code=401, detail="Session invalidated. Please log in again."
+            )
 
     actor_id_int = int(actor.get("id") or 0)
     if actor_id_int <= 0:
@@ -384,6 +401,11 @@ def _resolve_scope_for_actor(
     scope = _resolve_scope_for_actor_uncached(actor, token_version=token_version)
     if cache is not None:
         cache[cache_key] = scope
+        if token_version is not None:
+            # The shared auth dependency already checked this version for this
+            # request. Handler-level scope lookups omit the version, so let them
+            # reuse the verified result without another account read.
+            cache[(str(actor), None)] = scope
     return _copy_scope(scope)
 
 
@@ -391,7 +413,7 @@ def _resolve_scope_for_actor_uncached(
     actor: str, token_version: Optional[int] = None
 ) -> dict[str, Any]:
     if resolve_read_mode() == "supabase_api":
-        return _resolve_actor_scope_via_supabase_api(actor)
+        return _resolve_actor_scope_via_supabase_api(actor, token_version=token_version)
     try:
         with get_session_context() as session:
             return _resolve_actor_scope(session, actor, token_version=token_version)
@@ -401,7 +423,9 @@ def _resolve_scope_for_actor_uncached(
     except Exception:
         notify_tcp_db_failure()
         if resolve_read_mode() == "supabase_api":
-            return _resolve_actor_scope_via_supabase_api(actor)
+            return _resolve_actor_scope_via_supabase_api(
+                actor, token_version=token_version
+            )
         raise
 
 

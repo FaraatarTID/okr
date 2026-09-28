@@ -5,11 +5,14 @@ import time
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from backend_app.security_state import is_session_registry_state_key
 from backend_app.schemas import (
     AdminAiHealthResponse,
     AdminDbRestoreRequest,
     AdminDbRestoreResponse,
     AdminPdfHealthResponse,
+    AuthPasswordChangeRequest,
+    AuthPasswordChangeResponse,
     AtlasSnapshotRequest,
     AtlasSnapshotResponse,
     AuthLoginResponse,
@@ -38,6 +41,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         x_okr_actor: str | None = Header(default=None),
         x_okr_role: str | None = Header(default=None),
         x_okr_roles: str | None = Header(default=None),
+        x_okr_token_version: str | None = Header(default=None, include_in_schema=False),
         x_okr_service_token: str | None = Header(default=None),
         x_okr_signature: str | None = Header(default=None),
         x_okr_timestamp: str | None = Header(default=None),
@@ -51,6 +55,7 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                 x_okr_actor=x_okr_actor,
                 x_okr_role=x_okr_role,
                 x_okr_roles=x_okr_roles,
+                x_okr_token_version=x_okr_token_version,
                 x_okr_service_token=x_okr_service_token,
                 x_okr_signature=x_okr_signature,
                 x_okr_timestamp=x_okr_timestamp,
@@ -174,6 +179,222 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
             "must_change_password": user_data.get("must_change_password", False),
             "token_version": user_data.get("token_version"),
         }
+
+    @router.post(
+        "/v1/auth/change-password",
+        dependencies=[Depends(main.require_service_access)],
+        response_model=AuthPasswordChangeResponse,
+    )
+    def api_change_own_password(
+        request: Request,
+        payload: AuthPasswordChangeRequest,
+        x_okr_actor: Optional[str] = Header(default=None),
+        x_okr_token_version: Optional[str] = Header(default=None),
+    ) -> dict:
+        from backend_app.data_access_mode import (
+            notify_tcp_db_failure,
+            resolve_read_mode,
+        )
+
+        actor = main._resolve_actor(header_actor=x_okr_actor, payload_actor=None)
+        token_version: Optional[int] = None
+        if x_okr_token_version:
+            try:
+                token_version = int(x_okr_token_version)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=401, detail="Session is no longer valid."
+                ) from exc
+
+        use_https = main.is_supabase_api_mode_enabled()
+        try:
+            if use_https:
+                main._resolve_scope_for_actor(actor, token_version=token_version)
+            else:
+                with main.get_session_context() as session:
+                    main._resolve_actor_scope(
+                        session, actor, token_version=token_version
+                    )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            if not use_https:
+                notify_tcp_db_failure()
+            raise HTTPException(
+                status_code=503, detail="Password change is temporarily unavailable."
+            ) from exc
+
+        client_ip = getattr(request.state, "trusted_client_ip", None)
+
+        def enforce_supabase_password_change_limit() -> None:
+            from backend_app.rate_limiter import check_rate_limit
+            from backend_app.security_state import SecurityStateUnavailableError
+            from src.domain.crud_contracts import (
+                AUTH_USER_MAX_ATTEMPTS,
+                AUTH_USER_WINDOW_SECONDS,
+            )
+
+            try:
+                allowed = check_rate_limit(
+                    key=f"password-change:user:{actor.strip().lower()}",
+                    limit=AUTH_USER_MAX_ATTEMPTS,
+                    window_seconds=AUTH_USER_WINDOW_SECONDS,
+                )
+            except SecurityStateUnavailableError as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Password change is temporarily unavailable.",
+                ) from exc
+            if not allowed:
+                main.audit_log(
+                    "change_password",
+                    "user",
+                    actor=actor,
+                    details={
+                        "success": False,
+                        "reason": "rate_limited",
+                        "client_ip": client_ip,
+                    },
+                )
+                raise HTTPException(
+                    status_code=429,
+                    detail="Too many password change attempts. Try again later.",
+                )
+
+        if not use_https and resolve_read_mode() == "supabase_api":
+            use_https = True
+        if use_https:
+            enforce_supabase_password_change_limit()
+
+        try:
+            if not use_https and resolve_read_mode() == "supabase_api":
+                use_https = True
+                enforce_supabase_password_change_limit()
+            if use_https:
+                auth = main.authenticate_user_detailed_via_supabase_api(
+                    username=actor,
+                    password=payload.current_password,
+                    client_ip=client_ip,
+                )
+            else:
+                auth = main.authenticate_user_detailed(
+                    username=actor,
+                    password=payload.current_password,
+                    client_ip=client_ip,
+                )
+        except Exception as exc:
+            if not use_https:
+                notify_tcp_db_failure()
+                if resolve_read_mode() == "supabase_api":
+                    use_https = True
+                    enforce_supabase_password_change_limit()
+                    auth = main.authenticate_user_detailed_via_supabase_api(
+                        username=actor,
+                        password=payload.current_password,
+                        client_ip=client_ip,
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=503,
+                        detail="Password change is temporarily unavailable.",
+                    ) from exc
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Password change is temporarily unavailable.",
+                ) from exc
+
+        auth = dict(auth or {})
+        error_code = str(auth.get("error_code") or "")
+        if not auth.get("success"):
+            if error_code.startswith("AUTH_LOCKED"):
+                retry_after = max(int(auth.get("retry_after_seconds") or 1), 1)
+                raise HTTPException(
+                    status_code=429,
+                    detail="Too many attempts. Try again later.",
+                    headers={"Retry-After": str(retry_after)},
+                )
+            if error_code == "AUTH_BACKEND_UNAVAILABLE":
+                raise HTTPException(
+                    status_code=503,
+                    detail="Password change is temporarily unavailable.",
+                )
+            if use_https:
+                main.audit_log(
+                    "change_password",
+                    "user",
+                    actor=actor,
+                    details={
+                        "success": False,
+                        "reason": "invalid_current_password",
+                        "client_ip": client_ip,
+                    },
+                )
+            raise HTTPException(
+                status_code=401, detail="Current password is incorrect."
+            )
+
+        user = auth.get("user")
+        user_id = getattr(user, "id", None)
+        if user_id is None or str(getattr(user, "username", "")) != actor:
+            raise HTTPException(status_code=401, detail="Session is no longer valid.")
+        if use_https and token_version is not None:
+            try:
+                authenticated_version = int(getattr(user, "token_version"))
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=401, detail="Session is no longer valid."
+                ) from None
+            if authenticated_version != token_version:
+                raise HTTPException(
+                    status_code=401, detail="Session is no longer valid."
+                )
+
+        try:
+            if use_https:
+                from src.services.supabase_api_mode_operations import (
+                    reset_user_password_via_supabase_api,
+                )
+
+                updated = reset_user_password_via_supabase_api(
+                    user_id=int(user_id),
+                    new_password=payload.new_password,
+                    require_change=False,
+                    actor_username=actor,
+                )
+            else:
+                updated = main.reset_user_password(
+                    user_id=int(user_id),
+                    new_password=payload.new_password,
+                    require_change=False,
+                    actor_username=actor,
+                )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=main._status_for_value_error(str(exc)), detail=str(exc)
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503, detail="Password change is temporarily unavailable."
+            ) from exc
+        if not updated:
+            raise HTTPException(status_code=404, detail="User not found.")
+        if use_https:
+            main.audit_log(
+                "change_password",
+                "user",
+                actor=actor,
+                details={
+                    "success": True,
+                    "user_id": int(user_id),
+                    "client_ip": client_ip,
+                },
+                target_type="user",
+                target_id=int(user_id),
+            )
+        return {"updated": True}
 
     @router.post(
         "/v1/read/query",
@@ -379,6 +600,11 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> dict:
         main._require_admin_actor_scope(str(x_okr_actor or ""))
+        if is_session_registry_state_key(key):
+            raise HTTPException(
+                status_code=400,
+                detail="The session-registry state namespace is reserved.",
+            )
         value = main.get_app_state(key)
         return {"key": key, "value": value}
 
@@ -392,6 +618,11 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
         x_okr_actor: Optional[str] = Header(default=None),
     ) -> dict:
         main._require_admin_actor_scope(str(x_okr_actor or ""))
+        if is_session_registry_state_key(key):
+            raise HTTPException(
+                status_code=400,
+                detail="The session-registry state namespace is reserved.",
+            )
         # Accept raw text/plain or json-wrapped value
         try:
             body = await request.body()

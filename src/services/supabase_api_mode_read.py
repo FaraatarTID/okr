@@ -433,7 +433,7 @@ def read_query_via_supabase_api(
             "user",
             query={
                 "username": f"eq.{username}",
-                "select": "id,username,display_name,role,manager_id,team_id,is_active,must_change_password",
+                "select": "id,username,display_name,role,manager_id,team_id,is_active,must_change_password,token_version",
                 "limit": "1",
             },
         )
@@ -459,7 +459,7 @@ def read_query_via_supabase_api(
         status, rows = _rest_select(
             "user",
             query={
-                "select": "id,username,display_name,role,manager_id,team_id,is_active,must_change_password",
+                "select": "id,username,display_name,role,manager_id,team_id,is_active,must_change_password,token_version",
                 "order": "id.asc",
             },
         )

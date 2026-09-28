@@ -8,6 +8,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -21,6 +22,17 @@ pytestmark = [pytest.mark.e2e, pytest.mark.integration]
 
 
 _RUN_E2E_ENV = "OKR_RUN_PLAYWRIGHT_SPA_E2E"
+_AUTHENTICATED_SHELL_ROUTES = {
+    "/",
+    "/dashboard",
+    "/admin",
+    "/check-in",
+    "/daily",
+    "/weekly",
+    "/timeline",
+    "/ritual",
+    "/retrobox",
+}
 
 _TEST_PASSWORD = "E2E-Atlas-Password-123"
 _E2E_ROLES: dict[str, tuple[str, str]] = {
@@ -34,6 +46,183 @@ class _JobResponse(TypedDict):
     status: int
     status_text: str
     url: str
+
+
+_NEXT_TYPEGEN_FILES = ("next-env.d.ts", "tsconfig.json")
+
+
+def _session_read_identity(source_path: str | None, status: int) -> str:
+    if source_path == "/login" and status == 401:
+        return "session.me.login_probe"
+    if source_path in _AUTHENTICATED_SHELL_ROUTES and status == 200:
+        return "session.me"
+    return "session.me.unexpected"
+
+
+def _capture_next_typegen_files(spa_root: Path) -> dict[str, bytes | None]:
+    return {
+        name: (spa_root / name).read_bytes() if (spa_root / name).is_file() else None
+        for name in _NEXT_TYPEGEN_FILES
+    }
+
+
+def _expected_next_env_after_typegen(original: bytes, port: int) -> bytes | None:
+    expected = original
+    for type_file in (b"routes.d.ts", b"root-params.d.ts"):
+        default_ref = b"./.next/dev/types/" + type_file
+        e2e_ref = f"./.next/e2e-{port}/dev/types/".encode() + type_file
+        if expected.count(default_ref) != 1:
+            return None
+        expected = expected.replace(default_ref, e2e_ref, 1)
+    return expected
+
+
+def _expected_tsconfig_after_typegen(original: bytes, port: int) -> bytes | None:
+    pattern = re.compile(rb'(?m)^([\t ]*)"\.next/dev/types/\*\*/\*\.ts"(,?)(\r?\n)')
+    matches = list(pattern.finditer(original))
+    if len(matches) != 1:
+        return None
+
+    match = matches[0]
+    indent, comma, newline = match.groups()
+    separator = comma or b","
+    e2e_root = f".next/e2e-{port}".encode()
+    replacement = b"".join(
+        (
+            indent,
+            b'".next/dev/types/**/*.ts"',
+            separator,
+            newline,
+            indent,
+            b'"',
+            e2e_root,
+            b'/types/**/*.ts",',
+            newline,
+            indent,
+            b'"',
+            e2e_root,
+            b'/dev/types/**/*.ts"',
+            newline,
+        )
+    )
+    return original[: match.start()] + replacement + original[match.end() :]
+
+
+def _normalize_typegen_line_endings(contents: bytes) -> bytes:
+    """Next may rewrite generated type references with CRLF on Windows."""
+    return contents.replace(b"\r\n", b"\n")
+
+
+def _restore_next_typegen_files(
+    spa_root: Path, port: int, snapshot: dict[str, bytes | None]
+) -> set[str]:
+    expected_generations = {
+        "next-env.d.ts": _expected_next_env_after_typegen(
+            snapshot.get("next-env.d.ts") or b"", port
+        ),
+        "tsconfig.json": _expected_tsconfig_after_typegen(
+            snapshot.get("tsconfig.json") or b"", port
+        ),
+    }
+    restored: set[str] = set()
+    for name, original in snapshot.items():
+        if original is None:
+            continue
+        path = spa_root / name
+        if not path.is_file():
+            continue
+        generated = expected_generations.get(name)
+        if generated is None or _normalize_typegen_line_endings(
+            path.read_bytes()
+        ) != _normalize_typegen_line_endings(generated):
+            continue
+        path.write_bytes(original)
+        restored.add(name)
+    return restored
+
+
+def test_session_read_classification_only_exempts_known_login_401() -> None:
+    assert _session_read_identity("/login", 401) == "session.me.login_probe"
+    assert _session_read_identity("/", 200) == "session.me"
+    assert _session_read_identity("/login", 200) == "session.me.unexpected"
+    assert _session_read_identity("/", 401) == "session.me.unexpected"
+    assert _session_read_identity("/admin", 503) == "session.me.unexpected"
+
+
+def test_next_typegen_cleanup_restores_only_exact_run_generated_refs(
+    tmp_path: Path,
+) -> None:
+    spa_root = tmp_path / "spa-web"
+    spa_root.mkdir()
+    next_env = spa_root / "next-env.d.ts"
+    tsconfig = spa_root / "tsconfig.json"
+    original_next_env = (
+        b'/// <reference types="next" />\n'
+        b'import "./.next/dev/types/routes.d.ts";\n'
+        b'import "./.next/dev/types/root-params.d.ts";\n'
+    )
+    original_tsconfig = (
+        b'{\n  "include": [\n'
+        b'    ".next/types/**/*.ts",\n'
+        b'    ".next/dev/types/**/*.ts"\n'
+        b"  ]\n}\n"
+    )
+    next_env.write_bytes(original_next_env)
+    tsconfig.write_bytes(original_tsconfig)
+    snapshot = _capture_next_typegen_files(spa_root)
+
+    next_env.write_bytes(
+        original_next_env.replace(
+            b"./.next/dev/types/", b"./.next/e2e-54321/dev/types/"
+        ).replace(b"\n", b"\r\n")
+    )
+    tsconfig.write_bytes(
+        original_tsconfig.replace(
+            b'    ".next/dev/types/**/*.ts"\n',
+            b'    ".next/dev/types/**/*.ts",\n'
+            b'    ".next/e2e-54321/types/**/*.ts",\n'
+            b'    ".next/e2e-54321/dev/types/**/*.ts"\n',
+        ).replace(b"\n", b"\r\n")
+    )
+
+    restored = _restore_next_typegen_files(spa_root, 54321, snapshot)
+
+    assert restored == {"next-env.d.ts", "tsconfig.json"}
+    assert next_env.read_bytes() == original_next_env
+    assert tsconfig.read_bytes() == original_tsconfig
+
+
+def test_next_typegen_cleanup_preserves_unrelated_changes(tmp_path: Path) -> None:
+    spa_root = tmp_path / "spa-web"
+    spa_root.mkdir()
+    next_env = spa_root / "next-env.d.ts"
+    tsconfig = spa_root / "tsconfig.json"
+    original_next_env = b'import "./.next/dev/types/routes.d.ts";\n'
+    original_tsconfig = b'{\n  "include": [\n    ".next/dev/types/**/*.ts"\n  ]\n}\n'
+    next_env.write_bytes(original_next_env)
+    tsconfig.write_bytes(original_tsconfig)
+    snapshot = _capture_next_typegen_files(spa_root)
+
+    next_env.write_bytes(
+        original_next_env.replace(
+            b"./.next/dev/types/", b"./.next/e2e-54321/dev/types/"
+        )
+        + b"// unrelated edit\n"
+    )
+    tsconfig.write_bytes(
+        original_tsconfig.replace(
+            b'    ".next/dev/types/**/*.ts"\n',
+            b'    ".next/dev/types/**/*.ts",\n'
+            b'    ".next/e2e-54321/types/**/*.ts",\n'
+            b'    ".next/e2e-54321/dev/types/**/*.ts"\n',
+        )
+    )
+
+    restored = _restore_next_typegen_files(spa_root, 54321, snapshot)
+
+    assert restored == {"tsconfig.json"}
+    assert next_env.read_bytes().endswith(b"// unrelated edit\n")
+    assert tsconfig.read_bytes() == original_tsconfig
 
 
 def _truthy(raw: str | None) -> bool:
@@ -155,33 +344,6 @@ def _terminate_process(process: subprocess.Popen[Any] | None) -> None:
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=5)
-
-
-def _terminate_port_listener(port: int) -> None:
-    """Stop a fixture-owned child process left listening on its unique port."""
-    if os.name != "nt":
-        return
-    result = subprocess.run(
-        ["netstat", "-ano", "-p", "tcp"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    for line in result.stdout.splitlines():
-        fields = line.split()
-        if len(fields) < 5 or fields[0].upper() != "TCP":
-            continue
-        local_address, state, raw_pid = fields[1], fields[-2], fields[-1]
-        if not local_address.endswith(f":{port}") or state.upper() != "LISTENING":
-            continue
-        if not raw_pid.isdigit():
-            continue
-        subprocess.run(
-            ["taskkill", "/PID", raw_pid, "/T", "/F"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
 
 
 def _read_log_tail(path: Path, *, max_chars: int = 4000) -> str:
@@ -439,6 +601,8 @@ def e2e_stack(
     bff_port = _free_local_port()
     app_port = _free_local_port()
     service_token = "e2e-service-token"
+    signing_secret = "e2e-only-shared-request-signing-secret-2026"
+    signing_key_id = "e2e-fixture-key"
 
     env = os.environ.copy()
     existing_pythonpath = str(env.get("PYTHONPATH", "")).strip()
@@ -458,7 +622,10 @@ def e2e_stack(
             "OKR_BACKEND_PORT": str(backend_port),
             "OKR_BACKEND_SERVICE_TOKEN": service_token,
             "OKR_BACKEND_ENFORCE_TOKEN": "true",
-            "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "false",
+            "OKR_BACKEND_ENFORCE_REQUEST_SIGNING": "true",
+            "OKR_BACKEND_SIGNING_SECRET": signing_secret,
+            "OKR_BACKEND_SIGNING_KEY_ID": signing_key_id,
+            "OKR_BACKEND_SECURITY_STATE_BACKEND": "database",
             # This packet exercises role-route behavior, not rate limiting. All
             # simulated users share the fixture's trusted loopback client IP.
             "OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS": "10000",
@@ -479,6 +646,7 @@ def e2e_stack(
     bff_process: subprocess.Popen[Any] | None = None
     spa_process: subprocess.Popen[Any] | None = None
     worker_process: subprocess.Popen[Any] | None = None
+    spa_typegen_snapshot: dict[str, bytes | None] | None = None
 
     with (
         backend_log_path.open("w", encoding="utf-8") as backend_log,
@@ -553,7 +721,8 @@ def e2e_stack(
                     "BFF_COOKIE_SECURE": "false",
                     "OKR_BACKEND_API_URL": f"http://127.0.0.1:{backend_port}",
                     "OKR_BACKEND_SERVICE_TOKEN": service_token,
-                    "OKR_BACKEND_SIGNING_SECRET": "",
+                    "OKR_BACKEND_SIGNING_SECRET": signing_secret,
+                    "OKR_BACKEND_SIGNING_KEY_ID": signing_key_id,
                     "BFF_REQUEST_TIMEOUT_MS": "20000",
                 }
             )
@@ -579,8 +748,10 @@ def e2e_stack(
             spa_env.update(
                 {
                     "BFF_PUBLIC_ORIGIN": f"http://127.0.0.1:{bff_port}",
+                    "OKR_E2E_NEXT_DIST_DIR": f".next/e2e-{app_port}",
                 }
             )
+            spa_typegen_snapshot = _capture_next_typegen_files(repo_root / "spa-web")
             spa_process = subprocess.Popen(
                 [
                     *_npm_command(),
@@ -617,9 +788,10 @@ def e2e_stack(
             _terminate_process(bff_process)
             _terminate_process(backend_process)
             _terminate_process(worker_process)
-            _terminate_port_listener(app_port)
-            _terminate_port_listener(bff_port)
-            _terminate_port_listener(backend_port)
+            if spa_typegen_snapshot is not None:
+                _restore_next_typegen_files(
+                    repo_root / "spa-web", app_port, spa_typegen_snapshot
+                )
 
 
 def _login(page, username: str, password: str) -> None:
@@ -1303,6 +1475,9 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
     safe_read_kinds = {"cycles.all", "cycles.active", "users.all", "teams.all"}
     event_rows: list[tuple[int, str, str]] = []
     request_identities: dict[int, str] = {}
+    session_start_rows: dict[int, int] = {}
+    session_source_routes: dict[int, str | None] = {}
+    session_response_identities: dict[int, str] = {}
 
     with sync_playwright() as playwright:
         try:
@@ -1314,6 +1489,30 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
             context = browser.new_context(viewport={"width": 1600, "height": 1000})
             page = context.new_page()
             sequence = 0
+
+            page.add_init_script(
+                """
+                (() => {
+                  const nativeSetInterval = window.setInterval;
+                  const nativeClearInterval = window.clearInterval;
+                  const snapshotPollIntervals = [];
+                  window.__snapshotPollIntervals = snapshotPollIntervals;
+                  window.setInterval = function (callback, delay, ...args) {
+                    const handle = nativeSetInterval.call(this, callback, delay, ...args);
+                    if (delay === 45_000 || delay === 600_000) {
+                      snapshotPollIntervals.push({ handle, delay, cleared: false });
+                    }
+                    return handle;
+                  };
+                  window.clearInterval = function (handle) {
+                    for (const interval of snapshotPollIntervals) {
+                      if (interval.handle === handle) interval.cleared = true;
+                    }
+                    return nativeClearInterval.call(this, handle);
+                  };
+                })();
+                """
+            )
 
             def _safe_identity(request) -> str | None:
                 parsed_url = urlsplit(request.url)
@@ -1336,41 +1535,11 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                         return str(payload["kind"])
                 return None
 
-            def _record(phase: str, identity: str) -> None:
+            def _record(phase: str, identity: str) -> int:
                 nonlocal sequence
                 sequence += 1
                 event_rows.append((sequence, phase, identity))
-
-            def _request_started(request) -> None:
-                identity = _safe_identity(request)
-                if identity is None:
-                    return
-                request_identities[id(request)] = identity
-                _record("start", identity)
-
-            def _request_finished(request) -> None:
-                identity = request_identities.get(id(request))
-                if identity is not None:
-                    _record("finish", identity)
-
-            def _request_failed(request) -> None:
-                identity = request_identities.get(id(request))
-                if identity is not None:
-                    _record("failed", identity)
-
-            page.on("request", _request_started)
-            page.on("requestfinished", _request_finished)
-            page.on("requestfailed", _request_failed)
-
-            page.goto(
-                f"{e2e_stack.app_url}/login",
-                wait_until="domcontentloaded",
-                timeout=90_000,
-            )
-            _login(page, *_E2E_ROLES["admin"])
-            expect(
-                page.get_by_role("button", name="Sign out", exact=True)
-            ).to_be_visible(timeout=90_000)
+                return len(event_rows) - 1
 
             def _count(phase: str, identity: str) -> int:
                 return sum(
@@ -1390,6 +1559,123 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                     "Expected browser requests did not finish: "
                     f"{identities!r}; observed safe events={event_rows!r}"
                 )
+
+            def _request_started(request) -> None:
+                identity = _safe_identity(request)
+                if identity is None:
+                    return
+                request_key = id(request)
+                request_identities[request_key] = identity
+                if identity == "session.me":
+                    try:
+                        source_path = urlsplit(request.frame.url).path
+                    except (Error, AttributeError):
+                        source_path = None
+                    session_source_routes[request_key] = source_path
+                    session_start_rows[request_key] = _record(
+                        "start", "session.me.pending"
+                    )
+                    return
+                _record("start", identity)
+
+            def _response_received(response) -> None:
+                request_key = id(response.request)
+                if request_identities.get(request_key) != "session.me":
+                    return
+                status = int(response.status)
+                identity = _session_read_identity(
+                    session_source_routes.get(request_key), status
+                )
+                session_response_identities[request_key] = identity
+                row_index = session_start_rows.get(request_key)
+                if row_index is not None:
+                    sequence_number, phase, _ = event_rows[row_index]
+                    event_rows[row_index] = (sequence_number, phase, identity)
+
+            def _request_finished(request) -> None:
+                request_key = id(request)
+                identity = request_identities.get(request_key)
+                if identity is not None:
+                    if identity == "session.me":
+                        identity = session_response_identities.get(
+                            request_key, "session.me.unexpected"
+                        )
+                    _record("finish", identity)
+
+            def _request_failed(request) -> None:
+                identity = request_identities.get(id(request))
+                if identity is not None:
+                    if identity == "session.me":
+                        identity = "session.me.unexpected"
+                        row_index = session_start_rows.get(id(request))
+                        if row_index is not None:
+                            sequence_number, phase, _ = event_rows[row_index]
+                            event_rows[row_index] = (
+                                sequence_number,
+                                phase,
+                                identity,
+                            )
+                    _record("failed", identity)
+
+            page.on("request", _request_started)
+            page.on("response", _response_received)
+            page.on("requestfinished", _request_finished)
+            page.on("requestfailed", _request_failed)
+
+            with page.expect_response(
+                lambda response: (
+                    urlsplit(response.url).path == "/api/session/me"
+                    and response.status == 401
+                ),
+                timeout=90_000,
+            ):
+                page.goto(
+                    f"{e2e_stack.app_url}/login",
+                    wait_until="domcontentloaded",
+                    timeout=90_000,
+                )
+            _wait_for_finishes(("session.me.login_probe",))
+            _login(page, *_E2E_ROLES["admin"])
+            expect(
+                page.get_by_role("button", name="Sign out", exact=True)
+            ).to_be_visible(timeout=90_000)
+
+            def _wait_for_shell_render() -> None:
+                # The visible heading above proves route content committed; two
+                # animation frames then let post-commit effects run before the
+                # request ledger is inspected, without a wall-clock quiet period.
+                page.evaluate(
+                    """() => new Promise(resolve => {
+                        requestAnimationFrame(() => requestAnimationFrame(resolve));
+                    })"""
+                )
+
+            def _snapshot_poll_state() -> list[dict[str, object]]:
+                return page.evaluate(
+                    """() => window.__snapshotPollIntervals.map(({handle, delay, cleared}) => ({
+                      handle,
+                      delay,
+                      cleared,
+                    }))"""
+                )
+
+            def _wait_for_snapshot_poll() -> list[dict[str, object]]:
+                page.wait_for_function(
+                    """() => window.__snapshotPollIntervals.filter(
+                      ({cleared}) => !cleared
+                    ).length === 1""",
+                    timeout=90_000,
+                )
+                intervals = _snapshot_poll_state()
+                active_intervals = [
+                    interval for interval in intervals if not interval["cleared"]
+                ]
+                assert len(active_intervals) == 1, (
+                    "expected one active snapshot poll interval before warm "
+                    f"navigation; observed={intervals!r}"
+                )
+                assert active_intervals[0]["delay"] in (45_000, 600_000), intervals
+                return intervals
 
             def _assert_parallel_pair(first: str, second: str) -> None:
                 first_start = [
@@ -1420,14 +1706,28 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                     f"{first} and {second} should both start before either finishes: {event_rows!r}"
                 )
 
-            _wait_for_finishes(("cycles.all", "cycles.active"))
+            _wait_for_finishes(
+                (
+                    "session.me.login_probe",
+                    "session.me",
+                    "cycles.all",
+                    "cycles.active",
+                )
+            )
+            assert _count("start", "session.me.login_probe") == 1, event_rows
+            assert _count("finish", "session.me.login_probe") == 1, event_rows
+            assert _count("start", "session.me") == 1, event_rows
+            assert _count("finish", "session.me") == 1, event_rows
+            assert _count("start", "session.me.unexpected") == 0, event_rows
+            assert _count("finish", "session.me.unexpected") == 0, event_rows
+            assert _count("failed", "session.me.unexpected") == 0, event_rows
             assert _count("start", "cycles.all") == 1, event_rows
             assert _count("finish", "cycles.all") == 1, event_rows
             assert _count("start", "cycles.active") == 1, event_rows
             assert _count("finish", "cycles.active") == 1, event_rows
             _assert_parallel_pair("cycles.all", "cycles.active")
             initial_session_reads = _count("finish", "session.me")
-            assert initial_session_reads >= 1, event_rows
+            assert initial_session_reads == 1, event_rows
 
             # Entering admin asks for the same cycle pair plus users/teams.
             # The cycle pair is already warm and shared with shell bootstrap;
@@ -1436,7 +1736,15 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
             expect(
                 page.get_by_role("heading", name="Platform Controls", exact=True)
             ).to_be_visible(timeout=90_000)
+            _wait_for_shell_render()
             _wait_for_finishes(("users.all", "teams.all"))
+            assert _count("start", "session.me.login_probe") == 1, event_rows
+            assert _count("finish", "session.me.login_probe") == 1, event_rows
+            assert _count("start", "session.me") == 1, event_rows
+            assert _count("finish", "session.me") == 1, event_rows
+            assert _count("start", "session.me.unexpected") == 0, event_rows
+            assert _count("finish", "session.me.unexpected") == 0, event_rows
+            assert _count("failed", "session.me.unexpected") == 0, event_rows
             assert _count("start", "cycles.all") == 1, event_rows
             assert _count("finish", "cycles.all") == 1, event_rows
             assert _count("start", "cycles.active") == 1, event_rows
@@ -1450,6 +1758,7 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
             warm_counts = {
                 identity: _count("start", identity)
                 for identity in (
+                    "session.me.login_probe",
                     "session.me",
                     "cycles.all",
                     "cycles.active",
@@ -1458,6 +1767,7 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                 )
             }
             assert warm_counts["session.me"] == initial_session_reads, event_rows
+            initial_snapshot_poll = _wait_for_snapshot_poll()
 
             # Use the in-shell buttons, not document reloads, to prove that warm
             # navigation does not refetch session or cached shell resources.
@@ -1465,15 +1775,24 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
             expect(
                 page.get_by_role("heading", name="Dashboard Workspace", exact=True)
             ).to_be_visible(timeout=90_000)
+            _wait_for_shell_render()
             page.get_by_role("button", name="Admin", exact=True).click()
             expect(
                 page.get_by_role("heading", name="Platform Controls", exact=True)
             ).to_be_visible(timeout=90_000)
+            _wait_for_shell_render()
             page.get_by_role("button", name="Dashboard", exact=True).click()
             expect(
                 page.get_by_role("heading", name="Dashboard Workspace", exact=True)
             ).to_be_visible(timeout=90_000)
-            page.wait_for_timeout(250)
+            _wait_for_shell_render()
+
+            final_snapshot_poll = _snapshot_poll_state()
+            assert final_snapshot_poll == initial_snapshot_poll, (
+                "warm client-side navigation cleared or replaced the snapshot poll "
+                f"interval: before={initial_snapshot_poll!r}, "
+                f"after={final_snapshot_poll!r}"
+            )
 
             final_counts = {
                 identity: _count("start", identity) for identity in warm_counts
@@ -1482,6 +1801,9 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
                 "warm client-side navigation refetched shared shell resources: "
                 f"before={warm_counts!r}, after={final_counts!r}, events={event_rows!r}"
             )
+            assert _count("start", "session.me.unexpected") == 0, event_rows
+            assert _count("finish", "session.me.unexpected") == 0, event_rows
+            assert _count("failed", "session.me.unexpected") == 0, event_rows
             assert all(_count("failed", identity) == 0 for identity in final_counts), (
                 event_rows
             )

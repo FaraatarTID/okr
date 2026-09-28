@@ -134,6 +134,8 @@ def _build_request_signature(
     nonce: str,
     body_bytes: bytes,
     secret: str,
+    session_id: str | None = None,
+    session_actor: str | None = None,
 ) -> str:
     payload = canonical_signing_payload(
         method=method,
@@ -141,6 +143,8 @@ def _build_request_signature(
         timestamp=timestamp,
         nonce=nonce,
         body_digest=body_digest_hex(body_bytes),
+        session_id=session_id,
+        session_actor=session_actor,
     )
     return hmac.new(
         str(secret).encode("utf-8"),
@@ -150,23 +154,42 @@ def _build_request_signature(
 
 
 def _headers(
-    actor_username: str,
+    actor_username: str | None,
     *,
     method: str,
     url: str,
     body_bytes: bytes,
     extra_headers: Optional[Dict[str, str]] = None,
+    actorless_service: bool = False,
 ) -> Dict[str, str]:
-    headers = {
-        "Content-Type": "application/json",
-        "X-OKR-Actor": str(actor_username).strip(),
-    }
+    headers = {"Content-Type": "application/json"}
+    if actorless_service:
+        if actor_username is not None:
+            raise ValueError("Actorless service calls cannot supply an actor.")
+    else:
+        if actor_username is None:
+            raise ValueError("Actor-bound backend calls require an actor.")
+        headers["X-OKR-Actor"] = str(actor_username).strip()
     token = _service_token()
     if token:
         headers["X-OKR-Service-Token"] = token
 
+    if extra_headers:
+        for key, value in extra_headers.items():
+            if value is None or str(key).lower() == "x-okr-key-id":
+                continue
+            headers[str(key)] = str(value)
+
+    def _header_value(name: str) -> str | None:
+        return next(
+            (value for key, value in headers.items() if key.lower() == name), None
+        )
+
     signing_secret = _signing_secret()
     if signing_secret:
+        signing_key_id = str(get_config_value("OKR_BACKEND_SIGNING_KEY_ID", "")).strip()
+        if signing_key_id:
+            headers["X-OKR-Key-Id"] = signing_key_id
         parsed = urlparse(url)
         path = str(parsed.path or "/")
         timestamp = str(int(time.time()))
@@ -178,16 +201,13 @@ def _headers(
             nonce=nonce,
             body_bytes=body_bytes,
             secret=signing_secret,
+            session_id=_header_value("x-okr-session-id"),
+            session_actor=_header_value("x-okr-session-actor"),
         )
         headers["X-OKR-Timestamp"] = timestamp
         headers["X-OKR-Nonce"] = nonce
         headers["X-OKR-Signature"] = signature
 
-    if extra_headers:
-        for key, value in extra_headers.items():
-            if value is None:
-                continue
-            headers[str(key)] = str(value)
     return headers
 
 
@@ -226,16 +246,26 @@ def _request_json(
     *,
     method: str,
     path: str,
-    actor_username: str,
+    actor_username: str | None,
     payload: Optional[Dict[str, Any]] = None,
     timeout: tuple[float, float] = (3.0, 20.0),
     retries: int = 1,
     extra_headers: Optional[Dict[str, str]] = None,
+    actorless_service: bool = False,
 ) -> Dict[str, Any]:
     # Ensure the embedded backend is accepting connections before the first request.
     # This is a no-op after the first successful check (guarded by module-level flag).
     _wait_for_backend_ready()
     try:
+        normalized_method = str(method).upper()
+        if actorless_service and (
+            normalized_method not in {"GET", "POST"}
+            or path != "/v1/internal/cache-invalidation"
+            or actor_username is not None
+        ):
+            raise ValueError("Actorless service access is limited to cache invalidation.")
+        if not actorless_service and actor_username is None:
+            raise ValueError("Actor-bound backend calls require an actor.")
         base_url = _base_url()
         if not base_url:
             return {
@@ -253,6 +283,7 @@ def _request_json(
                 url=url,
                 body_bytes=body_bytes or b"",
                 extra_headers=extra_headers,
+                actorless_service=actorless_service,
             ),
             body_bytes=body_bytes,
             timeout=timeout,
@@ -261,6 +292,27 @@ def _request_json(
         return _response_json_or_error(response)
     except Exception as exc:
         return _transport_error(exc)
+
+
+def request_internal_cache_invalidation(
+    *, method: str, timestamp: str | None = None
+) -> Dict[str, Any]:
+    """Call the fixed private cache invalidation API with service auth only."""
+    normalized_method = str(method).upper()
+    if normalized_method not in {"GET", "POST"}:
+        raise ValueError("Cache invalidation supports GET or POST.")
+    payload = {"timestamp": str(timestamp)} if normalized_method == "POST" else None
+    if normalized_method == "POST" and (timestamp is None or not str(timestamp)):
+        raise ValueError("Cache invalidation POST requires a timestamp.")
+    return _request_json(
+        method=normalized_method,
+        path="/v1/internal/cache-invalidation",
+        actor_username=None,
+        payload=payload,
+        timeout=(2.0, 5.0),
+        retries=0,
+        actorless_service=True,
+    )
 
 
 def _json_safe(value: Any) -> Any:

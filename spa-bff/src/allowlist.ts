@@ -23,6 +23,7 @@ export const ALLOWLIST_POLICY_ROUTES: readonly AllowlistRule[] = [
   { pathTemplate: "/v1/ai/team-coach", methods: ["POST"], pathRegex: new RegExp("^/v1/ai/team-coach$"), actorRequired: true, operationIds: {"POST": "api_ai_team_coach_v1_ai_team_coach_post"} },
   { pathTemplate: "/v1/alignments", methods: ["POST"], pathRegex: new RegExp("^/v1/alignments$"), actorRequired: true, operationIds: {"POST": "api_create_alignment_v1_alignments_post"} },
   { pathTemplate: "/v1/alignments/{edge_id}", methods: ["DELETE"], pathRegex: new RegExp("^/v1/alignments/\\d+$"), actorRequired: true, operationIds: {"DELETE": "api_delete_alignment_v1_alignments__edge_id__delete"} },
+  { pathTemplate: "/v1/auth/change-password", methods: ["POST"], pathRegex: new RegExp("^/v1/auth/change-password$"), actorRequired: true, operationIds: {"POST": "api_change_own_password_v1_auth_change_password_post"} },
   { pathTemplate: "/v1/auth/login", methods: ["POST"], pathRegex: new RegExp("^/v1/auth/login$"), actorRequired: false, operationIds: {"POST": "api_auth_login_v1_auth_login_post"} },
   { pathTemplate: "/v1/auth/me", methods: ["GET"], pathRegex: new RegExp("^/v1/auth/me$"), actorRequired: true, operationIds: {"GET": "api_get_current_user_v1_auth_me_get"} },
   { pathTemplate: "/v1/check-ins", methods: ["POST"], pathRegex: new RegExp("^/v1/check-ins$"), actorRequired: true, operationIds: {"POST": "api_create_check_in_v1_check_ins_post"} },

@@ -22,6 +22,15 @@ def test_bff_policy_routes_exist_in_openapi_and_preserve_exclusions():
     }
 
     assert ("/v1/auth/login", "POST") in signatures
+    assert ("/v1/auth/change-password", "POST") in signatures
+    assert (
+        next(
+            route
+            for route in policy["routes"]
+            if route["pathTemplate"] == "/v1/auth/change-password"
+        )["actorRequired"]
+        is True
+    )
     assert (
         next(
             route
@@ -31,8 +40,24 @@ def test_bff_policy_routes_exist_in_openapi_and_preserve_exclusions():
         is False
     )
     assert all(
-        path not in {"/healthz", "/v1/admin/observability/metrics"}
+        path
+        not in {
+            "/healthz",
+            "/v1/admin/observability/metrics",
+            "/v1/internal/session-registry/register",
+            "/v1/internal/session-registry/revoke",
+            "/v1/internal/cache-invalidation",
+        }
         for path, _method in signatures
+    )
+
+    assert all(
+        ("/v1/internal/session-registry/" not in route["pathTemplate"])
+        for route in metadata["routes"]
+    )
+    assert all(
+        route["pathTemplate"] != "/v1/internal/cache-invalidation"
+        for route in metadata["routes"]
     )
 
 

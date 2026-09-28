@@ -1,9 +1,13 @@
-"""Tests for the consolidated Check-In snapshot (ritual.snapshot).
+"""Unit tests for the consolidated Check-In snapshot's HTTPS dispatch behavior.
 
 Covers:
 - Authorization gate (_validate_supabase_read_scope) for the snapshot branch.
 - RPC-first dispatch with SQLSTATE 42883-only fallback to concurrent fan-out.
 - Response mapping from the RPC jsonb payload to the legacy top-level keys.
+
+The mocked Supabase transport here isolates fallback semantics. It is not PostgreSQL
+budget acceptance; the real HTTP/TCP/PostgreSQL measurement lives in
+`tests/test_read_path_budget_postgres.py`.
 """
 
 from __future__ import annotations
@@ -191,7 +195,7 @@ def test_snapshot_out_of_scope_user_id_rejected_before_dispatch() -> None:
 def test_snapshot_falls_back_on_missing_function_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only a missing-function failure triggers the concurrent fan-out."""
+    """Mocked HTTPS dispatch falls back only for a missing-RPC SQLSTATE 42883."""
     import backend_app.read_query_helpers as rqh
 
     fanout_calls: list[str] = []

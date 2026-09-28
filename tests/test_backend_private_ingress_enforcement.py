@@ -21,6 +21,15 @@ def _make_client(monkeypatch, *, enforce_signing: bool) -> TestClient:
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "memory")
 
     monkeypatch.setattr(backend_main, "init_database", lambda: None)
+    monkeypatch.setattr(
+        backend_security,
+        "_resolve_current_actor_scope",
+        lambda actor, token_version=None: {
+            "role": "member",
+            "actor_id": 1,
+            "actor_username": actor,
+        },
+    )
     backend_security._reset_security_state_for_tests()
 
     monkeypatch.setattr(
@@ -34,7 +43,12 @@ def _make_client(monkeypatch, *, enforce_signing: bool) -> TestClient:
         ),
     )
 
-    return TestClient(backend_main.app)
+    client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    from tests.session_registry_test_support import attach_registered_test_session
+
+    attach_registered_test_session(client)
+    return client
 
 
 def _timer_start_payload() -> dict[str, object]:

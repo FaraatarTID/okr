@@ -192,6 +192,8 @@ def _team_visible_for_scope(team: Any, scope: dict) -> bool:
     if actor_team_id is None:
         return False
     team_id = team.get("id") if isinstance(team, dict) else getattr(team, "id", None)
+    if team_id is None:
+        return False
     try:
         return int(team_id) == int(actor_team_id)
     except (TypeError, ValueError):
@@ -390,12 +392,22 @@ def read_query_payload(
         user_id = params.get("user_id")
         use_https = resolve_read_mode() == "supabase_api"
         if use_https:
-            _validate_read_scope(
+            if scope_failure is not None:
+                raise scope_failure
+            if scope is None:
+                raise main.HTTPException(
+                    status_code=503, detail="Actor scope is unavailable."
+                )
+            snapshot_user_scope = _validate_read_scope(
                 kind="weekly_plan.active",
                 params={"user_id": user_id},
                 actor=actor,
                 main=main,
             )
+            if snapshot_user_scope is None:
+                raise main.HTTPException(
+                    status_code=503, detail="Actor scope is unavailable."
+                )
         review_params = {
             "cycle_id": cycle_id,
             "window_start": params.get("window_start"),
@@ -542,6 +554,10 @@ def read_query_payload(
     if resolve_read_mode() == "supabase_api":
         if scope_failure is not None:
             raise scope_failure
+        if scope is None:
+            raise main.HTTPException(
+                status_code=503, detail="Actor scope is unavailable."
+            )
         try:
             with _timed_phase("handler"):
                 return _apply_https_cycle_row_scope(

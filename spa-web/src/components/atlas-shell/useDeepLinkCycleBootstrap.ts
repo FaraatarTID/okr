@@ -22,7 +22,6 @@ type UseDeepLinkCycleBootstrapInput = {
   deepLinkReady: boolean;
   deepLinkQuery: string;
   setResolvedCycle: Dispatch<SetStateAction<ResolvedCycleState | null>>;
-  setCycleResolvePending: Dispatch<SetStateAction<boolean>>;
   setCycleResolveError: Dispatch<SetStateAction<string>>;
   setSessionCycles: Dispatch<SetStateAction<CycleSummary[]>>;
   setCycleId: Dispatch<SetStateAction<string>>;
@@ -41,7 +40,6 @@ export default function useDeepLinkCycleBootstrap({
   deepLinkReady,
   deepLinkQuery,
   setResolvedCycle,
-  setCycleResolvePending,
   setCycleResolveError,
   setSessionCycles,
   setCycleId,
@@ -121,7 +119,6 @@ export default function useDeepLinkCycleBootstrap({
       return;
     }
     let active = true;
-    setCycleResolvePending(true);
     setCycleResolveError("");
 
     const pickCycle = (cycles: CycleSummary[]): CycleSummary | null => {
@@ -212,10 +209,6 @@ export default function useDeepLinkCycleBootstrap({
         setCycleResolveError(
           `Could not auto-detect active cycle: ${String(error instanceof Error ? error.message : error)}`,
         );
-      } finally {
-        if (active) {
-          setCycleResolvePending(false);
-        }
       }
     })();
 
@@ -227,7 +220,6 @@ export default function useDeepLinkCycleBootstrap({
     parsedCycleId,
     setCycleId,
     setCycleResolveError,
-    setCycleResolvePending,
     setResolvedCycle,
     setSessionCycles,
     user,

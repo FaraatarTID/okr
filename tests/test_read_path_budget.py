@@ -176,7 +176,12 @@ def read_path(measured_engine):
         end_date=utc_now_naive() + timedelta(days=50),
     )
     _build_tree(user.username, cycle.id)
-    return TestClient(backend_main.app), user, cycle
+    client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    from tests.session_registry_test_support import attach_registered_test_session
+
+    attach_registered_test_session(client, actor_id=user.id)
+    return client, user, cycle
 
 
 def _read_query_call(client, actor: str, role: str | None, kind: str, params: dict):
@@ -317,12 +322,21 @@ def test_a_cached_scope_is_never_handed_to_a_different_actor(
     _build_tree(narrow.username, cycle.id, kr_count=1)
 
     client = TestClient(backend_main.app)
+    client.headers.update({"x-okr-token-version": "1"})
+    from tests.session_registry_test_support import registered_test_session_headers
+
     params = {"cycle_id": cycle.id}
 
     def _as(username: str) -> list:
         response = client.post(
             "/v1/read/query",
-            headers={"X-OKR-Actor": username, "X-OKR-Role": "member"},
+            headers={
+                "X-OKR-Actor": username,
+                "X-OKR-Role": "member",
+                **registered_test_session_headers(
+                    actor_id=wide.id if username == wide.username else narrow.id
+                ),
+            },
             json={"kind": "krs.by_cycle", "params": params},
         )
         assert response.status_code == 200, response.text
@@ -466,6 +480,10 @@ def test_the_database_security_state_backend_is_visible_to_the_harness(
     memory_counters = measure_all_engines(_call)
 
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", "database")
+    monkeypatch.setenv("OKR_DATABASE_URL", str(measured_engine.url))
+    from tests.session_registry_test_support import attach_registered_test_session
+
+    attach_registered_test_session(client, actor_id=user.id)
     database_counters = measure_all_engines(_call)
 
     print(

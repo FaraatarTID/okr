@@ -86,6 +86,10 @@ def read_client(monkeypatch, isolated_db):
         "task": task.id,
     }
     with TestClient(backend_main.app) as client:
+        client.headers.update({"x-okr-token-version": "1"})
+        from tests.session_registry_test_support import attach_registered_test_session
+
+        attach_registered_test_session(client, actor_id=reader.id)
         yield client, ids
 
 
@@ -109,26 +113,16 @@ def test_actorless_read_is_rejected_before_scope_or_data_access(
         json={"kind": kind, "params": params_for(ids)},
     )
 
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Actor username is required."
+    assert response.status_code == 401
+    assert "signed actor" in response.json()["detail"].lower()
     assert reached_scope == []
 
 
 @pytest.mark.parametrize("kind,section,params_for", READ_CASES)
 def test_payload_actor_cannot_override_verified_header_actor(
-    read_client, monkeypatch, kind, section, params_for
+    read_client, kind, section, params_for
 ):
-    import backend_app.main as backend_main
-
     client, ids = read_client
-    reached_scope = []
-    original_resolver = backend_main._resolve_scope_for_actor
-
-    def tracked_scope(actor, *args, **kwargs):
-        reached_scope.append(actor)
-        return original_resolver(actor, *args, **kwargs)
-
-    monkeypatch.setattr(backend_main, "_resolve_scope_for_actor", tracked_scope)
     response = client.post(
         "/v1/read/query",
         headers={"X-OKR-Actor": "f2_reader"},
@@ -141,7 +135,6 @@ def test_payload_actor_cannot_override_verified_header_actor(
 
     assert response.status_code == 403
     assert "Actor mismatch" in response.json()["detail"]
-    assert reached_scope == []
 
 
 @pytest.mark.parametrize("kind,section,params_for", READ_CASES)

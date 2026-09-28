@@ -623,6 +623,7 @@ def reset_user_password_via_supabase_api(
         payload={
             "password_hash": password_hash,
             "must_change_password": bool(require_change),
+            "password_changed_at": None if require_change else _utc_now_iso(),
         },
     )
     if status >= 400:

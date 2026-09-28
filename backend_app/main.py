@@ -416,6 +416,14 @@ def create_app() -> FastAPI:
 
 app = create_app()
 
+from backend_app.routers.session_registry import router as _session_registry_router
+
+app.include_router(_session_registry_router)
+
+from backend_app.routers.cache_invalidation import router as _cache_invalidation_router
+
+app.include_router(_cache_invalidation_router)
+
 from backend_app.routers.control_plane_routes import register_control_plane_routes
 from src.saas.control_plane import ControlPlane
 from src.saas.fleet_control_plane import SqlControlPlane
