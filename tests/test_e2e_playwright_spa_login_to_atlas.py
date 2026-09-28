@@ -1461,6 +1461,95 @@ def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
         browser.close()
 
 
+def test_authenticated_shell_navigation_is_usable_while_atlas_snapshot_is_pending(
+    e2e_stack: E2EStack,
+) -> None:
+    from playwright.sync_api import Error, expect, sync_playwright
+
+    chromium_path = _resolve_chromium_executable()
+    launch_kwargs: dict[str, object] = {"headless": True}
+    if chromium_path:
+        launch_kwargs["executable_path"] = chromium_path
+
+    with sync_playwright() as playwright:
+        try:
+            browser = playwright.chromium.launch(**launch_kwargs)
+        except Error as exc:
+            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+
+        context = browser.new_context(viewport={"width": 1600, "height": 1000})
+        page = context.new_page()
+        page.add_init_script(
+            """
+            (() => {
+              const nativeFetch = window.fetch.bind(window);
+              const gate = { pending: false, release: null, intercepted: 0 };
+              window.__atlasSnapshotFetchGate = gate;
+              window.fetch = (input, init) => {
+                const requestUrl = typeof input === "string" ? input : input.url;
+                const url = new URL(requestUrl, window.location.href);
+                if (
+                  url.pathname === "/api/backend/v1/read/atlas/snapshot" &&
+                  gate.intercepted === 0
+                ) {
+                  gate.intercepted += 1;
+                  gate.pending = true;
+                  return new Promise((resolve, reject) => {
+                    gate.release = () => {
+                      gate.pending = false;
+                      gate.release = null;
+                      nativeFetch(input, init).then(resolve, reject);
+                    };
+                  });
+                }
+                return nativeFetch(input, init);
+              };
+            })();
+            """
+        )
+        try:
+            page.goto(
+                f"{e2e_stack.app_url}/login",
+                wait_until="domcontentloaded",
+                timeout=90_000,
+            )
+            _login(page, *_E2E_ROLES["admin"])
+
+            page.wait_for_function(
+                """() => {
+                  const gate = window.__atlasSnapshotFetchGate;
+                  return gate && gate.pending === true && gate.intercepted === 1;
+                }""",
+                timeout=90_000,
+            )
+            expect(
+                page.get_by_role("button", name="Sign out", exact=True)
+            ).to_be_visible(timeout=90_000)
+            dashboard_button = page.get_by_role("button", name="Dashboard", exact=True)
+            expect(dashboard_button).to_be_visible(timeout=90_000)
+
+            dashboard_button.click()
+            expect(
+                page.get_by_role("heading", name="Dashboard Workspace", exact=True)
+            ).to_be_visible(timeout=90_000)
+            assert page.evaluate("window.__atlasSnapshotFetchGate.pending"), (
+                "the initial Atlas snapshot read should remain pending during navigation"
+            )
+        finally:
+            # Ensure a failed assertion cannot leave the page waiting on the gated fetch.
+            try:
+                page.evaluate(
+                    """() => {
+                      const gate = window.__atlasSnapshotFetchGate;
+                      if (gate && typeof gate.release === "function") gate.release();
+                    }"""
+                )
+            except Error:
+                pass
+            context.close()
+            browser.close()
+
+
 def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
     """Pin deterministic shell request relations without imposing timing budgets."""
     from urllib.parse import urlsplit
