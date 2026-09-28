@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import re
 import shutil
@@ -496,6 +497,7 @@ from src.models import (
     ExperimentDecision,
     Goal,
     KeyResult,
+    LifecycleState,
     Objective,
     Task,
     TaskStatus,
@@ -614,6 +616,7 @@ with Session(engine, expire_on_commit=False) as session:
         progress=10,
         target_value=100.0,
         current_value=10.0,
+        state=LifecycleState.ACTIVE,
         created_by='e2e_admin',
     )
     manager_kr = KeyResult(
@@ -622,6 +625,7 @@ with Session(engine, expire_on_commit=False) as session:
         progress=14,
         target_value=50.0,
         current_value=10.0,
+        state=LifecycleState.ACTIVE,
         created_by='e2e_manager',
     )
     member_kr = KeyResult(
@@ -630,6 +634,7 @@ with Session(engine, expire_on_commit=False) as session:
         progress=16,
         target_value=20.0,
         current_value=5.0,
+        state=LifecycleState.ACTIVE,
         created_by='e2e_member',
     )
     session.add(admin_kr)
@@ -1135,7 +1140,7 @@ def _run_timer_path(page) -> None:
     expect(timer_dialog).not_to_be_visible(timeout=90_000)
 
 
-def _run_check_in_path(page) -> None:
+def _run_check_in_path(page, expected_kr_title: str) -> None:
     from playwright.sync_api import expect
 
     page.get_by_role("button", name="Check-In").click()
@@ -1143,17 +1148,26 @@ def _run_check_in_path(page) -> None:
         timeout=90_000
     )
     page.get_by_role("button", name="2. Check-Ins", exact=True).click()
-    submit_checkins = page.get_by_role("button", name="Submit Check-In")
-    all_clear_message = page.get_by_text("All clear for this cycle.")
-    if submit_checkins.count() > 0:
-        submit_checkins.first.click()
-        metric_inputs = page.locator('input[placeholder^="e.g."]').first
-        if metric_inputs.count() > 0:
-            metric_inputs.fill("10")
-            submit_checkins.first.click()
-        expect(submit_checkins.first).to_have_text("Submit Check-In", timeout=90_000)
-    else:
-        expect(all_clear_message).to_be_visible(timeout=90_000)
+    kr_card = page.locator(".checkin-kr-card").filter(has_text=expected_kr_title)
+    expect(kr_card).to_have_count(1, timeout=90_000)
+    expect(kr_card).to_be_visible(timeout=90_000)
+    metric_input = kr_card.locator('input[placeholder^="e.g."]').first
+    expect(metric_input).to_be_visible(timeout=90_000)
+    metric_input.fill("11")
+    submit_checkin = kr_card.get_by_role("button", name="Submit Check-In", exact=True)
+    with page.expect_response(
+        lambda response: "/api/backend/v1/check-ins" in response.url
+        and response.request.method == "POST"
+    ) as checkin_response:
+        submit_checkin.click()
+    assert checkin_response.value.ok, (
+        "Seeded active key result check-in failed: "
+        f"HTTP {checkin_response.value.status}"
+    )
+    expect(kr_card).to_have_count(0, timeout=90_000)
+    expect(page.get_by_text("All clear for this cycle.", exact=True)).to_be_visible(
+        timeout=90_000
+    )
 
 
 def _run_weekly_job_path(page) -> None:
@@ -1318,12 +1332,43 @@ def _exercise_route_surfaces(page, app_url: str) -> None:
     expect(page.get_by_role("button", name="Restore Backup", exact=True)).to_be_visible(
         timeout=90_000
     )
+    with page.expect_download() as backup_download:
+        page.get_by_role("button", name="Download Backup JSON", exact=True).click()
+    download = backup_download.value
+    assert download.suggested_filename.startswith("okr_backup_")
+    backup_path = download.path()
+    assert backup_path is not None
+    backup = json.loads(Path(backup_path).read_text(encoding="utf-8"))
+    assert backup["format"] == "okr-db-backup/v1"
+    assert "e2e_admin" in {user["username"] for user in backup["tables"]["user"]}
+    assert all(user["password_hash"] == "REDACTED" for user in backup["tables"]["user"])
 
     page.get_by_role("button", name="Audit", exact=True).click()
     expect(page.get_by_text("Audit summary", exact=True)).to_be_visible(timeout=90_000)
-    expect(
-        page.get_by_role("button", name="Refresh Summary", exact=True)
-    ).to_be_visible(timeout=90_000)
+    refresh_summary = page.get_by_role("button", name="Refresh Summary", exact=True)
+    expect(refresh_summary).to_be_visible(timeout=90_000)
+    with page.expect_response(
+        lambda response: "/api/backend/v1/read/query" in response.url
+        and "audit.summary" in (response.request.post_data or "")
+    ) as audit_response:
+        refresh_summary.click()
+    assert audit_response.value.ok, (
+        f"Audit summary refresh failed: HTTP {audit_response.value.status}"
+    )
+    audit_summary = audit_response.value.json()
+    assert isinstance(audit_summary.get("total_events"), int)
+    assert audit_summary["total_events"] > 0
+    recent_events = audit_summary.get("recent_events")
+    assert isinstance(recent_events, list) and recent_events
+    audit_event_count = (
+        page.locator(".report-card").filter(has_text="Events").locator("strong")
+    )
+    expect(audit_event_count).to_have_text(
+        str(audit_summary["total_events"]), timeout=90_000
+    )
+    latest_event = recent_events[0]
+    event_label = f"{latest_event['action']} / {latest_event['entity']}"
+    expect(page.get_by_text(event_label, exact=True)).to_be_visible(timeout=90_000)
 
 
 def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
@@ -1564,7 +1609,7 @@ def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
 
         _login(page, username=username, password=password)
         _run_timer_path(page)
-        _run_check_in_path(page)
+        _run_check_in_path(page, expected_kr_title=f"E2E {role.title()} Key Result")
         _run_weekly_job_path(page)
 
         if role == "admin":
