@@ -1,12 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Any, TypedDict
-from urllib.error import URLError
-from urllib.request import urlopen
-
+import importlib
 import os
 import re
 import shutil
@@ -14,6 +8,13 @@ import socket
 import subprocess
 import sys
 import time
+
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, TypedDict
+from urllib.error import URLError
+from urllib.request import urlopen
 
 import pytest
 
@@ -246,6 +247,95 @@ def _env_float(name: str, default: float) -> float:
     return float(value) if value > 0 else default
 
 
+def test_resolves_playwright_managed_chromium_without_explicit_or_system_browser(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from types import ModuleType, SimpleNamespace
+
+    browser_path = tmp_path / "playwright-chromium"
+    browser_path.write_bytes(b"browser")
+
+    class _PlaywrightManager:
+        def __enter__(self) -> SimpleNamespace:
+            return SimpleNamespace(
+                chromium=SimpleNamespace(executable_path=str(browser_path))
+            )
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    manager = _PlaywrightManager()
+    playwright_package = ModuleType("playwright")
+    playwright_package.__path__ = []  # type: ignore[attr-defined]
+    sync_api = ModuleType("playwright.sync_api")
+    sync_api.sync_playwright = lambda: manager  # type: ignore[attr-defined]
+    sync_api.Error = RuntimeError  # type: ignore[attr-defined]
+
+    monkeypatch.delenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE", raising=False)
+    monkeypatch.setitem(sys.modules, "playwright", playwright_package)
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+    monkeypatch.setattr(Path, "is_file", lambda path: path == browser_path)
+
+    assert _resolve_chromium_executable() == str(browser_path)
+
+
+def test_opted_in_e2e_fails_when_chromium_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_RUN_E2E_ENV, "1")
+    monkeypatch.setattr(
+        sys.modules[__name__], "_resolve_chromium_executable", lambda: None
+    )
+
+    with pytest.raises(pytest.fail.Exception, match="Chromium"):
+        _require_e2e_playwright_prereqs()
+
+
+def test_opted_in_e2e_fails_when_npm_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_RUN_E2E_ENV, "1")
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+
+    with pytest.raises(pytest.fail.Exception, match="npm"):
+        _npm_command()
+
+
+def test_opted_in_e2e_fails_when_playwright_cannot_launch_chromium(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import ModuleType
+
+    class _LaunchError(Exception):
+        pass
+
+    class _Chromium:
+        def launch(self, **_kwargs: object) -> None:
+            raise _LaunchError("launch details must not be logged")
+
+    sync_api = ModuleType("playwright.sync_api")
+    sync_api.Error = _LaunchError  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "playwright.sync_api", sync_api)
+    monkeypatch.setenv(_RUN_E2E_ENV, "1")
+
+    with pytest.raises(pytest.fail.Exception, match="launch Chromium"):
+        _launch_chromium(_Chromium(), {"headless": True})
+
+
+def test_opted_in_e2e_fails_when_playwright_package_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(_RUN_E2E_ENV, "1")
+
+    def _missing_package(_module_name: str) -> object:
+        raise ModuleNotFoundError("playwright package is missing")
+
+    monkeypatch.setattr(importlib, "import_module", _missing_package)
+
+    with pytest.raises(pytest.fail.Exception, match="Playwright is required"):
+        _require_playwright_package()
+
+
 def _resolve_chromium_executable() -> str | None:
     env_path = str(os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE") or "").strip()
     if env_path:
@@ -261,6 +351,18 @@ def _resolve_chromium_executable() -> str | None:
     for candidate in candidates:
         if Path(candidate).is_file():
             return candidate
+
+    try:
+        from playwright.sync_api import Error, sync_playwright
+
+        with sync_playwright() as playwright:
+            managed_path = str(playwright.chromium.executable_path)
+        if Path(managed_path).is_file():
+            return managed_path
+    except ImportError:
+        return None
+    except (Error, OSError, RuntimeError):
+        pass
     return None
 
 
@@ -268,7 +370,10 @@ def _npm_command() -> list[str]:
     npm_name = "npm.cmd" if os.name == "nt" else "npm"
     npm_path = shutil.which(npm_name)
     if not npm_path:
-        pytest.skip(f"{npm_name} is required for SPA e2e but was not found on PATH.")
+        message = f"{npm_name} is required for SPA e2e but was not found on PATH."
+        if _truthy(os.getenv(_RUN_E2E_ENV)):
+            pytest.fail(message, pytrace=False)
+        pytest.skip(message)
     assert npm_path is not None
     return [npm_path]
 
@@ -276,12 +381,36 @@ def _npm_command() -> list[str]:
 def _require_e2e_playwright_prereqs() -> None:
     chromium_path = _resolve_chromium_executable()
     if not chromium_path:
-        pytest.skip(
+        message = (
             "Playwright SPA e2e requires a Chromium-compatible browser. "
-            "Set PLAYWRIGHT_CHROMIUM_EXECUTABLE to a local Chrome/Edge binary "
-            "(for example, C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe), "
-            "or install one via Playwright browsers command (`playwright install chromium`) "
-            "in the active Node environment."
+            "Set PLAYWRIGHT_CHROMIUM_EXECUTABLE to a local Chrome/Edge binary, "
+            "or install one via `python -m playwright install chromium`."
+        )
+        if _truthy(os.getenv(_RUN_E2E_ENV)):
+            pytest.fail(message, pytrace=False)
+        pytest.skip(message)
+
+
+def _require_playwright_package() -> None:
+    try:
+        importlib.import_module("playwright.sync_api")
+    except ModuleNotFoundError:
+        pytest.fail(
+            "Playwright is required for the opted-in SPA e2e run. "
+            "Install dependencies and run `python -m playwright install chromium`.",
+            pytrace=False,
+        )
+
+
+def _launch_chromium(chromium: Any, launch_kwargs: dict[str, object]) -> Any:
+    from playwright.sync_api import Error
+
+    try:
+        return chromium.launch(**launch_kwargs)
+    except Error:
+        pytest.fail(
+            "Playwright could not launch Chromium for the opted-in E2E run.",
+            pytrace=False,
         )
 
 
@@ -584,13 +713,7 @@ def e2e_stack(
             f"Playwright SPA e2e is disabled. Set {_RUN_E2E_ENV}=1 to run this test."
         )
 
-    pytest.importorskip(
-        "playwright.sync_api",
-        reason=(
-            "Playwright is not installed in this environment. "
-            "Install dependencies and run `playwright install chromium`."
-        ),
-    )
+    _require_playwright_package()
     _require_e2e_playwright_prereqs()
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -1194,17 +1317,14 @@ def _exercise_route_surfaces(page, app_url: str) -> None:
 
 
 def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
-    from playwright.sync_api import Error, expect, sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     chromium_path = _resolve_chromium_executable()
     launch_kwargs: dict[str, object] = {"headless": True}
     if chromium_path:
         launch_kwargs["executable_path"] = chromium_path
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         try:
             for role in ("admin", "manager", "member"):
@@ -1274,17 +1394,14 @@ def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
 
 
 def test_atlas_deep_link_and_rendered_alignment(e2e_stack: E2EStack) -> None:
-    from playwright.sync_api import Error, expect, sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     chromium_path = _resolve_chromium_executable()
     launch_kwargs: dict[str, object] = {"headless": True}
     if chromium_path:
         launch_kwargs["executable_path"] = chromium_path
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         try:
             page = browser.new_page(viewport={"width": 1600, "height": 1000})
@@ -1353,17 +1470,14 @@ def test_atlas_deep_link_and_rendered_alignment(e2e_stack: E2EStack) -> None:
 
 
 def test_inspector_work_history_rtl(e2e_stack: E2EStack) -> None:
-    from playwright.sync_api import Error, expect, sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     chromium_path = _resolve_chromium_executable()
     launch_kwargs: dict[str, object] = {"headless": True}
     if chromium_path:
         launch_kwargs["executable_path"] = chromium_path
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         try:
             page = browser.new_page(viewport={"width": 1600, "height": 1000})
@@ -1408,27 +1522,14 @@ def test_inspector_work_history_rtl(e2e_stack: E2EStack) -> None:
     ids=["admin", "manager", "member"],
 )
 def test_role_based_spa_critical_paths(e2e_stack: E2EStack, role: str) -> None:
-    from playwright.sync_api import Error, expect, sync_playwright
+    from playwright.sync_api import expect, sync_playwright
 
     chromium_path = _resolve_chromium_executable()
     launch_kwargs: dict[str, object] = {"headless": True}
     if chromium_path:
         launch_kwargs["executable_path"] = chromium_path
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            if chromium_path:
-                pytest.skip(
-                    "Playwright could not launch Chromium using local executable. "
-                    f"Details: {exc}. Path: {chromium_path}"
-                )
-            pytest.skip(
-                "Chromium runtime is unavailable for Playwright. "
-                "Install browsers via `playwright install chromium` or set "
-                "PLAYWRIGHT_CHROMIUM_EXECUTABLE to a local Chrome path. "
-                f"Details: {exc}"
-            )
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         context = browser.new_context(viewport={"width": 1600, "height": 1000})
         page = context.new_page()
@@ -1472,10 +1573,7 @@ def test_authenticated_shell_navigation_is_usable_while_atlas_snapshot_is_pendin
         launch_kwargs["executable_path"] = chromium_path
 
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         context = browser.new_context(viewport={"width": 1600, "height": 1000})
         page = context.new_page()
@@ -1569,10 +1667,7 @@ def test_authenticated_shell_request_waterfall(e2e_stack: E2EStack) -> None:
     session_response_identities: dict[int, str] = {}
 
     with sync_playwright() as playwright:
-        try:
-            browser = playwright.chromium.launch(**launch_kwargs)
-        except Error as exc:
-            pytest.skip(f"Chromium runtime unavailable for Playwright: {exc}")
+        browser = _launch_chromium(playwright.chromium, launch_kwargs)
 
         try:
             context = browser.new_context(viewport={"width": 1600, "height": 1000})
