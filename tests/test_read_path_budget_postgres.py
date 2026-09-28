@@ -78,9 +78,13 @@ def test_required_pgbouncer_dsn_fails_closed(monkeypatch, dsn):
         _pgbouncer_url()
 
 
-def _build_postgres_budget_client(client):
+def _build_postgres_budget_client(client, *, actor_id: int | None = None):
     """Match the positive session-version header required on actor-bound reads."""
     client.headers.update({"x-okr-token-version": "1"})
+    if actor_id is not None:
+        from tests.session_registry_test_support import attach_registered_test_session
+
+        attach_registered_test_session(client, actor_id=actor_id)
     return client
 
 
@@ -145,6 +149,33 @@ def test_postgres_budget_client_supplies_token_version_with_request_headers():
 
     assert response.status_code == 200
     assert response.json() == {"actor": "member", "token_version": "1"}
+
+
+def test_postgres_budget_client_registers_the_actor_session(monkeypatch):
+    from tests import session_registry_test_support
+
+    attached = {}
+
+    def attach(client, *, actor_id):
+        attached["actor_id"] = actor_id
+        client.headers.update(
+            {
+                "X-OKR-Session-Id": "registered-test-session-123456",
+                "X-OKR-Session-Actor": str(actor_id),
+            }
+        )
+
+    monkeypatch.setattr(
+        session_registry_test_support, "attach_registered_test_session", attach
+    )
+    client = type("Client", (), {"headers": {}})()
+
+    _build_postgres_budget_client(client, actor_id=42)
+
+    assert attached == {"actor_id": 42}
+    assert client.headers["x-okr-token-version"] == "1"
+    assert client.headers["X-OKR-Session-Actor"] == "42"
+    assert client.headers["X-OKR-Session-Id"] == "registered-test-session-123456"
 
 
 class Counters:
@@ -273,7 +304,9 @@ def _seed_pg_read_path():
         objective.id, state=LifecycleState.ACTIVE, actor_username=user.username
     )
 
-    client = _build_postgres_budget_client(TestClient(backend_main.app))
+    client = _build_postgres_budget_client(
+        TestClient(backend_main.app), actor_id=user.id
+    )
     return client, user, cycle, key_results
 
 
