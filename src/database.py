@@ -168,11 +168,10 @@ def _create_engine(url: str):
         #     QueuePool with size=5 turning 6 checkouts into 1 physical connection
         #     (vs 6 under NullPool).
         #
-        # NOT VERIFIED against PgBouncer in transaction-pooling mode. CI runs direct
-        # PostgreSQL, so a green CI says nothing about the production topology. The
-        # default stays True until that verification exists; do not flip it on the
-        # strength of CI numbers alone. Tracked as P0-8 in
-        # docs/REMAINING_ENGINEERING_PLAN.md.
+        # Hosted CI verifies both engine branches against the checked-in PgBouncer
+        # transaction-pooler test topology (P0-8). The deployed production topology
+        # remains unverified. Keep NullPool enabled by default; do not flip it based
+        # only on CI measurements. See docs/REMAINING_ENGINEERING_PLAN.md.
         use_null_pool = get_bool_config("OKR_DB_USE_NULL_POOL", True)
         if use_null_pool:
             kwargs["poolclass"] = NullPool
