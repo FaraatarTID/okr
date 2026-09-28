@@ -344,6 +344,10 @@ describe("useDeepLinkCycleBootstrap", () => {
     mockCyclePair([{ id: 1, title: "Q1" }] as CycleSummary[], []);
     const replaceState = vi.spyOn(window.history, "replaceState");
     const setters = createSetters();
+    const initialProps: { user: AuthUser | null; deepLinkQuery: string } = {
+      user: baseUser,
+      deepLinkQuery: authenticatedQuery,
+    };
 
     const { rerender } = renderHook(
       ({ user, deepLinkQuery }: { user: AuthUser | null; deepLinkQuery: string }) =>
@@ -358,7 +362,7 @@ describe("useDeepLinkCycleBootstrap", () => {
           ...setters,
         }),
       {
-        initialProps: { user: baseUser, deepLinkQuery: authenticatedQuery },
+        initialProps,
       },
     );
 
