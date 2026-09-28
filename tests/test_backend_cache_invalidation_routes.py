@@ -21,7 +21,13 @@ def _request(client, method, path, *, body=b"", nonce=None, headers=None):
     signature = hmac.new(
         SECRET.encode(),
         "\n".join(
-            [method.upper(), path, timestamp, request_nonce, hashlib.sha256(body).hexdigest()]
+            [
+                method.upper(),
+                path,
+                timestamp,
+                request_nonce,
+                hashlib.sha256(body).hexdigest(),
+            ]
         ).encode(),
         hashlib.sha256,
     ).hexdigest()
@@ -71,9 +77,7 @@ def test_internal_cache_invalidation_is_actorless_and_fixed_purpose(client):
 def test_internal_cache_invalidation_requires_both_controls_and_advertised_key_id(
     client,
 ):
-    missing_token = _request(
-        client, "GET", PATH, headers={"X-OKR-Service-Token": ""}
-    )
+    missing_token = _request(client, "GET", PATH, headers={"X-OKR-Service-Token": ""})
     assert missing_token.status_code == 401
 
     invalid_token = _request(
@@ -147,6 +151,7 @@ def test_cache_invalidation_reports_configured_shared_state_failure(
         monkeypatch.setattr(store, "get_app_state_strict", unavailable, raising=False)
         monkeypatch.setattr(store, "set_app_state", unavailable)
     else:
+
         class UnavailableRedis:
             def get(self, _key):
                 raise OSError("redis unavailable")
@@ -163,9 +168,7 @@ def test_cache_invalidation_reports_configured_shared_state_failure(
     memory_fallbacks = []
 
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_BACKEND", backend)
-    monkeypatch.setenv(
-        "OKR_DATABASE_URL", f"sqlite:///{tmp_path / 'shared-state.db'}"
-    )
+    monkeypatch.setenv("OKR_DATABASE_URL", f"sqlite:///{tmp_path / 'shared-state.db'}")
     monkeypatch.setenv("OKR_BACKEND_SECURITY_STATE_REDIS_URL", "redis://unused")
     monkeypatch.setattr(security_state, "_get_store", lambda: store)
     monkeypatch.setattr(
@@ -281,6 +284,7 @@ def test_generic_production_read_outage_does_not_fallback_to_memory(
 
         monkeypatch.setattr(store._engine, "connect", unavailable_read)
     else:
+
         class UnavailableRedis:
             def get(self, _key):
                 raise OSError("redis unavailable")

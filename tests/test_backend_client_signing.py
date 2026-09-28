@@ -158,9 +158,7 @@ def test_internal_cache_client_call_is_explicitly_actorless_and_signed(monkeypat
     )
 
     assert result == {"status": "updated"}
-    assert captured["url"] == (
-        "http://backend.local/v1/internal/cache-invalidation"
-    )
+    assert captured["url"] == ("http://backend.local/v1/internal/cache-invalidation")
     headers = captured["headers"]
     assert headers["X-OKR-Service-Token"] == "cache-service-token"
     assert headers["X-OKR-Key-Id"] == "cache-key"

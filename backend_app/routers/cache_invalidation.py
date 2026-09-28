@@ -34,11 +34,7 @@ def get_cache_invalidation_timestamp() -> dict:
 @router.post("", dependencies=[Depends(require_internal_service_access)])
 def set_cache_invalidation_timestamp(payload: CacheInvalidationRequest) -> dict:
     timestamp = payload.timestamp
-    if (
-        not timestamp.isascii()
-        or not timestamp.isdecimal()
-        or int(timestamp) <= 0
-    ):
+    if not timestamp.isascii() or not timestamp.isdecimal() or int(timestamp) <= 0:
         raise HTTPException(status_code=422, detail="Timestamp is invalid.")
     try:
         set_shared_app_state(_CACHE_INVALIDATION_KEY, timestamp)

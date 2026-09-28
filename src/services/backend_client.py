@@ -263,7 +263,9 @@ def _request_json(
             or path != "/v1/internal/cache-invalidation"
             or actor_username is not None
         ):
-            raise ValueError("Actorless service access is limited to cache invalidation.")
+            raise ValueError(
+                "Actorless service access is limited to cache invalidation."
+            )
         if not actorless_service and actor_username is None:
             raise ValueError("Actor-bound backend calls require an actor.")
         base_url = _base_url()

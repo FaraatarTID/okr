@@ -338,7 +338,7 @@ def test_cli_writes_a_validated_unscored_report_without_serializing_credentials(
     probe = _probe_module()
     output = tmp_path / "frontend-performance.json"
     username = "synthetic-user"
-    password = "synthetic-secret"
+    password = secrets.token_urlsafe(24)
     monkeypatch.setenv("PROBE_USER", username)
     monkeypatch.setenv("PROBE_PASSWORD", password)
     captured: dict[str, object] = {}
@@ -422,7 +422,7 @@ def test_cli_rejects_missing_environment_credentials_without_echoing_values(
 def test_cli_rejects_non_origin_base_urls(base_url: str, tmp_path, monkeypatch) -> None:
     probe = _probe_module()
     monkeypatch.setenv("PROBE_USER", "synthetic-user")
-    monkeypatch.setenv("PROBE_PASSWORD", "synthetic-password")
+    monkeypatch.setenv("PROBE_PASSWORD", secrets.token_urlsafe(24))
     monkeypatch.setattr(
         probe,
         "capture_measurement_report",
