@@ -38,7 +38,6 @@ const ACTIVE_USER: AuthUser = {
 
 function renderAccessHook(initialProps: HarnessProps) {
   const routerReplace = vi.fn();
-  const handleSidebarModeSelect = vi.fn();
   const loadAdminResources = vi.fn(async () => undefined);
   const loadAdminHealth = vi.fn(async () => undefined);
   const loadAdminAuditSummary = vi.fn(async () => undefined);
@@ -59,7 +58,6 @@ function renderAccessHook(initialProps: HarnessProps) {
         adminPdfHealth: props.adminPdfHealth,
         adminAuditSummary: props.adminAuditSummary,
         routerReplace,
-        handleSidebarModeSelect,
         loadAdminResources,
         loadAdminHealth,
         loadAdminAuditSummary,
@@ -72,7 +70,6 @@ function renderAccessHook(initialProps: HarnessProps) {
   return {
     ...hook,
     routerReplace,
-    handleSidebarModeSelect,
     loadAdminResources,
     loadAdminHealth,
     loadAdminAuditSummary,
@@ -280,7 +277,8 @@ describe("useShellAccessControl", () => {
     expect(routerReplace.mock.calls.at(-1)?.[0]).not.toContain("change_password=1");
   });
 
-  it("navigates non-admin users away from admin mode", async () => {    const { handleSidebarModeSelect } = renderAccessHook({
+  it("redirects members from admin mode to the Atlas route", async () => {
+    const { routerReplace } = renderAccessHook({
       authHydrated: true,
       user: { ...ACTIVE_USER, role: "member" },
       isAdmin: false,
@@ -294,7 +292,7 @@ describe("useShellAccessControl", () => {
     });
 
     await waitFor(() => {
-      expect(handleSidebarModeSelect).toHaveBeenCalledWith("atlas");
+      expect(routerReplace).toHaveBeenCalledWith("/");
     });
   });
 

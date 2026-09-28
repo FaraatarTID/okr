@@ -1242,14 +1242,20 @@ def _assert_mode_content(page, mode: str) -> None:
     from playwright.sync_api import expect
 
     expected = {
+        "atlas": ("text", "Atlas Workspace"),
         "dashboard": ("heading", "Dashboard Workspace"),
+        "check_in": ("button", "1. Review"),
         "daily": ("paragraph", "Daily Report"),
+        "ritual": ("button", "1. Review"),
         "timeline": ("heading", "Recent work logs"),
+        "weekly": ("paragraph", "Weekly Report"),
         "retrobox": ("label", "Retro content"),
     }
     locator_kind, label = expected[mode]
     if locator_kind == "heading":
         locator = page.get_by_role("heading", name=label, exact=True)
+    elif locator_kind == "button":
+        locator = page.get_by_role("button", name=label, exact=True)
     elif locator_kind == "paragraph":
         locator = page.locator("p.kicker").filter(has_text=label).first
     elif locator_kind == "label":
@@ -1261,11 +1267,15 @@ def _assert_mode_content(page, mode: str) -> None:
     # Assert each route's own substantive panel too; URL alone is not evidence
     # that the intended route UI mounted.
     detail = {
+        "atlas": page.get_by_text("Focus Map", exact=True),
         "dashboard": page.get_by_text("Execution Completion", exact=True),
+        "check_in": page.get_by_role("button", name="2. Check-Ins", exact=True),
         "daily": page.get_by_role("heading", name="Time Distribution", exact=True),
+        "ritual": page.get_by_role("button", name="2. Check-Ins", exact=True),
         "timeline": page.get_by_placeholder(
             "Filter timeline by task, owner, objective, goal, or status"
         ),
+        "weekly": page.get_by_role("button", name="Export Weekly PDF", exact=True),
         "retrobox": page.get_by_role("button", name="Add retrospective", exact=True),
     }[mode]
     expect(detail).to_be_visible(timeout=90_000)
@@ -1339,9 +1349,13 @@ def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
                 _login(page, username=username, password=password)
 
                 for mode, route_path in {
+                    "atlas": "/",
                     "dashboard": "/dashboard",
+                    "check_in": "/check-in",
                     "daily": "/daily",
+                    "ritual": "/ritual",
                     "timeline": "/timeline",
+                    "weekly": "/weekly",
                     "retrobox": "/retrobox",
                 }.items():
                     page.goto(
@@ -1384,6 +1398,16 @@ def test_role_route_surfaces_and_admin_access(e2e_stack: E2EStack) -> None:
                     ).to_have_count(0, timeout=15_000)
                     expect(
                         page.get_by_role("heading", name="Cycles", exact=True)
+                    ).to_have_count(0, timeout=15_000)
+                    expect(page).to_have_url(
+                        re.compile(rf"^{re.escape(e2e_stack.app_url)}/(?:\?.*)?$"),
+                        timeout=90_000,
+                    )
+                    _assert_mode_content(page, "atlas")
+                    expect(
+                        page.get_by_role(
+                            "heading", name="Platform Controls", exact=True
+                        )
                     ).to_have_count(0, timeout=15_000)
                     expect(
                         page.get_by_role("button", name="Sign out", exact=True)

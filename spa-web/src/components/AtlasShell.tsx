@@ -1,7 +1,13 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { type ComponentProps, type ReactNode, useMemo, useState } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -203,6 +209,7 @@ export function ShellAccessGate({
 
 export default function AtlasShell() {
   const router = useRouter();
+  const routerReplace = useCallback((href: string) => router.replace(href), [router]);
   const [cycleId, setCycleId] = useState("");
   const [resolvedCycle, setResolvedCycle] = useState<ResolvedCycle | null>(null);
   const [cycleResolveError, setCycleResolveError] = useState("");
@@ -940,7 +947,7 @@ export default function AtlasShell() {
     setDeepLinkReady,
   });
   const { handleSidebarModeSelect, handleOpenTaskInAtlas } = useAtlasNavigation({
-    routerReplace: (href) => router.replace(href),
+    routerReplace,
     cycleId: effectiveCycleId,
     selectedRef,
     focusTaskRef,
@@ -1278,6 +1285,7 @@ export default function AtlasShell() {
 
   const { accessReady, handleSignOut } = useShellAccessControl({
     authHydrated,
+    deepLinkReady,
     user,
     isAdmin,
     isManager,
@@ -1287,8 +1295,7 @@ export default function AtlasShell() {
     adminAiHealth,
     adminPdfHealth,
     adminAuditSummary,
-    routerReplace: (href) => router.replace(href),
-    handleSidebarModeSelect,
+    routerReplace,
     loadAdminResources,
     loadAdminHealth,
     loadAdminAuditSummary,
