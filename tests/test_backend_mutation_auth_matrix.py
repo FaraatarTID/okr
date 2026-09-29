@@ -385,6 +385,10 @@ _INTERNAL_SERVICE_MUTATION_ROUTES = {
     "/v1/internal/session-registry/register",
     "/v1/internal/session-registry/revoke",
     "/v1/internal/cache-invalidation",
+    # Not under /v1/internal, but internal in purpose: see EXCLUDED_PATHS in
+    # scripts/generate_bff_allowlist.py. Its backend auth is still covered by the matrix
+    # entry for ("POST", "/v1/state/{key}") and by the two state tests below.
+    "/v1/state/{key}",
 }
 
 

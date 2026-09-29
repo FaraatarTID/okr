@@ -4,16 +4,6 @@ const SESSION_COOKIE_NAME = "okr_spa_session";
 const CSRF_COOKIE_NAME = "okr_csrf_token";
 const SESSION_VERSION = "v1";
 
-/**
- * Deferred T19/T34 bookkeeping only. This map never participates in cookie verification,
- * proxy authorization, or session registration/revocation. The backend shared registry is
- * the sole per-session authority; identity-wide revocation remains unwired pending T19.
- */
-const DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING = new Map<
-  string,
-  { externalSubject: string; expiresAtEpochSeconds: number }
->();
-
 export interface SessionUser {
   id: number;
   username: string;
@@ -89,15 +79,6 @@ export function createSessionCredential(input: {
     user: input.user,
   };
 
-  pruneDeferredExternalSubjectBookkeeping(nowEpochSeconds);
-  const externalSubject = String(input.user.external_subject ?? "").trim();
-  if (externalSubject) {
-    DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING.set(sessionId, {
-      externalSubject,
-      expiresAtEpochSeconds: payload.exp,
-    });
-  }
-
   const payloadB64 = base64UrlEncode(Buffer.from(JSON.stringify(payload), "utf-8"));
   const signature = signatureForPayload(payloadB64, input.secret);
   return {
@@ -108,40 +89,12 @@ export function createSessionCredential(input: {
   };
 }
 
-function pruneDeferredExternalSubjectBookkeeping(nowEpochSeconds: number): void {
-  for (const [sessionId, record] of DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING) {
-    if (record.expiresAtEpochSeconds < nowEpochSeconds) {
-      DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING.delete(sessionId);
-    }
-  }
-}
-
 /**
- * Deferred T19/T34 bookkeeping only. This removes helper records but does not revoke or
- * authenticate browser sessions; no request path calls this helper.
+ * The single normaliser for a user record, whether it came from a verified cookie or
+ * from the backend. Keep it in one place: a second copy on the login path once
+ * omitted `external_subject`, so the field was silently dropped there.
  */
-export function revokeSessionsForIdentity(
-  externalSubject: string,
-  nowEpochSeconds?: number,
-): number {
-  const now =
-    Number.isFinite(nowEpochSeconds) && Number(nowEpochSeconds) > 0
-      ? Math.floor(Number(nowEpochSeconds))
-      : Math.floor(Date.now() / 1000);
-  pruneDeferredExternalSubjectBookkeeping(now);
-  const subject = String(externalSubject || "").trim();
-  if (!subject) return 0;
-  let revoked = 0;
-  for (const [sessionId, record] of DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING) {
-    if (record.externalSubject === subject) {
-      DEFERRED_EXTERNAL_SUBJECT_BOOKKEEPING.delete(sessionId);
-      revoked += 1;
-    }
-  }
-  return revoked;
-}
-
-function normalizeSessionUser(value: unknown): SessionUser | null {
+export function normalizeSessionUser(value: unknown): SessionUser | null {
   if (!value || typeof value !== "object") {
     return null;
   }

@@ -188,3 +188,43 @@ def test_boundary_checker_rejects_operations_not_exposed_by_the_bff(
     monkeypatch.setattr(check_spa_api_contract_boundary, "OPENAPI_PATH", openapi)
     monkeypatch.setattr(check_spa_api_contract_boundary, "BFF_POLICY_PATH", policy)
     assert check_spa_api_contract_boundary.main() == 1
+
+
+def _fixture_with_source(tmp_path, monkeypatch, name: str, text: str):
+    source = tmp_path / "src"
+    api = source / "lib" / "api"
+    lib = source / "lib"
+    api.mkdir(parents=True)
+    (api / "http.ts").write_text("", encoding="utf-8")
+    (api / "types.ts").write_text("export type Safe = string\n", encoding="utf-8")
+    (lib / name).write_text(text, encoding="utf-8")
+    monkeypatch.setattr(check_spa_api_contract_boundary, "SPA_SOURCE_DIR", source)
+    monkeypatch.setattr(check_spa_api_contract_boundary, "API_DIR", api)
+    monkeypatch.setattr(check_spa_api_contract_boundary, "TRANSPORT", api / "http.ts")
+
+
+def test_boundary_checker_allows_reading_sec_fetch_request_metadata_headers(
+    tmp_path, monkeypatch
+) -> None:
+    # `Sec-Fetch-Site` is a request header name, not a call to fetch.
+    _fixture_with_source(
+        tmp_path,
+        monkeypatch,
+        "guard.ts",
+        'const site = headers.get("sec-fetch-site");\n'
+        'const mode = headers.get("Sec-Fetch-Mode");\n',
+    )
+    assert check_spa_api_contract_boundary.main() == 0
+
+
+def test_boundary_checker_still_rejects_fetch_next_to_sec_fetch_headers(
+    tmp_path, monkeypatch
+) -> None:
+    _fixture_with_source(
+        tmp_path,
+        monkeypatch,
+        "guard.ts",
+        'const site = headers.get("sec-fetch-site");\n'
+        'fetch("/api/backend/v1/read/query");\n',
+    )
+    assert check_spa_api_contract_boundary.main() == 1

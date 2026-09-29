@@ -26,7 +26,9 @@ describe("isAllowlistedRoute", () => {
     expect(isAllowlistedRoute("GET", "/v1/admin/ai-health")).toBe(true);
     expect(isAllowlistedRoute("PATCH", "/v1/nodes/task/42")).toBe(true);
     expect(isAllowlistedRoute("DELETE", "/v1/work-logs/77")).toBe(true);
-    expect(isAllowlistedRoute("POST", "/v1/state/atlas")).toBe(true);
+    // Generic key/value state is internal; it was allowlisted by mistake and removed.
+    expect(isAllowlistedRoute("POST", "/v1/state/atlas")).toBe(false);
+    expect(isAllowlistedRoute("GET", "/v1/state/atlas")).toBe(false);
     expect(isAllowlistedRoute("POST", "/v1/jobs/job-uuid/cancel")).toBe(true);
     expect(isAllowlistedRoute("POST", "/v1/jobs/job-uuid/retry")).toBe(true);
   });

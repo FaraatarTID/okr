@@ -62,6 +62,7 @@ SPA server
 
 - Environment variables:
   - BFF_PORT (default 3001)
+  - BFF_RATE_LIMIT_WINDOW_SECONDS (default 60), BFF_RATE_LIMIT_LOGIN_MAX (default 60, applies to `POST /session/login` and `POST /api/backend/v1/auth/login`), BFF_RATE_LIMIT_SESSION_MAX (default 600, applies to `/session/me` and `/session/logout`), BFF_RATE_LIMIT_MAX_KEYS (default 10000): a per-process flood backstop keyed by client address, answering 429 `RATE_LIMITED` with `Retry-After`. State is not shared across replicas, so with N replicas the effective ceiling is N times the configured value, and it resets on restart. The backend holds the authoritative limits (`OKR_BACKEND_RATE_LIMIT_*` and the login lockout). A zero or negative value fails startup.
   - SPA Web runs on port 3000
   - CI includes quality gates in `.github/workflows/ci.yml`.
 
@@ -146,7 +147,7 @@ Backend API (recommended for scale)
   - `OKR_BACKEND_API_URL`:
     - Example: `http://backend-api:8100`
   - `OKR_BACKEND_SERVICE_TOKEN`: Shared token for service-to-service auth.
-  - `OKR_BACKEND_SIGNING_SECRET`: Shared HMAC signing secret for signed internal requests.
+  - `OKR_BACKEND_SIGNING_SECRET`: Shared HMAC signing secret for signed internal requests. In production it must differ from `OKR_BACKEND_SERVICE_TOKEN`: the token is sent as a header on every request and the signing secret never is, so one value for both lets anyone who observes the header forge signatures. Backend startup, BFF startup, the runtime preflight, and `scripts/check_deploy_config.py --mode runtime` all reject equal values (for example, generate each with `openssl rand -hex 32`). Development runtimes are not restricted.
   - `OKR_BACKEND_SIGNING_SECRET_PREVIOUS` (optional): previous signing secret, accepted during a rotation overlap window; remove after retirement.
   - `OKR_BACKEND_SIGNING_KEY_ID` (optional): advertised key ID; when set, callers must send `x-okr-key-id` and unknown IDs are rejected. Rotation runbook: `DEPLOYMENT.md`.
   - `OKR_BACKEND_DEFAULT_ACTOR`: Fallback actor for system-initiated AI requests; default: `system`.
@@ -259,15 +260,19 @@ Evidence attestation
   - `OKR_SAAS_ATTESTATION_PUBLIC_KEY_PEM` (inline PEM), or
   - `OKR_SAAS_ATTESTATION_PUBLIC_KEY_PATH` (path to a PEM file)
   - Signature format: `<algorithm>:` followed by the base64 signature.
-- Consumers: `scripts/verify_recovery_evidence.py`,
-  `scripts/verify_rollback_evidence.py`, and `scripts/check_saas_phase1_evidence.py`.
-  All three share `scripts/attestation_verification.py`, which holds the single
-  definition of the canonical payload and of the constant-time comparison.
+- Consumers: `scripts/verify_recovery_evidence.py` and
+  `scripts/check_saas_phase1_evidence.py`. Both share
+  `scripts/attestation_verification.py`, which holds the single definition of the
+  canonical payload and of the constant-time comparison.
+  `scripts/verify_rollback_evidence.py` is **not** a consumer any more: A6c removed its
+  attestation check because rollback trust comes from Cosign keyless verification, not
+  from a shared secret (see "Release and rollback evidence producers" below).
 - The two conventions differ deliberately. `scripts/check_saas_phase1_evidence.py`
   signs the attestation object itself, because it cross-checks the structured
   evidence against the attestation field by field, so signing the attestation binds
-  every attested value. The two evidence verifiers sign the evidence object instead,
-  because there the attestation is only a pointer to the content being attested.
+  every attested value. `scripts/verify_recovery_evidence.py` signs the evidence
+  object instead, because there the attestation is only a pointer to the content
+  being attested.
 
 Release and rollback evidence producers
 

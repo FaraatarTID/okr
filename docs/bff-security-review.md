@@ -24,10 +24,10 @@ is not a penetration test or an independent security audit.
 ## Evidence captured
 
 - `npm run check:allowlist` passed with 44 routes.
-- `npm test` passed with 9 test files and 77 tests.
+- `npm --prefix spa-bff test` passed with 16 test files and 233 tests (measured 2026-09-29; the count grows with every new test, so re-measure rather than trust this figure).
 - OpenAPI drift, generated SPA/BFF types, BFF allowlist, SPA operation manifest, and direct-fetch boundary checks are enforced by the contract-quality CI lane. See [openapi-contract-synchronization.md](openapi-contract-synchronization.md).
-- Backend mutation API and dual-mode parity coverage passed with 128 tests.
-- Backend ingress security regression passed with 6 focused tests covering signed requests, replay protection, and forwarded role-claim enforcement.
+- Backend mutation API and dual-mode parity coverage passed: `tests/test_backend_mutation_api.py` (120 tests) and `tests/test_dual_mode_parity.py` (61 tests), measured 2026-09-29. The earlier figure of 128 could not be reproduced from any combination of files, so it has been replaced by the measured per-file counts.
+- Backend ingress security regression passed: `tests/test_backend_private_ingress_enforcement.py` (6 tests, signed requests and replay protection) and `tests/test_forwarded_role_claims_fail_closed.py` (11 tests, forwarded role-claim enforcement, which fails closed as of 2026-09-29).
 - Live Compose baseline showed the BFF and backend processes running independently.
 
 ## Residual risks and required follow-up

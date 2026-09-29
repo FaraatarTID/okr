@@ -399,17 +399,27 @@ def validate_forwarded_role_claims(
     if not x_okr_role and not x_okr_roles:
         return
 
+    # A role claim was supplied, so it must be checked. If the actor's current role
+    # cannot be established, reject rather than skip: returning here would let an
+    # unverified claim through exactly when the account state is unavailable.
     if scope is None:
         try:
             from backend_app import main as backend_main
 
             scope = backend_main._resolve_scope_for_actor(actor_name)
-        except Exception:
-            return
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503, detail="Current account state is unavailable."
+            ) from exc
 
-    expected_role = str(scope.get("role") or "").strip().lower()
+    expected_role = str((scope or {}).get("role") or "").strip().lower()
     if not expected_role:
-        return
+        raise HTTPException(
+            status_code=403,
+            detail="Role claim does not match actor scope.",
+        )
 
     if x_okr_role:
         normalized_role_claim = _normalize_forwarded_role_claim(x_okr_role)

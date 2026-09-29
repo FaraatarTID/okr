@@ -53,8 +53,8 @@ def canonical_bytes(payload: dict[str, Any]) -> bytes:
     """Return the canonical byte form a signature must cover.
 
     Sorted keys and no whitespace, so signer and verifier cannot disagree about
-    formatting. Both evidence verifiers and the Phase 1 evidence check use this, so
-    there is one canonical form rather than one per script.
+    formatting. The recovery evidence verifier and the Phase 1 evidence check use this,
+    so there is one canonical form rather than one per script.
     """
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
 

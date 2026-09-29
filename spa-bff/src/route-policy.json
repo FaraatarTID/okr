@@ -286,15 +286,6 @@
     {
       "actorRequired": true,
       "methods": [
-        "GET",
-        "POST"
-      ],
-      "pathPattern": "^/v1/state/[^/]+$",
-      "pathTemplate": "/v1/state/{key}"
-    },
-    {
-      "actorRequired": true,
-      "methods": [
         "POST"
       ],
       "pathPattern": "^/v1/teams$",

@@ -156,6 +156,21 @@ def test_runtime_mode_passes_with_non_placeholder_values(tmp_path: Path):
     assert "Deploy config check passed (mode=runtime)" in result.stdout
 
 
+def test_runtime_mode_rejects_service_token_reused_as_signing_secret(tmp_path: Path):
+    env_file = tmp_path / ".env"
+    _write_env(env_file, placeholder_values=False)
+    text = env_file.read_text(encoding="utf-8").replace(
+        "OKR_BACKEND_SIGNING_SECRET=sign_live_123",
+        "OKR_BACKEND_SIGNING_SECRET=tok_live_123",
+    )
+    env_file.write_text(text, encoding="utf-8")
+
+    result = _run_checker(env_file, mode="runtime")
+
+    assert result.returncode == 1
+    assert "must differ from 'OKR_BACKEND_SERVICE_TOKEN'" in result.stdout
+
+
 def test_runtime_mode_rejects_redis_backend_without_redis_url(tmp_path: Path):
     env_file = tmp_path / ".env"
     _write_env(

@@ -15,6 +15,12 @@ OPENAPI_PATH = API_DIR / "openapi.json"
 BFF_POLICY_PATH = ROOT / "spa-bff" / "src" / "route-policy.json"
 BFF_SESSION_FETCH = re.compile(r"\bfetch\s*\(\s*[`\"']/api/session/")
 FETCH_REFERENCE = re.compile(r"\bfetch\b")
+# `Sec-Fetch-*` are browser request-metadata header names, read by the same-origin guard.
+# A hyphen is a word boundary, so FETCH_REFERENCE would match the middle of the name.
+# Only these four literal names are stripped, so a real `fetch` reference still fails.
+FETCH_METADATA_HEADER = re.compile(
+    r"\bsec-fetch-(?:site|mode|dest|user)\b", re.IGNORECASE
+)
 BRACKET_FETCH_REFERENCE = re.compile(
     r"\b(?:globalThis|window)\s*\[\s*[\"']fetch[\"']\s*\]"
 )
@@ -116,7 +122,9 @@ def main() -> int:
         # `fetch`, `globalThis.fetch`, optional calls, and aliases all contain
         # this token. Remove only literal BFF session calls; all other browser
         # fetch access must stay inside http.ts.
-        source_without_session_fetches = BFF_SESSION_FETCH.sub("", source)
+        source_without_session_fetches = FETCH_METADATA_HEADER.sub(
+            "", BFF_SESSION_FETCH.sub("", source)
+        )
         if FETCH_REFERENCE.search(
             source_without_session_fetches
         ) or BRACKET_FETCH_REFERENCE.search(source_without_session_fetches):

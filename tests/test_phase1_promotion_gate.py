@@ -87,6 +87,50 @@ def test_promotion_cannot_proceed_without_the_gate() -> None:
     )
 
 
+def _gate_and_approval() -> tuple[dict, dict]:
+    jobs = _jobs(_workflow(PROMOTION))
+    gate_name = next(
+        name for name, job in jobs.items() if any(GATE in _run(s) for s in _steps(job))
+    )
+    approval = next(
+        job
+        for name, job in jobs.items()
+        if name != gate_name and job.get("environment") == "production"
+    )
+    return jobs[gate_name], approval
+
+
+def test_a_failing_gate_actually_blocks_promotion() -> None:
+    """Depending on the gate is not enough if the gate cannot fail.
+
+    Each of these leaves a job that exists, is listed in `needs`, and runs the right
+    command, yet lets promotion proceed past a failing bundle. The existence and `needs`
+    tests above pass on all of them.
+    """
+    gate_job, approval = _gate_and_approval()
+    gate_steps = [step for step in _steps(gate_job) if GATE in _run(step)]
+
+    assert str(gate_job.get("continue-on-error", "false")).lower() != "true", (
+        "continue-on-error on the gate job turns a failure into a pass"
+    )
+    assert "if" not in gate_job, (
+        "a conditional gate job can be skipped, and a skipped need passes"
+    )
+    for step in gate_steps:
+        assert str(step.get("continue-on-error", "false")).lower() != "true", (
+            "continue-on-error on the gate step turns a failure into a pass"
+        )
+        assert "if" not in step, "a conditional gate step can be skipped"
+        command = _run(step)
+        assert "||" not in command, "`|| ...` after the gate swallows its exit status"
+        assert "set +e" not in command and "; true" not in command
+
+    condition = str(approval.get("if", "")).lower()
+    assert "always()" not in condition and "!cancelled()" not in condition, (
+        "an always()-style condition on the approval job runs it after a failed need"
+    )
+
+
 def test_the_gate_is_not_a_pull_request_check() -> None:
     """Deliberate: the bundle is honestly incomplete, so requiring it per PR would
     leave every pull request permanently red."""

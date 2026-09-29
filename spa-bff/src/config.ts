@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import net from "node:net";
 
 export interface BffConfig {
@@ -12,7 +12,33 @@ export interface BffConfig {
   sessionSecret: string;
   sessionTtlSeconds: number;
   cookieSecure: boolean;
+  /**
+   * In-process flood backstop for the unauthenticated and session routes. Optional so a
+   * caller that builds a config by hand gets `DEFAULT_RATE_LIMIT`. See `rate-limit.ts`.
+   */
+  rateLimit?: BffRateLimitConfig;
 }
+
+export interface BffRateLimitConfig {
+  windowSeconds: number;
+  /** Per client IP per window on the login surface, the credential-guessing route. */
+  loginMax: number;
+  /** Per client IP per window on `/session/me` and `/session/logout`. */
+  sessionMax: number;
+  /** Hard cap on tracked client keys, so memory stays bounded under a spray of sources. */
+  maxKeys: number;
+}
+
+// Loose on purpose. This is a backstop in front of the backend's authoritative,
+// shared limits (120 requests/60 s per IP, and login lockout), and many staff can share
+// one office NAT address, so a tight ceiling here would lock legitimate users out
+// before the backend's own control ever engaged.
+export const DEFAULT_RATE_LIMIT: BffRateLimitConfig = {
+  windowSeconds: 60,
+  loginMax: 60,
+  sessionMax: 600,
+  maxKeys: 10_000,
+};
 
 const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_PORT = 3001;
@@ -221,11 +247,26 @@ function validateProductionConfig(config: BffConfig, env: NodeJS.ProcessEnv): vo
     );
   }
 
+  // The service token is sent as a header on every request; the signing secret must
+  // never leave the two services. One value for both lets anyone who observes the
+  // header forge signatures.
+  if (secretsAreEqual(config.backendServiceToken, config.backendSigningSecret)) {
+    throw new Error(
+      "OKR_BACKEND_SIGNING_SECRET must differ from OKR_BACKEND_SERVICE_TOKEN in production.",
+    );
+  }
+
   if (!config.cookieSecure) {
     throw new Error(
       "BFF_COOKIE_SECURE must be true in production to protect session cookies.",
     );
   }
+}
+
+function secretsAreEqual(a: string, b: string): boolean {
+  const left = Buffer.from(a, "utf-8");
+  const right = Buffer.from(b, "utf-8");
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 function normalizeBackendUrl(raw: string): string {
@@ -282,6 +323,28 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): BffConfig {
     sessionSecret,
     sessionTtlSeconds,
     cookieSecure,
+    rateLimit: {
+      windowSeconds: parsePositiveInt(
+        env.BFF_RATE_LIMIT_WINDOW_SECONDS,
+        DEFAULT_RATE_LIMIT.windowSeconds,
+        "BFF_RATE_LIMIT_WINDOW_SECONDS",
+      ),
+      loginMax: parsePositiveInt(
+        env.BFF_RATE_LIMIT_LOGIN_MAX,
+        DEFAULT_RATE_LIMIT.loginMax,
+        "BFF_RATE_LIMIT_LOGIN_MAX",
+      ),
+      sessionMax: parsePositiveInt(
+        env.BFF_RATE_LIMIT_SESSION_MAX,
+        DEFAULT_RATE_LIMIT.sessionMax,
+        "BFF_RATE_LIMIT_SESSION_MAX",
+      ),
+      maxKeys: parsePositiveInt(
+        env.BFF_RATE_LIMIT_MAX_KEYS,
+        DEFAULT_RATE_LIMIT.maxKeys,
+        "BFF_RATE_LIMIT_MAX_KEYS",
+      ),
+    },
   };
 
   validateProductionConfig(config, env);

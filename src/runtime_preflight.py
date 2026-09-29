@@ -202,6 +202,18 @@ def evaluate_runtime_preflight(
             "Production backend mode requires OKR_BACKEND_SIGNING_SECRET."
         )
 
+    if (
+        is_production
+        and backend_url
+        and str(backend_service_token or "").strip()
+        and str(backend_signing_secret or "").strip()
+        and str(backend_service_token).strip() == str(backend_signing_secret).strip()
+    ):
+        report.errors.append(
+            "OKR_BACKEND_SIGNING_SECRET must differ from OKR_BACKEND_SERVICE_TOKEN; "
+            "the token is sent on every request and the signing secret is not."
+        )
+
     if is_production and backend_url and backend_url.lower() != "auto":
         _validate_production_backend_url(backend_url, report)
 

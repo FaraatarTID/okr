@@ -40,21 +40,39 @@ to a concrete value and must not duplicate backend business rules:
 | CSRF protection | Rejects state-changing browser requests that lack a valid double-submit token | CSRF request tests and [bff-security-review.md](bff-security-review.md) |
 | Error shaping | Prevents internal error leakage by returning bounded error envelopes | Sanitized error contracts |
 
-Two controls that earlier revisions of this table listed as provided are **not
-implemented** in `spa-bff`. They are recorded as `pending` in
-[evidence/security-parity.json](evidence/security-parity.json), remain open
-controls under D4 in [REMAINING_ENGINEERING_PLAN.md](REMAINING_ENGINEERING_PLAN.md),
-and must be closed before this ADR can claim a complete browser-security boundary:
+Two controls that earlier revisions of this table listed as provided were
+implemented on 2026-09-29 (D4) with the limits below. Their evidence records in
+[evidence/security-parity.json](evidence/security-parity.json) are dated captures
+for `release-2026-09-14-bff` and still read `pending`: they describe that release,
+not the current code, and are refreshed by a release capture, not by editing them.
 
-- **Origin controls.** The package never reads the `Origin` or `Referer` request
-  header to decide whether to accept a request, and no allowlisted-origin
-  configuration exists. CSRF protection is implemented, but it is a separate
-  mechanism and does not substitute for origin validation.
-- **Rate limiting at the browser edge.** The package references no limiter, no
-  request budget, and no abuse threshold. Rate limiting exists in the backend
-  (`OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS`, `OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS`),
-  and the BFF forwards the client IP so that the backend can apply it, but that
-  protects the backend hop rather than the browser edge.
+- **Origin controls, in `spa-web`, not `spa-bff`.** The browser never reaches the
+  BFF; it reaches the `spa-web` route handlers, and `proxyToBff` forwards a fixed
+  header list that omits `Origin`. The decision is therefore made in
+  `spa-web/src/lib/origin-guard.ts`, applied to `POST /api/session/login`,
+  `POST /api/session/logout` and every non-GET/HEAD call through
+  `/api/backend/*`. `Sec-Fetch-Site` decides when present (only `same-origin` and
+  `none` pass); otherwise a present `Origin` must match the request host
+  (`X-Forwarded-Host`, then `Host`); with neither header the caller is not a
+  browser and is allowed, so probes and curl keep working. It answers 403
+  `INVALID_ORIGIN`. Limits: it is not an allowlist of extra origins, scheme is
+  not compared, and `spa-bff` itself still reads neither header, so a caller who
+  reaches the BFF directly is outside this control (the BFF is not exposed to the
+  browser). CSRF double-submit remains a separate, second layer on actor-scoped
+  routes; login has no CSRF token because it is what issues it.
+- **Rate limiting at the browser edge, as a backstop only.** `spa-bff/src/rate-limit.ts`
+  applies an in-process fixed window per client address to `POST /session/login`
+  and `POST /api/backend/v1/auth/login` (default 60 per 60 s) and to
+  `/session/me` and `/session/logout` (default 600 per 60 s), answering 429
+  `RATE_LIMITED` with `Retry-After`. The key is the trusted `X-OKR-Client-IP`
+  when it parses as an IP, else the socket peer; `request.ip` is never used
+  because `trustProxy` derives it from `X-Forwarded-For`. It is **not** the
+  authoritative control: state is per process, so with N replicas the effective
+  ceiling is N times the configured value and it resets on restart, and the key
+  map is capped (`BFF_RATE_LIMIT_MAX_KEYS`) so an over-cap spray evicts the oldest
+  key. Authenticated `/api/backend/*` traffic is not limited here. The shared,
+  authoritative limits remain the backend's (`OKR_BACKEND_RATE_LIMIT_*` and the
+  login lockout); the BFF may not hold shared state (`check_spa_bff_boundaries.py`).
 
 The BFF must not become a redundant pass-through layer. New BFF code requires
 an entry in this matrix or an approved architecture decision explaining its
@@ -245,7 +263,7 @@ Rejected because it would encourage business logic duplication and make future c
 
 - BFF policy check passed: `npm run check:allowlist` reports 44 routes up to date, each mapped to a generated OpenAPI operation ID.
 - The package does not define `npm run check`; the intended allowlist control is `npm run check:allowlist`.
-- BFF test suite passed: `npm test` completed 9 test files and 77 tests successfully.
+- BFF test suite passed: `npm --prefix spa-bff test` completed 16 test files and 233 tests successfully (measured 2026-09-29; re-measure rather than trust this figure, because it changes with every added test).
 - The cross-layer OpenAPI contract workflow and CI gates are documented in [openapi-contract-synchronization.md](openapi-contract-synchronization.md).
 - Initial live health baseline captured on 2026-08-31: backend HTTP 200 in approximately 1146 ms and BFF HTTP 200 in approximately 7 ms for single local requests. This is a local baseline sample, not a production performance conclusion.
 - Route and responsibility inventory for `spa-bff/src/server.ts`.

@@ -1,11 +1,16 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 
 import { isAllowlistedRoute, normalizeBackendPath, requiresActorHeader, resolveAllowlistedOperation } from "./allowlist.js";
 import type { BffConfig } from "./config.js";
-import { readConfig } from "./config.js";
+import { DEFAULT_RATE_LIMIT, readConfig } from "./config.js";
 import { proxyToBackend } from "./proxy.js";
+import {
+  FixedWindowLimiter,
+  classifyRateLimitBucket,
+  resolveRateLimitKey,
+} from "./rate-limit.js";
 import { buildBackendSecurityHeaders } from "./signing.js";
 import type { BackendLoginResponse, BackendSessionResponse } from "./backend-schema.js";
 import {
@@ -15,6 +20,7 @@ import {
   generateCsrfToken,
   issueCsrfCookie,
   issueSessionCookie,
+  normalizeSessionUser,
   readSessionCredentialFromCookie,
   validateCsrfToken,
   type SessionCredential,
@@ -26,6 +32,21 @@ import {
 } from "./session-registry.js";
 
 type WildcardParams = { "*": string };
+
+/**
+ * Request body ceilings, enforced by Fastify before a handler runs.
+ *
+ * Every JSON route this BFF proxies carries a small body: the backend schemas cap text
+ * fields at 10 KB or less and lists at 200 entries, and the largest legitimate payload
+ * (the team-coach `team_data` progress list) stays far below 1 MiB. So the default is
+ * tight. The single exception is the operator database restore, which carries a whole
+ * backup; it is disabled by default and blocked in production, so a large body there is
+ * a non-production drill. The backend's own restore size check cannot bound this: it runs
+ * after FastAPI has already parsed the whole body. This ceiling is the effective bound.
+ */
+export const DEFAULT_BODY_LIMIT_BYTES = 1024 * 1024;
+export const DB_RESTORE_BODY_LIMIT_BYTES = 50 * 1024 * 1024;
+const DB_RESTORE_WILDCARD_PATH = "v1/admin/db-restore";
 
 const RESPONSE_HEADER_BLOCKLIST = new Set([
   "connection",
@@ -152,37 +173,6 @@ function firstHeaderValue(raw: string | string[] | undefined): string {
   return String(raw ?? "").trim();
 }
 
-function normalizeSessionUser(value: unknown): SessionUser | null {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const user = value as Record<string, unknown>;
-  const id = Number(user.id);
-  const username = String(user.username ?? "").trim();
-  const displayName = String(user.display_name ?? "").trim();
-  const role = String(user.role ?? "").trim();
-  if (!Number.isFinite(id) || id <= 0 || !username || !displayName || !role) {
-    return null;
-  }
-  const roles = Array.isArray(user.roles)
-    ? user.roles
-        .map((entry) => String(entry ?? "").trim())
-        .filter(Boolean)
-    : [];
-
-  return {
-    id: Math.trunc(id),
-    username,
-    display_name: displayName,
-    role,
-    roles: roles.length > 0 ? roles : undefined,
-    team_id: user.team_id == null ? null : Number(user.team_id),
-    manager_id: user.manager_id == null ? null : Number(user.manager_id),
-    must_change_password: Boolean(user.must_change_password),
-    token_version: typeof user.token_version === "number" ? user.token_version : undefined,
-  };
-}
-
 function readSessionCredentialFromRequest(
   config: BffConfig,
   headers: Record<string, string | string[] | undefined>,
@@ -257,7 +247,7 @@ export function createServer(
       level: process.env.BFF_LOG_LEVEL || "info",
     },
     trustProxy: true,
-    bodyLimit: 50 * 1024 * 1024, // 50 MB — generous for backup uploads, prevents multi-GB abuse
+    bodyLimit: DEFAULT_BODY_LIMIT_BYTES,
   });
 
   // Security headers on every response
@@ -276,6 +266,47 @@ export function createServer(
     state._okrCorrelationId = firstHeaderValue(request.headers["x-correlation-id"])
       || firstHeaderValue(request.headers["x-okr-correlation-id"])
       || state._okrRequestId;
+  });
+
+  // Coarse flood backstop; see rate-limit.ts for what it does and does not guarantee.
+  // Runs on `onRequest`, so a refused request costs no body parse and no backend hop.
+  const rateLimit = config.rateLimit ?? DEFAULT_RATE_LIMIT;
+  const windowMs = rateLimit.windowSeconds * 1000;
+  const limiters = {
+    login: new FixedWindowLimiter({ max: rateLimit.loginMax, windowMs }, rateLimit.maxKeys),
+    session: new FixedWindowLimiter({ max: rateLimit.sessionMax, windowMs }, rateLimit.maxKeys),
+  };
+  app.addHook("onRequest", async (request, reply) => {
+    const bucket = classifyRateLimitBucket(request.method, request.url);
+    if (!bucket) {
+      return;
+    }
+    // `request.ip` is deliberately not used: with `trustProxy` it comes from
+    // X-Forwarded-For, which the caller controls (docs/client-ip-trust-adr.md).
+    const key = resolveRateLimitKey(
+      firstHeaderValue(request.headers["x-okr-client-ip"]),
+      request.socket.remoteAddress,
+    );
+    const decision = limiters[bucket].consume(`${bucket}:${key}`);
+    if (decision.allowed) {
+      return;
+    }
+    const state = request as BffRequestState & typeof request;
+    const requestId = state._okrRequestId || readRequestId(request.headers);
+    app.log.warn(
+      buildBffLogPayload("bff_rate_limited", request, 429, {
+        request_id: requestId,
+        bucket,
+        client_key: key,
+        retry_after_seconds: decision.retryAfterSeconds,
+      }),
+    );
+    reply.header("Retry-After", String(decision.retryAfterSeconds));
+    return reply.code(429).send(
+      buildErrorEnvelope("RATE_LIMITED", "Too many requests. Retry shortly.", requestId, {
+        retry_after_seconds: decision.retryAfterSeconds,
+      }),
+    );
   });
 
   app.addHook("onResponse", async (request, reply) => {
@@ -304,6 +335,33 @@ export function createServer(
     const errorMessage = error instanceof Error ? error.message : String(error);
     const requestId = state._okrRequestId || readRequestId(request.headers);
     const correlationId = state._okrCorrelationId || readCorrelationId(request.headers);
+
+    // Fastify reports a client fault (oversize body, malformed JSON, unsupported media
+    // type) as an error carrying a 4xx status. Answering those with a 500 would blame the
+    // server for the caller's mistake and hide what to fix, so they keep their own status.
+    const rawStatus = (error as { statusCode?: unknown } | null)?.statusCode;
+    const clientStatus =
+      typeof rawStatus === "number" && rawStatus >= 400 && rawStatus < 500 ? rawStatus : null;
+    if (clientStatus !== null) {
+      app.log.warn(
+        buildBffLogPayload("bff_client_error", request, clientStatus, {
+          request_id: requestId,
+          correlation_id: correlationId,
+          error_type: errorName,
+          error_code: (error as { code?: unknown }).code,
+        }),
+      );
+      const isTooLarge = clientStatus === 413;
+      reply.code(clientStatus).send(
+        buildErrorEnvelope(
+          isTooLarge ? "PAYLOAD_TOO_LARGE" : `HTTP_${clientStatus}`,
+          isTooLarge ? "Request body is too large." : "The request could not be processed.",
+          requestId,
+        ),
+      );
+      return;
+    }
+
     app.log.error(
       buildBffLogPayload(
         "bff_unhandled_error",
@@ -558,11 +616,14 @@ export function createServer(
     return reply.send({ success: true });
   });
 
-  app.route<{ Params: WildcardParams }>({
-    method: ["GET", "POST", "PATCH", "PUT", "DELETE"],
-    url: "/api/backend/*",
-    handler: async (request, reply) => {
-      const rawWildcardPath = request.params["*"];
+  // The proxy handler is shared by the wildcard route and the dedicated restore route,
+  // so it takes the wildcard path as a parameter instead of reading `params["*"]`: a
+  // route with no wildcard segment has no such param.
+  const handleBackendProxy = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+    rawWildcardPath: string,
+  ) => {
       const backendPath = normalizeBackendPath(rawWildcardPath);
       if (!backendPath) {
         return reply.code(400).send(
@@ -726,7 +787,55 @@ export function createServer(
           ),
         });
       }
+  };
+
+  app.route<{ Params: WildcardParams }>({
+    method: ["GET", "POST", "PATCH", "PUT", "DELETE"],
+    url: "/api/backend/*",
+    handler: (request, reply) => handleBackendProxy(request, reply, request.params["*"]),
+  });
+
+  // The one route that carries a whole backup. A static route wins over the wildcard
+  // above, and `bodyLimit` here raises the ceiling for this path only.
+  app.route({
+    method: "POST",
+    url: `/api/backend/${DB_RESTORE_WILDCARD_PATH}`,
+    bodyLimit: DB_RESTORE_BODY_LIMIT_BYTES,
+    // Fastify buffers the body before the handler runs, so a 50 MiB ceiling would let a
+    // caller with no session make this process hold 50 MiB per request. `onRequest` runs
+    // before the body is read, so refuse anyone who could not succeed here: no valid
+    // signed session, not an admin, or no CSRF pair. These are cheap header and cookie
+    // checks. The backend still resolves the admin scope from fresh state, and the
+    // handler still runs the full checks; this only decides whether the body is worth
+    // reading. A refusal leaves the body unread, and Node discards it without buffering.
+    onRequest: async (request, reply) => {
+      const requestId = readRequestId(request.headers);
+      const credential = readSessionCredentialFromRequest(config, request.headers);
+      if (!credential) {
+        return reply.code(401).send(
+          buildErrorEnvelope("MISSING_SESSION", "Missing or invalid session for actor-scoped route.", requestId),
+        );
+      }
+      if (String(credential.user.role ?? "").trim().toLowerCase() !== "admin") {
+        return reply.code(403).send(
+          buildErrorEnvelope("ADMIN_REQUIRED", "Admin privileges required.", requestId),
+        );
+      }
+      const csrfValid = validateCsrfToken({
+        cookieHeader: firstHeaderValue(request.headers.cookie),
+        headerValue: request.headers["x-xsrf-token"],
+      });
+      if (!csrfValid) {
+        return reply.code(403).send(
+          buildErrorEnvelope(
+            "INVALID_CSRF_TOKEN",
+            "CSRF token validation failed. Include X-XSRF-TOKEN header matching the okr_csrf_token cookie.",
+            requestId,
+          ),
+        );
+      }
     },
+    handler: (request, reply) => handleBackendProxy(request, reply, DB_RESTORE_WILDCARD_PATH),
   });
 
   return app;

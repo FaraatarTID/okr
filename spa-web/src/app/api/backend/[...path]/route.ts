@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { BFF_ORIGIN, proxyToBff } from "@/lib/bff-proxy";
+import { rejectCrossOrigin } from "@/lib/origin-guard";
 
 type RouteContext = {
   params: Promise<{ path: string[] }>;
@@ -13,6 +14,15 @@ function buildBackendUrl(request: NextRequest, segments: string[]): string {
 }
 
 async function proxyBackendPath(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  // Reads are safe methods and stay unguarded. Every other method changes state or is
+  // POST-shaped, so it is refused when the browser says it came from another origin.
+  // The BFF's double-submit CSRF check is the second, independent layer.
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    const rejected = rejectCrossOrigin(request);
+    if (rejected) {
+      return rejected;
+    }
+  }
   const { path = [] } = await context.params;
   const targetUrl = buildBackendUrl(request, path);
   return proxyToBff(request, targetUrl);

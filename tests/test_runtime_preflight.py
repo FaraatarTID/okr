@@ -136,6 +136,36 @@ def test_production_rejects_public_backend_api_ip():
     )
 
 
+def test_production_rejects_service_token_reused_as_signing_secret():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="http://backend-api:8100",
+        backend_service_token="one-shared-value",
+        backend_signing_secret="one-shared-value",
+        bootstrap_admin_password=credential_password("production_bootstrap_admin"),
+        backend_security_state_backend="database",
+        runtime_env="production",
+    )
+    assert any("must differ from OKR_BACKEND_SERVICE_TOKEN" in m for m in report.errors)
+
+
+def test_development_allows_service_token_reused_as_signing_secret():
+    report = evaluate_runtime_preflight(
+        pdf_method="pdfshift",
+        has_pdfshift_key=True,
+        gemini_api_key="valid-key",
+        backend_proxy_mutations=True,
+        backend_api_url="http://backend-api:8100",
+        backend_service_token="one-shared-value",
+        backend_signing_secret="one-shared-value",
+        runtime_env="development",
+    )
+    assert not any("must differ from" in m for m in report.errors)
+
+
 def test_external_ai_policy_disables_key_requirement():
     report = evaluate_runtime_preflight(
         pdf_method="pdfshift",

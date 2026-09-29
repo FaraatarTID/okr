@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 import os
+import secrets
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -335,6 +336,22 @@ def validate_production_settings(settings: BackendSettings) -> None:
     elif len(settings.signing_secret) < 32:
         errors.append(
             "Production requires OKR_BACKEND_SIGNING_SECRET to be at least 32 characters."
+        )
+
+    # The service token travels as a header on every request; the signing secret
+    # must never leave the two services. Reusing one value for both lets anyone who
+    # observes the header forge signatures, which removes the second factor.
+    if (
+        settings.service_token
+        and settings.signing_secret
+        and secrets.compare_digest(
+            settings.service_token.encode("utf-8"),
+            settings.signing_secret.encode("utf-8"),
+        )
+    ):
+        errors.append(
+            "Production requires OKR_BACKEND_SIGNING_SECRET to differ from "
+            "OKR_BACKEND_SERVICE_TOKEN."
         )
 
     security_state_backend = str(settings.security_state_backend or "").strip().lower()
