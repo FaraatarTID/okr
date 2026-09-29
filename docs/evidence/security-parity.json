@@ -15,6 +15,7 @@
       "name": "csrf_and_origin_controls",
       "status": "pending",
       "observed": "CSRF protection is implemented and observed: state-changing requests require a valid X-XSRF-TOKEN double-submit cookie/header pair and invalid requests are rejected with HTTP 403 before upstream calls. Origin validation is not implemented, because spa-bff never reads the Origin or Referer header to decide whether to accept a request. The control is named for both mechanisms, so it is recorded as pending.",
+      "since_capture": "2026-09-29, not a capture: origin enforcement now exists in the spa-web tier (spa-web/src/lib/origin-guard.ts, 403 INVALID_ORIGIN) and is unit-tested, but it is in neither commit 8f13375 nor release 6150b4a, so it stays pending until a release capture. Details and limits: security/csrf-origin.json.",
       "artifact": "security/csrf-origin.json"
     },
     {
@@ -39,6 +40,7 @@
       "name": "rate_limiting",
       "status": "pending",
       "observed": "No rate limiting is implemented in spa-bff; the package references no limiter, request budget, or abuse threshold. The abuse-resistance behaviour actually observed is fail-closed session handling with bounded error envelopes and no retry loop that bypasses trust mediation. Backend rate limiting exists through OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS and OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS, but it protects the backend hop rather than the browser edge, so it does not satisfy a BFF-boundary control.",
+      "since_capture": "2026-09-29, not a capture: an in-process per-client limiter now exists in spa-bff (spa-bff/src/rate-limit.ts, 429 RATE_LIMITED) and is unit-tested, but it is in neither commit 8f13375 nor release 6150b4a, and it is a per-process backstop rather than the authoritative limit, so it stays pending until a release capture. Details and limits: security/rate-limit.json.",
       "artifact": "security/rate-limit.json"
     }
   ]

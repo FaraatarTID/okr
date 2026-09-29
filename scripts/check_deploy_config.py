@@ -412,6 +412,14 @@ def validate(
                     "'BFF_SESSION_SECRET' must be at least 32 characters in runtime mode."
                 )
 
+        service_token = str(env.get("OKR_BACKEND_SERVICE_TOKEN", "")).strip()
+        signing_secret = str(env.get("OKR_BACKEND_SIGNING_SECRET", "")).strip()
+        if service_token and service_token == signing_secret:
+            report.errors.append(
+                "'OKR_BACKEND_SIGNING_SECRET' must differ from "
+                "'OKR_BACKEND_SERVICE_TOKEN' in runtime mode."
+            )
+
         if pdf_method == "pdfshift":
             pdf_env = env.get("PDFSHIFT_API_KEY", "")
             if not str(pdf_env).strip():

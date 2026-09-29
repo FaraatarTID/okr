@@ -25,6 +25,13 @@ EXCLUDED_PATHS = {
     "/control-plane/v1/rollouts/{rollout_id}",
     "/v1/internal/session-registry/register",
     "/v1/internal/session-registry/revoke",
+    # Generic key/value state is an internal coordination primitive: its one real caller
+    # (src/services/distributed_state_service.py) reaches the backend directly, and no
+    # browser code uses it. Every key the application actually reads or writes contains a
+    # colon, which the BFF path check rejects, so a public entry could only ever touch
+    # keys nothing reads. Keeping it out is the documented intent; a public entry was a
+    # drift, not a decision.
+    "/v1/state/{key}",
 }
 
 # These tighter expressions preserve existing BFF validation for enumerated path values.

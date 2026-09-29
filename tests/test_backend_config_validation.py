@@ -72,6 +72,30 @@ def test_production_validation_rejects_short_service_token(monkeypatch) -> None:
     assert "at least 24" in str(exc.value).lower()
 
 
+def test_production_validation_rejects_token_reused_as_signing_secret(
+    monkeypatch,
+) -> None:
+    _set_production_env(monkeypatch)
+    shared = "shared_value_prod_abcdefghijklmnopqrstuvwxyz_123456"
+    monkeypatch.setenv("OKR_BACKEND_SERVICE_TOKEN", shared)
+    monkeypatch.setenv("OKR_BACKEND_SIGNING_SECRET", shared)
+
+    with pytest.raises(RuntimeError) as exc:
+        backend_config.get_backend_settings()
+    assert "to differ from okr_backend_service_token" in str(exc.value).lower()
+
+
+def test_development_allows_token_reused_as_signing_secret(monkeypatch) -> None:
+    monkeypatch.setenv("OKR_RUNTIME_ENV", "development")
+    monkeypatch.setenv("OKR_ENV", "development")
+    monkeypatch.setenv("OKR_BACKEND_SERVICE_TOKEN", "dev-shared-value")
+    monkeypatch.setenv("OKR_BACKEND_SIGNING_SECRET", "dev-shared-value")
+
+    settings = backend_config.get_backend_settings()
+
+    assert settings.service_token == settings.signing_secret
+
+
 def test_production_validation_fails_for_missing_database_url(monkeypatch) -> None:
     _set_production_env(monkeypatch)
     monkeypatch.setenv("OKR_DATABASE_URL", "")

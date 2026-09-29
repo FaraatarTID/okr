@@ -79,6 +79,31 @@ describe("spa-bff config", () => {
     expect(config.backendSigningSecret).toBe("signing-secret-that-is-longer-than-thirty-two");
   });
 
+  it("rejects reusing the service token as the signing secret in production", () => {
+    const shared = "one-value-reused-for-token-and-signing-secret";
+    expect(() =>
+      readConfig({
+        OKR_BACKEND_API_URL: "http://backend-api:8100",
+        OKR_BACKEND_SERVICE_TOKEN: shared,
+        OKR_BACKEND_SIGNING_SECRET: shared,
+        BFF_SESSION_SECRET: "a-very-secure-session-secret-that-is-at-least-32-chars",
+        NODE_ENV: "production",
+      }),
+    ).toThrow(/must differ from OKR_BACKEND_SERVICE_TOKEN/);
+  });
+
+  it("does not require distinct token and signing secret outside production", () => {
+    const shared = "one-value-reused-for-token-and-signing-secret";
+    expect(() =>
+      readConfig({
+        OKR_BACKEND_API_URL: "http://backend-api:8100",
+        OKR_BACKEND_SERVICE_TOKEN: shared,
+        OKR_BACKEND_SIGNING_SECRET: shared,
+        NODE_ENV: "development",
+      }),
+    ).not.toThrow();
+  });
+
   it("uses OKR_ENV as a production signal", () => {
     const config = readConfig({
       OKR_BACKEND_API_URL: "http://backend-api:8100",

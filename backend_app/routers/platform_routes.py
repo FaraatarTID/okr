@@ -554,20 +554,9 @@ def register_platform_routes(router: APIRouter, main: Any) -> None:
                 detail="Direct DB restore is blocked in production runtime.",
             )
 
-        # Enforce body size limit (50 MB)
-        content_length = request.headers.get("content-length")
-        if content_length:
-            try:
-                size_bytes = int(content_length)
-            except (ValueError, TypeError):
-                raise HTTPException(
-                    status_code=400, detail="Invalid Content-Length header."
-                )
-            if size_bytes > 50 * 1024 * 1024:
-                raise HTTPException(
-                    status_code=413,
-                    detail="Request body too large. Maximum 50 MB.",
-                )
+        # The 50 MB body ceiling is enforced before the body is read, by
+        # RouteBodyLimitMiddleware (backend_app/body_limit.py). A check here would run only
+        # after the whole body was already parsed into memory, so it bounded nothing.
 
         payload_data = payload.model_dump()
         if str(payload_data.get("format") or "").strip() != main.BACKUP_FORMAT_VERSION:

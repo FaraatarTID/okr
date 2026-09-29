@@ -40,8 +40,8 @@ function payloadFromCookie(cookieHeader: string): Record<string, unknown> {
   return JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf-8")) as Record<string, unknown>;
 }
 
-function mintCookie(): string {
-  const token = issueSessionToken({ user, secret: config.sessionSecret, ttlSeconds: 600 });
+function mintCookie(sessionUser: SessionUser = user): string {
+  const token = issueSessionToken({ user: sessionUser, secret: config.sessionSecret, ttlSeconds: 600 });
   return `okr_spa_session=${encodeURIComponent(token)}; okr_csrf_token=${generateCsrfToken()}`;
 }
 
@@ -224,7 +224,11 @@ describe("BFF shared session registry integration", () => {
       return jsonResponse({ ok: true });
     });
     const app = createServer(config, { fetchFn });
-    const cookie = mintCookie();
+    // The restore route refuses a non-admin session at the edge, before reading its body,
+    // so it cannot be reached with the shared member fixture. Every other route keeps it.
+    const isRestore = path === "/v1/admin/db-restore";
+    const routeUser: SessionUser = isRestore ? { ...user, role: "admin" } : user;
+    const cookie = mintCookie(routeUser);
     const payload = payloadFromCookie(cookie);
     try {
       const response = await app.inject({

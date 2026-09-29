@@ -31,6 +31,7 @@ Optional:
 - `BFF_SESSION_TTL_SECONDS` (default: `28800`)
 - `BFF_COOKIE_SECURE` (default: `true` outside development)
 - `BFF_LOG_LEVEL` (default: `info`)
+- `BFF_RATE_LIMIT_WINDOW_SECONDS` (default: `60`), `BFF_RATE_LIMIT_LOGIN_MAX` (default: `60`), `BFF_RATE_LIMIT_SESSION_MAX` (default: `600`), `BFF_RATE_LIMIT_MAX_KEYS` (default: `10000`): per-process flood backstop on the login and session routes, keyed by client address. It is not shared across replicas; the backend holds the authoritative limits. A non-positive value fails startup.
 
 ## Endpoints
 

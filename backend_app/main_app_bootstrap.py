@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI
 
+from backend_app.body_limit import RouteBodyLimitMiddleware
 from backend_app.main_bootstrap_helpers import make_main_lifespan, register_main_routers
 from backend_app.observability_http import install_observability_handlers
 
@@ -36,5 +37,8 @@ def build_main_app(
         lifespan=lifespan,
     )
     install_observability_handlers(app, logger)
+    # Added after the observability middleware so it is the outermost layer: the body
+    # ceiling must apply before anything downstream reads the request.
+    app.add_middleware(RouteBodyLimitMiddleware)
     register_main_routers(app=app, main_module=main_module)
     return app

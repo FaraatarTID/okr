@@ -53,7 +53,7 @@ Current production-safe controls:
   - `OKR_ENABLE_DIRECT_DB_RESTORE=true` required outside hardened non-production drill mode.
   - Explicitly blocked in production runtime.
 - Payload format must match `BACKUP_FORMAT_VERSION` (`okr-db-backup/v1`).
-- Backend enforces 50 MB payload cap by request length for restore API.
+- The effective restore size bound is the BFF: `spa-bff` accepts up to 50 MB on `POST /api/backend/v1/admin/db-restore` only, and 1 MiB on every other route (`spa-bff/test/body_limits.test.ts`). The BFF refuses a missing session, a non-admin session or a missing CSRF pair on that route before it reads the body, so an unauthenticated caller cannot make it buffer 50 MB. The backend enforces the same 50 MB in `RouteBodyLimitMiddleware` (`backend_app/body_limit.py`), which counts bytes as they arrive and so also holds for chunked uploads; the earlier in-handler `Content-Length` check ran after the body was parsed and bounded nothing. The example Nginx configs set no `client_max_body_size`, so Nginx's 1 MB default rejects a larger restore at the edge; raise it for that location if you run a restore drill through Nginx.
 
 Backup/restore commands:
 

@@ -6,5 +6,15 @@
   "topology": "bff",
   "control": "rate_limiting",
   "status": "pending",
-  "observed": "No rate limiting is implemented in spa-bff: neither its source tree nor its configuration references a limiter, a request budget, or an abuse threshold. The abuse-resistance behaviour that was actually observed is fail-closed session handling, in which missing or invalid session and authentication state is rejected with a bounded error envelope instead of being served stale or privileged data, with no retry loop permitted to bypass trust mediation. That behaviour is real, but it is session fail-closed handling rather than rate limiting, so this control is recorded as pending. Rate limiting does exist in the backend through OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS and OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS, but it protects the backend hop rather than the browser edge and therefore does not satisfy a BFF-boundary control."
+  "observed": "No rate limiting is implemented in spa-bff: neither its source tree nor its configuration references a limiter, a request budget, or an abuse threshold. The abuse-resistance behaviour that was actually observed is fail-closed session handling, in which missing or invalid session and authentication state is rejected with a bounded error envelope instead of being served stale or privileged data, with no retry loop permitted to bypass trust mediation. That behaviour is real, but it is session fail-closed handling rather than rate limiting, so this control is recorded as pending. Rate limiting does exist in the backend through OKR_BACKEND_RATE_LIMIT_MAX_REQUESTS and OKR_BACKEND_RATE_LIMIT_WINDOW_SECONDS, but it protects the backend hop rather than the browser edge and therefore does not satisfy a BFF-boundary control.",
+  "since_capture": {
+    "as_of": "2026-09-29",
+    "note": "This is not a capture. The 'observed' text above records release-2026-09-14-bff and is left unedited; it is no longer true of the working tree.",
+    "code_state": "spa-bff/src/rate-limit.ts now applies an in-process fixed window per client address: POST /session/login and POST /api/backend/v1/auth/login share a login bucket (default 60 per 60 s), and /session/me and /session/logout share a session bucket (default 600 per 60 s). Over the ceiling the BFF answers 429 RATE_LIMITED with Retry-After. Configured by BFF_RATE_LIMIT_WINDOW_SECONDS, _LOGIN_MAX, _SESSION_MAX and _MAX_KEYS.",
+    "verification": "spa-bff/test/rate_limit.test.ts (25 tests) against the working tree, mutation-checked. This is unit and in-process evidence. It is not a measurement on a deployed stack, and the ceilings were chosen, not measured.",
+    "not_released": "The change is not in commit 8f13375 and not in the published release 6150b4ade9203a03fb2829155776d9aafec0f142 (checked 2026-09-29), so no released build exhibits it.",
+    "limits": "State is per process: with N replicas the effective ceiling is N times the configured value, and it resets on restart. Authenticated /api/backend/* traffic is not limited at the BFF. The authoritative limits remain the backend's (OKR_BACKEND_RATE_LIMIT_* and the login lockout). Behaviour behind a real Nginx is untested.",
+    "status_of_record": "pending",
+    "to_close": "Capture the 429 and Retry-After behaviour against the release that contains this change, then replace this file with that capture."
+  }
 }

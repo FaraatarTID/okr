@@ -108,7 +108,7 @@ jobs:
           identity="^https://github.com/${REPOSITORY}/.github/workflows/publish-ghcr.yml@refs/heads/(main|master)$"
           jq -r '.images[] | [.image, .digest] | @tsv' release-manifest/release-manifest.json | while IFS=$'\t' read -r image digest; do
             test "$image" = "${image%:*}:${RELEASE_SHA}"
-            test "$digest" = sha256:*
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
             cosign verify \
               --certificate-oidc-issuer "$issuer" \
               --certificate-identity-regexp "$identity" \
