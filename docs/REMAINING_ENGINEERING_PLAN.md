@@ -539,7 +539,9 @@ Phase 4, because it needs a decision before it needs code.
 - **P5.2a, done.** `playwright` moved from runtime dependencies to a `browser` dependency group that `dev` includes.
   The backend image installs `--no-dev`, so it drops from 217.8 MB to 120.2 MB (measured, `docker image inspect`).
   It never had a Chromium binary, so `PDF_METHOD=chromium` could not render from it before or after; startup preflight
-  still passes `has_chromium_runtime=True` unconditionally and does not notice. Not changed here.
+  used to pass `has_chromium_runtime=True` unconditionally and notice nothing; it now reads the real PDF
+  configuration and logs a warning (advisory, not fatal). It still checks the Playwright package only, not that a
+  browser binary launches.
 - **P5.2b, not started.** `psycopg2-binary` to `psycopg[binary]`.
 
 ## Verification drills
