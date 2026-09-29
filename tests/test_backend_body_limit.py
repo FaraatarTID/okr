@@ -143,7 +143,10 @@ def test_an_understated_content_length_does_not_smuggle_a_large_body():
             "query_string": b"",
             "root_path": "",
             # Declares 10 bytes while sending 4 KiB.
-            "headers": [(b"content-length", b"10"), (b"content-type", b"application/json")],
+            "headers": [
+                (b"content-length", b"10"),
+                (b"content-type", b"application/json"),
+            ],
             "server": ("test", 80),
             "client": ("127.0.0.1", 1),
         }

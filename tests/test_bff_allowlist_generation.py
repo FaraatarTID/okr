@@ -60,7 +60,9 @@ def test_bff_policy_routes_exist_in_openapi_and_preserve_exclusions():
         route["pathTemplate"] != "/v1/internal/cache-invalidation"
         for route in metadata["routes"]
     )
-    assert all(route["pathTemplate"] != "/v1/state/{key}" for route in metadata["routes"])
+    assert all(
+        route["pathTemplate"] != "/v1/state/{key}" for route in metadata["routes"]
+    )
 
 
 def test_generator_refuses_a_policy_that_reintroduces_the_state_route():

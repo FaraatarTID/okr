@@ -63,6 +63,12 @@ BASH = _bash()
 pytestmark = pytest.mark.skipif(BASH is None, reason="a POSIX bash is required")
 
 
+def _bash_path() -> str:
+    """The bash to run. The skip marker guarantees it exists; this narrows the type."""
+    assert BASH is not None, "a POSIX bash is required"
+    return BASH
+
+
 def _guard_scripts(workflow: str) -> list[str]:
     """Return, for each verification loop in `workflow`, the guard lines before `cosign verify`."""
     yaml = pytest.importorskip("yaml")
@@ -76,17 +82,23 @@ def _guard_scripts(workflow: str) -> list[str]:
             if "cosign verify" not in script:
                 continue
             match = re.search(
-                r"read -r image digest; do\n(?P<body>.*?)\n\s*cosign verify", script, re.S
+                r"read -r image digest; do\n(?P<body>.*?)\n\s*cosign verify",
+                script,
+                re.S,
             )
-            assert match, f"{workflow}: could not find the guard lines before cosign verify"
+            assert match, (
+                f"{workflow}: could not find the guard lines before cosign verify"
+            )
             guards.append(match.group("body"))
     return guards
 
 
-def _run_guard(body: str, *, image: str, digest: str) -> subprocess.CompletedProcess[str]:
+def _run_guard(
+    body: str, *, image: str, digest: str
+) -> subprocess.CompletedProcess[str]:
     script = "set -euo pipefail\n" + body + "\necho GUARD_PASSED\n"
     return subprocess.run(
-        [BASH, "-c", script],
+        [_bash_path(), "-c", script],
         env={
             "PATH": os.environ.get("PATH", ""),
             "RELEASE_SHA": RELEASE_SHA,
@@ -158,7 +170,11 @@ def test_every_image_the_real_manifest_producer_emits_passes_the_guard(
     for entry in manifest["images"].values():
         for body in guards:
             result = subprocess.run(
-                [BASH, "-c", "set -euo pipefail\n" + body + "\necho GUARD_PASSED\n"],
+                [
+                    _bash_path(),
+                    "-c",
+                    "set -euo pipefail\n" + body + "\necho GUARD_PASSED\n",
+                ],
                 env={
                     "PATH": os.environ.get("PATH", ""),
                     "RELEASE_SHA": commit,

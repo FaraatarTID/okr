@@ -113,7 +113,9 @@ def test_a_failing_gate_actually_blocks_promotion() -> None:
     assert str(gate_job.get("continue-on-error", "false")).lower() != "true", (
         "continue-on-error on the gate job turns a failure into a pass"
     )
-    assert "if" not in gate_job, "a conditional gate job can be skipped, and a skipped need passes"
+    assert "if" not in gate_job, (
+        "a conditional gate job can be skipped, and a skipped need passes"
+    )
     for step in gate_steps:
         assert str(step.get("continue-on-error", "false")).lower() != "true", (
             "continue-on-error on the gate step turns a failure into a pass"
