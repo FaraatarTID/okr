@@ -10,7 +10,6 @@ dependencies = [
     "fastapi==0.138.0",
     "google-genai==1.61.0",
     "httpx==0.28.1",
-    "playwright==1.60.0",
     "psycopg2-binary==2.9.12",
     "pydantic==2.13.4",
     "python-dotenv==1.2.2",
@@ -23,7 +22,15 @@ dependencies = [
 ]
 
 [dependency-groups]
+# Headless Chromium: the PDF_METHOD=chromium renderer (src/services/pdf_service.py) and the
+# Playwright E2E tests. Not a runtime dependency: pdf_service treats a missing import as
+# "renderer unavailable". `dev` includes it, so CI's `uv sync --group dev` is unchanged; the
+# backend image leaves it out unless built with INSTALL_BROWSER_GROUP=true.
+browser = [
+    "playwright==1.60.0",
+]
 dev = [
+    {include-group = "browser"},
     "mypy==1.15.0",
     "pytest==8.4.0",
     "PyYAML==6.0.3",

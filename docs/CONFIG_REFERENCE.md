@@ -81,6 +81,7 @@ PDF generation
 - Behavior:
   - Supported runtime modes: `pdfshift`, `chromium`
   - `pdfshift` requires API key; `chromium` requires Playwright + Chromium runtime.
+  - The default backend image does **not** contain Playwright (it is the `browser` dependency group, and the image installs `--no-dev`), and it never contained a Chromium binary, so `chromium` cannot render from it. Build with `--build-arg INSTALL_BROWSER_GROUP=true` to add the package, and provide a browser binary through `OKR_CHROMIUM_EXECUTABLE_PATH`. Backend startup preflight does not detect either gap (it passes `has_chromium_runtime=True` unconditionally); the failure shows as an unavailable renderer at export time.
   - If configured PDF renderer is unavailable/misconfigured, UI falls back to HTML export.
 
 AI integration

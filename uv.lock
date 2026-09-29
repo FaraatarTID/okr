@@ -791,7 +791,6 @@ dependencies = [
     { name = "fastapi" },
     { name = "google-genai" },
     { name = "httpx" },
-    { name = "playwright" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -804,8 +803,12 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+browser = [
+    { name = "playwright" },
+]
 dev = [
     { name = "mypy" },
+    { name = "playwright" },
     { name = "pytest" },
     { name = "pyyaml" },
     { name = "ruff" },
@@ -819,7 +822,6 @@ requires-dist = [
     { name = "fastapi", specifier = "==0.138.0" },
     { name = "google-genai", specifier = "==1.61.0" },
     { name = "httpx", specifier = "==0.28.1" },
-    { name = "playwright", specifier = "==1.60.0" },
     { name = "psycopg2-binary", specifier = "==2.9.12" },
     { name = "pydantic", specifier = "==2.13.4" },
     { name = "python-dotenv", specifier = "==1.2.2" },
@@ -832,8 +834,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+browser = [{ name = "playwright", specifier = "==1.60.0" }]
 dev = [
     { name = "mypy", specifier = "==1.15.0" },
+    { name = "playwright", specifier = "==1.60.0" },
     { name = "pytest", specifier = "==8.4.0" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "ruff", specifier = "==0.11.13" },
